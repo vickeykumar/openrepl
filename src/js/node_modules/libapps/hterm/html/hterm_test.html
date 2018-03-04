@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src='../dist/js/hterm_deps.js'></script>
+    <script src='../dist/js/hterm_resources.js'></script>
+
+    <!-- Keep this list in sync with ../concat/hterm.concat! -->
+    <script src='../js/hterm.js'></script>
+    <script src='../js/hterm_frame.js'></script>
+    <script src='../js/hterm_keyboard.js'></script>
+    <script src='../js/hterm_keyboard_bindings.js'></script>
+    <script src='../js/hterm_keyboard_keymap.js'></script>
+    <script src='../js/hterm_keyboard_keypattern.js'></script>
+    <script src='../js/hterm_options.js'></script>
+    <script src='../js/hterm_parser.js'></script>
+    <script src='../js/hterm_parser_identifiers.js'></script>
+    <script src='../js/hterm_preference_manager.js'></script>
+    <script src='../js/hterm_pubsub.js'></script>
+    <script src='../js/hterm_screen.js'></script>
+    <script src='../js/hterm_scrollport.js'></script>
+    <script src='../js/hterm_terminal.js'></script>
+    <script src='../js/hterm_terminal_io.js'></script>
+    <script src='../js/hterm_text_attributes.js'></script>
+    <script src='../js/hterm_vt.js'></script>
+    <script src='../js/hterm_vt_character_map.js'></script>
+
+    <script src='../../libdot/js/lib_test_manager.js'></script>
+    <script src='../js/hterm_mock_row_provider.js'></script>
+    <script src='../js/hterm_mock_notification.js'></script>
+
+    <script src='../js/hterm_tests.js'></script>
+    <!-- TODO: Add some tests.
+    <script src='../js/hterm_keyboard_bindings_tests.js'></script>
+    -->
+    <script src='../js/hterm_parser_tests.js'></script>
+    <script src='../js/hterm_pubsub_tests.js'></script>
+    <script src='../js/hterm_screen_tests.js'></script>
+    <script src='../js/hterm_scrollport_tests.js'></script>
+    <script src='../js/hterm_terminal_tests.js'></script>
+    <script src='../js/hterm_text_attributes_tests.js'></script>
+    <script src='../js/hterm_vt_tests.js'></script>
+    <script src='../js/hterm_vt_canned_tests.js'></script>
+    <script src='../js/hterm_vt_character_map_tests.js'></script>
+
+    <script src='../js/hterm_test.js'></script>
+
+    <style>
+      body {
+        position: absolute;
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+      .good {
+        color: green;
+      }
+      .bad {
+        color: red;
+      }
+      pre#log {
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+
+  <body>
+    <p>Check JavaScript console for test log/status.</p>
+    <p id='status'>Running...</p>
+    <p id='passed' class='good'></p>
+    <p id='failed' class='bad'></p>
+    <pre id='log'></pre>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+GIT_TOP=$(shell git rev-parse --show-toplevel 2>/dev/null)
+GOROOT=${GIT_TOP}/go_19/go
+ROOT=${GIT_TOP}
+GOPATH=${GIT_TOP}
+
+
+export ROOT
+export GOROOT
+export GOPATH
