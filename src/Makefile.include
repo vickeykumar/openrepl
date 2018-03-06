@@ -1,5 +1,11 @@
 GIT_TOP=$(shell git rev-parse --show-toplevel 2>/dev/null)
-GOROOT=${GIT_TOP}/go_19/go
+UNAME := $(shell uname)
+
+ifeq ($(UNAME), Linux)
+	GOROOT=${GIT_TOP}/go_19/go
+else
+	GOROOT=$(shell python -c 'import os.path; print(os.path.realpath("/usr/local/bin/go").rstrip("/bin/go"))')
+endif
 ROOT=${GIT_TOP}
 GOPATH=${GIT_TOP}
 

@@ -6,6 +6,9 @@ VERSION = 2.0.0-alpha.3
 TARGET=gotty
 BUILD_OPTIONS = -ldflags "-X main.Version=$(VERSION) -X main.CommitID=$(GIT_COMMIT)"
 
+ifneq ($(UNAME), Linux)
+	PRE_REQ = tools
+endif
 
 gotty:	${TARGET}/main.go server/*.go webtty/*.go backend/*.go ${TARGET}/Makefile
 	@echo "building gotty: "${TARGET}
@@ -20,7 +23,7 @@ asset: bindata/static/js/gotty-bundle.js bindata/static/index.html bindata/stati
 	$(GOROOT)/bin/gofmt -w server/asset.go
 
 .PHONY: all
-all: asset gotty
+all: $(PRE_REQ) asset gotty
 
 bindata:
 	mkdir bindata
