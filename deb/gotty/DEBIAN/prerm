@@ -1,0 +1,5 @@
+#!/bin/sh
+# prerm
+
+systemctl stop gotty
+rm -rf /usr/lib/systemd/system/gotty.service

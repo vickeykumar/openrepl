@@ -1,5 +1,6 @@
 include Makefile.include
 
+DEBIAN_ROOT = ${ROOT}/deb
 OUTPUT_DIR = ./builds
 GIT_COMMIT = $(shell git rev-parse HEAD | cut -c1-7)
 VERSION = 2.0.0-alpha.3
@@ -67,6 +68,13 @@ js/dist/gotty-bundle.js: js/src/* js/node_modules/webpack
 js/node_modules/webpack:
 	cd js && \
 	npm install
+
+deb: all
+	mkdir -p ${DEBIAN_ROOT}/gotty/usr/lib/systemd/system
+	mkdir -p ${DEBIAN_ROOT}/gotty/usr/local/bin
+	install -m 644 ${ROOT}/src/services/gotty.service ${DEBIAN_ROOT}/gotty/usr/lib/systemd/system/gotty.service
+	install -m 755 ${ROOT}/bin/gotty ${DEBIAN_ROOT}/gotty/usr/local/bin/gotty
+	cd ${DEBIAN_ROOT} && dpkg-deb --build gotty/
 
 tools:
 	$(GOROOT)/bin/go get github.com/tools/godep

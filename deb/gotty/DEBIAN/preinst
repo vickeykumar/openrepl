@@ -1,0 +1,6 @@
+#!/bin/sh
+# preinst
+
+mkdir -p /gottyTraces
+chown vickey /gottyTraces
+mkdir -p /usr/lib/systemd/system

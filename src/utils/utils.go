@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-const LOG_PATH = "/home/vickey/gottyTraces"
+const LOG_PATH = "/gottyTraces"
 
 func InitLogging(name string) {
 	err := os.MkdirAll(LOG_PATH, 0755)

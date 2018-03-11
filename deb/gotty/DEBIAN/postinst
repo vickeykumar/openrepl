@@ -1,0 +1,7 @@
+#!/bin/sh
+# postinst
+
+chmod 0755 /usr/local/bin/gotty
+chmod 0644 /usr/lib/systemd/system/gotty.service
+systemctl enable gotty
+systemctl start gotty
