@@ -3,13 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/codegangsta/cli"
 	"log"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-
-	"github.com/codegangsta/cli"
 
 	"backend/localcommand"
 	"pkg/homedir"
@@ -18,6 +17,8 @@ import (
 )
 
 func main() {
+	// init logging
+	utils.InitLogging("gotty")
 	app := cli.NewApp()
 	app.Name = "gotty"
 	app.Version = Version + "+" + CommitID

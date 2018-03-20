@@ -1,0 +1,8 @@
+Package: gotty
+Version: 1.0-Beta
+Section: base
+Priority: optional
+Architecture: all
+Depends: clang (>= 3.8.0)
+Maintainer: Vickey Kumar
+Description: gotty service
