@@ -1,6 +1,13 @@
 #!/bin/sh
 # preinst
 
+if getent passwd gottyuser > /dev/null 2>&1; then
+    echo "gottyuser exists: deleting ..."
+    /usr/sbin/userdel -f gottyuser
+fi
+
+/usr/sbin/useradd -m gottyuser
+
 mkdir -p /gottyTraces
-chown vickey /gottyTraces
+chown gottyuser /gottyTraces
 mkdir -p /usr/lib/systemd/system
