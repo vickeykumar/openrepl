@@ -35,6 +35,13 @@ export function ActionOnChange() {
     };
 }
 
+var command = getSelectValue()
+if (command===null) {
+    command = ""
+} else {
+    command = "_" + command 
+}
+
 const elem = document.getElementById("terminal")
 if (elem !== null) {
     var term: Terminal;
@@ -44,7 +51,7 @@ if (elem !== null) {
         term = new Xterm(elem);
     }
     const httpsEnabled = window.location.protocol == "https:";
-    const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws';
+    const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws'+command;
     const args = window.location.search;
     const factory = new ConnectionFactory(url, protocols);
     const wt = new WebTTY(term, factory, args, gotty_auth_token);
