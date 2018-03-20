@@ -207,9 +207,11 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	wsMux := http.NewServeMux()
 	wsMux.Handle("/", siteHandler)
 	wsMux.HandleFunc(pathPrefix+"ws", server.generateHandleWS(ctx, cancel, counter))
-	wsMux.HandleFunc(pathPrefix+"ws_cling", server.generateHandleWS(ctx, cancel, counter))
-	wsMux.HandleFunc(pathPrefix+"ws_go", server.generateHandleWS(ctx, cancel, counter))
-	wsMux.HandleFunc(pathPrefix+"ws_py", server.generateHandleWS(ctx, cancel, counter))
+	wsMux.HandleFunc(pathPrefix+"ws_c", server.generateHandleWS(ctx, cancel, counter, "cling"))
+	wsMux.HandleFunc(pathPrefix+"ws_cpp", server.generateHandleWS(ctx, cancel, counter, "cling"))
+	wsMux.HandleFunc(pathPrefix+"ws_go", server.generateHandleWS(ctx, cancel, counter, "gointerpreter"))
+	wsMux.HandleFunc(pathPrefix+"ws_java", server.generateHandleWS(ctx, cancel, counter, "jshell"))
+	wsMux.HandleFunc(pathPrefix+"ws_python2.7", server.generateHandleWS(ctx, cancel, counter, "python2.7"))
 	siteHandler = http.Handler(wsMux)
 
 	return siteHandler
@@ -250,5 +252,7 @@ func (server *Server) tlsConfig() (*tls.Config, error) {
 
 func (server *Server) SetNewCommand(command string) {
 	server.factory.SetNewCommand(command)
+	server.options.TitleVariables["command"] = command
 	log.Println("New Command set successfully: " + command)
 }
+

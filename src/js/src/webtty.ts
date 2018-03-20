@@ -126,7 +126,7 @@ export class WebTTY {
             connection.onClose(() => {
                 clearInterval(pingTimer);
                 this.term.deactivate();
-                this.term.showMessage("Connection Closed", 0);
+                this.term.showMessage("Connection Closed", 2000);    // tune message timeout accordingly
                 if (this.reconnect > 0) {
                     reconnectTimeout = setTimeout(() => {
                         connection = this.connectionFactory.create();
@@ -141,6 +141,7 @@ export class WebTTY {
 
         setup();
         return () => {
+            console.log("closing connection in webtty")
             clearTimeout(reconnectTimeout);
             connection.close();
         }

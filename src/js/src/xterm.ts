@@ -99,6 +99,7 @@ export class Xterm {
     }
 
     close(): void {
+        console.log("closing connection for window xterm")
         window.removeEventListener("resize", this.resizeListener);
         this.term.destroy();
     }

@@ -17,7 +17,7 @@ import (
 	"webtty"
 )
 
-func (server *Server) generateHandleWS(ctx context.Context, cancel context.CancelFunc, counter *counter) http.HandlerFunc {
+func (server *Server) generateHandleWS(ctx context.Context, cancel context.CancelFunc, counter *counter, commands ...string) http.HandlerFunc {
 	once := new(int64)
 
 	go func() {
@@ -30,6 +30,9 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("request recieved: ", r)
+		if len(commands)>0 {
+			server.SetNewCommand(commands[0])
+		}
 		if server.options.Once {
 			success := atomic.CompareAndSwapInt64(once, 0, 1)
 			if !success {
