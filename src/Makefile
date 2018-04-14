@@ -19,12 +19,12 @@ gotty:	${TARGET}/main.go server/*.go webtty/*.go backend/*.go ${TARGET}/Makefile
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: bindata/static/js/gotty-bundle.js bindata/static/index.html bindata/static/favicon.png bindata/static/css/index.css bindata/static/css/xterm.css bindata/static/css/xterm_customize.css
+asset: bindata/static/js/gotty-bundle.js bindata/static/index.html bindata/static/doc.html bindata/static/NewFile.html bindata/static/images bindata/static/css/xterm.css
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	$(GOROOT)/bin/gofmt -w server/asset.go
 
 .PHONY: all
-all: $(PRE_REQ) asset gotty
+all: $(PRE_REQ) clean asset gotty
 
 bindata:
 	mkdir bindata
@@ -35,24 +35,26 @@ bindata/static: bindata
 bindata/static/index.html: bindata/static resources/index.html
 	cp resources/index.html bindata/static/index.html
 
-bindata/static/favicon.png: bindata/static resources/favicon.png
-	cp resources/favicon.png bindata/static/favicon.png
+bindata/static/doc.html: bindata/static resources/doc.html
+	cp resources/doc.html bindata/static/doc.html
 
-bindata/static/js: bindata/static
+bindata/static/NewFile.html: bindata/static resources/NewFile.html
+	cp resources/NewFile.html bindata/static/NewFile.html
+
+bindata/static/images: bindata/static resources/images
+	mkdir -p bindata/static/images
+	cp -Rv resources/images/* bindata/static/images/
+
+bindata/static/js: bindata/static resources/js
 	mkdir -p bindata/static/js
-
+	cp -Rv resources/js/* bindata/static/js/
 
 bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js
 	cp js/dist/gotty-bundle.js bindata/static/js/gotty-bundle.js
 
-bindata/static/css: bindata/static
+bindata/static/css: bindata/static resources/css
 	mkdir -p bindata/static/css
-
-bindata/static/css/index.css: bindata/static/css resources/index.css
-	cp resources/index.css bindata/static/css/index.css
-
-bindata/static/css/xterm_customize.css: bindata/static/css resources/xterm_customize.css
-	cp resources/xterm_customize.css bindata/static/css/xterm_customize.css
+	cp -Rv resources/css/* bindata/static/css/
 
 bindata/static/css/xterm.css: bindata/static/css js/node_modules/xterm/dist/xterm.css
 	cp js/node_modules/xterm/dist/xterm.css bindata/static/css/xterm.css
@@ -87,6 +89,7 @@ clean:
 	@echo ".... Cleaning " ${TARGET}
 	cd ${TARGET} && \
 	make clean
+	rm -rf bindata
 	@echo ".... Clean Done"
 
 test:
