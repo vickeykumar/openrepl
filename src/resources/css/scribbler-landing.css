@@ -27,13 +27,13 @@ nav {
 
 .terminal {
   width: 70%;
+  height: 60vh;
   margin: -11rem auto 3rem auto;
   text-align: left;
   color: white;
   padding: 0 1rem;
   border-radius: 4px;
   background-color: #232323;
-  min-height: 585px;
   animation: fadeUp 2s;
   box-shadow: 0px 12px 36.8px 30.2px rgba(0, 0, 0, 0.1);
 }
