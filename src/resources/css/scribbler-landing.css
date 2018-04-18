@@ -37,14 +37,10 @@ nav {
   background-color: #232323;
   animation: fadeUp 2s;
   box-shadow: 0px 12px 36.8px 30.2px rgba(0, 0, 0, 0.1);
-  transition-duration: 3s;
-  transition-delay: 3s;
-  -webkit-transition:width 0.8s ease-in-out, height 0.8s ease-in-out;
-  -moz-transition:width 0.8s ease-in-out, height 0.8s ease-in-out;
-  -o-transition:width 0.8s ease-in-out, height 0.8s ease-in-out;
-  transition:width 0.8s ease-in-out, height 0.8s ease-in-out;
   transition-property: fullscreen;
-  transform-origin: center;  
+  transform-origin: center;
+  -webkit-transition-property:fullscreen;
+  -webkit-transform-origin:center;
 }
 
 .fullscreen {
