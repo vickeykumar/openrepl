@@ -4,7 +4,10 @@
 
 .terminal .xterm {
     width:98%;
-    position: relative;
+    position: absolute;
+    margin-top: auto;
+    height: auto;
+    z-index: 1;
 }
 
 .xterm-overlay {

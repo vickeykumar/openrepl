@@ -9,7 +9,43 @@ var getAll = function (selector, scope) {
   return scope.querySelectorAll(selector);
 };
 
-// setup typewriter effect in the terminal demo
+/*
+function reloadCss()
+{
+    var links = document.getElementsByTagName("link");
+    for (var cl in links)
+    {
+        var link = links[cl];
+        if (link.rel === "stylesheet") {
+            link.href += "";
+            console.log("reloaded:%s",link.href);
+        }
+    }
+}
+*/
+
+function ToggleFunction() {
+    TermElement = get(".terminal");
+    xtermElement = get(".xterm",TermElement);
+    TermElement.classList.toggle("fullscreen");
+    xtermElement.classList.toggle("fullscreen");
+    var event = new Event('resize');
+    window.dispatchEvent(event);
+    togglebtn = get(".fa",TermElement);
+    togglebtn.classList.toggle("fa-compress");
+    togglebtn.classList.toggle("fa-expand");
+    var AllElem = getAll("body > *");
+    for (var i = 0; i < AllElem.length;i++)
+    {
+      var element = AllElem[i];
+      if (element.id != "terminal" && element.tagName != "SCRIPT") {
+        element.classList.toggle("hide-tag");
+        console.log("class hidden for %s",element.tagName);
+      }
+    }
+}
+
+/* setup typewriter effect in the terminal demo
 if (document.getElementsByClassName('demo').length > 0) {
   var i = 0;
   var txt = `scribbler
@@ -128,3 +164,4 @@ window.addEventListener('load', function(){
   icon.addEventListener('click', showNav);
 });
 
+*/
