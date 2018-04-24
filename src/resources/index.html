@@ -4,7 +4,7 @@
       <meta charset="utf-8">
       <meta name="description" content="">
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Scribbler - a codding landing page template for codrops</title>
+      <title>An REPL Platform</title>
       <link rel="icon" type="image/png" href="./images/favicon.png">
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
       <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
@@ -66,8 +66,22 @@
     		border-radius: 50%;
     		display: inline-block;
 	  }
+	  
+	  #share-buttons img{
+			width: 35px;
+			padding: 5px;
+			border: 0;
+			box-shadow: 0;
+			display: inline;
+		}
 
 	<!------------------ css for creating separator dot ------------------>
+
+
+<!------------------ css for share button start ------------------>
+
+
+ <!------------------ css for share button end ------------------>
 
 	</style>
 	
@@ -88,6 +102,51 @@
     <div class="hero">
       <h1 class="hero__title">REPL<sup> beta</sup></h1>
       <p class="hero__description">Check your codes instantaneously with REPL</p>
+      
+      
+      <!-- code for share biuttons start-->
+      <!-- I got these buttons from simplesharebuttons.com -->
+<div id="share-buttons">
+    
+    
+    <!-- Email -->
+    <a href="mailto:?Subject=Simple Share Buttons&amp;Body=I%20saw%20this%20and%20thought%20of%20you!%20 https://simplesharebuttons.com">
+        <img src="https://simplesharebuttons.com/images/somacro/email.png" alt="Email" />
+    </a>
+ 
+    <!-- Facebook -->
+    <a href="http://www.facebook.com/sharer.php?u=https://simplesharebuttons.com" target="_blank">
+        <img src="https://simplesharebuttons.com/images/somacro/facebook.png" alt="Facebook" />
+    </a>
+    
+    <!-- Google+ -->
+    <a href="https://plus.google.com/share?url=https://simplesharebuttons.com" target="_blank">
+        <img src="https://simplesharebuttons.com/images/somacro/google.png" alt="Google" />
+    </a>
+    
+    <!-- LinkedIn -->
+    <a href="http://www.linkedin.com/shareArticle?mini=true&amp;url=https://simplesharebuttons.com" target="_blank">
+        <img src="https://simplesharebuttons.com/images/somacro/linkedin.png" alt="LinkedIn" />
+    </a>
+    
+    <!-- Pinterest -->
+    <a href="javascript:void((function()%7Bvar%20e=document.createElement('script');e.setAttribute('type','text/javascript');e.setAttribute('charset','UTF-8');e.setAttribute('src','http://assets.pinterest.com/js/pinmarklet.js?r='+Math.random()*99999999);document.body.appendChild(e)%7D)());">
+        <img src="https://simplesharebuttons.com/images/somacro/pinterest.png" alt="Pinterest" />
+    </a>
+    
+    <!-- Twitter -->
+    <a href="https://twitter.com/share?url=https://simplesharebuttons.com&amp;text=Simple%20Share%20Buttons&amp;hashtags=simplesharebuttons" target="_blank">
+        <img src="https://simplesharebuttons.com/images/somacro/twitter.png" alt="Twitter" />
+    </a>
+    
+
+</div>
+
+<!-- code for share biuttons end-->
+      
+      
+      
+      
       <div id="optionMenu">
         <select class="list" style="margin:7px;font-size:15px;width:200px;">
                 <option value="c">C</option>
@@ -295,8 +354,8 @@
     
     
     <footer class="footer">
-	<a href="" class="link link--light">About</a> <span class="dot"></span>
-	<a href="" class="link link--light">Credits</a> <span class="dot"></span>
+	<a href="about.html" class="link link--light">About</a> <span class="dot"></span>
+	<a href="credits.html" class="link link--light">Credits</a> <span class="dot"></span>
 	2018&copy;REPL 
    </footer>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
