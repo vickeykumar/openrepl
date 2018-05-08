@@ -31,7 +31,7 @@ type LocalCommand struct {
 func New(command string, argv []string, options ...Option) (*LocalCommand, error) {
 	cmd := exec.Command(command, argv...)
 
-	pty, err := pty.Start(cmd)
+	pty, err := pty.Start(command, cmd)
 	if err != nil {
 		// todo close cmd?
 		return nil, errors.Wrapf(err, "failed to start command `%s`", command)
