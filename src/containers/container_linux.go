@@ -5,12 +5,13 @@ package containers
 import (
 	"syscall"
 	"log"
+	"os"
 	"github.com/containerd/cgroups"
 	"github.com/pkg/errors"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 )
 
-CPUshares := uint64(1024)
+var CPUshares = uint64(1024)
 
 type container struct {
 	// Name of the container as per command Name.
@@ -43,8 +44,9 @@ func (c *container) Delete() {
 
 func NewContainer(name string, memlimit int64) (*container, error) {
 	var containerObj container
+	var err error
 	containerObj.Name = name
-	containerObj.Control,err := cgroups.New(cgroups.V1, cgroups.StaticPath("/test"), &specs.LinuxResources{
+	containerObj.Control, err = cgroups.New(cgroups.V1, cgroups.StaticPath("/"+name+"_container"), &specs.LinuxResources{
         CPU: &specs.LinuxCPU{
                 Shares: &CPUshares,
                 Cpus:   "0",
