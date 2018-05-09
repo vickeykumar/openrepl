@@ -8,10 +8,11 @@ import (
 
 var Containers = make(map[string]*container)
 
+// Command Name to memory limit in MB (megabytes).
 var Commands2memLimitMap = map[string]int64{
-	"cling":         11,
-	"gointerpreter": 44,
-	"python2.7":     3,
+	"cling":         14,	// threshold : 11
+	"gointerpreter": 47,	// 44
+	"python2.7":     4,	// 3
 }
 
 func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr) {
@@ -43,7 +44,7 @@ func AddProcess(name string, cmd *exec.Cmd) {
 
 func InitContainers() {
 	for command, memlimit := range Commands2memLimitMap {
-		containerObj, err := NewContainer(command, memlimit)
+		containerObj, err := NewContainer(command, memlimit*1024*1024)		// memlimit in MB
 		if err != nil {
 			log.Println("ERROR: ", err)
 			continue

@@ -1,12 +1,24 @@
 #!/bin/sh
 # preinst
 
+if grep -q "cgroupusers" /etc/group
+then
+	echo "group cgroupusers already exists"
+else
+	echo "group does not exist"
+	/usr/sbin/groupadd cgroupusers
+fi
+
 if getent passwd gottyuser > /dev/null 2>&1; then
     echo "gottyuser exists: deleting ..."
     /usr/sbin/userdel -f gottyuser
 fi
 
 /usr/sbin/useradd -m gottyuser
+/usr/sbin/usermod -a -G cgroupusers gottyuser
+
+chgrp -R cgroupusers /sys/fs/cgroup
+chmod -R u=rwx,g=rwx /sys/fs/cgroup
 
 mkdir -p /gottyTraces
 chown gottyuser /gottyTraces
