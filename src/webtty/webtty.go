@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"sync"
-
 	"github.com/pkg/errors"
+	"log"
+	"sync"
 )
 
 // WebTTY bridges a PTY slave and its PTY master.
@@ -89,6 +89,8 @@ func (wt *WebTTY) Run(ctx context.Context) error {
 			for {
 				n, err := wt.masterConn.Read(buffer)
 				if err != nil {
+					log.Println("Error while reading from master : ", err.Error())
+					wt.handleSlaveReadEvent([]byte("\nconnection closed by client: " + err.Error()))
 					return ErrMasterClosed
 				}
 

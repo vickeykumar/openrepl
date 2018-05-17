@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync/atomic"
-	//	"time"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
@@ -30,7 +30,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("request recieved: ", r)
-		if len(commands)>0 {
+		if len(commands) > 0 {
 			server.SetNewCommand(commands[0])
 		}
 		if server.options.Once {
@@ -97,7 +97,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 
 func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn) error {
 	log.Println("reading message")
-	//conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn.SetWriteDeadline(time.Now().Add(15 * time.Minute)) // only 15 min sessions for services are allowed
 	typ, initLine, err := conn.ReadMessage()
 	if err != nil {
 		return errors.Wrapf(err, "failed to authenticate websocket connection")

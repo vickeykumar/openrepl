@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/gorilla/websocket"
+	"time"
 )
 
 type wsWrapper struct {
@@ -19,6 +20,7 @@ func (wsw *wsWrapper) Write(p []byte) (n int, err error) {
 
 func (wsw *wsWrapper) Read(p []byte) (n int, err error) {
 	for {
+		wsw.Conn.SetReadDeadline(time.Now().Add(5 * time.Minute)) // only 5 min idle timeout for services are allowed
 		msgType, reader, err := wsw.Conn.NextReader()
 		if err != nil {
 			return 0, err
