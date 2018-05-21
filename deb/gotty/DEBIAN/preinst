@@ -23,3 +23,5 @@ chmod -R u=rwx,g=rwx /sys/fs/cgroup
 mkdir -p /gottyTraces
 chown gottyuser /gottyTraces
 mkdir -p /usr/lib/systemd/system
+mkdir -p /opt/gotty
+chown gottyuser /opt/gotty

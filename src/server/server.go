@@ -187,6 +187,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 
 	var siteMux = http.NewServeMux()
 	siteMux.HandleFunc(pathPrefix, server.handleIndex)
+	siteMux.HandleFunc(pathPrefix+"feedback", handleFeedback)
 	siteMux.Handle(pathPrefix+"js/", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"images/", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"doc.html", http.StripPrefix(pathPrefix, staticFileHandler))
@@ -256,4 +257,3 @@ func (server *Server) SetNewCommand(command string) {
 	server.options.TitleVariables["command"] = command
 	log.Println("New Command set successfully: " + command)
 }
-

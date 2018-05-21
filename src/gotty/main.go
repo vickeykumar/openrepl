@@ -19,8 +19,13 @@ import (
 func main() {
 	// init logging
 	utils.InitLogging("gotty")
+
+	server.InitFeedbackDBHandle()
+	defer server.CloseFeedbackDBHandle()
+
 	containers.InitContainers()
 	defer containers.DeleteContainers()
+
 	app := cli.NewApp()
 	app.Name = "gotty"
 	app.Version = Version + "+" + CommitID

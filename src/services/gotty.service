@@ -9,6 +9,8 @@ StartLimitBurst=1
 [Service]
 Type=simple
 User=gottyuser
+Environment="TERM=xterm"
+Environment="GODEBUG=cgocheck=1"
 ExecStart=/usr/local/bin/gotty -w
 ExecStop=/usr/bin/pkill gotty
 LimitNOFILE=2000
