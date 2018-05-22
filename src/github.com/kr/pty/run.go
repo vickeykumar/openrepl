@@ -23,6 +23,7 @@ func Start(command string, c *exec.Cmd) (pty *os.File, err error) {
 	containers.AddContainerAttributes(command, c.SysProcAttr) // containers attrib
 	c.Env = os.Environ()
 	c.Env = append(c.Env, "TERM=xterm")
+	c.Env = append(c.Env, "GOPATH=/opt/gotty/")
 	err = c.Start()
 	if err != nil {
 		pty.Close()

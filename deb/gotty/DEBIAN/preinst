@@ -23,5 +23,9 @@ chmod -R u=rwx,g=rwx /sys/fs/cgroup
 mkdir -p /gottyTraces
 chown gottyuser /gottyTraces
 mkdir -p /usr/lib/systemd/system
+
+# dedicated path for gotty
 mkdir -p /opt/gotty
 chown gottyuser /opt/gotty
+export GOPATH=/opt/gotty/
+go get github.com/k0kubun/pp	# required for gointerpreter
