@@ -11,7 +11,7 @@ var Containers = make(map[string]*container)
 // Command Name to memory limit in MB (megabytes).
 var Commands2memLimitMap = map[string]int64{
 	"cling":         14,	// threshold : 11
-	"gointerpreter": 47,	// 44
+	"gointerpreter": 50,	// 44
 	"python2.7":     4,	// 3
 }
 
