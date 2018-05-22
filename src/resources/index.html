@@ -14,7 +14,27 @@
       <link rel="stylesheet" href="./css/xterm.css" />
       <link rel="stylesheet" href="./css/xterm_customize.css" />
       <link rel="author" href="humans.txt">
-      
+      <!-- Declare all the functions here -->
+      <script>
+       function onLoadFn(){
+          try {
+            var frame = document.getElementById('resultFrame');
+            var target = document.getElementById("feedbackDiv");
+            if(!target){
+              return
+            }
+            if(frame && frame.contentWindow.document){
+               target.innerHTML = '<h3 target="_blank" class="link link--light">'+(frame.contentWindow.document.body.innerHTML)+'</h3><br><br>';
+            } else {
+              alert("Unable to reach server now");
+            }
+          }
+          catch(error) {
+            alert("Unable to reach server now");
+            console.log(error);
+          }
+        }
+      </script>
       
       <!------------- style for contact section start --------------->
       <style>
@@ -170,8 +190,9 @@
 	  			<section id="three">
 						<h2>Get In Touch</h2>
 						<p>Accumsan pellentesque commodo blandit enim arcu non at amet id arcu magna. Accumsan orci faucibus id eu lorem semper nunc nisi lorem vulputate lorem neque lorem ipsum dolor.</p>
-							 <div>
-								<form method="post" action="/feedback">
+            <iframe name="resultFrame" id="resultFrame" width="100%" style="border:none;display:none" onload="onLoadFn()"></iframe>
+							 <div id="feedbackDiv">
+								<form method="post" action="/feedback" target="resultFrame">
 									<table>
 									
 									<tr>

@@ -73,6 +73,8 @@ func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 		err := StoreFeedbackData(&fb)
 		if err == nil {
 			fmt.Fprintf(rw, "Thanks for your Feedback !!")
+		} else {
+			fmt.Fprintf(rw, "Server Error: Unsupported Operation !!")
 		}
 	}
 }
