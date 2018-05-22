@@ -21,6 +21,7 @@ func Start(command string, c *exec.Cmd) (pty *os.File, err error) {
 	c.Stderr = tty
 	c.SysProcAttr = &syscall.SysProcAttr{Setctty: true, Setsid: true}
 	containers.AddContainerAttributes(command, c.SysProcAttr) // containers attrib
+	c.Env = os.Environ()
 	c.Env = append(c.Env, "TERM=xterm")
 	err = c.Start()
 	if err != nil {
