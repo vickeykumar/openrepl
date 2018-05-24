@@ -5,10 +5,12 @@ export const maxconnections = 1;	// maximum connections allowed per browser
 export class SessionCookie {
 	name: string;
 	expiration: number;	// Minutes
+	isSet: boolean;		// when cookie is set in this session
 
 	constructor(cookieName: string) {
 		this.name = cookieName;
 		this.expiration = 15;
+		this.isSet = false;
 	};
 
 	// base64 encoder
@@ -35,6 +37,7 @@ export class SessionCookie {
 		let minutes = new Date();
 		minutes.setMinutes(minutes.getMinutes() + this.expiration);
 		Cookies.set(this.name, this.encode(value.toString()), { expires: minutes });
+		this.isSet = true;
 	};
 
 	DecrementSessionCount(): void {
@@ -44,11 +47,12 @@ export class SessionCookie {
 			console.log("cookie Not found ");
 			return
 		}
-		if (value > 0) {
+		if (value > 0 && this.isSet) {
 			value--;
 			let minutes = new Date();
 			minutes.setMinutes(minutes.getMinutes() + this.expiration);
 			Cookies.set(this.name, this.encode(value.toString()), { expires: minutes });
+			this.isSet = false;
 		}
 	};
 
