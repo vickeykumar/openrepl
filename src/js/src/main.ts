@@ -55,10 +55,10 @@ if (elem !== null) {
     const httpsEnabled = window.location.protocol == "https:";
     const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws_c';
     const args = window.location.search;
-    const factory = new ConnectionFactory(url, protocols);
-    const wt = new WebTTY(term, factory, args, gotty_auth_token);
+    var factory = new ConnectionFactory(url, protocols);
+    var wt = new WebTTY(term, factory, args, gotty_auth_token);
     console.log("webtty created: ",wt);
-    const closer = wt.open();
+    var closer = wt.open();
     console.log("webtty: ",closer);
 
     window.addEventListener("unload", () => {
@@ -71,7 +71,7 @@ if (elem !== null) {
         var event = new Event('unload');
         window.dispatchEvent(event);
         setTimeout(function(){                // timeout between two events
-            var term: Terminal;
+            //var term: Terminal;
             if (gotty_term == "hterm") {
                 term = new Hterm(elem);
             } else {
@@ -83,16 +83,16 @@ if (elem !== null) {
                 const httpsEnabled = window.location.protocol == "https:";
                 const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws'+ '_' + option;
                 const args = window.location.search;
-                const factory = new ConnectionFactory(url, protocols);
-                const wt = new WebTTY(term, factory, args, gotty_auth_token);
+                factory = new ConnectionFactory(url, protocols);
+                wt = new WebTTY(term, factory, args, gotty_auth_token);
                 console.log("webtty created for: ",url," : ",wt);
-                const closer = wt.open();
+                closer = wt.open();
                 console.log("webtty: ",closer);
-                window.addEventListener("unload", () => {
+                /*window.addEventListener("unload", () => {
                     console.log("closing connection")
                     closer();
                     term.close();
-                });
+                });*/
             }
         }, 500);
     });
