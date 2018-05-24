@@ -1,3 +1,5 @@
+import * as Cookies from "./cookie";
+
 export const protocols = ["webtty"];
 
 export const msgInputUnknown = '0';
@@ -12,6 +14,7 @@ export const msgSetWindowTitle = '3';
 export const msgSetPreferences = '4';
 export const msgSetReconnect = '5';
 
+export var sessionCookieObj = new Cookies.SessionCookie("Session");
 
 export interface Terminal {
     info(): { columns: number, rows: number };
@@ -58,6 +61,15 @@ export class WebTTY {
     };
 
     open() {
+        if (!sessionCookieObj.IsSessionCountValid()) {
+            this.term.output("Maximum no of connections reached: " + Cookies.maxconnections +", \
+Please close/disconnect the old Terminal to proceed.");
+
+            return () => {
+                console.log("closing connection in webtty")
+            }
+        }
+
         let connection = this.connectionFactory.create();
         let pingTimer: number;
         let reconnectTimeout: number;
@@ -98,6 +110,7 @@ export class WebTTY {
                     connection.send(msgPing)
                 }, 30 * 1000);
 
+                sessionCookieObj.IncrementSessionCount();
             });
 
             connection.onReceive((data) => {
@@ -134,7 +147,14 @@ export class WebTTY {
                         setup();
                     }, this.reconnect * 1000);
                 }
+                sessionCookieObj.DecrementSessionCount();
+                this.term.output("connection closed")
             });
+
+            // when tab/window is closed
+            window.onbeforeunload = function() {
+                sessionCookieObj.DecrementSessionCount();
+            };
 
             connection.open();
         }

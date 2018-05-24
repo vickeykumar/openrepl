@@ -70,28 +70,30 @@ if (elem !== null) {
         console.log("event caught: change");
         var event = new Event('unload');
         window.dispatchEvent(event);
-        var term: Terminal;
-        if (gotty_term == "hterm") {
-            term = new Hterm(elem);
-        } else {
-            term = new Xterm(elem);
-        }
-        const option = getSelectValue();
-        console.log("option caught: ",option)
-        if (option !== null) {
-            const httpsEnabled = window.location.protocol == "https:";
-            const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws'+ '_' + option;
-            const args = window.location.search;
-            const factory = new ConnectionFactory(url, protocols);
-            const wt = new WebTTY(term, factory, args, gotty_auth_token);
-            console.log("webtty created for: ",url," : ",wt);
-            const closer = wt.open();
-            console.log("webtty: ",closer);
-            window.addEventListener("unload", () => {
-                console.log("closing connection")
-                closer();
-                term.close();
-            });
-        }
+        setTimeout(function(){                // timeout between two events
+            var term: Terminal;
+            if (gotty_term == "hterm") {
+                term = new Hterm(elem);
+            } else {
+                term = new Xterm(elem);
+            }
+            const option = getSelectValue();
+            console.log("option caught: ",option)
+            if (option !== null) {
+                const httpsEnabled = window.location.protocol == "https:";
+                const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws'+ '_' + option;
+                const args = window.location.search;
+                const factory = new ConnectionFactory(url, protocols);
+                const wt = new WebTTY(term, factory, args, gotty_auth_token);
+                console.log("webtty created for: ",url," : ",wt);
+                const closer = wt.open();
+                console.log("webtty: ",closer);
+                window.addEventListener("unload", () => {
+                    console.log("closing connection")
+                    closer();
+                    term.close();
+                });
+            }
+        }, 500);
     });
 };

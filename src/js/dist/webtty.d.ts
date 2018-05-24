@@ -1,3 +1,4 @@
+import * as Cookies from "./cookie";
 export declare const protocols: string[];
 export declare const msgInputUnknown = "0";
 export declare const msgInput = "1";
@@ -9,6 +10,7 @@ export declare const msgPong = "2";
 export declare const msgSetWindowTitle = "3";
 export declare const msgSetPreferences = "4";
 export declare const msgSetReconnect = "5";
+export declare var sessionCookieObj: Cookies.SessionCookie;
 export interface Terminal {
     info(): {
         columns: number;
