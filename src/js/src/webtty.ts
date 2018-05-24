@@ -147,7 +147,6 @@ Please close/disconnect the old Terminal to proceed.");
                         setup();
                     }, this.reconnect * 1000);
                 }
-                sessionCookieObj.DecrementSessionCount();
                 this.term.output("connection closed")
             });
 
@@ -162,6 +161,7 @@ Please close/disconnect the old Terminal to proceed.");
         setup();
         return () => {
             console.log("closing connection in webtty")
+	    sessionCookieObj.DecrementSessionCount();
             clearTimeout(reconnectTimeout);
             connection.close();
         }
