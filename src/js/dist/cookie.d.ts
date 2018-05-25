@@ -1,4 +1,4 @@
-export declare const maxconnections = 1;
+export declare const maxconnections = 2;
 export declare class SessionCookie {
     name: string;
     expiration: number;

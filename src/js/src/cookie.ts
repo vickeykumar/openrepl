@@ -1,6 +1,6 @@
 import * as Cookies from 'es-cookie';
 
-export const maxconnections = 1;	// maximum connections allowed per browser
+export const maxconnections = 2;	// maximum connections allowed per browser
 
 export class SessionCookie {
 	name: string;

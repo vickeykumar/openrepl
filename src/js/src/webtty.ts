@@ -62,8 +62,8 @@ export class WebTTY {
 
     open() {
         if (!sessionCookieObj.IsSessionCountValid()) {
-            this.term.output("Maximum no of connections reached: " + Cookies.maxconnections +", \
-Please close/disconnect the old Terminal to proceed.");
+            this.term.output("Maximum no of connections reached, \
+Please close/disconnect the old Terminals to proceed or try after "+sessionCookieObj.expiration+" Minutes.");
 
             return () => {
                 console.log("closing connection in webtty")
