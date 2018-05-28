@@ -19,7 +19,7 @@ gotty:	${TARGET}/main.go server/*.go webtty/*.go backend/*.go containers/*.go ${
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: bindata/static/js/gotty-bundle.js bindata/static/index.html bindata/static/doc.html bindata/static/NewFile.html bindata/static/images bindata/static/css/xterm.css
+asset: bindata/static/js/gotty-bundle.js bindata/static/index.html bindata/static/doc.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css/xterm.css
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	$(GOROOT)/bin/gofmt -w server/asset.go
 
@@ -37,6 +37,9 @@ bindata/static/index.html: bindata/static resources/index.html
 
 bindata/static/doc.html: bindata/static resources/doc.html
 	cp resources/doc.html bindata/static/doc.html
+
+bindata/static/about.html: bindata/static resources/about.html
+	cp resources/about.html bindata/static/about.html
 
 bindata/static/NewFile.html: bindata/static resources/NewFile.html
 	cp resources/NewFile.html bindata/static/NewFile.html
