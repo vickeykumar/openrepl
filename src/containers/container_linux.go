@@ -25,7 +25,6 @@ type container struct {
 
 func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr) {
 	containerAttribs.Cloneflags = c.SysProcAttr.Cloneflags
-	containerAttribs.Unshareflags = c.SysProcAttr.Unshareflags
 	containerAttribs.UidMappings = c.SysProcAttr.UidMappings
 	containerAttribs.GidMappings = c.SysProcAttr.GidMappings
 }
@@ -47,11 +46,11 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 	var err error
 	containerObj.Name = name
 	containerObj.Control, err = cgroups.New(cgroups.V1, cgroups.StaticPath("/"+name+"_container"), &specs.LinuxResources{
-        CPU: &specs.LinuxCPU{
+        /*CPU: &specs.LinuxCPU{
                 Shares: &CPUshares,
                 Cpus:   "0",
                 Mems:   "0",    
-        },
+        },*/
         Memory: &specs.LinuxMemory{
                 Limit: &memlimit,
         },
