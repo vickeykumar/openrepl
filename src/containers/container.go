@@ -10,9 +10,9 @@ var Containers = make(map[string]*container)
 
 // Command Name to memory limit in MB (megabytes).
 var Commands2memLimitMap = map[string]int64{
-	"cling":         22, // twice of threshold : 11
-	"gointerpreter": 88, // 44
-	"python2.7":     6,  // 3
+	"cling":         800, // threshold : 11
+	"gointerpreter": 800, // 44
+	"python2.7":     800,  // 3
 }
 
 func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr) {
