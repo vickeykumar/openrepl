@@ -8,11 +8,14 @@ import (
 
 var Containers = make(map[string]*container)
 
+const MAX_MEMORY_LIMIT = 900 // Max memory limits in MBs
+const MB = 1024 * 1024
+
 // Command Name to memory limit in MB (megabytes).
 var Commands2memLimitMap = map[string]int64{
-	"cling":         800, // threshold : 11
-	"gointerpreter": 800, // 44
-	"python2.7":     800,  // 3
+	"cling":         11, // threshold : 11
+	"gointerpreter": 50, // 45 with pp
+	"python2.7":     3,  // 3
 }
 
 func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr) {
@@ -43,8 +46,8 @@ func AddProcess(name string, cmd *exec.Cmd) {
 }
 
 func InitContainers() {
-	for command, memlimit := range Commands2memLimitMap {
-		containerObj, err := NewContainer(command, memlimit*1024*1024) // memlimit in MB
+	for command, _ := range Commands2memLimitMap {
+		containerObj, err := NewContainer(command, MAX_MEMORY_LIMIT*MB) // memlimit in MB
 		if err != nil {
 			log.Println("ERROR: ", err)
 			continue
@@ -58,4 +61,22 @@ func DeleteContainers() {
 		containerObj.Delete()
 		log.Println("Container Deleted for : ", command)
 	}
+}
+
+func AddProcesstoNewSubCgroup(name string, pid int) {
+	containerobj, ok := Containers[name]
+	if !ok {
+		log.Println("AddProcesstoNewSubCgroup: ERROR: couldn't find container for : " + name)
+		return
+	}
+	containerobj.AddProcesstoNewSubCgroup(pid)
+}
+
+func DeleteProcessFromSubCgroup(name string, pid int) {
+	containerobj, ok := Containers[name]
+	if !ok {
+		log.Println("DeleteProcessFromSubCgroup: ERROR: couldn't find container for : " + name)
+		return
+	}
+	containerobj.DeleteProcessFromSubCgroup(pid)
 }

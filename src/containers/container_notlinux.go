@@ -25,6 +25,14 @@ func (c *container) Delete() {
 	log.Println("container deleted for : ", c.Name)
 }
 
+func (c *container) AddProcesstoNewSubCgroup(pid int) {
+	log.Println("AddProcesstoNewSubCgroup called for : ", c.Name, pid)
+}
+
+func (c *container) DeleteProcessFromSubCgroup(pid int) {
+	log.Println("DeleteProcessFromSubCgroup called for : ", c.Name, pid)
+}
+
 func NewContainer(name string, memlimit int64) (*container, error) {
 	var containerObj container
 	containerObj.Name = name

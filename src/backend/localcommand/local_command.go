@@ -7,6 +7,7 @@ import (
 	"time"
 	"unsafe"
 
+	"containers"
 	"github.com/kr/pty"
 	"github.com/pkg/errors"
 )
@@ -54,12 +55,15 @@ func New(command string, argv []string, options ...Option) (*LocalCommand, error
 		option(lcmd)
 	}
 
+	pid := cmd.Process.Pid
+	containers.AddProcesstoNewSubCgroup(command, pid) // creating and adding process to new subcrgroup container
 	// When the process is closed by the user,
 	// close pty so that Read() on the pty breaks with an EOF.
 	go func() {
 		defer func() {
 			lcmd.pty.Close()
 			close(lcmd.ptyClosed)
+			containers.DeleteProcessFromSubCgroup(command, pid) // deleting the subcgroup container of that process
 		}()
 
 		lcmd.cmd.Wait()
