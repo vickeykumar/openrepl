@@ -13,9 +13,9 @@ const MB = 1024 * 1024
 
 // Command Name to memory limit in MB (megabytes).
 var Commands2memLimitMap = map[string]int64{
-	"cling":         11, // threshold : 11
-	"gointerpreter": 50, // 45 with pp
-	"python2.7":     3,  // 3
+	"cling":         10, // threshold : 11
+	"gointerpreter": 44, // 44 with pp
+	"python2.7":     2,  // 3
 }
 
 func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr) {
