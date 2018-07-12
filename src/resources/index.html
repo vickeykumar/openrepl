@@ -16,6 +16,7 @@
       <link rel="author" href="humans.txt">
       <!-- Declare all the functions here -->
       <script>
+       //document.documentElement.style.setProperty('--accent-color', '#0bd800');
        function onLoadFn(){
           try {
             var frame = document.getElementById('resultFrame');
@@ -120,8 +121,8 @@
       </ul>
     </nav>
     <div class="hero">
-      <h1 class="hero__title">REPL<sup> beta</sup></h1>
-      <p class="hero__description">Check your codes instantaneously with REPL</p>
+      <h1 class="hero__title"><span class="hero__title_pre">GO</span>REPL<sup> beta</sup></h1>
+      <p class="hero__description">Check your codes instantaneously with <span class="go__color">GO</span>REPL</p>
       
       
       <!-- code for share biuttons start-->
@@ -172,7 +173,7 @@
                 <option value="c">C</option>
                 <option value="cpp">C++</option>
                 <option value="go">Go</option>
-                <option value="java">Java</option>
+                <option value="java" disabled>Java</option>
                 <option value="python2.7">Python2.7</option>
         </select>
     </div>
@@ -377,7 +378,7 @@
     <footer class="footer">
 	<a href="about.html" class="link link--light">About</a> <span class="dot"></span>
 	<a href="credits.html" class="link link--light">Credits</a> <span class="dot"></span>
-	2018&copy;REPL 
+	2018&copy;<span class="go__color">GO</span>REPL 
    </footer>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
     <script>hljs.initHighlightingOnLoad();</script>

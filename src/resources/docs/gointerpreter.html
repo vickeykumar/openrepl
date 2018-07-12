@@ -1,0 +1,281 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>gointerpreter Documentation</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
+    <link rel="stylesheet" href="../css/scribbler-global.css">
+    <link rel="stylesheet" href="../css/scribbler-doc.css">
+    <link rel="author" href="humans.txt">
+  </head>
+  <body>
+    <div class="doc__bg"></div>
+    <nav class="header">
+      <h1 class="logo">An Introduction to Gointerpreter</h1>
+      <ul class="menu">
+        <div class="menu__item toggle"><span></span></div>
+        <li class="menu__item"><a href="https://github.com/vickeykumar/Go-interpreter" class="link link--dark"><i class="fa fa-github"></i> Github</a></li>
+        <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
+      </ul>
+    </nav>
+    <div class="wrapper">
+      <aside class="doc__nav">
+        <ul>
+          <li class="js-btn selected">Overview</li>
+          <li class="js-btn">Usage</li>
+          <li class="js-btn">References</li>
+        </ul>
+      </aside>
+      <article class="doc__content">
+        <section class="js-section">
+          <h3 class="section__title">Overview</h3>
+          <p>when I started learning golang, I was really missing python where I had an option to check part of my codes immediately as needed. I Started looking for some available options but couldn't find a full-fledged interpreter for this compiled language.</p> 
+          <p>So given the requirement, I decided to make my own.  This is a dummy interpreter for go written in python with some limitations and there is more improvement to do here. Unless we don't find any standard similar tool, still, it enables you to check your codes snippets, goroutines, any package and many more. you should definitely give it try so that you don't get stuck with building and then testing large system. just because you have doubt in small and silly things of go constructs.</p>
+          <p>For more information on gointerpreter, you can also check the link below :</p>
+            <li><a href="https://github.com/vickeykumar/Go-interpreter" class="link link--blue" >gointerpreter's web page</a></li>
+          <p>For more information of go please refer standard go website:</p>
+            <li><a href="https://golang.org" class="link link--blue" >golang</a></li>
+          <h3 class="section__title">Why to use Gointerpreter</h3>
+          <ul>
+            <li><p>one can use gointerpreter to aid their golang learning Process. Users can check the behavior of golang constructs on the fly as they are learning.</p></li>
+          </ul>
+          <hr />
+        </section>
+        <section class="js-section">
+          <h3 class="section__title">Usage</h3>
+          <p>To perform some administrative tasks Gointerpreter also understands some meta-commands that are not part of golang language. Meta-commands are always preceded by a "<b>:</b>" , examples are :x, :h, :help, :c etc. Descriptions of some commands are as below:</p>
+          <h4 class="section__title">Metaprocessor Commands</h4>
+          <table id="commands">
+            <tr>
+              <th>Command</th>
+              <th>Usage</th>
+            </tr>
+            <tr>
+              <td>:h CommandName</td>
+              <td>display brief descriptions of all meta-commands.</td>
+            </tr>
+            <tr>
+              <td>:load &lt;filename&gt;</td>
+              <td>Loads from file.</td>
+            </tr>
+            <tr>
+              <td>:pp &lt;True|False&gt;</td>
+              <td>enable/disable prettyprinter.</td>
+            </tr>
+            <tr>
+              <td>:CGO</td>
+              <td>Cgo input (use KeyboardInterrupt to save).</td>
+            </tr>
+            <tr>
+              <td>:e</td>
+              <td>Edit the Source File(in editor or single line).</td>
+            </tr>
+            <tr>
+              <td>:r, :x</td>
+              <td>Run as Go File (gointerpreter actually renders and executes the go file in background.</td>
+            </tr>
+            <tr>
+              <td>:c</td>
+              <td>Clear the session,and Restart.</td>
+            </tr>
+            <tr>
+              <td>:save &lt;filename&gt;</td>
+              <td>Save the current session in to a file.</td>
+            </tr>
+            <tr>
+              <td>:doc &lt;packageName&gt; &lt;functionName&gt;</td>
+              <td>Display the documentation of given package, also function documentation if provided.</td>
+            </tr>
+          </table>
+          <p>As we understand some meta-commands, Now lets start with actual usage.</p>
+          <p>Let's type something in golang prompt and see how it behaves</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">go&gt;&gt;</span>12312321
+12312321
+<span class="code--prompt">go&gt;&gt;</span>2+3
+5
+<span class="code--prompt">go&gt;&gt;</span>3-2
+1
+<span class="code--prompt">go&gt;&gt;</span>5*4
+20
+<span class="code--prompt">go&gt;&gt;</span>var i int
+<span class="code--prompt">go&gt;&gt;</span>i
+0
+<span class="code--prompt">go&gt;&gt;</span>j:=12
+<span class="code--prompt">go&gt;&gt;</span>j
+12
+<span class="code--prompt">go&gt;&gt;</span>for i:=0; i<10; i++ {
+        fmt.Println("Hi: ",i)
+}
+<span class="code--prompt">go&gt;&gt;</span>:r
+Hi:  0
+Hi:  1
+Hi:  2
+Hi:  3
+Hi:  4
+Hi:  5
+Hi:  6
+Hi:  7
+Hi:  8
+Hi:  9
+<span class="code--prompt">go&gt;&gt;</span>:x
+Hi:  0
+Hi:  1
+Hi:  2
+Hi:  3
+Hi:  4
+Hi:  5
+Hi:  6
+Hi:  7
+Hi:  8
+Hi:  9
+<span class="code--prompt">go&gt;&gt;</span>
+              </code>
+            </pre>
+          </div>
+          <p>Hey... its working. Now let's try some errors:</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">go&gt;&gt;</span>i=0
+go>>ewedwdw
+# command-line-arguments
+tmp/gointerpreter/test.go:8:2: undefined: i
+tmp/gointerpreter/test.go:9:14: undefined: ewedwdw
+<span class="code--prompt">go&gt;&gt;</span>
+              </code>
+            </pre>
+          </div>
+          <p>At least we are getting errors. How about importing and using function of any package:</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">go&gt;&gt;</span>import "time"go>>time.Now()
+<span class="code--prompt">go&gt;&gt;</span>time.Now();
+<span class="code--data-type">2018-07-12 12:51:02 Local</span>
+<span class="code--prompt">go&gt;&gt;</span>
+              </code>
+            </pre>
+          </div>
+          <p>Note: if you want to print the output in the immediate console, please use ";" after the function call like shown above.<br>Now we can try arrays, map and stuctures also. Let's do it:</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">go&gt;&gt;</span>intarr := []int{1,2,3,4,5}
+<span class="code--prompt">go&gt;&gt;</span>intarr
+[1 2 3 4 5]
+<span class="code--prompt">go&gt;&gt;</span>stringarr := []string{"hello","world"}
+<span class="code--prompt">go&gt;&gt;</span>stringarr[hello world]
+<span class="code--prompt">go&gt;&gt;</span>
+<span class="code--prompt">go&gt;&gt;</span>:pp
+prettyprinter enabled successfully.
+<span class="code--prompt">go&gt;&gt;</span>intarr
+[]<span class="code--data-type">int</span>{
+  <span class="link--blue">1</span>,
+  <span class="link--blue">2</span>,
+  <span class="link--blue">3</span>,
+  <span class="link--blue">4</span>,
+  <span class="link--blue">5</span>,
+}
+<span class="code--prompt">go&gt;&gt;</span>stringarr
+[]<span class="code--data-type">string</span>{
+  "<span class="code--error">hello</span>",
+  "<span class="code--error">world</span>",
+}
+<span class="code--prompt">go&gt;&gt;</span>
+...
+...
+<span class="code--prompt">go&gt;&gt;</span>mymap := make(map[string]string)
+<span class="code--prompt">go&gt;&gt;</span>mymap
+map[]
+<span class="code--prompt">go&gt;&gt;</span>mymap["hello"]="world"
+<span class="code--prompt">go&gt;&gt;</span>mymap["world"]="hello"
+<span class="code--prompt">go&gt;&gt;</span>mymap
+map[hello:world world:hello]
+<span class="code--prompt">go&gt;&gt;</span>
+...
+...
+<span class="code--prompt">go&gt;&gt;</span>type mystruct struct {
+        i int
+        s string
+}
+<span class="code--prompt">go&gt;&gt;</span>var obj mystruct
+<span class="code--prompt">go&gt;&gt;</span>obj
+{0 }
+<span class="code--prompt">go&gt;&gt;</span>obj2 := mystruct{1,"hello"}
+<span class="code--prompt">go&gt;&gt;</span>obj2
+{1 hello}
+<span class="code--prompt">go&gt;&gt;</span>obj.i
+0
+<span class="code--prompt">go&gt;&gt;</span>obj2.i
+1
+<span class="code--prompt">go&gt;&gt;</span>obj2.s
+hello
+<span class="code--prompt">go&gt;&gt;</span>obj.s="world"
+<span class="code--prompt">go&gt;&gt;</span>obj.s
+world
+<span class="code--prompt">go&gt;&gt;</span>
+              </code>
+            </pre>
+          </div>
+          <p>After Enableing pp / pretty printer, output looks more pretty. Isn't It.. Try Yourself and see ( for other two examples map and struct ) :)</p>
+          <br>
+          <h4>Evaluating gointerpreter's other programming constructs</h4>
+          <p>I have created some animations in gif format to explain other usage of gointerpreter. For example check out below animations:</p>
+          <li>Go-interpreter Usage:</li>
+          <br>
+          <div class="videoWrap">
+            <img width="560" height="315" src="https://raw.githubusercontent.com/vickeykumar/Go-interpreter/master/doc/Examples.gif" frameborder="0"></img>
+          </div><br><br><br>
+
+          <li>Demo using documentation, loop and editing the inline code using default editor like vi :</li>
+          <p>Go-interpreter also lets you use go doc to see the documentation of different packages and functions. Go interpreter is dummy REPL which internally renders and runs the files to give a REPL like feeling. so one can edit the inline codes using inbuilt editors like vim. please use ":e" command to do the same.</p>
+          <br>
+          <div class="videoWrap">
+            <img width="560" height="315" src="https://raw.githubusercontent.com/vickeykumar/Go-interpreter/master/doc/doc.gif" frameborder="0"></img>
+          </div><br><br><br>
+          
+          <li>Demo using structs, array and slices:</li>
+          <br>
+          <div class="videoWrap">
+            <img width="560" height="315" src="https://raw.githubusercontent.com/vickeykumar/Go-interpreter/master/doc/struct.gif" frameborder="0"></img>
+          </div><br><br><br>
+
+          <li>Demo using encoding/json:</li>
+          <p>You can also use packages like encoding/json and other inbuilt packages.</p>
+          <br>
+          <div class="videoWrap">
+            <img width="560" height="315" src="https://raw.githubusercontent.com/vickeykumar/Go-interpreter/master/doc/json.gif" frameborder="0"></img>
+          </div><br><br><br>
+          <hr />
+        </section>
+        <section class="js-section">
+          <h3 class="section__title">Conclusion</h3>
+          <p>Woww.. we just saw that we are capable of checking and testing golang statements and constructs quickly without writing whole code. Even if it is not a full-featured REPL still, it's worth trying when learning the language.</p>
+          <hr />
+        </section>
+        <section class="js-section">
+          <h3 class="section__title">References</h3>
+          <p>Further information on golang and gointerpreter can be found in the links below:</p>
+          <ul>
+            <li><a href="https://github.com/vickeykumar/Go-interpreter" class="link link--blue" >gointerpreter's web page</a></li>
+            <li><a href="https://golang.org" class="link link--blue" >golang</a></li>
+          </ul>
+        </section>
+      </article>
+    </div>
+
+    <footer class="footer">
+    <a href="../about.html" class="link link--light">About</a> <span class="dot"></span>
+    <a href="../credits.html" class="link link--light">Credits</a> <span class="dot"></span>
+    2018&copy;<span class="go__color">GO</span>REPL 
+    </footer>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+    <script>hljs.initHighlightingOnLoad();</script>
+  </body>
+</html>

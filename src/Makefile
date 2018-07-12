@@ -35,7 +35,11 @@ bindata/static: bindata
 bindata/static/index.html: bindata/static resources/index.html
 	cp resources/index.html bindata/static/index.html
 
-bindata/static/doc.html: bindata/static resources/doc.html
+bindata/static/docs: bindata/static resources/docs
+	mkdir -p bindata/static/docs
+	cp -Rv resources/docs/* bindata/static/docs/
+
+bindata/static/doc.html: bindata/static resources/doc.html bindata/static/docs
 	cp resources/doc.html bindata/static/doc.html
 
 bindata/static/about.html: bindata/static resources/about.html

@@ -11,6 +11,12 @@
   --dark-gray-color: #444D56; 
   --bg-color: #F8F8FA;
   --code-bg-color: #F0E8E8;
+  --code-bg-color-2: #363636;
+  --code-bg-color-border: #000000;
+  --link-blue-color: #337ab7;
+  --code-prompt-color: #c5c525;
+  --code-error-color: #cb4b15;
+  --code-data-type-color: #008000;
 }
 
 /* normalized */
@@ -36,6 +42,7 @@ a, a:hover {
   text-decoration: none;
   color: var(--primary-color);
 }
+
 
 hr {
   padding: 1rem 0;
@@ -66,7 +73,7 @@ hr {
 ::-webkit-scrollbar-thumb {
     -webkit-border-radius: 10px;
     border-radius: 10px;
-    background: rgba(255,0,0,0.8); 
+    background: var(--accent-color); 
     -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.5); 
 }
 ::-webkit-scrollbar-thumb:window-inactive {
@@ -123,9 +130,14 @@ hr {
 .code {
   border-radius: 3px;
   font-family: Space Mono, SFMono-Regular, Menlo,Monaco, Consolas, Liberation Mono, Courier New, monospace;
-  background: var(--bg-color);
-  border: 1px solid var(--code-bg-color);
-  color: var(--primary-color-light);
+  font-size: 14px;
+  background: var(--code-bg-color-2);
+  border: 1px solid var(--code-bg-color-border);
+  color: var(--white-color);
+  overflow: auto;
+  max-height: 400px;
+  line-height: 16px;
+
 }
 
 .code--block {
@@ -136,6 +148,18 @@ hr {
 .code--inline {
   padding: 3px 6px;
   font-size: 80%;
+}
+
+.code--prompt {
+  color: var(--code-prompt-color);
+}
+
+.code--error {
+  color: var(--code-error-color);
+}
+
+.code--data-type {
+  color: var(--code-data-type-color);
 }
 
 /* buttons */
@@ -197,6 +221,14 @@ hr {
 
 .link--light {
   color: var(--accent-color);
+}
+
+.link--blue {
+  color: var(--link-blue-color);
+}
+
+.link--blue:hover {
+  text-decoration: underline;
 }
 
 /* menu */
@@ -320,6 +352,30 @@ table td:first-child {
   }
 }
 
+/* video */
+.videoWrap {
+  position: relative;
+  padding-bottom: 56.25%; /* 16:9 */
+  padding-top: 25px;
+  height: 0;
+}
+.videoWrap iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* img */
+.videoWrap img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
 /* layout */
 .wrapper {
   margin: 0 auto;
@@ -354,6 +410,26 @@ table td:first-child {
   animation: fadeUp 2s;
   /* box-shadow: 0px 12px 36.8px 9.2px rgba(0, 0, 0, 0.1); */
 }
+
+
+/* ------------------ css for creating separator dot------------------ */
+  
+  .sepdot{
+        height: 5px;
+        width: 5px;
+        background-color: white;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+  .dot{
+        height: 5px;
+        width: 5px;
+        background-color: white;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
 
 
 @keyframes fadeUp {

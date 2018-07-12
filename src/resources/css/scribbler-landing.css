@@ -21,6 +21,15 @@ nav {
   color: var(--primary-color);
 }
 
+.hero__title_pre {
+  font-weight: 900;
+  color: var(--accent-color);
+} 
+
+.go__color {
+  color: var(--accent-color);
+}
+
 .hero__description {
   margin: -1rem auto 2rem auto;
 }
@@ -263,7 +272,7 @@ toggle terminal */
 }
 
 .fullscreen-toggle:hover {
-    background: #fff;
+    background: var(--accent-color);
     color:#000;
     border: 1px solid transparent;
 }

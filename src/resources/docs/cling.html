@@ -1,0 +1,358 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cling Documentation</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
+    <link rel="stylesheet" href="../css/scribbler-global.css">
+    <link rel="stylesheet" href="../css/scribbler-doc.css">
+    <link rel="author" href="humans.txt">
+  </head>
+  <body>
+    <div class="doc__bg"></div>
+    <nav class="header">
+      <h1 class="logo">An Introduction to Cling</h1>
+      <ul class="menu">
+        <div class="menu__item toggle"><span></span></div>
+        <li class="menu__item"><a href="https://github.com/root-project/cling" class="link link--dark"><i class="fa fa-github"></i> Github</a></li>
+        <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
+      </ul>
+    </nav>
+    <div class="wrapper">
+      <aside class="doc__nav">
+        <ul>
+          <li class="js-btn selected">Overview</li>
+          <li class="js-btn">Usage</li>
+          <li class="js-btn">References</li>
+        </ul>
+      </aside>
+      <article class="doc__content">
+        <section class="js-section">
+          <h3 class="section__title">Overview</h3>
+          <p>While programming in a compiled language, Many a time, there comes a situation where we need to check a small piece of code or a portion of the program quickly without waiting for the build system to compile the code, especially in a large build system.</p>
+          <p>This is why programming languages like Python, Ruby, Lisp etc. that can be used in a <a href="https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop" class="link link--blue">REPL</a>, are very easy to learn, as we can explore/test an idea /check codes on the fly without creating any project file, then waiting for compilation, linking and then running to see the result/output of the program.</p>
+          <p>Same way Cling lets you test a C/C++ piece of code interactively, thus avoiding the overhead of creating a new project, file, compiling and linking.</p>
+          <p>The C++ interactive interpreter Cling is based on <a href="http://www.llvm.org/" class="link link--blue" >LLVM</a> and its C++ frontend <a href="http://clang.llvm.org/" class="link link--blue">clang</a>. For more information on cling, you can also check the links below :</p>
+          <ul>
+            <li><a href="https://cdn.rawgit.com/root-project/cling/master/www/index.html" class="link link--blue" >cling's web page</a></li>
+            <li><a href="https://github.com/root-project/cling" class="link link--blue" >https://github.com/root-project/cling</a></li>
+            <li><a href="https://root.cern.ch/cling" class="link link--blue" >https://root.cern.ch/cling</a></li>
+          </ul>
+          <h3 class="section__title">Why to use Cling</h3>
+          <ul>
+            <li><p>one can use Cling to aid their C/C++ learning Process. users can check the behavior of C/C++ concepts on the fly as they are learning.</p></li>
+            <br>
+            <li>Rapid Application Development<p>Cling can be used for Rapid Application Development allowing for prototyping and proofs of concepts taking advantage of dynamicity of feedback during the implementation process, as users don't need to go through the build and linking process.</p>
+            </li>
+          </ul>
+          <hr />
+        </section>
+        <section class="js-section">
+          <h3 class="section__title">Usage</h3>
+          <p>Before we proceed to know the usage of the cling interpreter, Let's understand some meta-commands clings provides to perform some administrative tasks like displaying the list of commands, loading a file or library etc. These meta-commands can help us in using Cling interpreter. Meta-commands are always preceded by a "<b>.</b>". some important meta-commands are listed below:</p>
+          <h4 class="section__title">Metaprocessor Commands</h4>
+          <table id="commands">
+            <tr>
+              <th>Command</th>
+              <th>Usage</th>
+            </tr>
+            <tr>
+              <td>.help</td>
+              <td>display brief descriptions of all meta-commands.</td>
+            </tr>
+            <tr>
+              <td>.L libname</td>
+              <td>Load the given file or library</td>
+            </tr>
+            <tr>
+              <td>.x filename.cpp|filename.cxx</td>
+              <td>loads filename and calls void filename() if defined.</td>
+            </tr>
+            <tr>
+              <td>.I path</td>
+              <td>adds an include path</td>
+            </tr>
+            <tr>
+              <td>.rawInput</td>
+              <td>toggle on/off raw input.</td>
+            </tr>
+            <tr>
+              <td>.q</td>
+              <td>exit Cling Interpreter.</td>
+            </tr>
+          </table>
+          <p>As we understand some meta-commands, Now its time to get our hands dirty with some C/C++ examples.</p>
+          <p>Let's type something in Cling prompt and see how it behaves</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> xyz
+input_line_3:2:2: <span class="code--error">error:</span> use of undeclared identifier 'xyz'
+ xyz
+ ^
+<span class="code--prompt">[cling]$</span>
+              </code>
+            </pre>
+          </div>
+          <p>yayy... we got error message. Now let's try help meta-command:</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> .help
+
+ Cling (C/C++ interpreter) meta commands usage
+ All commands must be preceded by a '.', except
+ for the evaluation statement { }
+ ==============================================================================
+ Syntax: .Command [arg0 arg1 ... argN]
+
+   .L &lt;filename&gt;                - Load the given file or library
+
+   .(x|X) &lt;filename&gt;[args]      - Same as .L and runs a function with
+                                  signature: ret_type filename(args)
+              </code>
+            </pre>
+          </div>
+          <p>we can use cling prompt as calculator also:</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> 1+2
+<span class="code--data-type">(int)</span> 3
+<span class="code--prompt">[cling]$</span> 2*3
+<span class="code--data-type">(int)</span> 6
+<span class="code--prompt">[cling]$</span> 3-2
+<span class="code--data-type">(int)</span> 1
+              </code>
+            </pre>
+          </div>
+          <p>Note: no ";" is required if you want to print the output of C/C++ statements right away or else expressions will be evaluated but it will not be shown in the terminal. like it is shown below: </p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> int i=10
+<span class="code--data-type">(int)</span> 10
+<span class="code--prompt">[cling]$</span> int j=20;
+<span class="code--prompt">[cling]$</span> i
+<span class="code--data-type">(int)</span> 10
+<span class="code--prompt">[cling]$</span> j
+<span class="code--data-type">(int)</span> 20
+<span class="code--prompt">[cling]$</span> i;
+<span class="code--prompt">[cling]$</span>
+                <span class="code--prompt">[cling]$</span> 1+2
+<span class="code--data-type">(int)</span> 3
+<span class="code--prompt">[cling]$</span> 2*3
+<span class="code--data-type">(int)</span> 6
+<span class="code--prompt">[cling]$</span> 3-2
+<span class="code--data-type">(int)</span> 1
+              </code>
+            </pre>
+          </div>
+          <br>
+          <h4>Evaluating C codes in Cling</h4>
+          <p>Now let's try some C codes in Cling. For example checkout helloworld statements below:</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> #include&lt;stdio.h&gt;
+<span class="code--prompt">[cling]$</span> printf("Hello World\n");
+Hello World
+<span class="code--prompt">[cling]$</span> printf("Hello World\n")
+Hello World
+<span class="code--data-type">(int)</span> 12
+              </code>
+            </pre>
+          </div>
+          <p>Cling also lets you do some complicated maths stuffs in c. Let's try including math.h :</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span>float r1 = 4/5;
+<span class="code--prompt">[cling]$</span> float r2 = (float)4/5;
+<span class="code--prompt">[cling]$</span> r1
+<span class="code--data-type">(float)</span> 0.00000f
+<span class="code--prompt">[cling]$</span> r2
+<span class="code--data-type">(float)</span> 0.800000f
+<span class="code--prompt">[cling]$</span> #include &lt;math.h&gt;
+<span class="code--prompt">[cling]$</span> cos(7)
+<span class="code--data-type">(double)</span> 0.75390225
+<span class="code--prompt">[cling]$</span> pow(2,3)
+<span class="code--data-type">(double)</span> 8.0000000
+<span class="code--prompt">[cling]$</span>
+              </code>
+            </pre>
+          </div>
+          <p>Can you use looping statements also ? Let's try:</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> #include &lt;stdio.h&gt;
+<span class="code--prompt">[cling]$</span> int a[]={1,2,3,4,5,6,7,8,9,10};
+<span class="code--prompt">[cling]$</span> for(int i=0; i<10; i++) {
+<span class="code--prompt">[cling]$ ?</span>   printf("%d\n",a[i]);
+<span class="code--prompt">[cling]$ ?</span>   }
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+<span class="code--prompt">[cling]$</span>
+              </code>
+            </pre>
+          </div>
+          <p>Wow.. that looks great. Now, Let's try loading library for using pthread.h :</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> .L libpthread
+<span class="code--prompt">[cling]$</span> #include &lt;pthread.h&gt;
+<span class="code--prompt">[cling]$</span> pthread_self()
+<span class="code--data-type">(pthread_t _Nonnull)</span> 0x7fffd68cd3c0
+<span class="code--prompt">[cling]$</span>
+              </code>
+            </pre>
+          </div>
+          <p>looks very impressive!! In next section we will try to evaluate some C++11 codes.</p>
+          <br>
+          <h4>Evaluating C++ codes in Cling</h4>
+          <p>In this section, we will evaluate cling to test various C++ codes regarding lambda functions, functions, and classes.</p>
+          <li>C++ Hello World:</li>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> #include &lt;iostream&gt;
+<span class="code--prompt">[cling]$</span> using namespace std;
+<span class="code--prompt">[cling]$</span> cout<<"Hello World\n";
+Hello World
+<span class="code--prompt">[cling]$</span>
+              </code>
+            </pre>
+          </div>
+          <li>Lambda Expressions/functions:</li>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> auto func = [](int a, int b) -> int { return a+b; };
+<span class="code--prompt">[cling]$</span> func(1,2)
+<span class="code--data-type">(int)</span> 3
+<span class="code--prompt">[cling]$</span> func(10,2)
+<span class="code--data-type">(int)</span> 12
+<span class="code--prompt">[cling]$</span>
+              </code>
+            </pre>
+          </div>
+          <li>Functions:</li><p>We will use .rawInput meta-command:</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> .rawInput
+Using raw input
+<span class="code--prompt">[cling]!</span> int add(int i, int j) {
+<span class="code--prompt">[cling]! ?</span>   return i+j;
+<span class="code--prompt">[cling]! ?</span>   }
+<span class="code--prompt">[cling]!</span> .rawInput
+Not using raw input
+<span class="code--prompt">[cling]$</span> add(2,3)
+<span class="code--data-type">(int)</span> 5
+<span class="code--prompt">[cling]$</span> add(5,3)
+<span class="code--data-type">(int)</span> 8
+<span class="code--prompt">[cling]$</span> cout<<add(2,3)<<endl;
+5
+<span class="code--prompt">[cling]$</span>
+              </code>
+            </pre>
+          </div>
+          <li>Classes:</li>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block">
+              <code>
+                <span class="code--prompt">[cling]$</span> #include &lt;iostream&gt;
+<span class="code--prompt">[cling]$</span> using namespace std;
+<span class="code--prompt">[cling]$</span> #include &lt;cstring&gt;
+<span class="code--prompt">[cling]$</span> class Students {
+<span class="code--prompt">[cling]$ ?</span>     char name[20];
+<span class="code--prompt">[cling]$ ?</span>      public:
+<span class="code--prompt">[cling]$ ?</span>     Students() {
+<span class="code--prompt">[cling]$ ?</span>      strcpy(name,"no name");
+<span class="code--prompt">[cling]$ ?</span>            }
+<span class="code--prompt">[cling]$ ?</span>     Students(char n[]) {
+<span class="code--prompt">[cling]$ ?</span>           strcpy(name, n);
+<span class="code--prompt">[cling]$ ?</span>      }
+<span class="code--prompt">[cling]$ ?</span>      char* get_name() {
+<span class="code--prompt">[cling]$ ?</span>            return name;
+<span class="code--prompt">[cling]$ ?</span>      }
+<span class="code--prompt">[cling]$ ?</span>   };
+<span class="code--prompt">[cling]$</span>
+<span class="code--prompt">[cling]$</span> Students s;
+<span class="code--prompt">[cling]$</span> s
+<span class="code--data-type">(Students &)</span> @0x1169210d0
+<span class="code--prompt">[cling]$</span> s.get_name()
+(char *) "no name"
+<span class="code--prompt">[cling]$</span> Students ram("Ram");
+input_line_14:2:15: warning: ISO C++11 does not allow conversion from string literal to 'char *'
+      [-Wwritable-strings]
+ Students ram("Ram");
+              ^
+<span class="code--prompt">[cling]$</span> ram
+<span class="code--data-type">(Students &)</span> @0x11692148c
+<span class="code--prompt">[cling]$</span> ram.get_name()
+<span class="code--data-type">(char *)</span> "Ram"
+<span class="code--prompt">[cling]$</span> char sam[] = "sam"
+<span class="code--data-type">(char [4])</span> "sam"
+<span class="code--prompt">[cling]$</span> Students samobj(sam);
+<span class="code--prompt">[cling]$</span> samobj
+<span class="code--data-type">(Students &)</span> @0x116921928
+<span class="code--prompt">[cling]$</span> samobj.get_name()
+<span class="code--data-type">(char *)</span> "sam"
+<span class="code--prompt">[cling]$</span>
+              </code>
+            </pre>
+          </div>
+          <br><br>
+          <p>Here is a video explaining the usage of Cling as a C/C++ Interpreter:</p>
+          <div class="videoWrap">
+            <iframe width="560" height="315" src="https://www.youtube.com/embed/Lbi7MLS03Yc" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+          </div>
+          <hr />
+        </section>
+        <section class="js-section">
+          <h3 class="section__title">Conclusion</h3>
+          <p>We just saw that cling is a very powerful tool, capable of evaluating C as well as C++ statements and can be very useful to all class of programmers.</p>
+          <hr />
+        </section>
+        <section class="js-section">
+          <h3 class="section__title">References</h3>
+          <p>Further information on Cling can be found in the links below:</p>
+          <ul>
+            <li><a href="https://github.com/root-project/cling/blob/master/www/docs/talks" class="link link--blue">talks</a></li>
+            <li><a href="http://blog.coldflake.com/posts/2012-08-09-On-the-fly-C++.html" rel="nofollow" class="link link--blue">http://blog.coldflake.com/posts/2012-08-09-On-the-fly-C++.html</a></li>
+            <li><a href="http://solarianprogrammer.com/2012/08/14/cling-cpp-11-interpreter/" rel="nofollow" class="link link--blue">http://solarianprogrammer.com/2012/08/14/cling-cpp-11-interpreter/</a></li>
+            <li><a href="https://www.youtube.com/watch?v=f9Xfh8pv3Fs" rel="nofollow" class="link link--blue">https://www.youtube.com/watch?v=f9Xfh8pv3Fs</a></li>
+            <li><a href="https://www.youtube.com/watch?v=BrjV1ZgYbbA" rel="nofollow" class="link link--blue">https://www.youtube.com/watch?v=BrjV1ZgYbbA</a></li>
+            <li><a href="https://www.youtube.com/watch?v=wZZdDhf2wDw" rel="nofollow" class="link link--blue">https://www.youtube.com/watch?v=wZZdDhf2wDw</a></li>
+            <li><a href="https://www.youtube.com/watch?v=eoIuqLNvzFs" rel="nofollow" class="link link--blue">https://www.youtube.com/watch?v=eoIuqLNvzFs</a></li>
+            <li><a href="https://cdn.rawgit.com/root-project/cling/master/www/index.html" class="link link--blue" >cling's web page</a></li>
+            <li><a href="https://github.com/root-project/cling" class="link link--blue" >https://github.com/root-project/cling</a></li>
+            <li><a href="https://root.cern.ch/cling" class="link link--blue" >https://root.cern.ch/cling</a></li>
+          </ul>
+        </section>
+      </article>
+    </div>
+
+    <footer class="footer">
+    <a href="../about.html" class="link link--light">About</a> <span class="dot"></span>
+    <a href="../credits.html" class="link link--light">Credits</a> <span class="dot"></span>
+    2018&copy;<span class="go__color">GO</span>REPL 
+    </footer>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+    <script>hljs.initHighlightingOnLoad();</script>
+  </body>
+</html>
