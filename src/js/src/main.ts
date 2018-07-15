@@ -22,7 +22,7 @@ const optionMenu = document.getElementById("optionMenu");
 if(optionMenu!==null) {
     const SelectOption = (optionMenu.getElementsByClassName("list")[0] as HTMLSelectElement);
     if (SelectOption !== null) {
-        SelectOption.onchange = ActionOnChange;
+        SelectOption.addEventListener("change", ActionOnChange);
     }
 }
 

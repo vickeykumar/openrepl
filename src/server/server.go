@@ -23,6 +23,9 @@ import (
 	"webtty"
 )
 
+const STATUS_SUCCESS = "SUCCESS"
+const STATUS_FAILED = "FAILED"
+
 // Server provides a webtty HTTP endpoint.
 type Server struct {
 	factory Factory
@@ -188,6 +191,8 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	var siteMux = http.NewServeMux()
 	siteMux.HandleFunc(pathPrefix, server.handleIndex)
 	siteMux.HandleFunc(pathPrefix+"feedback", handleFeedback)
+	siteMux.HandleFunc(pathPrefix+"demo", handleDemo)
+
 	siteMux.Handle(pathPrefix+"js/", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"images/", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"docs/", http.StripPrefix(pathPrefix, staticFileHandler))

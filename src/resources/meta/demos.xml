@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DemoList>
+	<Demo>
+		<Name>cling</Name>
+		<Codes>
+			<Name>help</Name>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> .help</Statement>
+				<Result>
+Cling (C/C++ interpreter) meta commands usage
+All commands must be preceded by a '.', except
+for the evaluation statement { }
+==============================================================================
+Syntax: .Command [arg0 arg1 ... argN]
+
+.L &lt;filename&gt; - Load the given file or library
+
+.(x|X) &lt;filename&gt;[args] - Same as .L and runs a function with
+signature: ret_type filename(args)</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> 1+2</Statement>
+				<Result>(int) 3</Result>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> 2*3</Statement>
+				<Result>(int) 6</Result>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> int i=10</Statement>
+				<Result>(int) 10</Result>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> i</Statement>
+				<Result>(int) 10</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> #include&lt;stdio.h&gt;</Statement>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> printf("Hello World\n");</Statement>
+				<Result>Hello World</Result>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> printf("Hello World\n")</Statement>
+				<Result>Hello World
+(int) 12</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> #include&lt;iostream&gt;</Statement>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> using namespace std;</Statement>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> cout&lt;&lt;"Hello World\n";</Statement>
+				<Result>Hello World</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>.help</Command>
+			<Description>Display brief descriptions of all meta-commands.</Description>
+		</Usage>
+		<Usage>
+			<Command>.L libname</Command>
+			<Description>Load the given file or library.</Description>
+		</Usage>
+		<Usage>
+			<Command>.rawInput</Command>
+			<Description>Toggle on/off raw input.</Description>
+		</Usage>
+		<Usage>
+			<Command>.q</Command>
+			<Description>Exits Cling Interpreter.</Description>
+		</Usage>
+	</Demo>
+
+	<Demo>
+		<Name>gointerpreter</Name>
+		<Codes>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>43</Result>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> var i int</Statement>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> i</Statement>
+				<Result>0</Result>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> for i:=0; i&lt;10; i++ {
+fmt.Println("Hi: ",i)
+}</Statement>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> :r</Statement>
+				<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>:help</Command>
+			<Description>display brief descriptions of all meta-commands.</Description>
+		</Usage>
+		<Usage>
+			<Command>:r, :x</Command>
+			<Description>Run as Go File.</Description>
+		</Usage>
+		<Usage>
+			<Command>:c</Command>
+			<Description>Clear the session,and Restart.</Description>
+		</Usage>
+		<Usage>
+			<Command>:q</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+	</Demo>
+
+	<Demo>
+		<Name>python</Name>
+		<Codes>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>43</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> i=0</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> i</Statement>
+				<Result>0</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> for i in range(10):
+		print "Hi: ",i</Statement>
+			<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>help(object)</Command>
+			<Description>display help about the given object.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit() or ctrl-D</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+	</Demo>
+</DemoList>

@@ -1,8 +1,14 @@
 /* nav specialized to landing page */
 .logo {
-  background: url('../images/logo.svg') no-repeat;
+  /*background: url('../images/logo.svg') no-repeat;*/
   background-size: contain;
   margin: 1rem 0 0 1rem;
+}
+
+.logo svg text {
+  fill:var(--accent-color);
+  font-family:Arial;
+  font-size:15px;
 }
 
 nav {
@@ -51,6 +57,39 @@ nav {
   -webkit-transition-property:fullscreen;
   -webkit-transform-origin:center;
 }
+
+.demo__terminal {
+  width: 100%;
+  /*margin: -11rem auto 3rem auto;*/
+  text-align: left;
+  font-size: 14px;
+  color: white;
+  padding: 0 1rem;
+  border-radius: 4px;
+  background-color: var(--code-bg-color-2);
+  min-height: 285px;
+  animation: fadeUp 2s;
+  box-shadow: 0px 12px 36.8px 9.2px rgba(0, 0, 0, 0.1);
+}
+
+.demo__terminal pre {
+  white-space: pre-line;
+  padding-top: 1rem;
+  background-color: var(--code-bg-color-2);
+  tab-size: 12;
+  -moz-tab-size: 12;
+  -o-tab-size:  12;
+}
+
+.demo__terminal pre code {
+  white-space: pre-line;
+  padding-top: 1rem;
+  background-color: var(--code-bg-color-2);
+  tab-size: 12;
+  -moz-tab-size: 12;
+  -o-tab-size:  12;
+}
+
 
 .fullscreen {
   width: 100%;
@@ -135,7 +174,7 @@ nav {
 
 .keybinding__detail:first-child {
   text-align: right;
-  padding-right: 1rem;
+  padding-right: 2rem;
 }
 
 .keybinding__detail:last-child {
@@ -165,7 +204,7 @@ nav {
   box-shadow: 0 1px 0 0 var(--medium-gray-color);
   border-radius: 3px;
   font-family: Courier;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   color: var(--dark-gray-color);
   padding: 3px 3px 1px 3px;
   vertical-align: middle;
@@ -213,6 +252,9 @@ nav {
 
 @media (max-width: 750px) {
   .terminal {
+    width: 70%;
+  }
+  .demo__terminal {
     width: 70%;
   }
   .tab__container > ul {

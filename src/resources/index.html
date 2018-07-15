@@ -39,30 +39,7 @@
       
       <!------------- style for contact section start --------------->
       <style>
-      input[type=text],[type=email], select, textarea, email {
-	    width: 100%;
-	    padding: 10px;
-	    
-	    border: 1px solid #ccc;
-	    border-radius: 5px;
-	    box-sizing: border-box;
-	    margin-top: 6px;
-	    margin-bottom: 16px;
-	    resize: vertical;
-	}
-	
-	input[type=submit] {
-	    background-color: #4CAF50;
-	    color: white;
-	    padding: 12px 20px;
-	    border: none;
-	    border-radius: 5px;
-	    cursor: pointer;
-	}
-	
-	input[type=submit]:hover {
-	    background-color: #45a049;
-	}
+      
 	
 	/* .container {
 	    border-radius: 5px;
@@ -113,7 +90,17 @@
   </head>
   <body>
     <nav>
-      <div class="logo"></div>
+      <div class="logo">
+        <svg width="92px" height="30px" viewBox="0 0 92 30" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+          <!-- Generator: Sketch 48.2 (47327) - http://www.bohemiancoding.com/sketch -->
+          <title>logo</title>
+          <desc>Created with Sketch.</desc>
+          <defs></defs>
+          <text style="" x="3" y="16" id="e1_texte" >
+              <tspan x="3" style="font-weight:bold;">GO</tspan><tspan style="fill:black;font-weight:bold;" >REPL</tspan>
+          </text>
+        </svg>
+      </div>
       <ul class="menu">
         <div class="menu__item toggle"><span></span></div>
         <li class="menu__item"><a href="doc.html" class="link link--dark"><i class="fa fa-book"></i> Documentation</a></li>
@@ -127,41 +114,37 @@
       
       <!-- code for share biuttons start-->
       <!-- I got these buttons from simplesharebuttons.com -->
-<div id="share-buttons">
-    
-    
-    <!-- Email -->
-    <a href="mailto:?Subject=Simple Share Buttons&amp;Body=I%20saw%20this%20and%20thought%20of%20you!%20 https://simplesharebuttons.com">
-        <img src="https://simplesharebuttons.com/images/somacro/email.png" alt="Email" />
-    </a>
- 
-    <!-- Facebook -->
-    <a href="http://www.facebook.com/sharer.php?u=https://simplesharebuttons.com" target="_blank">
-        <img src="https://simplesharebuttons.com/images/somacro/facebook.png" alt="Facebook" />
-    </a>
-    
-    <!-- Google+ -->
-    <a href="https://plus.google.com/share?url=https://simplesharebuttons.com" target="_blank">
-        <img src="https://simplesharebuttons.com/images/somacro/google.png" alt="Google" />
-    </a>
-    
-    <!-- LinkedIn -->
-    <a href="http://www.linkedin.com/shareArticle?mini=true&amp;url=https://simplesharebuttons.com" target="_blank">
-        <img src="https://simplesharebuttons.com/images/somacro/linkedin.png" alt="LinkedIn" />
-    </a>
-    
-    <!-- Pinterest -->
-    <a href="javascript:void((function()%7Bvar%20e=document.createElement('script');e.setAttribute('type','text/javascript');e.setAttribute('charset','UTF-8');e.setAttribute('src','http://assets.pinterest.com/js/pinmarklet.js?r='+Math.random()*99999999);document.body.appendChild(e)%7D)());">
-        <img src="https://simplesharebuttons.com/images/somacro/pinterest.png" alt="Pinterest" />
-    </a>
-    
-    <!-- Twitter -->
-    <a href="https://twitter.com/share?url=https://simplesharebuttons.com&amp;text=Simple%20Share%20Buttons&amp;hashtags=simplesharebuttons" target="_blank">
-        <img src="https://simplesharebuttons.com/images/somacro/twitter.png" alt="Twitter" />
-    </a>
-    
-
-</div>
+      <div id="share-buttons">
+          <!-- Email -->
+          <a href="mailto:?Subject=Simple Share Buttons&amp;Body=I%20saw%20this%20and%20thought%20of%20you!%20 https://simplesharebuttons.com">
+              <img src="https://simplesharebuttons.com/images/somacro/email.png" alt="Email" />
+          </a>
+       
+          <!-- Facebook -->
+          <a href="http://www.facebook.com/sharer.php?u=https://simplesharebuttons.com" target="_blank">
+              <img src="https://simplesharebuttons.com/images/somacro/facebook.png" alt="Facebook" />
+          </a>
+          
+          <!-- Google+ -->
+          <a href="https://plus.google.com/share?url=https://simplesharebuttons.com" target="_blank">
+              <img src="https://simplesharebuttons.com/images/somacro/google.png" alt="Google" />
+          </a>
+          
+          <!-- LinkedIn -->
+          <a href="http://www.linkedin.com/shareArticle?mini=true&amp;url=https://simplesharebuttons.com" target="_blank">
+              <img src="https://simplesharebuttons.com/images/somacro/linkedin.png" alt="LinkedIn" />
+          </a>
+          
+          <!-- Pinterest -->
+          <a href="javascript:void((function()%7Bvar%20e=document.createElement('script');e.setAttribute('type','text/javascript');e.setAttribute('charset','UTF-8');e.setAttribute('src','http://assets.pinterest.com/js/pinmarklet.js?r='+Math.random()*99999999);document.body.appendChild(e)%7D)());">
+              <img src="https://simplesharebuttons.com/images/somacro/pinterest.png" alt="Pinterest" />
+          </a>
+          
+          <!-- Twitter -->
+          <a href="https://twitter.com/share?url=https://simplesharebuttons.com&amp;text=Simple%20Share%20Buttons&amp;hashtags=simplesharebuttons" target="_blank">
+              <img src="https://simplesharebuttons.com/images/somacro/twitter.png" alt="Twitter" />
+          </a>
+      </div>
 
 <!-- code for share biuttons end-->
       
@@ -176,99 +159,50 @@
                 <option value="java" disabled>Java</option>
                 <option value="python2.7">Python2.7</option>
         </select>
-    </div>
+      </div>
     <br>
     </div>
 
     <div class="terminal" id="terminal"><div class="fullscreen-toggle" onclick="ToggleFunction();"><i class="fa fa-expand"></i></div></div>
     
     <div class="wrapper">
+      <hr/>
       <div class="installation">
-        <h3 class="section__title">Installation</h3>
-        <div class="tab__container">
-          <ul class="tab__menu">
-            <li class="tab active" data-tab="mac">mac</li>
-            <li class="tab" data-tab="linux">linux</li>
-            <li class="tab" data-tab="win">win</li>
-          </ul>
-          <pre class="nohighlight code">
-            <code class="tab__pane active mac">$  brew install scribbler</code>
-            <code class="tab__pane linux">$  apt-get install scribbler</code>
-            <code class="tab__pane win">$  gem install scribbler</code>
+        <h3 class="section__title">Getting Started</h3>
+        <div class="demo__terminal">
+          <pre>
+        <!-- Place your demo code here -->
+            <code class="shell-session demo">hyperyolo ~ $ </code>
           </pre>
         </div>
       </div>
-      <div class="feature">
-        <div class="feature__item">
-          <h3 class="section__title">Fast & Light</h3>
-          <p>Start writing your notes immediately in any terminal! No more time wasted on navigating and opening your text editor.</p>
-        </div>
-        <div class="feature__item">
-          <h3 class="section__title">File Syncing</h3>
-          <p>Save your file in Dropbox then you can access to it from anywhere.</p>
-        </div>
-        <div class="feature__item">
-          <h3 class="section__title">Secure</h3>
-          <p>Encrypt your notes optionally. No one can get to your secrets! </p>
-        </div>
-        <div class="feature__item">
-          <h3 class="section__title">Configuration</h3>
-          <p>Maintain all your settings in a single <span class="code code--inline">config.json</span> file. Never need to redo the setting every single time jotting down a note.</p>
-        </div>
-        <div class="feature__item">
-          <h3 class="section__title">Highlightings</h3>
-          <p>For better readability, scribbler has a clean, beautiful color scheme allow you to scan files fast.</p>
-        </div>
-        <div class="feature__item">
-          <h3 class="section__title">Keybindings</h3>
-          <p>You can expect common keybindings for scribbler. Customize <span class="code code--inline">bindings.json</span> for your own liking! </p>
-        </div>
-      </div>
+      <br><br><br>
       <div class="keybinding">
         <ul class="keybinding__detail">
-          <h3 class="keybinding__title">Default Keybindings</h3>
-          <li>Quit without saving <span class="keybinding__label">Ctrl+C</span></li>
-          <li>Save <span class="keybinding__label">Cmd+S</span></li>
-          <li>Save and Quit <span class="keybinding__label">Ctrl+D</span></li>
-          <li>Undo <span class="keybinding__label">Cmd+Z</span></li>
+          <h3 class="keybinding__title">Commands</h3>
+          <li><span class="keybinding__label">.help</span></li>
+          <li><span class="keybinding__label">.L libname</span></li>
+          <li><span class="keybinding__label">.rawInput</span></li>
+          <li><span class="keybinding__label">.q</span></li>
         </ul>
         <ul class="keybinding__detail">
-          <h3 class="keybinding__title">Markdown Keybindings</h3>
-          <li><span class="keybinding__label">Ctrl+A</span> Insert Link Markdown</li>
-          <li><span class="keybinding__label">Ctrl+I</span> Insert Image Markdown</li>
-          <li><span class="keybinding__label">Ctrl+V</span> Insert YouTube Video</li>
-          <li><span class="keybinding__label">Ctrl+T</span> Insert Table</li>
+          <h3 class="keybinding__title">Descriptions</h3>
+          <li> Display brief descriptions of all meta-commands.</li>
+          <li> Load the given file or library</li>
+          <li> Toggle on/off raw input.</li>
+          <li> Exits Cling Interpreter.</li>
         </ul>
       </div>
       <div class="callout">
-        <p>Read our documentation for advanced keybindings and customization</p>
+        <p>Read our documentation for more information</p>
         <a href="doc.html" class="button--primary">Documentation</a>
       </div>
-      
-      <!-- <div id="form" class="keybinding">
-      
-      <div>
-      <h3>Please provide feedbac.</h3>
-  	  <h3>Feedback :</h3>
-	  </div>
-	  
-	  <div class="keybinding__detail">
-	  <form action="">
-	  
-	  Name : <input type="text" name="name"></br>  
-	  Email : <input type="email" name="email"></br>
-	  Message : <textarea rows="" cols="" name="message"></br>
-	  </textarea>
-	  <input type="submit" value="Send Message">
-	  
-	  </form>
-	  </div> -->
-	  
-	  
-	  			
+      <br><br><br>
+
 	  			<!-- Feedback/Contact Section start -->
 	  			
 	  			<section id="three">
+            <hr/>
 						<h2>Get In Touch</h2>
 						<p>Accumsan pellentesque commodo blandit enim arcu non at amet id arcu magna. Accumsan orci faucibus id eu lorem semper nunc nisi lorem vulputate lorem neque lorem ipsum dolor.</p>
             <iframe name="resultFrame" id="resultFrame" width="100%" style="border:none;display:none" onload="onLoadFn()"></iframe>
@@ -296,89 +230,36 @@
 					</section>
 	  
 	  			<!-- Feedback/Contact Section end -->
-	  
-					<!-- 	  	<div class="container">
-					  <form action="/action_page.php">
-					    <label for="fname">First Name</label>
-					    <input type="text" id="fname" name="firstname" placeholder="Your name..">
-					
-					    <label for="lname">Last Name</label>
-					    <input type="text" id="lname" name="lastname" placeholder="Your last name..">
-					
-					    <label for="country">Country</label>
-					    <select id="country" name="country">
-					      <option value="australia">Australia</option>
-					      <option value="canada">Canada</option>
-					      <option value="usa">USA</option>
-					    </select>
-					
-					    <label for="subject">Subject</label>
-					    <textarea id="subject" name="subject" placeholder="Write something.." style="height:200px"></textarea>
-					
-					    <input type="submit" value="Submit">
-					  </form>
-					</div>
-					 -->	  
-	  
 	  </div>
-      
-   </div>
-    <!-- <div class="changelog">
-      <div class="wrapper">
-        <h3 class="section__title">Changelog</h3>
-        <div class="changelog__item">
-          <div class="changelog__meta">
-            <h4 class="changelog__title">v0.7</h4>
-            <small class="changelog__date">10/12/2017</small>
-          </div>
-          <div class="changelog__detail">
-            <ul>
-              <li>Improving the writing workflow with better key bindings</li>
-              <li>Design updates</li>
-              <li>SSL Verification for web hooks</li>
-              <li>Render Emoji</li>
-            </ul>
-          </div>
-        </div>
-        <div class="changelog__item">
-          <div class="changelog__meta">
-            <h4 class="changelog__title">v0.6</h4>
-            <small class="changelog__date">7/30/2017</small>
-          </div>
-          <div class="changelog__detail">
-            <ul>
-              <li>Adding Unicode support</li>
-              <li>Basic text highlighting</li>
-              <li>Fresh Design</li>
-            </ul>
-          </div>
-        </div>
-        <div class="changelog__item">
-          <div class="changelog__meta">
-            <h4 class="changelog__title">v0.5</h4>
-            <small class="changelog__date">5/10/2017</small>
-          </div>
-          <div class="changelog__detail">
-            <ul>
-              <li>Save default md file in new folders</li>
-              <li>Ability to quick search on existing notes</li>
-            </ul>
-          </div>
-        </div>
-        <div class="changelog__callout">
-          <a href="#" class="button--secondary">Checkout Full Log</a>
-        </div>
-      </div>
-    </div> --> 
-    
-    
 
+  <div class="changelog">
+    <div class="wrapper">
+      <div class="feature">
+        <div class="feature__item">
+          <h3 class="section__title">Fast To Learn</h3>
+          <p>Start writing your code snippets immediately in any REPL! No more time wasted on opening and navigating your text editor, writing code, compile and run to see the results.</p>
+        </div>
+        <div class="feature__item">
+          <h3 class="section__title">Secure and Containerized REPLs</h3>
+          <p>REPLs are created and destroyed on the fly using containers.</p>
+        </div>
+        <div class="feature__item">
+          <h3 class="section__title">Meta-Commands</h3>
+          <p>Each REPL terminal has some meta-commands to perform administrative tasks.</p>
+        </div>
+        <div class="feature__item">
+          <h3 class="section__title">Prototyping and Proofs of Concepts</h3>
+          <p>Helps you learn a programming language faster.</p>
+        </div>
+        <hr/>
+      </div>
+    </div>
+   </div>
     
-    
-    <footer class="footer">
-	<a href="about.html" class="link link--light">About</a> <span class="dot"></span>
-	<a href="credits.html" class="link link--light">Credits</a> <span class="dot"></span>
-	2018&copy;<span class="go__color">GO</span>REPL 
+  <footer class="footer">
+    	<a href="about.html" class="link link--light">About</a> <span class="dot"></span>
+    	<a href="credits.html" class="link link--light">Credits</a> <span class="dot"></span>
+    	2018&copy;<span class="go__color">GO</span>REPL 
    </footer>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
     <script>hljs.initHighlightingOnLoad();</script>

@@ -3,8 +3,10 @@
   --primary-color: #432E30;
   --primary-color-light: #8E7474;
   --accent-color: #FE6A6B;
+  --rev-accent-color: #4CAF50;
   --accent-color-light: #FFE4E4;
   --accent-color-dark: #B94B4C;
+  --rev-accent-color-dark: #45a049;
   --white-color: #FAFBFC;
   --light-gray-color: #C6CBD1;
   --medium-gray-color: #959DA5;
@@ -324,6 +326,33 @@ table td:first-child {
   font-weight: 600;
 }
 
+/* CSS for form inputs */
+input[type=text],[type=email], select, textarea, email {
+      width: 100%;
+      padding: 10px;
+      
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-sizing: border-box;
+      margin-top: 6px;
+      margin-bottom: 16px;
+      resize: vertical;
+  }
+  
+  input[type=submit] {
+      background-color: var(--rev-accent-color);
+      color: white;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+  }
+  
+  input[type=submit]:hover {
+      background-color: var(--rev-accent-color-dark);
+  }
+  /* End */
+
 @media screen and (max-width: 600px) {
   nav {
     grid-template-columns: 70px auto;
@@ -374,6 +403,7 @@ table td:first-child {
   left: 0;
   width: 100%;
   height: 100%;
+  border-radius: 2px;
 }
 
 /* layout */
@@ -410,7 +440,6 @@ table td:first-child {
   animation: fadeUp 2s;
   /* box-shadow: 0px 12px 36.8px 9.2px rgba(0, 0, 0, 0.1); */
 }
-
 
 /* ------------------ css for creating separator dot------------------ */
   
