@@ -60,8 +60,9 @@ bindata/static/js: bindata/static resources/js
 	mkdir -p bindata/static/js
 	cp -Rv resources/js/* bindata/static/js/
 
-bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js
+bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js js/dist/preprocessing.js
 	cp js/dist/gotty-bundle.js bindata/static/js/gotty-bundle.js
+	cp js/dist/preprocessing.js bindata/static/js/preprocessing.js
 
 bindata/static/css: bindata/static resources/css
 	mkdir -p bindata/static/css

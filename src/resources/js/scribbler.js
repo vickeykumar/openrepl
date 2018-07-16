@@ -207,7 +207,7 @@ function ToggleFunction() {
     }
   }
 
-  actionOnchange();
+  setTimeout(actionOnchange,1000);
 
 })();
 
