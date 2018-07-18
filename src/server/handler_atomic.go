@@ -11,6 +11,7 @@ type counter struct {
 	wg          sync.WaitGroup
 	connections int
 	mutex       sync.Mutex
+	totalWieght int // in MB
 }
 
 func newCounter(duration time.Duration) *counter {
@@ -39,6 +40,23 @@ func (counter *counter) add(n int) int {
 	counter.connections += n
 
 	return counter.connections
+}
+
+func (counter *counter) addWieght(n int) int {
+	counter.mutex.Lock()
+	defer counter.mutex.Unlock()
+
+	counter.totalWieght += n
+
+	return counter.totalWieght
+}
+
+func (counter *counter) removeWieght(n int) int {
+	counter.mutex.Lock()
+	defer counter.mutex.Unlock()
+	counter.totalWieght -= n
+
+	return counter.totalWieght
 }
 
 func (counter *counter) done() int {

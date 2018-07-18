@@ -135,6 +135,22 @@ Hi: 8
 Hi: 9</Result>
 			</Code>
 		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> import "time"</Statement>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> time.Now();</Statement>
+				<Result>2018-07-18 22:32:56.18823511 +0530 IST m=+0.000279327</Result>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> time.Now().Unix();</Statement>
+				<Result>1531933384</Result>
+			</Code>
+		</Codes>
 		<Usage>
 			<Command>:help</Command>
 			<Description>display brief descriptions of all meta-commands.</Description>
@@ -178,7 +194,7 @@ Hi: 9</Result>
 			<Code>
 				<Prompt>&gt;&gt;&gt;</Prompt>
 				<Statement> for i in range(10):
-		print "Hi: ",i</Statement>
+...        print "Hi: ",i</Statement>
 			<Result>Hi: 0
 Hi: 1
 Hi: 2
@@ -189,6 +205,17 @@ Hi: 6
 Hi: 7
 Hi: 8
 Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> import time</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> time.time()</Statement>
+				<Result>1531933100.30023</Result>
 			</Code>
 		</Codes>
 		<Usage>

@@ -46,7 +46,7 @@ function ToggleFunction() {
 }
 
 (function myApp() {
-  var speed = 150;
+  var speed = 250;
   var indx = 0;
   var i=0;
   var j=0;
@@ -108,7 +108,7 @@ function ToggleFunction() {
       typeItOut(classname, code[j]["Statement"]+'\n', function(){
           PrintItOut(classname, code[j]['Result'] + '\n' + "<span class='code--prompt'>"+code[j]['Prompt']+"</span>");
           j++;
-          setTimeout(PrintCode, 1000, code, _callback);
+          setTimeout(PrintCode, 1800, code, _callback);
       });
     } else {
       if (typeof _callback === 'function' && !done[cmd]) {          
@@ -126,12 +126,12 @@ function ToggleFunction() {
         j=0;
         PrintCode(code,function(){
           i++;
-          setTimeout(PrintDemo, 1800, codes, _callback);
+          setTimeout(PrintDemo, 2800, codes, _callback);
         });
       } else {
         if (typeof _callback === 'function' && !done[cmd]) {          
             _callback();
-            setTimeout(PrintDemo, 1800, codes, _callback);  
+            setTimeout(PrintDemo, 2800, codes, _callback);  
         }
       }
     } catch(e) {

@@ -11,7 +11,7 @@ Type=simple
 User=gottyuser
 Environment="TERM=xterm"
 Environment="GODEBUG=cgocheck=1"
-ExecStart=/usr/local/bin/gotty -w
+ExecStart=/usr/local/bin/gotty -w --max-connection 1980
 ExecStop=/usr/bin/pkill gotty
 LimitNOFILE=2000
 Restart=always

@@ -3,6 +3,7 @@ package containers
 import (
 	"log"
 	"os/exec"
+	"sync"
 	"syscall"
 )
 
@@ -16,6 +17,19 @@ var Commands2memLimitMap = map[string]int64{
 	"cling":         10, // threshold : 11
 	"gointerpreter": 45, // 44 with pp
 	"python2.7":     2,  // 3
+}
+
+var memLimitMutex sync.Mutex
+
+// To get wieght of a command in MB.
+func GetCommandWieght(command string) int64 {
+	memLimitMutex.Lock()
+	defer memLimitMutex.Unlock()
+	w, ok := Commands2memLimitMap[command]
+	if ok {
+		return w
+	}
+	return 0
 }
 
 func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr) {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"containers"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -29,9 +30,11 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 	}()
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		var command string
 		log.Println("request recieved: ", r)
 		if len(commands) > 0 {
-			server.SetNewCommand(commands[0])
+			command = commands[0]
+			server.SetNewCommand(command)
 		}
 		if server.options.Once {
 			success := atomic.CompareAndSwapInt64(once, 0, 1)
@@ -42,28 +45,22 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		}
 
 		num := counter.add(1)
+		wieght := containers.GetCommandWieght(command)
+		totalWieght := counter.addWieght(int(wieght))
 		closeReason := "unknown reason"
 
 		defer func() {
 			num := counter.done()
+			totalWieght := counter.removeWieght(int(wieght))
 			log.Printf(
-				"Connection closed by %s: %s, connections: %d/%d",
-				closeReason, r.RemoteAddr, num, server.options.MaxConnection,
+				"Connection closed by %s: %s, connections: %d/%d, TotalUsage(MB): %d",
+				closeReason, r.RemoteAddr, num, server.options.MaxConnection, totalWieght,
 			)
 
 			if server.options.Once {
 				cancel()
 			}
 		}()
-
-		if int64(server.options.MaxConnection) != 0 {
-			if num > server.options.MaxConnection {
-				closeReason = "exceeding max number of connections"
-				return
-			}
-		}
-
-		log.Printf("New client connected: %s, connections: %d/%d", r.RemoteAddr, num, server.options.MaxConnection)
 
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", 405)
@@ -77,6 +74,20 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			return
 		}
 		defer conn.Close()
+
+		// placed this statement here as we need to notify the closereason and close
+		if int64(server.options.MaxConnection) != 0 {
+			if num > server.options.MaxConnection || totalWieght > server.options.MaxConnection {
+				closeReason = "exceeding max number of connections"
+				WriteMessageToTerminal(conn, closeReason+", Please try after sometimes. ")
+				return
+			}
+		}
+
+		log.Printf("New client connected: %s, connections: %d/%d, TotalUsage(MB): %d",
+			r.RemoteAddr, num, server.options.MaxConnection, totalWieght,
+		)
+
 		log.Println("Connection upgraded successfully: ")
 		err = server.processWSConn(ctx, conn)
 		log.Println("WS Processed")
