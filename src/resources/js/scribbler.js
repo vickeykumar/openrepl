@@ -28,7 +28,10 @@ function ToggleFunction() {
     TermElement = get(".terminal");
     xtermElement = get(".xterm",TermElement);
     TermElement.classList.toggle("fullscreen");
-    xtermElement.classList.toggle("fullscreen");
+    if (xtermElement !== undefined && xtermElement !== null) {
+      console.log('xtermElement: ',xtermElement)
+      xtermElement.classList.toggle("fullscreen");
+    }
     var event = new Event('resize');
     window.dispatchEvent(event);
     togglebtn = get(".fa",TermElement);

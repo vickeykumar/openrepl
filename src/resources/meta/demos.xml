@@ -227,4 +227,64 @@ Hi: 9</Result>
 			<Description>Exits the REPL.</Description>
 		</Usage>
 	</Demo>
+
+	<Demo>
+		<Name>java</Name>
+		<Codes>
+			<Code>
+				<Prompt>java&gt;</Prompt>
+				<Statement> double[] arr = {19, 12.89, 16.5, 200, 13.7};</Statement>
+				<Result>double[] arr = [19, 12.89, 16.5, 200, 13.7]</Result>
+			</Code>
+			<Code>
+				<Prompt>java&gt;</Prompt>
+				<Statement> double total = 0;</Statement>
+				<Result>double total = 0.0</Result>
+			</Code>
+			<Code>
+				<Prompt>java&gt;</Prompt>
+				<Statement> for(int i=0; i&gt;arr.length; i++){
+        	total = total + arr[i];
+        }</Statement>
+			</Code>
+			<Code>
+				<Prompt>java&gt;</Prompt>
+				<Statement> total</Statement>
+				<Result>java.lang.Double = 262.09</Result>
+			</Code>
+			<Code>
+				<Prompt>java&gt;</Prompt>
+				<Statement> System.out.format("The total is: %.3f", total);</Statement>
+				<Result>The total is: 262.090</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>java&gt;</Prompt>
+				<Statement> import java.util.Date;</Statement>
+				<Result>Imported java.util.Date</Result>
+			</Code>
+			<Code>
+				<Prompt>java&gt;</Prompt>
+				<Statement> Date date = new Date();</Statement>
+				<Result>java.util.Date date = Fri Jul 20 16:34:00 UTC 2018</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>:help</Command>
+			<Description>shows this help.</Description>
+		</Usage>
+		<Usage>
+			<Command>:cls</Command>
+			<Description>clears screen.</Description>
+		</Usage>
+		<Usage>
+			<Command>:load</Command>
+			<Description>loads source file.</Description>
+		</Usage>
+		<Usage>
+			<Command>:quit</Command>
+			<Description>quit the REPL.</Description>
+		</Usage>
+	</Demo>
 </DemoList>

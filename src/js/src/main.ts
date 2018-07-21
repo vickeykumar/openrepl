@@ -8,6 +8,33 @@ declare var gotty_auth_token: string;
 declare var gotty_term: string;
 
 
+
+
+function handleTerminalOptions(elem, option) {
+    if (option!==null && elem!==null) {
+        var javaframe = elem.getElementsByClassName("java")[0];
+        console.log("java: ",javaframe);
+        if (javaframe !== undefined) {
+            elem.removeChild(javaframe);
+        }
+        switch (option) {
+                case "java":
+                    // code...
+                    var iframe = document.createElement("IFRAME");
+                    iframe.setAttribute("class","java");
+                    iframe.setAttribute("src","http://www.javarepl.com/embed.html");
+                    iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
+                    elem.appendChild(iframe);
+                    return false;
+                
+                default:
+                    // code...
+                    return true;
+        }
+    }
+    return true;
+}
+
 // changes
 function getSelectValue() {
     // body...
@@ -28,7 +55,7 @@ if(optionMenu!==null) {
 
 export function ActionOnChange() {
     // body...
-    const elem = document.getElementById("terminal")
+    const elem = document.getElementById("terminal");
     if (elem !== null) {
         var event = new Event('optionchange');
         elem.dispatchEvent(event);
@@ -72,13 +99,17 @@ if (elem !== null) {
         window.dispatchEvent(event);
         setTimeout(function(){                // timeout between two events
             //var term: Terminal;
+            const option = getSelectValue();
+            console.log("option caught: ",option);
+            if (!handleTerminalOptions(elem, option)) {
+                return;
+            }
             if (gotty_term == "hterm") {
                 term = new Hterm(elem);
             } else {
                 term = new Xterm(elem);
             }
-            const option = getSelectValue();
-            console.log("option caught: ",option)
+            
             if (option !== null) {
                 const httpsEnabled = window.location.protocol == "https:";
                 const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws'+ '_' + option;

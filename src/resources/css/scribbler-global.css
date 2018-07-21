@@ -353,34 +353,6 @@ input[type=text],[type=email], select, textarea, email {
   }
   /* End */
 
-@media screen and (max-width: 600px) {
-  nav {
-    grid-template-columns: 70px auto;
-  }
-
-  .menu__item{
-    display: none;
-  }
-
-  .menu__item.toggle {
-    display: inline-block;
-  }
-
-  .menu {
-    text-align: right;
-    padding: 0.5rem 1rem;
-  }
-
-  .toggle {
-    display: block;
-  }
-
-  .menu.responsive .menu__item:not(:first-child) {
-    display: block;
-    padding: 0 0 0.5rem 0;
-  }
-}
-
 /* video */
 .videoWrap {
   position: relative;
@@ -441,6 +413,10 @@ input[type=text],[type=email], select, textarea, email {
   /* box-shadow: 0px 12px 36.8px 9.2px rgba(0, 0, 0, 0.1); */
 }
 
+/* ------------------- github-corner --------------------------------- */
+
+
+
 /* ------------------ css for creating separator dot------------------ */
   
   .sepdot{
@@ -459,7 +435,33 @@ input[type=text],[type=email], select, textarea, email {
         display: inline-block;
     }
 
+@media screen and (max-width: 600px) {
+  nav {
+    grid-template-columns: 70px auto;
+  }
 
+  .menu__item{
+    display: none;
+  }
+
+  .menu__item.toggle {
+    display: inline-block;
+  }
+
+  .menu {
+    text-align: right;
+    padding: 0.5rem 1rem;
+  }
+
+  .toggle {
+    display: block;
+  }
+
+  .menu.responsive .menu__item:not(:first-child) {
+    display: block;
+    padding: 0 0 0.5rem 0;
+  }
+}
 
 @keyframes fadeUp {
   0% {
