@@ -144,7 +144,13 @@ function ToggleFunction() {
     }
   }
 
-  function PrintUsage(obj) {
+  function PrintUsage(obj,cmd) {
+    //docs
+    var doc = get('.callout');
+    var doclink = get('.button--primary',doc);
+    if (cmd && doc &&  doclink) {
+      doclink.setAttribute("href", "./docs/"+cmd+".html");
+    }
     var keybinding = get('.keybinding');
     var keybinding__details = getAll('.keybinding__detail',keybinding);
     //console.log('keybinding__details: ',keybinding__details);
@@ -181,7 +187,7 @@ function ToggleFunction() {
               // on completion of one cycle start another
               i=0;
             });
-            setTimeout(PrintUsage, 400, obj["Demo"]["Usage"]);
+            setTimeout(PrintUsage, 400, obj["Demo"]["Usage"],cmd);
           } else {
             console.log("Error: Unable to render Demo and Usage");
           }

@@ -36,6 +36,10 @@ nav {
   color: var(--accent-color);
 }
 
+.go__color_rev {
+  color: var(--rev-accent-color);
+}
+
 .hero__description {
   margin: -1rem auto 2rem auto;
 }

@@ -35,6 +35,10 @@ html, body {
   color: var(--accent-color);
 }
 
+.go__color_rev {
+  color: var(--rev-accent-color);
+}
+
 /* menu */
 .menu {
   grid-template-columns: 1fr 180px 60% 1fr;

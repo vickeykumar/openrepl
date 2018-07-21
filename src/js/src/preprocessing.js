@@ -75,7 +75,11 @@ var Color = require('color');
 	    x = (x ^ (x << 1) ^ (x >> 1)) % container_size;
 	  return x;
 	}
-
+	
+	function randomNumber(minimum, maximum){
+    	return Math.round((Math.random() * (maximum - minimum) + minimum) * 100)/100;
+	}
+	
 	function ColorOfTheDay() {
 		var ms = 1000*60*60*24;
 		var seed = Math.floor(new Date().getTime()/ms);
@@ -86,18 +90,31 @@ var Color = require('color');
 	function setupColorThemes() {
 		try {
 			var accent_color = ColorOfTheDay();
+			var minrand = 0;
 			//console.log('color: ',accent_color);
 			if (accent_color!==undefined) {
 				var colorObj = Color(accent_color);
+				console.log('lumin1: ',colorObj.luminosity())
 				if(colorObj.isLight()) {
-					colorObj.darken(0.4);
+					console.log('light color: ',accent_color);
+					if (colorObj.luminosity() > 0.7) {
+						minrand = 0.3;
+					}
+					colorObj = colorObj.darken(randomNumber(minrand,0.4));
+				} else {
+					console.log('dark color: ',accent_color);
+					if (colorObj.luminosity()<0.2) {
+						minrand = 0.5;
+					}
+					colorObj = colorObj.lighten(randomNumber(minrand,0.7));
 				}
+				console.log('lumin: ',colorObj.luminosity())
 				var accent_color_light = colorObj.alpha(0.5).lighten(0.5);
 				var accent_color_dark = colorObj.alpha(0.9).darken(0.5);
 				var accent_color_rev = colorObj.negate().alpha(0.5).darken(0.2);
 				var accent_color_rev_dark = accent_color_rev.alpha(0.9).darken(0.5);
 				//console.log('color: ',colorObj);
-				document.documentElement.style.setProperty('--accent-color', accent_color);
+				document.documentElement.style.setProperty('--accent-color', colorObj.hex());
 				document.documentElement.style.setProperty('--rev-accent-color', accent_color_rev.hex());
 				document.documentElement.style.setProperty('--accent-color-light', accent_color_light.hex());
 				document.documentElement.style.setProperty('--accent-color-dark', accent_color_dark.hex());

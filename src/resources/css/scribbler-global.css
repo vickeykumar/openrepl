@@ -225,6 +225,10 @@ hr {
   color: var(--accent-color);
 }
 
+.link--light-rev {
+  color: var(--rev-accent-color);
+}
+
 .link--blue {
   color: var(--link-blue-color);
 }
