@@ -13,7 +13,6 @@ declare var gotty_term: string;
 function handleTerminalOptions(elem, option) {
     if (option!==null && elem!==null) {
         var javaframe = elem.getElementsByClassName("java")[0];
-        console.log("java: ",javaframe);
         if (javaframe !== undefined) {
             elem.removeChild(javaframe);
         }
@@ -84,9 +83,8 @@ if (elem !== null) {
     const args = window.location.search;
     var factory = new ConnectionFactory(url, protocols);
     var wt = new WebTTY(term, factory, args, gotty_auth_token);
-    console.log("webtty created: ",wt);
     var closer = wt.open();
-    console.log("webtty: ",closer);
+    console.log("webtty created: ");
 
     window.addEventListener("unload", () => {
         console.log("closing connection")
@@ -116,9 +114,8 @@ if (elem !== null) {
                 const args = window.location.search;
                 factory = new ConnectionFactory(url, protocols);
                 wt = new WebTTY(term, factory, args, gotty_auth_token);
-                console.log("webtty created for: ",url," : ",wt);
                 closer = wt.open();
-                console.log("webtty: ",closer);
+                console.log("webtty created:");
                 /*window.addEventListener("unload", () => {
                     console.log("closing connection")
                     closer();

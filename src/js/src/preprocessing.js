@@ -89,6 +89,9 @@ var Color = require('color');
 			//console.log('color: ',accent_color);
 			if (accent_color!==undefined) {
 				var colorObj = Color(accent_color);
+				if(colorObj.isLight()) {
+					colorObj.darken(0.4);
+				}
 				var accent_color_light = colorObj.alpha(0.5).lighten(0.5);
 				var accent_color_dark = colorObj.alpha(0.9).darken(0.5);
 				var accent_color_rev = colorObj.negate().alpha(0.5).darken(0.2);
