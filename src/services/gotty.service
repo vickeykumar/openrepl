@@ -11,13 +11,15 @@ Type=simple
 User=gottyuser
 Environment="TERM=xterm"
 Environment="GODEBUG=cgocheck=1"
-ExecStart=/usr/local/bin/gotty -w --max-connection 1980
+ExecStart=/usr/local/bin/gotty -w --max-connection 1980 --port 80 --title-format "{{ .command }}@GOREPL"
 ExecStop=/usr/bin/pkill gotty
 LimitNOFILE=2000
 Restart=always
 RestartPreventExitStatus=126
 # Wait for 1 second before going for next start on failure case
 RestartSec=1
-
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target
