@@ -10,29 +10,38 @@
 
 GoTTY Fork from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create GOTTY services for ubuntu server and REPL servers.
 
-![Screenshot](https://raw.githubusercontent.com/yudai/gotty/master/screenshot.gif)
 
 # Installation
 
-Download the latest stable binary file from the [Releases](https://github.com/yudai/gotty/releases) page. Note that the release marked `Pre-release` is built for testing purpose, which can include unstable or breaking changes. Download a release marked [Latest release](https://github.com/yudai/gotty/releases/latest) for a stabale build.
+Fork gotty to start the REPL servers in your local system, Please make sure all pre-requisites are installed.
 
 (Files named with `darwin_amd64` are for Mac OS X users)
 
-## Homebrew Installation
+You can install GoTTY REPL server as shown below:
 
-You can install GoTTY with [Homebrew](http://brew.sh/) as well.
-
+## Non-debian:
 ```sh
-$ brew install yudai/gotty/gotty
+$ cd src
+$ make all
+$ ../bin/gotty -w
 ```
 
-## `go get` Installation (Development)
-
-If you have a Go language environment, you can install GoTTY with the `go get` command. However, this command builds a binary file from the latest master branch, which can include unstable or breaking changes. GoTTY requires go1.9 or later.
-
+## debian:
 ```sh
-$ go get github.com/yudai/gotty
+$ cd src
+$ make deb
+$ sudo dpkg -i ../deb/gotty.deb
 ```
+
+# Pre-Requisites
+
+* GoTTY requires go1.9 or later.
+* npm
+* webpack
+* [cling](https://github.com/root-project/cling)
+* [gointerpreter](https://github.com/vickeykumar/Go-interpreter)
+* python2.7
+
 
 # Usage
 
