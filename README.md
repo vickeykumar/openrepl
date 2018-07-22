@@ -9,7 +9,7 @@
 [license]: https://github.com/yudai/gotty/blob/master/LICENSE
 
 GoTTY Fork from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create GOTTY services for ubuntu server and REPL servers.
-Please have a look on our website for more info : gorepl.com
+Please have a look on our website for more info : [gorepl.com](http://gorepl.com)
 
 
 # Installation
