@@ -44,6 +44,12 @@ nav {
   margin: -1rem auto 2rem auto;
 }
 
+.hero__warning {
+  margin: -1rem auto 2rem auto;
+  display: none;
+  color: var(--code-error-color);
+}
+
 .terminal {
   width: 70%;
   height: 60vh;

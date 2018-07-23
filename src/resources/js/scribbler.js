@@ -63,6 +63,25 @@ function ToggleFunction() {
     "java":"java",
     "python2.7":"python",
   };
+  function ismob() {
+   if(window.innerWidth <= 800 || window.innerHeight <= 480) {
+     return true;
+   } else {
+     return false;
+   }
+  }
+  function displayWarningOnMobile () {
+    // body... 
+    var warningObj = get('.hero__warning');
+    if (warningObj!==undefined) {
+      if (ismob()) {
+        warningObj.style.display = "block";
+      } else if (warningObj.style.display !== "none") {
+        warningObj.style.display = "none";
+      }
+    }
+  }
+
   function getSelectValue() {
     // body...
     const optionMenu = get("#optionMenu");
@@ -217,6 +236,8 @@ function ToggleFunction() {
   }
 
   setTimeout(actionOnchange,1000);
+  window.addEventListener("resize", displayWarningOnMobile);
+  setTimeout(displayWarningOnMobile, 1000);
 
 })();
 
