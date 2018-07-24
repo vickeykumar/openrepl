@@ -88,7 +88,9 @@ function ToggleFunction() {
     if(optionMenu!==undefined) {
         const option = get(".list", optionMenu);
         if (option!==undefined) {
-          return option2cmdMap[option.value];
+          var cmd = option2cmdMap[option.value];
+          if (cmd !== undefined) return cmd;
+          return option.value;
         }
     }
     return '';

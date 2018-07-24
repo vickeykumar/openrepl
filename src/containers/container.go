@@ -2,10 +2,13 @@ package containers
 
 import (
 	"log"
+	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 )
+
+const HOME_DIR = "/tmp/home/"
 
 var Containers = make(map[string]*container)
 
@@ -17,6 +20,7 @@ var Commands2memLimitMap = map[string]int64{
 	"cling":         10, // threshold : 11
 	"gointerpreter": 45, // 44 with pp
 	"python2.7":     2,  // 3
+	"bash":          2,  // 2
 }
 
 var memLimitMutex sync.Mutex
@@ -73,6 +77,7 @@ func InitContainers() {
 func DeleteContainers() {
 	for command, containerObj := range Containers {
 		containerObj.Delete()
+		os.RemoveAll(HOME_DIR + command)
 		log.Println("Container Deleted for : ", command)
 	}
 }

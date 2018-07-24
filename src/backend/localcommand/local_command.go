@@ -3,6 +3,7 @@ package localcommand
 import (
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 	"time"
 	"unsafe"
@@ -31,7 +32,8 @@ type LocalCommand struct {
 
 func New(command string, argv []string, options ...Option) (*LocalCommand, error) {
 	cmd := exec.Command(command, argv...)
-
+	cmd.Dir = containers.HOME_DIR + command + "/" + strconv.Itoa(int(time.Now().Unix()))
+	os.MkdirAll(cmd.Dir, 0755)
 	pty, err := pty.Start(command, cmd)
 	if err != nil {
 		// todo close cmd?
@@ -64,6 +66,7 @@ func New(command string, argv []string, options ...Option) (*LocalCommand, error
 			lcmd.pty.Close()
 			close(lcmd.ptyClosed)
 			containers.DeleteProcessFromSubCgroup(command, pid) // deleting the subcgroup container of that process
+			os.RemoveAll(lcmd.cmd.Dir)
 		}()
 
 		lcmd.cmd.Wait()

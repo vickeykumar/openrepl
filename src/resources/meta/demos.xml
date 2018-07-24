@@ -287,4 +287,51 @@ Hi: 9</Result>
 			<Description>quit the REPL.</Description>
 		</Usage>
 	</Demo>
+
+	<Demo>
+		<Name>bash</Name>
+		<Codes>
+			<Code>
+				<Prompt>bash$</Prompt>
+				<Statement> NAME="John"</Statement>
+			</Code>
+			<Code>
+				<Prompt>bash$</Prompt>
+				<Statement> echo "Hello $NAME!"</Statement>
+				<Result>Hello John</Result>
+			</Code>
+			<Code>
+				<Prompt>bash$</Prompt>
+				<Statement> get_name() {
+  echo "John"
+}</Statement>
+			</Code>
+			<Code>
+				<Prompt>bash$</Prompt>
+				<Statement> echo "You are $(get_name)"</Statement>
+				<Result>You are John</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>bash$</Prompt>
+				<Statement> for i in {1..5}; do
+    echo "Welcome $i"
+done</Statement>
+				<Result>Welcome 1
+Welcome 2
+Welcome 3
+Welcome 4
+Welcome 5</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>help</Command>
+			<Description>shows brief description of bash commands.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit</Command>
+			<Description>exits the bash.</Description>
+		</Usage>
+	</Demo>
 </DemoList>

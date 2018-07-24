@@ -221,6 +221,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	wsMux.HandleFunc(pathPrefix+"ws_go", server.generateHandleWS(ctx, cancel, counter, "gointerpreter"))
 	wsMux.HandleFunc(pathPrefix+"ws_java", server.generateHandleWS(ctx, cancel, counter, "jshell"))
 	wsMux.HandleFunc(pathPrefix+"ws_python2.7", server.generateHandleWS(ctx, cancel, counter, "python2.7"))
+	wsMux.HandleFunc(pathPrefix+"ws_bash", server.generateHandleWS(ctx, cancel, counter, "bash"))
 	siteHandler = http.Handler(wsMux)
 
 	return siteHandler
