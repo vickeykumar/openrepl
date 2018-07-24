@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /js/
+Disallow: /css/
+Disallow: /feedback
+Disallow: /auth_token.js
+Disallow: /config.js
+Disallow: /demo
