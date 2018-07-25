@@ -1,4 +1,5 @@
 User-agent: *
+Allow: /
 Disallow: /feedback
 Disallow: /auth_token.js
 Disallow: /config.js
