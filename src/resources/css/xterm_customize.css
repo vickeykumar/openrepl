@@ -8,6 +8,7 @@
     margin-top: auto;
     height: auto;
     z-index: 1;
+    background-color: var(--terminal-bg-color);
 }
 
 .xterm-overlay {

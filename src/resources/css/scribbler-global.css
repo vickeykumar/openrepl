@@ -19,6 +19,7 @@
   --code-prompt-color: #c5c525;
   --code-error-color: #cb4b15;
   --code-data-type-color: #008000;
+  --terminal-bg-color: black;
 }
 
 /* normalized */

@@ -193,6 +193,17 @@ function ToggleFunction() {
     }
   }
 
+  function PrintGithub(github_link) {
+    var demo_term = get('.demo__terminal');
+    var github = get('.github-corner',demo_term);
+    if (github_link && github_link!=='' && github) {
+      github.style.display = "block";
+      github.setAttribute("href", github_link);
+    } else {
+      github.style.display = "none";
+    }
+  }
+
   function actionOnchange() {
     var http = new XMLHttpRequest();
     cmd = getSelectValue();
@@ -208,6 +219,7 @@ function ToggleFunction() {
               // on completion of one cycle start another
               i=0;
             });
+            setTimeout(PrintGithub, 200, obj["Demo"]["Github"]);
             setTimeout(PrintUsage, 400, obj["Demo"]["Usage"],cmd);
           } else {
             console.log("Error: Unable to render Demo and Usage");

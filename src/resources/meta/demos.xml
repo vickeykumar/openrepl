@@ -2,6 +2,7 @@
 <DemoList>
 	<Demo>
 		<Name>cling</Name>
+		<Github>https://github.com/root-project/cling</Github>
 		<Codes>
 			<Name>help</Name>
 			<Code>
@@ -94,6 +95,7 @@ signature: ret_type filename(args)</Result>
 
 	<Demo>
 		<Name>gointerpreter</Name>
+		<Github>https://github.com/vickeykumar/Go-interpreter</Github>
 		<Codes>
 			<Code>
 				<Prompt>go&gt;&gt;</Prompt>
@@ -230,6 +232,7 @@ Hi: 9</Result>
 
 	<Demo>
 		<Name>java</Name>
+		<Github>https://github.com/albertlatacz/java-repl</Github>
 		<Codes>
 			<Code>
 				<Prompt>java&gt;</Prompt>

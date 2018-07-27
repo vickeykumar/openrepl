@@ -59,7 +59,7 @@ nav {
   color: white;
   padding: 0 1rem;
   border-radius: 4px;
-  background-color: #232323;
+  background-color: var(--terminal-bg-color);
   animation: fadeUp 2s;
   box-shadow: 0px 12px 36.8px 30.2px rgba(0, 0, 0, 0.1);
   transition-property: fullscreen;
@@ -70,6 +70,7 @@ nav {
 
 .demo__terminal {
   width: 100%;
+  position: relative;
   /*margin: -11rem auto 3rem auto;*/
   text-align: left;
   font-size: 14px;

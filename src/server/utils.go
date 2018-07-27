@@ -42,9 +42,10 @@ type Codes struct {
 }
 
 type Demo struct {
-	Name  string
-	Codes []Codes
-	Usage []Usage
+	Name   string
+	Github string
+	Codes  []Codes
+	Usage  []Usage
 }
 
 type DemoResp struct {
