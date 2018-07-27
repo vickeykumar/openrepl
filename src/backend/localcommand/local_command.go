@@ -34,6 +34,9 @@ func New(command string, argv []string, options ...Option) (*LocalCommand, error
 	cmd := exec.Command(command, argv...)
 	cmd.Dir = containers.HOME_DIR + command + "/" + strconv.Itoa(int(time.Now().Unix()))
 	os.MkdirAll(cmd.Dir, 0755)
+	cmd.Env = append(cmd.Env, "TERM=xterm")
+	cmd.Env = append(cmd.Env, "GOPATH=/opt/gotty/")
+	cmd.Env = append(cmd.Env, "HOME="+cmd.Dir)
 	pty, err := pty.Start(command, cmd)
 	if err != nil {
 		// todo close cmd?
