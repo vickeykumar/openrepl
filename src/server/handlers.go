@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"net/url"
@@ -31,7 +32,6 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		var command string
-		log.Println("request recieved: ", r)
 		if len(commands) > 0 {
 			command = commands[0]
 			server.SetNewCommand(command)
@@ -90,7 +90,6 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 
 		log.Println("Connection upgraded successfully: ")
 		err = server.processWSConn(ctx, conn)
-		log.Println("WS Processed")
 
 		switch err {
 		case ctx.Err():
@@ -107,7 +106,6 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 }
 
 func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn) error {
-	log.Println("reading message")
 	conn.SetWriteDeadline(time.Now().Add(15 * time.Minute)) // only 15 min sessions for services are allowed
 	typ, initLine, err := conn.ReadMessage()
 	if err != nil {
@@ -131,12 +129,10 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn) e
 		queryPath = init.Arguments
 	}
 
-	log.Println("parsing url: ", queryPath)
 	query, err := url.Parse(queryPath)
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse arguments")
 	}
-	log.Println("before query: ", query)
 	params := query.Query()
 	var slave Slave
 	slave, err = server.factory.New(params)
@@ -157,12 +153,11 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn) e
 	)
 
 	titleBuf := new(bytes.Buffer)
-	log.Println("executing template")
 	err = server.titleTemplate.Execute(titleBuf, titleVars)
 	if err != nil {
 		return errors.Wrapf(err, "failed to fill window title template")
 	}
-	log.Println("template executed successfully: ", titleVars, titleBuf)
+	log.Println("template executed successfully: ", titleVars)
 	opts := []webtty.Option{
 		webtty.WithWindowTitle(titleBuf.Bytes()),
 	}
@@ -182,19 +177,47 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn) e
 		opts = append(opts, webtty.WithMasterPreferences(server.options.Preferences))
 	}
 
-	log.Println("creating tty: ")
 	tty, err := webtty.New(&wsWrapper{conn}, slave, opts...)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create webtty")
 	}
 
-	log.Println("running webtty: ", tty)
+	log.Println("running webtty: ")
 	err = tty.Run(ctx)
 
 	return err
 }
 
+func (server *Server) errorHandler(w http.ResponseWriter, r *http.Request, status int) {
+	w.WriteHeader(status)
+	if status == http.StatusNotFound {
+		indexVars := map[string]interface{}{
+			"title": "404 Page Not Found",
+			"body":  template.HTML("<h1>404 Page Not Found</h1>"),
+		}
+		indexTemplate, err := template.New("index").Parse(CommonTemplate)
+		if err != nil {
+			log.Println("index template parse failed") // must be valid
+			w.Write([]byte("404 Page Not Found"))
+			return
+		}
+		indexBuf := new(bytes.Buffer)
+		err = indexTemplate.Execute(indexBuf, indexVars)
+		if err != nil {
+			http.Error(w, "Internal Server Error", 500)
+			return
+		}
+
+		w.Write(indexBuf.Bytes())
+	}
+}
+
 func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		server.errorHandler(w, r, http.StatusNotFound)
+		return
+	}
+
 	titleVars := server.titleVariables(
 		[]string{"server", "master"},
 		map[string]map[string]interface{}{

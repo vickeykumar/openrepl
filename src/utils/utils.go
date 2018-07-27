@@ -12,6 +12,7 @@ func InitLogging(name string) {
 	err := os.MkdirAll(LOG_PATH, 0755)
 	if err == nil {
 		log.Printf("Writting gotty logs in : " + LOG_PATH + "/" + name + ".log")
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
 		log.SetOutput(&lumberjack.Logger{
 			Filename:   LOG_PATH + "/" + name + ".log",
 			MaxSize:    10, // megabytes

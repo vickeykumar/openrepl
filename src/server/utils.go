@@ -111,3 +111,30 @@ func handleDemo(rw http.ResponseWriter, req *http.Request) {
 		rw.Write(JsonMarshal(demoResponse))
 	}
 }
+
+var CommonTemplate = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.title}}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
+    <link rel="stylesheet" href="./css/scribbler-global.css">
+    <link rel="stylesheet" href="./css/scribbler-doc.css">
+    <script src="./js/preprocessing.js"></script>
+    <link rel="author" href="humans.txt">
+  </head>
+  <body>
+    <div class="doc__bg"></div>
+    <nav class="header">
+      <h1 class="logo"><span class="go__color">GO</span>REPL</h1>
+      <ul class="menu">
+        <div class="menu__item toggle"><span></span></div>
+        <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
+      </ul>
+    </nav>
+  {{.body}}
+  </body>
+</html>`
