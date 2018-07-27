@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
-
+	"io/ioutil"
 	"containers"
 	"github.com/kr/pty"
 	"github.com/pkg/errors"
@@ -34,9 +34,11 @@ func New(command string, argv []string, options ...Option) (*LocalCommand, error
 	cmd := exec.Command(command, argv...)
 	cmd.Dir = containers.HOME_DIR + command + "/" + strconv.Itoa(int(time.Now().Unix()))
 	os.MkdirAll(cmd.Dir, 0755)
+	ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0644)
 	cmd.Env = append(cmd.Env, "TERM=xterm")
 	cmd.Env = append(cmd.Env, "GOPATH=/opt/gotty/")
 	cmd.Env = append(cmd.Env, "HOME="+cmd.Dir)
+	cmd.Env = append(cmd.Env, "HOSTNAME="+command)
 	pty, err := pty.Start(command, cmd)
 	if err != nil {
 		// todo close cmd?
