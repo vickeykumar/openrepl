@@ -135,6 +135,13 @@ var CommonTemplate = `<!doctype html>
         <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
       </ul>
     </nav>
+  <div class="wrapper">
   {{.body}}
+  </div>
+  <footer class="footer">
+    <a href="./about.html" class="link link--light">About</a> <span class="dot"></span>
+    2018&copy;<span class="go__color">GO</span>REPL 
+    </footer>
+    <script src="./js/common.js"></script>
   </body>
 </html>`

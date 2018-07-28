@@ -198,6 +198,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.Handle(pathPrefix+"docs/", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"doc.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"about.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"references.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"robots.txt", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"css/", http.StripPrefix(pathPrefix, staticFileHandler))
 

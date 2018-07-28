@@ -47,8 +47,9 @@ bindata/static/meta: bindata/static resources/meta
 bindata/static/doc.html: bindata/static resources/doc.html bindata/static/docs
 	cp resources/doc.html bindata/static/doc.html
 
-bindata/static/about.html: bindata/static resources/about.html
+bindata/static/about.html: bindata/static resources/about.html resources/references.html
 	cp resources/about.html bindata/static/about.html
+	cp resources/references.html bindata/static/references.html
 
 bindata/static/NewFile.html: bindata/static resources/NewFile.html
 	cp resources/NewFile.html bindata/static/NewFile.html
