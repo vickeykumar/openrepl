@@ -124,41 +124,6 @@ openssl req -x509 -nodes -days 9999 -newkey rsa:2048 -keyout ~/.gotty.key -out ~
 
 For additional security, you can use the SSL/TLS client certificate authentication by providing a CA certificate file to the `--tls-ca-crt` option (this option requires the `-t` or `--tls` to be set). This option requires all clients to send valid client certificates that are signed by the specified certification authority.
 
-## Sharing with Multiple Clients
-
-GoTTY starts a new process with the given command when a new client connects to the server. This means users cannot share a single terminal with others by default. However, you can use terminal multiplexers for sharing a single process with multiple clients.
-
-For example, you can start a new tmux session named `gotty` with `top` command by the command below.
-
-```sh
-$ gotty tmux new -A -s gotty top
-```
-
-This command doesn't allow clients to send keystrokes, however, you can attach the session from your local terminal and run operations like switching the mode of the `top` command. To connect to the tmux session from your terminal, you can use following command.
-
-```sh
-$ tmux new -A -s gotty
-```
-
-By using terminal multiplexers, you can have the control of your terminal and allow clients to just see your screen.
-
-### Quick Sharing on tmux
-
-To share your current session with others by a shortcut key, you can add a line like below to your `.tmux.conf`.
-
-```
-# Start GoTTY in a new window with C-t
-bind-key C-t new-window "gotty tmux attach -t `tmux display -p '#S'`"
-```
-
-## Playing with Docker
-
-When you want to create a jailed environment for each client, you can use Docker containers like following:
-
-```sh
-$ gotty -w docker run -it --rm busybox
-```
-
 ## Development
 
 You can build a binary using the following commands. Windows is not supported now. go1.9 is required.
