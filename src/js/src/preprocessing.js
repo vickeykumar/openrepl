@@ -73,7 +73,7 @@ var Color = require('color');
 	  container_size = container_size || 10000;
 	  for(var i = 0; i < iterations; i++)
 	    x = (x ^ (x << 1) ^ (x >> 1)) % container_size;
-	  return x;
+	  return Math.abs(x);
 	}
 	
 	function randomNumber(minimum, maximum){
@@ -87,31 +87,36 @@ var Color = require('color');
 		return PopularColors[noOftheDay%PopularColors.length];
 	}
 
+	function adjustcolor(colorObj) {
+		var minrand = 0;
+		console.log('before lumin1: ',colorObj.luminosity());
+		if(colorObj.isLight()) {
+			console.log('light color: ',colorObj.hex());
+			if (colorObj.luminosity() > 0.7) {
+				minrand = 0.3;
+			}
+			colorObj = colorObj.darken(randomNumber(minrand,0.4));
+		} else {
+			console.log('dark color: ',colorObj.hex());
+			if (colorObj.luminosity()<0.2) {
+				minrand = 0.5;
+			}
+			colorObj = colorObj.lighten(randomNumber(minrand,0.7));
+		}
+		console.log('after lumin: ',colorObj.luminosity());
+		return colorObj;
+	}
+
 	function setupColorThemes() {
 		try {
 			var accent_color = ColorOfTheDay();
-			var minrand = 0;
-			//console.log('color: ',accent_color);
+			console.log('ColorOfTheDay: ',accent_color);
 			if (accent_color!==undefined) {
 				var colorObj = Color(accent_color);
-				console.log('lumin1: ',colorObj.luminosity())
-				if(colorObj.isLight()) {
-					console.log('light color: ',accent_color);
-					if (colorObj.luminosity() > 0.7) {
-						minrand = 0.3;
-					}
-					colorObj = colorObj.darken(randomNumber(minrand,0.4));
-				} else {
-					console.log('dark color: ',accent_color);
-					if (colorObj.luminosity()<0.2) {
-						minrand = 0.5;
-					}
-					colorObj = colorObj.lighten(randomNumber(minrand,0.7));
-				}
-				console.log('lumin: ',colorObj.luminosity())
+				colorObj = adjustcolor(colorObj);
 				var accent_color_light = colorObj.alpha(0.5).lighten(0.5);
 				var accent_color_dark = colorObj.alpha(0.9).darken(0.5);
-				var accent_color_rev = colorObj.negate().alpha(0.5).darken(0.2);
+				var accent_color_rev = adjustcolor(colorObj.negate().alpha(0.5).darken(0.2));
 				var accent_color_rev_dark = accent_color_rev.alpha(0.9).darken(0.5);
 				//console.log('color: ',colorObj);
 				document.documentElement.style.setProperty('--accent-color', colorObj.hex());
