@@ -98,6 +98,14 @@ tools:
 	$(GOROOT)/bin/go get github.com/tcnksm/ghr
 	$(GOROOT)/bin/go get github.com/jteeuwen/go-bindata/...
 
+gobuild:
+	@echo "building " ${GOROOT}
+	@echo "using bootstrap " ${GOROOT_BOOTSTRAP}
+	cd ${GOROOT}/src && \
+	./all.bash || true
+
+buildgo: gobuild tools
+
 clean:
 	@echo ""
 	@echo ".... Cleaning " ${TARGET}

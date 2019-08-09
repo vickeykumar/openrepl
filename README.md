@@ -30,6 +30,7 @@ $ ../bin/gotty -w
 ## debian:
 ```sh
 $ cd src
+$ make buildgo GOROOT_BOOTSTRAP=/usr/lib/go-x.xx/     (non x86_64 machines)
 $ make deb
 $ sudo dpkg -i ../deb/gotty.deb
 ```
