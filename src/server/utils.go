@@ -46,6 +46,7 @@ type Demo struct {
 	Github string
 	Codes  []Codes
 	Usage  []Usage
+	Doc    string
 }
 
 type DemoResp struct {

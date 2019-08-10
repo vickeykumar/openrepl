@@ -165,12 +165,15 @@ function ToggleFunction() {
     }
   }
 
-  function PrintUsage(obj,cmd) {
+  function PrintUsage(obj,docm,cmd) {
     //docs
     var doc = get('.callout');
     var doclink = get('.button--primary',doc);
     if (cmd && doc &&  doclink) {
-      doclink.setAttribute("href", "./docs/"+cmd+".html");
+      if(docm==undefined|| docm=="") {
+        docm = "./doc.html"
+      }
+      doclink.setAttribute("href", docm);
     }
     var keybinding = get('.keybinding');
     var keybinding__details = getAll('.keybinding__detail',keybinding);
@@ -220,7 +223,7 @@ function ToggleFunction() {
               i=0;
             });
             setTimeout(PrintGithub, 200, obj["Demo"]["Github"]);
-            setTimeout(PrintUsage, 400, obj["Demo"]["Usage"],cmd);
+            setTimeout(PrintUsage, 400, obj["Demo"]["Usage"],obj["Demo"]["Doc"],cmd);
           } else {
             console.log("Error: Unable to render Demo and Usage");
           }

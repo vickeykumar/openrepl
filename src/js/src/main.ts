@@ -21,7 +21,7 @@ function handleTerminalOptions(elem, option) {
                     // code...
                     var iframe = document.createElement("IFRAME");
                     iframe.setAttribute("class","java");
-                    iframe.setAttribute("src","http://www.javarepl.com/embed.html");
+                    iframe.setAttribute("src","https://tryjshell.org");
                     iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
                     elem.appendChild(iframe);
                     return false;

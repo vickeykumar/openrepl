@@ -21,6 +21,8 @@ var Commands2memLimitMap = map[string]int64{
 	"gointerpreter": 45, // 44 with pp
 	"python2.7":     2,  // 3
 	"bash":          2,  // 2
+	"ipython":       8,
+	"ipython3":	     8,
 }
 
 var memLimitMutex sync.Mutex

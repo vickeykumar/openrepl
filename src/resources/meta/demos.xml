@@ -3,6 +3,7 @@
 	<Demo>
 		<Name>cling</Name>
 		<Github>https://github.com/root-project/cling</Github>
+		<Doc>./docs/cling.html</Doc>
 		<Codes>
 			<Name>help</Name>
 			<Code>
@@ -96,6 +97,7 @@ signature: ret_type filename(args)</Result>
 	<Demo>
 		<Name>gointerpreter</Name>
 		<Github>https://github.com/vickeykumar/Go-interpreter</Github>
+		<Doc>./docs/gointerpreter.html</Doc>
 		<Codes>
 			<Code>
 				<Prompt>go&gt;&gt;</Prompt>
@@ -173,6 +175,7 @@ Hi: 9</Result>
 
 	<Demo>
 		<Name>python</Name>
+		<Doc>./docs/python.html</Doc>
 		<Codes>
 			<Code>
 				<Prompt>&gt;&gt;&gt;</Prompt>
@@ -231,62 +234,186 @@ Hi: 9</Result>
 	</Demo>
 
 	<Demo>
-		<Name>java</Name>
-		<Github>https://github.com/albertlatacz/java-repl</Github>
+		<Name>ipython</Name>
+		<Doc>./docs/python.html</Doc>
 		<Codes>
 			<Code>
-				<Prompt>java&gt;</Prompt>
+				<Prompt>In [1]</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>Out[1]: 12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>In [2]</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>Out[2]: 43</Result>
+			</Code>
+			<Code>
+				<Prompt>In [3]</Prompt>
+				<Statement> i=0</Statement>
+			</Code>
+			<Code>
+				<Prompt>In [4]</Prompt>
+				<Statement> i</Statement>
+				<Result>Out[4]: 0</Result>
+			</Code>
+			<Code>
+				<Prompt>In [5]</Prompt>
+				<Statement> for i in range(10):
+...        print "Hi: ",i</Statement>
+			<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>In [6]</Prompt>
+				<Statement> import time</Statement>
+			</Code>
+			<Code>
+				<Prompt>In [7]</Prompt>
+				<Statement> time.time()</Statement>
+				<Result>Out[7]: 1531933100.30023</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>help(object)</Command>
+			<Description>display help about the given object.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit or ctrl-D</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+	</Demo>
+
+	<Demo>
+		<Name>ipython3</Name>
+		<Doc>./docs/python.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>In [1]</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>Out[1]: 12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>In [2]</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>Out[2]: 43</Result>
+			</Code>
+			<Code>
+				<Prompt>In [3]</Prompt>
+				<Statement> i=0</Statement>
+			</Code>
+			<Code>
+				<Prompt>In [4]</Prompt>
+				<Statement> i</Statement>
+				<Result>Out[4]: 0</Result>
+			</Code>
+			<Code>
+				<Prompt>In [5]</Prompt>
+				<Statement> for i in range(10):
+...        print("Hi: ",i)</Statement>
+			<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>In [6]</Prompt>
+				<Statement> import time</Statement>
+			</Code>
+			<Code>
+				<Prompt>In [7]</Prompt>
+				<Statement> time.time()</Statement>
+				<Result>Out[7]: 1531933100.30023</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>help(object)</Command>
+			<Description>display help about the given object.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit or ctrl-D</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+	</Demo>
+
+	<Demo>
+		<Name>java</Name>
+		<Github>https://github.com/javaterminal/tryjshell</Github>
+		<Doc>./docs/java.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>jshell&gt;</Prompt>
 				<Statement> double[] arr = {19, 12.89, 16.5, 200, 13.7};</Statement>
-				<Result>double[] arr = [19, 12.89, 16.5, 200, 13.7]</Result>
+				<Result>arr ==> double[5] { 19.0, 12.89, 16.5, 200.0, 13.7 }</Result>
 			</Code>
 			<Code>
-				<Prompt>java&gt;</Prompt>
+				<Prompt>jshell&gt;</Prompt>
 				<Statement> double total = 0;</Statement>
-				<Result>double total = 0.0</Result>
+				<Result>total ==> 0.0</Result>
 			</Code>
 			<Code>
-				<Prompt>java&gt;</Prompt>
+				<Prompt>jshell&gt;</Prompt>
 				<Statement> for(int i=0; i&gt;arr.length; i++){
         	total = total + arr[i];
         }</Statement>
 			</Code>
 			<Code>
-				<Prompt>java&gt;</Prompt>
+				<Prompt>jshell&gt;</Prompt>
 				<Statement> total</Statement>
-				<Result>java.lang.Double = 262.09</Result>
+				<Result>total ==> 262.09</Result>
 			</Code>
 			<Code>
-				<Prompt>java&gt;</Prompt>
+				<Prompt>jshell&gt;</Prompt>
 				<Statement> System.out.format("The total is: %.3f", total);</Statement>
-				<Result>The total is: 262.090</Result>
+				<Result>The total is: 262.090 ==> java.io.PrintStream@6267c3bb</Result>
 			</Code>
 		</Codes>
 		<Codes>
 			<Code>
-				<Prompt>java&gt;</Prompt>
+				<Prompt>jshell&gt;</Prompt>
 				<Statement> import java.util.Date;</Statement>
-				<Result>Imported java.util.Date</Result>
 			</Code>
 			<Code>
-				<Prompt>java&gt;</Prompt>
+				<Prompt>jshell&gt;</Prompt>
 				<Statement> Date date = new Date();</Statement>
-				<Result>java.util.Date date = Fri Jul 20 16:34:00 UTC 2018</Result>
+				<Result>date ==> Sat Aug 10 08:58:58 GMT 2019</Result>
 			</Code>
 		</Codes>
 		<Usage>
-			<Command>:help</Command>
+			<Command>/help</Command>
 			<Description>shows this help.</Description>
 		</Usage>
 		<Usage>
-			<Command>:cls</Command>
-			<Description>clears screen.</Description>
+			<Command>/reset</Command>
+			<Description>reset the shell.</Description>
 		</Usage>
 		<Usage>
-			<Command>:load</Command>
-			<Description>loads source file.</Description>
+			<Command>/open</Command>
+			<Description>open a source file.</Description>
 		</Usage>
 		<Usage>
-			<Command>:quit</Command>
+			<Command>/save</Command>
+			<Description>save snippet source to a file.</Description>
+		</Usage>
+		<Usage>
+			<Command>/exit</Command>
 			<Description>quit the REPL.</Description>
 		</Usage>
 	</Demo>
