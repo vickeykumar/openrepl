@@ -464,4 +464,67 @@ Welcome 5</Result>
 			<Description>exits the bash.</Description>
 		</Usage>
 	</Demo>
+
+	<Demo>
+		<Name>irb</Name>
+		<Doc>https://www.ruby-lang.org/en/documentation/quickstart/</Doc>
+		<Codes>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> "Hello World"</Statement>
+				<Result>=> "Hello World"</Result>
+			</Code>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> puts "Hello World"</Statement>
+				<Result>Hello World &lt;br&gt;=> nil</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> a = 3 ** 2</Statement>
+				<Result>=> 9</Result>
+			</Code>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> b = 4 ** 2</Statement>
+				<Result>=> 16</Result>
+			</Code>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> Math.sqrt(a+b)</Statement>
+				<Result>=> 5.0</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> for a in 1..5 do</Statement>
+			</Code>
+			<Code>
+				<Prompt>irb(main):001:0*</Prompt>
+				<Statement> puts "hello #{a}!"</Statement>
+			</Code>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> end</Statement>
+				<Result>hello 1!
+hello 2!
+hello 3!
+hello 4!
+hello 5!
+=> 1..5</Result>
+			</Code>
+		</Codes>
+
+		<Usage>
+			<Command>help</Command>
+			<Description>shows help.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit</Command>
+			<Description>quit the REPL.</Description>
+		</Usage>
+	</Demo>
 </DemoList>
