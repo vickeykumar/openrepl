@@ -3,7 +3,7 @@ include Makefile.include
 DEBIAN_ROOT = ${ROOT}/deb
 OUTPUT_DIR = ./builds
 GIT_COMMIT = $(shell git rev-parse HEAD | cut -c1-7)
-VERSION = 2.0.0-alpha.3
+VERSION = 1.0.0-beta
 TARGET=gotty
 BUILD_OPTIONS = -ldflags "-X main.Version=$(VERSION) -X main.CommitID=$(GIT_COMMIT)"
 
@@ -19,7 +19,7 @@ gotty:	${TARGET}/main.go server/*.go webtty/*.go backend/*.go containers/*.go ${
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: bindata/static/js/gotty-bundle.js bindata/static/index.html bindata/static/doc.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css/xterm.css bindata/static/meta
+asset: bindata/static/js/gotty-bundle.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css/xterm.css bindata/static/meta
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	$(GOROOT)/bin/gofmt -w server/asset.go
 
@@ -32,9 +32,10 @@ bindata:
 bindata/static: bindata
 	mkdir bindata/static
 
-bindata/static/index.html: bindata/static resources/index.html resources/robots.txt
+bindata/static/index.html: bindata/static resources/index.html resources/robots.txt jsconsole/build/static/jsconsole.html
 	cp resources/index.html bindata/static/index.html
 	cp resources/robots.txt bindata/static/robots.txt
+	cp jsconsole/build/static/jsconsole.html bindata/static/jsconsole.html
 
 bindata/static/docs: bindata/static resources/docs
 	mkdir -p bindata/static/docs
@@ -54,9 +55,11 @@ bindata/static/about.html: bindata/static resources/about.html resources/referen
 bindata/static/NewFile.html: bindata/static resources/NewFile.html
 	cp resources/NewFile.html bindata/static/NewFile.html
 
-bindata/static/images: bindata/static resources/images
+bindata/static/images: bindata/static resources/images jsconsole/build/static/media
 	mkdir -p bindata/static/images
+	mkdir -p bindata/static/media
 	cp -Rv resources/images/* bindata/static/images/
+	cp -Rv jsconsole/build/static/media/* bindata/static/media/
 
 bindata/static/js: bindata/static resources/js
 	mkdir -p bindata/static/js
@@ -66,9 +69,10 @@ bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js js/
 	cp js/dist/gotty-bundle.js bindata/static/js/gotty-bundle.js
 	cp js/dist/preprocessing.js bindata/static/js/preprocessing.js
 
-bindata/static/css: bindata/static resources/css
+bindata/static/css: bindata/static resources/css jsconsole/build/static/css/jsconsole.css
 	mkdir -p bindata/static/css
 	cp -Rv resources/css/* bindata/static/css/
+	cp jsconsole/build/static/css/jsconsole.css bindata/static/css/jsconsole.css
 
 bindata/static/css/xterm.css: bindata/static/css js/node_modules/xterm/dist/xterm.css
 	cp js/node_modules/xterm/dist/xterm.css bindata/static/css/xterm.css
@@ -84,6 +88,18 @@ js/dist/gotty-bundle.js: js/src/* js/node_modules/webpack
 js/node_modules/webpack:
 	cd js && \
 	npm install
+
+jsconsole/node_modules/webpack:
+	@echo "building jsconsole: "
+	cd jsconsole && \
+	npm install
+
+jsconsole/build/static/js/jsconsole.js: bindata/static/js jsconsole/node_modules/webpack
+	cd jsconsole && \
+	NODE_ENV=production REACT_APP_VERSION=${VERSION} `npm bin`/webpack
+
+bindata/static/js/jsconsole.js: bindata/static/js jsconsole/build/static/js/jsconsole.js
+	cp jsconsole/build/static/js/jsconsole.js bindata/static/js/jsconsole.js
 
 deb: all
 	mkdir -p ${DEBIAN_ROOT}/gotty/usr/lib/systemd/system
@@ -112,6 +128,8 @@ clean:
 	cd ${TARGET} && \
 	make clean
 	rm -rf bindata
+	rm -rf js/node_modules
+	rm -rf jsconsole/node_modules
 	@echo ".... Clean Done"
 
 test:
