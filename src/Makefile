@@ -128,9 +128,13 @@ clean:
 	cd ${TARGET} && \
 	make clean
 	rm -rf bindata
+	@echo ".... Clean Done"
+
+cleanjs:
 	rm -rf js/node_modules
 	rm -rf jsconsole/node_modules
 	@echo ".... Clean Done"
+
 
 test:
 	if [ `go fmt $(go list ./... | grep -v /vendor/) | wc -l` -gt 0 ]; then echo "go fmt error"; exit 1; fi
