@@ -35,6 +35,7 @@ export interface Connection {
     close(): void;
     send(data: string): void;
     isOpen(): boolean;
+    isClosed(): boolean;
     onOpen(callback: () => void): void;
     onReceive(callback: (data: string) => void): void;
     onClose(callback: (closeEvent: object) => void): void;
@@ -150,7 +151,7 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                     }, this.reconnect * 1000);
                 }
                 sessionCookieObj.DecrementSessionCount();
-                console.log("close event: ",closeEvent['code'],closeEvent['reason']);
+                console.log("close event: ",closeEvent['code'],closeEvent['reason'], connection.isClosed());
                 switch(closeEvent['code']) {
                     case 1000:
                         this.term.output("connection closed by remote host.");
@@ -161,7 +162,8 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         break;
 
                     default:
-                        this.term.output("connection closed.");
+                        this.term.output("connection closed by remote host.");
+                        this.term.output("\r\n OR");
                         this.term.output("\r\nResource temporarily unavailable, Please try again after some time.");
                 }
 	    });

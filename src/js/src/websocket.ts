@@ -40,6 +40,13 @@ export class Connection {
         return false
     }
 
+    isClosed(): boolean {
+        if (this.bare.readyState == WebSocket.CLOSED) {
+            return true
+        }
+        return false
+    }
+
     onOpen(callback: () => void) {
         this.bare.onopen = (event) => {
             callback();
