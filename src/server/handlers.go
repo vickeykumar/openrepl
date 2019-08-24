@@ -48,6 +48,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		wieght := containers.GetCommandWieght(command)
 		totalWieght := counter.addWieght(int(wieght))
 		closeReason := "unknown reason"
+		closeCode := websocket.CloseNormalClosure
 
 		defer func() {
 			num := counter.done()
@@ -73,7 +74,13 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			log.Println("Can not upgrade connection: " + closeReason)
 			return
 		}
-		defer conn.Close()
+		defer func() {
+			log.Println("close status: ", closeCode)
+			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode , closeReason), time.Now().Add(time.Second))
+			//wait for 1 sec deadline to write the buffers
+			time.Sleep(time.Second)
+			conn.Close()
+		}()
 
 		// placed this statement here as we need to notify the closereason and close
 		if int64(server.options.MaxConnection) != 0 {

@@ -37,7 +37,7 @@ export interface Connection {
     isOpen(): boolean;
     onOpen(callback: () => void): void;
     onReceive(callback: (data: string) => void): void;
-    onClose(callback: () => void): void;
+    onClose(callback: (closeEvent: object) => void): void;
 }
 
 export interface ConnectionFactory {
@@ -132,11 +132,13 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         const autoReconnect = JSON.parse(payload);
                         console.log("Enabling reconnect: " + autoReconnect + " seconds")
                         this.reconnect = autoReconnect;
-                        break;
+			break;
+                    default:
+                        console.log("unsupported data recieved: ",data);
                 }
             });
 
-            connection.onClose(() => {
+            connection.onClose((closeEvent) => {
                 clearInterval(pingTimer);
                 this.term.deactivate();
                 this.term.showMessage("Connection Closed", 2000);    // tune message timeout accordingly
@@ -148,8 +150,22 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                     }, this.reconnect * 1000);
                 }
                 sessionCookieObj.DecrementSessionCount();
-                this.term.output("connection closed")
-            });
+                console.log("close event: ",closeEvent['code'],closeEvent['reason']);
+                switch(closeEvent['code']) {
+                    case 1000:
+                        this.term.output("connection closed by remote host.");
+                        break;
+
+                    case 1005:
+                        this.term.output("connection closed.");
+                        break;
+
+                    default:
+                        this.term.output("connection closed.");
+                        this.term.output("\r\nResource temporarily unavailable, Please try again after some time.");
+                }
+	    });
+
 
             // when tab/window is closed
             window.onbeforeunload = function() {

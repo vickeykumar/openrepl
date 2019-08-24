@@ -34,7 +34,7 @@ export interface Connection {
     isOpen(): boolean;
     onOpen(callback: () => void): void;
     onReceive(callback: (data: string) => void): void;
-    onClose(callback: () => void): void;
+    onClose(callback: (closeEvent: object) => void): void;
 }
 export interface ConnectionFactory {
     create(): Connection;
