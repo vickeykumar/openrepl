@@ -12,7 +12,7 @@ declare var gotty_term: string;
 
 function handleTerminalOptions(elem, option) {
     if (option!==null && elem!==null) {
-        var javaframe = elem.getElementsByClassName("java")[0];
+        var javaframe = elem.getElementsByClassName("javaframe")[0];
         if (javaframe !== undefined) {
             elem.removeChild(javaframe);
         }
@@ -20,11 +20,20 @@ function handleTerminalOptions(elem, option) {
                 case "java":
                     // code...
                     var iframe = document.createElement("IFRAME");
-                    iframe.setAttribute("class","java");
+                    iframe.setAttribute("class","javaframe");
                     iframe.setAttribute("src","https://tryjshell.org");
                     iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
                     elem.appendChild(iframe);
                     return false;
+
+                case "javascript":
+                    // code...
+                    var iframe = document.createElement("IFRAME");
+                    iframe.setAttribute("class","javaframe");
+                    iframe.setAttribute("src","./jsconsole.html");
+                    iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
+                    elem.appendChild(iframe);
+                    return false; 
                 
                 default:
                     // code...

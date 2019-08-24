@@ -14,8 +14,7 @@ version: ${version}`,
 });
 
 const help = () => ({
-  value: `:theme dark|light
-:load &lt;script_url&gt; load also supports shortcuts, like \`:load jquery\`
+  value: `:load &lt;script_url&gt; load also supports shortcuts, like \`:load jquery\`
 :libraries
 :clear
 :history
@@ -156,7 +155,6 @@ const commands = {
   libraries,
   help,
   load,
-  theme,
   clear,
   history,
   set,
