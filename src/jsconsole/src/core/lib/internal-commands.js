@@ -27,7 +27,7 @@ ${about().value}`,
 
 const about = () => ({
   value:
-    'Click on object links to expand and search through it.',
+    'Note: Click on object links to expand and search through it.\nPress shift+enter for multiline statements.',
   html: false,
 });
 

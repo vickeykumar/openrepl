@@ -370,7 +370,7 @@ Hi: 9</Result>
 			</Code>
 			<Code>
 				<Prompt>jshell&gt;</Prompt>
-				<Statement> for(int i=0; i&gt;arr.length; i++){
+				<Statement> for(int i=0; i&lt;arr.length; i++){
         	total = total + arr[i];
         }</Statement>
 			</Code>
@@ -525,6 +525,140 @@ hello 5!
 		<Usage>
 			<Command>exit</Command>
 			<Description>quit the REPL.</Description>
+		</Usage>
+	</Demo>
+
+	<Demo>
+		<Name>javascript</Name>
+		<Github>https://github.com/vickeykumar/jsconsole</Github>
+		<Doc>https://developer.mozilla.org/bm/docs/Web/JavaScript</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var arr = [19, 12.89, 16.5, 200, 13.7];</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> arr</Statement>
+				<Result>&lt;*Array (5)[ 19, 12.89, 16.5, 200, 13.7 ]  &lt;-- click on the result link to navigate array.</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var total = 0;</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> for(var i=0; i&lt;arr.length; i++){     // press shift+enter for multiline input 
+        	total = total + arr[i];      // shift+enter for multiline input
+        }</Statement>
+        		<Result>&lt;* 262.09</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> total</Statement>
+				<Result>&lt;* 262.09</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> alert("Total is : "+total);</Statement>
+				<Result>**check windows alert box for message**</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var date = new Date(Date.now());</Statement>
+				<Result>&lt;* Date { … }</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> date.toString();</Statement>
+				<Result>&lt;* "Sun Aug 25 2019 15:28:50 GMT+0530 (India Standard Time)"</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> :help</Statement>
+				<Result>:load &lt;script_url&gt; load also supports shortcuts, like `:load jquery`
+:libraries
+:clear
+:history
+:version
+copy() and $_ for last value
+
+Note: Click on object links to expand and search through it.
+Press shift+enter for multiline statements.
+</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> :libraries</Statement>
+				<Result>jquery: https://code.jquery.com/jquery.min.js
+underscore: https://cdn.jsdelivr.net/underscorejs/latest/underscore-min.js
+lodash: https://cdn.jsdelivr.net/lodash/latest/lodash.min.js
+moment: https://cdn.jsdelivr.net/momentjs/latest/moment.min.js
+datefns: https://cdn.jsdelivr.net/gh/date-fns/date-fns/dist/date_fns.min.js</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> :load https://cdnjs.cloudflare.com/ajax/libs/mathjs/6.1.0/math.min.js</Statement>
+				<Result>Loading script…
+Loaded https://cdnjs.cloudflare.com/ajax/libs/mathjs/6.1.0/math.min.js</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> math.round(math.e, 3);</Statement>
+				<Result>&lt;* 2.718</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> math.atan2(3, -3) / math.pi;</Statement>
+				<Result>&lt;* 0.75</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> math.log(10000, 10);</Statement>
+				<Result>&lt;* 4</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> math.pow([[-1, 2], [3, 1]], 2);</Statement>
+				<Result>&lt;* Array(2)[
+    0: Array(2)[
+            0: 7
+            1: 0
+       ]
+    1: Array(2)[
+            0: 0
+            1: 7
+       ]
+]</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>:help</Command>
+			<Description>shows this help.</Description>
+		</Usage>
+		<Usage>
+			<Command>:load</Command>
+			<Description>loads the &lt;script_url&gt; load also supports shortcuts, like `:load jquery`</Description>
+		</Usage>
+		<Usage>
+			<Command>:libraries</Command>
+			<Description>List loaded libraries.</Description>
+		</Usage>
+		<Usage>
+			<Command>:clear</Command>
+			<Description>clears the console.</Description>
+		</Usage>
+		<Usage>
+			<Command>shift+enter</Command>
+			<Description>multiline inputs for block, loops and functions.</Description>
 		</Usage>
 	</Demo>
 </DemoList>
