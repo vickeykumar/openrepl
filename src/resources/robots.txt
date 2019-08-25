@@ -1,10 +1,5 @@
 User-agent: *
 Allow: /
 Disallow: /feedback
-Disallow: /js
-Disallow: /css
-Disallow: /media
-Disallow: /auth_token.js
-Disallow: /config.js
 
 
