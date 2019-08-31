@@ -26,5 +26,20 @@ var getAll = function (selector, scope) {
 	      }
 	    }
 	    icon.addEventListener('click', showNav);
+	    //replace all urls with with origin url in case of iframe webredirect
+	    var parent_origin = '';
+	    if (document.referrer !== '') {
+	    	parent_origin = new URL(document.referrer).origin;
+	    }
+	    if(window.self !== window.top && parent_origin !==window.location.origin) {
+	    	//inside an iframe web redirect
+	    	var links = document.links;
+		let i = links.length;
+		while (i--) {
+			let absUrl = new URL(links[i].href, window.location.href).href;
+			links[i].href = absUrl.replace(window.location.origin,parent_origin);
+		}
+	    }
+	    
 	});
 })();

@@ -645,8 +645,8 @@ Loaded https://cdnjs.cloudflare.com/ajax/libs/mathjs/6.1.0/math.min.js</Result>
 			<Description>shows this help.</Description>
 		</Usage>
 		<Usage>
-			<Command>:load</Command>
-			<Description>loads the &lt;script_url&gt; load also supports shortcuts, like `:load jquery`</Description>
+			<Command>:load&lt;br&gt;</Command>
+			<Description>loads the `script_url`; load also supports shortcuts, like `:load jquery`</Description>
 		</Usage>
 		<Usage>
 			<Command>:libraries</Command>

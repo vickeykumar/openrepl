@@ -81,6 +81,20 @@ function ToggleFunction() {
       }
     }
   }
+  
+  function getAbsoluteFrameUrl(url) {
+	//replace all urls with with origin url in case of iframe webredirect
+	var parent_origin = '';
+	if (document.referrer !== '') {
+	    	parent_origin = new URL(document.referrer).origin;
+	}
+	var absoluteUrl = new URL(url, window.location.href).href;
+	if(window.self !== window.top && parent_origin !==window.location.origin) {
+	    	//inside an iframe web redirect
+		return absoluteUrl.replace(window.location.origin,parent_origin); 
+	}
+	return absoluteUrl;
+  }
 
   function getSelectValue() {
     // body...
@@ -173,7 +187,8 @@ function ToggleFunction() {
       if(docm==undefined|| docm=="") {
         docm = "./doc.html"
       }
-      doclink.setAttribute("href", docm);
+      let absDocUrl = getAbsoluteFrameUrl(docm);
+      doclink.setAttribute("href", absDocUrl);
     }
     var keybinding = get('.keybinding');
     var keybinding__details = getAll('.keybinding__detail',keybinding);
