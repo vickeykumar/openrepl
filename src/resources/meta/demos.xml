@@ -420,6 +420,7 @@ Hi: 9</Result>
 
 	<Demo>
 		<Name>bash</Name>
+		<Doc>http://linuxcommand.org/index.php</Doc>
 		<Codes>
 			<Code>
 				<Prompt>bash$</Prompt>
