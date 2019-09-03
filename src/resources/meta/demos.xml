@@ -537,6 +537,7 @@ hello 5!
 			<Code>
 				<Prompt>&gt;</Prompt>
 				<Statement> var arr = [19, 12.89, 16.5, 200, 13.7];</Statement>
+				<Result>&lt;* undefined</Result>
 			</Code>
 			<Code>
 				<Prompt>&gt;</Prompt>
@@ -546,6 +547,7 @@ hello 5!
 			<Code>
 				<Prompt>&gt;</Prompt>
 				<Statement> var total = 0;</Statement>
+				<Result>&lt;* undefined</Result>
 			</Code>
 			<Code>
 				<Prompt>&gt;</Prompt>
@@ -660,6 +662,117 @@ Loaded https://cdnjs.cloudflare.com/ajax/libs/mathjs/6.1.0/math.min.js</Result>
 		<Usage>
 			<Command>shift+enter</Command>
 			<Description>multiline inputs for block, loops and functions.</Description>
+		</Usage>
+	</Demo>
+
+	<Demo>
+		<Name>node</Name>
+		<Github>https://github.com/nodejs/node</Github>
+		<Doc>https://nodejs.org/dist/latest-v10.x/docs/api/repl.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> .help</Statement>
+				<Result>.break    Sometimes you get stuck, this gets you out
+.clear    Alias for .break
+.editor   Enter editor mode
+.exit     Exit the repl
+.help     Print this help message
+.load     Load JS from a file into the REPL session
+.save     Save all evaluated commands in this REPL session to a file
+</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var arr = [19, 12.89, 16.5, 200, 13.7];</Statement>
+				<Result>undefined</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> arr</Statement>
+				<Result>[ 19, 12.89, 16.5, 200, 13.7 ]</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var total = 0;</Statement>
+				<Result>undefined</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> for(var i=0; i&lt;arr.length; i++) {
+... total = total + arr[i];
+}</Statement>
+        		<Result>undefined</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> total</Statement>
+				<Result>262.09</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var date = new Date(Date.now());</Statement>
+				<Result>undefined</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> date.toString();</Statement>
+				<Result>'Tue Sep 03 2019 20:23:52 GMT+0530 (India Standard Time)'</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> .load add.js</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> add(1,3)</Statement>
+				<Result>4</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> .editor
+// Entering editor mode (^D to finish, ^C to cancel)
+function welcome(name) {
+  return `Hello ${name}!`;
+}
+
+welcome('Node.js User');
+
+// ^D</Statement>
+				<Result>'Hello Node.js User!'</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>.help</Command>
+			<Description>shows this help.</Description>
+		</Usage>
+		<Usage>
+			<Command>.load</Command>
+			<Description>Load JS from a file into the REPL session</Description>
+		</Usage>
+		<Usage>
+			<Command>.break</Command>
+			<Description>Sometimes you get stuck, this gets you out</Description>
+		</Usage>
+		<Usage>
+			<Command>.clear</Command>
+			<Description>Alias for .break</Description>
+		</Usage>
+		<Usage>
+			<Command>.editor</Command>
+			<Description>Enter editor mode</Description>
+		</Usage>
+		<Usage>
+			<Command>.exit</Command>
+			<Description>Exit the repl</Description>
 		</Usage>
 	</Demo>
 </DemoList>
