@@ -25,3 +25,11 @@ apt install ipython3
 
 #install Ruby(irb)
 apt install ruby
+
+#install nodejs
+apt install nodejs
+
+#install perli
+apt install rlwrap
+npm install perli -g
+

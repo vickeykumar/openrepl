@@ -750,6 +750,20 @@ welcome('Node.js User');
 				<Result>'Hello Node.js User!'</Result>
 			</Code>
 		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> a`Tab`</Statement>
+				<Result>async        await
+
+assert       async_hooks</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> ht`Tab`</Statement>
+				<Result>http   http2  https</Result>
+			</Code>
+		</Codes>
 		<Usage>
 			<Command>.help</Command>
 			<Description>shows this help.</Description>
@@ -773,6 +787,10 @@ welcome('Node.js User');
 		<Usage>
 			<Command>.exit</Command>
 			<Description>Exit the repl</Description>
+		</Usage>
+		<Usage>
+			<Command>`Tab`</Command>
+			<Description>Syntax Completion</Description>
 		</Usage>
 	</Demo>
 </DemoList>
