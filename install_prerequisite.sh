@@ -8,6 +8,7 @@ apt install golang
 
 #install npm
 apt install npm
+npm install npm@latest -g
 
 #install cling
 
