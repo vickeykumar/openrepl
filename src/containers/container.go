@@ -24,6 +24,7 @@ var Commands2memLimitMap = map[string]int64{
 	"ipython":       8,
 	"ipython3":	     8,
 	"irb":           4,
+	"perli":         2,
 }
 
 var memLimitMutex sync.Mutex
@@ -74,6 +75,10 @@ func InitContainers() {
 			continue
 		}
 		Containers[command] = containerObj
+		os.MkdirAll(HOME_DIR, 0777)
+		os.Chmod(HOME_DIR, 0777)
+		os.MkdirAll(HOME_DIR + command, 0777)
+		os.Chmod(HOME_DIR + command, 0777)
 	}
 }
 

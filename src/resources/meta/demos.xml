@@ -793,4 +793,154 @@ assert       async_hooks</Result>
 			<Description>Syntax Completion</Description>
 		</Usage>
 	</Demo>
+
+	<Demo>
+		<Name>perli</Name>
+		<Github>https://github.com/mklement0/perli</Github>
+		<Doc>https://www.guru99.com/perl-tutorials.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> .help</Statement>
+				<Result>REPL commands (start with '.'):
+    .doc &lt;search-string&gt; or ? &lt;search-string&gt; or ... &lt;search-string&gt;? searches
+      the Perl docs.
+    .remi &lt;regex-op&gt; prints additional RegEx Matching Info; see above.
+    .sh &lt;shell-cmd&gt; executes a shell command using system(), with arguments
+      interpreted by the shell only; e.g.: .sh ls
+    .clear / .cls clears the screen; note: may not work in Cygwin and MSYS.
+    .exit / .quit exits the REPL (just 'exit' works too).
+    .man opens perli's own man page.
+    .home opens perli's homepage, https://github.com/mklement0/perli.
+    .help or ? prints these instructions.
+</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> print "Hello, world!\n";</Statement>
+				<Result>Hello, world!
+1</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> $num = 7;</Statement>
+				<Result>7</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> $txt = "it is $num";</Statement>
+				<Result>'it is 7'</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> @array=(1,2,3,4);</Statement>
+				<Result>1
+2
+3
+4</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> $total = 0;</Statement>
+				<Result>0</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> foreach my $value (@array) { $total = $total + $value; }</Statement>
+        		<Result>''</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> total</Statement>
+				<Result>10</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> $datestring = localtime();</Statement>
+				<Result>'Thu Sep  5 22:11:45 2019'</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> $datestring = gmtime();</Statement>
+				<Result>'Thu Sep  5 16:42:31 2019'</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> .load add.js</Statement>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> add(1,3)</Statement>
+				<Result>4</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> ?chomp</Statement>
+				<Result>chomp VARIABLE
+    chomp( LIST )
+    chomp   This safer version of "chop" removes any trailing string that
+            corresponds to the current value of $/ (also known as
+            $INPUT_RECORD_SEPARATOR in the "English" module). It returns the
+            total number of characters removed from all its arguments. It's
+            often used to remove the newline from the end of an input record
+            when you're worried that the final record may be missing its
+            newline. When in paragraph mode ("$/ = ''"), it removes all
+            trailing newlines from the string. When in slurp mode ("$/ =
+            undef") or fixed-length record mode ($/ is a reference to an
+            integer or the like; see perlvar), "chomp" won't remove
+            anything. If VARIABLE is omitted, it chomps $_. Example:
+            ...
+            ...
+</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> cho`Tab`</Statement>
+				<Result>chomp  chop   chown</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> get`Tab`</Statement>
+				<Result>getc              getgrnam          gethostent        getnetbyname      getpgrp           getprotobyname    getpwent          getservbyname     getsockname
+getgrent          gethostbyaddr     getlogin          getnetent         getppid           getprotobynumber  getpwnam          getservbyport     getsockopt
+getgrgid          gethostbyname     getnetbyaddr      getpeername       getpriority       getprotoent       getpwuid          getservent </Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>.help</Command>
+			<Description>shows this help.</Description>
+		</Usage>
+		<Usage>
+			<Command>.doc ... or ? ...</Command>
+			<Description>searches the Perl docs.</Description>
+		</Usage>
+		<Usage>
+			<Command>.remi ...</Command>
+			<Description>prints additional RegEx Matching Info.</Description>
+		</Usage>
+		<Usage>
+			<Command>.clear</Command>
+			<Description>clears the screen.</Description>
+		</Usage>
+		<Usage>
+			<Command>.exit</Command>
+			<Description>Exits the repl</Description>
+		</Usage>
+		<Usage>
+			<Command>`Tab`</Command>
+			<Description>Syntax Completion</Description>
+		</Usage>
+	</Demo>
 </DemoList>

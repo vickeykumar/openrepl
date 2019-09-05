@@ -32,5 +32,10 @@ apt install nodejs
 
 #install perli
 apt install rlwrap
-npm install perli -g
+apt install perl
+apt install perl-doc
+git clone https://github.com/vickeykumar/perli.git
+make install
+
+
 
