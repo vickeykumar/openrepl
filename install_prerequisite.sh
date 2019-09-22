@@ -11,6 +11,8 @@ apt install npm
 npm install npm@latest -g
 
 #install cling
+# cling takes some time to init first instance, add below lines to rc.local(startup)
+#/usr/bin/cling 21321 .q > /dev/null 2>&1 &
 
 #install gointerpreter
 git clone https://github.com/vickeykumar/Go-interpreter.git

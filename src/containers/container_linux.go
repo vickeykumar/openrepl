@@ -6,8 +6,10 @@ import (
 	"github.com/containerd/cgroups"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
+	"bytes"
 	"log"
 	"os"
+	"os/exec"
 	"strconv"
 	"sync"
 	"syscall"
@@ -136,4 +138,17 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 	containerObj.SubCgroups = make(map[int]cgroups.Cgroup)
 	log.Println("INFO: New Container created for : ", name)
 	return &containerObj, nil
+}
+
+
+func EnableNetworking(pid int) {
+	//log.Println("euid: ",syscall.Getuid(), syscall.Geteuid())
+	var b bytes.Buffer
+	cmd := exec.Command("/usr/bin/nsenter", "-n", "-t"+strconv.Itoa(pid), "ifconfig", "lo", "up")
+    cmd.Stdout = &b
+    cmd.Stderr = &b
+    err := cmd.Start()
+    if err != nil {
+       log.Println("ERROR: error enabling network for pid: ", pid, "error: ", err.Error(), string(b.Bytes()))
+    }
 }

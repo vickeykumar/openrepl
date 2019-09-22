@@ -19,6 +19,7 @@ fi
 
 chgrp -R cgroupusers /sys/fs/cgroup
 chmod -R u=rwx,g=rwx /sys/fs/cgroup
+chmod 4755 /usr/bin/nsenter
 
 mkdir -p /gottyTraces
 chown gottyuser /gottyTraces

@@ -39,3 +39,7 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 	log.Println("INFO: New Container created for : ", name)
 	return &containerObj, nil
 }
+
+func EnableNetworking(pid int) {
+    log.Println("Network enabled for pid: ", pid)
+}

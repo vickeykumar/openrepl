@@ -5,3 +5,5 @@ if getent passwd gottyuser > /dev/null 2>&1; then
     echo "gottyuser exists: deleting ..."
     /usr/sbin/userdel -f gottyuser
 fi
+
+chmod 0755 /usr/bin/nsenter

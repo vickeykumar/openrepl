@@ -25,6 +25,7 @@ var Commands2memLimitMap = map[string]int64{
 	"ipython3":	     8,
 	"irb":           4,
 	"perli":         3,
+	"node":          10,
 }
 
 var memLimitMutex sync.Mutex
