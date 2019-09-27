@@ -44,9 +44,6 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			}
 		}
 
-		r.ParseForm()
-		log.Println(command+" : Data recieved in Form: ", r.Form)
-
 		num := counter.add(1)
 		wieght := containers.GetCommandWieght(command)
 		totalWieght := counter.addWieght(int(wieght))
