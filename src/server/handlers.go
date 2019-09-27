@@ -44,6 +44,9 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			}
 		}
 
+		r.ParseForm()
+		log.Println(command+" : Data recieved in Form: ", r.Form)
+
 		num := counter.add(1)
 		wieght := containers.GetCommandWieght(command)
 		totalWieght := counter.addWieght(int(wieght))
@@ -239,6 +242,7 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	err := server.titleTemplate.Execute(titleBuf, titleVars)
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
+		log.Println("Error while executing title template: ",err.Error())
 		return
 	}
 
@@ -250,6 +254,7 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	err = server.indexTemplate.Execute(indexBuf, indexVars)
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
+		log.Println("Error while executing Index template: ",err.Error())
 		return
 	}
 

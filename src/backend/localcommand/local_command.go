@@ -11,6 +11,7 @@ import (
 	"containers"
 	"github.com/kr/pty"
 	"github.com/pkg/errors"
+	"log"
 )
 
 const (
@@ -30,8 +31,12 @@ type LocalCommand struct {
 	ptyClosed chan struct{}
 }
 
-func New(command string, argv []string, options ...Option) (*LocalCommand, error) {
-	cmd := exec.Command(command, argv...)
+func New(command string, argv []string, ppid int, options ...Option) (*LocalCommand, error) {
+	if ppid != -1 && !containers.IsProcess(ppid) {
+		return nil, errors.Errorf("failed to start command `%s` due to invalid parent id: %d", command, ppid)
+	}
+	commandArgs := containers.GetCommandArgs(command, argv, ppid)
+	cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
 	cmd.Dir = containers.HOME_DIR + command + "/" + strconv.Itoa(int(time.Now().Unix()))
 	os.MkdirAll(cmd.Dir, 0755)
 	if command == "bash" {
@@ -41,7 +46,7 @@ func New(command string, argv []string, options ...Option) (*LocalCommand, error
 	cmd.Env = append(cmd.Env, "GOPATH=/opt/gotty/")
 	cmd.Env = append(cmd.Env, "HOME="+cmd.Dir)
 	cmd.Env = append(cmd.Env, "HOSTNAME="+command)
-	pty, err := pty.Start(command, cmd)
+	pty, err := pty.Start(command, cmd, ppid)
 	if err != nil {
 		// todo close cmd?
 		return nil, errors.Wrapf(err, "failed to start command `%s`", command)
@@ -77,7 +82,10 @@ func New(command string, argv []string, options ...Option) (*LocalCommand, error
 			os.RemoveAll(lcmd.cmd.Dir)
 		}()
 
-		lcmd.cmd.Wait()
+		cmderr := lcmd.cmd.Wait()
+		if cmderr != nil {
+	        log.Printf("lcmd.cmd.wait : %s", cmderr.Error())
+		}
 	}()
 
 	return lcmd, nil

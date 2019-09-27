@@ -21,6 +21,7 @@ import (
 	"pkg/homedir"
 	"pkg/randomstring"
 	"webtty"
+	"encoder"
 )
 
 const STATUS_SUCCESS = "SUCCESS"
@@ -55,7 +56,9 @@ func New(factory Factory, options *Options) (*Server, error) {
 		panic("index template parse failed") // must be valid
 	}
 
-	titleTemplate, err := noesctmpl.New("title").Parse(options.TitleFormat)
+	titleTemplate, err := noesctmpl.New("title").Funcs(noesctmpl.FuncMap{
+	    "encodePID": encoder.EncodePID,
+  	}).Parse(options.TitleFormat)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to parse window title format `%s`", options.TitleFormat)
 	}

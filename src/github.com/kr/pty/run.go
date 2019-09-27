@@ -10,7 +10,7 @@ import (
 // Start assigns a pseudo-terminal tty os.File to c.Stdin, c.Stdout,
 // and c.Stderr, calls c.Start, and returns the File of the tty's
 // corresponding pty.
-func Start(command string, c *exec.Cmd) (pty *os.File, err error) {
+func Start(command string, c *exec.Cmd, ppid int) (pty *os.File, err error) {
 	pty, tty, err := Open()
 	if err != nil {
 		return nil, err
@@ -20,7 +20,9 @@ func Start(command string, c *exec.Cmd) (pty *os.File, err error) {
 	c.Stdin = tty
 	c.Stderr = tty
 	c.SysProcAttr = &syscall.SysProcAttr{Setctty: true, Setsid: true}
-	containers.AddContainerAttributes(command, c.SysProcAttr) // containers attrib
+	if ppid == -1 {
+		containers.AddContainerAttributes(command, c.SysProcAttr) // containers attrib not inside parent
+	}
 	err = c.Start()
 	if err != nil {
 		pty.Close()

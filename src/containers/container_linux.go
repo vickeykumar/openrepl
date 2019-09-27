@@ -45,6 +45,13 @@ func (c *container) AddProcess(pid int) {
 	log.Println("INFO: Waiting for command to finish...", pid)
 }
 
+func (c *container) IsProcess(pid int) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.SubCgroups[pid]
+	return ok
+}
+
 func (c *container) Delete() {
 	c.Control.Delete()
 	log.Println("controller deleted for : ", c.Name)
@@ -152,3 +159,25 @@ func EnableNetworking(pid int) {
        log.Println("ERROR: error enabling network for pid: ", pid, "error: ", err.Error(), string(b.Bytes()))
     }
 }
+
+func GetCommandArgs(command string, argv []string, ppid int) (commandArgs []string) {
+	var commandlist []string
+	commandpath, err := exec.LookPath(command)		// lookup path for absolutepath
+	if err != nil {
+		commandpath = command
+	}
+	commandlist = append(commandlist, commandpath)
+	commandlist = append(commandlist, argv...)
+	if ppid == -1 {
+		commandArgs = append(commandArgs, commandlist...)
+	} else {
+		// this process will run in namespace of ppid (forked namespace)
+		// syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWUSER
+		nsenterArgs := []string{"/usr/bin/nsenter", "-u", "-p", "-n", "-U", "-t"+strconv.Itoa(ppid)} 
+		commandArgs = append(commandArgs, nsenterArgs...)
+		commandArgs = append(commandArgs, commandlist...)
+	}
+	log.Println("commands Args: ", commandArgs)
+	return commandArgs
+}
+

@@ -1,9 +1,10 @@
 package localcommand
 
 import (
+	"log"
 	"syscall"
 	"time"
-
+	"encoder"
 	"server"
 )
 
@@ -38,13 +39,19 @@ func (factory *Factory) Name() string {
 }
 
 func (factory *Factory) New(params map[string][]string) (server.Slave, error) {
+	var ppid int = -1
 	argv := make([]string, len(factory.argv))
 	copy(argv, factory.argv)
 	if params["arg"] != nil && len(params["arg"]) > 0 {
 		argv = append(argv, params["arg"]...)
 	}
 
-	return New(factory.command, argv, factory.opts...)
+	ppid_str, ok := params["jid"]
+	if ok && len(ppid_str) > 0 {
+		ppid = encoder.DecodeToPID(ppid_str[0])
+	}
+	log.Println("params caught :", params)
+	return New(factory.command, argv, ppid, factory.opts...)
 }
 
 func (factory *Factory) SetNewCommand(command string) {

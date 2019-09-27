@@ -21,6 +21,10 @@ func (c *container) AddProcess(pid int) {
 	log.Println("INFO: Waiting for command to finish...", pid)
 }
 
+func (c *container) IsProcess(pid int) bool {
+	return false
+}
+
 func (c *container) Delete() {
 	log.Println("container deleted for : ", c.Name)
 }
@@ -42,4 +46,13 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 
 func EnableNetworking(pid int) {
     log.Println("Network enabled for pid: ", pid)
+}
+
+func GetCommandArgs(command string, argv []string, ppid int) (commandArgs []string) {
+	var commandlist []string
+	commandlist = append(commandlist, command)
+	commandlist = append(commandlist, argv...)
+	commandArgs = append(commandArgs, commandlist...)
+	log.Println("commands Args: ", commandArgs)
+	return commandArgs
 }

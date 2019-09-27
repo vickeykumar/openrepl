@@ -1,6 +1,6 @@
 import { Hterm } from "./hterm";
 import { Xterm } from "./xterm";
-import { Terminal, WebTTY, protocols } from "./webtty";
+import { Terminal, WebTTY, protocols, jidHandler } from "./webtty";
 import { ConnectionFactory } from "./websocket";
 
 // @TODO remove these
@@ -11,6 +11,7 @@ declare var gotty_term: string;
 
 
 function handleTerminalOptions(elem, option) {
+    var flag = true;
     if (option!==null && elem!==null) {
         var javaframe = elem.getElementsByClassName("javaframe")[0];
         if (javaframe !== undefined) {
@@ -24,7 +25,8 @@ function handleTerminalOptions(elem, option) {
                     iframe.setAttribute("src","https://tryjshell.org");
                     iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
                     elem.appendChild(iframe);
-                    return false;
+                    flag=false;
+                    break;
 
                 case "javascript":
                     // code...
@@ -33,14 +35,17 @@ function handleTerminalOptions(elem, option) {
                     iframe.setAttribute("src","./jsconsole.html");
                     iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
                     elem.appendChild(iframe);
-                    return false; 
+                    flag=false;
+                    break; 
                 
                 default:
                     // code...
-                    return true;
+                    flag=true;
+                    break;
         }
     }
-    return true;
+    jidHandler("");
+    return flag;
 }
 
 // changes

@@ -16,6 +16,35 @@ export const msgSetReconnect = '5';
 
 export var sessionCookieObj = new Cookies.SessionCookie("Session");
 
+const clickhandler = () => {
+                                const optionMenu = document.getElementById("optionMenu");
+                                if(optionMenu!==null) {
+                                    const social_count = optionMenu.getElementsByClassName("social-count")[0] as HTMLSpanElement;
+                                    social_count.textContent = (parseInt("0"+social_count.textContent)+1).toString();
+                                }
+                            };
+
+export const jidHandler = (jid: string) => {
+                    console.log("jid recieved: ", jid);
+                    const optionMenu = document.getElementById("optionMenu");
+                    if(optionMenu!==null) {
+                        const option = optionMenu.getElementsByClassName("forkbtn")[0] as HTMLAnchorElement;
+                        const social_count = optionMenu.getElementsByClassName("social-count")[0] as HTMLSpanElement;
+                        if(option!==null && social_count!==null) {
+                            const url = new URL(window.location.href);
+                            if(url.searchParams.get('jid')!==null || jid==="") {
+                                option.removeAttribute("href"); // disable fork as itself a child/frontend
+                                social_count.textContent="0";
+                                option.removeEventListener("click", clickhandler);
+                                return;
+                            }
+                            let search = url.search=="" ? "?jid="+jid : url.search+"&jid="+jid;
+                            option.setAttribute("href",url.origin+url.pathname+search);
+                            option.addEventListener("click", clickhandler);
+                        }
+                    }
+                };
+
 export interface Terminal {
     info(): { columns: number, rows: number };
     output(data: string): void;
@@ -123,7 +152,28 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                     case msgPong:
                         break;
                     case msgSetWindowTitle:
-                        this.term.setWindowTitle(payload);
+                        let title = payload;
+                        let jid = "";
+                        if (payload.trim().indexOf('<') == 0) {
+                            try {
+                                const parser = new DOMParser();
+                                const xmlDoc = parser.parseFromString(payload, "text/xml");
+                                if (!xmlDoc.documentElement.getElementsByTagName("parsererror").length) {
+                                    const t = xmlDoc.documentElement.getElementsByTagName("title")[0].textContent;
+                                    if (t) {
+                                        title = t;
+                                    }
+                                    const j = xmlDoc.documentElement.getElementsByTagName("jid")[0].textContent;
+                                    if (j) {
+                                        jid = j;
+                                    }
+                                }
+                            } catch(e) {
+                                console.log("xml parsererror: ",e);
+                            }
+                        }
+                        this.term.setWindowTitle(title);
+                        jidHandler(jid);
                         break;
                     case msgSetPreferences:
                         const preferences = JSON.parse(payload);
@@ -131,7 +181,7 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         break;
                     case msgSetReconnect:
                         const autoReconnect = JSON.parse(payload);
-                        console.log("Enabling reconnect: " + autoReconnect + " seconds")
+                        console.log("Enabling reconnect: " + autoReconnect + " seconds");
                         this.reconnect = autoReconnect;
 			break;
                     default:
@@ -152,9 +202,11 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 }
                 sessionCookieObj.DecrementSessionCount();
                 console.log("close event: ",closeEvent['code'],closeEvent['reason'], connection.isClosed());
+                const url = new URL(window.location.href);
+                let jidstr = url.searchParams.get('jid')!==null ? ": jid-"+url.searchParams.get('jid') : "";
                 switch(closeEvent['code']) {
                     case 1000:
-                        this.term.output("connection closed by remote host.");
+                        this.term.output("connection closed by remote host"+jidstr);
                         break;
 
                     case 1005:
@@ -162,9 +214,9 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         break;
 
                     default:
-                        this.term.output("connection closed by remote host.");
+                        this.term.output("connection closed by remote host");
                         this.term.output("\r\n OR");
-                        this.term.output("\r\nResource temporarily unavailable, Please try again after some time.");
+                        this.term.output("\r\nResource"+jidstr+" unavailable, Please try again after some time.");
                 }
 	    });
 

@@ -12,7 +12,7 @@ const HOME_DIR = "/tmp/home/"
 
 var Containers = make(map[string]*container)
 
-const MAX_MEMORY_LIMIT = 900 // Max memory limits in MBs
+const MAX_MEMORY_LIMIT = 2564 // Max memory limits in MBs
 const MB = 1024 * 1024
 
 // Command Name to memory limit in MB (megabytes).
@@ -108,3 +108,24 @@ func DeleteProcessFromSubCgroup(name string, pid int) {
 	}
 	containerobj.DeleteProcessFromSubCgroup(pid)
 }
+
+func IsProcess(pid int) bool {
+	for _, containerObj := range Containers {
+		if containerObj.IsProcess(pid) {
+			return true
+		}
+	}
+	return false
+}
+
+/*func TestCommand(command string, argv []string) {
+		var b bytes.Buffer
+		cmd := exec.Command(command, argv...)
+	    cmd.Stdout = &b
+	    cmd.Stderr = &b
+	    err := cmd.Run()
+	    if err != nil {
+	       log.Println("ERROR: ", err.Error())
+	    }
+	    log.Println("output:", string(b.Bytes()))
+}*/
