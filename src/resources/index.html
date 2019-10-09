@@ -38,6 +38,17 @@
       <!-- Declare all the functions here -->
       <script>
        //document.documentElement.style.setProperty('--accent-color', '#0bd800');
+       function myDropDownToggle() {
+          document.getElementById("myDropdown").classList.toggle("show");
+       }
+
+       function copyToClip() {
+          var copyText = document.getElementById("share-it");
+          copyText.select();
+          copyText.setSelectionRange(0, 99999)
+          document.execCommand("copy");
+        }
+
        function onLoadFn(){
           try {
             var frame = document.getElementById('resultFrame');
@@ -207,6 +218,38 @@
            </a>
            <span class="social-count"><b></b><i></i>0</span>
         </div>
+        <div class="share-btn" onclick="myDropDownToggle()">
+            <svg version="1.0" width="11" height="16" viewBox="0 0 48.000000 48.000000"
+             preserveAspectRatio="xMidYMid meet" class="octicon">
+            <g transform="translate(0.000000,48.000000) scale(0.100000,-0.100000)"
+             stroke="none">
+            <path d="M317 412 c-10 -10 -17 -26 -17 -34 0 -27 -121 -88 -172 -88 -52 0
+            -68 -13 -68 -55 0 -42 16 -55 68 -55 64 0 172 -64 172 -101 0 -37 65 -52 93
+            -21 39 43 7 92 -59 92 -28 0 -56 11 -102 40 -35 22 -60 45 -57 50 3 5 36 27
+            73 49 50 30 74 38 95 34 54 -11 89 54 49 90 -24 22 -55 21 -75 -1z"/>
+            </g>
+            </svg>
+            Share REPL
+        </div>
+        <div id="myDropdown" class="dropdown-content">
+          <div class="dropdown-menu">
+
+                <div class="get-repo-modal-options">
+                      <h4 class="mb-1">
+                        Copy this url to Share REPL and Collaborate with others
+                      </h4>
+                  <div class="input-group">
+                        <input id="share-it" type="text" class="form-control input-monospace input-sm" data-autoselect="" value="https://gorepl.com/" aria-label="share REPL" readonly="">
+                        <div class="input-group-button">
+                          <div aria-label="Copy to clipboard" class="share-btn" tabindex="0" role="button" onclick="copyToClip()"><svg class="octicon octicon-clippy" viewBox="0 0 14 16" version="1.1" width="14" height="20" aria-hidden="true"><path fill-rule="evenodd" d="M2 14h5v1H2v-1zm5-6H2v1h5V7zm2 4V8l-3 3 3 3v-3h5v-2H9zM4.5 9H2v1h2.5V9zM2 12h2.5v-1H2v1zm9 1h1v2c-.02.28-.11.52-.3.8-.19.18-.42.29-.7.3H1c-.55 0-1-.46-1-1V4c0-.55.45-1 1-1h3c0-1.11.89-2 2-2 1.11 0 2 .89 2 2h3c.56 0 1 .45 1 1v6h-2V6H1v9h10v-3zM2 5h8c0-.55-.45-2-1-1H8c-.55 0-1-.45-1-1s-.45-1-1-1-2 .45-1 1-.45 1-1 1H3c-.55 0-2 .45-1 1z" /></svg></div>
+                        </div>
+                  </div>
+
+                </div>
+
+          </div>
+        </div>
+
       </div>
     <br>
     </div>
@@ -290,7 +333,7 @@
         </div>
         <div class="feature__item">
           <h3 class="section__title">Secure and Containerized REPLs</h3>
-          <p>REPLs are created and destroyed on the fly using containers.</p>
+          <p>REPLs are created and destroyed on the fly using containers. REPLs can be forked to create a child terminal is same container that can communicate with the parent REPL. Useful in case of socket/http programming.</p>
         </div>
         <div class="feature__item">
           <h3 class="section__title">Meta-Commands</h3>
@@ -299,6 +342,10 @@
         <div class="feature__item">
           <h3 class="section__title">Prototyping and Proofs of Concepts</h3>
           <p>Helps you learn a programming language faster.</p>
+        </div>
+        <div class="feature__item">
+          <h3 class="section__title">Share/Collaborate</h3>
+          <p>Share your REPL Instance with Others to collaborate with others. Click 'Share REPL' button to generate a unique REPL ID which can be shared with Others.</p>
         </div>
         <hr/>
       </div>

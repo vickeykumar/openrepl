@@ -456,3 +456,120 @@ Fork REPL button */
 .lg .social-count i{
   margin-left:-4px;
 }
+
+/* share button */
+
+.share-btn {
+font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif,Apple Color Emoji,Segoe UI Emoji;
+position: relative;
+display: inline-block;
+font-weight: 500;
+white-space: nowrap;
+vertical-align: middle;
+cursor: pointer;
+user-select: none;
+background-repeat: repeat-x;
+background-position: -1px -1px;
+background-size: 100% 100%;
+border: 1px solid rgba(27,31,35,.2);
+border-radius: .25em;
+-webkit-appearance: none;
+color: #fff;
+background-color: var(--accent-color);
+background-image: linear-gradient(-180deg,var(--accent-color-light),var(--accent-color) 45%);
+padding: 3px 8px;
+font-size: 11px;
+line-height: 12px;
+margin-left: 5px!important;
+list-style: none;
+}
+
+.share-btn:hover {
+    background-color: var(--accent-color-dark);
+    background-image: linear-gradient(-180deg,var(--accent-color),var(--accent-color-dark) 45%);
+    background-position: -.5em;
+    border-color: rgba(27,31,35,.5);
+}
+
+
+/* dropdown button */
+
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: #f1f1f1;
+  min-width: 120px;
+  overflow: auto;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  border-radius: .25em;
+  left: 60%;
+  z-index: 10;
+}
+
+.dropdown a:hover {background-color: #ddd;}
+
+.show {display: block;}
+
+/**dnsfbdsf**/
+
+.get-repo-modal-options {
+font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif,Apple Color Emoji,Segoe UI Emoji;
+font-size: 14px;
+line-height: 1.5;
+color: #24292e;
+list-style: none;
+box-sizing: border-box;
+padding: 8px 16px 16px;
+display: block;
+}
+
+.mb-1 {
+    margin-bottom: 4px!important;
+}
+
+.input-group {
+    display: table;
+}
+
+.input-group-button {
+    width: 10%;
+    vertical-align: middle;
+}
+.input-group-button, .input-group .form-control {
+    display: table-cell;
+}
+
+.input-group .form-control {
+    position: relative;
+    width: 98%;
+}
+.input-monospace {
+    font-family: SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace;
+}
+.input-sm {
+    min-height: 20px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+    font-size: 12px;
+    line-height: 20px;
+}
+@media (min-width: 768px)
+.form-control, .form-select {
+    font-size: 14px;
+}
+.form-control, .form-select {
+    min-height: 18px;
+    padding: 1px 6px;
+    font-size: 14px;
+    line-height: 18px;
+    color: #24292e;
+    vertical-align: middle;
+    background-color: #fff;
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    border: 1px solid #d1d5da;
+    border-radius: 3px;
+    outline: none;
+    box-shadow: inset 0 1px 2px rgba(27,31,35,.075);
+}

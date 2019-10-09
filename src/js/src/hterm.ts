@@ -85,6 +85,23 @@ export class Hterm {
         this.removeMessage();
         this.term.installKeyboard();
     }
+    
+    hardreset(): void {
+        this.removeMessage();
+        this.term.installKeyboard();
+    }
+
+    addEventListener(event: string, callback: (e?: any) => void) {
+        this.elem.addEventListener(event, callback);
+    };
+
+    removeEventListener(event: string, callback: (e?: any) => void) {
+        this.elem.removeEventListener(event, callback);
+    };
+
+    dispatchEvent(eventobj: any) {
+        this.elem.dispatchEvent(eventobj);
+    };
 
     close(): void {
         this.term.uninstallKeyboard();

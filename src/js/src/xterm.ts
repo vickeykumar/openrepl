@@ -56,7 +56,7 @@ export class Xterm {
         }
         if (timeout > 0) {
             this.messageTimer = setTimeout(() => {
-                this.elem.removeChild(this.message);
+                this.removeMessage();
             }, timeout);
         }
     };
@@ -76,7 +76,7 @@ export class Xterm {
 
     onInput(callback: (input: string) => void) {
         this.term.on("data", (data) => {
-            callback(data);
+	     callback(data);
         });
 
     };
@@ -97,6 +97,22 @@ export class Xterm {
         this.removeMessage();
         this.term.clear();
     }
+
+    hardreset(): void {
+        this.term.reset();
+    }
+
+    addEventListener(event: string, callback: (e?: any) => void) {
+        this.elem.addEventListener(event, callback);
+    };
+
+    removeEventListener(event: string, callback: (e?: any) => void) {
+        this.elem.removeEventListener(event, callback);
+    };
+
+    dispatchEvent(eventobj: any) {
+        this.elem.dispatchEvent(eventobj);
+    };
 
     close(): void {
         console.log("closing connection for window xterm")

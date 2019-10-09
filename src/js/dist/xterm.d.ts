@@ -22,5 +22,9 @@ export declare class Xterm {
     onResize(callback: (colmuns: number, rows: number) => void): void;
     deactivate(): void;
     reset(): void;
+    hardreset(): void;
+    addEventListener(event: string, callback: (e?: any) => void): void;
+    removeEventListener(event: string, callback: (e?: any) => void): void;
+    dispatchEvent(eventobj: any): void;
     close(): void;
 }

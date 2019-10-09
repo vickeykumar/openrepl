@@ -1,13 +1,14 @@
 import { Hterm } from "./hterm";
 import { Xterm } from "./xterm";
-import { Terminal, WebTTY, protocols, jidHandler } from "./webtty";
+import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory } from "./webtty";
 import { ConnectionFactory } from "./websocket";
+import { InitializeApp, FireTTY, DisableShareBtn } from "./firetty";
 
 // @TODO remove these
 declare var gotty_auth_token: string;
 declare var gotty_term: string;
 
-
+var master = false;
 
 
 function handleTerminalOptions(elem, option) {
@@ -25,6 +26,7 @@ function handleTerminalOptions(elem, option) {
                     iframe.setAttribute("src","https://tryjshell.org");
                     iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
                     elem.appendChild(iframe);
+                    DisableShareBtn(option);
                     flag=false;
                     break;
 
@@ -35,6 +37,7 @@ function handleTerminalOptions(elem, option) {
                     iframe.setAttribute("src","./jsconsole.html");
                     iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
                     elem.appendChild(iframe);
+                    DisableShareBtn(option);
                     flag=false;
                     break; 
                 
@@ -75,6 +78,14 @@ export function ActionOnChange() {
     };
 }
 
+var hash = window.location.hash.replace(/#/g, '');
+if (!hash) {
+    master = true;
+} else {
+    master = false;
+}
+InitializeApp();
+
 /*
 var command = getSelectValue()
 if (command===null) {
@@ -87,17 +98,26 @@ if (command===null) {
 const elem = document.getElementById("terminal")
 if (elem !== null) {
     var term: Terminal;
+    var wt: WebTTYFactory;
+    var ft: WebTTYFactory;
+    var closer: Icallback;
+    var factory: ConnectionFactory;
     if (gotty_term == "hterm") {
         term = new Hterm(elem);
     } else {
         term = new Xterm(elem);
     }
-    const httpsEnabled = window.location.protocol == "https:";
-    const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws_c';
-    const args = window.location.search;
-    var factory = new ConnectionFactory(url, protocols);
-    var wt = new WebTTY(term, factory, args, gotty_auth_token);
-    var closer = wt.open();
+    if (master) {
+        const httpsEnabled = window.location.protocol == "https:";
+        const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws_c';
+        const args = window.location.search;
+        ft = new FireTTY(term, master);
+        factory = new ConnectionFactory(url, protocols);
+        wt = new WebTTY(term, factory, ft, args, gotty_auth_token);
+    } else {
+        wt = new FireTTY(term, master);
+    }
+    closer = wt.open();
     console.log("webtty created: ");
 
     window.addEventListener("unload", () => {
@@ -123,11 +143,17 @@ if (elem !== null) {
             }
             
             if (option !== null) {
-                const httpsEnabled = window.location.protocol == "https:";
-                const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws'+ '_' + option;
-                const args = window.location.search;
-                factory = new ConnectionFactory(url, protocols);
-                wt = new WebTTY(term, factory, args, gotty_auth_token);
+                if (master) {
+                    const httpsEnabled = window.location.protocol == "https:";
+                    const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws' + '_' + option;
+                    const args = window.location.search;
+                    ft = new FireTTY(term, master);
+                    factory = new ConnectionFactory(url, protocols);
+                    wt = new WebTTY(term, factory, ft, args, gotty_auth_token);
+                } else {
+                    wt = new FireTTY(term, master);
+                }
+            
                 closer = wt.open();
                 console.log("webtty created:");
                 /*window.addEventListener("unload", () => {

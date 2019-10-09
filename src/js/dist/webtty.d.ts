@@ -25,6 +25,10 @@ export interface Terminal {
     onInput(callback: (input: string) => void): void;
     onResize(callback: (colmuns: number, rows: number) => void): void;
     reset(): void;
+    hardreset(): void;
+    addEventListener(event: string, callback: (e?: any) => void): void;
+    removeEventListener(event: string, callback: (e?: any) => void): void;
+    dispatchEvent(eventobj: any): void;
     deactivate(): void;
     close(): void;
 }
@@ -41,12 +45,21 @@ export interface Connection {
 export interface ConnectionFactory {
     create(): Connection;
 }
+export interface Icallback {
+    (): void;
+}
+export interface WebTTYFactory {
+    open(): Icallback;
+    dboutput(type: string, data: string): void;
+}
 export declare class WebTTY {
     term: Terminal;
     connectionFactory: ConnectionFactory;
     args: string;
     authToken: string;
     reconnect: number;
-    constructor(term: Terminal, connectionFactory: ConnectionFactory, args: string, authToken: string);
+    firebaseref: any;
+    constructor(term: Terminal, connectionFactory: ConnectionFactory, ft: WebTTYFactory, args: string, authToken: string);
+    dboutput(type: string, data: string): void;
     open(): () => void;
 }

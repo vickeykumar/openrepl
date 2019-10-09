@@ -55,6 +55,10 @@ export interface Terminal {
     onInput(callback: (input: string) => void): void;
     onResize(callback: (colmuns: number, rows: number) => void): void;
     reset(): void;
+    hardreset(): void;
+    addEventListener(event: string, callback: (e?: any) => void): void;
+    removeEventListener(event: string, callback: (e?: any) => void): void;
+    dispatchEvent(eventobj: any): void;
     deactivate(): void;
     close(): void;
 }
@@ -74,6 +78,14 @@ export interface ConnectionFactory {
     create(): Connection;
 }
 
+export interface Icallback {
+    (): void;
+}
+
+export interface WebTTYFactory {
+    open(): Icallback;
+    dboutput(type: string, data: string): void;
+}
 
 export class WebTTY {
     term: Terminal;
@@ -81,18 +93,28 @@ export class WebTTY {
     args: string;
     authToken: string;
     reconnect: number;
+    firebaseref: any;
 
-    constructor(term: Terminal, connectionFactory: ConnectionFactory, args: string, authToken: string) {
+    constructor(term: Terminal, connectionFactory: ConnectionFactory, ft: WebTTYFactory, args: string, authToken: string) {
         this.term = term;
         this.connectionFactory = connectionFactory;
         this.args = args;
         this.authToken = authToken;
         this.reconnect = -1;
+        this.firebaseref = ft;
+    };
+
+    dboutput(type: string, data: string) {
+        this.firebaseref.dboutput(type, data);
     };
 
     open() {
+        const TermOutput = (data: string) => {
+            this.term.output(data);
+            this.dboutput("output",data);
+        };
         if (!sessionCookieObj.IsSessionCountValid()) {
-            this.term.output("Maximum no of connections reached, \
+            TermOutput("Maximum no of connections reached, \
 Please close/disconnect the old Terminals to proceed or try after "+sessionCookieObj.expiration+" Minutes.");
 
             return () => {
@@ -103,6 +125,14 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
         let connection = this.connectionFactory.create();
         let pingTimer: number;
         let reconnectTimeout: number;
+        let firecloser = this.firebaseref.open();
+
+        const slaveInputhandler = (e) => {
+            //console.log("slaveInputhandler: ", e)
+            if ((e) && e.detail.eventT == "input") { 
+                connection.send(msgInput + e.detail.Data);
+            }
+        };
 
         const setup = () => {
             connection.onOpen(() => {
@@ -141,13 +171,14 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 }, 30 * 1000);
 
                 sessionCookieObj.IncrementSessionCount();
+                this.term.addEventListener('slaveinputEvent', slaveInputhandler);
             });
 
             connection.onReceive((data) => {
                 const payload = data.slice(1);
                 switch (data[0]) {
                     case msgOutput:
-                        this.term.output(atob(payload));
+                        TermOutput(atob(payload));
                         break;
                     case msgPong:
                         break;
@@ -206,17 +237,17 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 let jidstr = url.searchParams.get('jid')!==null ? ": jid-"+url.searchParams.get('jid') : "";
                 switch(closeEvent['code']) {
                     case 1000:
-                        this.term.output("connection closed by remote host"+jidstr);
+                        TermOutput("connection closed by remote host"+jidstr);
                         break;
 
                     case 1005:
-                        this.term.output("connection closed.");
+                        TermOutput("connection closed.");
                         break;
 
                     default:
-                        this.term.output("connection closed by remote host");
-                        this.term.output("\r\n OR");
-                        this.term.output("\r\nResource"+jidstr+" unavailable, Please try again after some time.");
+                        TermOutput("connection closed by remote host");
+                        TermOutput("\r\n OR");
+                        TermOutput("\r\nResource"+jidstr+" unavailable, Please try again after some time.");
                 }
 	    });
 
@@ -235,6 +266,8 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
 	        sessionCookieObj.DecrementSessionCount();
             clearTimeout(reconnectTimeout);
             connection.close();
+            this.term.removeEventListener('slaveinputEvent', slaveInputhandler);
+            firecloser();
         }
     };
 };
