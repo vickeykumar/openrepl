@@ -117,6 +117,7 @@ var Color = require('color');
 				var accent_color_light = colorObj.alpha(0.5).lighten(0.5);
 				var accent_color_dark = colorObj.alpha(0.9).darken(0.5);
 				var accent_color_rev = adjustcolor(colorObj.negate().alpha(0.5).darken(0.2));
+				var accent_color_rev_light = accent_color_rev.alpha(0.5).lighten(0.5);
 				var accent_color_rev_dark = accent_color_rev.alpha(0.9).darken(0.5);
 				//console.log('color: ',colorObj);
 				document.documentElement.style.setProperty('--accent-color', colorObj.hex());
@@ -124,6 +125,7 @@ var Color = require('color');
 				document.documentElement.style.setProperty('--accent-color-light', accent_color_light.hex());
 				document.documentElement.style.setProperty('--accent-color-dark', accent_color_dark.hex());
 				document.documentElement.style.setProperty('--rev-accent-color-dark', accent_color_rev_dark.hex());
+				document.documentElement.style.setProperty('--rev-accent-color-light', accent_color_rev_light.hex());
 			}
 			// statements
 		} catch(e) {
