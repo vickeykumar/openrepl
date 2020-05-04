@@ -4,9 +4,13 @@ import { Terminal } from "./webtty";
 
 var dbpath = "";
 export const getExampleRef = () => {
+      if(window['dbpath']) {
+        return window['dbpath'];
+      }
       var ref = firebase.database().ref();
       var hash = window.location.hash.replace(/#/g, '');
       if (hash) {
+        window['dbpath'] = hash;
         return hash;
       }
       ref = ref.push();
@@ -45,6 +49,7 @@ export class FireTTY {
         //one time generation of dbpath
         if (dbpath == "") {
         	dbpath = getExampleRef();
+            window['dbpath']=dbpath;
         }
         this.dbpath = dbpath;
     };

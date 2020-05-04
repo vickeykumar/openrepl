@@ -3,12 +3,14 @@
 }
 
 .terminal .xterm {
-    width:98%;
-    position: absolute;
+    width:100%;
+    position: inherit;
+    margin: initial;
     margin-top: auto;
-    height: auto;
+    height: inherit;
     z-index: 1;
     background-color: var(--terminal-bg-color);
+    overflow-y: scroll;
 }
 
 .xterm-overlay {

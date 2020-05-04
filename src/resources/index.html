@@ -33,7 +33,8 @@
 	
       <title>Learn Programming languages like C/C++, Go with Online REPL/Interpreter</title>
       <link rel="icon" type="image/svg" href="./images/logo.svg">
-      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+      <!--link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"-->
+      <link href="https://fonts.googleapis.com/css?family=Pacifico" rel="stylesheet">
       <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/railscasts.min.css">
       <link rel="stylesheet" href="./css/scribbler-global.css">
@@ -41,6 +42,7 @@
       <link rel="stylesheet" href="./css/xterm.css" />
       <link rel="stylesheet" href="./css/xterm_customize.css" />
       <link rel="author" href="humans.txt">
+      <script src="https://kit.fontawesome.com/f54540db67.js" crossorigin="anonymous"></script>
       <script src="./js/preprocessing.js"></script>
 
       <!-- Declare all the functions here -->
@@ -209,18 +211,18 @@
       
       <div id="optionMenu">
         <select class="list" style="margin:7px;font-size:15px;width:200px;">
-                <option value="c">C</option>
-                <option value="cpp">C++</option>
-                <option value="go">Go</option>
-                <option value="java">Java</option>
-                <option value="javascript">JavaScript</option>
-                <option value="node">NodeJS</option>
-                <option value="python2.7">Python2.7</option>
-                <option value="ipython">IPython2.7</option>
-                <option value="ipython3">IPython3</option>
-                <option value="irb">Ruby</option>
-                <option value="perli">Perl</option>
-                <option value="bash">bash</option>
+                <option value="c" data-editor="c_cpp">C</option>
+                <option value="cpp" data-editor="c_cpp">C++</option>
+                <option value="go" data-editor="golang">Go</option>
+                <option value="java" data-editor="java">Java</option>
+                <option value="javascript" data-editor="javascript">JavaScript</option>
+                <option value="node" data-editor="javascript">NodeJS</option>
+                <option value="python2.7" data-editor="python">Python2.7</option>
+                <option value="ipython" data-editor="python">IPython2.7</option>
+                <option value="ipython3" data-editor="python">IPython3</option>
+                <option value="irb" data-editor="ruby">Ruby</option>
+                <option value="perli" data-editor="perl">Perl</option>
+                <option value="bash" data-editor="sh">bash</option>
         </select>
 
         <div class="widget">
@@ -266,7 +268,212 @@
     <br>
     </div>
 
-    <div class="terminal" id="terminal"><div class="fullscreen-toggle" id="togglescreen-button" onclick="ToggleFunction();"><i class="fa fa-expand"></i></div></div>
+    <div class="terminal__row" id="terminal__row">
+      <div class="sidebar">
+        <div class="fullscreen-toggle" id="togglescreen-button" onclick="ToggleFunction();"><i class="fa fa-expand"></i></div>
+        <div class="fullscreen-toggle" id="editor-button" onclick="ToggleEditor();"><i class="fa fa-pencil"></i></div>
+        <div class="fullscreen-toggle rotate-fa" id="redo-button" onclick="ToggleReconnect();"><i class="fa fa-redo rotate-fa"></i></div>
+        <div class="fullscreen-toggle" id="play-button" onclick="window.alert('IDE is under development!!');"><i class="fa fas fa-play"></i></div>
+      </div>
+      <div class="ide" id="ide" >
+        <h2>Welcome to <span class="go__color">GO</span>REPL</h2>
+        <div id="editor"></div>
+        <div id="loader"></div>
+        <!--start here-->
+        <div class="controls">
+    
+          <!--form >
+            <input id="input" name="id" placeholder="Editor name">
+          </form--> 
+          <input type="number" class="select-input" style="width:3em" id="efontSize" min="5" max="30" value ="12">
+          <select id="select-theme" class="select-input">
+            <optgroup label="Bright">
+                <option value="ace/theme/chrome">Chrome</option>
+                <option value="ace/theme/clouds">Clouds</option>
+                <option value="ace/theme/crimson_editor">Crimson Editor</option>
+                <option value="ace/theme/dawn">Dawn</option>
+                <option value="ace/theme/dreamweaver">Dreamweaver</option>
+                <option value="ace/theme/eclipse">Eclipse</option>
+                <option value="ace/theme/github">GitHub</option>
+                <option value="ace/theme/iplastic">IPlastic</option>
+                <option value="ace/theme/solarized_light">Solarized Light</option>
+                <option value="ace/theme/textmate">TextMate</option>
+                <option value="ace/theme/tomorrow">Tomorrow</option>
+                <option value="ace/theme/xcode">XCode</option>
+                <option value="ace/theme/kuroir">Kuroir</option>
+                <option value="ace/theme/katzenmilch">KatzenMilch</option>
+                <option value="ace/theme/sqlserver">SQL Server</option>
+            </optgroup>
+            <optgroup label="Dark">
+                <option value="ace/theme/ambiance">Ambiance</option>
+                <option value="ace/theme/chaos">Chaos</option>
+                <option value="ace/theme/clouds_midnight">Clouds Midnight</option>
+                <option value="ace/theme/cobalt">Cobalt</option>
+                <option value="ace/theme/gruvbox">Gruvbox</option>
+                <option value="ace/theme/idle_fingers">idle Fingers</option>
+                <option value="ace/theme/kr_theme">krTheme</option>
+                <option value="ace/theme/merbivore">Merbivore</option>
+                <option value="ace/theme/merbivore_soft">Merbivore Soft</option>
+                <option value="ace/theme/mono_industrial">Mono Industrial</option>
+                <option value="ace/theme/monokai">Monokai</option>
+                <option value="ace/theme/pastel_on_dark">Pastel on dark</option>
+                <option value="ace/theme/solarized_dark">Solarized Dark</option>
+                <option value="ace/theme/terminal">Terminal</option>
+                <option value="ace/theme/tomorrow_night">Tomorrow Night</option>
+                <option value="ace/theme/tomorrow_night_blue">Tomorrow Night Blue</option>
+                <option value="ace/theme/tomorrow_night_bright">Tomorrow Night Bright</option>
+                <option value="ace/theme/tomorrow_night_eighties">Tomorrow Night 80s</option>
+                <option value="ace/theme/twilight">Twilight</option>
+                <option value="ace/theme/vibrant_ink">Vibrant Ink</option>
+            </optgroup>
+          </select>
+          <select id="select-lang" class="select-input">
+            <option value="abap" disabled>ABAP</option>
+            <option value="abc" disabled>ABC</option>
+            <option value="actionscript" disabled>ActionScript</option>
+            <option value="ada" disabled>ADA</option>
+            <option value="apache_conf" disabled>Apache Conf</option>
+            <option value="asciidoc" disabled>AsciiDoc</option>
+            <option value="assembly_x86" disabled>Assembly x86</option>
+            <option value="autohotkey" disabled>AutoHotKey</option>
+            <option value="batchfile" disabled>BatchFile</option>
+            <option value="bro" disabled>Bro</option>
+            <option value="c_cpp">C and C++</option>
+            <option value="c9search" disabled>C9Search</option>
+            <option value="cirru" disabled>Cirru</option>
+            <option value="clojure" disabled>Clojure</option>
+            <option value="cobol" disabled>Cobol</option>
+            <option value="coffee" disabled>CoffeeScript</option>
+            <option value="coldfusion" disabled>ColdFusion</option>
+            <option value="csharp" disabled>C#</option>
+            <option value="css" disabled>CSS</option>
+            <option value="curly" disabled>Curly</option>
+            <option value="d" disabled>D</option>
+            <option value="dart" disabled>Dart</option>
+            <option value="diff" disabled>Diff</option>
+            <option value="dockerfile" disabled>Dockerfile</option>
+            <option value="dot" disabled>Dot</option>
+            <option value="drools" disabled>Drools</option>
+            <option value="dummy" disabled>Dummy</option>
+            <option value="dummysyntax" disabled>DummySyntax</option>
+            <option value="eiffel" disabled>Eiffel</option>
+            <option value="ejs" disabled>EJS</option>
+            <option value="elixir" disabled>Elixir</option>
+            <option value="elm" disabled>Elm</option>
+            <option value="erlang" disabled>Erlang</option>
+            <option value="forth" disabled>Forth</option>
+            <option value="fortran" disabled>Fortran</option>
+            <option value="ftl" disabled>FreeMarker</option>
+            <option value="gcode" disabled>Gcode</option>
+            <option value="gherkin" disabled>Gherkin</option>
+            <option value="gitignore" disabled>Gitignore</option>
+            <option value="glsl" disabled>Glsl</option>
+            <option value="gobstones" disabled>Gobstones</option>
+            <option value="golang">Go</option>
+            <option value="groovy" disabled>Groovy</option>
+            <option value="haml" disabled>HAML</option>
+            <option value="handlebars" disabled>Handlebars</option>
+            <option value="haskell" disabled>Haskell</option>
+            <option value="haskell_cabal" disabled>Haskell Cabal</option>
+            <option value="haxe" disabled>haXe</option>
+            <option value="hjson" disabled>Hjson</option>
+            <option value="html" disabled>HTML</option>
+            <option value="html_elixir" disabled>HTML (Elixir)</option>
+            <option value="html_ruby" disabled>HTML (Ruby)</option>
+            <option value="ini" disabled>INI</option>
+            <option value="io" disabled>Io</option>
+            <option value="jack" disabled>Jack</option>
+            <option value="jade" disabled>Jade</option>
+            <option value="java">Java</option>
+            <option value="javascript">JavaScript</option>
+            <option value="json" disabled>JSON</option>
+            <option value="jsoniq" disabled>JSONiq</option>
+            <option value="jsp" disabled>JSP</option>
+            <option value="jsx" disabled>JSX</option>
+            <option value="julia" disabled>Julia</option>
+            <option value="kotlin" disabled>Kotlin</option>
+            <option value="latex" disabled>LaTeX</option>
+            <option value="less" disabled>LESS</option>
+            <option value="liquid" disabled>Liquid</option>
+            <option value="lisp" disabled>Lisp</option>
+            <option value="livescript" disabled>LiveScript</option>
+            <option value="logiql" disabled>LogiQL</option>
+            <option value="lsl" disabled>LSL</option>
+            <option value="lua" disabled>Lua</option>
+            <option value="luapage" disabled>LuaPage</option>
+            <option value="lucene" disabled>Lucene</option>
+            <option value="makefile" disabled>Makefile</option>
+            <option value="markdown" disabled>Markdown</option>
+            <option value="mask" disabled>Mask</option>
+            <option value="matlab" disabled>MATLAB</option>
+            <option value="maze" disabled>Maze</option>
+            <option value="mel" disabled>MEL</option>
+            <option value="mushcode" disabled>MUSHCode</option>
+            <option value="mysql" disabled>MySQL</option>
+            <option value="nix" disabled>Nix</option>
+            <option value="nsis" disabled>NSIS</option>
+            <option value="objectivec" disabled>Objective-C</option>
+            <option value="ocaml" disabled>OCaml</option>
+            <option value="pascal" disabled>Pascal</option>
+            <option value="perl">Perl</option>
+            <option value="pgsql" disabled>pgSQL</option>
+            <option value="php" disabled>PHP</option>
+            <option value="powershell" disabled>Powershell</option>
+            <option value="praat" disabled>Praat</option>
+            <option value="prolog" disabled>Prolog</option>
+            <option value="properties" disabled>Properties</option>
+            <option value="protobuf" disabled>Protobuf</option>
+            <option value="python">Python</option>
+            <option value="r" disabled>R</option>
+            <option value="razor" disabled>Razor</option>
+            <option value="rdoc" disabled>RDoc</option>
+            <option value="rhtml" disabled>RHTML</option>
+            <option value="rst" disabled>RST</option>
+            <option value="ruby">Ruby</option>
+            <option value="rust" disabled>Rust</option>
+            <option value="sass" disabled>SASS</option>
+            <option value="scad" disabled>SCAD</option>
+            <option value="scala" disabled>Scala</option>
+            <option value="scheme" disabled>Scheme</option>
+            <option value="scss" disabled>SCSS</option>
+            <option value="sh">SH</option>
+            <option value="sjs" disabled>SJS</option>
+            <option value="smarty" disabled>Smarty</option>
+            <option value="snippets" disabled>snippets</option>
+            <option value="soy_template" disabled>Soy Template</option>
+            <option value="space" disabled>Space</option>
+            <option value="sql" disabled>SQL</option>
+            <option value="sqlserver" disabled>SQLServer</option>
+            <option value="stylus" disabled>Stylus</option>
+            <option value="svg" disabled>SVG</option>
+            <option value="swift" disabled>Swift</option>
+            <option value="tcl" disabled>Tcl</option>
+            <option value="tex" disabled>Tex</option>
+            <option value="text">Text</option>
+            <option value="textile" disabled>Textile</option>
+            <option value="toml" disabled>Toml</option>
+            <option value="tsx" disabled>TSX</option>
+            <option value="twig" disabled>Twig</option>
+            <option value="typescript" disabled>Typescript</option>
+            <option value="vala" disabled>Vala</option>
+            <option value="vbscript" disabled>VBScript</option>
+            <option value="velocity" disabled>Velocity</option>
+            <option value="verilog" disabled>Verilog</option>
+            <option value="vhdl" disabled>VHDL</option>
+            <option value="wollok" disabled>Wollok</option>
+            <option value="xml" disabled>XML</option>
+            <option value="xquery" disabled>XQuery</option>
+            <option value="yaml" disabled>YAML</option>
+            <option value="django" disabled>Django</option>
+          </select>
+          <div class="share-btn" onclick="window.alert('IDE is under development!!');"><i class="fas fa-play"></i> Run</div>
+        </div>
+
+        <!-- ends here -->
+      </div>
+      <div class="gutter gutter-horizontal" id="gutter-div"></div>
+      <div class="terminal" id="terminal"></div>
+    </div>
     
     <div class="wrapper">
       <hr/>
@@ -372,7 +579,22 @@
    </footer>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
     <script>hljs.initHighlightingOnLoad();</script>
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/3.6.4/firebase.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.6/ace.js" type="text/javascript" charset="utf-8"></script>
     <script src="./js/scribbler.js"></script>
+    <script>
+          /*var inst = Split(['.ide', '.terminal'], {
+            gutterSize: 3,
+            sizes: [50,50]
+          });*/
+          if (ismob()) {
+            $("#gutter-div").toggleClass("hide-tag");
+          } else {
+            ToggleEditor();
+          }
+    </script>
     <script src="./js/common.js"></script>
     <script src="./auth_token.js"></script>
     <script src="./config.js"></script>

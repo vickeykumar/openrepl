@@ -50,16 +50,55 @@ nav {
   color: var(--code-error-color);
 }
 
-.terminal {
+.terminal__row {
   width: 70%;
   height: 60vh;
   position: relative;
+  display: flex;
+  flex-wrap: wrap;
   margin: -11rem auto 3rem auto;
   text-align: left;
   color: white;
   padding: 0 1rem;
   border-radius: 4px;
   background-color: var(--terminal-bg-color);
+  animation: fadeUp 2s;
+  box-shadow: 0px 12px 36.8px 30.2px rgba(0, 0, 0, 0.1);
+  transition-property: fullscreen;
+  transform-origin: center;
+  -webkit-transition-property:fullscreen;
+  -webkit-transform-origin:center;
+}
+
+.ide {
+  width: 0%;
+  height: inherit;
+  position: inherit;
+  margin: initial;
+  text-align: left;
+  color: white;
+  display: none;
+  padding: initial;
+  border-radius: 4px;
+  background-color: var(--dark-gray-color);
+  animation: fadeUp 2s;
+  box-shadow: 0px 12px 36.8px 30.2px rgba(0, 0, 0, 0.1);
+  transition-property: fullscreen;
+  transform-origin: center;
+  -webkit-transition-property:fullscreen;
+  -webkit-transform-origin:center;
+}
+
+.terminal {
+  width: 100%;
+  height: inherit;
+  position: inherit;
+  margin: initial;
+  text-align: left;
+  color: white;
+  padding: initial;
+  border-radius: 4px;
+  background-color: var(--primary-color);
   animation: fadeUp 2s;
   box-shadow: 0px 12px 36.8px 30.2px rgba(0, 0, 0, 0.1);
   transition-property: fullscreen;
@@ -293,7 +332,7 @@ toggle terminal */
 
 .fullscreen-toggle {
     color: #000;
-    position: absolute;
+    position: relative;
     right: 20px;
     top: 20px;
     z-index: 100;
@@ -303,6 +342,7 @@ toggle terminal */
     line-height: 44px;
     text-align: center;
     width: 44px;
+    margin-bottom: 12px;
     transition: color 0.5s,border-color 0.5s,background-color 0.5s;
     -moz-transition: color 0.5s,border-color 0.5s,background-color 0.5s;
     -webkit-transition: color 0.5s,border-color 0.5s,background-color 0.5s;
@@ -324,6 +364,22 @@ toggle terminal */
     content: "\f066";
 }
 
+.fa-pencil {
+    content: "\f270E";
+}
+
+.fa-redo:hover {
+    -ms-transform: rotate(45deg); /* IE 9 */
+    -webkit-transform: rotate(45deg); /* Chrome, Safari, Opera */
+    transform: rotate(45deg);
+}
+
+.rotate-fa:hover {
+    -ms-transform: rotate(45deg); /* IE 9 */
+    -webkit-transform: rotate(45deg); /* Chrome, Safari, Opera */
+    transform: rotate(45deg);
+}
+
 .fullscreen-toggle:hover {
     background: var(--accent-color);
     color:#000;
@@ -336,6 +392,12 @@ toggle terminal */
 
 .hide-tag {
   display: none;
+}
+
+.toggle-accent-color {
+    background: var(--accent-color);
+    color:#000;
+    border: 1px solid transparent;
 }
 
 /*
@@ -573,3 +635,110 @@ display: block;
     outline: none;
     box-shadow: inset 0 1px 2px rgba(27,31,35,.075);
 }
+
+
+/* splitJS */
+.gutter {
+  cursor: e-resize;
+  height: 100%;
+  background: var(--accent-color-light);
+  filter: grayscale(1);
+  opacity: 0.8;
+}
+
+.gutter.gutter-horizontal {
+    float: left;
+    cursor: ew-resize;
+}
+
+/* On screens that are 800px wide or less, make the columns stack on top of each other instead of next to each other */
+@media screen and (max-width: 800px) {
+  .terminal__row {
+    flex-direction: column;
+  }
+}
+
+/* sidebar */
+
+.sidebar {
+    width:50px;
+    height: auto;
+    right:0;
+    position: absolute!important;
+    z-index: 100;
+    border-radius: inherit;
+    overflow: inherit;
+    padding: inherit;
+}
+
+/* editor */
+
+h2 {
+  text-align: center;
+  font-family: 'Pacifico', cursive;
+  font-size: 30px;
+  margin-top: 85px;
+  color: gray;
+}
+
+#editor {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: none;
+}
+
+.controls {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  z-index: 10;
+}
+
+.select-input{
+  width: auto;
+  height: auto;
+  color: #154349;
+  border-radius: 5px;
+  border: 2px solid #64CEAA;
+}
+
+#input{
+  height: 20px;
+  color: #154349;
+  border-radius: 5px;
+  border: 2px solid #64CEAA;
+  display:inline-block;
+  padding-right:10px;
+}
+
+#loader {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 11;
+  width: 150px;
+  height: 150px;
+  margin: -75px 0 0 -75px;
+  border: 16px solid #f3f3f3;
+  border-radius: 50%;
+  border-top: 16px solid #64CEAA;
+  width: 80px;
+  height: 80px;
+  -webkit-animation: spin 1s linear infinite;
+  animation: spin 1s linear infinite;
+}
+
+@-webkit-keyframes spin {
+  0% { -webkit-transform: rotate(0deg); }
+  100% { -webkit-transform: rotate(360deg); }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+
