@@ -51,7 +51,7 @@ func (factory *Factory) New(params map[string][]string) (server.Slave, error) {
 		ppid = encoder.DecodeToPID(ppid_str[0])
 	}
 	log.Println("params caught :", params)
-	return New(factory.command, argv, ppid, factory.opts...)
+	return New(factory.command, argv, ppid, params, factory.opts...)
 }
 
 func (factory *Factory) SetNewCommand(command string) {

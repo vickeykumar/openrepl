@@ -22,6 +22,7 @@ import (
 	"pkg/randomstring"
 	"webtty"
 	"encoder"
+	"utils"
 )
 
 const STATUS_SUCCESS = "SUCCESS"
@@ -226,14 +227,12 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	wsMux.HandleFunc(pathPrefix+"ws_c", server.generateHandleWS(ctx, cancel, counter, "cling"))
 	wsMux.HandleFunc(pathPrefix+"ws_cpp", server.generateHandleWS(ctx, cancel, counter, "cling"))
 	wsMux.HandleFunc(pathPrefix+"ws_go", server.generateHandleWS(ctx, cancel, counter, "gointerpreter"))
-	wsMux.HandleFunc(pathPrefix+"ws_python2.7", server.generateHandleWS(ctx, cancel, counter, "python2.7"))
 
 	// Expose all other APIs form Commands2DemoMap, refer utils.go
-	if Commands2DemoMap == nil {
-		log.Printf("InitCommands2DemoMap")
+	if utils.Commands2DemoMap == nil {
 		InitCommands2DemoMap()
 	}
-	for command, _ := range Commands2DemoMap {
+	for command, _ := range utils.Commands2DemoMap {
 		log.Printf("Exposing API for %d\n", command)
 		wsMux.HandleFunc(pathPrefix+"ws_"+command, server.generateHandleWS(ctx, cancel, counter, command))
 	}

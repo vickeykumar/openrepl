@@ -11,7 +11,7 @@ declare var gotty_term: string;
 var master = false;
 
 
-function handleTerminalOptions(elem, option) {
+function handleTerminalOptions(elem, option, event="optionchange") {
     var flag = true;
     if (option!==null && elem!==null) {
         var javaframe = elem.getElementsByClassName("javaframe")[0];
@@ -21,6 +21,9 @@ function handleTerminalOptions(elem, option) {
         switch (option) {
                 case "java":
                     // code...
+                    if (event==="optionrun") {
+                        break;
+                    }
                     var iframe = document.createElement("IFRAME");
                     iframe.setAttribute("class","javaframe");
                     iframe.setAttribute("src","https://tryjshell.org");
@@ -78,6 +81,25 @@ export function ActionOnChange() {
     };
 }
 
+function fetchEditorContent() {
+    var editor: any = window["editor"];
+    if( editor.env && editor.env.editor && editor.env.editor.getValue && (typeof(editor.env.editor.getValue) === "function")) {
+        return btoa(editor.env.editor.getValue());
+    }
+    return "";
+}
+
+function updatePayload(eventname="") {
+    var pload: Object = {
+                                "test":"test",
+                        };
+    if (eventname == "optionrun") {
+        pload["IdeLang"] = getSelectValue();
+        pload["IdeContent"] = fetchEditorContent(); 
+    }
+    return pload;
+}
+
 var hash = window.location.hash.replace(/#/g, '');
 if (!hash) {
     master = true;
@@ -86,15 +108,6 @@ if (!hash) {
 }
 InitializeApp();
 
-/*
-var command = getSelectValue()
-if (command===null) {
-    command = ""
-} else {
-    command = "_" + command 
-}
-*/
-
 const elem = document.getElementById("terminal")
 if (elem !== null) {
     var term: Terminal;
@@ -102,6 +115,10 @@ if (elem !== null) {
     var ft: WebTTYFactory;
     var closer: Icallback;
     var factory: ConnectionFactory;
+    // payload to transmit body and other large data over websocket
+    var payload: Object = {
+                                "test":"test",
+                          };
     if (gotty_term == "hterm") {
         term = new Hterm(elem);
     } else {
@@ -113,7 +130,7 @@ if (elem !== null) {
         const args = window.location.search;
         ft = new FireTTY(term, master);
         factory = new ConnectionFactory(url, protocols);
-        wt = new WebTTY(term, factory, ft, args, gotty_auth_token);
+        wt = new WebTTY(term, factory, ft, payload, args, gotty_auth_token);
     } else {
         wt = new FireTTY(term, master);
     }
@@ -149,7 +166,50 @@ if (elem !== null) {
                     const args = window.location.search;
                     ft = new FireTTY(term, master);
                     factory = new ConnectionFactory(url, protocols);
-                    wt = new WebTTY(term, factory, ft, args, gotty_auth_token);
+                    payload = updatePayload("optionchange");
+                    wt = new WebTTY(term, factory, ft, payload, args, gotty_auth_token);
+                } else {
+                    wt = new FireTTY(term, master);
+                }
+            
+                closer = wt.open();
+                console.log("webtty created:");
+                /*window.addEventListener("unload", () => {
+                    console.log("closing connection")
+                    closer();
+                    term.close();
+                });*/
+            }
+        }, 500);
+    });
+
+    //compile and run from editor
+    elem.addEventListener("optionrun", () => {
+        console.log("event caught: optionrun");
+        var event = new Event('unload');
+        window.dispatchEvent(event);
+        setTimeout(function(){                // timeout between two events
+            //var term: Terminal;
+            const option = getSelectValue();
+            console.log("option caught: ",option);
+            if (!handleTerminalOptions(elem, option, "optionrun")) {
+                return;
+            }
+            if (gotty_term == "hterm") {
+                term = new Hterm(elem);
+            } else {
+                term = new Xterm(elem);
+            }
+            
+            if (option !== null) {
+                if (master) {
+                    const httpsEnabled = window.location.protocol == "https:";
+                    const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws' + '_' + option;
+                    const args = window.location.search;
+                    ft = new FireTTY(term, master);
+                    factory = new ConnectionFactory(url, protocols);
+                    payload = updatePayload("optionrun");
+                    wt = new WebTTY(term, factory, ft, payload, args, gotty_auth_token);
                 } else {
                     wt = new FireTTY(term, master);
                 }

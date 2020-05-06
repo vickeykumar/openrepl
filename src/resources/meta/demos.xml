@@ -92,6 +92,24 @@ signature: ret_type filename(args)</Result>
 			<Command>.q</Command>
 			<Description>Exits Cling Interpreter.</Description>
 		</Usage>
+		<Content>/* Welcome to gorepl! */</Content>
+		<Compiler>
+COMPILER=gcc
+FILE=test.c
+if [ "$IdeLang" = "cpp" ]; then
+	COMPILER=g++
+	FILE=test.cpp
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE -o $HOME/test;
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/test" ]; then
+    $HOME/test;
+fi
+printf "\n";
+		</Compiler>
 	</Demo>
 
 	<Demo>
@@ -171,6 +189,20 @@ Hi: 9</Result>
 			<Command>:q</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
+		<Content>/* Welcome to gorepl! */</Content>
+		<Compiler>
+COMPILER=go
+FILE=test.go
+if [ "$IdeLang" = "go" ]; then
+	COMPILER=go
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER run $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
 	</Demo>
 
 	<Demo>
@@ -231,6 +263,88 @@ Hi: 9</Result>
 			<Command>exit() or ctrl-D</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
+		<Content># Welcome to gorepl!</Content>
+		<Compiler>
+COMPILER=python
+FILE=test.py
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+	<Demo>
+		<Name>python2.7</Name>
+		<Doc>./docs/python.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>43</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> i=0</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> i</Statement>
+				<Result>0</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> for i in range(10):
+...        print "Hi: ",i</Statement>
+			<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> import time</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> time.time()</Statement>
+				<Result>1531933100.30023</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>help(object)</Command>
+			<Description>display help about the given object.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit() or ctrl-D</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+		<Content># Welcome to gorepl!</Content>
+		<Compiler>
+COMPILER=python2.7
+FILE=test.py
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
 	</Demo>
 
 	<Demo>
@@ -291,6 +405,17 @@ Hi: 9</Result>
 			<Command>exit or ctrl-D</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
+		<Content># Welcome to gorepl!</Content>
+		<Compiler>
+COMPILER=python
+FILE=test.py
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
 	</Demo>
 
 	<Demo>
@@ -351,6 +476,17 @@ Hi: 9</Result>
 			<Command>exit or ctrl-D</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
+		<Content># Welcome to gorepl!</Content>
+		<Compiler>
+COMPILER=python3
+FILE=test.py
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
 	</Demo>
 
 	<Demo>
@@ -416,6 +552,17 @@ Hi: 9</Result>
 			<Command>/exit</Command>
 			<Description>quit the REPL.</Description>
 		</Usage>
+		<Content>/* Welcome to gorepl! */</Content>
+		<Compiler>
+COMPILER=java
+FILE=test.java
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/*.java;
+fi
+printf "\n";
+		</Compiler>
 	</Demo>
 
 	<Demo>
@@ -464,6 +611,17 @@ Welcome 5</Result>
 			<Command>exit</Command>
 			<Description>exits the bash.</Description>
 		</Usage>
+		<Content># Welcome to gorepl!</Content>
+		<Compiler>
+COMPILER=bash
+FILE=test.sh
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
 	</Demo>
 
 	<Demo>
@@ -527,6 +685,17 @@ hello 5!
 			<Command>exit</Command>
 			<Description>quit the REPL.</Description>
 		</Usage>
+		<Content># Welcome to gorepl!</Content>
+		<Compiler>
+COMPILER=ruby
+FILE=test.rb
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
 	</Demo>
 
 	<Demo>
@@ -663,6 +832,7 @@ Loaded https://cdnjs.cloudflare.com/ajax/libs/mathjs/6.1.0/math.min.js</Result>
 			<Command>shift+enter</Command>
 			<Description>multiline inputs for block, loops and functions.</Description>
 		</Usage>
+		<Content>/* Welcome to gorepl! */</Content>
 	</Demo>
 
 	<Demo>
@@ -792,6 +962,17 @@ assert       async_hooks</Result>
 			<Command>`Tab`</Command>
 			<Description>Syntax Completion</Description>
 		</Usage>
+		<Content>/* Welcome to gorepl! */</Content>
+		<Compiler>
+COMPILER=node
+FILE=test.js
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
 	</Demo>
 
 	<Demo>
@@ -942,5 +1123,16 @@ getgrgid          gethostbyname     getnetbyaddr      getpeername       getprior
 			<Command>`Tab`</Command>
 			<Description>Syntax Completion</Description>
 		</Usage>
+		<Content># Welcome to gorepl!</Content>
+		<Compiler>
+COMPILER=perl
+FILE=test.pl
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
 	</Demo>
 </DemoList>

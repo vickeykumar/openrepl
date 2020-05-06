@@ -5,7 +5,10 @@ package containers
 import (
 	"log"
 	"syscall"
+	"utils"
 )
+
+const BASH_PATH = "/bin/bash"
 
 type container struct {
 	// Name of the container as per command Name.
@@ -48,10 +51,20 @@ func EnableNetworking(pid int) {
     log.Println("Network enabled for pid: ", pid)
 }
 
-func GetCommandArgs(command string, argv []string, ppid int) (commandArgs []string) {
+func GetCommandArgs(command string, argv []string, ppid int, params map[string][]string) (commandArgs []string) {
 	var commandlist []string
-	commandlist = append(commandlist, command)
+	if utils.Iscompiled(params) {
+		commandpath := BASH_PATH
+		commandlist = append(commandlist, commandpath)
+	} else {
+		commandlist = append(commandlist, command)
+	}
 	commandlist = append(commandlist, argv...)
+	if utils.Iscompiled(params) {
+		//this is a compilation request
+		compilerOptions := []string {"-c", utils.GetCompilationScript(command), utils.GetIdeContent(params)}
+		commandlist = append(commandlist, compilerOptions...)
+	}
 	commandArgs = append(commandArgs, commandlist...)
 	log.Println("commands Args: ", commandArgs)
 	return commandArgs

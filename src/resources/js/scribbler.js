@@ -9,6 +9,8 @@ var getAll = function (selector, scope) {
   return scope.querySelectorAll(selector);
 };
 
+const CONTENT_KEY = "editorContent";
+const  CMD_KEY = "command"
 /*
 function reloadCss()
 {
@@ -57,6 +59,21 @@ function ToggleFunction() {
 
 var einst = null;
 
+// updates editor content by ID
+function updateEditorContent(cmd="", content="/* Welcome to gorepl! */") {
+    if(window[CMD_KEY]===cmd) {
+      // no need to update as this is not an optionchange
+      console.log("no change in command: ",cmd)
+      return;
+    }
+    var editor = window["editor"];
+    if( editor.env && editor.env.editor && editor.env.editor.getValue && (typeof(editor.env.editor.setValue) === "function")) {
+        editor.env.editor.setValue(content);
+    }
+    window[CONTENT_KEY] = content; 
+    window[CMD_KEY] = cmd;
+}
+
 function ToggleEditor() {
     TermElement = get("#terminal");
     ideElement =  get("#ide");
@@ -88,6 +105,13 @@ function ToggleReconnect() {
         if (option!==undefined) {
           option.dispatchEvent(new Event("change"));
         }
+    }
+}
+
+function CompileandRun() {
+    const termElem = get("#terminal");
+    if(termElem!==undefined) {
+        termElem.dispatchEvent(new Event("optionrun"));
     }
 }
 
@@ -290,6 +314,7 @@ function ToggleReconnect() {
               i=0;
             });
             setTimeout(PrintGithub, 200, obj["Demo"]["Github"]);
+            setTimeout(updateEditorContent, 200, cmd, obj["Demo"]["Content"]);
             setTimeout(PrintUsage, 400, obj["Demo"]["Usage"],obj["Demo"]["Doc"],cmd);
           } else {
             console.log("Error: Unable to render Demo and Usage");
@@ -471,6 +496,11 @@ $(function() {
         editor = ace.edit("editor");
         editor.setTheme(getTheme());
         editor.$blockScrolling = Infinity;
+        editor.setOptions({
+            enableBasicAutocompletion: true,
+            enableSnippets: true,
+            enableLiveAutocompletion: true
+        });
 
         // Get the queue reference
         var queueRef = currentEditorValue.child("queue");
@@ -546,7 +576,11 @@ $(function() {
         if (val === null) {
             // ...we will initialize a new one. 
             // ...with this content:
-            val = "/* Welcome to gorepl! */\n/* Editor underdevelopment! */";
+            if (window[CONTENT_KEY]) {
+              val = window[CONTENT_KEY];
+            } else {
+              val = "/* Welcome to gorepl! */\n/* Editor underdevelopment! */";
+            }
 
             // Here's where we set the initial content of the editor
             editorValues.child(editorId).set({

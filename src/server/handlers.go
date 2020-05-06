@@ -112,6 +112,12 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 	}
 }
 
+func updateparams(params *url.Values, payload map[string]string) {
+	for key, value := range payload {
+		params.Set(key,value)
+	}
+}
+
 func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn) error {
 	conn.SetWriteDeadline(time.Now().Add(15 * time.Minute)) // only 15 min sessions for services are allowed
 	typ, initLine, err := conn.ReadMessage()
@@ -141,6 +147,9 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn) e
 		return errors.Wrapf(err, "failed to parse arguments")
 	}
 	params := query.Query()
+	updateparams(&params, init.Payload)
+	//log.Println("updated params: ", params)
+
 	var slave Slave
 	slave, err = server.factory.New(params)
 	if err != nil {

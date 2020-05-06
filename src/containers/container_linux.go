@@ -13,8 +13,10 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"utils"
 )
 
+const BASH_PATH = "/bin/bash"
 var CPUshares = uint64(1024)
 
 type container struct {
@@ -160,14 +162,24 @@ func EnableNetworking(pid int) {
     }
 }
 
-func GetCommandArgs(command string, argv []string, ppid int) (commandArgs []string) {
+func GetCommandArgs(command string, argv []string, ppid int, params map[string][]string) (commandArgs []string) {
 	var commandlist []string
-	commandpath, err := exec.LookPath(command)		// lookup path for absolutepath
-	if err != nil {
-		commandpath = command
+	var commandpath string
+	if utils.Iscompiled(params) {
+		commandpath = BASH_PATH
+	} else {
+		commandpath, err := exec.LookPath(command)		// lookup path for absolutepath
+		if err != nil {
+			commandpath = command
+		}
 	}
 	commandlist = append(commandlist, commandpath)
 	commandlist = append(commandlist, argv...)
+	if utils.Iscompiled(params) {
+		//this is a compilation request
+		compilerOptions := []string {"-c", utils.GetCompilationScript(command), utils.GetIdeContent(params)}
+		commandlist = append(commandlist, compilerOptions...)
+	}
 	if ppid == -1 {
 		commandArgs = append(commandArgs, commandlist...)
 	} else {

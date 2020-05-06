@@ -12,6 +12,7 @@ import (
 	"github.com/kr/pty"
 	"github.com/pkg/errors"
 	"log"
+	"utils"
 )
 
 const (
@@ -31,11 +32,11 @@ type LocalCommand struct {
 	ptyClosed chan struct{}
 }
 
-func New(command string, argv []string, ppid int, options ...Option) (*LocalCommand, error) {
+func New(command string, argv []string, ppid int, params map[string][]string, options ...Option) (*LocalCommand, error) {
 	if ppid != -1 && !containers.IsProcess(ppid) {
 		return nil, errors.Errorf("failed to start command `%s` due to invalid parent id: %d", command, ppid)
 	}
-	commandArgs := containers.GetCommandArgs(command, argv, ppid)
+	commandArgs := containers.GetCommandArgs(command, argv, ppid, params)
 	cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
 	cmd.Dir = containers.HOME_DIR + command + "/" + strconv.Itoa(int(time.Now().Unix()))
 	os.MkdirAll(cmd.Dir, 0755)
@@ -46,6 +47,7 @@ func New(command string, argv []string, ppid int, options ...Option) (*LocalComm
 	cmd.Env = append(cmd.Env, "GOPATH=/opt/gotty/")
 	cmd.Env = append(cmd.Env, "HOME="+cmd.Dir)
 	cmd.Env = append(cmd.Env, "HOSTNAME="+command)
+	cmd.Env = append(cmd.Env, utils.IdeLangKey+"="+utils.GetCompilerLang(params))
 	pty, err := pty.Start(command, cmd, ppid)
 	if err != nil {
 		// todo close cmd?

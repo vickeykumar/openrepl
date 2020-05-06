@@ -94,14 +94,21 @@ export class WebTTY {
     authToken: string;
     reconnect: number;
     firebaseref: any;
+    Payload: Object;
+    iscompiled: boolean;
 
-    constructor(term: Terminal, connectionFactory: ConnectionFactory, ft: WebTTYFactory, args: string, authToken: string) {
+    constructor(term: Terminal, connectionFactory: ConnectionFactory, ft: WebTTYFactory, payload:Object, args: string, authToken: string) {
         this.term = term;
         this.connectionFactory = connectionFactory;
         this.args = args;
         this.authToken = authToken;
         this.reconnect = -1;
         this.firebaseref = ft;
+        this.Payload = payload;
+        this.iscompiled = false;
+        if(payload["IdeLang"] && payload["IdeContent"]) {
+            this.iscompiled = true; //its a compilation request
+        }
     };
 
     dboutput(type: string, data: string) {
@@ -142,6 +149,7 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                     {
                         Arguments: this.args,
                         AuthToken: this.authToken,
+                        Payload:   this.Payload,
                     }
                 ));
 
@@ -246,8 +254,10 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
 
                     default:
                         TermOutput("connection closed by remote host");
-                        TermOutput("\r\n OR");
-                        TermOutput("\r\nResource"+jidstr+" unavailable, Please try again after some time.");
+                        if (!this.iscompiled) {
+                            TermOutput("\r\n OR");
+                            TermOutput("\r\nResource"+jidstr+" unavailable, Please try again after some time.");
+                        }
                 }
 	    });
 
