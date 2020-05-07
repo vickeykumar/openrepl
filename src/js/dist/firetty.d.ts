@@ -1,5 +1,5 @@
 import { Terminal } from "./webtty";
-export declare const getExampleRef: () => string;
+export declare const getExampleRef: () => any;
 export declare const firebaseconfig: {
     apiKey: string;
     authDomain: string;

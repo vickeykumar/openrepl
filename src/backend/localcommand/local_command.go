@@ -43,10 +43,12 @@ func New(command string, argv []string, ppid int, params map[string][]string, op
 	if command == "bash" {
 		ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0644)
 	}
+	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "TERM=xterm")
 	cmd.Env = append(cmd.Env, "GOPATH=/opt/gotty/")
 	cmd.Env = append(cmd.Env, "HOME="+cmd.Dir)
 	cmd.Env = append(cmd.Env, "HOSTNAME="+command)
+	cmd.Env = append(cmd.Env, "GCC_EXEC_PREFIX=/usr/lib/gcc/")
 	cmd.Env = append(cmd.Env, utils.IdeLangKey+"="+utils.GetCompilerLang(params))
 	pty, err := pty.Start(command, cmd, ppid)
 	if err != nil {

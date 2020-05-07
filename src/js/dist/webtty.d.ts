@@ -59,7 +59,9 @@ export declare class WebTTY {
     authToken: string;
     reconnect: number;
     firebaseref: any;
-    constructor(term: Terminal, connectionFactory: ConnectionFactory, ft: WebTTYFactory, args: string, authToken: string);
+    Payload: Object;
+    iscompiled: boolean;
+    constructor(term: Terminal, connectionFactory: ConnectionFactory, ft: WebTTYFactory, payload: Object, args: string, authToken: string);
     dboutput(type: string, data: string): void;
     open(): () => void;
 }

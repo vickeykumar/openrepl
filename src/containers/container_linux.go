@@ -165,10 +165,11 @@ func EnableNetworking(pid int) {
 func GetCommandArgs(command string, argv []string, ppid int, params map[string][]string) (commandArgs []string) {
 	var commandlist []string
 	var commandpath string
+	var err error
 	if utils.Iscompiled(params) {
 		commandpath = BASH_PATH
 	} else {
-		commandpath, err := exec.LookPath(command)		// lookup path for absolutepath
+		commandpath, err = exec.LookPath(command)		// lookup path for absolutepath
 		if err != nil {
 			commandpath = command
 		}
