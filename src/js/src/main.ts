@@ -186,8 +186,16 @@ if (elem !== null) {
     //compile and run from editor
     elem.addEventListener("optionrun", () => {
         console.log("event caught: optionrun");
-        var event = new Event('unload');
-        window.dispatchEvent(event);
+        if(master) {
+            var event = new Event('unload');
+            window.dispatchEvent(event);    
+        } else {
+                //wait till optionrun is dispatched to master
+                setTimeout(function(){
+                    var event = new Event('unload');
+                    window.dispatchEvent(event); 
+                }, 100);
+        }
         setTimeout(function(){                // timeout between two events
             //var term: Terminal;
             const option = getSelectValue();

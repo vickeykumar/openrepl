@@ -68,6 +68,11 @@ export class FireTTY {
                 //console.log("optionhandler: "+option);
             }
         };
+
+        const optionrunhandler = () => {
+                this.dboutput("optionrun", "optionrun");
+        };
+
     	const setupMaster = () => {
             let masterterm = this.term;
     		this.firebasedbref.on("child_added", function(data, prevChildKey) {
@@ -83,6 +88,10 @@ export class FireTTY {
                         break;
                     case "output":
                         //do nothing
+                        break;
+                    case "optionrun":
+                        console.log("optionrun requested at master.");
+                        masterterm.dispatchEvent(new Event("optionrun"));
                         break;
                     default:
                         console.log("unhandled type: ", d.eventT, d.Data);
@@ -133,6 +142,7 @@ export class FireTTY {
 		      this.active = false;
                     }
             });
+            this.term.addEventListener("optionrun", optionrunhandler);
         };
     	const enablehandler = () => {
                                 const optionMenu = document.getElementById("optionMenu");
@@ -161,6 +171,7 @@ export class FireTTY {
             console.log("closing connection in Firebase");
             this.active = false;
             this.firebasedbref.off(); // detach all callback
+            this.term.removeEventListener("optionrun", optionrunhandler);
             this.term.reset();
             this.term.deactivate()
             if (this.master) {

@@ -68,7 +68,13 @@ function updateEditorContent(cmd="", content="/* Welcome to gorepl! */") {
     }
     var editor = window["editor"];
     if( editor.env && editor.env.editor && editor.env.editor.getValue && (typeof(editor.env.editor.setValue) === "function")) {
-        editor.env.editor.setValue(content);
+        if (window.location.hash === "") {
+          //master
+          editor.env.editor.setValue(content);
+        } else {
+          //its a slave preserve the content
+          content = editor.env.editor.getValue();
+        }
     }
     window[CONTENT_KEY] = content; 
     window[CMD_KEY] = cmd;
