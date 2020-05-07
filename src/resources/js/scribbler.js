@@ -157,7 +157,7 @@ function CompileandRun() {
 	return absoluteUrl;
   }
 
-  function getEditorValue() {
+  function getOptEditorValue() {
     return $('#optionMenu > select option:selected').data('editor');
   }
 
@@ -291,10 +291,13 @@ function CompileandRun() {
   function changeEditor() {
     var ide = get('#ide');
     var lang_selector = get('#select-lang', ide);
-    var edname = getEditorValue();
-    console.log("editor: ",edname);
-    lang_selector.value = edname;
-    lang_selector.dispatchEvent(new Event("change"));
+    var edname = getOptEditorValue();
+    if (lang_selector.value !== edname) {
+      console.log("editor: ",edname);
+      lang_selector.value = edname;
+      //notify editor to do the needfull
+      lang_selector.dispatchEvent(new Event("change"));
+    }
   }
 
   function actionOnchange() {
@@ -409,6 +412,21 @@ $(function() {
       return "xyz";
     };
     
+    const changeOptionByData = (data="") => {
+      var optionMenu = $('#optionMenu > select')[0];
+      if (optionMenu) {
+        console.log("changeOptionByData: ",data);
+        for (var i = 0; i < optionMenu.length; i++){
+          var option = optionMenu.options[i];
+          if (option.getAttribute("data-editor") === data) {
+            optionMenu.value = option.value;
+            optionMenu.dispatchEvent(new Event("change"));
+            return;
+          }
+        }
+      }
+    }
+
     // Get the editor id, using getExampleRef
     // also sets a global window variable to be used by repl apis.
     var editorId = getExampleRef();
@@ -453,6 +471,14 @@ $(function() {
         // Set the editor language
         if (editor) {
           editor.getSession().setMode("ace/mode/" + this.value);
+        }
+
+        //get language from optionmenu
+        var optionlang = $('#optionMenu > select option:selected').data('editor');
+        if ( optionlang && optionlang !== this.value ) {
+          //local change triggered from editor
+          //reflect in option menu
+          changeOptionByData(this.value);
         }
     });
 
