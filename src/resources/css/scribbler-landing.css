@@ -380,6 +380,12 @@ toggle terminal */
     transform: rotate(45deg);
 }
 
+.revrotate-fa {
+    -ms-transform: rotate(-45deg); /* IE 9 */
+    -webkit-transform: rotate(-45deg); /* Chrome, Safari, Opera */
+    transform: rotate(-45deg);
+}
+
 .fullscreen-toggle:hover {
     background: var(--accent-color);
     color:#000;
@@ -741,4 +747,39 @@ h2 {
   100% { transform: rotate(360deg); }
 }
 
+/* tooltip */
+
+.tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltiptext {
+  opacity: 0.7;
+  visibility: hidden;
+  width: 120px;
+  background-color: black;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  position: absolute;
+  z-index: 101;
+  top: -5px;
+  left: 130%;
+  transform-origin: left;
+}
+
+.tooltiptext::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  margin-top: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: transparent black transparent transparent;
+}
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+}
 
