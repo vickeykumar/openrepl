@@ -55,6 +55,16 @@ function ToggleFunction() {
         console.log("class hidden for %s",element.tagName);
       }
     }
+
+    // toggle tooltiptext and tooltip in fullscreen-toggle
+    AllElem = getAll(".fullscreen-toggle", TermElement);
+    for (var i = 0; i < AllElem.length;i++)
+    {
+      var element = AllElem[i];
+      element.classList.toggle("tooltip");
+      var tiptextelem = get(".tooltiptext",element);
+      tiptextelem.classList.toggle("hide-tag");
+    }
 }
 
 var einst = null;
