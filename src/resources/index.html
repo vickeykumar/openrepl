@@ -274,6 +274,7 @@
         <div class="fullscreen-toggle tooltip" id="editor-button" onclick="ToggleEditor();"><i class="fa fa-pencil"></i><span class="tooltiptext">Use Editor</span></div>
         <div class="fullscreen-toggle rotate-fa tooltip" id="redo-button" onclick="ToggleReconnect();"><i class="fa fa-redo rotate-fa"></i><span class="tooltiptext revrotate-fa">Reconnect REPL</span></div>
         <div class="fullscreen-toggle tooltip" id="play-button" onclick="CompileandRun();"><i class="fa fas fa-play"></i><span class="tooltiptext">Run Editor Code</span></div>
+        <div class="fullscreen-toggle tooltip" id="download-button" onclick="DownloadEditor();"><i class="fa fa-download"></i><span class="tooltiptext">Download Editor Code</span></div>
       </div>
       <div class="ide" id="ide" >
         <h2>Welcome to <span class="go__color">GO</span>REPL</h2>
@@ -584,6 +585,7 @@
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js" type="text/javascript" charset="utf-8"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ext-language_tools.min.js" type="text/javascript" charset="utf-8"></script>
+    <script src="http://cdn.jsdelivr.net/g/filesaver.js"></script>
     <script src="./js/scribbler.js"></script>
     <script>
           /*var inst = Split(['.ide', '.terminal'], {

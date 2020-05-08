@@ -121,6 +121,19 @@ function CompileandRun() {
     }
 }
 
+function DownloadEditor() {
+  var editor = window["editor"];
+  if( editor.env && editor.env.editor && editor.env.editor.getValue && (typeof(editor.env.editor.setValue) === "function")) {
+    content = editor.env.editor.getValue();
+    filename = prompt("Please enter the filename to save");
+    console.log(filename);
+    if(filename) {
+      var blob = new Blob([content], {type: "text/any;charset=utf-8"});
+      saveAs(blob, filename);
+    }
+  }
+}
+
 (function myApp() {
   var speed = 250;
   var indx = 0;
