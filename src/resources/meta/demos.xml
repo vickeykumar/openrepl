@@ -103,7 +103,7 @@ fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE -o $HOME/test;
+    $COMPILER $HOME/$FILE -pthread -lm -o $HOME/test;
 fi
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/test" ]; then
     $HOME/test;
