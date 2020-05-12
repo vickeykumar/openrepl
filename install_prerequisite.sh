@@ -43,7 +43,9 @@ apt install rlwrap
 apt install perl
 apt install perl-doc
 git clone https://github.com/vickeykumar/perli.git
-make install
+cd perli && make install
+cd ~
+
 
 
 
