@@ -1,4 +1,4 @@
-# ![](https://raw.githubusercontent.com/yudai/gotty/master/resources/favicon.png) GoTTY
+# ![](https://raw.githubusercontent.com/yudai/gotty/master/resources/favicon.png) GoTTY-REPL
 
 [![GitHub release](http://img.shields.io/github/release/yudai/gotty.svg?style=flat-square)][release]
 [![Wercker](http://img.shields.io/wercker/ci/55d0eeff7331453f0801982c.svg?style=flat-square)][wercker]
@@ -8,7 +8,7 @@
 [wercker]: https://app.wercker.com/project/bykey/03b91f441bebeda34f80e09a9f14126f
 [license]: https://github.com/yudai/gotty/blob/master/LICENSE
 
-GoTTY Fork from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create GOTTY services for ubuntu server and REPL servers.
+GoTTY-REPL Fork from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create GOTTY services for ubuntu server and REPL servers.
 Please have a look on our website for more info : [gorepl.com](http://gorepl.com)
 
 
