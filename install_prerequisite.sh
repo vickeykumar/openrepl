@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #please run as root/sudo
+# reboot once after installing to take effect for cgroups and containers
 
 cd ~
 
