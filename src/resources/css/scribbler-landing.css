@@ -767,6 +767,7 @@ h2 {
   top: -5px;
   left: 130%;
   transform-origin: left;
+  margin-left: 5px;
 }
 
 .tooltiptext::after {
@@ -783,3 +784,9 @@ h2 {
   visibility: visible;
 }
 
+/* On screens that are 800px wide or less, tooltiptext left margin */
+@media screen and (max-width: 800px) {
+  .tooltiptext {
+    margin-left: -50px;
+  }
+}
