@@ -8,7 +8,7 @@
 [wercker]: https://app.wercker.com/project/bykey/03b91f441bebeda34f80e09a9f14126f
 [license]: https://github.com/yudai/gotty/blob/master/LICENSE
 
-GoTTY-REPL Fork from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create GOTTY services for ubuntu server and REPL servers.
+GoTTY-REPL Fork from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create GOTTY services for REPL servers.
 Please have a look on our website for more info : [gorepl.com](http://gorepl.com)
 
 
@@ -43,6 +43,7 @@ $ sudo dpkg -i ../deb/gotty.deb
 * [cling](https://github.com/root-project/cling)
 * [gointerpreter](https://github.com/vickeykumar/Go-interpreter)
 * python2.7
+* all requisites can be installed using ./install_prerequisite.sh	
 
 
 # Usage
