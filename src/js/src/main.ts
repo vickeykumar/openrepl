@@ -84,7 +84,7 @@ export function ActionOnChange() {
 function fetchEditorContent() {
     var editor: any = window["editor"];
     if( editor.env && editor.env.editor && editor.env.editor.getValue && (typeof(editor.env.editor.getValue) === "function")) {
-        return btoa(editor.env.editor.getValue());
+        return btoa(unescape(encodeURIComponent(editor.env.editor.getValue())));
     }
     return "";
 }
