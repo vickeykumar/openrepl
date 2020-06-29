@@ -106,7 +106,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
     $COMPILER $HOME/$FILE -pthread -lm -o $HOME/test;
 fi
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/test" ]; then
-    $HOME/test;
+    $SHELL -c $HOME/test;
 fi
 printf "\n";
 		</Compiler>
