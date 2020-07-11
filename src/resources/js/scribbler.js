@@ -131,16 +131,39 @@ function CompileandRun() {
     }
 }
 
-function DownloadEditor() {
+function GetEditorContent() {
   var editor = window["editor"];
-  if( editor.env && editor.env.editor && editor.env.editor.getValue && (typeof(editor.env.editor.setValue) === "function")) {
+  if( editor.env && editor.env.editor && editor.env.editor.getValue && (typeof(editor.env.editor.getValue) === "function")) {
     content = editor.env.editor.getValue();
-    filename = prompt("Please enter the filename to save");
-    console.log(filename);
+    return content;
+  }
+  return null;
+}
+
+function DownloadEditor() {
+  var editorContent = GetEditorContent();
+  if( editorContent !== null) {
+    var filename = prompt("Please enter the filename to save");
     if(filename) {
-      var blob = new Blob([content], {type: "text/any;charset=utf-8"});
+      var blob = new Blob([editorContent], {type: "text/any;charset=utf-8"});
       saveAs(blob, filename);
     }
+  }
+}
+
+function UploadEditor() {
+  var fileToLoad = document.getElementById("fileToLoad").files[0];
+  console.log("file to read: ", fileToLoad);
+  var editor = window["editor"];
+  if( fileToLoad && editor.env && editor.env.editor && editor.env.editor.setValue && (typeof(editor.env.editor.setValue) === "function")) {
+    var fileReader = new FileReader();
+    fileReader.onload = function(fileLoadedEvent) 
+    {
+      var textFromFile = "";
+      textFromFile = fileLoadedEvent.target.result;
+      editor.env.editor.setValue(textFromFile);
+    };
+    fileReader.readAsText(fileToLoad, "UTF-8"); 
   }
 }
 

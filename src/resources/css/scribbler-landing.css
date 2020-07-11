@@ -356,6 +356,13 @@ toggle terminal */
     text-rendering: auto;
 }
 
+.fullscreen-toggle .fab {
+    color: #fff;
+    display: inline-block;
+    font-size: inherit;
+    text-rendering: auto;
+}
+
 .fa-expand {
     content: "\f065";
 }
@@ -576,6 +583,13 @@ list-style: none;
 }
 
 .dropdown a:hover {background-color: #ddd;}
+
+@media screen and (max-width: 800px) {
+  .dropdown-content {
+    right: 5%;
+    left: unset;
+  }
+}
 
 .show {display: block;}
 
