@@ -162,6 +162,7 @@ function UploadEditor() {
       var textFromFile = "";
       textFromFile = fileLoadedEvent.target.result;
       editor.env.editor.setValue(textFromFile);
+      document.getElementById("fileToLoad").value="";
     };
     fileReader.readAsText(fileToLoad, "UTF-8"); 
   }
