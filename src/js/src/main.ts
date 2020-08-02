@@ -1,6 +1,6 @@
 import { Hterm } from "./hterm";
 import { Xterm } from "./xterm";
-import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory } from "./webtty";
+import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, CompilerOptionKey } from "./webtty";
 import { ConnectionFactory } from "./websocket";
 import { InitializeApp, FireTTY, DisableShareBtn } from "./firetty";
 
@@ -89,13 +89,16 @@ function fetchEditorContent() {
     return "";
 }
 
-function updatePayload(eventname="") {
+function updatePayload(eventname="", debug=false) {
     var pload: Object = {
                                 "test":"test",
                         };
     if (eventname == "optionrun") {
-        pload["IdeLang"] = getSelectValue();
-        pload["IdeContent"] = fetchEditorContent(); 
+        pload[IdeLangKey] = getSelectValue();
+        pload[IdeContentKey] = fetchEditorContent(); 
+    }
+    if (debug === true) {
+        pload[CompilerOptionKey] = "debug";
     }
     return pload;
 }
@@ -119,6 +122,7 @@ if (elem !== null) {
     var payload: Object = {
                                 "test":"test",
                           };
+    var debug: boolean = false;
     if (gotty_term == "hterm") {
         term = new Hterm(elem);
     } else {
@@ -142,6 +146,12 @@ if (elem !== null) {
         closer();
         term.close();
     });
+
+    elem.addEventListener("optiondebug", () => {
+        debug = true;
+        elem.dispatchEvent(new Event("optionrun"));
+    });
+
     elem.addEventListener("optionchange", () => {
         console.log("event caught: change");
         var event = new Event('unload');
@@ -216,7 +226,8 @@ if (elem !== null) {
                     const args = window.location.search;
                     ft = new FireTTY(term, master);
                     factory = new ConnectionFactory(url, protocols);
-                    payload = updatePayload("optionrun");
+                    payload = updatePayload("optionrun", debug);
+                    debug=false;
                     wt = new WebTTY(term, factory, ft, payload, args, gotty_auth_token);
                 } else {
                     wt = new FireTTY(term, master);

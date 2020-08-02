@@ -131,6 +131,13 @@ function CompileandRun() {
     }
 }
 
+function RunandDebug() {
+    const termElem = get("#terminal");
+    if(termElem!==undefined) {
+        termElem.dispatchEvent(new Event("optiondebug"));
+    }
+}
+
 function GetEditorContent() {
   var editor = window["editor"];
   if( editor.env && editor.env.editor && editor.env.editor.getValue && (typeof(editor.env.editor.getValue) === "function")) {

@@ -91,13 +91,13 @@ func DeleteContainers() {
 	}
 }
 
-func AddProcesstoNewSubCgroup(name string, pid int) {
+func AddProcesstoNewSubCgroup(name string, pid int, iscompiled bool) {
 	containerobj, ok := Containers[name]
 	if !ok {
 		log.Println("AddProcesstoNewSubCgroup: ERROR: couldn't find container for : " + name)
 		return
 	}
-	containerobj.AddProcesstoNewSubCgroup(pid)
+	containerobj.AddProcesstoNewSubCgroup(pid, iscompiled)
 }
 
 func DeleteProcessFromSubCgroup(name string, pid int) {

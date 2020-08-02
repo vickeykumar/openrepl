@@ -96,17 +96,40 @@ signature: ret_type filename(args)</Result>
 		<Compiler>
 COMPILER=gcc
 FILE=test.c
-if [ "$IdeLang" = "cpp" ]; then
-	COMPILER=g++
-	FILE=test.cpp
+DEBUG_OPTION=""
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	if [ $(uname) == "Linux" ]; then
+		DEBUG_OPTION="-ggdb -fdebug-prefix-map=$(pwd)=. -g -static -static-libgcc";
+	else
+		DEBUG_OPTION="-ggdb -fdebug-prefix-map=$(pwd)=. -g";
+	fi
 fi
+
+if [ "$IdeLang" = "cpp" ]; then
+	COMPILER=g++;
+	FILE=test.cpp;
+	if $debug; then
+		if [ $(uname) == "Linux" ]; then
+			DEBUG_OPTION="-ggdb -fdebug-prefix-map=$(pwd)=. -g -static -static-libstdc++";
+		else
+			DEBUG_OPTION="-ggdb -fdebug-prefix-map=$(pwd)=. -g";
+		fi
+	fi
+fi
+
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE -pthread -lm -o $HOME/test;
+    $COMPILER $HOME/$FILE -pthread -lm -o $HOME/test $DEBUG_OPTION;
 fi
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/test" ]; then
-    $SHELL -c $HOME/test;
+	if $debug; then
+		gdb $HOME/test;
+	else
+    	$SHELL -c $HOME/test;
+    fi
 fi
 printf "\n";
 		</Compiler>
@@ -193,13 +216,22 @@ Hi: 9</Result>
 		<Compiler>
 COMPILER=go
 FILE=test.go
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+fi
 if [ "$IdeLang" = "go" ]; then
 	COMPILER=go
 fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER run $HOME/$FILE;
+	if $debug; then
+		go build -gcflags=all="-N -l" -o $HOME/test $HOME/$FILE;
+		gdb $HOME/test;
+	else
+    	$COMPILER run $HOME/$FILE;
+    fi
 fi
 printf "\n";
 		</Compiler>
@@ -267,6 +299,11 @@ Hi: 9</Result>
 		<Compiler>
 COMPILER=python
 FILE=test.py
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="python -m pdb";
+fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
@@ -338,6 +375,11 @@ Hi: 9</Result>
 		<Compiler>
 COMPILER=python2.7
 FILE=test.py
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="python2.7 -m pdb";
+fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
@@ -409,6 +451,11 @@ Hi: 9</Result>
 		<Compiler>
 COMPILER=python
 FILE=test.py
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="python -m pdb";
+fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
@@ -480,6 +527,11 @@ Hi: 9</Result>
 		<Compiler>
 COMPILER=python3
 FILE=test.py
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="python3 -m pdb";
+fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
@@ -556,6 +608,11 @@ printf "\n";
 		<Compiler>
 COMPILER=java
 FILE=test.java
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	echo "Debugging not Supported for Java.";
+	exit;
+fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
@@ -615,6 +672,11 @@ Welcome 5</Result>
 		<Compiler>
 COMPILER=bash
 FILE=test.sh
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="bash -x";
+fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
@@ -689,6 +751,11 @@ hello 5!
 		<Compiler>
 COMPILER=ruby
 FILE=test.rb
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="ruby -r debug";
+fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
@@ -966,6 +1033,11 @@ assert       async_hooks</Result>
 		<Compiler>
 COMPILER=node
 FILE=test.js
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="node inspect";
+fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
@@ -1127,6 +1199,11 @@ getgrgid          gethostbyname     getnetbyaddr      getpeername       getprior
 		<Compiler>
 COMPILER=perl
 FILE=test.pl
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="perl -d";
+fi
 printf "\n";
 echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then

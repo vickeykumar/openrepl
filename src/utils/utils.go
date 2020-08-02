@@ -11,6 +11,7 @@ import (
 const LOG_PATH = "/gottyTraces"
 const IdeLangKey = "IdeLang"
 const IdeContentKey = "IdeContent"
+const CompilerOptionKey = "CompilerOption"
 
 func InitLogging(name string) {
 	err := os.MkdirAll(LOG_PATH, 0755)
@@ -58,4 +59,8 @@ func GetCompilerLang(params url.Values) string {
 
 func GetIdeContent(params url.Values) string {
 	return params.Get(IdeContentKey)
+}
+
+func GetCompilerOption(params url.Values) string {
+	return params.Get(CompilerOptionKey)
 }

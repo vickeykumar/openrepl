@@ -1,6 +1,9 @@
 import * as Cookies from "./cookie";
 
 export const protocols = ["webtty"];
+export const IdeLangKey = "IdeLang";
+export const IdeContentKey = "IdeContent";
+export const CompilerOptionKey = "CompilerOption";
 
 export const msgInputUnknown = '0';
 export const msgInput = '1';
@@ -106,7 +109,7 @@ export class WebTTY {
         this.firebaseref = ft;
         this.Payload = payload;
         this.iscompiled = false;
-        if(payload["IdeLang"] && payload["IdeContent"]) {
+        if(payload[IdeLangKey] && payload[IdeContentKey]) {
             this.iscompiled = true; //its a compilation request
         }
     };

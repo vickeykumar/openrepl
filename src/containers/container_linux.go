@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"bytes"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"strconv"
@@ -60,11 +61,15 @@ func (c *container) Delete() {
 	// TBD : delete sub cgroup MAP
 }
 
-func (c *container) AddProcesstoNewSubCgroup(pid int) {
+func (c *container) AddProcesstoNewSubCgroup(pid int, iscompiled bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	pidstr := strconv.Itoa(pid)
 	memlimit := Commands2memLimitMap[c.Name] * MB // mem limit in MBs
+	if iscompiled {
+		memlimit = int64(math.Floor(2.0*float64(memlimit)))
+		log.Println("effective memlimit: ",memlimit)
+	}
 	control, err := c.Control.New(pidstr, &specs.LinuxResources{
 		/*CPU: &specs.LinuxCPU{
 		        Shares: &CPUshares,
