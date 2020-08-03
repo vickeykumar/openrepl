@@ -128,6 +128,7 @@ clean:
 	cd ${TARGET} && \
 	make clean
 	rm -rf bindata
+	rm -rf js/dist/*
 	@echo ".... Clean Done"
 
 cleanjs:
