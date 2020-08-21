@@ -50,7 +50,7 @@ function ToggleFunction() {
     for (var i = 0; i < AllElem.length;i++)
     {
       var element = AllElem[i];
-      if (element.id != "terminal__row" && element.tagName != "SCRIPT" ) {
+      if (element.id != "terminal__row" && element.tagName != "SCRIPT" && !element.classList.contains("ace_editor")) {
         element.classList.toggle("hide-tag");
         console.log("class hidden for %s",element.tagName);
       }
