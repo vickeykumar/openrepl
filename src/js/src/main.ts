@@ -149,7 +149,10 @@ if (elem !== null) {
 
     elem.addEventListener("optiondebug", () => {
         debug = true;
-        elem.dispatchEvent(new Event("optionrun"));
+        const event = new CustomEvent('optionrun', {
+                          detail: { optionT: "optiondebug"}
+                        });
+        elem.dispatchEvent(event);
     });
 
     elem.addEventListener("optionchange", () => {
@@ -194,7 +197,7 @@ if (elem !== null) {
     });
 
     //compile and run from editor
-    elem.addEventListener("optionrun", () => {
+    elem.addEventListener("optionrun", (e) => {
         console.log("event caught: optionrun");
         if(master) {
             var event = new Event('unload');

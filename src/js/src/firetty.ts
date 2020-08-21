@@ -69,8 +69,12 @@ export class FireTTY {
             }
         };
 
-        const optionrunhandler = () => {
+        const optionrunhandler = (e) => {
+            if ((e) && (e.detail) && e.detail.optionT==="optiondebug") {
+                this.dboutput("optiondebug", "optiondebug");
+            } else {
                 this.dboutput("optionrun", "optionrun");
+            }
         };
 
     	const setupMaster = () => {
@@ -92,6 +96,10 @@ export class FireTTY {
                     case "optionrun":
                         console.log("optionrun requested at master.");
                         masterterm.dispatchEvent(new Event("optionrun"));
+                        break;
+                    case "optiondebug":
+                        console.log("optiondebug requested at master.");
+                        masterterm.dispatchEvent(new Event("optiondebug"));
                         break;
                     default:
                         console.log("unhandled type: ", d.eventT, d.Data);
