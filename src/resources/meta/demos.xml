@@ -216,6 +216,7 @@ Hi: 9</Result>
 		<Compiler>
 COMPILER=go
 FILE=test.go
+GOROOT=`go env GOROOT`
 debug=false
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
@@ -228,7 +229,8 @@ echo $0|base64 --decode > $HOME/$FILE;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
 	if $debug; then
 		go build -gcflags=all="-N -l" -o $HOME/test $HOME/$FILE;
-		gdb $HOME/test;
+		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
+		gdb $HOME/test -d $GOROOT;
 	else
     	$COMPILER run $HOME/$FILE;
     fi
