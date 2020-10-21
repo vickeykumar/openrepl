@@ -10,9 +10,6 @@ declare var gotty_term: string;
 
 var master = false;
 
-var option2args = {
-			"c":"arg=-xc",
-		  };
 
 function handleTerminalOptions(elem, option, event="optionchange") {
     var flag = true;
@@ -126,8 +123,6 @@ if (elem !== null) {
                                 "test":"test",
                           };
     var debug: boolean = false;
-    const option = getSelectValue();
-    console.log("option caught: ",option);
     if (gotty_term == "hterm") {
         term = new Hterm(elem);
     } else {
@@ -135,20 +130,11 @@ if (elem !== null) {
     }
     if (master) {
         const httpsEnabled = window.location.protocol == "https:";
-        const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws' + '_' + option;
+        const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws_c';
         const args = window.location.search;
-	let args2 = '';
-	if ( option && option2args[option] && option2args[option] !== undefined ) {
-		args2 = option2args[option];
-		if (args==="") {
-			args2='?'+args2;
-		} else {
-			args2='&'+args2;
-		}
-	}
         ft = new FireTTY(term, master);
         factory = new ConnectionFactory(url, protocols);
-        wt = new WebTTY(term, factory, ft, payload, args+args2, gotty_auth_token);
+        wt = new WebTTY(term, factory, ft, payload, args, gotty_auth_token);
     } else {
         wt = new FireTTY(term, master);
     }
@@ -191,19 +177,10 @@ if (elem !== null) {
                     const httpsEnabled = window.location.protocol == "https:";
                     const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws' + '_' + option;
                     const args = window.location.search;
-		    let args2 = '';
-                    if ( option && option2args[option] && option2args[option] !== undefined ) {
-                        args2 = option2args[option];
-			if (args==="") {
-                        	args2='?'+args2;
-                	} else {
-                        	args2='&'+args2;
-                	}
-                    }
                     ft = new FireTTY(term, master);
                     factory = new ConnectionFactory(url, protocols);
                     payload = updatePayload("optionchange");
-                    wt = new WebTTY(term, factory, ft, payload, args+args2, gotty_auth_token);
+                    wt = new WebTTY(term, factory, ft, payload, args, gotty_auth_token);
                 } else {
                     wt = new FireTTY(term, master);
                 }
