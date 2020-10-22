@@ -11,7 +11,7 @@ declare var gotty_term: string;
 var master = false;
 
 var option2args = {
-			"c":"arg=-xc",
+			"c":"arg=-xc&arg=-noruntime",
 		  };
 
 function handleTerminalOptions(elem, option, event="optionchange") {
