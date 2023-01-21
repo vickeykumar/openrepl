@@ -8,7 +8,7 @@
 [wercker]: https://app.wercker.com/project/bykey/03b91f441bebeda34f80e09a9f14126f
 [license]: https://github.com/yudai/gotty/blob/master/LICENSE
 
-GoTTY-REPL Forks from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create GOTTY services for REPL servers.
+OpenREPL Forks from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create REPL services using gotty and containers.
 Please have a look on our website for more info : [gorepl.com](http://gorepl.com)
 
 
