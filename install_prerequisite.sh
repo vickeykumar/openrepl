@@ -8,6 +8,7 @@ cd ~
 # sudo setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/nsenter && ./containers-from-scratch/main run 2 nsenter -n -t$$ /bin/bash
 # sudo setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/arm-linux-gnueabihf-gcc-8
 # add export NODE_OPTIONS=--max_old_space_size=2048 to .bashrc
+apt install net-tools
 
 #install golang
 apt install golang
