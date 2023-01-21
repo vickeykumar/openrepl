@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-#please run as root/sudo
+#please run as sudo
 # reboot once after installing to take effect for cgroups and containers
 
 cd ~
 
 # set cap to nsenter,gcc,g++
-# sudo setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/nsenter && ./containers-from-scratch/main run 2 nsenter -n -t$$ /bin/bash
+setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/nsenter 
+# && ./containers-from-scratch/main run 2 nsenter -n -t$$ /bin/bash
 # sudo setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/arm-linux-gnueabihf-gcc-8
 # add export NODE_OPTIONS=--max_old_space_size=2048 to .bashrc
 apt install net-tools
@@ -33,6 +34,7 @@ cd ..
 apt install python2.7
 ln -s /usr/bin/python2.7 /usr/bin/python
 apt install ipython
+apt install python-is-python3
 
 #install ipython3
 apt install ipython3
@@ -52,8 +54,8 @@ cd perli && make install
 cd ~
 
 # Docker: Error response from daemon: cgroups: cgroup mountpoint does not exist: unknown
-sudo mkdir /sys/fs/cgroup/systemd
-sudo mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
+mkdir /sys/fs/cgroup/systemd
+mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
 
-
+apt install gdb
 

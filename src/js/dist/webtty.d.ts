@@ -1,5 +1,8 @@
 import * as Cookies from "./cookie";
 export declare const protocols: string[];
+export declare const IdeLangKey = "IdeLang";
+export declare const IdeContentKey = "IdeContent";
+export declare const CompilerOptionKey = "CompilerOption";
 export declare const msgInputUnknown = "0";
 export declare const msgInput = "1";
 export declare const msgPing = "2";
