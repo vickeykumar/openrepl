@@ -70,7 +70,7 @@ function ToggleFunction() {
 var einst = null;
 
 // updates editor content by ID
-function updateEditorContent(cmd="", content="/* Welcome to gorepl! */") {
+function updateEditorContent(cmd="", content="/* Welcome to openrepl! */") {
     if(window[CMD_KEY]===cmd) {
       // no need to update as this is not an optionchange
       console.log("no change in command: ",cmd)
@@ -665,7 +665,7 @@ $(function() {
             if (window[CONTENT_KEY]) {
               val = window[CONTENT_KEY];
             } else {
-              val = "/* Welcome to gorepl! */\n/* Editor underdevelopment! */";
+              val = "/* Welcome to openrepl! */\n/* Editor underdevelopment! */";
             }
 
             // Here's where we set the initial content of the editor

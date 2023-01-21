@@ -115,7 +115,7 @@ signature: ret_type filename(args)</Result>
                         <Command>Note:</Command>
                         <Description>runtime extraction of value is not supported in c-mode.</Description>
                 </Usage>
-		<Content>/* Welcome to gorepl! */</Content>
+		<Content>/* Welcome to OpenREPL! */</Content>
 		<Compiler>
 COMPILER=gcc
 FILE=test.c
@@ -235,7 +235,7 @@ Hi: 9</Result>
 			<Command>:q</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
-		<Content>/* Welcome to gorepl! */</Content>
+		<Content>/* Welcome to OpenREPL! */</Content>
 		<Compiler>
 COMPILER=go
 FILE=test.go
@@ -320,7 +320,7 @@ Hi: 9</Result>
 			<Command>exit() or ctrl-D</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
-		<Content># Welcome to gorepl!</Content>
+		<Content># Welcome to OpenREPL!</Content>
 		<Compiler>
 COMPILER=python
 FILE=test.py
@@ -396,7 +396,7 @@ Hi: 9</Result>
 			<Command>exit() or ctrl-D</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
-		<Content># Welcome to gorepl!</Content>
+		<Content># Welcome to OpenREPL!</Content>
 		<Compiler>
 COMPILER=python2.7
 FILE=test.py
@@ -472,7 +472,7 @@ Hi: 9</Result>
 			<Command>exit or ctrl-D</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
-		<Content># Welcome to gorepl!</Content>
+		<Content># Welcome to OpenREPL!</Content>
 		<Compiler>
 COMPILER=python
 FILE=test.py
@@ -548,7 +548,7 @@ Hi: 9</Result>
 			<Command>exit or ctrl-D</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
-		<Content># Welcome to gorepl!</Content>
+		<Content># Welcome to OpenREPL!</Content>
 		<Compiler>
 COMPILER=python3
 FILE=test.py
@@ -629,7 +629,7 @@ printf "\n";
 			<Command>/exit</Command>
 			<Description>quit the REPL.</Description>
 		</Usage>
-		<Content>/* Welcome to gorepl! */</Content>
+		<Content>/* Welcome to OpenREPL! */</Content>
 		<Compiler>
 COMPILER=java
 FILE=test.java
@@ -693,7 +693,7 @@ Welcome 5</Result>
 			<Command>exit</Command>
 			<Description>exits the bash.</Description>
 		</Usage>
-		<Content># Welcome to gorepl!</Content>
+		<Content># Welcome to OpenREPL!</Content>
 		<Compiler>
 COMPILER=bash
 FILE=test.sh
@@ -772,7 +772,7 @@ hello 5!
 			<Command>exit</Command>
 			<Description>quit the REPL.</Description>
 		</Usage>
-		<Content># Welcome to gorepl!</Content>
+		<Content># Welcome to OpenREPL!</Content>
 		<Compiler>
 COMPILER=ruby
 FILE=test.rb
@@ -924,7 +924,7 @@ Loaded https://cdnjs.cloudflare.com/ajax/libs/mathjs/6.1.0/math.min.js</Result>
 			<Command>shift+enter</Command>
 			<Description>multiline inputs for block, loops and functions.</Description>
 		</Usage>
-		<Content>/* Welcome to gorepl! */</Content>
+		<Content>/* Welcome to OpenREPL! */</Content>
 	</Demo>
 
 	<Demo>
@@ -1054,7 +1054,7 @@ assert       async_hooks</Result>
 			<Command>`Tab`</Command>
 			<Description>Syntax Completion</Description>
 		</Usage>
-		<Content>/* Welcome to gorepl! */</Content>
+		<Content>/* Welcome to OpenREPL! */</Content>
 		<Compiler>
 COMPILER=node
 FILE=test.js
@@ -1220,7 +1220,7 @@ getgrgid          gethostbyname     getnetbyaddr      getpeername       getprior
 			<Command>`Tab`</Command>
 			<Description>Syntax Completion</Description>
 		</Usage>
-		<Content># Welcome to gorepl!</Content>
+		<Content># Welcome to OpenREPL!</Content>
 		<Compiler>
 COMPILER=perl
 FILE=test.pl

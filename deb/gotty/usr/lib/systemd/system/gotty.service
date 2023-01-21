@@ -16,7 +16,7 @@ ExecStartPre=-+/bin/mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/s
 ExecStartPre=-+/bin/chgrp -R cgroupusers /sys/fs/cgroup
 ExecStartPre=-+/bin/chmod -R u=rwx,g=rwx /sys/fs/cgroup
 ExecStartPre=-+/bin/chmod 4755 /usr/bin/nsenter
-ExecStart=/usr/local/bin/gotty -w --max-connection 2564 --port 80 --title-format "<fmt><title>{{ .command }}@GOREPL</title><jid>{{ encodePID .pid }}</jid></fmt>"
+ExecStart=/usr/local/bin/gotty -w --max-connection 2564 --port 80 --title-format "<fmt><title>{{ .command }}@OpenREPL</title><jid>{{ encodePID .pid }}</jid></fmt>"
 ExecStop=/usr/bin/pkill gotty
 LimitNOFILE=4096
 Restart=always

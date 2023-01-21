@@ -81,7 +81,7 @@ var CommonTemplate = `<!doctype html>
   <body>
     <div class="doc__bg"></div>
     <nav class="header">
-      <h1 class="logo"><span class="go__color">GO</span>REPL</h1>
+      <h1 class="logo"><span class="go__color">Open</span>REPL</h1>
       <ul class="menu">
         <div class="menu__item toggle"><span></span></div>
         <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
@@ -92,7 +92,7 @@ var CommonTemplate = `<!doctype html>
   </div>
   <footer class="footer">
     <a href="./about.html" class="link link--light">About</a> <span class="dot"></span>
-    2018&copy;<span class="go__color">GO</span>REPL 
+    2018&copy;<span class="go__color">Open</span>REPL 
     </footer>
     <script src="./js/common.js"></script>
   </body>
