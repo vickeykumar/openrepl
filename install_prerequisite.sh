@@ -30,6 +30,8 @@ make install
 cd ..
 
 #install ipython2.7
+apt install python2.7
+ln -s /usr/bin/python2.7 /usr/bin/python
 apt install ipython
 
 #install ipython3
