@@ -1,14 +1,12 @@
 # ![](https://raw.githubusercontent.com/vickeykumar/openrepl/97fd80845a409005e6983e0f6a807c3a8ef3025a/src/resources/images/favicon.png) OpenREPL
 
 [![GitHub release](http://img.shields.io/github/release/yudai/gotty.svg?style=flat-square)][release]
-[![Wercker](http://img.shields.io/wercker/ci/55d0eeff7331453f0801982c.svg?style=flat-square)][wercker]
 [![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)][license]
 
 [release]: https://github.com/yudai/gotty/releases
-[wercker]: https://app.wercker.com/project/bykey/03b91f441bebeda34f80e09a9f14126f
 [license]: https://github.com/yudai/gotty/blob/master/LICENSE
 
-OpenREPL Forks from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create REPL services using gotty and containers.
+OpenREPL initially Forked from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create web based REPL services for various programming languages using gotty and containers.
 Please have a look on our website for more info : [gorepl.com](http://gorepl.com)
 
 
