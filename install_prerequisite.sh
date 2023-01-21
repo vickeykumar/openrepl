@@ -49,6 +49,9 @@ git clone https://github.com/vickeykumar/perli.git
 cd perli && make install
 cd ~
 
+# Docker: Error response from daemon: cgroups: cgroup mountpoint does not exist: unknown
+sudo mkdir /sys/fs/cgroup/systemd
+sudo mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
 
 
 
