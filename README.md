@@ -39,6 +39,7 @@ $ sudo dpkg -i ../deb/gotty.deb
 * [cling](https://github.com/root-project/cling)
 * [gointerpreter](https://github.com/vickeykumar/Go-interpreter)
 * python2.7
+* xterm
 * all requisites can be installed using ./install_prerequisite.sh	
 
 
@@ -122,18 +123,6 @@ openssl req -x509 -nodes -days 9999 -newkey rsa:2048 -keyout ~/.gotty.key -out ~
 
 For additional security, you can use the SSL/TLS client certificate authentication by providing a CA certificate file to the `--tls-ca-crt` option (this option requires the `-t` or `--tls` to be set). This option requires all clients to send valid client certificates that are signed by the specified certification authority.
 
-## Development
-
-You can build a binary using the following commands. Windows is not supported now. go1.9 is required.
-
-```sh
-# Install tools
-go get github.com/jteeuwen/go-bindata/...
-go get github.com/tools/godep
-
-# Build
-make
-```
 
 To build the frontend part (JS files and other static files), you need `npm`.
 
