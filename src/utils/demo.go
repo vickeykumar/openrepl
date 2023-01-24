@@ -18,6 +18,7 @@ type Codes struct {
 
 type Demo struct {
 	Name   		string
+	Prefix		string			// usefull in some cases to set prefix command
 	Github 		string
 	Codes  		[]Codes
 	Usage  		[]Usage
@@ -44,4 +45,12 @@ func GetCompilationScript(command string) string {
 		return ""
 	}
 	return demo.Compiler
+}
+
+func GetPrefix(command string) string {
+        demo, ok := Commands2DemoMap[command]
+        if !ok {
+                return ""
+        }
+        return demo.Prefix
 }

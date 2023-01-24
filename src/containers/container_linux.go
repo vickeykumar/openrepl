@@ -178,6 +178,10 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 		if err != nil {
 			commandpath = command
 		}
+		prefix:= utils.GetPrefix(command)
+		if prefix != "" {
+			commandlist = append(commandlist, prefix)	// add prefix before calling the command
+		}
 	}
 	commandlist = append(commandlist, commandpath)
 	commandlist = append(commandlist, argv...)

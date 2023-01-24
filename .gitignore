@@ -2,3 +2,4 @@ bindata
 bin
 src/js/node_modules/*
 go_19/*
+src/tags

@@ -19,6 +19,7 @@ const MB = 1024 * 1024
 var Commands2memLimitMap = map[string]int64{
 	"cling":         11, // threshold : 11
 	"gointerpreter": 45, // 44 with pp
+	"yaegi":	 5,
 	"python2.7":     2,  // 3
 	"bash":          2,  // 2
 	"ipython":       8,

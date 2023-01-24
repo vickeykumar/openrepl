@@ -157,6 +157,98 @@ fi
 printf "\n";
 		</Compiler>
 	</Demo>
+	
+	<Demo>
+		<Name>yaegi</Name>
+		<Github>https://github.com/traefik/yaegi</Github>
+		<Doc>https://pkg.go.dev/github.com/traefik/yaegi</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>: 12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>: 43</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var i int</Statement>
+				<Result>: 0xc000204490</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> i</Statement>
+				<Result>: 0</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> for i:=0; i&lt;10; i++ {
+fmt.Println("Hi: ",i)
+}</Statement>
+				<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9
+: &lt;nil&gt;</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> import "time"</Statement>
+				<Result>: 0xc000486a40</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> time.Now();</Statement>
+				<Result>: 2018-07-18 22:32:56.18823511 +0530 IST m=+0.000279327</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> time.Now().Unix();</Statement>
+				<Result>: 1531933384</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>:help</Command>
+			<Description>please refer docs for more info.</Description>
+		</Usage>
+		<Content>/* Welcome to OpenREPL! */</Content>
+		<Compiler>
+COMPILER=yaegi
+FILE=test.go
+GOROOT=`go env GOROOT`
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+fi
+if [ "$IdeLang" = "go" ]; then
+	COMPILER=yaegi
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+	if $debug; then
+		go build -gcflags=all="-N -l" -o $HOME/test $HOME/$FILE;
+		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
+		gdb $HOME/test -d $GOROOT;
+	else
+    	$COMPILER run $HOME/$FILE;
+    fi
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
 
 	<Demo>
 		<Name>gointerpreter</Name>
