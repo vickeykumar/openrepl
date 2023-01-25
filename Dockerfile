@@ -23,6 +23,14 @@ RUN make all
 
 WORKDIR /opt/openrepl
 
+#install the app
+COPY bin/gotty /usr/local/bin/
+RUN mkdir -p /opt/scripts
+COPY scripts/run_app.sh /opt/scripts/
+
+RUN chmod 755 /usr/local/bin/gotty
+RUN chmod 755 /opt/scripts/run_app.sh
+
 ENV TERM=xterm
 ENV GODEBUG=cgocheck=1
 
@@ -30,5 +38,5 @@ RUN mkdir -p /gottyTraces
 RUN mkdir -p /opt/gotty
 ENV GOPATH=/opt/gotty/
 
-ENTRYPOINT ["/opt/openrepl/bin/gotty"]
-CMD "-w --title-format \"<fmt><title>{{ .command }}@OpenREPL</title><jid>{{ encodePID .pid }}</jid></fmt>\""
+ENTRYPOINT ["/opt/scripts/run_app.sh"]
+CMD ["-w", "--title-format", "<fmt><title>{{ .command }}@OpenREPL</title><jid>{{ encodePID .pid }}</jid></fmt>"]
