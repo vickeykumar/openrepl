@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-#please run as sudo
+# please run as sudo
 # reboot once after installing to take effect for cgroups and containers
 
 cd ~
 
-apt update
+apt update -y
 
 # set cap to nsenter,gcc,g++
+apt install -y libcap2-bin
 setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/nsenter 
 chown root.root /usr/bin/nsenter
+chmod 4755 /usr/bin/nsenter
 # && ./containers-from-scratch/main run 2 nsenter -n -t$$ /bin/bash
 # sudo setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/arm-linux-gnueabihf-gcc-8
 # add export NODE_OPTIONS=--max_old_space_size=2048 to .bashrc
@@ -24,6 +26,15 @@ apt install -y yaegi
 #install npm
 apt install -y npm
 npm install npm@latest -g
+
+#install the last stable release of npm and node for this project using nvm
+# node v12.22.9
+cd ~
+curl -sL https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.0/install.sh -o install_nvm.sh
+chmod 755 $HOME/install_nvm.sh
+source $HOME/install_nvm.sh
+npm install npm@8.5.1 -g
+nvm install v12.22.9
 
 #install cling
 #use following to compile minimal cling
@@ -64,6 +75,7 @@ cd perli && make install
 cd ~
 
 # Docker: Error response from daemon: cgroups: cgroup mountpoint does not exist: unknown
+# if using docker use privileged mode with cgroup mounted (-v /sys/fs/cgroup:/sys/fs/cgroup:rw )
 mkdir /sys/fs/cgroup/systemd
 mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
 
