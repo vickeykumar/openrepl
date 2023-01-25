@@ -7,27 +7,27 @@ cd ~
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
-apt update -y
+apt-get update -y
 
 # set cap to nsenter,gcc,g++
-apt install -y libcap2-bin
+apt-get install -y libcap2-bin
 setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/nsenter 
 chown root.root /usr/bin/nsenter
 chmod 4755 /usr/bin/nsenter
 # && ./containers-from-scratch/main run 2 nsenter -n -t$$ /bin/bash
 # sudo setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/arm-linux-gnueabihf-gcc-8
 # add export NODE_OPTIONS=--max_old_space_size=2048 to .bashrc
-apt install -y net-tools
+apt-get install -y net-tools
 
 #install golang
-apt install -y golang
+apt-get install -y golang
 
 #install yaegi go repl, >= go1.18
 go install github.com/traefik/yaegi/cmd/yaegi@latest
-apt install -y yaegi
+apt-get install -y yaegi
 
 #install npm
-apt install -y npm
+apt-get install -y npm
 
 #install the last stable release of npm and node for this project using nvm
 # node v12.22.9
@@ -58,27 +58,27 @@ make install
 cd ..
 
 #install ipython2.7
-apt install -y python2.7
+apt-get install -y python2.7
 ln -s /usr/bin/python2.7 /usr/bin/python
-apt install -y ipython
-apt install -y python-is-python3
+apt-get install -y ipython
+apt-get install -y python-is-python3
 
 #install ipython3
-apt install -y ipython3
+apt-get install -y ipython3
 
 #install Ruby(irb)
-apt install -y ruby
+apt-get install -y ruby
 
 #install nodejs
-apt install -y nodejs
+apt-get install -y nodejs
 
 #install perli
-apt install -y rlwrap
+apt-get install -y rlwrap
 # append alias to the /etc/profile
 # alias yaegi="rlwrap yaegi"
 
-apt install -y perl
-apt install -y perl-doc
+apt-get install -y perl
+apt-get install -y perl-doc
 git clone https://github.com/vickeykumar/perli.git
 cd perli && make install
 cd ~
@@ -88,5 +88,5 @@ cd ~
 mkdir /sys/fs/cgroup/systemd
 mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
 
-apt install -y gdb
+apt-get install -y gdb
 
