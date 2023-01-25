@@ -13,3 +13,4 @@ GOPATH=${GIT_TOP}
 export ROOT
 export GOROOT
 export GOPATH
+export GOROOT_BOOTSTRAP

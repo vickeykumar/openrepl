@@ -9,13 +9,22 @@ StartLimitBurst=1
 [Service]
 Type=simple
 User=gottyuser
-ExecStart=/usr/local/bin/gotty -w
+Environment="TERM=xterm"
+Environment="GODEBUG=cgocheck=1"
+ExecStartPre=-+/bin/mkdir /sys/fs/cgroup/systemd
+ExecStartPre=-+/bin/mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
+ExecStartPre=-+/bin/chgrp -R cgroupusers /sys/fs/cgroup
+ExecStartPre=-+/bin/chmod -R u=rwx,g=rwx /sys/fs/cgroup
+ExecStartPre=-+/bin/chmod 4755 /usr/bin/nsenter
+ExecStart=/usr/local/bin/gotty -w --max-connection 2564 --port 80 --title-format "<fmt><title>{{ .command }}@OpenREPL</title><jid>{{ encodePID .pid }}</jid></fmt>"
 ExecStop=/usr/bin/pkill gotty
-LimitNOFILE=2000
+LimitNOFILE=4096
 Restart=always
 RestartPreventExitStatus=126
 # Wait for 1 second before going for next start on failure case
 RestartSec=1
-
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SYS_PTRACE CAP_SYS_ADMIN CAP_SETUID CAP_SETGID
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_SYS_PTRACE CAP_SYS_ADMIN CAP_SETUID CAP_SETGID
+NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target

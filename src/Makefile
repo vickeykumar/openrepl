@@ -3,7 +3,7 @@ include Makefile.include
 DEBIAN_ROOT = ${ROOT}/deb
 OUTPUT_DIR = ./builds
 GIT_COMMIT = $(shell git rev-parse HEAD | cut -c1-7)
-VERSION = 2.0.0-alpha.3
+VERSION = 1.0.0-beta
 TARGET=gotty
 BUILD_OPTIONS = -ldflags "-X main.Version=$(VERSION) -X main.CommitID=$(GIT_COMMIT)"
 
@@ -11,7 +11,7 @@ ifneq ($(UNAME), Linux)
 	PRE_REQ = tools
 endif
 
-gotty:	${TARGET}/main.go server/*.go webtty/*.go backend/*.go ${TARGET}/Makefile
+gotty:	${TARGET}/main.go server/*.go webtty/*.go backend/*.go containers/*.go ${TARGET}/Makefile
 	@echo "building gotty: "${TARGET}
 	cd ${TARGET} && \
 	make
@@ -19,12 +19,12 @@ gotty:	${TARGET}/main.go server/*.go webtty/*.go backend/*.go ${TARGET}/Makefile
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: bindata/static/js/gotty-bundle.js bindata/static/index.html bindata/static/favicon.png bindata/static/css/index.css bindata/static/css/xterm.css bindata/static/css/xterm_customize.css
+asset: bindata/static/js/gotty-bundle.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css/xterm.css bindata/static/meta
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	$(GOROOT)/bin/gofmt -w server/asset.go
 
 .PHONY: all
-all: $(PRE_REQ) asset gotty
+all: $(PRE_REQ) clean asset gotty
 
 bindata:
 	mkdir bindata
@@ -32,27 +32,47 @@ bindata:
 bindata/static: bindata
 	mkdir bindata/static
 
-bindata/static/index.html: bindata/static resources/index.html
+bindata/static/index.html: bindata/static resources/index.html resources/robots.txt jsconsole/build/static/jsconsole.html
 	cp resources/index.html bindata/static/index.html
+	cp resources/robots.txt bindata/static/robots.txt
+	cp jsconsole/build/static/jsconsole.html bindata/static/jsconsole.html
 
-bindata/static/favicon.png: bindata/static resources/favicon.png
-	cp resources/favicon.png bindata/static/favicon.png
+bindata/static/docs: bindata/static resources/docs
+	mkdir -p bindata/static/docs
+	cp -Rv resources/docs/* bindata/static/docs/
 
-bindata/static/js: bindata/static
+bindata/static/meta: bindata/static resources/meta
+	mkdir -p bindata/static/meta
+	cp -Rv resources/meta/* bindata/static/meta/
+
+bindata/static/doc.html: bindata/static resources/doc.html bindata/static/docs
+	cp resources/doc.html bindata/static/doc.html
+
+bindata/static/about.html: bindata/static resources/about.html resources/references.html
+	cp resources/about.html bindata/static/about.html
+	cp resources/references.html bindata/static/references.html
+
+bindata/static/NewFile.html: bindata/static resources/NewFile.html
+	cp resources/NewFile.html bindata/static/NewFile.html
+
+bindata/static/images: bindata/static resources/images jsconsole/build/static/media
+	mkdir -p bindata/static/images
+	mkdir -p bindata/static/media
+	cp -Rv resources/images/* bindata/static/images/
+	cp -Rv jsconsole/build/static/media/* bindata/static/media/
+
+bindata/static/js: bindata/static resources/js
 	mkdir -p bindata/static/js
+	cp -Rv resources/js/* bindata/static/js/
 
-
-bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js
+bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js js/dist/preprocessing.js
 	cp js/dist/gotty-bundle.js bindata/static/js/gotty-bundle.js
+	cp js/dist/preprocessing.js bindata/static/js/preprocessing.js
 
-bindata/static/css: bindata/static
+bindata/static/css: bindata/static resources/css jsconsole/build/static/css/jsconsole.css
 	mkdir -p bindata/static/css
-
-bindata/static/css/index.css: bindata/static/css resources/index.css
-	cp resources/index.css bindata/static/css/index.css
-
-bindata/static/css/xterm_customize.css: bindata/static/css resources/xterm_customize.css
-	cp resources/xterm_customize.css bindata/static/css/xterm_customize.css
+	cp -Rv resources/css/* bindata/static/css/
+	cp jsconsole/build/static/css/jsconsole.css bindata/static/css/jsconsole.css
 
 bindata/static/css/xterm.css: bindata/static/css js/node_modules/xterm/dist/xterm.css
 	cp js/node_modules/xterm/dist/xterm.css bindata/static/css/xterm.css
@@ -69,6 +89,18 @@ js/node_modules/webpack:
 	cd js && \
 	npm install
 
+jsconsole/node_modules/webpack:
+	@echo "building jsconsole: "
+	cd jsconsole && \
+	npm install
+
+jsconsole/build/static/js/jsconsole.js: bindata/static/js jsconsole/node_modules/webpack
+	cd jsconsole && \
+	NODE_ENV=production REACT_APP_VERSION=${VERSION} `npm bin`/webpack
+
+bindata/static/js/jsconsole.js: bindata/static/js jsconsole/build/static/js/jsconsole.js
+	cp jsconsole/build/static/js/jsconsole.js bindata/static/js/jsconsole.js
+
 deb: all
 	mkdir -p ${DEBIAN_ROOT}/gotty/usr/lib/systemd/system
 	mkdir -p ${DEBIAN_ROOT}/gotty/usr/local/bin
@@ -82,12 +114,28 @@ tools:
 	$(GOROOT)/bin/go get github.com/tcnksm/ghr
 	$(GOROOT)/bin/go get github.com/jteeuwen/go-bindata/...
 
+gobuild:
+	@echo "building " ${GOROOT}
+	@echo "using bootstrap " ${GOROOT_BOOTSTRAP}
+	cd ${GOROOT}/src && \
+	./all.bash || true
+
+buildgo: gobuild tools
+
 clean:
 	@echo ""
 	@echo ".... Cleaning " ${TARGET}
 	cd ${TARGET} && \
 	make clean
+	rm -rf bindata
+	rm -rf js/dist/*
 	@echo ".... Clean Done"
+
+cleanjs:
+	rm -rf js/node_modules
+	rm -rf jsconsole/node_modules
+	@echo ".... Clean Done"
+
 
 test:
 	if [ `go fmt $(go list ./... | grep -v /vendor/) | wc -l` -gt 0 ]; then echo "go fmt error"; exit 1; fi

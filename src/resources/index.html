@@ -1,26 +1,615 @@
 <!doctype html>
 <html>
-  <head>
-    <title>{{ .title }}</title>
-    <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="./css/index.css" />
-    <link rel="stylesheet" href="./css/xterm.css" />
-    <link rel="stylesheet" href="./css/xterm_customize.css" />
+  <head itemscope itemtype="http://schema.org/CreativeWork">
+      <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-T8XFRGR');</script>
+    <!-- End Google Tag Manager -->
+
+      <!--  meta data start -->
+      <meta charset="utf-8">
+      <meta name="keywords" content="Online REPL,Coding Online,Online Program,Share,Interpreter,Interpret,Java Interpreter,Scripting, REPL,Evaluate,Code Snippets,C,C++,Go,Python,Java,learn,code,REPL,compile,container,cloud,computing,service,terminal,bash,programming,online,coding,golang,read,execute,print,loop,check,test,statements,expression,live code,learn programming,making easy,new language,free,open, learn coding online,interpreter and compiler,interpreter language,code snippets online,c programming software,compute,learn to code for free, c interpreter,c interpreter online,online c compiler,scripting c,cling,how to learn programming in c,c++ programming online, go playground, interactive go,print go,golang tutorial, go repl,repl shell,repl javascript,javascript,js,compiler vs interpreter,terminal app,bash script,open source software, python online tutorial,python interpreter online,python playground,best python compiler, jshell,java repl"/>
+      <meta name="description" content="OpenREPL is an Online platform for checking codes in REPLs for various languages like C/C++, go, python etc.">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta property="og:url" content="http://www.openrepl.com" />
+	  <meta property="og:title" content="Learn Programming languages like C/C++, Go with Online REPL/Interpreter"/>
+	  <meta property="og:type" content="website"/>
+	  <meta property="og:description" content="OpenREPL is an Online platform for checking codes in REPLs for various languages like C/C++, go, python etc."/>
+	  <meta property="og:image" content="http://www.openrepl.com/images/logo_large.png"/>
+	  <meta property="og:image:alt" content="OpenREPL"/>
+	  <meta name="twitter:title" content="Learn Programming languages like C/C++, Go with Online REPL/Interpreter"/>
+	  <meta name="twitter:description" content="OpenREPL is an Online platform for checking codes in REPLs for various languages like C/C++, go, python etc."/>
+	  <meta name="twitter:image:src" content="http://www.openrepl.com/images/logo_large.png"/>
+	  <meta itemprop="name" content="OpenREPL"/>
+	  <meta itemprop="description" content="OpenREPL is an Online platform for checking codes in REPLs for various languages like C/C++, go, python etc."/>
+	  <meta itemprop="image" content="http://www.openrepl.com/images/logo_large.png"/>
+    <meta name="google-site-verification" content="iejQHkSDbrldGCn37ZJ79J1zoQQcW7-MAlqsHSHwnOI" />
+    <meta name="msvalidate.01" content="75003493DFA09CBFBBDC3F0E2AE85DFD" />
+	  <!--  meta data end -->
+    <base target="_blank">
+	
+      <title>Learn Programming languages like C/C++, Go with Online REPL/Interpreter</title>
+      <link rel="icon" type="image/svg" href="./images/logo.svg">
+      <!--link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"-->
+      <link href="https://fonts.googleapis.com/css?family=Pacifico" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/railscasts.min.css">
+      <link rel="stylesheet" href="./css/scribbler-global.css">
+      <link rel="stylesheet" href="./css/scribbler-landing.css">
+      <link rel="stylesheet" href="./css/xterm.css" />
+      <link rel="stylesheet" href="./css/xterm_customize.css" />
+      <link rel="author" href="humans.txt">
+      <script src="https://kit.fontawesome.com/f54540db67.js" crossorigin="anonymous"></script>
+      <script src="./js/preprocessing.js"></script>
+
+      <!-- Declare all the functions here -->
+      <script>
+       //document.documentElement.style.setProperty('--accent-color', '#0bd800');
+       function myDropDownToggle() {
+          document.getElementById("myDropdown").classList.toggle("show");
+       }
+
+       function copyToClip() {
+          var copyText = document.getElementById("share-it");
+          copyText.select();
+          copyText.setSelectionRange(0, 99999)
+          document.execCommand("copy");
+        }
+
+       function onLoadFn(){
+          try {
+            var frame = document.getElementById('resultFrame');
+            var target = document.getElementById("feedbackDiv");
+            if(!target){
+              return
+            }
+            if(frame && frame.contentWindow.document){
+              if(frame.contentWindow.document.body.innerHTML.trim()==='') return;
+              target.innerHTML = '<h3 class="link link--light-rev">'+(frame.contentWindow.document.body.innerHTML)+'</h3><br><br>';
+            } else {
+              alert("Unable to reach server now");
+            }
+          }
+          catch(error) {
+            alert("Unable to reach server now");
+            console.log(error);
+          }
+        }
+      </script>
+      
+      <!-- style for contact section start -->
+      <style>
+      
+	
+	/* .container {
+	    border-radius: 5px;
+	    background-color: #f2f2f2;
+	    padding: 20px;
+	} */
+
+	   /* css for creating separator dot */
+	
+	.sepdot{
+    		height: 5px;
+    		width: 5px;
+    		background-color: white;
+    		border-radius: 50%;
+    		display: inline-block;
+	  }
+
+	.dot{
+    		height: 5px;
+    		width: 5px;
+    		background-color: white;
+    		border-radius: 50%;
+    		display: inline-block;
+	  }
+	  
+	  #share-buttons img{
+			width: 35px;
+			padding: 5px;
+			border: 0;
+			box-shadow: 0;
+			display: inline;
+		}
+
+
+	</style>
+  <script type="application/ld+json">
+[ {
+  "@context" : "http://schema.org",
+  "@type" : "SoftwareApplication",
+  "name" : "OpenREPL",
+  "image" : "http://www.openrepl.com/",
+  "url" : "http://www.openrepl.com/",
+  "applicationCategory" : [ "C/C++", "evaluation statement", "Cling Interpreter", "Learn", "navigating", "text editor", "writing code, compile", "run", "REPLs", "Commands", "REPL", "programming language", "cloud", "terminal", "Interpreter", "shell", "python", "bash","golang","learn programming","making easy","new language","free","open" ],
+  "requirements" : "cling,gointerpreter,golang,c,c++,python,java,bash,terminal",
+  "softwareVersion" : "beta"
+}, {
+  "@context" : "http://schema.org",
+  "@type" : "SoftwareApplication",
+  "name" : "Check your codes instantaneously with OpenREPL",
+  "image" : "http://www.openrepl.com/",
+  "url" : "http://www.openrepl.com/",
+  "applicationCategory" : [ "C/C++", "evaluation statement", "Cling Interpreter", "Learn", "navigating", "text editor", "writing code, compile", "run", "REPLs", "Commands", "REPL", "programming language" ],
+  "requirements" : "cling,gointerpreter,golang,c,c++,python,java,bash,terminal",
+  "softwareVersion" : "beta"
+} ]
+</script>	
+    
   </head>
   <body>
-    <div id="optionMenu" style="background-color:#f1f1f1">
-	<select class="list" style="margin:7px;font-size:15px">
-		<option value="c">C</option>
-		<option value="cpp">C++</option>
-		<option value="go">Go</option>
-		<option value="java">Java</option>
-    <option value="python2.7">Python2.7</option>
-	</select>
-	<hr>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-T8XFRGR"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+    <a href="https://github.com/vickeykumar/openrepl" class="github-corner" aria-label="View source on Github" style="position: fixed; top: 0; right: 0; border: 0;" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" style="fill:var(--rev-accent-color); color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true" class="github-svg" ><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a><style>.github-corner:hover .octo-arm{animation:octocat-wave 560ms ease-in-out}@keyframes octocat-wave{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(-25deg)}40%,80%{transform:rotate(10deg)}}@media (max-width:500px){.github-corner:hover .octo-arm{animation:none}.github-corner .octo-arm{animation:octocat-wave 560ms ease-in-out}}</style>
+    <nav>
+      <div class="logo">
+        <svg width="92px" height="30px" viewBox="0 0 92 30" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+          <!-- Generator: Sketch 48.2 (47327) - http://www.bohemiancoding.com/sketch -->
+          <title>logo</title>
+          <desc>Created with Sketch.</desc>
+          <defs></defs>
+          <text style="" x="3" y="16" id="e1_texte" >
+              <tspan x="3" style="font-weight:bold;">Open</tspan><tspan style="fill:black;font-weight:bold;" >REPL</tspan>
+          </text>
+        </svg>
+      </div>
+      <ul class="menu">
+        <div class="menu__item toggle"><span></span></div>
+        <li class="menu__item"><a href="doc.html" class="link link--dark" target="_blank"><i class="fa fa-book"></i> Documentation</a></li>
+        <li class="menu__item">         </li>
+      </ul>
+    </nav>
+    <div class="hero">
+      <h1 class="hero__title" itemprop="name" ><span class="hero__title_pre">Open</span>REPL<sup> beta</sup></h1>
+      <p class="hero__description">An Open Source Platform to run and test code snippets instantaneously with <span class="go__color">Open</span>REPL</p>
+      <p class="hero__description">Read–Eval–Print-Loop</p>
+      <p class="hero__warning" style="display: none;">Please try in a device with resolution more than 800x480 for best experience.</p>
+      
+      
+     <!-- code for share buttons start-->
+<div id="share-buttons">
+    
+    
+    <!-- Email -->
+    <a href="mailto:?Subject=OpenREPL&amp;Body=I%20saw%20this%20and%20thought%20of%20you!%20 www.openrepl.com">
+        <img src="./images/mail.svg" alt="Email" />
+    </a>
+ 
+    <!-- Facebook -->
+    <a href="http://www.facebook.com/sharer.php?u=www.openrepl.com" target="_blank">
+        <img src="./images/facebook.svg" alt="Facebook" />
+    </a>
+    
+    <!-- LinkedIn -->
+    <a href="http://www.linkedin.com/shareArticle?mini=true&amp;url=www.openrepl.com" target="_blank">
+        <img src="./images/linkedin.svg" alt="LinkedIn" />
+    </a>
+    
+    <!-- Pinterest -->
+    <a href="javascript:void((function(){var%20e=document.createElement('script');e.setAttribute('type','text/javascript');e.setAttribute('charset','UTF-8');e.setAttribute('src','https://assets.pinterest.com/js/pinmarklet.js?r='+Math.random()*99999999);document.body.appendChild(e)})());" target="_top">
+        <img src="./images/pinterest.svg" alt="Pinterest" />
+    </a>
+    
+    <!-- Twitter -->
+    <a href="https://twitter.com/share?url=www.openrepl.com&amp;text=www.openrepl.com&amp;hashtags=OpenREPL" target="_blank">
+        <img src="./images/twitter.svg" alt="Twitter" />
+    </a>
+
+</div>
+
+<!-- code for share buttons end-->
+      
+    <a class="github-button" href="https://github.com/vickeykumar/openrepl" data-color-scheme="no-preference: dark; light: dark; dark: dark;" data-icon="octicon-star" data-show-count="true" aria-label="Star vickeykumar/openrepl on GitHub">
+        Star
+    </a>
+      
+      
+      <div id="optionMenu">
+        <select class="list" style="margin:7px;font-size:15px;width:200px;">
+                <option value="c" data-editor="c_cpp">C</option>
+                <option value="cpp" data-editor="c_cpp">C++</option>
+                <option value="go" data-editor="golang">Go</option>
+		<option value="yaegi" data-editor="golang">Go-yaegi</option>
+                <option value="java" data-editor="java">Java</option>
+                <option value="javascript" data-editor="javascript">JavaScript</option>
+                <option value="node" data-editor="javascript">NodeJS</option>
+              	<option value="python" data-editor="python">Python</option>
+		<option value="python2.7" data-editor="python">Python2.7</option>
+                <option value="ipython3" data-editor="python">IPython3</option>
+                <option value="irb" data-editor="ruby">Ruby</option>
+                <option value="perli" data-editor="perl">Perl</option>
+                <option value="bash" data-editor="sh">bash</option>
+        </select>
+
+        <div class="widget">
+          <a class="forkbtn" href="" target="_blank" >
+            <svg version="1.1" width="8.75" height="14" viewBox="0 0 10 16" class="octicon octicon-repo-forked" aria-hidden="true"><path fill-rule="evenodd" d="M8 1a1.993 1.993 0 0 0-1 3.72V6L5 8 3 6V4.72A1.993 1.993 0 0 0 2 1a1.993 1.993 0 0 0-1 3.72V6.5l3 3v1.78A1.993 1.993 0 0 0 5 15a1.993 1.993 0 0 0 1-3.72V9.5l3-3V4.72A1.993 1.993 0 0 0 8 1zM2 4.2C1.34 4.2.8 3.65.8 3c0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2zm3 10c-.66 0-1.2-.55-1.2-1.2 0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2zm3-10c-.66 0-1.2-.55-1.2-1.2 0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2z"></path></svg> 
+                <span>Fork REPL</span>
+           </a>
+           <span class="social-count"><b></b><i></i>0</span>
+        </div>
+        <div class="share-btn" onclick="myDropDownToggle()">
+            <svg version="1.0" width="11" height="16" viewBox="0 0 48.000000 48.000000"
+             preserveAspectRatio="xMidYMid meet" class="octicon">
+            <g transform="translate(0.000000,48.000000) scale(0.100000,-0.100000)"
+             stroke="none">
+            <path d="M317 412 c-10 -10 -17 -26 -17 -34 0 -27 -121 -88 -172 -88 -52 0
+            -68 -13 -68 -55 0 -42 16 -55 68 -55 64 0 172 -64 172 -101 0 -37 65 -52 93
+            -21 39 43 7 92 -59 92 -28 0 -56 11 -102 40 -35 22 -60 45 -57 50 3 5 36 27
+            73 49 50 30 74 38 95 34 54 -11 89 54 49 90 -24 22 -55 21 -75 -1z"/>
+            </g>
+            </svg>
+            Share REPL
+        </div>
+        <div id="myDropdown" class="dropdown-content">
+          <div class="dropdown-menu">
+
+                <div class="get-repo-modal-options">
+                      <h4 class="mb-1">
+                        Copy this url to Share REPL and Collaborate with others
+                      </h4>
+                  <div class="input-group">
+                        <input id="share-it" type="text" class="form-control input-monospace input-sm" data-autoselect="" value="https://openrepl.com/" aria-label="share REPL" readonly="">
+                        <div class="input-group-button">
+                          <div aria-label="Copy to clipboard" class="share-btn" tabindex="0" role="button" onclick="copyToClip()"><svg class="octicon octicon-clippy" viewBox="0 0 14 16" version="1.1" width="14" height="20" aria-hidden="true"><path fill-rule="evenodd" d="M2 14h5v1H2v-1zm5-6H2v1h5V7zm2 4V8l-3 3 3 3v-3h5v-2H9zM4.5 9H2v1h2.5V9zM2 12h2.5v-1H2v1zm9 1h1v2c-.02.28-.11.52-.3.8-.19.18-.42.29-.7.3H1c-.55 0-1-.46-1-1V4c0-.55.45-1 1-1h3c0-1.11.89-2 2-2 1.11 0 2 .89 2 2h3c.56 0 1 .45 1 1v6h-2V6H1v9h10v-3zM2 5h8c0-.55-.45-2-1-1H8c-.55 0-1-.45-1-1s-.45-1-1-1-2 .45-1 1-.45 1-1 1H3c-.55 0-2 .45-1 1z" /></svg></div>
+                        </div>
+                  </div>
+
+                </div>
+
+          </div>
+        </div>
+
+      </div>
+    <br>
     </div>
-    <div id="terminal"></div>
+
+    <div class="terminal__row" id="terminal__row">
+      <div class="sidebar">
+        <div class="fullscreen-toggle tooltip" id="togglescreen-button" onclick="ToggleFunction();"><i class="fa fa-expand"></i><span class="tooltiptext">Maximize</span></div>
+        <div class="fullscreen-toggle tooltip" id="editor-button" onclick="ToggleEditor();"><i class="fa fa-pencil"></i><span class="tooltiptext">Use Editor</span></div>
+        <div class="fullscreen-toggle rotate-fa tooltip" id="redo-button" onclick="ToggleReconnect();"><i class="fa fa-redo rotate-fa"></i><span class="tooltiptext revrotate-fa">Reconnect REPL</span></div>
+        <div class="fullscreen-toggle tooltip" id="play-button" onclick="CompileandRun();"><i class="fa fas fa-play"></i><span class="tooltiptext">Run Editor Code</span></div>
+        <div class="fullscreen-toggle tooltip" id="play-button" onclick="RunandDebug();"><i class="fa fas" style="font-size:12px;">debug</i><span class="tooltiptext">Debug Editor Code</span></div>
+        <div class="fullscreen-toggle tooltip" id="download-button" onclick="DownloadEditor();"><i class="fa fa-download"></i><span class="tooltiptext">Download Editor Code</span></div>
+        <div class="fullscreen-toggle tooltip" id="upload-button" onclick="document.getElementById('fileToLoad').click();"><i class="fa fa-upload"><input type="file" id="fileToLoad" oninput="UploadEditor();" style="display: none;"></i><span class="tooltiptext">Upload to Editor</span></div>
+      </div>
+      <div class="ide" id="ide" >
+        <h2>Welcome to <span class="go__color">Open</span>REPL</h2>
+        <div id="editor"></div>
+        <div id="loader"></div>
+        <!--start here-->
+        <div class="controls">
+    
+          <!--form >
+            <input id="input" name="id" placeholder="Editor name">
+          </form--> 
+          <input type="number" class="select-input" style="width:3em" id="efontSize" min="5" max="30" value ="12">
+          <select id="select-theme" class="select-input">
+            <optgroup label="Bright">
+                <option value="ace/theme/chrome">Chrome</option>
+                <option value="ace/theme/clouds">Clouds</option>
+                <option value="ace/theme/crimson_editor">Crimson Editor</option>
+                <option value="ace/theme/dawn">Dawn</option>
+                <option value="ace/theme/dreamweaver">Dreamweaver</option>
+                <option value="ace/theme/eclipse">Eclipse</option>
+                <option value="ace/theme/github">GitHub</option>
+                <option value="ace/theme/iplastic">IPlastic</option>
+                <option value="ace/theme/solarized_light">Solarized Light</option>
+                <option value="ace/theme/textmate">TextMate</option>
+                <option value="ace/theme/tomorrow">Tomorrow</option>
+                <option value="ace/theme/xcode">XCode</option>
+                <option value="ace/theme/kuroir">Kuroir</option>
+                <option value="ace/theme/katzenmilch">KatzenMilch</option>
+                <option value="ace/theme/sqlserver">SQL Server</option>
+            </optgroup>
+            <optgroup label="Dark">
+                <option value="ace/theme/ambiance">Ambiance</option>
+                <option value="ace/theme/chaos">Chaos</option>
+                <option value="ace/theme/clouds_midnight">Clouds Midnight</option>
+                <option value="ace/theme/cobalt">Cobalt</option>
+                <option value="ace/theme/gruvbox">Gruvbox</option>
+                <option value="ace/theme/idle_fingers">idle Fingers</option>
+                <option value="ace/theme/kr_theme">krTheme</option>
+                <option value="ace/theme/merbivore">Merbivore</option>
+                <option value="ace/theme/merbivore_soft">Merbivore Soft</option>
+                <option value="ace/theme/mono_industrial">Mono Industrial</option>
+                <option value="ace/theme/monokai">Monokai</option>
+                <option value="ace/theme/pastel_on_dark">Pastel on dark</option>
+                <option value="ace/theme/solarized_dark">Solarized Dark</option>
+                <option value="ace/theme/terminal">Terminal</option>
+                <option value="ace/theme/tomorrow_night">Tomorrow Night</option>
+                <option value="ace/theme/tomorrow_night_blue">Tomorrow Night Blue</option>
+                <option value="ace/theme/tomorrow_night_bright">Tomorrow Night Bright</option>
+                <option value="ace/theme/tomorrow_night_eighties">Tomorrow Night 80s</option>
+                <option value="ace/theme/twilight">Twilight</option>
+                <option value="ace/theme/vibrant_ink">Vibrant Ink</option>
+            </optgroup>
+          </select>
+          <select id="select-lang" class="select-input">
+            <option value="abap" disabled>ABAP</option>
+            <option value="abc" disabled>ABC</option>
+            <option value="actionscript" disabled>ActionScript</option>
+            <option value="ada" disabled>ADA</option>
+            <option value="apache_conf" disabled>Apache Conf</option>
+            <option value="asciidoc" disabled>AsciiDoc</option>
+            <option value="assembly_x86" disabled>Assembly x86</option>
+            <option value="autohotkey" disabled>AutoHotKey</option>
+            <option value="batchfile" disabled>BatchFile</option>
+            <option value="bro" disabled>Bro</option>
+            <option value="c_cpp">C and C++</option>
+            <option value="c9search" disabled>C9Search</option>
+            <option value="cirru" disabled>Cirru</option>
+            <option value="clojure" disabled>Clojure</option>
+            <option value="cobol" disabled>Cobol</option>
+            <option value="coffee" disabled>CoffeeScript</option>
+            <option value="coldfusion" disabled>ColdFusion</option>
+            <option value="csharp" disabled>C#</option>
+            <option value="css" disabled>CSS</option>
+            <option value="curly" disabled>Curly</option>
+            <option value="d" disabled>D</option>
+            <option value="dart" disabled>Dart</option>
+            <option value="diff" disabled>Diff</option>
+            <option value="dockerfile" disabled>Dockerfile</option>
+            <option value="dot" disabled>Dot</option>
+            <option value="drools" disabled>Drools</option>
+            <option value="dummy" disabled>Dummy</option>
+            <option value="dummysyntax" disabled>DummySyntax</option>
+            <option value="eiffel" disabled>Eiffel</option>
+            <option value="ejs" disabled>EJS</option>
+            <option value="elixir" disabled>Elixir</option>
+            <option value="elm" disabled>Elm</option>
+            <option value="erlang" disabled>Erlang</option>
+            <option value="forth" disabled>Forth</option>
+            <option value="fortran" disabled>Fortran</option>
+            <option value="ftl" disabled>FreeMarker</option>
+            <option value="gcode" disabled>Gcode</option>
+            <option value="gherkin" disabled>Gherkin</option>
+            <option value="gitignore" disabled>Gitignore</option>
+            <option value="glsl" disabled>Glsl</option>
+            <option value="gobstones" disabled>Gobstones</option>
+            <option value="golang">Go</option>
+            <option value="groovy" disabled>Groovy</option>
+            <option value="haml" disabled>HAML</option>
+            <option value="handlebars" disabled>Handlebars</option>
+            <option value="haskell" disabled>Haskell</option>
+            <option value="haskell_cabal" disabled>Haskell Cabal</option>
+            <option value="haxe" disabled>haXe</option>
+            <option value="hjson" disabled>Hjson</option>
+            <option value="html" disabled>HTML</option>
+            <option value="html_elixir" disabled>HTML (Elixir)</option>
+            <option value="html_ruby" disabled>HTML (Ruby)</option>
+            <option value="ini" disabled>INI</option>
+            <option value="io" disabled>Io</option>
+            <option value="jack" disabled>Jack</option>
+            <option value="jade" disabled>Jade</option>
+            <option value="java">Java</option>
+            <option value="javascript">JavaScript</option>
+            <option value="json" disabled>JSON</option>
+            <option value="jsoniq" disabled>JSONiq</option>
+            <option value="jsp" disabled>JSP</option>
+            <option value="jsx" disabled>JSX</option>
+            <option value="julia" disabled>Julia</option>
+            <option value="kotlin" disabled>Kotlin</option>
+            <option value="latex" disabled>LaTeX</option>
+            <option value="less" disabled>LESS</option>
+            <option value="liquid" disabled>Liquid</option>
+            <option value="lisp" disabled>Lisp</option>
+            <option value="livescript" disabled>LiveScript</option>
+            <option value="logiql" disabled>LogiQL</option>
+            <option value="lsl" disabled>LSL</option>
+            <option value="lua" disabled>Lua</option>
+            <option value="luapage" disabled>LuaPage</option>
+            <option value="lucene" disabled>Lucene</option>
+            <option value="makefile" disabled>Makefile</option>
+            <option value="markdown" disabled>Markdown</option>
+            <option value="mask" disabled>Mask</option>
+            <option value="matlab" disabled>MATLAB</option>
+            <option value="maze" disabled>Maze</option>
+            <option value="mel" disabled>MEL</option>
+            <option value="mushcode" disabled>MUSHCode</option>
+            <option value="mysql" disabled>MySQL</option>
+            <option value="nix" disabled>Nix</option>
+            <option value="nsis" disabled>NSIS</option>
+            <option value="objectivec" disabled>Objective-C</option>
+            <option value="ocaml" disabled>OCaml</option>
+            <option value="pascal" disabled>Pascal</option>
+            <option value="perl">Perl</option>
+            <option value="pgsql" disabled>pgSQL</option>
+            <option value="php" disabled>PHP</option>
+            <option value="powershell" disabled>Powershell</option>
+            <option value="praat" disabled>Praat</option>
+            <option value="prolog" disabled>Prolog</option>
+            <option value="properties" disabled>Properties</option>
+            <option value="protobuf" disabled>Protobuf</option>
+            <option value="python">Python</option>
+            <option value="r" disabled>R</option>
+            <option value="razor" disabled>Razor</option>
+            <option value="rdoc" disabled>RDoc</option>
+            <option value="rhtml" disabled>RHTML</option>
+            <option value="rst" disabled>RST</option>
+            <option value="ruby">Ruby</option>
+            <option value="rust" disabled>Rust</option>
+            <option value="sass" disabled>SASS</option>
+            <option value="scad" disabled>SCAD</option>
+            <option value="scala" disabled>Scala</option>
+            <option value="scheme" disabled>Scheme</option>
+            <option value="scss" disabled>SCSS</option>
+            <option value="sh">SH</option>
+            <option value="sjs" disabled>SJS</option>
+            <option value="smarty" disabled>Smarty</option>
+            <option value="snippets" disabled>snippets</option>
+            <option value="soy_template" disabled>Soy Template</option>
+            <option value="space" disabled>Space</option>
+            <option value="sql" disabled>SQL</option>
+            <option value="sqlserver" disabled>SQLServer</option>
+            <option value="stylus" disabled>Stylus</option>
+            <option value="svg" disabled>SVG</option>
+            <option value="swift" disabled>Swift</option>
+            <option value="tcl" disabled>Tcl</option>
+            <option value="tex" disabled>Tex</option>
+            <option value="text">Text</option>
+            <option value="textile" disabled>Textile</option>
+            <option value="toml" disabled>Toml</option>
+            <option value="tsx" disabled>TSX</option>
+            <option value="twig" disabled>Twig</option>
+            <option value="typescript" disabled>Typescript</option>
+            <option value="vala" disabled>Vala</option>
+            <option value="vbscript" disabled>VBScript</option>
+            <option value="velocity" disabled>Velocity</option>
+            <option value="verilog" disabled>Verilog</option>
+            <option value="vhdl" disabled>VHDL</option>
+            <option value="wollok" disabled>Wollok</option>
+            <option value="xml" disabled>XML</option>
+            <option value="xquery" disabled>XQuery</option>
+            <option value="yaml" disabled>YAML</option>
+            <option value="django" disabled>Django</option>
+          </select>
+          <div class="share-btn" onclick="CompileandRun();"><i class="fas fa-play"></i> Run</div>
+        </div>
+
+        <!-- ends here -->
+      </div>
+      <div class="gutter gutter-horizontal" id="gutter-div"></div>
+      <div class="terminal" id="terminal"></div>
+    </div>
+    
+    <div class="wrapper">
+      <hr/>
+      <div class="installation">
+        <h3 class="section__title">Getting Started</h3>
+        <div class="demo__terminal">
+          <a href="https://github.com/vickeykumar/openrepl" class="github-corner" aria-label="View source on Github" style="position: absolute; top: 0; right: 0; border: 0; z-index: 10;" target="_blank"><svg width="40" height="40" viewBox="0 0 250 250" style="fill:var(--code-bg-color-2); color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true" class="github-svg" ><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+          <pre>
+        <!-- Place your demo code here -->
+            <code class="shell-session demo">hyperyolo ~ $ </code>
+          </pre>
+        </div>
+      </div>
+      <br><br><br>
+      <div class="keybinding">
+        <ul class="keybinding__detail">
+          <h3 class="keybinding__title">Commands</h3>
+          <li><span class="keybinding__label">.help</span></li>
+          <li><span class="keybinding__label">.L libname</span></li>
+          <li><span class="keybinding__label">.rawInput</span></li>
+          <li><span class="keybinding__label">.q</span></li>
+        </ul>
+        <ul class="keybinding__detail">
+          <h3 class="keybinding__title">Descriptions</h3>
+          <li> Display brief descriptions of all meta-commands.</li>
+          <li> Load the given file or library</li>
+          <li> Toggle on/off raw input.</li>
+          <li> Exits Cling Interpreter.</li>
+        </ul>
+      </div>
+      <div class="callout">
+        <p>Please read documentation for more information</p>
+        <a href="doc.html" class="button--primary" target="_blank">Documentation</a>
+      </div>
+      <br><br><br>
+
+	  			<!-- Feedback/Contact Section start -->
+	  			
+	  			<section id="three">
+            <hr/>
+						<h2>Get In Touch</h2>
+						<p><span class="go__color_rev">Which language REPL you want to see next?</span><br> Please Leave your comments in case of any Suggestions/Feedback. Thanks :)</p>
+            <iframe name="resultFrame" id="resultFrame" width="100%" style="border:none;display:none" onload="onLoadFn()"></iframe>
+							 <div id="feedbackDiv">
+								<form method="post" action="/feedback" target="resultFrame">
+									<table>
+									
+									<tr>
+										<td><input type="text" name="name" id="name" placeholder="Name" required="required"/></td>
+										<td><input type="email" name="email" id="email" placeholder="Email" required="required"/></td>	
+									</tr>
+									
+									<tr>
+										<td colspan="2"><textarea name="message" id="message" placeholder="Message" rows="4" required="required"></textarea></td>
+									</tr>
+									
+									<tr>
+										<td colspan="2" align="center"><input type="submit" value="Send Message"/></td>
+									</tr>
+									
+									</table>
+									
+								</form>
+							</div>
+					</section>
+	  
+	  			<!-- Feedback/Contact Section end -->
+	  </div>
+
+  <div class="changelog">
+    <div class="wrapper">
+      <div class="feature">
+        <div class="feature__item">
+          <h3 class="section__title">Fast To Learn</h3>
+          <p>Start writing your code snippets immediately in any REPL! No more time wasted on opening and navigating your text editor, writing code, compile and run to see the results.</p>
+        </div>
+        <div class="feature__item">
+          <h3 class="section__title">Secure and Containerized REPLs</h3>
+          <p>REPLs are created and destroyed on the fly using containers. REPLs can be forked to create a child terminal in the same container that can communicate with the parent REPL. Useful in case of socket/http programming.</p>
+        </div>
+        <div class="feature__item">
+          <h3 class="section__title">Meta-Commands</h3>
+          <p>Each REPL terminal has some meta-commands to perform administrative tasks.</p>
+        </div>
+        <div class="feature__item">
+          <h3 class="section__title">Prototyping and Proofs of Concepts</h3>
+          <p>Helps you learn a programming language faster.</p>
+        </div>
+        <div class="feature__item">
+          <h3 class="section__title">Share/Collaborate</h3>
+          <p>Share your REPL Instance with Others to collaborate with others. Click 'Share REPL' button to generate a unique REPL ID which can be shared with Others.</p>
+        </div>
+        <hr/>
+      </div>
+    </div>
+   </div>
+    
+  <footer class="footer">
+    	<a href="about.html" class="link link--light" target="_blank">About</a> <span class="dot"></span>
+    	<a href="references.html" class="link link--light" target="_blank">References</a> <span class="dot"></span>
+    	2018-2019, 2023&copy;<span class="go__color">Open</span>REPL
+      	<div>
+      		<div id="sfcqrzhbwgx93c59m74b25uafek7ea3sayj" style="position: sticky; bottom: 0; left: 0; border: 0; font-size: 10px;" align="left" ></div><script type="text/javascript" src="https://counter3.stat.ovh/private/counter.js?c=qrzhbwgx93c59m74b25uafek7ea3sayj&down=async" async></script><noscript><a href="https://www.freecounterstat.com" title="web page counters"><img src="https://counter3.stat.ovh/private/freecounterstat.php?c=qrzhbwgx93c59m74b25uafek7ea3sayj" border="0" title="web page counters" alt="web page counters"></a></noscript>
+      		
+      		<div style="position: sticky; bottom: 0; right: 0; border: 0; font-size: 10px;" align="right">Template by <a href="https://themewagon.com" class="link link--light" target="_blank">ThemeWagon</a></div>
+  		</div>
+   </footer>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+    <script>hljs.initHighlightingOnLoad();</script>
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/3.6.4/firebase.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js" type="text/javascript" charset="utf-8"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ext-language_tools.min.js" type="text/javascript" charset="utf-8"></script>
+    <script src="http://cdn.jsdelivr.net/g/filesaver.js"></script>
+    <script src="./js/scribbler.js"></script>
+    <script>
+          /*var inst = Split(['.ide', '.terminal'], {
+            gutterSize: 3,
+            sizes: [50,50]
+          });*/
+          if (ismob()) {
+            $("#gutter-div").toggleClass("hide-tag");
+          } else {
+            ToggleEditor();
+          }
+    </script>
+    <script src="./js/common.js"></script>
     <script src="./auth_token.js"></script>
     <script src="./config.js"></script>
     <script src="./js/gotty-bundle.js"></script>
+    <script async defer src="https://buttons.github.io/buttons.js"></script>
   </body>
 </html>

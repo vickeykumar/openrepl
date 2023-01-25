@@ -21,7 +21,12 @@ import (
 	"pkg/homedir"
 	"pkg/randomstring"
 	"webtty"
+	"encoder"
+	"utils"
 )
+
+const STATUS_SUCCESS = "SUCCESS"
+const STATUS_FAILED = "FAILED"
 
 // Server provides a webtty HTTP endpoint.
 type Server struct {
@@ -52,7 +57,9 @@ func New(factory Factory, options *Options) (*Server, error) {
 		panic("index template parse failed") // must be valid
 	}
 
-	titleTemplate, err := noesctmpl.New("title").Parse(options.TitleFormat)
+	titleTemplate, err := noesctmpl.New("title").Funcs(noesctmpl.FuncMap{
+	    "encodePID": encoder.EncodePID,
+  	}).Parse(options.TitleFormat)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to parse window title format `%s`", options.TitleFormat)
 	}
@@ -187,8 +194,18 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 
 	var siteMux = http.NewServeMux()
 	siteMux.HandleFunc(pathPrefix, server.handleIndex)
+	siteMux.HandleFunc(pathPrefix+"feedback", handleFeedback)
+	siteMux.HandleFunc(pathPrefix+"demo", handleDemo)
+
 	siteMux.Handle(pathPrefix+"js/", http.StripPrefix(pathPrefix, staticFileHandler))
-	siteMux.Handle(pathPrefix+"favicon.png", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"images/", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"media/", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"docs/", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"doc.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"about.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"references.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"robots.txt", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"jsconsole.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"css/", http.StripPrefix(pathPrefix, staticFileHandler))
 
 	siteMux.HandleFunc(pathPrefix+"auth_token.js", server.handleAuthToken)
@@ -210,8 +227,16 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	wsMux.HandleFunc(pathPrefix+"ws_c", server.generateHandleWS(ctx, cancel, counter, "cling"))
 	wsMux.HandleFunc(pathPrefix+"ws_cpp", server.generateHandleWS(ctx, cancel, counter, "cling"))
 	wsMux.HandleFunc(pathPrefix+"ws_go", server.generateHandleWS(ctx, cancel, counter, "gointerpreter"))
-	wsMux.HandleFunc(pathPrefix+"ws_java", server.generateHandleWS(ctx, cancel, counter, "jshell"))
-	wsMux.HandleFunc(pathPrefix+"ws_python2.7", server.generateHandleWS(ctx, cancel, counter, "python2.7"))
+
+	// Expose all other APIs form Commands2DemoMap, refer utils.go
+	if utils.Commands2DemoMap == nil {
+		InitCommands2DemoMap()
+	}
+	for command, _ := range utils.Commands2DemoMap {
+		log.Printf("Exposing API for %d\n", command)
+		wsMux.HandleFunc(pathPrefix+"ws_"+command, server.generateHandleWS(ctx, cancel, counter, command))
+	}
+
 	siteHandler = http.Handler(wsMux)
 
 	return siteHandler
@@ -255,4 +280,3 @@ func (server *Server) SetNewCommand(command string) {
 	server.options.TitleVariables["command"] = command
 	log.Println("New Command set successfully: " + command)
 }
-

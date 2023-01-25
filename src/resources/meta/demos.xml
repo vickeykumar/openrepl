@@ -1,0 +1,1332 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DemoList>
+	<Demo>
+		<Name>cling</Name>
+		<Github>https://github.com/root-project/cling</Github>
+		<Doc>./docs/cling.html</Doc>
+		<Codes>
+			<Name>help</Name>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> .help</Statement>
+				<Result>
+Cling (C/C++ interpreter) meta commands usage
+All commands must be preceded by a '.', except
+for the evaluation statement { }
+==============================================================================
+Syntax: .Command [arg0 arg1 ... argN]
+
+.L &lt;filename&gt; - Load the given file or library
+
+.(x|X) &lt;filename&gt;[args] - Same as .L and runs a function with
+signature: ret_type filename(args)</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> #include &lt;stdio.h&gt;</Statement>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> int i=0;</Statement>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> i++</Statement>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> printf("%d\n",i);</Statement>
+				<Result>1</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> 1+2</Statement>
+				<Result>(int) 3 &lt;-- runtime values supported only with c++ mode</Result>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> 2*3</Statement>
+				<Result>(int) 6</Result>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> int i=10</Statement>
+				<Result>(int) 10</Result>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> i</Statement>
+				<Result>(int) 10</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> #include&lt;stdio.h&gt;</Statement>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> printf("Hello World\n");</Statement>
+				<Result>Hello World</Result>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> printf("Hello World\n")</Statement>
+				<Result>Hello World
+(int) 12</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> #include&lt;iostream&gt;</Statement>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> using namespace std;</Statement>
+			</Code>
+			<Code>
+				<Prompt>[cling]$</Prompt>
+				<Statement> cout&lt;&lt;"Hello World\n";</Statement>
+				<Result>Hello World</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>.help</Command>
+			<Description>Display brief descriptions of all meta-commands.</Description>
+		</Usage>
+		<Usage>
+			<Command>.L libname</Command>
+			<Description>Load the given file or library.</Description>
+		</Usage>
+		<Usage>
+			<Command>.rawInput</Command>
+			<Description>Toggle on/off raw input.</Description>
+		</Usage>
+		<Usage>
+			<Command>.q</Command>
+			<Description>Exits Cling Interpreter.</Description>
+		</Usage>
+		<Usage>
+                        <Command>Note:</Command>
+                        <Description>runtime extraction of value is not supported in c-mode.</Description>
+                </Usage>
+		<Content>/* Welcome to OpenREPL! */</Content>
+		<Compiler>
+COMPILER=gcc
+FILE=test.c
+DEBUG_OPTION=""
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	if [ $(uname) == "Linux" ]; then
+		DEBUG_OPTION="-ggdb -fdebug-prefix-map=$(pwd)=. -g -static -static-libgcc";
+	else
+		DEBUG_OPTION="-ggdb -fdebug-prefix-map=$(pwd)=. -g";
+	fi
+fi
+
+if [ "$IdeLang" = "cpp" ]; then
+	COMPILER=g++;
+	FILE=test.cpp;
+	if $debug; then
+		if [ $(uname) == "Linux" ]; then
+			DEBUG_OPTION="-ggdb -fdebug-prefix-map=$(pwd)=. -g -static -static-libstdc++";
+		else
+			DEBUG_OPTION="-ggdb -fdebug-prefix-map=$(pwd)=. -g";
+		fi
+	fi
+fi
+
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE -pthread -lm -o $HOME/test $DEBUG_OPTION;
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/test" ]; then
+	if $debug; then
+		gdb $HOME/test;
+	else
+    	$SHELL -c $HOME/test;
+    fi
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+	
+	<Demo>
+		<Name>yaegi</Name>
+		<Github>https://github.com/traefik/yaegi</Github>
+		<Doc>https://pkg.go.dev/github.com/traefik/yaegi</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>: 12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>: 43</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var i int</Statement>
+				<Result>: 0xc000204490</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> i</Statement>
+				<Result>: 0</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> for i:=0; i&lt;10; i++ {
+fmt.Println("Hi: ",i)
+}</Statement>
+				<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9
+: &lt;nil&gt;</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> import "time"</Statement>
+				<Result>: 0xc000486a40</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> time.Now();</Statement>
+				<Result>: 2018-07-18 22:32:56.18823511 +0530 IST m=+0.000279327</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> time.Now().Unix();</Statement>
+				<Result>: 1531933384</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>:help</Command>
+			<Description>please refer docs for more info.</Description>
+		</Usage>
+		<Content>/* Welcome to OpenREPL! */</Content>
+		<Compiler>
+COMPILER=yaegi
+FILE=test.go
+GOROOT=`go env GOROOT`
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+fi
+if [ "$IdeLang" = "go" ]; then
+	COMPILER=yaegi
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+	if $debug; then
+		go build -gcflags=all="-N -l" -o $HOME/test $HOME/$FILE;
+		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
+		gdb $HOME/test -d $GOROOT;
+	else
+    	$COMPILER run $HOME/$FILE;
+    fi
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+
+	<Demo>
+		<Name>gointerpreter</Name>
+		<Github>https://github.com/vickeykumar/Go-interpreter</Github>
+		<Doc>./docs/gointerpreter.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>43</Result>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> var i int</Statement>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> i</Statement>
+				<Result>0</Result>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> for i:=0; i&lt;10; i++ {
+fmt.Println("Hi: ",i)
+}</Statement>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> :r</Statement>
+				<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> import "time"</Statement>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> time.Now();</Statement>
+				<Result>2018-07-18 22:32:56.18823511 +0530 IST m=+0.000279327</Result>
+			</Code>
+			<Code>
+				<Prompt>go&gt;&gt;</Prompt>
+				<Statement> time.Now().Unix();</Statement>
+				<Result>1531933384</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>:help</Command>
+			<Description>display brief descriptions of all meta-commands.</Description>
+		</Usage>
+		<Usage>
+			<Command>:r, :x</Command>
+			<Description>Run as Go File.</Description>
+		</Usage>
+		<Usage>
+			<Command>:c</Command>
+			<Description>Clear the session,and Restart.</Description>
+		</Usage>
+		<Usage>
+			<Command>:q</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+		<Content>/* Welcome to OpenREPL! */</Content>
+		<Compiler>
+COMPILER=go
+FILE=test.go
+GOROOT=`go env GOROOT`
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+fi
+if [ "$IdeLang" = "go" ]; then
+	COMPILER=go
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+	if $debug; then
+		go build -gcflags=all="-N -l" -o $HOME/test $HOME/$FILE;
+		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
+		gdb $HOME/test -d $GOROOT;
+	else
+    	$COMPILER run $HOME/$FILE;
+    fi
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+	<Demo>
+		<Name>python</Name>
+		<Doc>./docs/python.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>43</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> i=0</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> i</Statement>
+				<Result>0</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> for i in range(10):
+...        print "Hi: ",i</Statement>
+			<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> import time</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> time.time()</Statement>
+				<Result>1531933100.30023</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>help(object)</Command>
+			<Description>display help about the given object.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit() or ctrl-D</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+		<Content># Welcome to OpenREPL!</Content>
+		<Compiler>
+COMPILER=python
+FILE=test.py
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="python -m pdb";
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+	<Demo>
+		<Name>python2.7</Name>
+		<Doc>./docs/python.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>43</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> i=0</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> i</Statement>
+				<Result>0</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> for i in range(10):
+...        print "Hi: ",i</Statement>
+			<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> import time</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;&gt;&gt;</Prompt>
+				<Statement> time.time()</Statement>
+				<Result>1531933100.30023</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>help(object)</Command>
+			<Description>display help about the given object.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit() or ctrl-D</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+		<Content># Welcome to OpenREPL!</Content>
+		<Compiler>
+COMPILER=python2.7
+FILE=test.py
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="python2.7 -m pdb";
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+	<Demo>
+		<Name>ipython</Name>
+		<Doc>./docs/python.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>In [1]</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>Out[1]: 12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>In [2]</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>Out[2]: 43</Result>
+			</Code>
+			<Code>
+				<Prompt>In [3]</Prompt>
+				<Statement> i=0</Statement>
+			</Code>
+			<Code>
+				<Prompt>In [4]</Prompt>
+				<Statement> i</Statement>
+				<Result>Out[4]: 0</Result>
+			</Code>
+			<Code>
+				<Prompt>In [5]</Prompt>
+				<Statement> for i in range(10):
+...        print "Hi: ",i</Statement>
+			<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>In [6]</Prompt>
+				<Statement> import time</Statement>
+			</Code>
+			<Code>
+				<Prompt>In [7]</Prompt>
+				<Statement> time.time()</Statement>
+				<Result>Out[7]: 1531933100.30023</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>help(object)</Command>
+			<Description>display help about the given object.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit or ctrl-D</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+		<Content># Welcome to OpenREPL!</Content>
+		<Compiler>
+COMPILER=python
+FILE=test.py
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="python -m pdb";
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+	<Demo>
+		<Name>ipython3</Name>
+		<Doc>./docs/python.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>In [1]</Prompt>
+				<Statement> 12312321</Statement>
+				<Result>Out[1]: 12312321</Result>
+			</Code>
+			<Code>
+				<Prompt>In [2]</Prompt>
+				<Statement> 12+31</Statement>
+				<Result>Out[2]: 43</Result>
+			</Code>
+			<Code>
+				<Prompt>In [3]</Prompt>
+				<Statement> i=0</Statement>
+			</Code>
+			<Code>
+				<Prompt>In [4]</Prompt>
+				<Statement> i</Statement>
+				<Result>Out[4]: 0</Result>
+			</Code>
+			<Code>
+				<Prompt>In [5]</Prompt>
+				<Statement> for i in range(10):
+...        print("Hi: ",i)</Statement>
+			<Result>Hi: 0
+Hi: 1
+Hi: 2
+Hi: 3
+Hi: 4
+Hi: 5
+Hi: 6
+Hi: 7
+Hi: 8
+Hi: 9</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>In [6]</Prompt>
+				<Statement> import time</Statement>
+			</Code>
+			<Code>
+				<Prompt>In [7]</Prompt>
+				<Statement> time.time()</Statement>
+				<Result>Out[7]: 1531933100.30023</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>help(object)</Command>
+			<Description>display help about the given object.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit or ctrl-D</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+		<Content># Welcome to OpenREPL!</Content>
+		<Compiler>
+COMPILER=python3
+FILE=test.py
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="python3 -m pdb";
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+	<Demo>
+		<Name>java</Name>
+		<Github>https://github.com/javaterminal/tryjshell</Github>
+		<Doc>./docs/java.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>jshell&gt;</Prompt>
+				<Statement> double[] arr = {19, 12.89, 16.5, 200, 13.7};</Statement>
+				<Result>arr ==> double[5] { 19.0, 12.89, 16.5, 200.0, 13.7 }</Result>
+			</Code>
+			<Code>
+				<Prompt>jshell&gt;</Prompt>
+				<Statement> double total = 0;</Statement>
+				<Result>total ==> 0.0</Result>
+			</Code>
+			<Code>
+				<Prompt>jshell&gt;</Prompt>
+				<Statement> for(int i=0; i&lt;arr.length; i++){
+        	total = total + arr[i];
+        }</Statement>
+			</Code>
+			<Code>
+				<Prompt>jshell&gt;</Prompt>
+				<Statement> total</Statement>
+				<Result>total ==> 262.09</Result>
+			</Code>
+			<Code>
+				<Prompt>jshell&gt;</Prompt>
+				<Statement> System.out.format("The total is: %.3f", total);</Statement>
+				<Result>The total is: 262.090 ==> java.io.PrintStream@6267c3bb</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>jshell&gt;</Prompt>
+				<Statement> import java.util.Date;</Statement>
+			</Code>
+			<Code>
+				<Prompt>jshell&gt;</Prompt>
+				<Statement> Date date = new Date();</Statement>
+				<Result>date ==> Sat Aug 10 08:58:58 GMT 2019</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>/help</Command>
+			<Description>shows this help.</Description>
+		</Usage>
+		<Usage>
+			<Command>/reset</Command>
+			<Description>reset the shell.</Description>
+		</Usage>
+		<Usage>
+			<Command>/open</Command>
+			<Description>open a source file.</Description>
+		</Usage>
+		<Usage>
+			<Command>/save</Command>
+			<Description>save snippet source to a file.</Description>
+		</Usage>
+		<Usage>
+			<Command>/exit</Command>
+			<Description>quit the REPL.</Description>
+		</Usage>
+		<Content>/* Welcome to OpenREPL! */</Content>
+		<Compiler>
+COMPILER=java
+FILE=test.java
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	echo "Debugging not Supported for Java.";
+	exit;
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/*.java;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+	<Demo>
+		<Name>bash</Name>
+		<Doc>http://linuxcommand.org/index.php</Doc>
+		<Codes>
+			<Code>
+				<Prompt>bash$</Prompt>
+				<Statement> NAME="John"</Statement>
+			</Code>
+			<Code>
+				<Prompt>bash$</Prompt>
+				<Statement> echo "Hello $NAME!"</Statement>
+				<Result>Hello John</Result>
+			</Code>
+			<Code>
+				<Prompt>bash$</Prompt>
+				<Statement> get_name() {
+  echo "John"
+}</Statement>
+			</Code>
+			<Code>
+				<Prompt>bash$</Prompt>
+				<Statement> echo "You are $(get_name)"</Statement>
+				<Result>You are John</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>bash$</Prompt>
+				<Statement> for i in {1..5}; do
+    echo "Welcome $i"
+done</Statement>
+				<Result>Welcome 1
+Welcome 2
+Welcome 3
+Welcome 4
+Welcome 5</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>help</Command>
+			<Description>shows brief description of bash commands.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit</Command>
+			<Description>exits the bash.</Description>
+		</Usage>
+		<Content># Welcome to OpenREPL!</Content>
+		<Compiler>
+COMPILER=bash
+FILE=test.sh
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="bash -x";
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+	<Demo>
+		<Name>irb</Name>
+		<Doc>https://www.ruby-lang.org/en/documentation/quickstart/</Doc>
+		<Codes>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> "Hello World"</Statement>
+				<Result>=> "Hello World"</Result>
+			</Code>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> puts "Hello World"</Statement>
+				<Result>Hello World &lt;br&gt;=> nil</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> a = 3 ** 2</Statement>
+				<Result>=> 9</Result>
+			</Code>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> b = 4 ** 2</Statement>
+				<Result>=> 16</Result>
+			</Code>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> Math.sqrt(a+b)</Statement>
+				<Result>=> 5.0</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> for a in 1..5 do</Statement>
+			</Code>
+			<Code>
+				<Prompt>irb(main):001:0*</Prompt>
+				<Statement> puts "hello #{a}!"</Statement>
+			</Code>
+			<Code>
+				<Prompt>irb(main):001:0&gt;</Prompt>
+				<Statement> end</Statement>
+				<Result>hello 1!
+hello 2!
+hello 3!
+hello 4!
+hello 5!
+=> 1..5</Result>
+			</Code>
+		</Codes>
+
+		<Usage>
+			<Command>help</Command>
+			<Description>shows help.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit</Command>
+			<Description>quit the REPL.</Description>
+		</Usage>
+		<Content># Welcome to OpenREPL!</Content>
+		<Compiler>
+COMPILER=ruby
+FILE=test.rb
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="ruby -r debug";
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+	<Demo>
+		<Name>javascript</Name>
+		<Github>https://github.com/vickeykumar/jsconsole</Github>
+		<Doc>https://developer.mozilla.org/bm/docs/Web/JavaScript</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var arr = [19, 12.89, 16.5, 200, 13.7];</Statement>
+				<Result>&lt;* undefined</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> arr</Statement>
+				<Result>&lt;*Array (5)[ 19, 12.89, 16.5, 200, 13.7 ]  &lt;-- click on the result link to navigate array.</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var total = 0;</Statement>
+				<Result>&lt;* undefined</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> for(var i=0; i&lt;arr.length; i++){     // press shift+enter for multiline input 
+        	total = total + arr[i];      // shift+enter for multiline input
+        }</Statement>
+        		<Result>&lt;* 262.09</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> total</Statement>
+				<Result>&lt;* 262.09</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> alert("Total is : "+total);</Statement>
+				<Result>**check windows alert box for message**</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var date = new Date(Date.now());</Statement>
+				<Result>&lt;* Date { … }</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> date.toString();</Statement>
+				<Result>&lt;* "Sun Aug 25 2019 15:28:50 GMT+0530 (India Standard Time)"</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> :help</Statement>
+				<Result>:load &lt;script_url&gt; load also supports shortcuts, like `:load jquery`
+:libraries
+:clear
+:history
+:version
+copy() and $_ for last value
+
+Note: Click on object links to expand and search through it.
+Press shift+enter for multiline statements.
+</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> :libraries</Statement>
+				<Result>jquery: https://code.jquery.com/jquery.min.js
+underscore: https://cdn.jsdelivr.net/underscorejs/latest/underscore-min.js
+lodash: https://cdn.jsdelivr.net/lodash/latest/lodash.min.js
+moment: https://cdn.jsdelivr.net/momentjs/latest/moment.min.js
+datefns: https://cdn.jsdelivr.net/gh/date-fns/date-fns/dist/date_fns.min.js</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> :load https://cdnjs.cloudflare.com/ajax/libs/mathjs/6.1.0/math.min.js</Statement>
+				<Result>Loading script…
+Loaded https://cdnjs.cloudflare.com/ajax/libs/mathjs/6.1.0/math.min.js</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> math.round(math.e, 3);</Statement>
+				<Result>&lt;* 2.718</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> math.atan2(3, -3) / math.pi;</Statement>
+				<Result>&lt;* 0.75</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> math.log(10000, 10);</Statement>
+				<Result>&lt;* 4</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> math.pow([[-1, 2], [3, 1]], 2);</Statement>
+				<Result>&lt;* Array(2)[
+    0: Array(2)[
+            0: 7
+            1: 0
+       ]
+    1: Array(2)[
+            0: 0
+            1: 7
+       ]
+]</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>:help</Command>
+			<Description>shows this help.</Description>
+		</Usage>
+		<Usage>
+			<Command>:load&lt;br&gt;</Command>
+			<Description>loads the `script_url`; load also supports shortcuts, like `:load jquery`</Description>
+		</Usage>
+		<Usage>
+			<Command>:libraries</Command>
+			<Description>List loaded libraries.</Description>
+		</Usage>
+		<Usage>
+			<Command>:clear</Command>
+			<Description>clears the console.</Description>
+		</Usage>
+		<Usage>
+			<Command>shift+enter</Command>
+			<Description>multiline inputs for block, loops and functions.</Description>
+		</Usage>
+		<Content>/* Welcome to OpenREPL! */</Content>
+	</Demo>
+
+	<Demo>
+		<Name>node</Name>
+		<Github>https://github.com/nodejs/node</Github>
+		<Doc>https://nodejs.org/dist/latest-v10.x/docs/api/repl.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> .help</Statement>
+				<Result>.break    Sometimes you get stuck, this gets you out
+.clear    Alias for .break
+.editor   Enter editor mode
+.exit     Exit the repl
+.help     Print this help message
+.load     Load JS from a file into the REPL session
+.save     Save all evaluated commands in this REPL session to a file
+</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var arr = [19, 12.89, 16.5, 200, 13.7];</Statement>
+				<Result>undefined</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> arr</Statement>
+				<Result>[ 19, 12.89, 16.5, 200, 13.7 ]</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var total = 0;</Statement>
+				<Result>undefined</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> for(var i=0; i&lt;arr.length; i++) {
+... total = total + arr[i];
+}</Statement>
+        		<Result>undefined</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> total</Statement>
+				<Result>262.09</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> var date = new Date(Date.now());</Statement>
+				<Result>undefined</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> date.toString();</Statement>
+				<Result>'Tue Sep 03 2019 20:23:52 GMT+0530 (India Standard Time)'</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> .load add.js</Statement>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> add(1,3)</Statement>
+				<Result>4</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> .editor
+// Entering editor mode (^D to finish, ^C to cancel)
+function welcome(name) {
+  return `Hello ${name}!`;
+}
+
+welcome('Node.js User');
+
+// ^D</Statement>
+				<Result>'Hello Node.js User!'</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> a`Tab`</Statement>
+				<Result>async        await
+
+assert       async_hooks</Result>
+			</Code>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> ht`Tab`</Statement>
+				<Result>http   http2  https</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>.help</Command>
+			<Description>shows this help.</Description>
+		</Usage>
+		<Usage>
+			<Command>.load</Command>
+			<Description>Load JS from a file into the REPL session</Description>
+		</Usage>
+		<Usage>
+			<Command>.break</Command>
+			<Description>Sometimes you get stuck, this gets you out</Description>
+		</Usage>
+		<Usage>
+			<Command>.clear</Command>
+			<Description>Alias for .break</Description>
+		</Usage>
+		<Usage>
+			<Command>.editor</Command>
+			<Description>Enter editor mode</Description>
+		</Usage>
+		<Usage>
+			<Command>.exit</Command>
+			<Description>Exit the repl</Description>
+		</Usage>
+		<Usage>
+			<Command>`Tab`</Command>
+			<Description>Syntax Completion</Description>
+		</Usage>
+		<Content>/* Welcome to OpenREPL! */</Content>
+		<Compiler>
+COMPILER=node
+FILE=test.js
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="node inspect";
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+	<Demo>
+		<Name>perli</Name>
+		<Github>https://github.com/mklement0/perli</Github>
+		<Doc>https://www.guru99.com/perl-tutorials.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> .help</Statement>
+				<Result>REPL commands (start with '.'):
+    .doc &lt;search-string&gt; or ? &lt;search-string&gt; or ... &lt;search-string&gt;? searches
+      the Perl docs.
+    .remi &lt;regex-op&gt; prints additional RegEx Matching Info; see above.
+    .sh &lt;shell-cmd&gt; executes a shell command using system(), with arguments
+      interpreted by the shell only; e.g.: .sh ls
+    .clear / .cls clears the screen; note: may not work in Cygwin and MSYS.
+    .exit / .quit exits the REPL (just 'exit' works too).
+    .man opens perli's own man page.
+    .home opens perli's homepage, https://github.com/mklement0/perli.
+    .help or ? prints these instructions.
+</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> print "Hello, world!\n";</Statement>
+				<Result>Hello, world!
+1</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> $num = 7;</Statement>
+				<Result>7</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> $txt = "it is $num";</Statement>
+				<Result>'it is 7'</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;</Prompt>
+				<Statement> @array=(1,2,3,4);</Statement>
+				<Result>1
+2
+3
+4</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> $total = 0;</Statement>
+				<Result>0</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> foreach my $value (@array) { $total = $total + $value; }</Statement>
+        		<Result>''</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> total</Statement>
+				<Result>10</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> $datestring = localtime();</Statement>
+				<Result>'Thu Sep  5 22:11:45 2019'</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> $datestring = gmtime();</Statement>
+				<Result>'Thu Sep  5 16:42:31 2019'</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> .load add.js</Statement>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> add(1,3)</Statement>
+				<Result>4</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> ?chomp</Statement>
+				<Result>chomp VARIABLE
+    chomp( LIST )
+    chomp   This safer version of "chop" removes any trailing string that
+            corresponds to the current value of $/ (also known as
+            $INPUT_RECORD_SEPARATOR in the "English" module). It returns the
+            total number of characters removed from all its arguments. It's
+            often used to remove the newline from the end of an input record
+            when you're worried that the final record may be missing its
+            newline. When in paragraph mode ("$/ = ''"), it removes all
+            trailing newlines from the string. When in slurp mode ("$/ =
+            undef") or fixed-length record mode ($/ is a reference to an
+            integer or the like; see perlvar), "chomp" won't remove
+            anything. If VARIABLE is omitted, it chomps $_. Example:
+            ...
+            ...
+</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> cho`Tab`</Statement>
+				<Result>chomp  chop   chown</Result>
+			</Code>
+			<Code>
+				<Prompt>perli&gt;</Prompt>
+				<Statement> get`Tab`</Statement>
+				<Result>getc              getgrnam          gethostent        getnetbyname      getpgrp           getprotobyname    getpwent          getservbyname     getsockname
+getgrent          gethostbyaddr     getlogin          getnetent         getppid           getprotobynumber  getpwnam          getservbyport     getsockopt
+getgrgid          gethostbyname     getnetbyaddr      getpeername       getpriority       getprotoent       getpwuid          getservent </Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>.help</Command>
+			<Description>shows this help.</Description>
+		</Usage>
+		<Usage>
+			<Command>.doc ... or ? ...</Command>
+			<Description>searches the Perl docs.</Description>
+		</Usage>
+		<Usage>
+			<Command>.remi ...</Command>
+			<Description>prints additional RegEx Matching Info.</Description>
+		</Usage>
+		<Usage>
+			<Command>.clear</Command>
+			<Description>clears the screen.</Description>
+		</Usage>
+		<Usage>
+			<Command>.exit</Command>
+			<Description>Exits the repl</Description>
+		</Usage>
+		<Usage>
+			<Command>`Tab`</Command>
+			<Description>Syntax Completion</Description>
+		</Usage>
+		<Content># Welcome to OpenREPL!</Content>
+		<Compiler>
+COMPILER=perl
+FILE=test.pl
+debug=false
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+	COMPILER="perl -d";
+fi
+printf "\n";
+echo $0|base64 --decode > $HOME/$FILE;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+    $COMPILER $HOME/$FILE;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
+</DemoList>

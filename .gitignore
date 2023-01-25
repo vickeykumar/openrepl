@@ -1,3 +1,5 @@
 bindata
-builds
-js/node_modules/*
+bin
+src/js/node_modules/*
+go_19/*
+src/tags

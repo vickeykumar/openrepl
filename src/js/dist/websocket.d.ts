@@ -11,7 +11,8 @@ export declare class Connection {
     close(): void;
     send(data: string): void;
     isOpen(): boolean;
+    isClosed(): boolean;
     onOpen(callback: () => void): void;
     onReceive(callback: (data: string) => void): void;
-    onClose(callback: () => void): void;
+    onClose(callback: (closeEvent: object) => void): void;
 }

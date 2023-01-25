@@ -8,6 +8,9 @@
     },
     "dependencies": {
         "libapps": "github:yudai/libapps#release-hterm-1.70",
-        "xterm": "^2.7.0"
+        "xterm": "^2.7.0",
+        "es-cookie": "^1.2.0",
+        "color": "^3.0.0",
+        "firebase": "^3.6.6"
     }
 }

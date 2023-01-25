@@ -1,38 +1,47 @@
-# ![](https://raw.githubusercontent.com/yudai/gotty/master/resources/favicon.png) GoTTY - Share your terminal as a web application
+# ![](https://raw.githubusercontent.com/vickeykumar/openrepl/97fd80845a409005e6983e0f6a807c3a8ef3025a/src/resources/images/favicon.png) OpenREPL
 
-[![GitHub release](http://img.shields.io/github/release/yudai/gotty.svg?style=flat-square)][release]
-[![Wercker](http://img.shields.io/wercker/ci/55d0eeff7331453f0801982c.svg?style=flat-square)][wercker]
 [![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)][license]
 
-[release]: https://github.com/yudai/gotty/releases
-[wercker]: https://app.wercker.com/project/bykey/03b91f441bebeda34f80e09a9f14126f
-[license]: https://github.com/yudai/gotty/blob/master/LICENSE
+[license]: https://github.com/vickeykumar/openrepl/blob/master/LICENSE
 
-GoTTY is a simple command line tool that turns your CLI tools into web applications.
+OpenREPL initially Forked from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create web based REPL services for various programming languages using gotty and containers.
+You can checkout on our website for more info on REPL playgrounds and try them as well: [openrepl.com](http://openrepl.com) (earlier [gorepl.com](http://gorepl.com))
 
-![Screenshot](https://raw.githubusercontent.com/yudai/gotty/master/screenshot.gif)
 
 # Installation
 
-Download the latest stable binary file from the [Releases](https://github.com/yudai/gotty/releases) page. Note that the release marked `Pre-release` is built for testing purpose, which can include unstable or breaking changes. Download a release marked [Latest release](https://github.com/yudai/gotty/releases/latest) for a stabale build.
+Fork gotty to start the REPL servers in your local system, Please make sure all pre-requisites are installed.
 
 (Files named with `darwin_amd64` are for Mac OS X users)
 
-## Homebrew Installation
+You can install GoTTY REPL server as shown below:
 
-You can install GoTTY with [Homebrew](http://brew.sh/) as well.
-
+## Non-debian:
 ```sh
-$ brew install yudai/gotty/gotty
+$ cd src
+$ make all
+$ ../bin/gotty -w
 ```
 
-## `go get` Installation (Development)
-
-If you have a Go language environment, you can install GoTTY with the `go get` command. However, this command builds a binary file from the latest master branch, which can include unstable or breaking changes. GoTTY requires go1.9 or later.
-
+## debian:
 ```sh
-$ go get github.com/yudai/gotty
+$ cd src
+$ make buildgo GOROOT_BOOTSTRAP=/usr/lib/go-x.xx/     (non x86_64 machines)
+$ make deb
+$ sudo dpkg -i ../deb/gotty.deb
 ```
+
+# Pre-Requisites
+
+* GoTTY requires go1.9 or later.
+* npm
+* webpack
+* [cling](https://github.com/root-project/cling)
+* [gointerpreter](https://github.com/vickeykumar/Go-interpreter)
+* python2.7
+* xterm
+* all requisites can be installed using ./install_prerequisite.sh	
+
 
 # Usage
 
@@ -114,53 +123,6 @@ openssl req -x509 -nodes -days 9999 -newkey rsa:2048 -keyout ~/.gotty.key -out ~
 
 For additional security, you can use the SSL/TLS client certificate authentication by providing a CA certificate file to the `--tls-ca-crt` option (this option requires the `-t` or `--tls` to be set). This option requires all clients to send valid client certificates that are signed by the specified certification authority.
 
-## Sharing with Multiple Clients
-
-GoTTY starts a new process with the given command when a new client connects to the server. This means users cannot share a single terminal with others by default. However, you can use terminal multiplexers for sharing a single process with multiple clients.
-
-For example, you can start a new tmux session named `gotty` with `top` command by the command below.
-
-```sh
-$ gotty tmux new -A -s gotty top
-```
-
-This command doesn't allow clients to send keystrokes, however, you can attach the session from your local terminal and run operations like switching the mode of the `top` command. To connect to the tmux session from your terminal, you can use following command.
-
-```sh
-$ tmux new -A -s gotty
-```
-
-By using terminal multiplexers, you can have the control of your terminal and allow clients to just see your screen.
-
-### Quick Sharing on tmux
-
-To share your current session with others by a shortcut key, you can add a line like below to your `.tmux.conf`.
-
-```
-# Start GoTTY in a new window with C-t
-bind-key C-t new-window "gotty tmux attach -t `tmux display -p '#S'`"
-```
-
-## Playing with Docker
-
-When you want to create a jailed environment for each client, you can use Docker containers like following:
-
-```sh
-$ gotty -w docker run -it --rm busybox
-```
-
-## Development
-
-You can build a binary using the following commands. Windows is not supported now. go1.9 is required.
-
-```sh
-# Install tools
-go get github.com/jteeuwen/go-bindata/...
-go get github.com/tools/godep
-
-# Build
-make
-```
 
 To build the frontend part (JS files and other static files), you need `npm`.
 

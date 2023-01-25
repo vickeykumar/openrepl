@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"sync"
-
 	"github.com/pkg/errors"
+	"log"
+	"sync"
 )
 
 // WebTTY bridges a PTY slave and its PTY master.
@@ -89,6 +89,8 @@ func (wt *WebTTY) Run(ctx context.Context) error {
 			for {
 				n, err := wt.masterConn.Read(buffer)
 				if err != nil {
+					log.Println("Error while reading from master : ", err.Error())
+					wt.handleSlaveReadEvent([]byte("\nconnection closed by client: " + err.Error()))
 					return ErrMasterClosed
 				}
 
@@ -128,6 +130,16 @@ func (wt *WebTTY) sendInitializeMessage() error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to set preferences")
 		}
+	}
+
+	return nil
+}
+
+func (wt *WebTTY) WriteMessage(data []byte) error {
+	safeMessage := base64.StdEncoding.EncodeToString(data)
+	err := wt.masterWrite(append([]byte{Output}, []byte(safeMessage)...))
+	if err != nil {
+		return errors.Wrapf(err, "failed to send message to master")
 	}
 
 	return nil

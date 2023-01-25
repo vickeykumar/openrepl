@@ -1,0 +1,43 @@
+/* css variables*/
+:root {
+  --primary-color: #432E30;
+  --primary-color-light: #8E7474;
+  --accent-color: #FE6A6B;
+  --rev-accent-color: #4CAF50;
+  --accent-color-light: #FFE4E4;
+  --accent-color-dark: #B94B4C;
+  --rev-accent-color-dark: #45a049;
+  --white-color: #FAFBFC;
+  --light-gray-color: #C6CBD1;
+  --medium-gray-color: #959DA5;
+  --dark-gray-color: #444D56;
+  --bg-color: #F8F8FA;
+  --code-bg-color: #F0E8E8;
+  --code-bg-color-2: #363636;
+  --code-bg-color-border: #000000;
+  --link-blue-color: #337ab7;
+  --code-prompt-color: #c5c525;
+  --code-error-color: #cb4b15;
+  --code-data-type-color: #008000;
+  --terminal-bg-color: black;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body, html, #root {
+  height: 100%;
+}
+
+.App {
+  outline: none;
+  height: 100%;
+  font-size: 0.85rem;
+  line-height: 1.4rem;
+  font-family: "Menlo", consolas, monospace;
+}
+
+.App.top {
+  padding-top: 2.6rem;
+}
