@@ -41,6 +41,11 @@ nvm install v12.22.9
 #/usr/bin/ld.gold --strip-all --no-map-whole-files --no-keep-memory --no-keep-files-mapped $@ 
 # cling takes some time to init first instance, add below lines to rc.local(startup)
 #/usr/bin/cling 21321 .q > /dev/null 2>&1 &
+cd ~
+wget https://raw.githubusercontent.com/vickeykumar/openrepl/e596c6f0918e48eeba7a0bf7b7d2632f6b155ffb/repls/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
+tar -xvf cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
+chmod 755 cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling
+ln -s cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling /usr/local/bin/cling
 
 #install gointerpreter
 git clone https://github.com/vickeykumar/Go-interpreter.git
