@@ -4,6 +4,9 @@
 
 cd ~
 
+export DEBIAN_FRONTEND=noninteractive
+export TZ=Etc/UTC
+
 apt update -y
 
 # set cap to nsenter,gcc,g++
@@ -25,11 +28,11 @@ apt install -y yaegi
 
 #install npm
 apt install -y npm
-npm install npm@latest -g
 
 #install the last stable release of npm and node for this project using nvm
 # node v12.22.9
 cd ~
+apt-get -y install curl
 curl -sL https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.0/install.sh -o install_nvm.sh
 chmod 755 $HOME/install_nvm.sh
 source $HOME/install_nvm.sh
@@ -42,10 +45,11 @@ nvm install v12.22.9
 # cling takes some time to init first instance, add below lines to rc.local(startup)
 #/usr/bin/cling 21321 .q > /dev/null 2>&1 &
 cd ~
+apt-get -y install wget
 wget https://raw.githubusercontent.com/vickeykumar/openrepl/e596c6f0918e48eeba7a0bf7b7d2632f6b155ffb/repls/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
 tar -xvf cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
 chmod 755 cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling
-ln -s cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling /usr/local/bin/cling
+ln -s $HOME/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling /usr/local/bin/cling
 
 #install gointerpreter
 git clone https://github.com/vickeykumar/Go-interpreter.git
