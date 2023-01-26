@@ -2,13 +2,11 @@ FROM ubuntu:22.04
 LABEL maintainer="Vickey Kumar <kumarvickey45@yahoo.com>"
 
 RUN mkdir -p /opt/gotty
+RUN mkdir -p /opt/openrepl
 
-WORKDIR /opt
+COPY . /opt/openrepl/
 
-RUN apt-get -y update
-RUN apt-get -y install git
-RUN apt install -y sudo
-RUN git clone https://github.com/vickeykumar/openrepl.git
+RUN apt-get -y update && apt-get install -y sudo
 
 WORKDIR /opt/openrepl
 
@@ -25,11 +23,8 @@ WORKDIR /opt/openrepl
 
 #install the app
 RUN cp /opt/openrepl/bin/gotty /usr/local/bin/
-RUN mkdir -p /opt/scripts
-RUN cp /opt/openrepl/scripts/run_app.sh /opt/scripts/
-
-RUN chmod 755 /usr/local/bin/gotty
-RUN chmod 755 /opt/scripts/run_app.sh
+RUN mkdir -p /opt/scripts && cp /opt/openrepl/scripts/run_app.sh /opt/scripts/ && \
+chmod 755 /usr/local/bin/gotty && chmod 755 /opt/scripts/run_app.sh
 
 ENV TERM=xterm
 ENV GODEBUG=cgocheck=1
