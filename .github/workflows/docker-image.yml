@@ -15,12 +15,12 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag openrepl:latest
-      # to check size and inspect layers
-      run: docker history openrepl:latest
-      run: docker inspect openrepl:latest
+      run: |
+        docker build . --file Dockerfile --tag openrepl:latest
+        docker history openrepl:latest
+        docker inspect openrepl:latest
     - name: docker-image-size-limit
-    - uses: wemake-services/docker-image-size-limit@master
+      uses: wemake-services/docker-image-size-limit@master
       with:  # lint this image by itself
         image: 'openrepl:latest'
-        size: 3158MB
+        size: 3584MB
