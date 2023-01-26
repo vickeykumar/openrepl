@@ -1,41 +1,35 @@
-FROM ubuntu:22.04
+FROM ubuntu:22.04 as builder
 LABEL maintainer="Vickey Kumar <kumarvickey45@yahoo.com>"
 
 RUN mkdir -p /opt/gotty
-
-WORKDIR /opt
-
-RUN apt-get -y update
-RUN apt-get -y install git
-RUN apt install -y sudo
-RUN git clone https://github.com/vickeykumar/openrepl.git
+RUN mkdir -p /opt/openrepl
 
 WORKDIR /opt/openrepl
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-RUN sudo ./install_prerequisite.sh
+COPY ./install_prerequisite.sh /opt/openrepl/
+RUN ./install_prerequisite.sh
 
+FROM builder as build-image
+COPY . /opt/openrepl/
 WORKDIR /opt/openrepl/src
-
 RUN make all
+
+FROM build-image
+#install the app
+RUN cp /opt/openrepl/bin/gotty /usr/local/bin/ && \
+mkdir -p /opt/scripts && cp /opt/openrepl/scripts/run_app.sh /opt/scripts/ && \
+chmod 755 /usr/local/bin/gotty && chmod 755 /opt/scripts/run_app.sh
 
 WORKDIR /opt/openrepl
 
-#install the app
-RUN cp /opt/openrepl/bin/gotty /usr/local/bin/
-RUN mkdir -p /opt/scripts
-RUN cp /opt/openrepl/scripts/run_app.sh /opt/scripts/
-
-RUN chmod 755 /usr/local/bin/gotty
-RUN chmod 755 /opt/scripts/run_app.sh
+RUN mkdir -p /gottyTraces
+RUN mkdir -p /opt/gotty
 
 ENV TERM=xterm
 ENV GODEBUG=cgocheck=1
-
-RUN mkdir -p /gottyTraces
-RUN mkdir -p /opt/gotty
 ENV GOPATH=/opt/gotty/
 
 ENTRYPOINT ["/opt/scripts/run_app.sh"]

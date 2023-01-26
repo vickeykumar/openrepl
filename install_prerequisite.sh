@@ -8,6 +8,7 @@ export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
 apt-get update -y
+apt-get install -y make git
 
 # set cap to nsenter,gcc,g++
 apt-get install -y libcap2-bin
@@ -28,16 +29,22 @@ apt-get install -y yaegi
 
 #install npm
 apt-get install -y npm
-
 #install the last stable release of npm and node for this project using nvm
 # node v12.22.9
 cd ~
 apt-get -y install curl
-curl -sL https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.0/install.sh -o install_nvm.sh
+apt-get -y install wget
+echo "home: " $HOME
+curl -sL https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.0/install.sh -o $HOME/install_nvm.sh 
 chmod 755 $HOME/install_nvm.sh
 source $HOME/install_nvm.sh
-npm install npm@8.5.1 -g
+source $HOME/.bashrc
+
+# ENV for nvm
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 nvm install v12.22.9
+npm install npm@8.5.1 -g
 
 #install cling
 #use following to compile minimal cling
@@ -45,11 +52,11 @@ nvm install v12.22.9
 # cling takes some time to init first instance, add below lines to rc.local(startup)
 #/usr/bin/cling 21321 .q > /dev/null 2>&1 &
 cd ~
-apt-get -y install wget
 wget https://raw.githubusercontent.com/vickeykumar/openrepl/e596c6f0918e48eeba7a0bf7b7d2632f6b155ffb/repls/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
 tar -xvf cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
 chmod 755 cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling
 ln -s $HOME/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling /usr/local/bin/cling
+rm cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
 
 #install gointerpreter
 git clone https://github.com/vickeykumar/Go-interpreter.git
@@ -68,9 +75,6 @@ apt-get install -y ipython3
 
 #install Ruby(irb)
 apt-get install -y ruby
-
-#install nodejs
-apt-get install -y nodejs
 
 #install perli
 apt-get install -y rlwrap
