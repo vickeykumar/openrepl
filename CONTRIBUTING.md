@@ -39,6 +39,7 @@ this commit adds a new structure to provide it.
 When your pull request is to add a new feature, we recommend add an actual usecase so that we can discuss the best way to achive your requirement. Opening a proposal issue in advance is another good way to start discussion of new features.
 
 
+
 ## Contact
 
 If you have a trivial question about GoTTY for a bug or new feature, you can contact @i_yudai on Twitter (unfortunately, I cannot provide support on GoTTY though).

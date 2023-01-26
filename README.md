@@ -1,16 +1,21 @@
 # ![](https://raw.githubusercontent.com/vickeykumar/openrepl/97fd80845a409005e6983e0f6a807c3a8ef3025a/src/resources/images/favicon.png) OpenREPL
 
+    
+[![Workflow](https://github.com/vickeykumar/openrepl/actions/workflows/docker-image.yml/badge.svg?style=flat-square)][docker-image]
 [![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)][license]
 
+[docker-image]: https://github.com/vickeykumar/openrepl/actions/workflows/docker-image.yml
 [license]: https://github.com/vickeykumar/openrepl/blob/master/LICENSE
 
-OpenREPL initially Forked from https://github.com/yudai/gotty.git. GoTTY is a simple command line tool that turns your CLI tools into web applications. This Fork is intended to create web based REPL services for various programming languages using gotty and containers.
+OpenREPL initially Forked from [gotty](https://github.com/yudai/gotty.git). GoTTY is a simple command line tool that turns your CLI tools into web applications. 
+
+ This Fork is intended to create web based REPL services for various programming languages using gotty and containers.
 You can checkout on our website for more info on REPL playgrounds and try them as well: [openrepl.com](http://openrepl.com) (earlier [gorepl.com](http://gorepl.com))
 
 
 # Installation
 
-Fork gotty to start the REPL servers in your local system, Please make sure all pre-requisites are installed.
+Fork openrepl to start the REPL servers in your local system, Please make sure all pre-requisites are installed.
 
 (Files named with `darwin_amd64` are for Mac OS X users)
 
