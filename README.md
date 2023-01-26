@@ -1,5 +1,8 @@
 # ![](https://raw.githubusercontent.com/vickeykumar/openrepl/97fd80845a409005e6983e0f6a807c3a8ef3025a/src/resources/images/favicon.png) OpenREPL
 
+.. image:: https://github.com/vickeykumar/openrepl/actions/workflows/docker-image.yml/badge.svg
+    :target: https://github.com/vickeykumar/openrepl/actions/workflows/docker-image.yml
+    
 [![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)][license]
 
 [license]: https://github.com/vickeykumar/openrepl/blob/master/LICENSE
