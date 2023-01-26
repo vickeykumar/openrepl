@@ -8,6 +8,7 @@ export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
 apt-get update -y
+apt-get install -y make git
 
 # set cap to nsenter,gcc,g++
 apt-get install -y libcap2-bin
@@ -27,17 +28,23 @@ go install github.com/traefik/yaegi/cmd/yaegi@latest
 apt-get install -y yaegi
 
 #install npm
+apt-get install -y npm
 #install the last stable release of npm and node for this project using nvm
 # node v12.22.9
 cd ~
 apt-get -y install curl
 apt-get -y install wget
-curl -sL https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.0/install.sh -o install_nvm.sh
+echo "home: " $HOME
+curl -sL https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.0/install.sh -o $HOME/install_nvm.sh 
 chmod 755 $HOME/install_nvm.sh
-bash $HOME/install_nvm.sh
+source $HOME/install_nvm.sh
 source $HOME/.bashrc
+
+# ENV for nvm
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 nvm install v12.22.9
-#npm install npm@8.5.1 -g
+npm install npm@8.5.1 -g
 
 #install cling
 #use following to compile minimal cling
