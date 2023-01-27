@@ -32,5 +32,6 @@ ENV TERM=xterm
 ENV GODEBUG=cgocheck=1
 ENV GOPATH=/opt/gotty/
 
+EXPOSE 80
 ENTRYPOINT ["/opt/scripts/run_app.sh"]
-#CMD ["-w", "--title-format", "<fmt><title>{{ .command }}@OpenREPL</title><jid>{{ encodePID .pid }}</jid></fmt>"]
+CMD ["-p", "80"]
