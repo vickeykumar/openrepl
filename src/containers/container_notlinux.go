@@ -69,3 +69,8 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 	log.Println("commands Args: ", commandArgs)
 	return commandArgs
 }
+
+// get working directory for a running process, pid
+func GetWorkingDir(pid int) string {
+	return ""
+}

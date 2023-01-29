@@ -3,3 +3,6 @@ bin
 src/js/node_modules/*
 go_19/*
 src/tags
+deb/gotty.deb
+deb/gotty/usr/local/bin/gotty
+src/server/asset.go
