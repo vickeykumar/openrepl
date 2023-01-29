@@ -1,3 +1,8 @@
+<p align="center">
+<img width="400" src="src/resources/images/logo_large.png" alt="OpenREPL" title="OpenREPL" />
+</p>
+
+
 # ![](https://raw.githubusercontent.com/vickeykumar/openrepl/97fd80845a409005e6983e0f6a807c3a8ef3025a/src/resources/images/favicon.png) OpenREPL
 
     
@@ -46,6 +51,42 @@ $ sudo dpkg -i ../deb/gotty.deb
 * python2.7
 * xterm
 * all requisites can be installed using ./install_prerequisite.sh	
+
+# Deploy
+
+To deploy and run a local copy of openrepl :
+
+1. Pull the Docker image
+    - `docker pull vickeykumar/openrepl:latest`
+
+2. Run the image
+
+    -  without nested containers.
+        ```bash
+        docker run -itd --name openrepl \
+          -p 8080:8080 vickeykumar/openrepl:latest \
+          -p 8080
+        ```
+
+   -  with nested containers (containerized REPLs inside docker, nested containers)
+      ```bash
+      docker run -itd --name openrepl \
+        -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
+        -p 8080:8080 vickeykumar/openrepl:latest \
+        -p 8080
+      ```
+
+3. open localhost:8080 in your browser to check repls offline
+
+
+## CLI Options
+
+     ```bash
+      docker run -itd --name openrepl \
+        -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
+        -p 8080:8080 vickeykumar/openrepl:latest \
+        -p 8080 [ <other CLI Options>]
+      ```
 
 
 # Usage
