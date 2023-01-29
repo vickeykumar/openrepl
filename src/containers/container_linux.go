@@ -203,3 +203,13 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 	return commandArgs
 }
 
+// get working directory for a running process, pid
+func GetWorkingDir(pid int) string {
+	path := "/proc/" + strconv.Itoa(pid) + "/cwd"
+	wd, err := os.Readlink(path)
+	if err != nil {
+		log.Println(err)
+		return ""
+	}
+	return wd
+}

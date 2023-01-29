@@ -38,8 +38,13 @@ func New(command string, argv []string, ppid int, params map[string][]string, op
 	}
 	commandArgs := containers.GetCommandArgs(command, argv, ppid, params)
 	cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
-	cmd.Dir = containers.HOME_DIR + command + "/" + strconv.Itoa(int(time.Now().Unix()))
-	os.MkdirAll(cmd.Dir, 0755)
+	if ppid != -1 {
+		// using working directory of parent process only 
+		cmd.Dir = containers.GetWorkingDir(ppid)
+	} else {
+		cmd.Dir = containers.HOME_DIR + command + "/" + strconv.Itoa(int(time.Now().Unix()))
+		os.MkdirAll(cmd.Dir, 0755)
+	}
 	if command == "bash" {
 		ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0644)
 	}
@@ -84,7 +89,9 @@ func New(command string, argv []string, ppid int, params map[string][]string, op
 			lcmd.pty.Close()
 			close(lcmd.ptyClosed)
 			containers.DeleteProcessFromSubCgroup(command, pid) // deleting the subcgroup container of that process
-			os.RemoveAll(lcmd.cmd.Dir)
+			if ppid == -1 {
+				os.RemoveAll(lcmd.cmd.Dir)	// only parent process can delete home dir
+			}
 		}()
 
 		cmderr := lcmd.cmd.Wait()
