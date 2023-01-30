@@ -5,13 +5,16 @@ RUN mkdir -p /opt/gotty &&  mkdir -p /opt/openrepl
 
 WORKDIR /opt/openrepl
 
-ARG DEBIAN_FRONTEND=noninteractive
+#ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
 COPY ./install_prerequisite.sh /opt/openrepl/
-RUN ./install_prerequisite.sh
+RUN ./install_prerequisite.sh --cleanup-tools --run-tests
 
 FROM builder as build-image
+
+#install the requisites to build the APP
+RUN apt-get install -y --no-install-recommends make gcc git npm && npm install -g npm@8.5.1
 COPY . /opt/openrepl/
 WORKDIR /opt/openrepl/src
 RUN make all

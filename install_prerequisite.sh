@@ -4,9 +4,34 @@
 
 retVal=0
 
+display_usage() {
+  echo "Usage: $0 [--cleanup-tools] [--run-tests] [--help]"
+  echo "Options:"
+  echo "  --cleanup-tools        Cleanup tools after REPLs installation"
+  echo "  --run-tests            Run tests"
+  echo "  --help                 Display this help message"
+}
+
+cleanup_tools=0
+run_tests=0
+
+for arg in "$@"; do
+  case $arg in
+    --cleanup-tools) cleanup_tools=1
+    ;;
+    --run-tests) run_tests=1
+    ;;
+    --help) display_usage; exit 0
+    ;;
+    *) echo "Invalid argument: $arg"; display_usage; exit 1
+    ;;
+  esac
+done
+
+
 cd ~
 
-export DEBIAN_FRONTEND=noninteractive
+#export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
 apt-get update -y
@@ -26,7 +51,7 @@ apt-get install -y --no-install-recommends net-tools
 apt-get install -y --no-install-recommends golang
 
 #install yaegi go repl, >= go1.18
-go install github.com/traefik/yaegi/cmd/yaegi@latest
+#go install github.com/traefik/yaegi/cmd/yaegi@latest
 apt-get install -y --no-install-recommends yaegi
 
 #install npm
@@ -97,37 +122,46 @@ apt-get install -y --no-install-recommends gdb
 
 
 #cleanup
-apt-get -y clean
-apt-get -y autoremove
+# remove tools used in between to optimize the container space
+if [ $cleanup_tools -eq 1 ]; then
+	apt-get -y --purge remove git 
+	apt-get -y --purge remove npm
+	apt-get -y clean
+	apt-get -y autoremove
+fi
 
 #test
-test_commands=(
-	"gcc --version"
-	"g++ --version"
-	"cling --version"
-	"go version"
-	"yaegi version"
-	"python2.7 --version"
-	"python3 --version"
-	"python --version"
-	"ipython3 --version"
-	"irb --version"
-	"ruby --version"
-	"perl --version"
-	"perli --version"
-	"java --version"
-)
+if [ $run_tests -eq 1 ]; then
+	test_commands=(
+		"gcc --version"
+		"g++ --version"
+		"cling --version"
+		"go version"
+		"yaegi version"
+		"python2.7 --version"
+		"python3 --version"
+		"python --version"
+		"ipython3 --version"
+		"node --version"
+		"npm --version"
+		"irb --version"
+		"ruby --version"
+		"perl --version"
+		"perli --version"
+		"java --version"
+	)
 
 
-# Loop through the array and execute each command
-for cmd in "${test_commands[@]}"; do
-  $cmd
-  if [ $? -eq 0 ]; then
-    echo "test [$cmd] => PASSED"
-  else
-    echo "test [$cmd] => FAILED with status code $?"
-    retVal=1
-  fi
-done
+	# Loop through the array and execute each command
+	for cmd in "${test_commands[@]}"; do
+	  $cmd
+	  if [ $? -eq 0 ]; then
+	    echo "test [$cmd] => PASSED"
+	  else
+	    echo "test [$cmd] => FAILED with status code $?"
+	    retVal=1
+	  fi
+	done
+fi
 
 exit $retVal
