@@ -2,38 +2,39 @@
 # please run as sudo
 # reboot once after installing to take effect for cgroups and containers
 
+retVal=0
+
 cd ~
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
 apt-get update -y
-apt-get install -y make git
+apt-get install -y --no-install-recommends make gcc g++ default-jdk git
 
 # set cap to nsenter,gcc,g++
-apt-get install -y libcap2-bin
+apt-get install -y --no-install-recommends libcap2-bin
 setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/nsenter 
 chown root.root /usr/bin/nsenter
 chmod 4755 /usr/bin/nsenter
 # && ./containers-from-scratch/main run 2 nsenter -n -t$$ /bin/bash
 # sudo setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/arm-linux-gnueabihf-gcc-8
 # add export NODE_OPTIONS=--max_old_space_size=2048 to .bashrc
-apt-get install -y net-tools
+apt-get install -y --no-install-recommends net-tools
 
 #install golang
-apt-get install -y golang
+apt-get install -y --no-install-recommends golang
 
 #install yaegi go repl, >= go1.18
 go install github.com/traefik/yaegi/cmd/yaegi@latest
-apt-get install -y yaegi
+apt-get install -y --no-install-recommends yaegi
 
 #install npm
-apt-get install -y npm
+apt-get install -y --no-install-recommends npm
 #install the last stable release of npm and node for this project using nvm
 # node v12.22.9
 cd ~
-apt-get -y install curl
-apt-get -y install wget
+apt-get -y --no-install-recommends install curl wget bzip2
 echo "home: " $HOME
 curl -sL https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.0/install.sh -o $HOME/install_nvm.sh 
 chmod 755 $HOME/install_nvm.sh
@@ -65,24 +66,24 @@ make install
 cd ..
 
 #install ipython2.7
-apt-get install -y python2.7
+apt-get install -y --no-install-recommends python2.7
 ln -s /usr/bin/python2.7 /usr/bin/python
-apt-get install -y ipython
-apt-get install -y python-is-python3
+apt-get install -y --no-install-recommends ipython
+apt-get install -y --no-install-recommends python-is-python3
 
 #install ipython3
-apt-get install -y ipython3
+apt-get install -y --no-install-recommends ipython3
 
 #install Ruby(irb)
-apt-get install -y ruby
+apt-get install -y --no-install-recommends ruby
 
 #install perli
-apt-get install -y rlwrap
+apt-get install -y --no-install-recommends rlwrap
 # append alias to the /etc/profile
 # alias yaegi="rlwrap yaegi"
 
-apt-get install -y perl
-apt-get install -y perl-doc
+apt-get install -y --no-install-recommends perl
+apt-get install -y --no-install-recommends perl-doc
 git clone https://github.com/vickeykumar/perli.git
 cd perli && make install
 cd ~
@@ -92,5 +93,41 @@ cd ~
 mkdir /sys/fs/cgroup/systemd
 mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
 
-apt-get install -y gdb
+apt-get install -y --no-install-recommends gdb
 
+
+#cleanup
+apt-get -y clean
+apt-get -y autoremove
+
+#test
+test_commands=(
+	"gcc --version"
+	"g++ --version"
+	"cling --version"
+	"go version"
+	"yaegi version"
+	"python2.7 --version"
+	"python3 --version"
+	"python --version"
+	"ipython3 --version"
+	"irb --version"
+	"ruby --version"
+	"perl --version"
+	"perli --version"
+	"java --version"
+)
+
+
+# Loop through the array and execute each command
+for cmd in "${test_commands[@]}"; do
+  $cmd
+  if [ $? -eq 0 ]; then
+    echo "test [$cmd] => PASSED"
+  else
+    echo "test [$cmd] => FAILED with status code $?"
+    retVal=1
+  fi
+done
+
+exit $retVal
