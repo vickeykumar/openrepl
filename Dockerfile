@@ -1,8 +1,7 @@
 FROM ubuntu:22.04 as builder
 LABEL maintainer="Vickey Kumar <kumarvickey45@yahoo.com>"
 
-RUN mkdir -p /opt/gotty
-RUN mkdir -p /opt/openrepl
+RUN mkdir -p /opt/gotty &&  mkdir -p /opt/openrepl
 
 WORKDIR /opt/openrepl
 
@@ -17,16 +16,18 @@ COPY . /opt/openrepl/
 WORKDIR /opt/openrepl/src
 RUN make all
 
-FROM build-image
+FROM builder
 #install the app
-RUN cp /opt/openrepl/bin/gotty /usr/local/bin/ && \
-mkdir -p /opt/scripts && cp /opt/openrepl/scripts/run_app.sh /opt/scripts/ && \
-chmod 755 /usr/local/bin/gotty && chmod 755 /opt/scripts/run_app.sh
+
+RUN mkdir -p /gottyTraces && mkdir -p /opt/gotty && \
+mkdir -p /opt/scripts
+
+COPY --from=build-image /opt/openrepl/bin/gotty /usr/local/bin/
+COPY --from=build-image /opt/openrepl/scripts/run_app.sh /opt/scripts/
+
+RUN chmod 755 /usr/local/bin/gotty && chmod 755 /opt/scripts/run_app.sh
 
 WORKDIR /opt/openrepl
-
-RUN mkdir -p /gottyTraces
-RUN mkdir -p /opt/gotty
 
 ENV TERM=xterm
 ENV GODEBUG=cgocheck=1
