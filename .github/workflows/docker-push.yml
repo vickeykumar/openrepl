@@ -17,6 +17,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    - name: Display env vars
+      run: echo "DOCKER_REGISTRY: ${{ env.DOCKER_REGISTRY }}"
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
@@ -46,6 +49,6 @@ jobs:
       if: success()
       run: |
         docker tag ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DOCKER_SHA }} \
-        ${{ env.IMAGE_NAME }}:latest
+        ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
         docker push ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
