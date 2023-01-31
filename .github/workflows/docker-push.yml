@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - master
-  pull_request:
-    branches:
-      - master
-    types: [closed]
 
 env:
   IMAGE_NAME: ${{ vars.DOCKER_REGISTRY }}/openrepl
