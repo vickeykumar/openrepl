@@ -10,7 +10,8 @@ on:
     types: [closed]
 
 env:
-  IMAGE_NAME: vickeykumar/openrepl
+  DOCKER_REGISTRY: vickeykumar
+  IMAGE_NAME: openrepl
 
 jobs:
   build:
@@ -19,6 +20,14 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+    
+    - uses: benjlevesque/short-sha@v2.1
+        id: short-sha
+        with:
+          length: 7
+      - run: echo $SHA
+        env: 
+          DOCKER_SHA: ${{ steps.short-sha.outputs.sha }}
 
     - name: Login to Docker registry
       uses: docker/login-action@v2
@@ -31,12 +40,12 @@ jobs:
       with:
         context: .
         push: true
-        tags: ${{ env.IMAGE_NAME }}:${{ env.GITHUB_SHA }}
+        tags: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DOCKER_SHA }}
 
     - name: Update the `latest` tag (optional)
       if: success()
       run: |
-        docker tag ${{ env.IMAGE_NAME }}:${{ env.GITHUB_SHA }} \
+        docker tag ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DOCKER_SHA }} \
         ${{ env.IMAGE_NAME }}:latest
 
-        docker push ${{ env.IMAGE_NAME }}:latest
+        docker push ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
