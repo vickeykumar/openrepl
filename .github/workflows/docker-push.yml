@@ -7,7 +7,7 @@ on:
   pull_request:
     branches:
       - master
-    types: [closed]
+    #types: [closed]
 
 env:
   IMAGE_NAME: ${{ vars.DOCKER_REGISTRY }}/openrepl
@@ -24,9 +24,6 @@ jobs:
       id: short-sha
       with:
         length: 7
-    - run: echo ${{ steps.short-sha.outputs.sha }}
-      env: 
-        DOCKER_SHA: ${{ steps.short-sha.outputs.sha }}
 
     - name: Login to Docker registry
       uses: docker/login-action@v2
@@ -37,13 +34,13 @@ jobs:
     - name: Display env vars
       run: |
         echo "DOCKER_REGISTRY:" ${{ vars.DOCKER_REGISTRY }} 
-        echo "sha: " ${{ env.DOCKER_SHA }}
+        echo "sha: " ${{ env.SHA }}
       
     - name: Build and Push Docker image
       uses: docker/build-push-action@v4
       with:
         context: .
-        push: true
+        #push: true
         tags: ${{ env.IMAGE_NAME }}:${{ env.DOCKER_SHA }}
 
     - name: Update the `latest` tag (optional)
