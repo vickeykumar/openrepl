@@ -10,8 +10,7 @@ on:
     types: [closed]
 
 env:
-  DOCKER_REGISTRY: vickeykumar
-  IMAGE_NAME: openrepl
+  IMAGE_NAME: $DOCKER_REGISTRY/openrepl
 
 jobs:
   build:
@@ -22,7 +21,7 @@ jobs:
       uses: actions/checkout@v3
     
     - name: Display env vars
-      run: echo "DOCKER_REGISTRY:" ${{ env.DOCKER_REGISTRY }}
+      run: echo "DOCKER_REGISTRY:" $DOCKER_REGISTRY
 
     - uses: benjlevesque/short-sha@v2.1
       id: short-sha
@@ -43,12 +42,12 @@ jobs:
       with:
         context: .
         push: true
-        tags: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DOCKER_SHA }}
+        tags: ${{ env.IMAGE_NAME }}:${{ env.DOCKER_SHA }}
 
     - name: Update the `latest` tag (optional)
       if: success()
       run: |
-        docker tag ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DOCKER_SHA }} \
-        ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        docker tag ${{ env.IMAGE_NAME }}:${{ env.DOCKER_SHA }} \
+        ${{ env.IMAGE_NAME }}:latest
 
-        docker push ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        docker push ${{ env.IMAGE_NAME }}:latest
