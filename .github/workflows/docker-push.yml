@@ -7,7 +7,7 @@ on:
   pull_request:
     branches:
       - master
-    #types: [closed]
+    types: [closed]
 
 env:
   IMAGE_NAME: ${{ vars.DOCKER_REGISTRY }}/openrepl
@@ -40,7 +40,7 @@ jobs:
       uses: docker/build-push-action@v4
       with:
         context: .
-        #push: true
+        push: true
         tags: ${{ env.IMAGE_NAME }}:${{ env.SHA }}
 
     - name: Update the `latest` tag (optional)
