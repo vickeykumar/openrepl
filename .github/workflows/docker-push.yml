@@ -46,7 +46,7 @@ jobs:
     - name: Update the `latest` tag (optional)
       if: success()
       run: |
-        docker tag ${{ env.IMAGE_NAME }}:${{ env.DOCKER_SHA }} \
+        docker tag ${{ env.IMAGE_NAME }}:${{ env.SHA }} \
         ${{ env.IMAGE_NAME }}:latest
 
         docker push ${{ env.IMAGE_NAME }}:latest
