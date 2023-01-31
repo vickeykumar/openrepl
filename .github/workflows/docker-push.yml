@@ -24,7 +24,7 @@ jobs:
       id: short-sha
       with:
         length: 7
-    - run: echo $SHA
+    - run: echo ${{ steps.short-sha.outputs.sha }}
       env: 
         DOCKER_SHA: ${{ steps.short-sha.outputs.sha }}
 
