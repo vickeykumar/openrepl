@@ -459,7 +459,7 @@ $(function() {
       if(window.dbpath) {
         return window.dbpath;
       }
-      var ref = firebase.database().ref();
+      var ref = firebase.database().ref("openrepl");
       var hash = window.location.hash.replace(/#/g, '');
       if (hash) {
         window.dbpath = hash;
