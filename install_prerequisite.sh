@@ -118,7 +118,8 @@ cd ~
 mkdir /sys/fs/cgroup/systemd
 mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
 
-apt-get install -y --no-install-recommends gdb
+# currently stable gdb version is 8.1.1, can be copied from bin/ build from src
+#apt-get install -y --no-install-recommends gdb
 
 
 #cleanup

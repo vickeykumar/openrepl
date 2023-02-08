@@ -10,6 +10,7 @@ ENV TZ=Etc/UTC
 
 COPY ./install_prerequisite.sh /opt/openrepl/
 RUN ./install_prerequisite.sh --cleanup-tools --run-tests
+COPY ./bin/gdb /usr/bin/
 
 FROM builder as build-image
 
