@@ -3,11 +3,15 @@ import { Terminal } from "./webtty";
 
 
 var dbpath = "";
+var getrepl_firebasedbref = () => {
+	return firebase.database().ref("openrepl");
+};
+
 export const getExampleRef = () => {
       if(window['dbpath']) {
         return window['dbpath'];
       }
-      var ref = firebase.database().ref();
+      var ref = getrepl_firebasedbref();
       var hash = window.location.hash.replace(/#/g, '');
       if (hash) {
         window['dbpath'] = hash;
@@ -55,7 +59,7 @@ export class FireTTY {
     };
 
     open() {
-    	this.firebasedbref = firebase.database().ref(this.dbpath);
+    	this.firebasedbref = getrepl_firebasedbref().child(this.dbpath);
     	this.active = true;
         const optionhandler = () => {
             const optionMenu = document.getElementById("optionMenu");
