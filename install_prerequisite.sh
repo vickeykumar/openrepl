@@ -150,6 +150,7 @@ if [ $run_tests -eq 1 ]; then
 		"perl --version"
 		"perli --version"
 		"java --version"
+		"gdb --version"
 	)
 
 
