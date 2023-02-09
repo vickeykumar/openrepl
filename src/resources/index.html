@@ -44,6 +44,7 @@
       <link rel="author" href="humans.txt">
       <script src="https://kit.fontawesome.com/f54540db67.js" crossorigin="anonymous"></script>
       <script src="./js/preprocessing.js"></script>
+      <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 
       <!-- Declare all the functions here -->
       <script>
@@ -78,6 +79,11 @@
             console.log(error);
           }
         }
+
+	function onrecaptchaSuccess(token) {
+		document.getElementById("feedback-form").action = "/feedback";
+     		document.getElementById("feedback-submit").disabled=false;
+   	}
       </script>
       
       <!-- style for contact section start -->
@@ -523,7 +529,7 @@
 						<p><span class="go__color_rev">Which language REPL you want to see next?</span><br> Please Leave your comments in case of any Suggestions/Feedback. Thanks :)</p>
             <iframe name="resultFrame" id="resultFrame" width="100%" style="border:none;display:none" onload="onLoadFn()"></iframe>
 							 <div id="feedbackDiv">
-								<form method="post" action="/feedback" target="resultFrame">
+								<form id="feedback-form" method="post" action="#" target="resultFrame">
 									<table>
 									
 									<tr>
@@ -536,7 +542,11 @@
 									</tr>
 									
 									<tr>
-										<td colspan="2" align="center"><input type="submit" value="Send Message"/></td>
+										<td colspan="2" align="center">
+											<div class="g-recaptcha" data-sitekey="6Lc9IWckAAAAAK9az8PnOz5UaxvNf_VSikduRT_c" data-callback="onrecaptchaSuccess"></div>
+											<br/>
+											<input id="feedback-submit" type="submit" value="Send Message" disabled/>
+										</td>
 									</tr>
 									
 									</table>
