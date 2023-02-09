@@ -500,7 +500,7 @@ $(function() {
     // This function will return the user theme or the Monokai theme (which
     // is the default)
     function getTheme() {
-        return localStorage.getItem(LS_THEME_KEY) || "ace/theme/monokai";
+        return localStorage.getItem(LS_THEME_KEY) || "ace/theme/terminal";
     }
     
     // Select the desired theme of the editor
@@ -581,6 +581,7 @@ $(function() {
         // Initialize the ACE editor
         editor = ace.edit("editor");
         editor.setTheme(getTheme());
+	editor.setFontSize("14px");
         editor.$blockScrolling = Infinity;
         editor.setOptions({
             enableBasicAutocompletion: true,

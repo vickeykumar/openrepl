@@ -37,6 +37,16 @@ export TZ=Etc/UTC
 apt-get update -y
 apt-get install -y --no-install-recommends make gcc g++ default-jdk git
 
+#install ipython2.7
+apt-get install -y --no-install-recommends python2.7
+ln -s /usr/bin/python2.7 /usr/bin/python
+apt-get install -y --no-install-recommends ipython
+apt-get install -y --no-install-recommends python-is-python3
+
+#install ipython3
+apt-get install -y --no-install-recommends ipython3
+
+
 # set cap to nsenter,gcc,g++
 apt-get install -y --no-install-recommends libcap2-bin
 setcap "cap_sys_admin,cap_sys_ptrace+ep" /usr/bin/nsenter 
@@ -89,15 +99,6 @@ git clone https://github.com/vickeykumar/Go-interpreter.git
 cd Go-interpreter
 make install
 cd ..
-
-#install ipython2.7
-apt-get install -y --no-install-recommends python2.7
-ln -s /usr/bin/python2.7 /usr/bin/python
-apt-get install -y --no-install-recommends ipython
-apt-get install -y --no-install-recommends python-is-python3
-
-#install ipython3
-apt-get install -y --no-install-recommends ipython3
 
 #install Ruby(irb)
 apt-get install -y --no-install-recommends ruby
