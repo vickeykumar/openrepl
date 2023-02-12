@@ -27,6 +27,7 @@ var Commands2memLimitMap = map[string]int64{
 	"irb":           4,
 	"perli":         3,
 	"node":          10,
+	"jq-repl":       2,
 }
 
 var memLimitMutex sync.Mutex

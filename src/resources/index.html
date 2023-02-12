@@ -44,6 +44,7 @@
       <link rel="author" href="humans.txt">
       <script src="https://kit.fontawesome.com/f54540db67.js" crossorigin="anonymous"></script>
       <script src="./js/preprocessing.js"></script>
+      <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 
       <!-- Declare all the functions here -->
       <script>
@@ -78,6 +79,11 @@
             console.log(error);
           }
         }
+
+	function onrecaptchaSuccess(token) {
+		document.getElementById("feedback-form").action = "/feedback";
+     		document.getElementById("feedback-submit").disabled=false;
+   	}
       </script>
       
       <!-- style for contact section start -->
@@ -213,11 +219,12 @@
       <div id="optionMenu">
         <select class="list" style="margin:7px;font-size:15px;width:200px;">
                 <option value="c" data-editor="c_cpp">C</option>
-                <option value="cpp" data-editor="c_cpp">C++</option>
+                <option value="cpp" data-editor="c_cpp">CPP</option>
                 <option value="go" data-editor="golang">Go</option>
 		<option value="yaegi" data-editor="golang">Go-yaegi</option>
                 <option value="java" data-editor="java">Java</option>
                 <option value="javascript" data-editor="javascript">JavaScript</option>
+		<option value="jq-repl" data-editor="json">JSON</option>
                 <option value="node" data-editor="javascript">NodeJS</option>
               	<option value="python" data-editor="python">Python</option>
 		<option value="python2.7" data-editor="python">Python2.7</option>
@@ -391,7 +398,7 @@
             <option value="jade" disabled>Jade</option>
             <option value="java">Java</option>
             <option value="javascript">JavaScript</option>
-            <option value="json" disabled>JSON</option>
+            <option value="json">JSON</option>
             <option value="jsoniq" disabled>JSONiq</option>
             <option value="jsp" disabled>JSP</option>
             <option value="jsx" disabled>JSX</option>
@@ -523,7 +530,7 @@
 						<p><span class="go__color_rev">Which language REPL you want to see next?</span><br> Please Leave your comments in case of any Suggestions/Feedback. Thanks :)</p>
             <iframe name="resultFrame" id="resultFrame" width="100%" style="border:none;display:none" onload="onLoadFn()"></iframe>
 							 <div id="feedbackDiv">
-								<form method="post" action="/feedback" target="resultFrame">
+								<form id="feedback-form" method="post" action="#" target="resultFrame">
 									<table>
 									
 									<tr>
@@ -536,7 +543,11 @@
 									</tr>
 									
 									<tr>
-										<td colspan="2" align="center"><input type="submit" value="Send Message"/></td>
+										<td colspan="2" align="center">
+											<div class="g-recaptcha" data-sitekey="6Lc9IWckAAAAAK9az8PnOz5UaxvNf_VSikduRT_c" data-callback="onrecaptchaSuccess"></div>
+											<br/>
+											<input id="feedback-submit" type="submit" value="Send Message" disabled/>
+										</td>
 									</tr>
 									
 									</table>
@@ -603,6 +614,7 @@
           } else {
             ToggleEditor();
           }
+	  LoadOptionFromUrl();
     </script>
     <script src="./js/common.js"></script>
     <script src="./auth_token.js"></script>

@@ -267,7 +267,6 @@ printf "\n";
 		</Compiler>
 	</Demo>
 
-
 	<Demo>
 		<Name>gointerpreter</Name>
 		<Github>https://github.com/vickeykumar/Go-interpreter</Github>
@@ -377,6 +376,326 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
     	$COMPILER run $HOME/$FILE;
     fi
 fi
+printf "\n";
+		</Compiler>
+	</Demo>
+
+
+
+	<Demo>
+		<Name>jq-repl</Name>
+		<Github>https://github.com/vickeykumar/jq-repl</Github>
+		<Doc>https://stedolan.github.io/jq/manual</Doc>
+		<Codes>
+			<Code>
+				<Prompt>jq&gt;&gt;</Prompt>
+				<Statement> .[0] | keys</Statement>
+				<Result>[
+  "AppArmorProfile",
+  "Args",
+  "Config",
+  "Created",
+  "Driver",
+  "ExecIDs",
+  "GraphDriver",
+  "HostConfig",
+  "HostnamePath",
+  "HostsPath",
+  "Id",
+  "Image",
+  "LogPath",
+  "MountLabel",
+  "Mounts",
+  "Name",
+  "NetworkSettings",
+  "Path",
+  "Platform",
+  "ProcessLabel",
+  "ResolvConfPath",
+  "RestartCount",
+  "State"
+]</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>jq&gt;&gt;</Prompt>
+				<Statement> .[0].Id</Statement>
+				<Result>"4c855660afe7ba17ea1f70ac0557d7a2ff392bb9d70cd880ace19cca56b484d0"</Result>
+			</Code>
+			<Code>
+				<Prompt>jq&gt;&gt;</Prompt>
+				<Statement> -c .[0].State</Statement>
+				<Result>{"Status":"running","Running":true,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"Pid":43101,"ExitCode":0,"Error":"","StartedAt":"2023-02-10T16:56:10.931973195Z","FinishedAt":"0001-01-01T00:00:00Z"}</Result>
+			</Code>
+			<Code>
+				<Prompt>jq&gt;&gt;</Prompt>
+				<Statement> .[0].State</Statement>
+				<Result>{
+  "Status": "running",
+  "Running": true,
+  "Paused": false,
+  "Restarting": false,
+  "OOMKilled": false,
+  "Dead": false,
+  "Pid": 43101,
+  "ExitCode": 0,
+  "Error": "",
+  "StartedAt": "2023-02-10T16:56:10.931973195Z",
+  "FinishedAt": "0001-01-01T00:00:00Z"
+}</Result>
+			</Code>
+		</Codes>
+		<Codes>
+                        <Code>
+                                <Prompt>jq&gt;&gt;</Prompt>
+                                <Statement> .[0].State.Status</Statement>
+                                <Result>"running"</Result>
+                        </Code>
+                        <Code>
+                                <Prompt>jq&gt;&gt;</Prompt>
+                                <Statement> .[0].State.StartedAt</Statement>
+                                <Result>"2023-02-10T16:56:10.931973195Z"</Result>
+                        </Code>
+                        <Code>
+                                <Prompt>jq&gt;&gt;</Prompt>
+                                <Statement> .[0].State.Pid</Statement>
+                                <Result>43101</Result>
+                        </Code>
+                </Codes>
+		<Usage>
+			<Command>:h, :help</Command>
+			<Description>Print Help Menu( refer documentaion below or visit https://stedolan.github.io/jq/manual/ for more info on commands)</Description>
+		</Usage>
+		<Usage>
+			<Command>&lt;JSON Block&gt;</Command>
+			<Description>loads the current json block for processing</Description>
+		</Usage>
+		<Usage>
+			<Command>keys</Command>
+			<Description>display the keys from current json.</Description>
+		</Usage>
+		<Usage>
+                        <Command>.</Command>
+                        <Description>display current json.</Description>
+                </Usage>
+		<Usage>
+                        <Command>.key1</Command>
+                        <Description>display the key1 data from current json.</Description>
+		</Usage>
+		<Usage>
+                        <Command>[jq options] &lt;jq filter&gt; </Command>
+                        <Description>works similar to jq command-line tool, but works on current loaded json </Description>
+		</Usage>
+		<Usage>
+                        <Command>jq [jq options] &lt;jq filter&gt; </Command>
+                        <Description>fire jq command-line from jq-repl shell</Description>
+                </Usage>
+		<Usage>
+			<Command>:q</Command>
+			<Description>Exits the REPL.</Description>
+		</Usage>
+		<Content>
+[
+    {
+        "Id": "4c855660afe7ba17ea1f70ac0557d7a2ff392bb9d70cd880ace19cca56b484d0",
+        "Created": "2023-02-10T16:56:08.224192929Z",
+        "Path": "/bin/bash",
+        "Args": [],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 43101,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2023-02-10T16:56:10.931973195Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:750ed78dabd45cedbaf5c087d1048db165cb0571b802e7cb81cd3995489715e8",
+        "ResolvConfPath": "/var/lib/docker/containers/4c855660afe7ba17ea1f70ac0557d7a2ff392bb9d70cd880ace19cca56b484d0/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/4c855660afe7ba17ea1f70ac0557d7a2ff392bb9d70cd880ace19cca56b484d0/hostname",
+        "HostsPath": "/var/lib/docker/containers/4c855660afe7ba17ea1f70ac0557d7a2ff392bb9d70cd880ace19cca56b484d0/hosts",
+        "LogPath": "/var/lib/docker/containers/4c855660afe7ba17ea1f70ac0557d7a2ff392bb9d70cd880ace19cca56b484d0/4c855660afe7ba17ea1f70ac0557d7a2ff392bb9d70cd880ace19cca56b484d0-json.log",
+        "Name": "/fervent_dubinsky",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "default",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": [],
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": null,
+            "BlkioDeviceWriteBps": null,
+            "BlkioDeviceReadIOps": null,
+            "BlkioDeviceWriteIOps": null,
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "KernelMemory": 0,
+            "KernelMemoryTCP": 0,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": null,
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/f3e1e82c2874e530a6dca421163eb5671ec440a87c5623eeb6c0280163ab74fc-init/diff:/var/lib/docker/overlay2/2ce1e4f49992ede9551d6ff2810b713e9af373e93ee02059e780415e5e9acef7/diff:/var/lib/docker/overlay2/b1699b3f7672cc3883a8e87f229b4c5df0aac05170e1722292c1f687c7736502/diff:/var/lib/docker/overlay2/58fa3f3f612b066f46f9b976c315a9c190801a7d00a6da3eca86b1d57216c962/diff:/var/lib/docker/overlay2/07d853ca07d375b5879715b84016954d5468cd411b009f52c3b160db07279be9/diff",
+                "MergedDir": "/var/lib/docker/overlay2/f3e1e82c2874e530a6dca421163eb5671ec440a87c5623eeb6c0280163ab74fc/merged",
+                "UpperDir": "/var/lib/docker/overlay2/f3e1e82c2874e530a6dca421163eb5671ec440a87c5623eeb6c0280163ab74fc/diff",
+                "WorkDir": "/var/lib/docker/overlay2/f3e1e82c2874e530a6dca421163eb5671ec440a87c5623eeb6c0280163ab74fc/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "4c855660afe7",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": true,
+            "AttachStdout": true,
+            "AttachStderr": true,
+            "Tty": true,
+            "OpenStdin": true,
+            "StdinOnce": true,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Cmd": [
+                "/bin/bash"
+            ],
+            "Image": "ubuntu_cling_18.04",
+            "Volumes": null,
+            "WorkingDir": "",
+            "Entrypoint": null,
+            "OnBuild": null,
+            "Labels": {}
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "6c52b4f629fef31e5c28f356d5ec44cec9e9528cdc510b3b70179786087f3613",
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "Ports": {},
+            "SandboxKey": "/var/run/docker/netns/6c52b4f629fe",
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "6470c3bc5841f4b4c0c190ba0905f14ec06cfbc1e15fea2b05ac93d9f804adb2",
+            "Gateway": "172.17.0.1",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "172.17.0.3",
+            "IPPrefixLen": 16,
+            "IPv6Gateway": "",
+            "MacAddress": "02:42:ac:11:00:03",
+            "Networks": {
+                "bridge": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "NetworkID": "1913d9a0e2494726353ea8985c6412d9fe3f5fbf2a079b5a5b69b53c15fe3faa",
+                    "EndpointID": "6470c3bc5841f4b4c0c190ba0905f14ec06cfbc1e15fea2b05ac93d9f804adb2",
+                    "Gateway": "172.17.0.1",
+                    "IPAddress": "172.17.0.3",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "MacAddress": "02:42:ac:11:00:03",
+                    "DriverOpts": null
+                }
+            }
+        }
+    }
+]
+
+		</Content>
+		<Compiler>
+echo $0|base64 --decode|jq-repl;
 printf "\n";
 		</Compiler>
 	</Demo>

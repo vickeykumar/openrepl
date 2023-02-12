@@ -100,6 +100,13 @@ cd Go-interpreter
 make install
 cd ..
 
+#install jq-repl
+apt-get install -y --no-install-recommends jq
+git clone https://github.com/vickeykumar/jq-repl.git
+cd jq-repl
+make install
+cd ..
+
 #install Ruby(irb)
 apt-get install -y --no-install-recommends ruby
 
@@ -152,6 +159,7 @@ if [ $run_tests -eq 1 ]; then
 		"perli --version"
 		"java --version"
 		"gdb --version"
+		"jq --version"
 	)
 
 
