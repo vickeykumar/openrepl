@@ -219,7 +219,7 @@
       <div id="optionMenu">
         <select class="list" style="margin:7px;font-size:15px;width:200px;">
                 <option value="c" data-editor="c_cpp">C</option>
-                <option value="cpp" data-editor="c_cpp">C++</option>
+                <option value="cpp" data-editor="c_cpp">CPP</option>
                 <option value="go" data-editor="golang">Go</option>
 		<option value="yaegi" data-editor="golang">Go-yaegi</option>
                 <option value="java" data-editor="java">Java</option>
@@ -614,6 +614,7 @@
           } else {
             ToggleEditor();
           }
+	  LoadOptionFromUrl();
     </script>
     <script src="./js/common.js"></script>
     <script src="./auth_token.js"></script>

@@ -128,32 +128,37 @@ if (elem !== null) {
     var debug: boolean = false;
     const option = getSelectValue();
     console.log("option caught: ",option);
-    if (gotty_term == "hterm") {
-        term = new Hterm(elem);
-    } else {
-        term = new Xterm(elem);
-    }
-    if (master) {
-        const httpsEnabled = window.location.protocol == "https:";
-        const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws' + '_' + option;
-        const args = window.location.search;
-	let args2 = '';
-	if ( option && option2args[option] && option2args[option] !== undefined ) {
-		args2 = option2args[option];
-		if (args==="") {
-			args2='?'+args2;
+
+	// handle the terminal here only if this api tells to handle,
+	// else it will be handled in the handleTerminalOptions itself
+    if (handleTerminalOptions(elem, option)) {
+		if (gotty_term == "hterm") {
+			term = new Hterm(elem);
 		} else {
-			args2='&'+args2;
+			term = new Xterm(elem);
 		}
-	}
-        ft = new FireTTY(term, master);
-        factory = new ConnectionFactory(url, protocols);
-        wt = new WebTTY(term, factory, ft, payload, args+args2, gotty_auth_token);
-    } else {
-        wt = new FireTTY(term, master);
+		if (master) {
+			const httpsEnabled = window.location.protocol == "https:";
+			const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws' + '_' + option;
+			const args = window.location.search;
+		let args2 = '';
+		if ( option && option2args[option] && option2args[option] !== undefined ) {
+			args2 = option2args[option];
+			if (args==="") {
+				args2='?'+args2;
+			} else {
+				args2='&'+args2;
+			}
+		}
+			ft = new FireTTY(term, master);
+			factory = new ConnectionFactory(url, protocols);
+			wt = new WebTTY(term, factory, ft, payload, args+args2, gotty_auth_token);
+		} else {
+			wt = new FireTTY(term, master);
+		}
+		closer = wt.open();
+		console.log("webtty created: ");
     }
-    closer = wt.open();
-    console.log("webtty created: ");
 
     window.addEventListener("unload", () => {
         console.log("closing connection")

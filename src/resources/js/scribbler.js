@@ -52,7 +52,7 @@ function ToggleFunction() {
       var element = AllElem[i];
       if (element.id != "terminal__row" && element.tagName != "SCRIPT" && !element.classList.contains("ace_editor")) {
         element.classList.toggle("hide-tag");
-        console.log("class hidden for %s",element.tagName);
+        //console.log("class hidden for %s",element.tagName);
       }
     }
 
@@ -122,6 +122,24 @@ function ToggleReconnect() {
           option.dispatchEvent(new Event("change"));
         }
     }
+}
+
+function LoadOptionFromUrl() {
+	var searchParams = new URL(location.href.toLowerCase()).searchParams;
+	var repl = searchParams.get("repl");
+    var optionMenu = $('#optionMenu > select')[0];
+  	if (optionMenu) {
+    	for (var i = 0; i < optionMenu.length; i++){
+      		var option = optionMenu.options[i];
+		var lang = option.text.trim().toLowerCase();
+      		if ((repl && option.getAttribute("value").toLowerCase() === repl) || (searchParams.get(lang)!==null && searchParams.get(lang)!==undefined)) {
+				//option found
+				optionMenu.value = option.value;
+				//optionMenu.dispatchEvent(new Event("change"));
+				return;
+      		}
+    	}
+  	}
 }
 
 function CompileandRun() {
@@ -669,9 +687,14 @@ $(function() {
               val = "/* Welcome to openrepl! */\n/* Editor underdevelopment! */";
             }
 
+	    //get language from optionmenu
+            var optionlang = $('#optionMenu > select option:selected').data('editor');
+	    if (optionlang==null) {
+		    optionlang="c_cpp"
+	    }
             // Here's where we set the initial content of the editor
             editorValues.child(editorId).set({
-                lang: "c_cpp",
+                lang: optionlang,
                 queue: {},
                 content: val
             });
