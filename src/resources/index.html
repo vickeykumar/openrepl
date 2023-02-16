@@ -41,10 +41,12 @@
       <link rel="stylesheet" href="./css/scribbler-landing.css">
       <link rel="stylesheet" href="./css/xterm.css" />
       <link rel="stylesheet" href="./css/xterm_customize.css" />
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intro.js/6.0.0/introjs.min.css" />
       <link rel="author" href="humans.txt">
       <script src="https://kit.fontawesome.com/f54540db67.js" crossorigin="anonymous"></script>
       <script src="./js/preprocessing.js"></script>
       <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/intro.js/6.0.0/intro.min.js"></script>
 
       <!-- Declare all the functions here -->
       <script>
@@ -152,7 +154,7 @@
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-T8XFRGR"
     height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
-    <a href="https://github.com/vickeykumar/openrepl" class="github-corner" aria-label="View source on Github" style="position: fixed; top: 0; right: 0; border: 0;" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" style="fill:var(--rev-accent-color); color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true" class="github-svg" ><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a><style>.github-corner:hover .octo-arm{animation:octocat-wave 560ms ease-in-out}@keyframes octocat-wave{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(-25deg)}40%,80%{transform:rotate(10deg)}}@media (max-width:500px){.github-corner:hover .octo-arm{animation:none}.github-corner .octo-arm{animation:octocat-wave 560ms ease-in-out}}</style>
+    <a href="https://github.com/vickeykumar/openrepl" class="github-corner" id="github-corner" aria-label="View source on Github" style="position: fixed; top: 0; right: 0; border: 0;" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" style="fill:var(--rev-accent-color); color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true" class="github-svg" ><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a><style>.github-corner:hover .octo-arm{animation:octocat-wave 560ms ease-in-out}@keyframes octocat-wave{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(-25deg)}40%,80%{transform:rotate(10deg)}}@media (max-width:500px){.github-corner:hover .octo-arm{animation:none}.github-corner .octo-arm{animation:octocat-wave 560ms ease-in-out}}</style>
     <nav>
       <div class="logo">
         <svg width="92px" height="30px" viewBox="0 0 92 30" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -165,7 +167,7 @@
           </text>
         </svg>
       </div>
-      <ul class="menu">
+      <ul class="menu" id="home_menu">
         <div class="menu__item toggle"><span></span></div>
         <li class="menu__item"><a href="doc.html" class="link link--dark" target="_blank"><i class="fa fa-book"></i> Documentation</a></li>
         <li class="menu__item">         </li>
@@ -211,13 +213,13 @@
 
 <!-- code for share buttons end-->
       
-    <a class="github-button" href="https://github.com/vickeykumar/openrepl" data-color-scheme="no-preference: dark; light: dark; dark: dark;" data-icon="octicon-star" data-show-count="true" aria-label="Star vickeykumar/openrepl on GitHub">
+    <a class="github-button" id="github-star" href="https://github.com/vickeykumar/openrepl" data-color-scheme="no-preference: dark; light: dark; dark: dark;" data-icon="octicon-star" data-show-count="true" aria-label="Star vickeykumar/openrepl on GitHub">
         Star
     </a>
       
       
       <div id="optionMenu">
-        <select class="list" style="margin:7px;font-size:15px;width:200px;">
+        <select class="list" id="optionlist" style="margin:7px;font-size:15px;width:200px;">
                 <option value="c" data-editor="c_cpp">C</option>
                 <option value="cpp" data-editor="c_cpp">CPP</option>
                 <option value="go" data-editor="golang">Go</option>
@@ -234,14 +236,14 @@
                 <option value="bash" data-editor="sh">bash</option>
         </select>
 
-        <div class="widget">
+        <div class="widget" id="fork-widget">
           <a class="forkbtn" href="" target="_blank" >
             <svg version="1.1" width="8.75" height="14" viewBox="0 0 10 16" class="octicon octicon-repo-forked" aria-hidden="true"><path fill-rule="evenodd" d="M8 1a1.993 1.993 0 0 0-1 3.72V6L5 8 3 6V4.72A1.993 1.993 0 0 0 2 1a1.993 1.993 0 0 0-1 3.72V6.5l3 3v1.78A1.993 1.993 0 0 0 5 15a1.993 1.993 0 0 0 1-3.72V9.5l3-3V4.72A1.993 1.993 0 0 0 8 1zM2 4.2C1.34 4.2.8 3.65.8 3c0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2zm3 10c-.66 0-1.2-.55-1.2-1.2 0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2zm3-10c-.66 0-1.2-.55-1.2-1.2 0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2z"></path></svg> 
                 <span>Fork REPL</span>
            </a>
            <span class="social-count"><b></b><i></i>0</span>
         </div>
-        <div class="share-btn" onclick="myDropDownToggle()">
+        <div class="share-btn" onclick="myDropDownToggle()" id="share-btn-1">
             <svg version="1.0" width="11" height="16" viewBox="0 0 48.000000 48.000000"
              preserveAspectRatio="xMidYMid meet" class="octicon">
             <g transform="translate(0.000000,48.000000) scale(0.100000,-0.100000)"
@@ -272,18 +274,17 @@
 
           </div>
         </div>
-
       </div>
     <br>
     </div>
 
     <div class="terminal__row" id="terminal__row">
-      <div class="sidebar">
+      <div class="sidebar" id="sidebar_options">
         <div class="fullscreen-toggle tooltip" id="togglescreen-button" onclick="ToggleFunction();"><i class="fa fa-expand"></i><span class="tooltiptext">Maximize</span></div>
         <div class="fullscreen-toggle tooltip" id="editor-button" onclick="ToggleEditor();"><i class="fa fa-pencil"></i><span class="tooltiptext">Use Editor</span></div>
         <div class="fullscreen-toggle rotate-fa tooltip" id="redo-button" onclick="ToggleReconnect();"><i class="fa fa-redo rotate-fa"></i><span class="tooltiptext revrotate-fa">Reconnect REPL</span></div>
         <div class="fullscreen-toggle tooltip" id="play-button" onclick="CompileandRun();"><i class="fa fas fa-play"></i><span class="tooltiptext">Run Editor Code</span></div>
-        <div class="fullscreen-toggle tooltip" id="play-button" onclick="RunandDebug();"><i class="fa fas" style="font-size:12px;">debug</i><span class="tooltiptext">Debug Editor Code</span></div>
+        <div class="fullscreen-toggle tooltip" id="debug-play-button" onclick="RunandDebug();"><i class="fa fas" style="font-size:12px;">debug</i><span class="tooltiptext">Debug Editor Code</span></div>
         <div class="fullscreen-toggle tooltip" id="download-button" onclick="DownloadEditor();"><i class="fa fa-download"></i><span class="tooltiptext">Download Editor Code</span></div>
         <div class="fullscreen-toggle tooltip" id="upload-button" onclick="document.getElementById('fileToLoad').click();"><i class="fa fa-upload"><input type="file" id="fileToLoad" oninput="UploadEditor();" style="display: none;"></i><span class="tooltiptext">Upload to Editor</span></div>
       </div>
@@ -292,7 +293,7 @@
         <div id="editor"></div>
         <div id="loader"></div>
         <!--start here-->
-        <div class="controls">
+        <div class="controls" id="controls-buttons">
     
           <!--form >
             <input id="input" name="id" placeholder="Editor name">
@@ -490,9 +491,10 @@
     <div class="wrapper">
       <hr/>
       <div class="installation">
-        <h3 class="section__title">Getting Started</h3>
+        <h3 class="section__title">Getting Started<div class="share-btn fas fa-play" onclick="StartTour()" id="tour-btn">
+        </div></h3>
         <div class="demo__terminal">
-          <a href="https://github.com/vickeykumar/openrepl" class="github-corner" aria-label="View source on Github" style="position: absolute; top: 0; right: 0; border: 0; z-index: 10;" target="_blank"><svg width="40" height="40" viewBox="0 0 250 250" style="fill:var(--code-bg-color-2); color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true" class="github-svg" ><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+          <a href="https://github.com/vickeykumar/openrepl" class="github-corner" id="demo_github-corner" aria-label="View source on Github" style="position: absolute; top: 0; right: 0; border: 0; z-index: 10;" target="_blank"><svg width="40" height="40" viewBox="0 0 250 250" style="fill:var(--code-bg-color-2); color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true" class="github-svg" ><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
           <pre>
         <!-- Place your demo code here -->
             <code class="shell-session demo">hyperyolo ~ $ </code>
@@ -500,7 +502,7 @@
         </div>
       </div>
       <br><br><br>
-      <div class="keybinding">
+      <div class="keybinding" id="repl_usage">
         <ul class="keybinding__detail">
           <h3 class="keybinding__title">Commands</h3>
           <li><span class="keybinding__label">.help</span></li>
@@ -516,7 +518,7 @@
           <li> Exits Cling Interpreter.</li>
         </ul>
       </div>
-      <div class="callout">
+      <div class="callout" id="callout_doc">
         <p>Please read documentation for more information</p>
         <a href="doc.html" class="button--primary" target="_blank">Documentation</a>
       </div>
@@ -615,6 +617,12 @@
             ToggleEditor();
           }
 	  LoadOptionFromUrl();
+      var demo_done = localStorage.getItem("OpenREPL_Demo");
+      if (demo_done !== "done") {
+        // demo not done
+        localStorage.setItem("OpenREPL_Demo", "done");
+        StartTour();
+      }
     </script>
     <script src="./js/common.js"></script>
     <script src="./auth_token.js"></script>

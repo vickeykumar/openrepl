@@ -142,6 +142,100 @@ function LoadOptionFromUrl() {
   	}
 }
 
+function StartTour() {
+  introJs().setOptions({
+    disableInteraction: true,
+    steps: [{
+      title: 'Welcome aboard !! 👋',
+      intro: 'New to OpenREPL? Lets take a Tour on how to use OpenREPL.'
+    },
+    {
+      element: document.querySelector('.hero__title'),
+      intro: 'OpenREPL is an Open Source Platform that lets you run and test code snippets in an interactive shell (like python).'
+    },
+    {
+      element: document.querySelector('#optionlist'),
+      intro: 'you can choose one of the many available Programming languages options for creating an REPL.'
+    },
+    {
+      element: document.querySelector('#terminal__row'),
+      intro: 'This is the Terminal window you will use to interact with OpenREPL'
+    },
+    {
+      element: document.querySelector('#ide'),
+      intro: 'you can write code snippets here and run the same.'
+    },
+    {
+      title: 'IDE Menu bar',
+      element: document.querySelector('#controls-buttons'),
+      intro: 'IDE Menu bar to control ide features.'
+    },
+    {
+      element: document.querySelector('#terminal'),
+      intro: 'This is the Terminal window you will use to interact with OpenREPL interactively or see the ide code results when you run.'
+    },
+    {
+      title: 'REPL Menu bar',
+      element: document.querySelector('#sidebar_options'),
+      intro: 'you can choose one of the many options from this menu bar to interact with OpenREPL and perform a task. \
+      Available Features: Maximize/Minimize, show/hide IDE, Reconnect REPL, Run IDE Code, Debug IDE code, \
+      Download IDE code, Upload IDE code Respectively.'
+    },
+    {
+      title: 'Demo Getting Started',
+      element: document.querySelector('.demo__terminal'),
+      intro: 'Refer sample demo on REPL usage here for quickly getting started.'
+    },
+    {
+      title: 'Github Link',
+      element: document.querySelector('#demo_github-corner'),
+      intro: 'github links for respective opensource repl.'
+    },
+    {
+      title: 'REPL Usage Commands',
+      element: document.querySelector('#repl_usage'),
+      intro: 'Check out some REPL usage commands.'
+    },
+    {
+      title: 'Documentation',
+      element: document.querySelector('#callout_doc'),
+      intro: 'Documentation on current REPL used.'
+    },
+    {
+      title: 'Fork this REPL',
+      element: document.querySelector('#fork-widget'),
+      intro: 'Fork this REPL/Terminal to share same containers and codepath/home\
+       (Both REPLs can communicate with same network interface).'
+    },
+    {
+      title: 'Share/Collaborate',
+      element: document.querySelector('#share-btn-1'),
+      intro: 'Copy this url to Share REPL and Collaborate with others.'
+    },
+    {
+      title: 'query repl',
+      element: document.querySelector('#home_menu'),
+      intro: 'you can jump to an particular repl directly using query repl by name \
+      followed by ? in url (like https://openrepl.com/?python.'
+    },
+    {
+      title: 'Github-Star',
+      intro: 'If you like my work Please take you valuable time to leave a Github-star. \
+      it means a lot and will encouage us to introduce more exciting features.'
+    },
+    {
+      title: "And",
+      element: document.querySelector('#share-buttons'),
+      intro: 'Share with you friends.'
+    },
+    {
+      title: 'Good Luck With Your Learning Journey!',
+      element: document.querySelector('#three'),
+      intro: 'And Leave a feedback what you want to see next!'
+    }]
+  }).start();
+}
+
 function CompileandRun() {
     const termElem = get("#terminal");
     if(termElem!==undefined) {
