@@ -11,7 +11,7 @@ ifneq ($(UNAME), Linux)
 	PRE_REQ = tools
 endif
 
-gotty:	${TARGET}/main.go server/*.go webtty/*.go backend/*.go containers/*.go ${TARGET}/Makefile
+gotty:	${TARGET}/main.go server/*.go webtty/*.go backend/*.go backend/localcommand/*.go containers/*.go cachedb/*.go user/*.go ${TARGET}/Makefile
 	@echo "building gotty: "${TARGET}
 	cd ${TARGET} && \
 	make
@@ -32,8 +32,9 @@ bindata:
 bindata/static: bindata
 	mkdir bindata/static
 
-bindata/static/index.html: bindata/static resources/index.html resources/robots.txt jsconsole/build/static/jsconsole.html
+bindata/static/index.html: bindata/static resources/index.html resources/profile.html resources/robots.txt jsconsole/build/static/jsconsole.html
 	cp resources/index.html bindata/static/index.html
+	cp resources/profile.html bindata/static/profile.html
 	cp resources/robots.txt bindata/static/robots.txt
 	cp jsconsole/build/static/jsconsole.html bindata/static/jsconsole.html
 

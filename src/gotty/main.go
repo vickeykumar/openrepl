@@ -1,6 +1,7 @@
 package main
 
 import (
+	"utils"
 	"backend/localcommand"
 	"containers"
 	"context"
@@ -13,15 +14,17 @@ import (
 	"server"
 	"strings"
 	"syscall"
-	"utils"
+	"user"
 )
 
+
 func main() {
-	// init logging
-	utils.InitLogging("gotty")
 
 	server.InitFeedbackDBHandle()
 	defer server.CloseFeedbackDBHandle()
+
+	user.InitSessionDBHandle()
+	defer user.CloseSessionDBHandle()
 
 	containers.InitContainers()
 	defer containers.DeleteContainers()

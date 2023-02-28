@@ -557,6 +557,197 @@ if (document.getElementsByClassName('demo').length > 0) {
 }
 */
 
+function logout () {
+      var xhr = new XMLHttpRequest();
+      var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "logout";
+      xhr.open("POST", url, true);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.onreadystatechange = function () {
+      if (xhr.readyState === 4 && xhr.status === 200) {
+        console.log("logout success");
+      }
+      console.log("logout status: ",xhr.status);
+      // logout anyway
+      location.assign("/");
+      };
+      xhr.send();
+}
+
+function renderProfileData () {
+      var xhr = new XMLHttpRequest();
+      var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "profile?q=json";
+      xhr.open("GET", url, true);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          try {
+            var user = JSON.parse(this.responseText);
+            if ( user!=undefined ) {
+              console.log("response: ", user);
+              if ( user.photoURL !== undefined && user.photoURL !=="" ) {
+                document.getElementById('user-image').src=user.photoURL;
+              }
+
+            } else {
+              console.log("undefined response");
+            }
+          }
+          catch(e) {
+            // statements
+            console.log("Exception: ",e);
+            console.log(this.response);
+          }
+        }
+        console.log("login status: ",xhr.status);
+      };
+      xhr.send();
+}
+
+/* Sign in App */
+
+$(function() {
+
+    // Initialize Firebase configuration
+    var config = {
+                apiKey: "AIzaSyAapakYYOOdY8m6mTE76aYOWLKa84ikeyE",
+                authDomain: "root-grammar-251415.firebaseapp.com",
+                databaseURL: "https://root-grammar-251415.firebaseio.com"
+    };
+    if (firebase.apps.length === 0) {
+        firebase.initializeApp(config);
+    }
+    var ui = new firebaseui.auth.AuthUI(firebase.auth());
+    var uiConfig = {
+      callbacks: {
+        signInSuccessWithAuthResult: function(authResult, redirectUrl) {
+          // User successfully signed in.
+          // Return type determines whether we continue the redirect automatically
+          // or whether we leave that to developer to handle.
+            console.log("authResult: ",JSON.stringify(authResult), JSON.stringify(redirectUrl));
+
+          xhr = new XMLHttpRequest();
+          var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "login";
+          xhr.open("POST", url, true);
+          xhr.setRequestHeader("Content-Type", "application/json");
+          xhr.onreadystatechange = function () {
+              if (xhr.readyState === 4) {
+                if (xhr.status === 200) {
+                  console.log("login success");
+                } else {
+                  alert("Login Failed.");
+                }
+                // redirect anyway
+                location.reload();
+
+              }
+              console.log("login status: ",xhr.status);
+          };
+          xhr.send(JSON.stringify(authResult));
+
+          return false;
+        },
+      },
+      // Will use popup for IDP Providers sign-in flow instead of the default, redirect.
+      signInFlow: 'popup',
+      signInSuccessUrl: '/',
+      signInOptions: [
+        // Leave the lines as is for the providers you want to offer your users.
+        firebase.auth.EmailAuthProvider.PROVIDER_ID,
+        firebase.auth.GoogleAuthProvider.PROVIDER_ID,
+        //firebase.auth.FacebookAuthProvider.PROVIDER_ID,
+        //firebase.auth.TwitterAuthProvider.PROVIDER_ID,
+        //firebase.auth.GithubAuthProvider.PROVIDER_ID,
+        //firebase.auth.PhoneAuthProvider.PROVIDER_ID
+      ],
+      // Terms of service url.
+      tosUrl: '/about.html',
+      // Privacy policy url.
+      privacyPolicyUrl: '/about.html'
+    };
+
+
+    // all the auth handling is done in client side to improve performance(cache)
+      // in stead of golang templates
+      // install sign in button
+    var signin_btn = document.getElementById('sign-in-button');
+    var signout_btn = document.getElementById('sign-out-button');
+
+    function startauth() {
+          // remove sign in button
+          signin_btn.style.display="none";
+          /*firebaseuiElem = get('#firebaseui-auth-container');
+          firebaseuiElem.classList.toggle("fullscreen");*/
+          var AllElem = getAll("body > *");
+          for (var i = 0; i < AllElem.length;i++)
+          {
+            var element = AllElem[i];
+
+            if (element.id == "footer") {
+                element.classList.toggle("fixed-footer");
+            }
+
+            if (element.id != "header-nav" && element.id != "footer" && element.id != "firebaseui-auth-container" && element.tagName != "SCRIPT") {
+              element.classList.toggle("hide-tag");
+              console.log("class hidden for %s",element.tagName);
+            }
+          }
+          ui.start('#firebaseui-auth-container', uiConfig);
+      }
+
+
+    // check if already logged in 
+    xhr = new XMLHttpRequest();
+    var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "login";
+    xhr.open("GET", url, true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState === 4 && xhr.status === 200) {
+        try {
+          var user = JSON.parse(this.responseText);
+          if ( user!=undefined ) {
+            console.log("response: ", user);
+          } else {
+            console.log("undefined response");
+          }
+
+          //install new one
+          if (user.loggedIn) {
+            // install sign out button
+            if (signin_btn !==null) {
+                //remove previous icon
+                signin_btn.style.display="none";
+                document.getElementById('user-account').style.display="inline-block";
+
+                // render other profile data, take ur time
+                setTimeout(renderProfileData, 2800);
+            }
+
+          }
+        }
+        catch(e) {
+          // statements
+          console.log("Exception: ",e);
+          console.log(this.response);
+        }
+      }
+      console.log("login status: ",xhr.status);
+    };
+    xhr.send();
+
+    // install the auth handler
+    if (signin_btn !==null) {
+      signin_btn.addEventListener('click', startauth);
+    }
+
+    if (signout_btn !== null && signout_btn !== undefined) {
+      // install signout from firebase as well
+      signout_btn.addEventListener('click', function() {
+        firebase.auth().signOut();
+      });
+    }
+});   
+
+
 /* editor App */
 
 $(function() {
@@ -567,7 +758,10 @@ $(function() {
         authDomain: "root-grammar-251415.firebaseapp.com",
         databaseURL: "https://root-grammar-251415.firebaseio.com"
     };
-    firebase.initializeApp(config);
+
+    if (firebase.apps.length === 0) {
+      firebase.initializeApp(config);
+    }
 
     const getExampleRef = () => {
       if(window.dbpath) {

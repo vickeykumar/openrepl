@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"utils"
+	"html/template"
+	"bytes"
 )
 
 const PREFIX = "static"
@@ -92,8 +94,35 @@ var CommonTemplate = `<!doctype html>
   </div>
   <footer class="footer">
     <a href="./about.html" class="link link--light">About</a> <span class="dot"></span>
-    2018&copy;<span class="go__color">Open</span>REPL 
+    <span id="copyright_year">
+        <script>document.getElementById('copyright_year').appendChild(document.createTextNode(new Date().getFullYear()))</script>
+    </span>&copy;<span class="go__color">Open</span>REPL 
     </footer>
     <script src="./js/common.js"></script>
   </body>
 </html>`
+
+
+
+// common errorHandler
+func errorHandler(w http.ResponseWriter, r *http.Request, body string, status int) {
+		w.WriteHeader(status)
+		indexVars := map[string]interface{}{
+			"title": "ERROR",
+			"body":  template.HTML("<h1>"+body+"</h1>"),
+		}
+		indexTemplate, err := template.New("index").Parse(CommonTemplate)
+		if err != nil {
+			log.Println("index template parse failed") // must be valid
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		indexBuf := new(bytes.Buffer)
+		err = indexTemplate.Execute(indexBuf, indexVars)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Write(indexBuf.Bytes())
+}

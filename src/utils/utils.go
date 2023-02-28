@@ -6,12 +6,15 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"time"
 )
 
+const GOTTY_PATH = "/opt/gotty"
 const LOG_PATH = "/gottyTraces"
 const IdeLangKey = "IdeLang"
 const IdeContentKey = "IdeContent"
 const CompilerOptionKey = "CompilerOption"
+const UidKey = "uid"
 
 func InitLogging(name string) {
 	err := os.MkdirAll(LOG_PATH, 0755)
@@ -31,6 +34,10 @@ func InitLogging(name string) {
 	}
 }
 
+func init() {
+	// init logging
+	InitLogging("gotty")
+}
 
 func JsonMarshal(v interface{}) []byte {
 	data, err := json.Marshal(v)
@@ -57,10 +64,18 @@ func GetCompilerLang(params url.Values) string {
 	return params.Get(IdeLangKey)
 }
 
+func GetUid(params url.Values) string {
+	return params.Get(UidKey)
+}
+
 func GetIdeContent(params url.Values) string {
 	return params.Get(IdeContentKey)
 }
 
 func GetCompilerOption(params url.Values) string {
 	return params.Get(CompilerOptionKey)
+}
+
+func GetUnixMilli() int64 {
+ 	return time.Now().UnixNano() / int64(time.Millisecond)
 }

@@ -3,7 +3,6 @@ package localcommand
 import (
 	"os"
 	"os/exec"
-	"strconv"
 	"syscall"
 	"time"
 	"unsafe"
@@ -42,7 +41,7 @@ func New(command string, argv []string, ppid int, params map[string][]string, op
 		// using working directory of parent process only 
 		cmd.Dir = containers.GetWorkingDir(ppid)
 	} else {
-		cmd.Dir = containers.HOME_DIR + command + "/" + strconv.Itoa(int(time.Now().Unix()))
+		cmd.Dir = GetWorkingDir(command, utils.GetUid(params))
 		os.MkdirAll(cmd.Dir, 0755)
 	}
 	if command == "bash" {

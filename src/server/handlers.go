@@ -17,6 +17,7 @@ import (
 	"github.com/pkg/errors"
 
 	"webtty"
+	"utils"
 )
 
 func (server *Server) generateHandleWS(ctx context.Context, cancel context.CancelFunc, counter *counter, commands ...string) http.HandlerFunc {
@@ -90,13 +91,13 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 				return
 			}
 		}
-
-		log.Printf("New client connected: %s, connections: %d/%d, TotalUsage(MB): %d",
-			r.RemoteAddr, num, server.options.MaxConnection, totalWieght,
+		uid := Get_Uid(w, r)
+		log.Printf("New client (uid: %s) connected: %s, connections: %d/%d, TotalUsage(MB): %d",
+			uid, r.RemoteAddr, num, server.options.MaxConnection, totalWieght,
 		)
 
 		log.Println("Connection upgraded successfully: ")
-		err = server.processWSConn(ctx, conn)
+		err = server.processWSConn(ctx, conn, uid)
 
 		switch err {
 		case ctx.Err():
@@ -118,7 +119,8 @@ func updateparams(params *url.Values, payload map[string]string) {
 	}
 }
 
-func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn) error {
+// process websocket connection for uid (user)
+func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, uid string) error {
 	conn.SetWriteDeadline(time.Now().Add(15 * time.Minute)) // only 15 min sessions for services are allowed
 	typ, initLine, err := conn.ReadMessage()
 	if err != nil {
@@ -148,6 +150,7 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn) e
 	}
 	params := query.Query()
 	updateparams(&params, init.Payload)
+	params.Set(utils.UidKey, uid)
 	//log.Println("updated params: ", params)
 
 	var slave Slave
