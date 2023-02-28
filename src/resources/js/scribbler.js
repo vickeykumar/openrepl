@@ -609,9 +609,10 @@ $(function() {
 
     // Initialize Firebase configuration
     var config = {
-                apiKey: "AIzaSyAapakYYOOdY8m6mTE76aYOWLKa84ikeyE",
-                authDomain: "root-grammar-251415.firebaseapp.com",
-                databaseURL: "https://root-grammar-251415.firebaseio.com"
+                apiKey: "AIzaSyASgAaRv6yXUJQVcHaA_lRFVMy9AYZeRls",
+                authDomain: "openrepl-app.firebaseapp.com",
+                projectId: "openrepl-app",
+                databaseURL: "https://openrepl-app-default-rtdb.firebaseio.com"
     };
     if (firebase.apps.length === 0) {
         firebase.initializeApp(config);
@@ -754,9 +755,10 @@ $(function() {
 
     // Initialize Firebase configuration
     var config = {
-        apiKey: "AIzaSyCcHshsJr7GXkyIaFOFRgfu76mS9eEUHOA",
-        authDomain: "root-grammar-251415.firebaseapp.com",
-        databaseURL: "https://root-grammar-251415.firebaseio.com"
+        apiKey: "AIzaSyASgAaRv6yXUJQVcHaA_lRFVMy9AYZeRls",
+        authDomain: "openrepl-app.firebaseapp.com",
+        projectId: "openrepl-app",
+        databaseURL: "https://openrepl-app-default-rtdb.firebaseio.com"
     };
 
     if (firebase.apps.length === 0) {
