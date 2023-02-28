@@ -81,7 +81,7 @@ func New(command string, argv []string, ppid int, params map[string][]string, op
 
 	pid := cmd.Process.Pid
 	containers.AddProcesstoNewSubCgroup(command, pid, utils.Iscompiled(params)) // creating and adding process to new subcrgroup container
-	containers.EnableNetworking(pid)	// enable loopback
+	go containers.EnableNetworking(pid)	// enable loopback
 	// When the process is closed by the user,
 	// close pty so that Read() on the pty breaks with an EOF.
 	go func() {

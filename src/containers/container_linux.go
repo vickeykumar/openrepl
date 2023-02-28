@@ -164,6 +164,12 @@ func EnableNetworking(pid int) {
     err := cmd.Start()
     if err != nil {
        log.Println("ERROR: error enabling network for pid: ", pid, "error: ", err.Error(), string(b.Bytes()))
+       return
+    }
+
+    err = cmd.Wait()
+    if err != nil {
+	    log.Println("Error: waiting for network enable for pid: ", pid, err.Error(), string(b.Bytes()))
     }
 }
 

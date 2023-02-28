@@ -162,6 +162,7 @@ function StartTour() {
       intro: 'This is the Terminal window you will use to interact with OpenREPL'
     },
     {
+      title: 'IDE Window',
       element: document.querySelector('#ide'),
       intro: 'you can write code snippets here and run the same.'
     },
@@ -171,6 +172,7 @@ function StartTour() {
       intro: 'IDE Menu bar to control ide features.'
     },
     {
+      title: 'Terminal Window',
       element: document.querySelector('#terminal'),
       intro: 'This is the Terminal window you will use to interact with OpenREPL interactively or see the ide code results when you run.'
     },
