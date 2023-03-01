@@ -89,6 +89,12 @@ nav {
   -webkit-transform-origin:center;
 }
 
+.ide-menu-item {
+  padding: inherit;
+  margin-bottom: inherit;
+  font-size: inherit;
+}
+
 .terminal {
   width: 100%;
   height: inherit;
