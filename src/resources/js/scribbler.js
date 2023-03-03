@@ -144,7 +144,7 @@ function LoadOptionFromUrl() {
 
 function StartTour() {
   introJs().setOptions({
-    disableInteraction: true,
+    //disableInteraction: true,
     steps: [{
       title: 'Welcome aboard !! 👋',
       intro: 'New to OpenREPL? Lets take a Tour on how to use OpenREPL.'
