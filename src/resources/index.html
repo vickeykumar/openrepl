@@ -42,6 +42,8 @@
       <link rel="stylesheet" href="./css/xterm.css" />
       <link rel="stylesheet" href="./css/xterm_customize.css" />
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intro.js/6.0.0/introjs.min.css" />
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.15/themes/default/style.min.css" />
+
       <link rel="author" href="humans.txt">
       <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.0.2/firebase-ui-auth.css" />
       <script src="https://www.gstatic.com/firebasejs/ui/6.0.2/firebase-ui-auth.js"></script>
@@ -299,6 +301,10 @@
     </div>
 
     <div class="terminal__row" id="terminal__row">
+      <div>
+        <nav class="main-menu" id="file-browser">
+        </nav>
+      </div>
       <div class="sidebar" id="sidebar_options">
         <div class="fullscreen-toggle tooltip" id="togglescreen-button" onclick="ToggleFunction();"><i class="fa fa-expand"></i><span class="tooltiptext">Maximize</span></div>
         <div class="fullscreen-toggle tooltip" id="editor-button" onclick="ToggleEditor();"><i class="fa fa-pencil"></i><span class="tooltiptext">Use Editor</span></div>
@@ -630,6 +636,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js" type="text/javascript" charset="utf-8"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ext-language_tools.min.js" type="text/javascript" charset="utf-8"></script>
     <script src="http://cdn.jsdelivr.net/g/filesaver.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.15/jstree.min.js"></script>
     <script src="./js/scribbler.js"></script>
     <script>
           /*var inst = Split(['.ide', '.terminal'], {

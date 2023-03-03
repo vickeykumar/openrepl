@@ -43,7 +43,7 @@ function ToggleFunction() {
     }
     var event = new Event('resize');
     window.dispatchEvent(event);
-    togglebtn = get(".fa",TermElement);
+    togglebtn = get("#togglescreen-button>.fa",TermElement);
     togglebtn.classList.toggle("fa-compress");
     togglebtn.classList.toggle("fa-expand");
     var AllElem = getAll("body > *");
@@ -1077,3 +1077,139 @@ $(function() {
         $("#select-lang").trigger('change');
     });
 });
+
+
+/* file-browser App */
+
+(function() {
+  $('#file-browser').jstree({
+    "core": {
+      "animation": 200,
+      "check_callback": true,
+      "themes": {
+        "stripes": true
+      },
+      "data": { "id" : "project_root", "text" : "project", "type" : "root" }
+    },
+    "types": {
+      "#": {
+        "max_children": 1,
+        "max_depth": 4,
+        "valid_children": ["root"]
+      },
+      "root": {
+        "icon": "jstree-folder",
+        "valid_children": ["default", "file"]
+      },
+      "default": {
+        "valid_children": ["default", "file"]
+      },
+      "file": {
+        "icon": "jstree-file",
+        "valid_children": []
+      }
+    },
+    "plugins": [
+      "contextmenu", "dnd", "search",
+      "state", "types", "wholerow", "unique"
+    ],
+    "contextmenu": {
+      show_at_node: true,
+      select_node: true,
+    "items": {
+      "create": {
+        "label": "Create",
+        "submenu": {
+          "create_folder": {
+            "label": "Folder",
+            "action": function (data) {
+              var ref = $.jstree.reference(data.reference);
+              var sel = ref.get_selected();
+              if(!sel.length) { return false; }
+              sel = sel[0];
+              sel = ref.create_node(sel, {"type": "default"});
+              if(sel) {
+                ref.edit(sel);
+              }
+            }
+          },
+          "create_file": {
+            "label": "File",
+            "action": function (data) {
+              var ref = $.jstree.reference(data.reference);
+              var sel = ref.get_selected();
+              if(!sel.length) { return false; }
+              sel = sel[0];
+              sel = ref.create_node(sel, {"type": "file"});
+              if(sel) {
+                ref.edit(sel);
+              }
+            }
+          }
+        }
+      },
+      "rename": {
+        "label": "Rename",
+        "action": function (data) {
+          var ref = $.jstree.reference(data.reference);
+          ref.edit(data.reference);
+        }
+      },
+      "delete": {
+            "label": "Delete",
+            "action": function (data) {
+              var ref = $.jstree.reference(data.reference);
+              var sel = ref.get_selected();
+              if(!sel.length) { return false; }
+              ref.delete_node(sel);
+            }
+          },
+      "edit": {
+        "label": "Edit",
+        "submenu": {
+          "cut": {
+            "label": "Cut",
+            "action": function (data) {
+              var ref = $.jstree.reference(data.reference);
+              ref.cut(data.reference);
+            }
+          },
+          "copy": {
+            "label": "Copy",
+            "action": function (data) {
+              var ref = $.jstree.reference(data.reference);
+              ref.copy(data.reference);
+            }
+          },
+          "paste": {
+            "label": "Paste",
+            "action": function (data) {
+              var ref = $.jstree.reference(data.reference);
+              ref.paste(data.reference);
+            }
+          },
+        }
+      }
+    }
+  },
+
+  }).on('ready.jstree', function() {
+      // Add custom row after jstree has finished rendering
+      $('#file-browser>ul').prepend('<div class="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
+    });
+
+  // when context menu is shown
+$(document).bind('context_show.vakata', function (reference, element, position) {
+    $('.main-menu').addClass('expanded');
+});
+
+$(document).ready(function() {
+  $('.main-menu').on('click focusin', function() {
+     console.log('menu focused');
+    $(this).addClass('expanded');
+  }).on('focusout', function() {
+     console.log('menu blurred');
+    $(this).removeClass('expanded');
+  });
+});
+})();
