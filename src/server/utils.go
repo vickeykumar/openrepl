@@ -42,7 +42,6 @@ func handleDemo(rw http.ResponseWriter, req *http.Request) {
 	log.Println("method:", req.Method)
 	if req.Method == "GET" {
 		req.ParseForm()
-		log.Println("Data recieved in Form: ", req.Form)
 		query, ok := req.Form["q"]
 		if !ok || len(query) == 0 {
 			log.Println("ERROR: invalid query detected: ", query)
@@ -75,6 +74,7 @@ var FeedbackTemplate =`
             <th>Email</th>
             <th>Message</th>
             <th>Date And Time</th>
+	    <th>Delete</th>
         </tr>
     </thead>
     <tbody>
@@ -85,13 +85,14 @@ var FeedbackTemplate =`
             <td>{{$value.Email}}</td>
             <td>{{$value.Message}}</td>
             <td></td>
+	    <td></td>
         </tr>
       {{end}}
     </tbody>
 </table>
 <script>
     $(document).ready(function () {
-        $('#feedback_table').DataTable({
+        var table = $('#feedback_table').DataTable({
 	    "columnDefs": [
 	      {
 		"targets": 4, // Fifth column
@@ -99,8 +100,32 @@ var FeedbackTemplate =`
 		  // Assumes timestamp is in first column and nanosec
 		  return new Date(parseInt(row[0])/1000000);
 		}
-	      }
+	      },
+	      {
+                "targets": -1, // the last column
+		"data": null, // render data from the whole row
+                "render": function(data, type, row) {
+                  // 1st col is id/key , that is timestamp
+                  return "<button data-key='" + row[0] + "'>Delete</button>";
+               }
+              }
 	    ]
+	});
+
+	$('#feedback_table tbody').on('click', 'button', function() {
+	    var row = $(this).parents('tr');
+	    var data = table.row(row).data();
+	    $.ajax({
+		url: '/feedback?q=delete&key='+data[0],
+		method: 'POST',
+		success: function(response) {
+		    // delete the row data and redraw the table
+		    table.row(row).remove().draw();
+		},
+		error: function(xhr, status, error) {
+		    alert('Error deleting row: ' + error);
+		}
+	    });
 	});
     });
 </script>

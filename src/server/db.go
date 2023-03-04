@@ -65,6 +65,15 @@ func StoreFeedbackData(fb *feedback) error {
 	return err
 }
 
+func deleteFeedbackData(key string) error {
+	err := feedback_db_handle.Delete([]byte(key))
+	if err!= nil {
+		return err
+	}
+	err = feedback_db_handle.Commit()
+	return err
+}
+
 func FetchFeedbackDataMap() (fblistmap map[int64]feedback) {
 	fblistmap = make(map[int64]feedback)
 	cursor, err := feedback_db_handle.NewCursor()
@@ -120,8 +129,21 @@ func FetchFeedbackDataMap() (fblistmap map[int64]feedback) {
 
 func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 	log.Println("method:", req.Method)
+	req.ParseForm()
+        log.Println("Data recieved in Form: ", req.Form)
 	if req.Method == "POST" {
-		req.ParseForm()
+		query := req.Form.Get("q")
+		if query == "delete" {
+			key := req.Form.Get("key")
+			err := deleteFeedbackData(key)
+			if err != nil {
+				log.Println("feedbackdata delete failed for key: ", key, err.Error()) // must be valid
+				http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
+                        	return
+                	}
+			// return after deleting key
+			return 
+		}
 		var fb feedback
 		fb.Name = strings.Join(req.Form["name"], "")
 		fb.Email = strings.Join(req.Form["email"], "")
@@ -131,8 +153,9 @@ func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 		if err == nil {
 			fmt.Fprintf(rw, "Thanks for your Feedback !!")
 		} else {
-			fmt.Fprintf(rw, "Server Error: Unsupported Operation !!")
+			http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
 		}
+		return
 	} else if req.Method == "GET" {
 		// only Admin can see the feedback data, currently a basic gitconfig validation against logged in user email id
 		if IsUserAdmin(rw, req) == false {
