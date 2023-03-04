@@ -65,6 +65,59 @@ func StoreFeedbackData(fb *feedback) error {
 	return err
 }
 
+func FetchFeedbackDataMap() (fblistmap map[int64]feedback) {
+	fblistmap = make(map[int64]feedback)
+	cursor, err := feedback_db_handle.NewCursor()
+	if err != nil {
+		log.Println("Error creating cursor: ",err.Error())
+		return
+	}
+	defer cursor.Close()
+
+	err = cursor.First()
+	if err != nil {
+		log.Println("Error Fetching cursor: ",err.Error())
+		return
+	}
+	var timestamp int64
+	var fb feedback
+	for cursor.IsValid() {
+		func (cursor *unqlitego.Cursor) {
+			key, err := cursor.Key()
+			if err != nil {
+				log.Println("Error Fetching cursor key: ",err.Error())
+				return
+			}
+			value, err := cursor.Value()
+			if err != nil {
+				log.Println("Error Fetching cursor value for key: ", key, err.Error())
+				return
+			}
+			timestamp, err = strconv.ParseInt(string(key), 10, 64)
+			if err != nil {
+				// handle error
+				log.Println("Failed parsing for key: ", key, err.Error())
+				return
+			}
+			err = json.Unmarshal(value, &fb)
+			if err != nil {
+				log.Println("ERROR: while unMarshalling for key: ", timestamp, value, " Error: ", err)
+				return
+			}
+			fblistmap[timestamp] = fb
+			defer func(cursor *unqlitego.Cursor) {
+				err := cursor.Next()
+				if err != nil {
+					// handle error
+					log.Println("Failed finding next cursor for key: ", key, timestamp, err.Error())
+					return
+				}
+			}(cursor)
+		}(cursor)
+	}
+	return
+}
+
 func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 	log.Println("method:", req.Method)
 	if req.Method == "POST" {
@@ -80,6 +133,30 @@ func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 		} else {
 			fmt.Fprintf(rw, "Server Error: Unsupported Operation !!")
 		}
+	} else if req.Method == "GET" {
+		// only Admin can see the feedback data, currently a basic gitconfig validation against logged in user email id
+		if IsUserAdmin(rw, req) == false {
+			errorHandler(rw, req, "Unauthorized Access!! Please Sign in again as Admin.", http.StatusUnauthorized)
+			return
+		}
+
+		fbdatamap := FetchFeedbackDataMap()
+
+		// render table template
+		feedbacktmpl, err := template.New("index").Parse(FeedbackTemplate)
+		if err != nil {
+			log.Println("feedbackdata template parse failed", err.Error()) // must be valid
+			errorHandler(rw, req, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		fbBuf := new(bytes.Buffer)
+		err = feedbacktmpl.Execute(fbBuf, fbdatamap)
+		if err != nil {
+			log.Println("feedbackdata template Execute failed", err.Error()) // must be valid
+			errorHandler(rw, req, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		commonHandler(rw, req, "Feedback Data", fbBuf.String(), http.StatusOK)
 	}
 }
 

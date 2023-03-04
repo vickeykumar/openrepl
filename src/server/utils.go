@@ -7,6 +7,7 @@ import (
 	"utils"
 	"html/template"
 	"bytes"
+	"user"
 )
 
 const PREFIX = "static"
@@ -65,6 +66,46 @@ func handleDemo(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
+var FeedbackTemplate =`
+<table id="feedback_table">
+    <thead>
+        <tr>
+	    <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Message</th>
+            <th>Date And Time</th>
+        </tr>
+    </thead>
+    <tbody>
+    	{{range $key, $value := .}}
+        <tr>
+	    <td>{{$key}}</td>
+            <td>{{$value.Name}}</td>
+            <td>{{$value.Email}}</td>
+            <td>{{$value.Message}}</td>
+            <td></td>
+        </tr>
+      {{end}}
+    </tbody>
+</table>
+<script>
+    $(document).ready(function () {
+        $('#feedback_table').DataTable({
+	    "columnDefs": [
+	      {
+		"targets": 4, // Fifth column
+		"render": function(data, type, row) {
+		  // Assumes timestamp is in first column and nanosec
+		  return new Date(parseInt(row[0])/1000000);
+		}
+	      }
+	    ]
+	});
+    });
+</script>
+`
+
 var CommonTemplate = `<!doctype html>
 <html>
   <head>
@@ -74,9 +115,12 @@ var CommonTemplate = `<!doctype html>
     <base target="_top">
     <title>{{.title}}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/css/jquery.dataTables.min.css">
     <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
     <link rel="stylesheet" href="./css/scribbler-global.css">
     <link rel="stylesheet" href="./css/scribbler-doc.css">
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/js/jquery.dataTables.min.js"></script>
     <script src="./js/preprocessing.js"></script>
     <link rel="author" href="humans.txt">
   </head>
@@ -92,7 +136,7 @@ var CommonTemplate = `<!doctype html>
   <div class="wrapper">
   {{.body}}
   </div>
-  <footer class="footer">
+  <footer class="footer" id="footer">
     <a href="./about.html" class="link link--light">About</a> <span class="dot"></span>
     <span id="copyright_year">
         <script>document.getElementById('copyright_year').appendChild(document.createTextNode(new Date().getFullYear()))</script>
@@ -126,3 +170,53 @@ func errorHandler(w http.ResponseWriter, r *http.Request, body string, status in
 
 		w.Write(indexBuf.Bytes())
 }
+
+
+// common Handler
+func commonHandler(w http.ResponseWriter, r *http.Request, 
+	title string, htmlbody string, status int) {
+		w.WriteHeader(status)
+		indexVars := map[string]interface{}{
+			"title": title,
+			"body":  template.HTML(htmlbody),
+		}
+		indexTemplate, err := template.New("index").Parse(CommonTemplate)
+		if err != nil {
+			log.Println("index template parse failed") // must be valid
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		indexBuf := new(bytes.Buffer)
+		err = indexTemplate.Execute(indexBuf, indexVars)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Write(indexBuf.Bytes())
+}
+
+
+// basic auth to determine if admin user using git config and logged in user id/email
+
+func IsUserAdmin(rw http.ResponseWriter, req *http.Request) (isadmin bool) {
+		isadmin = false // testing
+		var session user.UserSession
+		session = Get_SessionCookie(rw, req)
+		up, err := user.FetchUserProfileData(session.Uid)
+		/* *
+		 * if email is not configured in gitconfig, means no verification as of now
+		 * verify the session in local db and verify logged in users email as well against git configured one
+		 * for admin. 
+		 * */
+		if err != nil || user.IsSessionExpired(session.Uid, session.SessionID)==true || 
+		  utils.GitConfig["user.email"]!=up.Email {
+			session.LogOut()
+			return
+		}
+		return true
+}
+
+
+
+

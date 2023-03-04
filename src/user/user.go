@@ -208,6 +208,10 @@ func CloseSessionDBHandle() {
 
 // returns a map of all the sessions held by this user, sessionID to UserSession map
 func FetchUserProfileData(Uid string) (up UserProfile, err error) {
+    if Uid == "" {
+        err = errors.New("invalid user")
+        return
+    }
     value, err := session_db_handle.Fetch([]byte(Uid))
     if err != nil {
         up.Uid = Uid
@@ -292,9 +296,7 @@ func UpdateAndStoreSessionData(Uid, SessionID string, ss *UserSession, isdelete 
     if err != nil {
         log.Println("ERROR: Fetching UserProfile for user: "+Uid+" Error: "+ err.Error())
     }
-    defer func () {
-        go up.purgeExpiredSessions()
-    }();
+     go PurgeExpiredSessionData(Uid)
     //purge expired data sessions before going out
 
     if isdelete {
