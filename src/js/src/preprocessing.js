@@ -2,6 +2,31 @@
 
 var Color = require('color');
 
+// App to enable/disable console logs in production
+(function () {
+	try {
+        if (typeof(window.console) != "undefined") {
+        	window.ENABLE_LOGGING=new URL(location.href.toLowerCase()).searchParams.get("debug");
+        	window.old_console_log = function () {};
+            window.toggle_logging = function () {
+            	if (window.ENABLE_LOGGING !== "") {
+	            	if (typeof(window.old_console_log) != "undefined") {
+	            		var temp_logger = window.old_console_log;
+			            window.old_console_log = window.console.log;
+			            window.console.log = temp_logger;
+	            	}
+	            }
+            	
+            }
+            // now toggle logging if destination is not debug
+            window.toggle_logging();     
+        }
+
+    } catch (ex) {
+    	console.error("toggle_logging: threw an exception: ",ex);
+    }
+})();
+
 // App to change color schemes daily
 (function ColorSchemesApp(){
 	var PopularColors = new Array(
@@ -137,14 +162,5 @@ var Color = require('color');
 	setupColorThemes();
 
 })();
-
-
-
-
-
-
-
-
-
 
 
