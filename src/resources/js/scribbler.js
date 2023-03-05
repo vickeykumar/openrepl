@@ -1089,7 +1089,11 @@ $(function() {
       "themes": {
         "stripes": true
       },
-      "data": { "id" : "project_root", "text" : "project", "type" : "root" }
+      "data": { "id" : "project_root", "text" : "project", "type" : "root" },
+      "drawCallback": function() {
+        // your code here
+        $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
+      },
     },
     "types": {
       "#": {
@@ -1195,7 +1199,10 @@ $(function() {
 
   }).on('ready.jstree', function() {
       // Add custom row after jstree has finished rendering
-      $('#file-browser>ul').prepend('<div class="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
+      $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
+    }).on('refresh.jstree', function() {
+            $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
+      // call your custom function here
     });
 
   // when context menu is shown
