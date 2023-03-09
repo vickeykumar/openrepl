@@ -3,6 +3,7 @@ export declare const getExampleRef: () => any;
 export declare const firebaseconfig: {
     apiKey: string;
     authDomain: string;
+    projectId: string;
     databaseURL: string;
 };
 export declare const InitializeApp: () => void;

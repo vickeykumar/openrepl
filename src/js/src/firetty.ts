@@ -25,9 +25,10 @@ export const getExampleRef = () => {
 };
 
 export const firebaseconfig = {
-    apiKey: "AIzaSyCcHshsJr7GXkyIaFOFRgfu76mS9eEUHOA",
-    authDomain: "root-grammar-251415.firebaseapp.com",
-    databaseURL: "https://root-grammar-251415.firebaseio.com"
+    apiKey: "AIzaSyASgAaRv6yXUJQVcHaA_lRFVMy9AYZeRls",
+    authDomain: "openrepl-app.firebaseapp.com",
+    projectId: "openrepl-app",
+    databaseURL: "https://openrepl-app-default-rtdb.firebaseio.com"
 };
 
 export const InitializeApp = () => {

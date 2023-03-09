@@ -3,7 +3,6 @@ package localcommand
 import (
 	"os"
 	"os/exec"
-	"strconv"
 	"syscall"
 	"time"
 	"unsafe"
@@ -36,13 +35,14 @@ func New(command string, argv []string, ppid int, params map[string][]string, op
 	if ppid != -1 && !containers.IsProcess(ppid) {
 		return nil, errors.Errorf("failed to start command `%s` due to invalid parent id: %d", command, ppid)
 	}
+	uid := utils.GetUid(params)
 	commandArgs := containers.GetCommandArgs(command, argv, ppid, params)
 	cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
 	if ppid != -1 {
 		// using working directory of parent process only 
 		cmd.Dir = containers.GetWorkingDir(ppid)
 	} else {
-		cmd.Dir = containers.HOME_DIR + command + "/" + strconv.Itoa(int(time.Now().Unix()))
+		cmd.Dir = GetWorkingDir(command, uid)
 		os.MkdirAll(cmd.Dir, 0755)
 	}
 	if command == "bash" {
@@ -89,7 +89,8 @@ func New(command string, argv []string, ppid int, params map[string][]string, op
 			lcmd.pty.Close()
 			close(lcmd.ptyClosed)
 			containers.DeleteProcessFromSubCgroup(command, pid) // deleting the subcgroup container of that process
-			if ppid == -1 {
+			// don't delete working directory if user is logged in
+			if ppid == -1 && uid == "" {
 				os.RemoveAll(lcmd.cmd.Dir)	// only parent process can delete home dir
 			}
 		}()

@@ -1,7 +1,7 @@
 /*
- * Symisc unQLite: An Embeddable NoSQL (Post Modern) Database Engine.
- * Copyright (C) 2012-2013, Symisc Systems http://unqlite.org/
- * Version 1.1.6
+ * Symisc UnQLite: An Embeddable NoSQL (Post Modern) Database Engine.
+ * Copyright (C) 2012-2022, Symisc Systems http://unqlite.org/
+ * Version 1.1.9
  * For information on licensing, redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES
  * please contact Symisc Systems via:
  *       legal@symisc.net
@@ -11,7 +11,7 @@
  *      http://unqlite.org/licensing.html
  */
 /*
- * Copyright (C) 2012, 2013 Symisc Systems, S.U.A.R.L [M.I.A.G Mrad Chems Eddine <chm@symisc.net>].
+ * Copyright (C) 2012, 2022 Symisc Systems, S.U.A.R.L [M.I.A.G Mrad Chems Eddine <chm@symisc.net>].
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,10 +35,8 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-/*
- * $SymiscID: unqlite.c v1.1.6 Unix|Win32/64 2013-05-21 22:39:15 stable <chm@symisc.net> $ 
- */
-/* This file is an amalgamation of many separate C source files from unqlite version 1.1.6
+ /* $SymiscID: unqlite.c v1.1.9 Win10 2022-04-25 03:34:11 stable <chm@symisc.net>  $ */
+/* This file is an amalgamation of many separate C source files from unqlite version 1.1.9
  * By combining all the individual C code files into this single large file, the entire code
  * can be compiled as a single translation unit. This allows many compilers to do optimization's
  * that would not be possible if the files were compiled separately. Performance improvements
@@ -67,7 +65,6 @@
 /*
  * ----------------------------------------------------------
  * File: unqlite.h
- * MD5: df5da92eec0f513e6daaeee18dff981a
  * ----------------------------------------------------------
  */
 /* This file was automatically generated.  Do not edit (Except for compile time directives)! */ 
@@ -75,8 +72,8 @@
 #define _UNQLITE_H_
 /*
  * Symisc UnQLite: An Embeddable NoSQL (Post Modern) Database Engine.
- * Copyright (C) 2012-2013, Symisc Systems http://unqlite.org/
- * Version 1.1.6
+ * Copyright (C) 2012-2019, Symisc Systems http://unqlite.org/
+ * Version 1.1.9
  * For information on licensing, redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES
  * please contact Symisc Systems via:
  *       legal@symisc.net
@@ -86,7 +83,7 @@
  *      http://unqlite.org/licensing.html
  */
 /*
- * Copyright (C) 2012, 2013 Symisc Systems, S.U.A.R.L [M.I.A.G Mrad Chems Eddine <chm@symisc.net>].
+ * Copyright (C) 2012, 2019 Symisc Systems, S.U.A.R.L [M.I.A.G Mrad Chems Eddine <chm@symisc.net>].
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -110,7 +107,7 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
- /* $SymiscID: unqlite.h v1.1 UNIX|WIN32/64 2012-11-02 02:10 stable <chm@symisc.net> $ */
+ /* $SymiscID: unqlite.h v1.3 Win10 2108-04-27 02:35:11 stable <chm@symisc.net>  $ */
 #include <stdarg.h> /* needed for the definition of va_list */
 /*
  * Compile time engine version, signature, identification in the symisc source tree
@@ -126,13 +123,13 @@
  * version number and Y is the minor version number and Z is the release
  * number.
  */
-#define UNQLITE_VERSION "1.1.6"
+#define UNQLITE_VERSION "1.1.9"
 /*
  * The UNQLITE_VERSION_NUMBER C preprocessor macro resolves to an integer
  * with the value (X*1000000 + Y*1000 + Z) where X, Y, and Z are the same
  * numbers used in [UNQLITE_VERSION].
  */
-#define UNQLITE_VERSION_NUMBER 1001006
+#define UNQLITE_VERSION_NUMBER 1001009
 /*
  * The UNQLITE_SIG C preprocessor macro evaluates to a string
  * literal which is the public signature of the unqlite engine.
@@ -140,14 +137,14 @@
  * generated Server MIME header as follows:
  *   Server: YourWebServer/x.x unqlite/x.x.x \r\n
  */
-#define UNQLITE_SIG "unqlite/1.1.6"
+#define UNQLITE_SIG "unqlite/1.1.9"
 /*
  * UnQLite identification in the Symisc source tree:
  * Each particular check-in of a particular software released
  * by symisc systems have an unique identifier associated with it.
  * This macro hold the one associated with unqlite.
  */
-#define UNQLITE_IDENT "unqlite:b172a1e2c3f62fb35c8e1fb2795121f82356cad6"
+#define UNQLITE_IDENT "unqlite:29c173b1-ac2c-4b49-93ba-e600619e304e"
 /*
  * Copyright notice.
  * If you have any questions about the licensing situation, please
@@ -157,8 +154,11 @@
  *   licensing@symisc.net
  *   contact@symisc.net
  */
-#define UNQLITE_COPYRIGHT "Copyright (C) Symisc Systems, S.U.A.R.L [Mrad Chems Eddine <chm@symisc.net>] 2012-2013, http://unqlite.org/"
-
+#define UNQLITE_COPYRIGHT "Copyright (C) Symisc Systems, S.U.A.R.L [Mrad Chems Eddine <chm@symisc.net>] 2012-2019, http://unqlite.org/"
+/* Make sure we can call this stuff from C++ */
+#ifdef __cplusplus
+extern "C" { 
+#endif
 /* Forward declaration to public objects */
 typedef struct unqlite_io_methods unqlite_io_methods;
 typedef struct unqlite_kv_methods unqlite_kv_methods;
@@ -471,7 +471,7 @@ typedef sxi64 unqlite_int64;
  * Each options require a variable number of arguments.
  * The [unqlite_vm_config()] interface will return UNQLITE_OK on success, any other return
  * value indicates failure.
- * There are many options but the most importants are: UNQLITE_VM_CONFIG_OUTPUT which install
+ * There are many options but the most important are: UNQLITE_VM_CONFIG_OUTPUT which install
  * a VM output consumer callback, UNQLITE_VM_CONFIG_HTTP_REQUEST which parse and register
  * a HTTP request and UNQLITE_VM_CONFIG_ARGV_ENTRY which populate the $argv array.
  * For a full discussion on the configuration verbs and their expected parameters, please
@@ -730,7 +730,7 @@ struct unqlite_page
 {
   unsigned char *zData;       /* Content of this page */
   void *pUserData;            /* Extra content */
-  pgno pgno;                  /* Page number for this page */
+  pgno iPage;                 /* Page number for this page */
 };
 /*
  * UnQLite handle to the underlying Key/Value Storage Engine (See below).
@@ -1017,12 +1017,14 @@ UNQLITE_APIEXPORT const char * unqlite_lib_version(void);
 UNQLITE_APIEXPORT const char * unqlite_lib_signature(void);
 UNQLITE_APIEXPORT const char * unqlite_lib_ident(void);
 UNQLITE_APIEXPORT const char * unqlite_lib_copyright(void);
-
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 #endif /* _UNQLITE_H_ */
 /*
  * ----------------------------------------------------------
  * File: jx9.h
- * MD5: 8a8548429796b64f4afad5fab7312e93
+ * MD5: d23a1e182f596794001533e1d6aa16a0
  * ----------------------------------------------------------
  */
 /* This file was automatically generated.  Do not edit (except for compile time directive)! */ 
@@ -1122,10 +1124,7 @@ UNQLITE_APIEXPORT const char * unqlite_lib_copyright(void);
  *   contact@symisc.net
  */
 #define JX9_COPYRIGHT "Copyright (C) Symisc Systems 2012-2013, http://jx9.symisc.net/"
-/* Make sure we can call this stuff from C++ */
-#ifdef __cplusplus
-extern "C" { 
-#endif
+
 /* Forward declaration to public objects */
 typedef struct jx9_io_stream jx9_io_stream;
 typedef struct jx9_context jx9_context;
@@ -1488,15 +1487,13 @@ JX9_PRIVATE int jx9_lib_shutdown(void);
 JX9_PRIVATE const char * jx9_lib_signature(void);
 /*JX9_PRIVATE const char * jx9_lib_ident(void);*/
 /*JX9_PRIVATE const char * jx9_lib_copyright(void);*/
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
+
 #endif /* _JX9H_ */
 
 /*
  * ----------------------------------------------------------
  * File: jx9Int.h
- * MD5: 539aa6619fb06376acda88ba66311be9
+ * MD5: fb8dffc8ba1425a139091aa145067e16
  * ----------------------------------------------------------
  */
 /*
@@ -1719,8 +1716,12 @@ struct SyBlob
 #define SyBlobDataAt(BLOB, OFFT)	 ((void *)(&((char *)(BLOB)->pBlob)[OFFT]))
 #define SyBlobGetAllocator(BLOB) ((BLOB)->pAllocator)
 
+#ifndef SXMEM_POOL_INCR
 #define SXMEM_POOL_INCR			3
+#endif
+#ifndef SXMEM_POOL_NBUCKETS
 #define SXMEM_POOL_NBUCKETS		12
+#endif
 #define SXMEM_BACKEND_MAGIC	0xBAC3E67D
 #define SXMEM_BACKEND_CORRUPT(BACKEND)	(BACKEND == 0 || BACKEND->nMagic != SXMEM_BACKEND_MAGIC)
 
@@ -2708,6 +2709,7 @@ struct jx9_vm
  */
 enum iErrCode
 {
+	E_ABORT             = -1,  /* deadliness errorï¼Œ should halt script execution. */
 	E_ERROR             = 1,   /* Fatal run-time errors. These indicate errors that can not be recovered 
 							    * from, such as a memory allocation problem. Execution of the script is
 							    * halted.
@@ -3173,10 +3175,6 @@ JX9_PRIVATE void *SyMemBackendPoolAlloc(SyMemBackend *pBackend, sxu32 nByte);
 JX9_PRIVATE sxi32 SyMemBackendFree(SyMemBackend *pBackend, void *pChunk);
 JX9_PRIVATE void *SyMemBackendRealloc(SyMemBackend *pBackend, void *pOld, sxu32 nByte);
 JX9_PRIVATE void *SyMemBackendAlloc(SyMemBackend *pBackend, sxu32 nByte);
-#if defined(JX9_ENABLE_THREADS)
-JX9_PRIVATE sxi32 SyMemBackendMakeThreadSafe(SyMemBackend *pBackend, const SyMutexMethods *pMethods);
-JX9_PRIVATE sxi32 SyMemBackendDisbaleMutexing(SyMemBackend *pBackend);
-#endif
 JX9_PRIVATE sxu32 SyMemcpy(const void *pSrc, void *pDest, sxu32 nLen);
 JX9_PRIVATE sxi32 SyMemcmp(const void *pB1, const void *pB2, sxu32 nSize);
 JX9_PRIVATE void SyZero(void *pSrc, sxu32 nSize);
@@ -3343,7 +3341,7 @@ struct unqlite
  * VM control flags (Mostly related to collection handling).
  */
 #define UNQLITE_VM_COLLECTION_CREATE     0x001 /* Create a new collection */
-#define UNQLITE_VM_COLLECTION_OVERWRITE  0x002 /* Overwrite old collection */
+#define UNQLITE_VM_COLLECTION_EXISTS     0x002 /* Exists old collection */
 #define UNQLITE_VM_AUTO_LOAD             0x004 /* Auto load a collection from the vfs */
 /* Forward declaration */
 typedef struct unqlite_col_record unqlite_col_record;
@@ -3456,6 +3454,7 @@ UNQLITE_PRIVATE int unqliteGenError(unqlite *pDb,const char *zErr);
 UNQLITE_PRIVATE int unqliteGenErrorFormat(unqlite *pDb,const char *zFmt,...);
 UNQLITE_PRIVATE int unqliteGenOutofMem(unqlite *pDb);
 /* unql_vm.c */
+UNQLITE_PRIVATE int unqliteExistsCollection(unqlite_vm *pVm, SyString *pName);
 UNQLITE_PRIVATE int unqliteCreateCollection(unqlite_vm *pVm,SyString *pName);
 UNQLITE_PRIVATE jx9_int64 unqliteCollectionLastRecordId(unqlite_col *pCol);
 UNQLITE_PRIVATE jx9_int64 unqliteCollectionCurrentRecordId(unqlite_col *pCol);
@@ -3537,7 +3536,7 @@ UNQLITE_PRIVATE sxu32 unqlitePagerRandomNum(Pager *pPager);
 /*
  * ----------------------------------------------------------
  * File: api.c
- * MD5: 5d020de5ba84f99af867d524f4f99769
+ * MD5: d79e8404e50dacd0ea75635c1ebe553a
  * ----------------------------------------------------------
  */
 /*
@@ -3833,10 +3832,12 @@ static sxi32 unqliteCoreInitialize(void)
 	if( sUnqlMPGlobal.nMagic == UNQLITE_LIB_MAGIC ){
 		return UNQLITE_OK; /* Already initialized */
 	}
-	/* Point to the built-in vfs */
-	pVfs = unqliteExportBuiltinVfs();
-	/* Install it */
-	unqlite_lib_config(UNQLITE_LIB_CONFIG_VFS, pVfs);
+	if( sUnqlMPGlobal.pVfs == 0 ){
+		/* Point to the built-in vfs */
+		pVfs = unqliteExportBuiltinVfs();
+		/* Install it */
+		unqlite_lib_config(UNQLITE_LIB_CONFIG_VFS, pVfs);
+	}
 #if defined(UNQLITE_ENABLE_THREADS)
 	if( sUnqlMPGlobal.nThreadingLevel != UNQLITE_THREAD_LEVEL_SINGLE ){
 		pMutexMethods = sUnqlMPGlobal.pMutexMethods;
@@ -4110,14 +4111,10 @@ static int unqliteInitDatabase(
 {
 	unqlite_db *pStorage = &pDB->sDB;
 	int rc;
-	/* Initialiaze the memory subsystem */
+	/* Initialize the memory subsystem */
 	SyMemBackendInitFromParent(&pDB->sMem,pParent);
-#if defined(UNQLITE_ENABLE_THREADS)
-	/* No need for internal mutexes */
-	SyMemBackendDisbaleMutexing(&pDB->sMem);
-#endif
-	SyBlobInit(&pDB->sErr,&pDB->sMem);	
-	/* Sanityze flags */
+	SyBlobInit(&pDB->sErr,&pDB->sMem);
+	/* Sanitize flags */
 	iFlags = unqliteSanityzeFlag(iFlags);
 	/* Init the pager and the transaction manager */
 	rc = unqlitePagerOpen(sUnqlMPGlobal.pVfs,pDB,zFilename,iFlags);
@@ -4295,6 +4292,7 @@ static int unqliteConfigure(unqlite *pDb,int nOp,va_list ap)
 			/* Point to the name */
 			*pzPtr = pEngine->pIo->pMethods->zName;
 		}
+		break;
 									 }
 	default:
 		/* Unknown configuration option */
@@ -7236,10 +7234,12 @@ static sxi32 Jx9CoreInitialize(void)
 	if( sJx9MPGlobal.nMagic == JX9_LIB_MAGIC ){
 		return JX9_OK; /* Already initialized */
 	}
-	/* Point to the built-in vfs */
-	pVfs = jx9ExportBuiltinVfs();
-	/* Install it */
-	jx9_lib_config(JX9_LIB_CONFIG_VFS, pVfs);
+	if( sJx9MPGlobal.pVfs == 0 ){
+		/* Point to the built-in vfs */
+		pVfs = jx9ExportBuiltinVfs();
+		/* Install it */
+		jx9_lib_config(JX9_LIB_CONFIG_VFS, pVfs);
+	}
 #if defined(JX9_ENABLE_THREADS)
 	if( sJx9MPGlobal.nThreadingLevel != JX9_THREAD_LEVEL_SINGLE ){
 		pMutexMethods = sJx9MPGlobal.pMutexMethods;
@@ -7412,9 +7412,9 @@ JX9_PRIVATE int jx9_init(jx9 **ppEngine)
 	if( rc != JX9_OK ){
 		goto Release;
 	}
-#if defined(JX9_ENABLE_THREADS)
-	SyMemBackendDisbaleMutexing(&pEngine->sAllocator);
-#endif
+//#if defined(JX9_ENABLE_THREADS)
+//	SyMemBackendDisbaleMutexing(&pEngine->sAllocator);
+//#endif
 	/* Default configuration */
 	SyBlobInit(&pEngine->xConf.sErrConsumer, &pEngine->sAllocator);
 	/* Install a default compile-time error consumer routine */
@@ -12475,7 +12475,7 @@ JX9_PRIVATE sxi32 jx9InputFormat(
             iVal = iVal/base;
           }while( iVal>0 );
         }
-        length = &zWorker[JX9_FMT_BUFSIZ-1]-zBuf;
+        length = (int)(&zWorker[JX9_FMT_BUFSIZ-1]-zBuf);
         for(idx=precision-length; idx>0; idx--){
           *(--zBuf) = '0';                             /* Zero pad */
         }
@@ -12487,7 +12487,7 @@ JX9_PRIVATE sxi32 jx9InputFormat(
             for(pre=pInfo->prefix; (x=(*pre))!=0; pre++) *(--zBuf) = x;
           }
         }
-        length = &zWorker[JX9_FMT_BUFSIZ-1]-zBuf;
+        length = (int)(&zWorker[JX9_FMT_BUFSIZ-1]-zBuf);
 		break;
 		case JX9_FMT_FLOAT:
 		case JX9_FMT_EXP:
@@ -17470,7 +17470,7 @@ JX9_PRIVATE sxi32 jx9CompileSimpleString(jx9_gen_state *pGen, sxi32 iCompileFlag
 	/* Delimit the string */
 	zIn  = pStr->zString;
 	zEnd = &zIn[pStr->nByte];
-	if( zIn >= zEnd ){
+	if( zIn > zEnd ){
 		/* Empty string, load NULL */
 		jx9VmEmitInstr(pGen->pVm, JX9_OP_LOADC, 0, 0, 0, 0);
 		return SXRET_OK;
@@ -17503,6 +17503,10 @@ JX9_PRIVATE sxi32 jx9CompileSimpleString(jx9_gen_state *pGen, sxi32 iCompileFlag
 		if( zIn > zCur ){
 			/* Append raw contents*/
 			jx9MemObjStringAppend(pObj, zCur, (sxu32)(zIn-zCur));
+		}
+		else
+		{
+			jx9MemObjStringAppend(pObj, "", 0);
 		}
 		zIn++;
 		if( zIn < zEnd ){
@@ -17650,7 +17654,7 @@ static sxi32 GenStateCompileString(jx9_gen_state *pGen)
 	/* Delimit the string */
 	zIn  = pStr->zString;
 	zEnd = &zIn[pStr->nByte];
-	if( zIn >= zEnd ){
+	if( zIn > zEnd ){
 		/* Empty string, load NULL */
 		jx9VmEmitInstr(pGen->pVm, JX9_OP_LOADC, 0, 0, 0, 0);
 		return SXRET_OK;
@@ -17675,6 +17679,16 @@ static sxi32 GenStateCompileString(jx9_gen_state *pGen)
 				}
 			}
 			jx9MemObjStringAppend(pObj, zCur, (sxu32)(zIn-zCur));
+		}
+		else
+		{
+			if( pObj == 0 ){
+				pObj = GenStateNewStrObj(&(*pGen), &iCons);
+				if( pObj == 0 ){
+					return SXERR_ABORT;
+				}
+			}
+			jx9MemObjStringAppend(pObj, "", 0);
 		}
 		if( zIn >= zEnd ){
 			break;
@@ -18084,6 +18098,14 @@ JX9_PRIVATE sxi32 jx9CompileJsonObject(jx9_gen_state *pGen, sxi32 iCompileFlag)
 			pCur++;
 		}
 		rc = SXERR_EMPTY;
+		if( (pCur->nType & JX9_TK_COLON) == 0 ){
+			rc = jx9GenCompileError(&(*pGen), E_ABORT, pCur->nLine, "JSON Object: Missing colon string \":\"");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			return SXRET_OK;
+		}
+
 		if( pCur < pGen->pIn ){
 			if( &pCur[1] >= pGen->pIn ){
 				/* Missing value */
@@ -25454,7 +25476,8 @@ static sxi32 VmJsonTokenize(SyStream *pStream, SyToken *pToken, void *pUserData,
 			pToken->nType = JSON_TK_STR;
 			pStream->zText++; /* Jump the closing double quotes */
 		}
-	}else if( pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
+	}else if( (pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]))
+	        || pStream->zText[0] == '-' || pStream->zText[0] == '+' ){
 		/* Number */
 		pStream->zText++;
 		pToken->nType = JSON_TK_NUM;
@@ -27304,7 +27327,7 @@ JX9_PRIVATE sxi32 SyMemBackendDisbaleMutexing(SyMemBackend *pBackend)
 /*
  * Memory pool allocator
  */
-#define SXMEM_POOL_MAGIC		0xDEAD
+#define SXMEM_POOL_MAGIC		0xDEADu
 #define SXMEM_POOL_MAXALLOC		(1<<(SXMEM_POOL_NBUCKETS+SXMEM_POOL_INCR)) 
 #define SXMEM_POOL_MINALLOC		(1<<(SXMEM_POOL_INCR))
 static sxi32 MemPoolBucketAlloc(SyMemBackend *pBackend, sxu32 nBucket)
@@ -29339,7 +29362,7 @@ static const SyFmtInfo aFmt[] = {
             longvalue = longvalue/base;
           }while( longvalue>0 );
         }
-        length = &buf[SXFMT_BUFSIZ-1]-bufpt;
+        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);
         for(idx=precision-length; idx>0; idx--){
           *(--bufpt) = '0';                             /* Zero pad */
         }
@@ -29351,7 +29374,7 @@ static const SyFmtInfo aFmt[] = {
             for(pre=infop->prefix; (x=(*pre))!=0; pre++) *(--bufpt) = x;
           }
         }
-        length = &buf[SXFMT_BUFSIZ-1]-bufpt;
+        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);
         break;
       case SXFMT_FLOAT:
       case SXFMT_EXP:
@@ -29460,7 +29483,7 @@ static const SyFmtInfo aFmt[] = {
         /* The converted number is in buf[] and zero terminated.Output it.
         ** Note that the number is in the usual order, not reversed as with
         ** integer conversions.*/
-        length = bufpt-buf;
+        length = (int)(bufpt-buf);
         bufpt = buf;
 
         /* Special case:  Add leading zeros if the flag_zeropad flag is
@@ -29810,7 +29833,7 @@ static sxi32 SyLittleEndianUnpack32(sxu32 *uNB, const unsigned char *buf, sxu32 
 	if( Len < sizeof(sxu32) ){ 
 		return SXERR_SHORT;
 	}
-	*uNB =  buf[0] + (buf[1] << 8) + (buf[2] << 16) + (buf[3] << 24);
+	*uNB =  buf[0] + (buf[1] << 8) + (buf[2] << 16) + ((sxu32)buf[3] << 24);
 	return SXRET_OK;
 }
 static sxi32 SyLittleEndianUnpack16(sxu16 *pOut, const unsigned char *zBuf, sxu32 nLen)
@@ -30274,9 +30297,11 @@ static sxi32 SyOSUtilRandomSeed(void *pBuf, sxu32 nLen, void *pUnused)
 	fd = open("/dev/urandom", O_RDONLY);
 	if (fd >= 0 ){
 		if( read(fd, zBuf, nLen) > 0 ){
+			close(fd);
 			return SXRET_OK;
 		}
 		/* FALL THRU */
+		close(fd);
 	}
 	pid = getpid();
 	SyMemcpy((const void *)&pid, zBuf, SXMIN(nLen, sizeof(pid_t)));
@@ -30930,7 +30955,7 @@ JX9_PRIVATE void SyBigEndianPack32(unsigned char *buf,sxu32 nb)
 }
 JX9_PRIVATE void SyBigEndianUnpack32(const unsigned char *buf,sxu32 *uNB)
 {
-	*uNB = buf[3] + (buf[2] << 8) + (buf[1] << 16) + (buf[0] << 24);
+	*uNB = buf[3] + (buf[2] << 8) + (buf[1] << 16) + ((sxu32)buf[0] << 24);
 }
 JX9_PRIVATE void SyBigEndianPack16(unsigned char *buf,sxu16 nb)
 {
@@ -30955,8 +30980,8 @@ JX9_PRIVATE void SyBigEndianPack64(unsigned char *buf,sxu64 n64)
 JX9_PRIVATE void SyBigEndianUnpack64(const unsigned char *buf,sxu64 *n64)
 {
 	sxu32 u1,u2;
-	u1 = buf[7] + (buf[6] << 8) + (buf[5] << 16) + (buf[4] << 24);
-	u2 = buf[3] + (buf[2] << 8) + (buf[1] << 16) + (buf[0] << 24);
+	u1 = buf[7] + (buf[6] << 8) + (buf[5] << 16) + ((sxu32)buf[4] << 24);
+	u2 = buf[3] + (buf[2] << 8) + (buf[1] << 16) + ((sxu32)buf[0] << 24);
 	*n64 = (((sxu64)u2) << 32) | u1;
 }
 JX9_PRIVATE sxi32 SyBlobAppendBig64(SyBlob *pBlob,sxu64 n64)
@@ -31836,7 +31861,7 @@ JX9_PRIVATE sxi32 jx9MemObjCmp(jx9_value *pObj1, jx9_value *pObj2, int bStrict, 
 	}
 	/* Combine flag together */
 	iComb = pObj1->iFlags|pObj2->iFlags;
-	if( iComb & (MEMOBJ_NULL|MEMOBJ_RES|MEMOBJ_BOOL) ){
+	if( iComb & (MEMOBJ_RES|MEMOBJ_BOOL) ){
 		/* Convert to boolean: Keep in mind FALSE < TRUE */
 		if( (pObj1->iFlags & MEMOBJ_BOOL) == 0 ){
 			jx9MemObjToBool(pObj1);
@@ -31845,6 +31870,13 @@ JX9_PRIVATE sxi32 jx9MemObjCmp(jx9_value *pObj1, jx9_value *pObj2, int bStrict, 
 			jx9MemObjToBool(pObj2);
 		}
 		return (sxi32)((pObj1->x.iVal != 0) - (pObj2->x.iVal != 0));
+	}else if( iComb & MEMOBJ_NULL ){
+		if( (pObj1->iFlags & MEMOBJ_NULL) == 0 ){
+			return 1;
+		}
+		if( (pObj2->iFlags & MEMOBJ_NULL) == 0 ){
+			return -1;
+		}
 	}else if ( iComb & MEMOBJ_HASHMAP ){
 		/* Hashmap aka 'array' comparison */
 		if( (pObj1->iFlags & MEMOBJ_HASHMAP) == 0 ){
@@ -46467,7 +46499,7 @@ static int vm_builtin_get_resource_type(jx9_context *pCtx, int nArg, jx9_value *
 }
 /*
  * void dump(expression, ....)
- *   dump — Dumps information about a variable
+ *   dump â€” Dumps information about a variable
  * Parameters
  *   One or more expression to dump.
  * Returns
@@ -47124,9 +47156,9 @@ static sxi32 VmExecIncludedFile(
  *  and the current working directory before failing. The include()
  *  construct will emit a warning if it cannot find a file; this is different
  *  behavior from require(), which will emit a fatal error.
- *  If a path is defined — whether absolute (starting with a drive letter
+ *  If a path is defined â€” whether absolute (starting with a drive letter
  *  or \ on Windows, or / on Unix/Linux systems) or relative to the current
- *  directory (starting with . or ..) — the include_path will be ignored altogether.
+ *  directory (starting with . or ..) â€” the include_path will be ignored altogether.
  *  For example, if a filename begins with ../, the parser will look in the parent
  *  directory to find the requested file.
  *  When a file is included, the code it contains inherits the variable scope
@@ -48651,7 +48683,7 @@ static sxi32 VmGetNextLine(SyString *pCursor, SyString *pCurrent)
 /*
  * ----------------------------------------------------------
  * File: lhash_kv.c
- * MD5: 1c9e0b9759c2c53c78e1e04b44dac494
+ * MD5: 581b07ce2984fd95740677285d8a11d3
  * ----------------------------------------------------------
  */
 /*
@@ -49567,7 +49599,7 @@ static int lhash_read_header(lhash_kv_engine *pEngine,unqlite_page *pHeader)
 	/* Initialiaze the bucket map */
 	pMap = &pEngine->sPageMap;
 	/* Fill in the structure */
-	pMap->iNum = pHeader->pgno;
+	pMap->iNum = pHeader->iPage;
 	/* Next page in the bucket map */
 	SyBigEndianUnpack64(zRaw,&pMap->iNext);
 	zRaw += 8;
@@ -49716,7 +49748,7 @@ static int lhMapWriteRecord(lhash_kv_engine *pEngine,pgno iLogic,pgno iReal)
 		}
 		/* Reflect the change  */
 		pMap->iNext = 0;
-		pMap->iNum = pPage->pgno;
+		pMap->iNum = pPage->iPage;
 		pMap->nRec = 0;
 		pMap->iPtr = 8/* Next page number */+4/* Total records in the map*/;
 		/* Link this page */
@@ -49724,12 +49756,12 @@ static int lhMapWriteRecord(lhash_kv_engine *pEngine,pgno iLogic,pgno iReal)
 		if( rc != UNQLITE_OK ){
 			return rc;
 		}
-		if( pOld->pgno == pEngine->pHeader->pgno ){
+		if( pOld->iPage == pEngine->pHeader->iPage ){
 			/* First page (Hash header) */
-			SyBigEndianPack64(&pOld->zData[4/*magic*/+4/*hash*/+8/* Free page */+8/*current split bucket*/+8/*Maximum split bucket*/],pPage->pgno);
+			SyBigEndianPack64(&pOld->zData[4/*magic*/+4/*hash*/+8/* Free page */+8/*current split bucket*/+8/*Maximum split bucket*/],pPage->iPage);
 		}else{
 			/* Link the new page */
-			SyBigEndianPack64(pOld->zData,pPage->pgno);
+			SyBigEndianPack64(pOld->zData,pPage->iPage);
 			/* Unref */
 			pEngine->pIo->xPageUnref(pOld);
 		}
@@ -49762,7 +49794,7 @@ static int lhMapWriteRecord(lhash_kv_engine *pEngine,pgno iLogic,pgno iReal)
 	if( rc == UNQLITE_OK ){
 		/* Total number of records */
 		pMap->nRec++;
-		if( pPage->pgno == pEngine->pHeader->pgno ){
+		if( pPage->iPage == pEngine->pHeader->iPage ){
 			/* Page one: Always writable */
 			SyBigEndianPack32(
 				&pPage->zData[4/*magic*/+4/*hash*/+8/* Free page */+8/*current split bucket*/+8/*Maximum split bucket*/+8/*Next map page*/],
@@ -49788,8 +49820,8 @@ static int lhPageDefragment(lhpage *pPage)
 	lhcell *pCell;
 	/* Get a temporary page from the pager. This opertaion never fail */
 	zTmp = pEngine->pIo->xTmpPage(pEngine->pIo->pHandle);
-	/* Move the target cells to the begining */
-	pCell = pPage->pList;
+	/* Move the target cells to the beginning */
+	pCell = pPage->pMaster->pList;
 	/* Write the slave page number */
 	SyBigEndianPack64(&zTmp[2/*Offset of the first cell */+2/*Offset of the first free block */],pPage->sHdr.iSlave);
 	zPtr = &zTmp[L_HASH_PAGE_HDR_SZ]; /* Offset to start writing from */
@@ -49800,7 +49832,7 @@ static int lhPageDefragment(lhpage *pPage)
 			/* No more cells */
 			break;
 		}
-		if( pCell->pPage->pRaw->pgno == pPage->pRaw->pgno ){
+		if( pCell->pPage->pRaw->iPage == pPage->pRaw->iPage ){
 			/* Cell payload if locally stored */
 			zPayload = 0;
 			if( pCell->iOvfl == 0 ){
@@ -49936,6 +49968,7 @@ static int lhAllocateSpace(lhpage *pPage,sxu64 nAmount,sxu16 *pOfft)
 		SyBigEndianPack16(&zBlock[2],iBlksz-nByte); /* Block size*/
 		/* Offset of the new block */
 		iNext = (sxu16)(zPtr - pPage->pRaw->zData);
+		iBlksz = nByte;
 	}
 	/* Fix offsets */
 	if( zPrev ){
@@ -49947,7 +49980,7 @@ static int lhAllocateSpace(lhpage *pPage,sxu64 nAmount,sxu16 *pOfft)
 		SyBigEndianPack16(&pPage->pRaw->zData[2/* Offset of the first cell1*/],iNext);
 	}
 	/* All done */
-	pPage->nFree -= nByte;
+	pPage->nFree -= iBlksz;
 	return UNQLITE_OK;
 }
 /*
@@ -50028,7 +50061,7 @@ static int lhCellWriteOvflPayload(lhcell *pCell,const void *pKey,sxu32 nKeylen,.
 	}
 	pFirst = pOvfl;
 	/* Link */
-	pCell->iOvfl = pOvfl->pgno;
+	pCell->iOvfl = pOvfl->iPage;
 	/* Update the cell header */
 	SyBigEndianPack64(&pPage->pRaw->zData[pCell->iStart + 4/*Hash*/ + 4/*Key*/ + 8/*Data*/ + 2 /*Next cell*/],pCell->iOvfl);
 	/* Start the write process */
@@ -50054,7 +50087,7 @@ static int lhCellWriteOvflPayload(lhcell *pCell,const void *pKey,sxu32 nKeylen,.
 				return rc;
 			}
 			/* Link */
-			SyBigEndianPack64(pOvfl->zData,pNew->pgno);
+			SyBigEndianPack64(pOvfl->zData,pNew->iPage);
 			pEngine->pIo->xPageUnref(pOvfl);
 			SyBigEndianPack64(pNew->zData,0); /* Next overflow page on the chain */
 			pOvfl = pNew;
@@ -50073,7 +50106,7 @@ static int lhCellWriteOvflPayload(lhcell *pCell,const void *pKey,sxu32 nKeylen,.
 	}
 	rc = UNQLITE_OK;
 	va_start(ap,nKeylen);
-	pCell->iDataPage = pNew->pgno;
+	pCell->iDataPage = pNew->iPage;
 	pCell->iDataOfft = (sxu16)(zRaw-pNew->zData);
 	/* Write the data page and its offset */
 	SyBigEndianPack64(&pFirst->zData[8/*Next ovfl*/],pCell->iDataPage);
@@ -50109,7 +50142,7 @@ static int lhCellWriteOvflPayload(lhcell *pCell,const void *pKey,sxu32 nKeylen,.
 					return rc;
 				}
 				/* Link */
-				SyBigEndianPack64(pOvfl->zData,pNew->pgno);
+				SyBigEndianPack64(pOvfl->zData,pNew->iPage);
 				pEngine->pIo->xPageUnref(pOvfl);
 				SyBigEndianPack64(pNew->zData,0); /* Next overflow page on the chain */
 				pOvfl = pNew;
@@ -50148,7 +50181,7 @@ static int lhRestorePage(lhash_kv_engine *pEngine,unqlite_page *pPage)
 	}
 	/* Link to the list of free page */
 	SyBigEndianPack64(pPage->zData,pEngine->nFreeList);
-	pEngine->nFreeList = pPage->pgno;
+	pEngine->nFreeList = pPage->iPage;
 	SyBigEndianPack64(&pEngine->pHeader->zData[4/*Magic*/+4/*Hash*/],pEngine->nFreeList);
 	/* All done */
 	return UNQLITE_OK;
@@ -50341,7 +50374,7 @@ static int lhRecordOverwrite(
 			rc = lhAllocateSpace(pPage,L_HASH_CELL_SZ + pCell->nKey + nByte,&iOfft);
 			if( rc != UNQLITE_OK ){
 				/* Transfer the payload to an overflow page */
-				rc = lhCellWriteOvflPayload(pCell,&pPage->pRaw->zData[pCell->iStart + L_HASH_CELL_SZ],pCell->nKey,pData,nByte,0);
+				rc = lhCellWriteOvflPayload(pCell,&pPage->pRaw->zData[pCell->iStart + L_HASH_CELL_SZ],pCell->nKey,pData,nByte,(const void *)0);
 				if( rc != UNQLITE_OK ){
 					return rc;
 				}
@@ -50418,7 +50451,7 @@ static int lhRecordOverwrite(
 				return rc;
 			}
 			/* Link */
-			SyBigEndianPack64(pOvfl->zData,pNew->pgno);
+			SyBigEndianPack64(pOvfl->zData,pNew->iPage);
 			pEngine->pIo->xPageUnref(pOvfl);
 			SyBigEndianPack64(pNew->zData,0); /* Next overflow page on the chain */
 			pOvfl = pNew;
@@ -50480,7 +50513,7 @@ static int lhRecordAppend(
 				&pPage->pRaw->zData[pCell->iStart + L_HASH_CELL_SZ],pCell->nKey,
 				(const void *)&pPage->pRaw->zData[pCell->iStart + L_HASH_CELL_SZ + pCell->nKey],pCell->nData,
 				pData,nByte,
-				0);
+				(const void *)0);
 			if( rc != UNQLITE_OK ){
 				return rc;
 			}
@@ -50579,7 +50612,7 @@ static int lhRecordAppend(
 				return rc;
 			}
 			/* Link */
-			SyBigEndianPack64(pOvfl->zData,pNew->pgno);
+			SyBigEndianPack64(pOvfl->zData,pNew->iPage);
 			pEngine->pIo->xPageUnref(pOvfl);
 			SyBigEndianPack64(pNew->zData,0); /* Next overflow page on the chain */
 			pOvfl = pNew;
@@ -50706,7 +50739,7 @@ static int lhStoreCell(
 	}
 	/* Write the payload */
 	if( iNeedOvfl ){
-		rc = lhCellWriteOvflPayload(pCell,pKey,nKeyLen,pData,nDataLen,0);
+		rc = lhCellWriteOvflPayload(pCell,pKey,nKeyLen,pData,nDataLen,(const void *)0);
 		if( rc != UNQLITE_OK ){
 			lhCellDiscard(pCell);
 			return rc;
@@ -50735,18 +50768,22 @@ static int lhFindSlavePage(lhpage *pPage,sxu64 nAmount,sxu16 *pOfft,lhpage **ppS
 	/* Look for an already attached slave page */
 	for( i = 0 ; i < pMaster->iSlave ; ++i ){
 		/* Find a free chunk big enough */
-		rc = lhAllocateSpace(pSlave,L_HASH_CELL_SZ+nAmount,&iOfft);
+		sxu16 size = (sxu16)(L_HASH_CELL_SZ + nAmount);
+		rc = lhAllocateSpace(pSlave,size,&iOfft);
 		if( rc != UNQLITE_OK ){
 			/* A space for cell header only */
-			rc = lhAllocateSpace(pSlave,L_HASH_CELL_SZ,&iOfft);
+			size = L_HASH_CELL_SZ;
+			rc = lhAllocateSpace(pSlave,size,&iOfft);
 		}
 		if( rc == UNQLITE_OK ){
 			/* All done */
 			if( pOfft ){
 				*pOfft = iOfft;
+			}else{
+				rc = lhRestoreSpace(pSlave, iOfft, size);
 			}
 			*ppSlave = pSlave;
-			return UNQLITE_OK;
+			return rc;
 		}
 		/* Point to the next slave page */
 		pSlave = pSlave->pNextSlave;
@@ -50786,8 +50823,8 @@ static int lhFindSlavePage(lhpage *pPage,sxu64 nAmount,sxu16 *pOfft,lhpage **ppS
 		goto fail;
 	}
 	/* Reflect in the page header */
-	SyBigEndianPack64(&pSlave->pRaw->zData[2/*Cell offset*/+2/*Free block offset*/],pRaw->pgno);
-	pSlave->sHdr.iSlave = pRaw->pgno;
+	SyBigEndianPack64(&pSlave->pRaw->zData[2/*Cell offset*/+2/*Free block offset*/],pRaw->iPage);
+	pSlave->sHdr.iSlave = pRaw->iPage;
 	/* All done */
 	*ppSlave = pNew;
 	return UNQLITE_OK;
@@ -50930,8 +50967,9 @@ fail:
 /*
  * Perform the infamous linear hash split operation.
  */
-static int lhSplit(lhash_kv_engine *pEngine)
+static int lhSplit(lhpage *pTarget,int *pRetry)
 {
+	lhash_kv_engine *pEngine = pTarget->pHash;
 	lhash_bmap_rec *pRec;
 	lhpage *pOld,*pNew;
 	unqlite_page *pRaw;
@@ -50965,10 +51003,13 @@ static int lhSplit(lhash_kv_engine *pEngine)
 	/* Install and write the logical map record */
 	rc = lhMapWriteRecord(pEngine,
 		pEngine->split_bucket + pEngine->max_split_bucket,
-		pRaw->pgno
+		pRaw->iPage
 		);
 	if( rc != UNQLITE_OK ){
 		goto fail;
+	}
+	if( pTarget->pRaw->iPage == pOld->pRaw->iPage ){
+		*pRetry = 1;
 	}
 	/* Perform the split */
 	rc = lhPageSplit(pOld,pNew,pEngine->split_bucket,pEngine->nmax_split_nucket - 1);
@@ -51018,9 +51059,14 @@ static int lhRecordInstall(
 	int rc;
 	rc = lhStoreCell(pPage,pKey,nKeyLen,pData,nDataLen,nHash,0);
 	if( rc == UNQLITE_FULL ){
+		int do_retry = 0;
 		/* Split */
-		rc = lhSplit(pPage->pHash);
+		rc = lhSplit(pPage,&do_retry);
 		if( rc == UNQLITE_OK ){
+			if( do_retry ){
+				/* Re-calculate logical bucket number */
+				return SXERR_RETRY;
+			}
 			/* Perform the store */
 			rc = lhStoreCell(pPage,pKey,nKeyLen,pData,nDataLen,nHash,1);
 		}
@@ -51044,15 +51090,18 @@ static int lh_record_insert(
 	lhcell *pCell;
 	pgno iBucket;
 	sxu32 nHash;
+	int iCnt;
 	int rc;
 
-	/* Acquire the first page (DB hash Header) so that everything gets loaded autmatically */
+	/* Acquire the first page (DB hash Header) so that everything gets loaded automatically */
 	rc = pEngine->pIo->xGet(pEngine->pIo->pHandle,1,0);
 	if( rc != UNQLITE_OK ){
 		return rc;
 	}
+	iCnt = 0;
 	/* Compute the hash of the key first */
 	nHash = pEngine->xHash(pKey,(sxu32)nKeyLen);
+retry:
 	/* Extract the logical bucket number */
 	iBucket = nHash & (pEngine->nmax_split_nucket - 1);
 	if( iBucket >= pEngine->split_bucket + pEngine->max_split_bucket ){
@@ -51082,7 +51131,7 @@ static int lh_record_insert(
 		rc = lhStoreCell(pPage,pKey,nKeyLen,pData,nDataLen,nHash,1);
 		if( rc == UNQLITE_OK ){
 			/* Install and write the logical map record */
-			rc = lhMapWriteRecord(pEngine,iBucket,pRaw->pgno);
+			rc = lhMapWriteRecord(pEngine,iBucket,pRaw->iPage);
 		}
 		pEngine->pIo->xPageUnref(pRaw);
 		return rc;
@@ -51100,6 +51149,10 @@ static int lh_record_insert(
 		if( pCell == 0 ){
 			/* Create the record */
 			rc = lhRecordInstall(pPage,nHash,pKey,nKeyLen,pData,nDataLen);
+			if( rc == SXERR_RETRY && iCnt++ < 2 ){
+				rc = UNQLITE_OK;
+				goto retry;
+			}
 		}else{
 			if( is_append ){
 				/* Append operation */
@@ -51163,10 +51216,10 @@ static int lhash_write_header(lhash_kv_engine *pEngine,unqlite_page *pHeader)
 	/* Maximum split bucket */
 	SyBigEndianPack64(zRaw,pEngine->max_split_bucket);
 	zRaw += 8;
-	/* Initialiaze the bucket map */
+	/* Initialize the bucket map */
 	pMap = &pEngine->sPageMap;
 	/* Fill in the structure */
-	pMap->iNum = pHeader->pgno;
+	pMap->iNum = pHeader->iPage;
 	/* Next page in the bucket map */
 	SyBigEndianPack64(zRaw,0);
 	zRaw += 8;
@@ -51273,10 +51326,6 @@ static int lhash_kv_init(unqlite_kv_engine *pEngine,int iPageSize)
 
 	/* This structure is always zeroed, go to the initialization directly */
 	SyMemBackendInitFromParent(&pHash->sAllocator,unqliteExportMemBackend());
-#if defined(UNQLITE_ENABLE_THREADS)
-	/* Already protected by the upper layers */
-	SyMemBackendDisbaleMutexing(&pHash->sAllocator);
-#endif
 	pHash->iPageSize = iPageSize;
 	/* Default hash function */
 	pHash->xHash = lhash_bin_hash;
@@ -52189,10 +52238,10 @@ static int MemHashInit(unqlite_kv_engine *pKvEngine,int iPageSize)
 	/* Note that this instance is already zeroed */	
 	/* Memory backend */
 	SyMemBackendInitFromParent(&pEngine->sAlloc,unqliteExportMemBackend());
-#if defined(UNQLITE_ENABLE_THREADS)
-	/* Already protected by the upper layers */
-	SyMemBackendDisbaleMutexing(&pEngine->sAlloc);
-#endif
+//#if defined(UNQLITE_ENABLE_THREADS)
+//	/* Already protected by the upper layers */
+//	SyMemBackendDisbaleMutexing(&pEngine->sAlloc);
+//#endif
 	/* Default hash & comparison function */
 	pEngine->xHash = MemHashFunc;
 	pEngine->xCmp = SyMemcmp;
@@ -52857,7 +52906,7 @@ static unixInodeInfo *inodeList = 0;
 /*
  * Local memory allocation stuff.
  */
-static void * unqlite_malloc(sxu32 nByte)
+void * unqlite_malloc(unsigned int nByte)
 {
 	SyMemBackend *pAlloc;
 	void *p;
@@ -52865,7 +52914,7 @@ static void * unqlite_malloc(sxu32 nByte)
 	p = SyMemBackendAlloc(pAlloc,nByte);
 	return p;
 }
-static void unqlite_free(void *p)
+void unqlite_free(void *p)
 {
 	SyMemBackend *pAlloc;
 	pAlloc = (SyMemBackend *)unqliteExportMemBackend();
@@ -54049,7 +54098,9 @@ static int unixOpen(
   ** a file-descriptor on the directory too. The first time unixSync()
   ** is called the directory file descriptor will be fsync()ed and close()d.
   */
-  int isOpenDirectory = isCreate ;
+#ifndef UNQLITE_DISABLE_DIRSYNC
+  int isOpenDirectory = isCreate;
+#endif
   const char *zName = zPath;
 
   SyZero(p,sizeof(unixFile));
@@ -54097,6 +54148,7 @@ static int unixOpen(
     unlink(zName);
   }
 
+#ifndef UNQLITE_DISABLE_DIRSYNC
   if( isOpenDirectory ){
     rc = openDirectory(zPath, &dirfd);
     if( rc!=UNQLITE_OK ){
@@ -54108,6 +54160,7 @@ static int unixOpen(
       goto open_finished;
     }
   }
+#endif
 
 #ifdef FD_CLOEXEC
   fcntl(fd, F_SETFD, fcntl(fd, F_GETFD, 0) | FD_CLOEXEC);
@@ -55379,6 +55432,9 @@ UNQLITE_PRIVATE const unqlite_vfs * unqliteExportBuiltinVfs(void)
 **  
 **
 */
+#ifndef NULL
+#define NULL 0
+#endif
 #define PAGER_OPEN                  0
 #define PAGER_READER                1
 #define PAGER_WRITER_LOCKED         2
@@ -55622,7 +55678,13 @@ static Page * pager_alloc_page(Pager *pPager,pgno num_page)
  */
 static void page_ref(Page *pPage)
 {
+	if( pPage->pPager->pAllocator->pMutexMethods ){
+		SyMutexEnter(pPage->pPager->pAllocator->pMutexMethods, pPage->pPager->pAllocator->pMutex);
+	}
 	pPage->nRef++;
+	if( pPage->pPager->pAllocator->pMutexMethods ){
+		SyMutexLeave(pPage->pPager->pAllocator->pMutexMethods, pPage->pPager->pAllocator->pMutex);
+	}
 }
 /*
  * Release an in-memory page after its reference count reach zero.
@@ -55652,8 +55714,15 @@ static int pager_unlink_page(Pager *pPager,Page *pPage);
  */
 static void page_unref(Page *pPage)
 {
-	pPage->nRef--;
-	if( pPage->nRef < 1	){
+	int nRef;
+	if( pPage->pPager->pAllocator->pMutexMethods ){
+		SyMutexEnter(pPage->pPager->pAllocator->pMutexMethods, pPage->pPager->pAllocator->pMutex);
+	}
+	nRef = pPage->nRef--;
+	if( pPage->pPager->pAllocator->pMutexMethods ){
+		SyMutexLeave(pPage->pPager->pAllocator->pMutexMethods, pPage->pPager->pAllocator->pMutex);
+	}
+	if( nRef == 0){
 		Pager *pPager = pPage->pPager;
 		if( !(pPage->flags & PAGE_DIRTY)  ){
 			pager_unlink_page(pPager,pPage);
@@ -56900,6 +56969,10 @@ static int unqliteFinalizeJournal(Pager *pPager,int *pRetry,int close_jrnl)
 		/* Journaling is omitted, return immediately */
 		return UNQLITE_OK;
 	}
+	if (pPager->pjfd == 0) {
+		/* BUGFIX: https://github.com/symisc/unqlite/issues/137 */
+		return UNQLITE_ABORT; /* Ongoing operation must be aborted */
+	}
 	/* Write the total number of database records */
 	rc = WriteInt32(pPager->pjfd,pPager->nRec,8 /* sizeof(aJournalRec) */);
 	if( rc != UNQLITE_OK ){
@@ -57107,7 +57180,7 @@ static int pager_commit_phase1(Pager *pPager)
 		}
 	}
 	if( pPager->iFlags & PAGER_CTRL_DIRTY_COMMIT ){
-		/* Synce the database first if a dirty commit have been applied */
+		/* Sync the database first if a dirty commit have been applied */
 		unqliteOsSync(pPager->pfd,UNQLITE_SYNC_NORMAL);
 	}
 	/* Write the dirty pages */
@@ -57118,6 +57191,19 @@ static int pager_commit_phase1(Pager *pPager)
 		pPager->pFirstDirty = pDirty;
 		unqliteGenError(pPager->pDb,"IO error while writing dirty pages, rollback your database");
 		return rc;
+	}
+	/* release all pages */
+	{
+		Page *p;
+
+		while (1) {
+			p = pPager->pAll;
+			if (p == 0) {
+				break;
+			}
+			pager_unlink_page(pPager, p);
+			pager_release_page(pPager, p);
+		}
 	}
 	/* If the file on disk is not the same size as the database image,
      * then use unqliteOsTruncate to grow or shrink the file here.
@@ -57146,7 +57232,7 @@ static int pager_commit_phase2(Pager *pPager)
 				/* Finally, unlink the journal file */
 				unqliteOsDelete(pPager->pVfs,pPager->zJournal,1);
 			}
-			/* Downgrade to shraed lock */
+			/* Downgrade to shared lock */
 			pager_unlock_db(pPager,SHARED_LOCK);
 			pPager->iState = PAGER_READER;
 			if( pPager->pVec ){
@@ -57705,7 +57791,7 @@ UNQLITE_PRIVATE int unqlitePagerOpen(
 	nLen = 0;
 	if( !is_mem ){
 		nLen = SyStrlen(zFilename);
-		nByte += pVfs->mxPathname + nLen + sizeof(char) /* null termniator */;
+		nByte += pVfs->mxPathname + nLen + sizeof(char) /* null terminator */;
 	}
 	/* Allocate */
 	pPager = (Pager *)SyMemBackendAlloc(&pDb->sMem,nByte);
@@ -57807,8 +57893,10 @@ UNQLITE_PRIVATE int unqlitePagerClose(Pager *pPager)
 			pVfs->xUnmap(pPager->pMmap,pPager->dbByteSize);
 		}
 	}
-	if( !pPager->is_mem && pPager->iState > PAGER_OPEN ){
-		/* Release all lock on this database handle */
+	if( !pPager->is_mem && pPager->iState >= PAGER_OPEN ){
+		/* Release all lock on this database handle. The issue is
+		 * discussed at https://github.com/symisc/unqlite/issues/74.
+		 */
 		pager_unlock_db(pPager,NO_LOCK);
 		/* Close the file  */
 		unqliteOsCloseFree(pPager->pAllocator,pPager->pfd);
@@ -57934,6 +58022,26 @@ static int unqliteKvIoPageDontMakeHot(unqlite_page *pRaw)
 		return UNQLITE_OK;
 	}
 	pPage->flags |= PAGE_DONT_MAKE_HOT;
+
+	/* Remove from hot dirty list if it is already there */
+	if( pPage->flags & PAGE_HOT_DIRTY ){
+		Pager *pPager = pPage->pPager;
+		if( pPage->pNextHot ){
+			pPage->pNextHot->pPrevHot = pPage->pPrevHot;
+		}
+		if( pPage->pPrevHot ){
+			pPage->pPrevHot->pNextHot = pPage->pNextHot;
+		}
+		if( pPager->pFirstHot == pPage ){
+			pPager->pFirstHot = pPage->pPrevHot;
+		}
+		if( pPager->pHotDirty == pPage ){
+			pPager->pHotDirty = pPage->pNextHot;
+		}
+		pPager->nHot--;
+		pPage->flags &= ~PAGE_HOT_DIRTY;
+	}
+
 	return UNQLITE_OK;
 }
 /* 
@@ -58039,7 +58147,7 @@ static int pager_kv_io_init(Pager *pPager,unqlite_kv_methods *pMethods,unqlite_k
 /*
  * ----------------------------------------------------------
  * File: unqlite_vm.c
- * MD5: 358e7f319791c11c8262b81573d3a90e
+ * MD5: 2a0c56efb2ab87d3e52d0d7c3147c53b
  * ----------------------------------------------------------
  */
 /*
@@ -58150,7 +58258,7 @@ static int CollectionCacheInstallRecord(
 				if( n >= pCol->nRec ){
 					break;
 				}
-				pEntry->pNext = pEntry->pPrevCol = 0;
+				pEntry->pNextCol = pEntry->pPrevCol = 0;
 				/* Install in the new bucket */
 				iBucket = COL_RECORD_HASH(pEntry->nId) & (nNewSize - 1);
 				pEntry->pNextCol = apNew[iBucket];
@@ -58487,9 +58595,14 @@ static int unqliteVmLoadCollection(
 	}
 	if( (iFlag & UNQLITE_VM_COLLECTION_CREATE) == 0 ){
 		/* Seek to the desired location */
-		rc = pMethods->xSeek(pCursor,(const void *)zName,(unqlite_int64)nByte,UNQLITE_CURSOR_MATCH_EXACT);
-		if( rc != UNQLITE_OK ){
+		rc = pMethods->xSeek(pCursor,(const void *)zName,(int)nByte,UNQLITE_CURSOR_MATCH_EXACT);
+		if( rc != UNQLITE_OK && (iFlag & UNQLITE_VM_COLLECTION_EXISTS) == 0){
 			unqliteGenErrorFormat(pDb,"Collection '%.*s' not defined in the underlying database",nByte,zName);
+
+			unqliteReleaseCursor(pDb,pCursor);
+			return rc;
+		}
+		else if((iFlag & UNQLITE_VM_COLLECTION_EXISTS)){
 			unqliteReleaseCursor(pDb,pCursor);
 			return rc;
 		}
@@ -58702,6 +58815,25 @@ UNQLITE_PRIVATE int unqliteCollectionFetchNextRecord(unqlite_col *pCol,jx9_value
 	return rc;
 }
 /*
+ * Judge a collection whether exists
+ */
+UNQLITE_PRIVATE int unqliteExistsCollection(
+    unqlite_vm *pVm, /* Target VM */
+    SyString *pName  /* Collection name */
+    )
+{
+    unqlite_col *pCol;
+    int rc;
+    /* Perform a lookup first */
+    pCol = unqliteVmFetchCollection(pVm,pName);
+    if( pCol ){
+        /* Already loaded in memory*/
+        return UNQLITE_OK;
+    }
+    rc = unqliteVmLoadCollection(pVm,pName->zString,pName->nByte,UNQLITE_VM_COLLECTION_EXISTS,0);
+    return rc;
+}
+/*
  * Create a new collection.
  */
 UNQLITE_PRIVATE int unqliteCreateCollection(
@@ -58810,6 +58942,96 @@ static int CollectionStore(
 	return UNQLITE_OK;
 }
 /*
+ * Perform a update operation on a given collection.
+ */
+static int CollectionUpdate(
+                            unqlite_col *pCol, /* Target collection */
+                            jx9_int64 nId,     /* Record ID */
+                            jx9_value *pValue  /* JSON value to be stored */
+)
+{
+    SyBlob *pWorker = &pCol->sWorker;
+    unqlite_kv_methods *pMethods;
+    unqlite_kv_engine *pEngine;
+    sxu32 nKeyLen;
+    int rc;
+    /* Point to the underlying KV store */
+    pEngine = unqlitePagerGetKvEngine(pCol->pVm->pDb);
+    pMethods = pEngine->pIo->pMethods;
+    if( pCol->nTotRec >= SXI64_HIGH ){
+        /* Collection limit reached. No more records */
+        unqliteGenErrorFormat(pCol->pVm->pDb,
+                              "Collection '%z': Records limit reached",
+                              &pCol->sName
+                              );
+        return UNQLITE_LIMIT;
+    }
+    if( pMethods->xReplace == 0 ){
+        unqliteGenErrorFormat(pCol->pVm->pDb,
+                              "Cannot store record into collection '%z' due to a read-only Key/Value storage engine",
+                              &pCol->sName
+                              );
+        return UNQLITE_READ_ONLY;
+    }
+    /* Reset the working buffer */
+    SyBlobReset(pWorker);
+    
+    /* Prepare the unique ID for this record */
+    SyBlobFormat(pWorker,"%z_%qd",&pCol->sName, nId);
+    
+    /* Reset the cursor */
+    unqlite_kv_cursor_reset(pCol->pCursor);
+    /* Seek the cursor to the desired location */
+    rc = unqlite_kv_cursor_seek(pCol->pCursor,
+                                SyBlobData(pWorker),SyBlobLength(pWorker),
+                                UNQLITE_CURSOR_MATCH_EXACT
+                                );
+    if( rc != UNQLITE_OK ){
+        unqliteGenErrorFormat(pCol->pVm->pDb,
+                              "No record to update in collection '%z'",
+                              &pCol->sName
+                              );
+        return rc;
+    }
+    
+    if( jx9_value_is_json_object(pValue) ){
+        jx9_value sId;
+        /* If the given type is a JSON object, then add the special __id field */
+        jx9MemObjInitFromInt(pCol->pVm->pJx9Vm,&sId,nId);
+        jx9_array_add_strkey_elem(pValue,"__id",&sId);
+        jx9MemObjRelease(&sId);
+    }
+    
+    nKeyLen = SyBlobLength(pWorker);
+    if( nKeyLen < 1 ){
+        unqliteGenOutofMem(pCol->pVm->pDb);
+        return UNQLITE_NOMEM;
+    }
+    /* Turn to FastJson */
+    rc = FastJsonEncode(pValue,pWorker,0);
+    if( rc != UNQLITE_OK ){
+        return rc;
+    }
+    /* Finally perform the insertion */
+    rc = pMethods->xReplace(
+                            pEngine,
+                            SyBlobData(pWorker),nKeyLen,
+                            SyBlobDataAt(pWorker,nKeyLen),SyBlobLength(pWorker)-nKeyLen
+                            );
+    if( rc == UNQLITE_OK ){
+        /* Save the value in the cache */
+        CollectionCacheInstallRecord(pCol,nId,pValue);
+    }
+    if( rc != UNQLITE_OK ){
+        unqliteGenErrorFormat(pCol->pVm->pDb,
+                              "IO error while storing record into collection '%z'",
+                              &pCol->sName
+                              );
+        return rc;
+    }
+    return UNQLITE_OK;
+}
+/*
  * Array walker callback (Refer to jx9_array_walk()).
  */
 static int CollectionRecordArrayWalker(jx9_value *pKey,jx9_value *pData,void *pUserData)
@@ -58883,6 +59105,21 @@ UNQLITE_PRIVATE int unqliteCollectionDropRecord(
 		}
 	}
 	return rc;
+}
+/*
+ * Update a given record with new data
+ */
+UNQLITE_PRIVATE int unqliteCollectionUpdateRecord(unqlite_col *pCol,jx9_int64 nId, jx9_value *pValue,int iFlag)
+{
+    int rc;
+    if( !jx9_value_is_json_object(pValue) && jx9_value_is_json_array(pValue) ){
+        /* Iterate over the array and store its members in the collection */
+        rc = jx9_array_walk(pValue,CollectionRecordArrayWalker,pCol);
+        SXUNUSED(iFlag); /* cc warning */
+    }else{
+        rc = CollectionUpdate(pCol,nId,pValue);
+    }
+    return rc;
 }
 /*
  * Drop a collection from the KV storage engine and the underlying
@@ -59042,11 +59279,11 @@ static int unqliteBuiltin_db_sig(jx9_context *pCtx,int argc,jx9_value **argv)
  */
 static int unqliteBuiltin_collection_exists(jx9_context *pCtx,int argc,jx9_value **argv)
 {
-	unqlite_col *pCol;
 	const char *zName;
 	unqlite_vm *pVm;
 	SyString sName;
 	int nByte;
+	int rc;
 	/* Extract collection name */
 	if( argc < 1 ){
 		/* Missing arguments */
@@ -59065,9 +59302,9 @@ static int unqliteBuiltin_collection_exists(jx9_context *pCtx,int argc,jx9_value
 	SyStringInitFromBuf(&sName,zName,nByte);
 	pVm = (unqlite_vm *)jx9_context_user_data(pCtx);
 	/* Perform the lookup */
-	pCol = unqliteCollectionFetch(pVm,&sName,UNQLITE_VM_AUTO_LOAD);
+	rc = unqliteExistsCollection(pVm, &sName);
 	/* Lookup result */
-	jx9_result_bool(pCtx,pCol ? 1 : 0);
+	jx9_result_bool(pCtx, rc == UNQLITE_OK ? 1 : 0);
 	return JX9_OK;
 }
 /*
@@ -59598,6 +59835,59 @@ static int unqliteBuiltin_db_store(jx9_context *pCtx,int argc,jx9_value **argv)
 	jx9_result_bool(pCtx,1);
 	return JX9_OK;
 }
+
+/*
+ * bool db_update_record(string $col_name, int_64 record_id, object $json_object)
+ *   Update a given record with new json object
+ * Parameter
+ * col_name: Collection name
+ *   record_id: ID of the record
+ *   json_object: New Record data
+ * Return
+ *   TRUE on success. FALSE on failure.
+ */
+static int unqliteBuiltin_db_update_record(jx9_context *pCtx,int argc,jx9_value **argv)
+{
+    unqlite_col *pCol;
+    const char *zName;
+    unqlite_vm *pVm;
+    SyString sName;
+    jx9_int64 nId;
+    int nByte;
+    int rc;
+    /* Extract collection name */
+    if( argc < 2 ){
+        /* Missing arguments */
+        jx9_context_throw_error(pCtx,JX9_CTX_ERR,"Missing collection name and/or records");
+        /* Return false */
+        jx9_result_bool(pCtx,0);
+        return JX9_OK;
+    }
+    zName = jx9_value_to_string(argv[0],&nByte);
+    if( nByte < 1){
+        jx9_context_throw_error(pCtx,JX9_CTX_ERR,"Invalid collection name");
+        /* Return false */
+        jx9_result_bool(pCtx,0);
+        return JX9_OK;
+    }
+    SyStringInitFromBuf(&sName,zName,nByte);
+    pVm = (unqlite_vm *)jx9_context_user_data(pCtx);
+    /* Fetch the collection */
+    pCol = unqliteCollectionFetch(pVm,&sName,UNQLITE_VM_AUTO_LOAD);
+    if( pCol == 0 ){
+        jx9_context_throw_error_format(pCtx,JX9_CTX_ERR,"No such collection '%z'",&sName);
+        /* Return false */
+        jx9_result_bool(pCtx,0);
+        return JX9_OK;
+    }
+    /* Update a record with the given value */
+    nId = jx9_value_to_int64(argv[1]);
+    rc = unqliteCollectionUpdateRecord(pCol, nId, argv[2], 0);
+    /* All done, return TRUE */
+    jx9_result_bool(pCtx,rc == UNQLITE_OK);
+    return JX9_OK;
+}
+
 /*
  * bool db_drop_collection(string $col_name)
  * bool collection_delete(string $col_name)
@@ -59901,6 +60191,7 @@ UNQLITE_PRIVATE int unqliteRegisterJx9Functions(unqlite_vm *pVm)
 		{ "db_total_records",  unqliteBuiltin_db_total_records  },
 		{ "db_creation_date",  unqliteBuiltin_db_creation_date  },
 		{ "db_store",          unqliteBuiltin_db_store          },
+        { "db_update_record",  unqliteBuiltin_db_update_record  },
 		{ "db_put",            unqliteBuiltin_db_store          },
 		{ "db_drop_collection", unqliteBuiltin_db_drop_col      },
 		{ "collection_delete", unqliteBuiltin_db_drop_col       },
@@ -59922,8 +60213,8 @@ UNQLITE_PRIVATE int unqliteRegisterJx9Functions(unqlite_vm *pVm)
 /* END-OF-IMPLEMENTATION: unqlite@embedded@symisc 34-09-46 */
 /*
  * Symisc unQLite: An Embeddable NoSQL (Post Modern) Database Engine.
- * Copyright (C) 2012-2013, Symisc Systems http://unqlite.org/
- * Version 1.1.6
+ * Copyright (C) 2012-2019, Symisc Systems http://unqlite.org/
+ * Version 1.1.9
  * For information on licensing, redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES
  * please contact Symisc Systems via:
  *       legal@symisc.net
@@ -59933,7 +60224,7 @@ UNQLITE_PRIVATE int unqliteRegisterJx9Functions(unqlite_vm *pVm)
  *      http://unqlite.org/licensing.html
  */
 /*
- * Copyright (C) 2012, 2013 Symisc Systems, S.U.A.R.L [M.I.A.G Mrad Chems Eddine <chm@symisc.net>].
+ * Copyright (C) 2012, 2019 Symisc Systems, S.U.A.R.L [M.I.A.G Mrad Chems Eddine <chm@symisc.net>].
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
