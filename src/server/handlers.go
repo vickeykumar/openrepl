@@ -18,6 +18,7 @@ import (
 
 	"webtty"
 	"utils"
+	"cookie"
 )
 
 func (server *Server) generateHandleWS(ctx context.Context, cancel context.CancelFunc, counter *counter, commands ...string) http.HandlerFunc {
@@ -91,7 +92,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 				return
 			}
 		}
-		uid := Get_Uid(w, r)
+		uid := cookie.Get_Uid(r)
 		log.Printf("New client (uid: %s) connected: %s, connections: %d/%d, TotalUsage(MB): %d",
 			uid, r.RemoteAddr, num, server.options.MaxConnection, totalWieght,
 		)
