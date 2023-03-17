@@ -6,7 +6,10 @@ module.exports = {
         "preprocessing": "./src/preprocessing.js"
     },
     output: {
-        filename: "./dist/[name].js"
+        filename: "./dist/[name].js",
+        library: 'gotty',
+        libraryTarget: 'umd',
+
     },
     devtool: "source-map",
     resolve: {

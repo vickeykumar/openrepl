@@ -275,3 +275,7 @@ if (elem !== null) {
         }, 500);
     });
 };
+
+// exported to be used outside bundle for other tasks
+export { ConnectionFactory };
+

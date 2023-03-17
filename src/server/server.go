@@ -226,6 +226,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 
 	wsMux := http.NewServeMux()
 	wsMux.Handle("/", siteHandler)
+	wsMux.HandleFunc(pathPrefix+"ws_filebrowser", server.handleFileBrowser)
 	wsMux.HandleFunc(pathPrefix+"ws", server.generateHandleWS(ctx, cancel, counter))
 	wsMux.HandleFunc(pathPrefix+"ws_c", server.generateHandleWS(ctx, cancel, counter, "cling"))
 	wsMux.HandleFunc(pathPrefix+"ws_cpp", server.generateHandleWS(ctx, cancel, counter, "cling"))

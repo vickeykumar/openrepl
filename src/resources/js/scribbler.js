@@ -1089,7 +1089,10 @@ $(function() {
       "themes": {
         "stripes": true
       },
-      "data": { "id" : "project_root", "text" : "project", "type" : "root" },
+      "data": {
+        'url': '/ws_filebrowser',
+        'dataType': 'json'
+      },
       "drawCallback": function() {
         // your code here
         $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
@@ -1114,7 +1117,7 @@ $(function() {
       }
     },
     "plugins": [
-      "contextmenu", "dnd", "search",
+      "ajax", "contextmenu", "dnd", "search",
       "state", "types", "wholerow", "unique"
     ],
     "contextmenu": {

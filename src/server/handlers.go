@@ -17,6 +17,7 @@ import (
 	"github.com/pkg/errors"
 
 	"webtty"
+	"filebrowser"
 	"utils"
 	"cookie"
 )
@@ -324,4 +325,19 @@ func (server *Server) titleVariables(order []string, varUnits map[string]map[str
 	}
 
 	return titleVars
+}
+
+
+func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	log.Printf("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
+	if req.Method == "GET" {
+		fb := filebrowser.New("/tmp/home", nil)
+		tree, err := fb.GetJsonTree()
+	    if err != nil {
+	        log.Println("Error: ",err)
+	    }
+	    log.Println("file Tree: ", tree)
+		rw.Write(utils.JsonMarshal(tree))
+	}
 }

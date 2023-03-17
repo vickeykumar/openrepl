@@ -1004,7 +1004,7 @@ overflow: hidden;
   display: none;
 }
 
-.main-menu-bar:hover,.main-menu:hover i.fa-close {
+.main-menu-bar:hover,.main-menu:hover i.fa-close, nav.main-menu.expanded i.fa-close {
   display: block;
 }
 .main-menu-bar:hover {
@@ -1038,7 +1038,7 @@ overflow: hidden;
   background: none;
 }
 
-.main-menu:hover ul>li .jstree-wholerow-clicked  {
+.main-menu:hover ul>li .jstree-wholerow-clicked, nav.main-menu.expanded ul>li .jstree-wholerow-clicked {
   background: #beebff;
   background: -moz-linear-gradient(top, #beebff 0%, #a8e4ff 100%);
   background: -webkit-gradient(linear, left top, left bottom, color-stop(0%, #beebff), color-stop(100%, #a8e4ff));
