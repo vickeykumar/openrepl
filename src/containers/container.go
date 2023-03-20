@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
+	"utils"
 )
 
-const HOME_DIR = "/tmp/home/"
 
 var Containers = make(map[string]*container)
 
@@ -78,17 +78,17 @@ func InitContainers() {
 			continue
 		}
 		Containers[command] = containerObj
-		os.MkdirAll(HOME_DIR, 0777)
-		os.Chmod(HOME_DIR, 0777)
-		os.MkdirAll(HOME_DIR + command, 0777)
-		os.Chmod(HOME_DIR + command, 0777)
+		os.MkdirAll(utils.HOME_DIR, 0777)
+		os.Chmod(utils.HOME_DIR, 0777)
+		os.MkdirAll(utils.HOME_DIR + command, 0777)
+		os.Chmod(utils.HOME_DIR + command, 0777)
 	}
 }
 
 func DeleteContainers() {
 	for command, containerObj := range Containers {
 		containerObj.Delete()
-		os.RemoveAll(HOME_DIR + command)
+		os.RemoveAll(utils.HOME_DIR + command)
 		log.Println("Container Deleted for : ", command)
 	}
 }

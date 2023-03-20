@@ -101,6 +101,7 @@ func Set_SessionCookie(rw http.ResponseWriter, req *http.Request, session user.U
 		session_cookie.Values["sessionID"] = session.SessionID
 		session_cookie.Values ["loggedIn"] = session.LoggedIn
 		session_cookie.Values ["expirationTime"] = session.ExpirationTime
+		session_cookie.Values [utils.HOME_DIR_KEY] = user.GetHomeDir(session.Uid)
 
 		// set maxage of the session
 		session_cookie.Options = &sessions.Options{
@@ -174,6 +175,14 @@ func Get_ExpirationTime(req *http.Request) (e int64) {
 	return e
 }
 
+func IsSessionExpired(req *http.Request) bool {
+	var age int = int(Get_ExpirationTime(req)-utils.GetUnixMilli())/1000
+	if age < 0 {
+		return true
+	}
+	return false
+}
+
 func Get_SessionCookie(req *http.Request) (session user.UserSession) {
 		session.Uid = Get_Uid(req)
 		session.SessionID = Get_SessionID(req)
@@ -182,3 +191,52 @@ func Get_SessionCookie(req *http.Request) (session user.UserSession) {
 		return session
 }
 
+func UpdateGuestSessionCookieAge(rw http.ResponseWriter, req *http.Request, newage int) (err error) {
+	session_cookie, err := session_store.Get(req, "user-session")
+	if err != nil {
+		// log and move on, u can still save
+		log.Println("Error: while getting cookie err: ", err.Error())
+	}
+	var maxage int = int(Get_ExpirationTime(req)-utils.GetUnixMilli())/1000
+
+	if !Is_UserLoggedIn(req) || IsSessionExpired(req) {
+		// only update age if user not logged in
+		maxage = newage
+	}
+	// update maxage (sec) of the session 
+	session_cookie.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   maxage,
+	}
+	err = session_store.Save(req, rw, session_cookie)
+	log.Println("session cookie save: ", maxage, session_cookie, "Error: ", err)
+	return err
+}
+
+func GetOrUpdateHomeDir(rw http.ResponseWriter, req *http.Request, Uid string) (homedir string) {
+		session_cookie, err := session_store.Get(req, "user-session")
+		if err != nil {
+			// log and move on, u can still save
+			log.Println("Error: while getting cookie err: ", err.Error())
+		}
+		if !Is_UserLoggedIn(req) || IsSessionExpired(req) {
+			// this is as good as empty Uid
+			Uid = ""
+		}
+		var ok bool
+
+		homedir, ok = session_cookie.Values[utils.HOME_DIR_KEY].(string);
+		log.Println("previous homedir: ", homedir, ok, session_cookie)
+		// check if same uid amd valid home dir, if not generate a new homedir
+		if Uid!=Get_Uid(req) || !ok || homedir=="" {
+			homedir = user.GetHomeDir(Uid)
+		}
+		session_cookie.Values[utils.HOME_DIR_KEY] = homedir
+
+		err = UpdateGuestSessionCookieAge(rw, req, utils.DEADLINE_MINUTES*60) 
+		if err != nil {
+			// log and move on
+			log.Println("Error: while updating cookie err: ", err.Error())
+		}
+		return homedir
+}
