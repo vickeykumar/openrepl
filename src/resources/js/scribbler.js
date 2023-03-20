@@ -33,6 +33,28 @@ function ismob() {
    }
 }
 
+var option2cmdMap = {
+    "c":"cling",
+    "cpp":"cling",
+    "go":"gointerpreter",
+    "java":"java",
+    "python2.7":"python",
+};
+
+function getSelectValue() {
+    // body...
+    const optionMenu = get("#optionMenu");
+    if(optionMenu!==undefined) {
+        const option = get(".list", optionMenu);
+        if (option!==undefined) {
+          var cmd = option2cmdMap[option.value];
+          if (cmd !== undefined) return cmd;
+          return option.value;
+        }
+    }
+    return '';
+}
+
 function ToggleFunction() {
     TermElement = get(".terminal__row");
     xtermElement = get(".xterm",TermElement);
@@ -70,8 +92,8 @@ function ToggleFunction() {
 var einst = null;
 
 // updates editor content by ID
-function updateEditorContent(cmd="", content="/* Welcome to openrepl! */") {
-    if(window[CMD_KEY]===cmd) {
+function updateEditorContent(cmd="", content="/* Welcome to openrepl! */", forceupdate=false) {
+    if(!forceupdate && window[CMD_KEY]===cmd) {
       // no need to update as this is not an optionchange
       console.log("no change in command: ",cmd)
       return;
@@ -297,13 +319,6 @@ function UploadEditor() {
   var cmd = '';
   var done = {};
   var classname = 'demo';
-  var option2cmdMap = {
-    "c":"cling",
-    "cpp":"cling",
-    "go":"gointerpreter",
-    "java":"java",
-    "python2.7":"python",
-  };
   
   function displayWarningOnMobile () {
     // body... 
@@ -333,20 +348,6 @@ function UploadEditor() {
 
   function getOptEditorValue() {
     return $('#optionMenu > select option:selected').data('editor');
-  }
-
-  function getSelectValue() {
-    // body...
-    const optionMenu = get("#optionMenu");
-    if(optionMenu!==undefined) {
-        const option = get(".list", optionMenu);
-        if (option!==undefined) {
-          var cmd = option2cmdMap[option.value];
-          if (cmd !== undefined) return cmd;
-          return option.value;
-        }
-    }
-    return '';
   }
 
   function typeItOut(classname, txt, _callback) {
@@ -1090,7 +1091,12 @@ $(function() {
         "stripes": true
       },
       "data": {
-        'url': '/ws_filebrowser',
+        'url': function () {
+            var cmd = getSelectValue();
+            var url = '/ws_filebrowser'+'?command='+cmd;
+            console.log("url gen: ", url);
+            return url;
+          },
         'dataType': 'json'
       },
       "drawCallback": function() {
@@ -1222,4 +1228,14 @@ $(document).ready(function() {
     $(this).removeClass('expanded');
   });
 });
+
+  // refresh the tree when an change or run is triggered on terminal to get uptodate homedir
+  $("#terminal").on('optionchange', function(event) {
+    $('#file-browser').jstree(true).refresh();
+    console.log('tree refreshed on: ', "optionchange");
+  }).on('optionrun', function(event) {
+    $('#file-browser').jstree(true).refresh();
+    console.log('tree refreshed on: ', "optionrun");
+  });
+
 })();

@@ -45,11 +45,11 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 		// using working directory of parent process only 
 		cmd.Dir = containers.GetWorkingDir(ppid)
 	} else {
-		// get working for a user uid
+		// get working for a user uid, same as homedir generated
 		if homedir == "" {
-			cmd.Dir = user.GetHomeDir(uid)+"/"+command
+			cmd.Dir = user.GetHomeDir(uid)
 		} else {
-			cmd.Dir = homedir+"/"+command
+			cmd.Dir = homedir
 		}
 		os.MkdirAll(cmd.Dir, 0755)
 		if uid == "" {

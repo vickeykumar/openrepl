@@ -258,7 +258,6 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		server.errorHandler(w, r, http.StatusNotFound)
 		return
 	}
-	cookie.GetOrUpdateHomeDir(w, r, cookie.Get_Uid(r))	// move this to file browser handler later
 
 	titleVars := server.titleVariables(
 		[]string{"server", "master"},
@@ -330,9 +329,22 @@ func (server *Server) titleVariables(order []string, varUnits map[string]map[str
 
 func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
-	log.Printf("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
+	log.Println("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
+	uid := cookie.Get_Uid(req)
+	homedir := cookie.GetOrUpdateHomeDir(rw, req, uid)
+	//command := req.Form.Get("command")
+	defer func () {
+		if uid == "" {
+				// reset the job to delete the guests working dir after a certain deadline 
+				jobname := utils.REMOVE_JOB_KEY+homedir
+				utils.GottyJobs.RemoveJob(jobname)
+				utils.GottyJobs.AddJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+					utils.RemoveDir(homedir)
+				})
+		}
+	}()
 	if req.Method == "GET" {
-		fb := filebrowser.New("/tmp/home", nil)
+		fb := filebrowser.New(homedir, nil)
 		tree, err := fb.GetJsonTree()
 	    if err != nil {
 	        log.Println("Error: ",err)

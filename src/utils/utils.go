@@ -215,11 +215,5 @@ func IsDirEmpty(dirPath string) bool {
 
 
 func RemoveDir(dirPath string) {
-	os.RemoveAll(dirPath)	// only parent process can delete home dir
-	// remove parent container as well if it becomes empty
-	parentDir := filepath.Dir(dirPath)
-	if parentDir != HOME_DIR && IsDirEmpty(parentDir) { // should not be root/home directory
-		os.RemoveAll(parentDir)
-	}
-	log.Println("Directory removed: ",dirPath)
+	os.RemoveAll(dirPath)
 }
