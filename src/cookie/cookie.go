@@ -1,13 +1,10 @@
-package server
+package cookie
 
 import (
-	"encoding/base64"
-	"github.com/gorilla/websocket"
 	"github.com/gorilla/sessions"
 	"log"
 	"net/http"
 	"strconv"
-	"webtty"
 	"utils"
 	"user"
 	"errors"
@@ -55,7 +52,7 @@ func DecrementCounterCookies(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func GetCounterCookieValue(rw http.ResponseWriter, req *http.Request) int {
+func GetCounterCookieValue(req *http.Request) int {
 	cookie, err := req.Cookie("Session-Counter")
 	if err != nil {
 		log.Println("Error while getting cookie: ", err.Error())
@@ -65,17 +62,10 @@ func GetCounterCookieValue(rw http.ResponseWriter, req *http.Request) int {
 	return sessionCount
 }
 
-func WriteMessageToTerminal(conn *websocket.Conn, message string) {
-	safeMessage := base64.StdEncoding.EncodeToString([]byte(message))
-	err := conn.WriteMessage(websocket.TextMessage, []byte(append([]byte{webtty.Output}, []byte(safeMessage)...)))
-	if err != nil {
-		log.Println("err while writing: ", err)
-	}
-}
-
 
 var session_store *sessions.CookieStore
 
+// initilize the cookiestore with secret stored in session DB
 func Init_SessionStore(secret string) {
 	session_store = sessions.NewCookieStore([]byte(secret))
 }
@@ -111,6 +101,7 @@ func Set_SessionCookie(rw http.ResponseWriter, req *http.Request, session user.U
 		session_cookie.Values["sessionID"] = session.SessionID
 		session_cookie.Values ["loggedIn"] = session.LoggedIn
 		session_cookie.Values ["expirationTime"] = session.ExpirationTime
+		session_cookie.Values [utils.HOME_DIR_KEY] = user.GetHomeDir(session.Uid)
 
 		// set maxage of the session
 		session_cookie.Options = &sessions.Options{
@@ -143,7 +134,7 @@ func Delete_SessionCookie(rw http.ResponseWriter, req *http.Request, session use
 }
 
 
-func Is_UserLoggedIn(rw http.ResponseWriter, req *http.Request) (loggedin bool) {
+func Is_UserLoggedIn(req *http.Request) (loggedin bool) {
 	session_cookie, err := session_store.Get(req, "user-session")
 	val := session_cookie.Values["loggedIn"]
 	loggedin, ok := val.(bool);
@@ -154,7 +145,7 @@ func Is_UserLoggedIn(rw http.ResponseWriter, req *http.Request) (loggedin bool) 
 	return loggedin
 }
 
-func Get_Uid(rw http.ResponseWriter, req *http.Request) (uid string) {
+func Get_Uid(req *http.Request) (uid string) {
 	session_cookie, _ := session_store.Get(req, "user-session")
 	val := session_cookie.Values["uid"]
 	uid, ok := val.(string);
@@ -164,7 +155,7 @@ func Get_Uid(rw http.ResponseWriter, req *http.Request) (uid string) {
 	return uid
 }
 
-func Get_SessionID(rw http.ResponseWriter, req *http.Request) (sessionid string) {
+func Get_SessionID(req *http.Request) (sessionid string) {
 	session_cookie, _ := session_store.Get(req, "user-session")
 	val := session_cookie.Values["sessionID"]
 	sessionid, ok := val.(string);
@@ -174,7 +165,7 @@ func Get_SessionID(rw http.ResponseWriter, req *http.Request) (sessionid string)
 	return sessionid
 }
 
-func Get_ExpirationTime(rw http.ResponseWriter, req *http.Request) (e int64) {
+func Get_ExpirationTime(req *http.Request) (e int64) {
 	session_cookie, _ := session_store.Get(req, "user-session")
 	val := session_cookie.Values["expirationTime"]
 	e, ok := val.(int64);
@@ -184,11 +175,68 @@ func Get_ExpirationTime(rw http.ResponseWriter, req *http.Request) (e int64) {
 	return e
 }
 
-func Get_SessionCookie(rw http.ResponseWriter, req *http.Request) (session user.UserSession) {
-		session.Uid = Get_Uid(rw, req)
-		session.SessionID = Get_SessionID(rw, req)
-		session.LoggedIn = Is_UserLoggedIn(rw, req)
-		session.ExpirationTime = Get_ExpirationTime(rw, req)
+func IsSessionExpired(req *http.Request) bool {
+	var age int = int(Get_ExpirationTime(req)-utils.GetUnixMilli())/1000
+	if age < 0 {
+		return true
+	}
+	return false
+}
+
+func Get_SessionCookie(req *http.Request) (session user.UserSession) {
+		session.Uid = Get_Uid(req)
+		session.SessionID = Get_SessionID(req)
+		session.LoggedIn = Is_UserLoggedIn(req)
+		session.ExpirationTime = Get_ExpirationTime(req)
 		return session
 }
 
+func UpdateGuestSessionCookieAge(rw http.ResponseWriter, req *http.Request, newage int) (err error) {
+	session_cookie, err := session_store.Get(req, "user-session")
+	if err != nil {
+		// log and move on, u can still save
+		log.Println("Error: while getting cookie err: ", err.Error())
+	}
+	var maxage int = int(Get_ExpirationTime(req)-utils.GetUnixMilli())/1000
+
+	if !Is_UserLoggedIn(req) || IsSessionExpired(req) {
+		// only update age if user not logged in
+		maxage = newage
+	}
+	// update maxage (sec) of the session 
+	session_cookie.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   maxage,
+	}
+	err = session_store.Save(req, rw, session_cookie)
+	log.Println("session cookie save: ", maxage, session_cookie, "Error: ", err)
+	return err
+}
+
+func GetOrUpdateHomeDir(rw http.ResponseWriter, req *http.Request, Uid string) (homedir string) {
+		session_cookie, err := session_store.Get(req, "user-session")
+		if err != nil {
+			// log and move on, u can still save
+			log.Println("Error: while getting cookie err: ", err.Error())
+		}
+		if !Is_UserLoggedIn(req) || IsSessionExpired(req) {
+			// this is as good as empty Uid
+			Uid = ""
+		}
+		var ok bool
+
+		homedir, ok = session_cookie.Values[utils.HOME_DIR_KEY].(string);
+		log.Println("previous homedir: ", homedir, ok, session_cookie)
+		// check if same uid amd valid home dir, if not generate a new homedir
+		if Uid!=Get_Uid(req) || !ok || homedir=="" {
+			homedir = user.GetHomeDir(Uid)
+		}
+		session_cookie.Values[utils.HOME_DIR_KEY] = homedir
+
+		err = UpdateGuestSessionCookieAge(rw, req, utils.DEADLINE_MINUTES*60) 
+		if err != nil {
+			// log and move on
+			log.Println("Error: while updating cookie err: ", err.Error())
+		}
+		return homedir
+}

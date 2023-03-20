@@ -18,6 +18,7 @@ import (
 
 	"webtty"
 	"utils"
+	"cookie"
 )
 
 func (server *Server) generateHandleWS(ctx context.Context, cancel context.CancelFunc, counter *counter, commands ...string) http.HandlerFunc {
@@ -69,12 +70,19 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			return
 		}
 
+		uid := cookie.Get_Uid(r)
+		// any cookie needs to be saved before upgrading to websocket
+		homedir := cookie.GetOrUpdateHomeDir(w, r, uid)
+
 		conn, err := server.upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			closeReason = err.Error()
 			log.Println("Can not upgrade connection: " + closeReason)
 			return
 		}
+		req_payload := make(map[string]string)
+		req_payload[utils.UidKey] = uid
+		req_payload[utils.HOME_DIR_KEY] = homedir
 		defer func() {
 			log.Println("close status: ", closeCode)
 			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode , closeReason), time.Now().Add(time.Second))
@@ -91,13 +99,13 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 				return
 			}
 		}
-		uid := Get_Uid(w, r)
+		
 		log.Printf("New client (uid: %s) connected: %s, connections: %d/%d, TotalUsage(MB): %d",
 			uid, r.RemoteAddr, num, server.options.MaxConnection, totalWieght,
 		)
 
 		log.Println("Connection upgraded successfully: ")
-		err = server.processWSConn(ctx, conn, uid)
+		err = server.processWSConn(ctx, conn, req_payload)
 
 		switch err {
 		case ctx.Err():
@@ -120,8 +128,9 @@ func updateparams(params *url.Values, payload map[string]string) {
 }
 
 // process websocket connection for uid (user)
-func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, uid string) error {
-	conn.SetWriteDeadline(time.Now().Add(15 * time.Minute)) // only 15 min sessions for services are allowed
+// req_payload is initial payload carried by request
+func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, req_payload map[string]string) error {
+	conn.SetWriteDeadline(time.Now().Add(utils.DEADLINE_MINUTES * time.Minute)) // only 15 min sessions for services are allowed
 	typ, initLine, err := conn.ReadMessage()
 	if err != nil {
 		return errors.Wrapf(err, "failed to authenticate websocket connection")
@@ -149,8 +158,8 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, u
 		return errors.Wrapf(err, "failed to parse arguments")
 	}
 	params := query.Query()
-	updateparams(&params, init.Payload)
-	params.Set(utils.UidKey, uid)
+	updateparams(&params, req_payload)	// update the params with reqest payload
+	updateparams(&params, init.Payload)	// update the params with init payload by ws conn
 	//log.Println("updated params: ", params)
 
 	var slave Slave
@@ -236,6 +245,7 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		server.errorHandler(w, r, http.StatusNotFound)
 		return
 	}
+	cookie.GetOrUpdateHomeDir(w, r, cookie.Get_Uid(r))	// move this to file browser handler later
 
 	titleVars := server.titleVariables(
 		[]string{"server", "master"},
