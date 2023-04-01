@@ -94,7 +94,9 @@ var FeedbackTemplate =`
         <tr>
 	    <td>{{$key}}</td>
             <td>{{$value.Name}}</td>
-            <td>{{$value.Email}}</td>
+            <td>
+            <a href="https://mail.google.com/mail/?view=cm&fs=1&tf=1&to={{$value.Email}}&su=Greetings%20from%20OpenREPL" target="_blank" > {{$value.Email}} </a>
+            </td>
             <td>{{$value.Message}}</td>
             <td></td>
 	    <td></td>
