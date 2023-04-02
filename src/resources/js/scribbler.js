@@ -898,6 +898,22 @@ $(function() {
             enableSnippets: true,
             enableLiveAutocompletion: true
         });
+	
+	// drag and drop feature
+	editor.container.addEventListener("dragover", function(e) {
+	  e.preventDefault();	// prevent default behaviour given by browser
+	});
+
+	editor.container.addEventListener("drop", function(e) {
+	  e.preventDefault();
+	  var file = e.dataTransfer.files[0];
+	  var reader = new FileReader();
+	  reader.onload = function(e) {
+	    var contents = e.target.result;
+	    editor.setValue(contents);
+	  };
+	  reader.readAsText(file);
+	});
 
         // Get the queue reference
         var queueRef = currentEditorValue.child("queue");
