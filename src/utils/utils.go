@@ -27,7 +27,7 @@ const CompilerOptionKey = "CompilerOption"
 const UidKey = "uid"
 const HOME_DIR_KEY = "HOME_DIR"
 const RequestContextKey = "RequestContextKey"
-const DEADLINE_MINUTES = 15
+const DEADLINE_MINUTES = 60 	// keep the deadline to delete the homedir for guest as 1hr	
 const JobFile = "jobfile"
 const REMOVE_JOB_KEY = "REMOVE-"
 

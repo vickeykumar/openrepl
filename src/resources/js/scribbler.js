@@ -624,26 +624,79 @@ $(function() {
           // User successfully signed in.
           // Return type determines whether we continue the redirect automatically
           // or whether we leave that to developer to handle.
-            console.log("authResult: ",JSON.stringify(authResult), JSON.stringify(redirectUrl));
+          console.log("authResult: ",JSON.stringify(authResult), JSON.stringify(redirectUrl));
 
-          xhr = new XMLHttpRequest();
-          var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "login";
-          xhr.open("POST", url, true);
-          xhr.setRequestHeader("Content-Type", "application/json");
-          xhr.onreadystatechange = function () {
-              if (xhr.readyState === 4) {
-                if (xhr.status === 200) {
-                  console.log("login success");
-                } else {
-                  alert("Login Failed.");
-                }
-                // redirect anyway
-                location.reload();
+	  if ((authResult.user) && (authResult.user.emailVerified)) {
+              // User is signed in and email is verified, so proceed with login
+              xhr = new XMLHttpRequest();
+              var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "login";
+              xhr.open("POST", url, true);
+              xhr.setRequestHeader("Content-Type", "application/json");
+              xhr.onreadystatechange = function () {
+                  if (xhr.readyState === 4) {
+                      if (xhr.status === 200) {
+                          console.log("login success");
+                      } else {
+                          alert("Login Failed.");
+                      }
+                      // redirect anyway
+                      location.reload();
+                  }
+                  console.log("login status: ",xhr.status);
+              };
+              xhr.send(JSON.stringify(authResult));
+          } else {
+              // User's email is not verified
+              console.log("email not verified.");
 
+              var message = "Please check your inbox and follow the instructions to verify your email address and LogIn again. If you haven't received the verification email, you can click the button below to send again.";
+
+              // Create a header element
+              var header = document.createElement("h2");
+              header.innerText = "A verification email has been sent to your inbox";
+
+              if ((authResult.additionalUserInfo) && (!authResult.additionalUserInfo.isNewUser)) {
+                message = "Your email address has not been verified yet. "+message;
+                header.innerText = "Email not verified";
               }
-              console.log("login status: ",xhr.status);
-          };
-          xhr.send(JSON.stringify(authResult));
+             
+              if ((authResult.additionalUserInfo) && (authResult.additionalUserInfo.isNewUser)) {
+	      // new user send email
+                firebase.auth().currentUser.sendEmailVerification()
+                      .then(function() {
+                          console.log("Verification email sent");
+                      })
+                      .catch(function(error) {
+                          console.log(error);
+                      });
+              }
+
+              // Create a message element
+              var messageElement = document.createElement("h3");
+              messageElement.innerText = message;
+
+              // Create a button element
+              var button = document.createElement("button");
+              button.innerText = "Send again";
+              button.classList.add("share-btn");
+              button.onclick = function() {
+                  firebase.auth().currentUser.sendEmailVerification()
+                      .then(function() {
+                          console.log("Verification email sent");
+                          alert("A verification email has been sent to your inbox. Please follow the instructions to verify your email address.");
+                      })
+                      .catch(function(error) {
+                          console.log(error);
+                      });
+              };
+
+              // Add the elements to the page
+              var container = document.getElementById("firebaseui-auth-container");
+              container.innerHTML = "";
+              container.appendChild(header);
+              container.appendChild(messageElement);
+              container.appendChild(button);
+          }
 
           return false;
         },
