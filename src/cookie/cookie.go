@@ -9,6 +9,7 @@ import (
 	"user"
 	"errors"
 	"encoder"
+	"containers"
 )
 
 const MAX_CONN_PER_BROWSER = 1
@@ -217,6 +218,20 @@ func UpdateGuestSessionCookieAge(rw http.ResponseWriter, req *http.Request, newa
 }
 
 func GetOrUpdateHomeDir(rw http.ResponseWriter, req *http.Request, Uid string) (homedir string) {
+		// try to get homedir from jid, priority 1
+		jid := req.Form.Get("jid")
+		ppid := encoder.DecodeToPID(jid)	// try getting parent processid
+		if ppid != -1 {		// called as a fork of another parent process
+			return containers.GetWorkingDir(ppid)
+		}
+
+		// try getting homedir from request query itself, priority 2
+		if req.Form.Has(utils.HOME_DIR_KEY) {
+			homedir = req.Form.Get(utils.HOME_DIR_KEY)
+			return homedir
+		}
+
+		// try getting homedir from session cookie
 		session_cookie, err := session_store.Get(req, "user-session")
 		if err != nil {
 			// log and move on, u can still save

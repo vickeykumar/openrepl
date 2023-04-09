@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"encoding/base64"
 	"github.com/natefinch/lumberjack"
 	"log"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"io/ioutil"
 	"bytes"
 	"strings"
+	"errors"
 )
 
 const HOME_DIR = "/tmp/home/"
@@ -23,11 +25,13 @@ const GitConfigFile = ".gitconfig"
 const LOG_PATH = "/gottyTraces"
 const IdeLangKey = "IdeLang"
 const IdeContentKey = "IdeContent"
+const IdeFileNameKey = "IdeFileName"
 const CompilerOptionKey = "CompilerOption"
+const CompilerFlagsKey = "CompilerFlags"
 const UidKey = "uid"
-const HOME_DIR_KEY = "HOME_DIR"
+const HOME_DIR_KEY = "homedir"
 const RequestContextKey = "RequestContextKey"
-const DEADLINE_MINUTES = 60 	// keep the deadline to delete the homedir for guest as 1hr	
+const DEADLINE_MINUTES = 60 	// keep the deadline to delete the homedir for guest as 1hr
 const JobFile = "jobfile"
 const REMOVE_JOB_KEY = "REMOVE-"
 
@@ -142,11 +146,12 @@ func JsonMarshal(v interface{}) []byte {
 	return data
 }
 
-func JsonUnMarshal(data []byte, v interface{}) {
+func JsonUnMarshal(data []byte, v interface{}) error {
 	err := json.Unmarshal(data, v)
 	if err != nil {
 		log.Println("ERROR: while unMarshalling : ", data, " Error: ", err)
 	}
+	return err
 }
 
 func Iscompiled(params map[string][]string) bool {
@@ -171,8 +176,20 @@ func GetIdeContent(params url.Values) string {
 	return params.Get(IdeContentKey)
 }
 
+func GetIdeFileName(params url.Values) string {
+	filename := params.Get(IdeFileNameKey)
+	if filename == "" || !IsFile(filename) {
+		return ""
+	}
+	return filename
+}
+
 func GetCompilerOption(params url.Values) string {
 	return params.Get(CompilerOptionKey)
+}
+
+func GetCompilerFlags(params url.Values) string {
+	return params.Get(CompilerFlagsKey)
 }
 
 func GetUnixMilli() int64 {
@@ -181,6 +198,21 @@ func GetUnixMilli() int64 {
 
 func IsUserAdmin(params url.Values) bool {
 	return params.Get(USER_PRIVILEGE_KEY)==ADMIN
+}
+func IsDir(path string) bool {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return fileInfo.IsDir()
+}
+
+func IsFile(path string) bool {
+    fileInfo, err := os.Stat(path)
+    if err != nil {
+        return false
+    }
+    return !fileInfo.IsDir()
 }
 
 // IsDirEmpty returns true if the directory is empty, false otherwise.
@@ -217,3 +249,73 @@ func IsDirEmpty(dirPath string) bool {
 func RemoveDir(dirPath string) {
 	os.RemoveAll(dirPath)
 }
+
+func CopyFile(srcPath string, dstPath string) error {
+    src, err := os.Open(srcPath)
+    if err != nil {
+        return err
+    }
+    defer src.Close()
+
+    dst, err := os.Create(dstPath)
+    if err != nil {
+        return err
+    }
+    defer dst.Close()
+
+    if _, err := io.Copy(dst, src); err != nil {
+        return err
+    }
+
+    if err := dst.Sync(); err != nil {
+        return err
+    }
+
+    return nil
+}
+
+func CopyDir(src string, dst string) error {
+    // create the destination directory if it doesn't exist
+    if err := os.MkdirAll(dst, os.ModePerm); err != nil {
+        return err
+    }
+
+    // walk the source directory and copy its files and directories
+    return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+        if err != nil {
+            return err
+        }
+
+        // calculate the destination path
+        relPath, err := filepath.Rel(src, path)
+        if err != nil {
+            return err
+        }
+        dstPath := filepath.Join(dst, relPath)
+
+        // copy the file or create the directory
+        if info.IsDir() {
+            return os.MkdirAll(dstPath, os.ModePerm)
+        } else {
+            return CopyFile(path, dstPath)
+        }
+    })
+}
+
+func SaveIdeContentToFile(params url.Values, filename string) error {
+	if filename == "" || !IsFile(filename) {
+		return errors.New(filename+" Not a Valid File")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(GetIdeContent(params))
+	if err != nil {
+		return err
+	}
+
+	// Write the decoded data to a file
+	err = ioutil.WriteFile(filename, decoded, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+

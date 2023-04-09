@@ -1,6 +1,6 @@
 import { Hterm } from "./hterm";
 import { Xterm } from "./xterm";
-import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, CompilerOptionKey } from "./webtty";
+import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, IdeFileNameKey, CompilerOptionKey, CompilerFlagsKey, setEventHandler } from "./webtty";
 import { ConnectionFactory } from "./websocket";
 import { InitializeApp, FireTTY, DisableShareBtn } from "./firetty";
 
@@ -67,6 +67,17 @@ function getSelectValue() {
     }
     return null;
 }
+
+// compiler/repl args
+function getCompilerArgs() {
+    // body...
+    const compiler_flags = (document.getElementById("compiler_flags") as HTMLInputElement).value;
+    if(compiler_flags!==null) {
+        return compiler_flags;
+    }
+    return "";
+}
+
 const optionMenu = document.getElementById("optionMenu");
 if(optionMenu!==null) {
     const SelectOption = (optionMenu.getElementsByClassName("list")[0] as HTMLSelectElement);
@@ -92,17 +103,27 @@ function fetchEditorContent() {
     return "";
 }
 
+function fetchEditorFileName() {
+    var editor: any = window["editor"];
+    if( editor.env && editor.env.filename ) {
+        return editor.env.filename;
+    }
+    return "";
+}
+
 function updatePayload(eventname="", debug=false) {
     var pload: Object = {
                                 "test":"test",
                         };
     if (eventname == "optionrun") {
         pload[IdeLangKey] = getSelectValue();
-        pload[IdeContentKey] = fetchEditorContent(); 
+        pload[IdeContentKey] = fetchEditorContent();
     }
     if (debug === true) {
         pload[CompilerOptionKey] = "debug";
     }
+    pload[IdeFileNameKey] = fetchEditorFileName();
+    pload[CompilerFlagsKey] = getCompilerArgs();
     return pload;
 }
 
@@ -277,5 +298,5 @@ if (elem !== null) {
 };
 
 // exported to be used outside bundle for other tasks
-export { ConnectionFactory };
+export { setEventHandler };
 

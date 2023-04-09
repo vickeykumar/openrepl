@@ -312,7 +312,7 @@
         <div class="fullscreen-toggle tooltip" id="play-button" onclick="CompileandRun();"><i class="fa fas fa-play"></i><span class="tooltiptext">Run Editor Code</span></div>
         <div class="fullscreen-toggle tooltip" id="debug-play-button" onclick="RunandDebug();"><i class="fa fas" style="font-size:12px;">debug</i><span class="tooltiptext">Debug Editor Code</span></div>
         <div class="fullscreen-toggle tooltip" id="download-button" onclick="DownloadEditor();"><i class="fa fa-download"></i><span class="tooltiptext">Download Editor Code</span></div>
-        <div class="fullscreen-toggle tooltip" id="upload-button" onclick="document.getElementById('fileToLoad').click();"><i class="fa fa-upload"><input type="file" id="fileToLoad" oninput="UploadEditor();" style="display: none;"></i><span class="tooltiptext">Upload to Editor</span></div>
+        <div class="fullscreen-toggle tooltip" id="upload-button" onclick="document.getElementById('fileToLoad').click();"><i class="fa fa-upload"><input type="file" id="fileToLoad" oninput="uploadFile();" style="display: none;"></i><span class="tooltiptext">Upload Files to OpenREPL Server</span></div>
       </div>
       <div class="ide" id="ide" >
         <h2>Welcome to <span class="go__color">Open</span>REPL</h2>
@@ -324,6 +324,7 @@
           <!--form >
             <input id="input" name="id" placeholder="Editor name">
           </form--> 
+          <input type="text" class="select-input ide-menu-item" style="width:auto;padding: inherit;" id="compiler_flags" value="" placeholder="Compiler/Repl Args">
           <input type="number" class="select-input ide-menu-item" style="width:3em" id="efontSize" min="5" max="30" value ="14">
           <select id="select-theme" class="select-input ide-menu-item">
             <optgroup label="Bright">

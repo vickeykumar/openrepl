@@ -6,12 +6,13 @@ GIT_COMMIT = $(shell git rev-parse HEAD | cut -c1-7)
 VERSION = 1.0.0-beta
 TARGET=gotty
 BUILD_OPTIONS = -ldflags "-X main.Version=$(VERSION) -X main.CommitID=$(GIT_COMMIT)"
+GO111MODULE=off
 
 ifneq ($(UNAME), Linux)
 	PRE_REQ = tools
 endif
 
-gotty:	${TARGET}/main.go utils/*.go server/*.go webtty/*.go backend/*.go backend/localcommand/*.go containers/*.go cachedb/*.go user/*.go cookie/*.go ${TARGET}/Makefile
+gotty:	asset ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.go backend/*.go backend/localcommand/*.go containers/*.go cachedb/*.go user/*.go cookie/*.go ${TARGET}/Makefile
 	@echo "building gotty: "${TARGET}
 	cd ${TARGET} && \
 	make
@@ -19,9 +20,9 @@ gotty:	${TARGET}/main.go utils/*.go server/*.go webtty/*.go backend/*.go backend
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: bindata/static/js/gotty-bundle.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css/xterm.css bindata/static/meta
+asset: bindata/static/js/gotty-bundle.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
-	$(GOROOT)/bin/gofmt -w server/asset.go
+	GO111MODULE=off $(GOROOT)/bin/gofmt -w server/asset.go
 
 .PHONY: all
 all: $(PRE_REQ) clean asset gotty
@@ -42,7 +43,7 @@ bindata/static/docs: bindata/static resources/docs
 	mkdir -p bindata/static/docs
 	cp -Rv resources/docs/* bindata/static/docs/
 
-bindata/static/meta: bindata/static resources/meta
+bindata/static/meta: bindata/static resources/meta/*
 	mkdir -p bindata/static/meta
 	cp -Rv resources/meta/* bindata/static/meta/
 
@@ -70,7 +71,7 @@ bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js js/
 	cp js/dist/gotty-bundle.js bindata/static/js/gotty-bundle.js
 	cp js/dist/preprocessing.js bindata/static/js/preprocessing.js
 
-bindata/static/css: bindata/static resources/css jsconsole/build/static/css/jsconsole.css
+bindata/static/css: bindata/static resources/css/* jsconsole/build/static/css/jsconsole.css
 	mkdir -p bindata/static/css
 	cp -Rv resources/css/* bindata/static/css/
 	cp jsconsole/build/static/css/jsconsole.css bindata/static/css/jsconsole.css
@@ -110,10 +111,10 @@ deb: all
 	cd ${DEBIAN_ROOT} && dpkg-deb --build gotty/
 
 tools:
-	$(GOROOT)/bin/go get github.com/tools/godep
-	$(GOROOT)/bin/go get github.com/mitchellh/gox
-	$(GOROOT)/bin/go get github.com/tcnksm/ghr
-	$(GOROOT)/bin/go get github.com/jteeuwen/go-bindata/...
+	GO111MODULE=off $(GOROOT)/bin/go get github.com/tools/godep
+	GO111MODULE=off $(GOROOT)/bin/go get github.com/mitchellh/gox
+	GO111MODULE=off $(GOROOT)/bin/go get github.com/tcnksm/ghr
+	GO111MODULE=off $(GOROOT)/bin/go get github.com/jteeuwen/go-bindata/...
 
 gobuild:
 	@echo "building " ${GOROOT}

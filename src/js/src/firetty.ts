@@ -1,5 +1,5 @@
 import * as firebase from 'firebase';
-import { Terminal } from "./webtty";
+import { Terminal, eventHandler } from "./webtty";
 
 
 var dbpath = "";
@@ -32,7 +32,9 @@ export const firebaseconfig = {
 };
 
 export const InitializeApp = () => {
-	firebase.initializeApp(firebaseconfig);
+    if (firebase.apps.length === 0) {
+	   firebase.initializeApp(firebaseconfig);
+    }
 };
 
 export const DisableShareBtn = (name: string) => {
@@ -137,6 +139,10 @@ export class FireTTY {
                             }
                         }
                         break;
+                    case "filebrowser-event":
+                        console.log("filebrowser-event type: ", d.Data);
+                        eventHandler(d.Data);
+                        break;
                     default:
                         console.log("unhandled type: ", d.eventT, d.Data);
                         break;
@@ -193,7 +199,7 @@ export class FireTTY {
         }
     };
 
-    dboutput(type: string, data: string) {
+    dboutput(type: string, data: any) {
     	if (this.active) {		// only master can generate output event
     		//console.log("db output event: ", type, data);
 	    	this.firebasedbref.push ({

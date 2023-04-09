@@ -31,6 +31,7 @@ func NewJobScheduler() *JobScheduler {
 func (js *JobScheduler) AddJob(name string, durationafter time.Duration, jobFunc func()) {
 
     timer := time.AfterFunc(durationafter, func() {
+        log.Println("running job on timer expiry: ", name)
         jobFunc()
         js.mutex.Lock()
         defer js.mutex.Unlock()
@@ -56,6 +57,12 @@ func (js *JobScheduler) RemoveJob(name string) {
         job.timer.Stop()
         delete(js.Jobs, name)
     }
+}
+
+func (js *JobScheduler) ResetJob(name string, durationafter time.Duration, jobFunc func()) {
+    js.RemoveJob(name)  // remove old job
+    js.AddJob(name, durationafter, jobFunc)
+    log.Println("job successfully Reset for : ", name, " After (duration ns): ", durationafter)
 }
 
 // Load jobs from a file, and run the common jobfunction on all the jobs

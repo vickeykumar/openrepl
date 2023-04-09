@@ -91,7 +91,7 @@ nav {
 
 .ide-menu-item {
   padding: inherit;
-  margin-bottom: inherit;
+  margin-bottom: inherit !important;
   font-size: inherit;
 }
 
@@ -729,7 +729,7 @@ h2 {
   height: auto;
   color: #154349;
   border-radius: 5px;
-  border: 2px solid #64CEAA;
+  border: 2px solid #64CEAA !important;
 }
 
 #input{
