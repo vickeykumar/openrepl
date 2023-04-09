@@ -13,6 +13,7 @@ import (
 	"log"
 	"utils"
 	"user"
+	"net/url"
 )
 
 const (
@@ -32,7 +33,7 @@ type LocalCommand struct {
 	ptyClosed chan struct{}
 }
 
-func New(command string, argv []string, ppid int, params map[string][]string, options ...Option) (*LocalCommand, error) {
+func New(command string, argv []string, ppid int, params url.Values, options ...Option) (*LocalCommand, error) {
 	if ppid != -1 && !containers.IsProcess(ppid) {
 		return nil, errors.Errorf("failed to start command `%s` due to invalid parent id: %d", command, ppid)
 	}
@@ -71,7 +72,7 @@ func New(command string, argv []string, ppid int, params map[string][]string, op
 	cmd.Env = append(cmd.Env, "GCC_EXEC_PREFIX=/usr/lib/gcc/")
 	cmd.Env = append(cmd.Env, utils.IdeLangKey+"="+utils.GetCompilerLang(params))
 	cmd.Env = append(cmd.Env, utils.CompilerOptionKey+"="+utils.GetCompilerOption(params))
-	pty, err := pty.Start(command, cmd, ppid)
+	pty, err := pty.Start(command, cmd, ppid, params)
 	if err != nil {
 		// todo close cmd?
 		return nil, errors.Wrapf(err, "failed to start command `%s`", command)

@@ -21,6 +21,27 @@ import (
 	"cookie"
 )
 
+
+func updateparams(params *url.Values, payload map[string]string) {
+	for key, value := range payload {
+		params.Set(key,value)
+	}
+}
+
+func fetchRequestedPayload(w http.ResponseWriter, r *http.Request) (req_payload map[string]string) {
+	req_payload = make(map[string]string)
+	uid := cookie.Get_Uid(r)
+	homedir := cookie.GetOrUpdateHomeDir(w, r, uid)
+	req_payload[utils.UidKey] = uid
+	req_payload[utils.HOME_DIR_KEY] = homedir
+	if IsUserAdmin(w, r) {
+		req_payload[utils.USER_PRIVILEGE_KEY] = utils.ADMIN
+	} else {
+		req_payload[utils.USER_PRIVILEGE_KEY] = utils.GUEST
+	}
+	return
+}
+
 func (server *Server) generateHandleWS(ctx context.Context, cancel context.CancelFunc, counter *counter, commands ...string) http.HandlerFunc {
 	once := new(int64)
 
@@ -70,19 +91,15 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			return
 		}
 
-		uid := cookie.Get_Uid(r)
+		req_payload := fetchRequestedPayload(w, r)
 		// any cookie needs to be saved before upgrading to websocket
-		homedir := cookie.GetOrUpdateHomeDir(w, r, uid)
-
 		conn, err := server.upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			closeReason = err.Error()
 			log.Println("Can not upgrade connection: " + closeReason)
 			return
 		}
-		req_payload := make(map[string]string)
-		req_payload[utils.UidKey] = uid
-		req_payload[utils.HOME_DIR_KEY] = homedir
+		
 		defer func() {
 			log.Println("close status: ", closeCode)
 			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode , closeReason), time.Now().Add(time.Second))
@@ -101,7 +118,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		}
 		
 		log.Printf("New client (uid: %s) connected: %s, connections: %d/%d, TotalUsage(MB): %d",
-			uid, r.RemoteAddr, num, server.options.MaxConnection, totalWieght,
+			req_payload[utils.UidKey], r.RemoteAddr, num, server.options.MaxConnection, totalWieght,
 		)
 
 		log.Println("Connection upgraded successfully: ")
@@ -121,11 +138,6 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 	}
 }
 
-func updateparams(params *url.Values, payload map[string]string) {
-	for key, value := range payload {
-		params.Set(key,value)
-	}
-}
 
 // process websocket connection for uid (user)
 // req_payload is initial payload carried by request

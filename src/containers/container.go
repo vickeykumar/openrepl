@@ -7,6 +7,7 @@ import (
 	"sync"
 	"syscall"
 	"utils"
+	"net/url"
 )
 
 
@@ -43,7 +44,7 @@ func GetCommandWieght(command string) int64 {
 	return 0
 }
 
-func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr) {
+func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr, params url.Values) {
 	if containerAttribs == nil {
 		containerAttribs = &syscall.SysProcAttr{}
 	}
@@ -52,7 +53,7 @@ func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr) 
 		log.Println("ERROR: couldn't find container for : " + name)
 		return
 	}
-	containerobj.AddContainerAttributes(containerAttribs)
+	containerobj.AddContainerAttributes(containerAttribs, params)
 	log.Println("INFO: Added container Attributes: ", *containerAttribs)
 }
 

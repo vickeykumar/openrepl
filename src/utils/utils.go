@@ -27,9 +27,13 @@ const CompilerOptionKey = "CompilerOption"
 const UidKey = "uid"
 const HOME_DIR_KEY = "HOME_DIR"
 const RequestContextKey = "RequestContextKey"
-const DEADLINE_MINUTES = 15
+const DEADLINE_MINUTES = 60 	// keep the deadline to delete the homedir for guest as 1hr	
 const JobFile = "jobfile"
 const REMOVE_JOB_KEY = "REMOVE-"
+
+const USER_PRIVILEGE_KEY = "usermode"
+const ADMIN = "admin"
+const GUEST = "guest"
 
 var GitConfig map[string]string
 
@@ -175,6 +179,9 @@ func GetUnixMilli() int64 {
  	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
+func IsUserAdmin(params url.Values) bool {
+	return params.Get(USER_PRIVILEGE_KEY)==ADMIN
+}
 
 // IsDirEmpty returns true if the directory is empty, false otherwise.
 func IsDirEmpty(dirPath string) bool {
