@@ -24,8 +24,7 @@ func GenerateLargePrime() *big.Int {
     return prime
 }
 
-var RawStdEncoding = base64.StdEncoding.WithPadding(base64.NoPadding)
-
+var RawURLEncoding = base64.URLEncoding.WithPadding(base64.NoPadding)
 var largesecret *big.Int = GenerateLargePrime()
 
 
@@ -34,11 +33,11 @@ func EncodePID(pid interface{}) string {
         message := big.NewInt(int64(ppid))
         message = message.Mul(message, largesecret)
         // send the encoded Bytes
-        return RawStdEncoding.EncodeToString(message.Bytes())
+        return RawURLEncoding.EncodeToString(message.Bytes())
 }
 
 func DecodeToPID(jid string) int {
-        pidbytes,err := RawStdEncoding.DecodeString(jid)
+        pidbytes,err := RawURLEncoding.DecodeString(jid)
         if err == nil {
                 decoded := new(big.Int).SetBytes(pidbytes)
                 decoded.Div(decoded, largesecret)

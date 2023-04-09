@@ -8,6 +8,7 @@ import (
 	"utils"
 	"user"
 	"errors"
+	"encoder"
 )
 
 const MAX_CONN_PER_BROWSER = 1
@@ -82,7 +83,9 @@ func init() {
     secret , err := session_db_handle.Fetch([]byte(user.SESSION_KEY))
     log.Println("secret: ", secret, err)
     if err != nil {
-    	panic(errors.New("No secret found for session_cookie."))
+	// failed to fetch secret, generate a temporary secret for this instance
+    	secret := encoder.GenerateLargePrime().Bytes()
+    	log.Println("Failed to fetch secret for session_cookie, generated temporary secret: ", secret, err)
     }
     // init one time session store using SESSION_KEY
     Init_SessionStore(string(secret))

@@ -6,6 +6,7 @@ import (
 	"log"
 	"syscall"
 	"utils"
+	"net/url"
 )
 
 const BASH_PATH = "/bin/bash"
@@ -15,7 +16,7 @@ type container struct {
 	Name string
 }
 
-func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr) {
+func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr, params url.Values) {
 	log.Println("INFO: call to AddContainerAttributes")
 	return
 }
