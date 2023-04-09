@@ -15,6 +15,7 @@ import (
 	"html/template"
 	"bytes"
 	"user"
+	"cookie"
 )
 
 const FEEDBACK_DB = utils.GOTTY_PATH + "/feedback.db"
@@ -220,7 +221,7 @@ func handleLoginSession(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		err = Set_SessionCookie(rw, req, session)
+		err = cookie.Set_SessionCookie(rw, req, session)
 		if err != nil {
 			log.Println("Error: Set_SessionCookie Failed: ", err.Error())
 			http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
@@ -236,7 +237,7 @@ func handleLoginSession(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		var session user.UserSession
-		session = Get_SessionCookie(rw, req)
+		session = cookie.Get_SessionCookie(req)
 		// verify the session in local db
 		if (user.IsSessionExpired(session.Uid, session.SessionID)==true) {
 			session.LogOut()
@@ -261,9 +262,9 @@ func handleLogoutSession(rw http.ResponseWriter, req *http.Request) {
 		    }
 	    	log.Println("body: ", string(body))
 		var session user.UserSession
-		session = Get_SessionCookie(rw, req )
+		session = cookie.Get_SessionCookie(req)
 		log.Println("deleting user: "+session.Uid+ " with sessionID: "+session.SessionID+" from SESSION_COOKIE STORE")
-		err = Delete_SessionCookie(rw, req, session)
+		err = cookie.Delete_SessionCookie(rw, req, session)
 		if err != nil {
 			log.Println("ERROR: deleting user: "+session.Uid+" from SESSION_COOKIE STORE: "+err.Error())
 		}
@@ -314,7 +315,7 @@ func handleUserProfile(rw http.ResponseWriter, req *http.Request) {
 
 		var up user.UserProfile
 		var session user.UserSession
-		session = Get_SessionCookie(rw, req)
+		session = cookie.Get_SessionCookie(req)
 		// verify the session in local db
 		if (user.IsSessionExpired(session.Uid, session.SessionID)==true) {
 			session.LogOut()

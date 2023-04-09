@@ -6,9 +6,10 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
+	"utils"
+	"net/url"
 )
 
-const HOME_DIR = "/tmp/home/"
 
 var Containers = make(map[string]*container)
 
@@ -43,7 +44,7 @@ func GetCommandWieght(command string) int64 {
 	return 0
 }
 
-func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr) {
+func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr, params url.Values) {
 	if containerAttribs == nil {
 		containerAttribs = &syscall.SysProcAttr{}
 	}
@@ -52,7 +53,7 @@ func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr) 
 		log.Println("ERROR: couldn't find container for : " + name)
 		return
 	}
-	containerobj.AddContainerAttributes(containerAttribs)
+	containerobj.AddContainerAttributes(containerAttribs, params)
 	log.Println("INFO: Added container Attributes: ", *containerAttribs)
 }
 
@@ -78,17 +79,17 @@ func InitContainers() {
 			continue
 		}
 		Containers[command] = containerObj
-		os.MkdirAll(HOME_DIR, 0777)
-		os.Chmod(HOME_DIR, 0777)
-		os.MkdirAll(HOME_DIR + command, 0777)
-		os.Chmod(HOME_DIR + command, 0777)
+		os.MkdirAll(utils.HOME_DIR, 0777)
+		os.Chmod(utils.HOME_DIR, 0777)
+		os.MkdirAll(utils.HOME_DIR + command, 0777)
+		os.Chmod(utils.HOME_DIR + command, 0777)
 	}
 }
 
 func DeleteContainers() {
 	for command, containerObj := range Containers {
 		containerObj.Delete()
-		os.RemoveAll(HOME_DIR + command)
+		os.RemoveAll(utils.HOME_DIR + command)
 		log.Println("Container Deleted for : ", command)
 	}
 }

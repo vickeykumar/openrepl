@@ -15,7 +15,29 @@ import (
 	"sync"
 	"syscall"
 	"utils"
+	"net/url"
 )
+
+// flags for nsenter
+const (
+	CLONE_NEWUTS = "-u"
+	CLONE_NEWPID = "-p"
+	CLONE_NEWNET = "-n"
+	CLONE_NEWUSER = "-U"
+)
+
+var ns_flags = []string {
+	CLONE_NEWUTS,
+	CLONE_NEWPID,
+	CLONE_NEWNET,
+	CLONE_NEWUSER,
+}
+
+// syscall attributes where an admin get privilege over other 
+// admin gets network access
+var admin_privileges = []uintptr {
+	syscall.CLONE_NEWNET,
+}
 
 const BASH_PATH = "/bin/bash"
 var CPUshares = uint64(1024)
@@ -33,10 +55,16 @@ type container struct {
 	mu         sync.Mutex
 }
 
-func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr) {
+func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr, params url.Values) {
 	containerAttribs.Cloneflags = c.SysProcAttr.Cloneflags
 	containerAttribs.UidMappings = c.SysProcAttr.UidMappings
 	containerAttribs.GidMappings = c.SysProcAttr.GidMappings
+	if utils.IsUserAdmin(params) {
+		// give special rights to admin
+		for _, flags := range admin_privileges {
+			containerAttribs.Cloneflags &^= flags  
+		}
+	}
 }
 
 func (c *container) AddProcess(pid int) {
@@ -201,7 +229,9 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 	} else {
 		// this process will run in namespace of ppid (forked namespace)
 		// syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWUSER
-		nsenterArgs := []string{"/usr/bin/nsenter", "-u", "-p", "-n", "-U", "-t"+strconv.Itoa(ppid)} 
+		nsenterArgs := []string{"/usr/bin/nsenter", "-t"+strconv.Itoa(ppid)}
+		// add namespace flags to nsenter
+		nsenterArgs = append(nsenterArgs, ns_flags...)
 		commandArgs = append(commandArgs, nsenterArgs...)
 		commandArgs = append(commandArgs, commandlist...)
 	}

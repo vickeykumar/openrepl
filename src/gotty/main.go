@@ -17,17 +17,31 @@ import (
 	"user"
 )
 
+func common_setup() {
+	// load pending jobs from previous births
+	utils.GottyJobs.LoadJobsFromFile(utils.GOTTY_PATH+"/"+utils.JobFile, nil)
+	server.InitFeedbackDBHandle()
+	user.InitSessionDBHandle()
+	containers.InitContainers()
+}
+
+var cleanup_done bool = false
+func common_cleanup() {
+	if cleanup_done {
+		// cleanup already done
+		return
+	}
+
+	utils.GottyJobs.SaveJobsToFile(utils.GOTTY_PATH+"/"+utils.JobFile)
+	server.CloseFeedbackDBHandle()
+	user.CloseSessionDBHandle()
+	containers.DeleteContainers()
+	cleanup_done = true
+}
 
 func main() {
-
-	server.InitFeedbackDBHandle()
-	defer server.CloseFeedbackDBHandle()
-
-	user.InitSessionDBHandle()
-	defer user.CloseSessionDBHandle()
-
-	containers.InitContainers()
-	defer containers.DeleteContainers()
+	common_setup()
+	defer common_cleanup()
 
 	app := cli.NewApp()
 	app.Name = "gotty"
@@ -116,7 +130,7 @@ func main() {
 			errs <- srv.Run(ctx, server.WithGracefullContext(gCtx))
 		}()
 		err = waitSignals(errs, cancel, gCancel)
-
+		
 		if err != nil && err != context.Canceled {
 			fmt.Printf("Error: %s\n", err)
 			exit(err, 8)
@@ -130,6 +144,8 @@ func exit(err error, code int) {
 	if err != nil {
 		fmt.Println(err)
 	}
+	// anyway this will cause shutdown
+	common_cleanup()
 	os.Exit(code)
 }
 

@@ -1,13 +1,17 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/xml"
+	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
 	"utils"
 	"html/template"
 	"bytes"
+	"cookie"
 	"user"
+	"webtty"
 )
 
 const PREFIX = "static"
@@ -30,6 +34,14 @@ func InitCommands2DemoMap() {
 	log.Println("meta output: ", demos)
 	for _, demo := range demos.Demos {
 		utils.Commands2DemoMap[demo.Name] = demo
+	}
+}
+
+func WriteMessageToTerminal(conn *websocket.Conn, message string) {
+	safeMessage := base64.StdEncoding.EncodeToString([]byte(message))
+	err := conn.WriteMessage(websocket.TextMessage, []byte(append([]byte{webtty.Output}, []byte(safeMessage)...)))
+	if err != nil {
+		log.Println("err while writing: ", err)
 	}
 }
 
@@ -82,7 +94,9 @@ var FeedbackTemplate =`
         <tr>
 	    <td>{{$key}}</td>
             <td>{{$value.Name}}</td>
-            <td>{{$value.Email}}</td>
+            <td>
+            <a href="https://mail.google.com/mail/?view=cm&fs=1&tf=1&to={{$value.Email}}&su=Greetings%20from%20OpenREPL" target="_blank" > {{$value.Email}} </a>
+            </td>
             <td>{{$value.Message}}</td>
             <td></td>
 	    <td></td>
@@ -227,7 +241,7 @@ func commonHandler(w http.ResponseWriter, r *http.Request,
 func IsUserAdmin(rw http.ResponseWriter, req *http.Request) (isadmin bool) {
 		isadmin = false // testing
 		var session user.UserSession
-		session = Get_SessionCookie(rw, req)
+		session = cookie.Get_SessionCookie(req)
 		up, err := user.FetchUserProfileData(session.Uid)
 		/* *
 		 * if email is not configured in gitconfig, means no verification as of now

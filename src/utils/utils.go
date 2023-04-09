@@ -9,11 +9,13 @@ import (
 	"time"
 	"bufio"
 	"path/filepath"
+	"io"
 	"io/ioutil"
 	"bytes"
 	"strings"
 )
 
+const HOME_DIR = "/tmp/home/"
 const GOTTY_PATH = "/opt/gotty"
 const SYSTEM_CONFIG_PATH = "/etc"
 const GLOBAL_PATH = "~/"
@@ -23,6 +25,15 @@ const IdeLangKey = "IdeLang"
 const IdeContentKey = "IdeContent"
 const CompilerOptionKey = "CompilerOption"
 const UidKey = "uid"
+const HOME_DIR_KEY = "HOME_DIR"
+const RequestContextKey = "RequestContextKey"
+const DEADLINE_MINUTES = 60 	// keep the deadline to delete the homedir for guest as 1hr	
+const JobFile = "jobfile"
+const REMOVE_JOB_KEY = "REMOVE-"
+
+const USER_PRIVILEGE_KEY = "usermode"
+const ADMIN = "admin"
+const GUEST = "guest"
 
 var GitConfig map[string]string
 
@@ -118,6 +129,9 @@ func init() {
 	// populate gitconfig
 	GitConfig = GetGitConfig()
 	log.Println("config read: ", GitConfig)
+
+	// init the global scheduler
+	InitGottyJobs()
 }
 
 func JsonMarshal(v interface{}) []byte {
@@ -149,6 +163,10 @@ func GetUid(params url.Values) string {
 	return params.Get(UidKey)
 }
 
+func GetHomeDir(params url.Values) string {
+	return params.Get(HOME_DIR_KEY)
+}
+
 func GetIdeContent(params url.Values) string {
 	return params.Get(IdeContentKey)
 }
@@ -159,4 +177,49 @@ func GetCompilerOption(params url.Values) string {
 
 func GetUnixMilli() int64 {
  	return time.Now().UnixNano() / int64(time.Millisecond)
+}
+
+func IsUserAdmin(params url.Values) bool {
+	return params.Get(USER_PRIVILEGE_KEY)==ADMIN
+}
+
+// IsDirEmpty returns true if the directory is empty, false otherwise.
+func IsDirEmpty(dirPath string) bool {
+	f, err := os.Open(dirPath)
+	if err != nil {
+		log.Println("Error checking directory IsDirEmpty: ", err)
+		return false
+	}
+	defer f.Close()
+
+	_, err = f.Readdir(1)
+	if err == nil {
+		// There is at least one file or directory in the directory
+		return false
+	}
+
+	if err == os.ErrNotExist {
+		// The directory does not exist, so it's considered empty
+		return true
+	}
+
+	if err == io.EOF {
+		// The directory is empty
+		return true
+	}
+
+	log.Println("Error checking directory IsDirEmpty: ", err)
+	// Some other error occurred
+	return false
+}
+
+
+func RemoveDir(dirPath string) {
+	os.RemoveAll(dirPath)	// only parent process can delete home dir
+	// remove parent container as well if it becomes empty
+	parentDir := filepath.Dir(dirPath)
+	if parentDir != HOME_DIR && IsDirEmpty(parentDir) { // should not be root/home directory
+		os.RemoveAll(parentDir)
+	}
+	log.Println("Directory removed: ",dirPath)
 }

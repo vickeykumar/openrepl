@@ -12,6 +12,8 @@ import (
 	"github.com/pkg/errors"
 	"log"
 	"utils"
+	"user"
+	"net/url"
 )
 
 const (
@@ -31,19 +33,33 @@ type LocalCommand struct {
 	ptyClosed chan struct{}
 }
 
-func New(command string, argv []string, ppid int, params map[string][]string, options ...Option) (*LocalCommand, error) {
+func New(command string, argv []string, ppid int, params url.Values, options ...Option) (*LocalCommand, error) {
 	if ppid != -1 && !containers.IsProcess(ppid) {
 		return nil, errors.Errorf("failed to start command `%s` due to invalid parent id: %d", command, ppid)
 	}
 	uid := utils.GetUid(params)
+	homedir := utils.GetHomeDir(params)
 	commandArgs := containers.GetCommandArgs(command, argv, ppid, params)
 	cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
 	if ppid != -1 {
 		// using working directory of parent process only 
 		cmd.Dir = containers.GetWorkingDir(ppid)
 	} else {
-		cmd.Dir = GetWorkingDir(command, uid)
+		// get working for a user uid
+		if homedir == "" {
+			cmd.Dir = user.GetHomeDir(uid)+"/"+command
+		} else {
+			cmd.Dir = homedir+"/"+command
+		}
 		os.MkdirAll(cmd.Dir, 0755)
+		if uid == "" {
+				// reset the job to delete the guests working dir after a certain deadline 
+				jobname := utils.REMOVE_JOB_KEY+cmd.Dir
+				utils.GottyJobs.RemoveJob(jobname)
+				utils.GottyJobs.AddJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+					utils.RemoveDir(cmd.Dir)
+				})
+		}
 	}
 	if command == "bash" {
 		ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0644)
@@ -56,7 +72,7 @@ func New(command string, argv []string, ppid int, params map[string][]string, op
 	cmd.Env = append(cmd.Env, "GCC_EXEC_PREFIX=/usr/lib/gcc/")
 	cmd.Env = append(cmd.Env, utils.IdeLangKey+"="+utils.GetCompilerLang(params))
 	cmd.Env = append(cmd.Env, utils.CompilerOptionKey+"="+utils.GetCompilerOption(params))
-	pty, err := pty.Start(command, cmd, ppid)
+	pty, err := pty.Start(command, cmd, ppid, params)
 	if err != nil {
 		// todo close cmd?
 		return nil, errors.Wrapf(err, "failed to start command `%s`", command)
@@ -89,9 +105,17 @@ func New(command string, argv []string, ppid int, params map[string][]string, op
 			lcmd.pty.Close()
 			close(lcmd.ptyClosed)
 			containers.DeleteProcessFromSubCgroup(command, pid) // deleting the subcgroup container of that process
+
 			// don't delete working directory if user is logged in
+			// only Guest users homedir to be deleted
 			if ppid == -1 && uid == "" {
-				os.RemoveAll(lcmd.cmd.Dir)	// only parent process can delete home dir
+				// reset the job to delete the working dir after a certain deadline 
+				// if guest is not conecting again
+				jobname := utils.REMOVE_JOB_KEY+lcmd.cmd.Dir
+				utils.GottyJobs.RemoveJob(jobname)
+				utils.GottyJobs.AddJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+					utils.RemoveDir(lcmd.cmd.Dir)
+				})
 			}
 		}()
 
