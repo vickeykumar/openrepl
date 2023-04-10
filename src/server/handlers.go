@@ -392,8 +392,7 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 	fb, err := filebrowser.New(path, nil, false, true)	// without watcher on path directories, deferwatch=true
 	if err != nil {
 		log.Println("failed to create filebrowser: ", err)
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
+		// still proceed as user can take necessary actions like free up the space
 	}
 
 	if req.Method == "GET" {

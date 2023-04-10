@@ -1686,11 +1686,11 @@ $(function() {
                 },
                 "delete": {
                       "label": "Delete",
-                      "_disabled": $globalitemnode.state.disabled ? true : false,
+			// disable delete, why if user needs to cleanup
                       "action": function (data) {
                         var ref = $.jstree.reference(data.reference);
                         var sel = ref.get_selected();
-                        if(!sel.length) { return false; }
+                        if(!sel.length) { sel.push($globalitemnode.id); }	//assign for which this operation is triggered
                         var nodename = sel[0];
                         var nodetype = ref.get_type(sel);
                         if (ref.delete_node(sel)) {
@@ -1754,11 +1754,11 @@ $(function() {
                 },
                 "download": {
                   "label": "Download",
-                  "_disabled": $globalitemnode.state.disabled ? true : false,
+                  "_disabled": ($globalitemnode.state.disabled && $globalitemnode.text.startsWith('.')) ? true : false,
                   "action": function (data) {
                     var ref = $.jstree.reference(data.reference);
                     var sel = ref.get_selected();
-                    if(!sel.length) { return false; }
+	            if(!sel.length) { sel.push($globalitemnode.id); }
                     var nodename = sel[0];
                     var nodetype = ref.get_type(sel);
                     var link = document.createElement("a");
