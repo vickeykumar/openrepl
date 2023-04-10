@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"os/exec"
 	"time"
 	"bufio"
 	"path/filepath"
@@ -245,9 +246,34 @@ func IsDirEmpty(dirPath string) bool {
 	return false
 }
 
-
+// attempts to remove the directories recursively
 func RemoveDir(dirPath string) {
-	os.RemoveAll(dirPath)
+	absDir, err := filepath.Abs(dirPath)
+    	if err != nil {
+        	log.Printf("Error getting absolute path: %s\n", err)
+        	return
+    	}
+	// Check that the absolute path is under the root directory to prevent accidental deletion of system files
+    	root := string(HOME_DIR)
+    	if !filepath.HasPrefix(absDir, root) {
+        	log.Println("Error: directory path is not under root directory", HOME_DIR)
+        	return
+    	}
+	// attempts to delete
+	err = os.RemoveAll(absDir)
+	if err != nil {
+		log.Printf("Error removing directory, trying rm -rf : %s\n", err)
+		    // Execute the rm -rf command
+    		cmd := exec.Command("rm", "-rf", absDir)
+    		err = cmd.Run()
+    		if err != nil {
+        		log.Printf("Error removing directory: %s\n", err)
+    		} else {
+       	 		log.Printf("Directory %s successfully removed\n", absDir)
+    		}
+	} else {
+		log.Printf("Directory %s successfully removed\n", absDir)
+	}
 }
 
 func CopyFile(srcPath string, dstPath string) error {

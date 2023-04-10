@@ -127,6 +127,7 @@ var GottyJobs *JobScheduler
 func InitGottyJobs() {
     GottyJobs = NewJobScheduler()
     err := GottyJobs.LoadJobsFromFile(GOTTY_PATH+"/"+JobFile, func(jobname string ) {
+	log.Println("running job on timer expiry: ", jobname)
         // removal of pending guest directories
         if strings.HasPrefix(jobname, REMOVE_JOB_KEY) {
             parts := strings.SplitAfter(jobname, REMOVE_JOB_KEY)
