@@ -971,7 +971,7 @@ top:0;
 bottom:0;
 height:100%;
 left:0;
-width:2%;
+width:4%;
 font-size: 14px;
 font-weight: 400;
 -webkit-transition:width .05s linear;
@@ -1011,14 +1011,22 @@ overflow: hidden;
   background-color: var(--accent-color-light);
 }
 
-.main-menu-bar>i.fa-files-o:hover {
-  font-size: 20px;
-}
-.main-menu-bar>i.fa-close:hover {
+.main-menu-bar>i.fa-files-o {
   font-size: 17px;
 }
+
+.main-menu-bar>i.fa-close {
+  font-size: 17px;
+}
+
+.main-menu-bar>i.fa-files-o:hover {
+  font-size: 21px;
+}
+.main-menu-bar>i.fa-close:hover {
+  font-size: 21px;
+}
 .main-menu-bar>i.fa-close:active {
-  font-size: 20px;
+  font-size: 24px;
 }
 
 .jstree-anchor:hover {
