@@ -211,6 +211,31 @@ function updateEditorContent(cmd="", content="/* Welcome to openrepl! */", force
     }
 }
 
+function SaveSelectedNodeToFile(oldSelectedNodeId, errcallback=null) {
+    // save the old file if its a file
+    let type =  $('#file-browser').jstree(true).get_node(oldSelectedNodeId).type;
+    if (type === "file") {
+      var base64EncodedString=btoa(GetEditorContent());
+      $.ajax({
+        url: preprocessurl("/ws_filebrowser?q=save&filepath="+oldSelectedNodeId),
+        method: "POST",
+        processData: false,
+        data: base64EncodedString,
+        contentType: "application/octet-stream"
+      }).done(function(data) {
+        // Handle successful response
+        console.log("File Saved successfully: "+oldSelectedNodeId);
+      }).fail(function(xhr, status, error) {
+        // Handle error
+        console.log("Failed to save file: "+oldSelectedNodeId, status, error);
+        alert("Failed to save file: "+oldSelectedNodeId +" : " + error + " : "+xhr.responseText);
+        if (typeof(errcallback)==="function") {
+          errcallback();
+        }
+      });
+    }
+}
+
 function ToggleEditor() {
     TermElement = get("#terminal");
     ideElement =  get("#ide");
@@ -383,9 +408,16 @@ function GetEditorContent() {
 }
 
 function DownloadEditor() {
+  var editor = window["editor"];
+  var filename = "";
+  if (editor.env) {
+    filename = editor.env.filename;
+  }
   var editorContent = GetEditorContent();
   if( editorContent !== null) {
-    var filename = prompt("Please enter the filename to save");
+    if (!(filename)) {
+      filename = prompt("Please enter the filename to save");
+    }
     if(filename) {
       var blob = new Blob([editorContent], {type: "text/any;charset=utf-8"});
       saveAs(blob, filename);
@@ -1100,6 +1132,24 @@ $(function() {
 	  reader.readAsText(file);
 	});
 
+        // key binding for file save
+        editor.commands.addCommand({
+            name: 'Save',
+            bindKey: {win: 'Ctrl-S',  mac: 'Command-S'},
+            exec: function(editor) {
+              if ((editor.env.filename) && $('#file-browser').jstree(true).is_selected(editor.env.filename)) {
+                SaveSelectedNodeToFile(editor.env.filename, function(){
+                  // in case of failure refresh the tree to fetch from server
+                  $('#file-browser').jstree(true).refresh();
+                });
+                console.log("file save triggered: ", editor.env.filename);
+              } else {
+                alert("No File Selected To Save.");
+              }
+            },
+            readOnly: false, // false if this command should not apply in readOnly mode
+        });
+
         // Get the queue reference
         var queueRef = currentEditorValue.child("queue");
         
@@ -1380,31 +1430,6 @@ $(function() {
             }
           });
         }
-  }
-
-  function SaveSelectedNodeToFile(oldSelectedNodeId, errcallback=null) {
-    // save the old file if its a file
-    let type =  $('#file-browser').jstree(true).get_node(oldSelectedNodeId).type;
-    if (type === "file") {
-      var base64EncodedString=btoa(GetEditorContent());
-      $.ajax({
-        url: preprocessurl("/ws_filebrowser?q=save&filepath="+oldSelectedNodeId),
-        method: "POST",
-        processData: false,
-        data: base64EncodedString,
-        contentType: "application/octet-stream"
-      }).done(function(data) {
-        // Handle successful response
-        console.log("File Saved successfully: "+oldSelectedNodeId);
-      }).fail(function(xhr, status, error) {
-        // Handle error
-        console.log("Failed to save file: "+oldSelectedNodeId, status, error);
-        alert("Failed to save file: "+oldSelectedNodeId +" : " + error + " : "+xhr.responseText);
-        if (typeof(errcallback)==="function") {
-          errcallback();
-        }
-      });
-    }
   }
 
 
@@ -1721,7 +1746,10 @@ $(function() {
                     var sel = ref.get_selected();
                     if(!sel.length) { return false; }
                     var nodename = sel[0];
-                    SaveSelectedNodeToFile(nodename);
+                    SaveSelectedNodeToFile(nodename, function(){
+                      // in case of failure refresh the tree to fetch server side tree
+                      $('#file-browser').jstree(true).refresh();
+                    });
                   }
                 },
                 "download": {
