@@ -1923,6 +1923,7 @@ $(function() {
        console.log('menu blurred');
       $(this).removeClass('expanded');
     });
+    setTimeout(gotty.launcher, 1000);
   });
 
 })();

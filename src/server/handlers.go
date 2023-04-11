@@ -290,6 +290,18 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		server.errorHandler(w, r, http.StatusNotFound)
 		return
 	}
+	uid := cookie.Get_Uid(r)
+	// we need this here as first API to be hit to generate homedir and save it to cookie
+	homedir := cookie.GetOrUpdateHomeDir(w, r, uid)
+	defer func () {
+                if uid == "" {
+                                // reset the job to delete the guests working dir after a certain deadline 
+                                jobname := utils.REMOVE_JOB_KEY+homedir
+                                utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+                                        utils.RemoveDir(homedir)
+                                })
+                }
+        }()
 
 	titleVars := server.titleVariables(
 		[]string{"server", "master"},

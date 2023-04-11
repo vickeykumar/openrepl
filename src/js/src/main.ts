@@ -135,7 +135,8 @@ if (!hash) {
 }
 InitializeApp();
 
-const elem = document.getElementById("terminal")
+const elem = document.getElementById("terminal");
+const launcher = () => {
 if (elem !== null) {
     var term: Terminal;
     var wt: WebTTYFactory;
@@ -296,7 +297,8 @@ if (elem !== null) {
         }, 500);
     });
 };
+}; //end of launcher
 
 // exported to be used outside bundle for other tasks
-export { setEventHandler };
+export { setEventHandler, launcher};
 
