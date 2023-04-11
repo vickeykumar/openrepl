@@ -474,7 +474,6 @@ function uploadFile() {
       formData.append('file', file, file.name);
       formData.append('checksum', checksum.toString());
       console.log('checksum sent: ', checksum.toString());
-      console.log("file: ", event.target.result)
 
       // Send the AJAX request to the server
       $.ajax({
@@ -489,11 +488,13 @@ function uploadFile() {
           alert("File uploaded successfully");
           // reset
           document.getElementById("fileToLoad").value="";
+          $("#loader").fadeOut();
         },
         error: function(xhr, status, error) {
           alert("Failed to upload File: "+error+" : "+xhr.responseText);
           // reset
           document.getElementById("fileToLoad").value="";
+          $("#loader").fadeOut();
         }
       });
     });
@@ -501,7 +502,8 @@ function uploadFile() {
     //var checksum = CryptoJS.SHA256(event.target.result);
   
   };
-  reader.readAsText(file, "UTF-8");;
+  reader.readAsText(file, "UTF-8");
+  $("#loader").fadeIn();
 }
 
 (function myApp() {
