@@ -6,6 +6,7 @@ export const IdeContentKey = "IdeContent";
 export const IdeFileNameKey = "IdeFileName";
 export const CompilerOptionKey = "CompilerOption";
 export const CompilerFlagsKey = "CompilerFlags";
+export const EnvFlagsKey = "EnvFlags";
 
 export const msgInputUnknown = '0';
 export const msgInput = '1';

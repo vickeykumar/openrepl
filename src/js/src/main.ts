@@ -1,6 +1,6 @@
 import { Hterm } from "./hterm";
 import { Xterm } from "./xterm";
-import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, IdeFileNameKey, CompilerOptionKey, CompilerFlagsKey, setEventHandler } from "./webtty";
+import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, IdeFileNameKey, CompilerOptionKey, CompilerFlagsKey, EnvFlagsKey, setEventHandler } from "./webtty";
 import { ConnectionFactory } from "./websocket";
 import { InitializeApp, FireTTY, DisableShareBtn } from "./firetty";
 
@@ -78,6 +78,16 @@ function getCompilerArgs() {
     return "";
 }
 
+// Env Variables
+function getEnvVars() {
+    // body...
+    const env_flags = (document.getElementById("env_flags") as HTMLInputElement).value;
+    if(env_flags!==null) {
+        return env_flags;
+    }
+    return "";
+}
+
 const optionMenu = document.getElementById("optionMenu");
 if(optionMenu!==null) {
     const SelectOption = (optionMenu.getElementsByClassName("list")[0] as HTMLSelectElement);
@@ -124,6 +134,7 @@ function updatePayload(eventname="", debug=false) {
     }
     pload[IdeFileNameKey] = fetchEditorFileName();
     pload[CompilerFlagsKey] = getCompilerArgs();
+    pload[EnvFlagsKey] = getEnvVars();
     return pload;
 }
 

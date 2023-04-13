@@ -29,6 +29,7 @@ const IdeContentKey = "IdeContent"
 const IdeFileNameKey = "IdeFileName"
 const CompilerOptionKey = "CompilerOption"
 const CompilerFlagsKey = "CompilerFlags"
+const EnvFlagsKey = "EnvFlags"
 const UidKey = "uid"
 const HOME_DIR_KEY = "homedir"
 const RequestContextKey = "RequestContextKey"
@@ -191,6 +192,10 @@ func GetCompilerOption(params url.Values) string {
 
 func GetCompilerFlags(params url.Values) string {
 	return params.Get(CompilerFlagsKey)
+}
+
+func GetEnvFlags(params url.Values) string {
+	return params.Get(EnvFlagsKey)
 }
 
 func GetUnixMilli() int64 {

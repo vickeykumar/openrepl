@@ -14,6 +14,7 @@ import (
 	"utils"
 	"user"
 	"net/url"
+	"strings"
 )
 
 const (
@@ -72,6 +73,24 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	cmd.Env = append(cmd.Env, utils.IdeLangKey+"="+utils.GetCompilerLang(params))
 	cmd.Env = append(cmd.Env, utils.CompilerOptionKey+"="+utils.GetCompilerOption(params))
 	cmd.Env = append(cmd.Env, utils.IdeFileNameKey+"="+utils.GetIdeFileName(params))
+
+	//fill other env variables recieved from client
+	envargs := utils.GetEnvFlags(params)
+	envvars := strings.Split(envargs, " ")
+
+	for _, envvar := range envvars {
+		// sanitize 
+		if strings.Contains(envvar, "$") {
+	        // Expand nested environment variable references
+	        envvar = os.ExpandEnv(envvar)
+	    }
+	    if strings.Contains(envvar, "~/") {
+	        // Replace '~' with user's home directory
+		envvar = strings.ReplaceAll(envvar, "~/", homedir+"/")
+	    }
+	    cmd.Env = append(cmd.Env, envvar)
+	} // done filling env vars
+
 	pty, err := pty.Start(command, cmd, ppid, params)
 	if err != nil {
 		// todo close cmd?

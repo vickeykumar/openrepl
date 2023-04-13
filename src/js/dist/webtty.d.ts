@@ -5,6 +5,7 @@ export declare const IdeContentKey = "IdeContent";
 export declare const IdeFileNameKey = "IdeFileName";
 export declare const CompilerOptionKey = "CompilerOption";
 export declare const CompilerFlagsKey = "CompilerFlags";
+export declare const EnvFlagsKey = "EnvFlags";
 export declare const msgInputUnknown = "0";
 export declare const msgInput = "1";
 export declare const msgPing = "2";
