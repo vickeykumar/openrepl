@@ -16,5 +16,5 @@ export declare class FireTTY {
     dbpath: string;
     constructor(term: Terminal, master: boolean);
     open(): () => void;
-    dboutput(type: string, data: string): void;
+    dboutput(type: string, data: any): void;
 }

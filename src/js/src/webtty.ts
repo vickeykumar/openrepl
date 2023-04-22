@@ -3,7 +3,10 @@ import * as Cookies from "./cookie";
 export const protocols = ["webtty"];
 export const IdeLangKey = "IdeLang";
 export const IdeContentKey = "IdeContent";
+export const IdeFileNameKey = "IdeFileName";
 export const CompilerOptionKey = "CompilerOption";
+export const CompilerFlagsKey = "CompilerFlags";
+export const EnvFlagsKey = "EnvFlags";
 
 export const msgInputUnknown = '0';
 export const msgInput = '1';
@@ -16,6 +19,7 @@ export const msgPong = '2';
 export const msgSetWindowTitle = '3';
 export const msgSetPreferences = '4';
 export const msgSetReconnect = '5';
+export const msgEvent = '6';
 
 export var sessionCookieObj = new Cookies.SessionCookie("Session");
 
@@ -26,6 +30,17 @@ const clickhandler = () => {
                                     social_count.textContent = (parseInt("0"+social_count.textContent)+1).toString();
                                 }
                             };
+
+export type eventhandler = (eventdata: Object) => void;
+
+export var eventHandler : eventhandler = (eventdata: Object) => {
+                        console.log("Event data recieved: ", eventdata);
+
+                        }
+
+export function setEventHandler(callback: eventhandler): void {
+  eventHandler = callback;
+}
 
 export const jidHandler = (jid: string) => {
                     console.log("jid recieved: ", jid);
@@ -87,7 +102,7 @@ export interface Icallback {
 
 export interface WebTTYFactory {
     open(): Icallback;
-    dboutput(type: string, data: string): void;
+    dboutput(type: string, data: any): void;
 }
 
 export class WebTTY {
@@ -114,7 +129,7 @@ export class WebTTY {
         }
     };
 
-    dboutput(type: string, data: string) {
+    dboutput(type: string, data: any) {
         this.firebaseref.dboutput(type, data);
     };
 
@@ -225,7 +240,12 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         const autoReconnect = JSON.parse(payload);
                         console.log("Enabling reconnect: " + autoReconnect + " seconds");
                         this.reconnect = autoReconnect;
-			break;
+                        break;
+                    case msgEvent:
+                        const eventdata = JSON.parse(atob(payload));
+                        this.dboutput("filebrowser-event", eventdata);  // send filebrowser event to firebase   
+                        eventHandler(eventdata);    // fire the event locally
+                        break;
                     default:
                         console.log("unsupported data recieved: ",data);
                 }

@@ -54,6 +54,7 @@ func EnableNetworking(pid int) {
 
 func GetCommandArgs(command string, argv []string, ppid int, params map[string][]string) (commandArgs []string) {
 	var commandlist []string
+	var err error
 	if utils.Iscompiled(params) {
 		commandpath := BASH_PATH
 		commandlist = append(commandlist, commandpath)
@@ -62,8 +63,16 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 	}
 	commandlist = append(commandlist, argv...)
 	if utils.Iscompiled(params) {
+		filename := utils.GetIdeFileName(params)
+		var arg0 string = utils.GetIdeContent(params)
+		var otherargs string = utils.GetCompilerFlags(params)
+		err = utils.SaveIdeContentToFile(params, filename)
+		if err == nil {
+			// file saved successfully now i can pass filename as arg0
+			arg0 = filename
+		}
 		//this is a compilation request
-		compilerOptions := []string {"-c", utils.GetCompilationScript(command), utils.GetIdeContent(params)}
+		compilerOptions := []string {"-c", utils.GetCompilationScript(command), arg0, otherargs}
 		commandlist = append(commandlist, compilerOptions...)
 	}
 	commandArgs = append(commandArgs, commandlist...)

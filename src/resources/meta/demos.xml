@@ -1,4 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Evironment variables to be used in shell script:
+		TERM=xterm
+		GOPATH=/opt/gotty/
+		HOME="+cmd.Dir
+		HOSTNAME
+		GCC_EXEC_PREFIX=/usr/lib/gcc/
+		IdeLang	
+		CompilerOption
+		IdeFileName
+		arg0 is idecontent if IdeFileName is not set, use the content to save to desire file name and run,
+		else arg0 is the filename that is already saved, u need to compile and run it as per $IdeLang and $CompilerOption
+		arg1/restargs are args to compiler/repl
+ -->
 <DemoList>
 	<Demo>
 		<Name>cling</Name>
@@ -130,6 +143,7 @@ COMPILER=gcc
 FILE=test.c
 DEBUG_OPTION=""
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 	if [ $(uname) == "Linux" ]; then
@@ -152,15 +166,25 @@ if [ "$IdeLang" = "cpp" ]; then
 fi
 
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE -pthread -lm -o $HOME/test $DEBUG_OPTION;
+
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/test" ]; then
+
+#echo "restargs: "$@
+
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR/$FILE" -pthread -lm -o "$WORKDIR/$FILE".o $DEBUG_OPTION $@;
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE.o" ]; then
 	if $debug; then
-		gdb $HOME/test;
+		gdb "$WORKDIR/$FILE".o $@;
 	else
-    	$SHELL -c $HOME/test;
+		#second quoate with escape, as -c option takes a string argument.
+    	$SHELL -c "\"$WORKDIR/$FILE\".o $@";
     fi
 fi
 printf "\n";
@@ -246,6 +270,7 @@ COMPILER=yaegi
 FILE=test.go
 GOROOT=`go env GOROOT`
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 fi
@@ -253,14 +278,21 @@ if [ "$IdeLang" = "go" ]; then
 	COMPILER=yaegi
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
-		go build -gcflags=all="-N -l" -o $HOME/test $HOME/$FILE;
+		go build -gcflags=all="-N -l" -o "$WORKDIR/$FILE".o "$WORKDIR/$FILE" $@;
 		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
-		gdb $HOME/test -d $GOROOT;
+		gdb "$WORKDIR/$FILE".o -d $GOROOT $@;
 	else
-    	$COMPILER run $HOME/$FILE;
+    	$COMPILER run "$WORKDIR/$FILE" $@;
     fi
 fi
 printf "\n";
@@ -359,6 +391,7 @@ COMPILER=go
 FILE=test.go
 GOROOT=`go env GOROOT`
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 fi
@@ -366,14 +399,21 @@ if [ "$IdeLang" = "go" ]; then
 	COMPILER=go
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
+
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
-		go build -gcflags=all="-N -l" -o $HOME/test $HOME/$FILE;
+		go build -gcflags=all="-N -l" -o "$WORKDIR/$FILE".o "$WORKDIR/$FILE" $@;
 		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
-		gdb $HOME/test -d $GOROOT;
+		gdb "$WORKDIR/$FILE".o -d "$GOROOT" $@;
 	else
-    	$COMPILER run $HOME/$FILE;
+    	$COMPILER run "$WORKDIR/$FILE" $@;
     fi
 fi
 printf "\n";
@@ -695,7 +735,11 @@ printf "\n";
 
 		</Content>
 		<Compiler>
-echo $0|base64 --decode|jq-repl;
+if [ "$IdeFileName" != "" ]; then
+	cat "$IdeFileName"|jq-repl $@;
+else
+	echo $0|base64 --decode|jq-repl $@;
+fi
 printf "\n";
 		</Compiler>
 	</Demo>
@@ -766,14 +810,20 @@ print("Hello, World!")
 COMPILER=python
 FILE=test.py
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 	COMPILER="python -m pdb";
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE;
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
 		</Compiler>
@@ -845,14 +895,20 @@ print("Hello, World!")
 COMPILER=python2.7
 FILE=test.py
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 	COMPILER="python2.7 -m pdb";
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE;
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
 		</Compiler>
@@ -924,14 +980,20 @@ print("Hello, World!")
 COMPILER=python
 FILE=test.py
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 	COMPILER="python -m pdb";
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE;
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
 		</Compiler>
@@ -1003,14 +1065,20 @@ print("Hello, World!")
 COMPILER=python3
 FILE=test.py
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 	COMPILER="python3 -m pdb";
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE;
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
 		</Compiler>
@@ -1091,14 +1159,20 @@ public class HelloWorld {
 COMPILER=java
 FILE=test.java
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	echo "Debugging not Supported for Java.";
 	exit;
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/*.java;
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR"/*.java $@;
 fi
 printf "\n";
 		</Compiler>
@@ -1159,14 +1233,20 @@ echo "Hello, World!"
 COMPILER=bash
 FILE=test.sh
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 	COMPILER="bash -x";
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE;
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
 		</Compiler>
@@ -1241,14 +1321,20 @@ puts "Hello, World!"
 COMPILER=ruby
 FILE=test.rb
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 	COMPILER="ruby -r debug";
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE;
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
 		</Compiler>
@@ -1526,14 +1612,20 @@ console.log("Hello, World!");
 COMPILER=node
 FILE=test.js
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 	COMPILER="node inspect";
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE;
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
 		</Compiler>
@@ -1696,14 +1788,20 @@ print "Hello, World!\n";
 COMPILER=perl
 FILE=test.pl
 debug=false
+WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
 	debug=true;
 	COMPILER="perl -d";
 fi
 printf "\n";
-echo $0|base64 --decode > $HOME/$FILE;
-if [ $? -eq 0 ] &amp;&amp; [ -f "$HOME/$FILE" ]; then
-    $COMPILER $HOME/$FILE;
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
 		</Compiler>

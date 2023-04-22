@@ -28,4 +28,6 @@ const (
 	SetPreferences = '4'
 	// Make terminal to reconnect
 	SetReconnect = '5'
+	// writes an event to terminal
+	Event = '6'
 )

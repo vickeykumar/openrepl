@@ -199,6 +199,8 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.HandleFunc(pathPrefix+"login", handleLoginSession)
 	siteMux.HandleFunc(pathPrefix+"logout", handleLogoutSession)
 	siteMux.HandleFunc(pathPrefix+"profile", handleUserProfile)
+	siteMux.HandleFunc(pathPrefix+"ws_filebrowser", server.handleFileBrowser)
+	siteMux.HandleFunc(pathPrefix+"upload_file", server.handleFileUpload)
 
 	siteMux.Handle(pathPrefix+"js/", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"images/", http.StripPrefix(pathPrefix, staticFileHandler))

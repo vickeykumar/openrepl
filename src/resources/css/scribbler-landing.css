@@ -91,7 +91,7 @@ nav {
 
 .ide-menu-item {
   padding: inherit;
-  margin-bottom: inherit;
+  margin-bottom: inherit !important;
   font-size: inherit;
 }
 
@@ -729,7 +729,7 @@ h2 {
   height: auto;
   color: #154349;
   border-radius: 5px;
-  border: 2px solid #64CEAA;
+  border: 2px solid #64CEAA !important;
 }
 
 #input{
@@ -941,3 +941,120 @@ h2 {
   width: 100%;
   display: flex;
 }
+
+/* side nav bar for file-browser */
+
+.main-menu:hover,nav.main-menu.expanded {
+width:250px;
+background:var(--light-gray-color);
+color: var(--dark-gray-color);
+overflow:overlay;
+font-weight: 400;
+font-family: inherit;
+z-index:10;
+opacity: 1;
+animation: fade-in-out 0.5s ease-in-out forwards;
+}
+
+
+
+.main-menu>ul {
+  width:inherit;
+}
+
+.main-menu {
+background: inherit;
+border-right:1px solid #e5e5e5;
+border-radius: inherit;
+position:absolute;
+top:0;
+bottom:0;
+height:100%;
+left:0;
+width:4%;
+font-size: 14px;
+font-weight: 400;
+-webkit-transition:width .05s linear;
+transition:width .05s linear;
+-webkit-transform:translateZ(0) scale(1,1);
+overflow: hidden;
+}
+
+.vakata-context {
+    z-index: 11; /* Set the desired z-index value */
+}
+
+.main-menu-bar {
+  width: inherit;
+  display: inline-flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--medium-gray-color);
+}
+
+
+.main-menu-bar i.fa-close {
+  position: relative;
+  top: 0;
+  right: 0;
+  float: right;
+  margin-left: auto;
+  padding-right: 5px;
+  font-size: 15px;
+  display: none;
+}
+
+.main-menu-bar:hover,.main-menu:hover i.fa-close, nav.main-menu.expanded i.fa-close {
+  display: block;
+}
+.main-menu-bar:hover {
+  background-color: var(--accent-color-light);
+}
+
+.main-menu-bar>i.fa-files-o {
+  font-size: 17px;
+}
+
+.main-menu-bar>i.fa-close {
+  font-size: 17px;
+}
+
+.main-menu-bar>i.fa-files-o:hover {
+  font-size: 21px;
+}
+.main-menu-bar>i.fa-close:hover {
+  font-size: 21px;
+}
+.main-menu-bar>i.fa-close:active {
+  font-size: 24px;
+}
+
+.jstree-anchor:hover {
+  font-size: 18px;
+}
+
+.main-menu::-webkit-scrollbar {
+  width: 1px;
+}
+
+.main-menu::-webkit-scrollbar-thumb {
+  background-color: inherit;
+  border-radius: 1px;
+}
+
+.main-menu>ul>li .jstree-wholerow-clicked {
+  background: none;
+}
+
+.main-menu:hover ul>li .jstree-wholerow-clicked, nav.main-menu.expanded ul>li .jstree-wholerow-clicked {
+  background: #beebff;
+  background: -moz-linear-gradient(top, #beebff 0%, #a8e4ff 100%);
+  background: -webkit-gradient(linear, left top, left bottom, color-stop(0%, #beebff), color-stop(100%, #a8e4ff));
+  background: -webkit-linear-gradient(top, #beebff 0%, #a8e4ff 100%);
+  background: -o-linear-gradient(top, #beebff 0%, #a8e4ff 100%);
+  background: -ms-linear-gradient(top, #beebff 0%, #a8e4ff 100%);
+  background: linear-gradient(to bottom, #beebff 0%, #a8e4ff 100%);
+}
+
+
+/* end of nav-bar */
