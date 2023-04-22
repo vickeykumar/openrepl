@@ -42,6 +42,8 @@
       <link rel="stylesheet" href="./css/xterm.css" />
       <link rel="stylesheet" href="./css/xterm_customize.css" />
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intro.js/6.0.0/introjs.min.css" />
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.15/themes/default/style.min.css" />
+
       <link rel="author" href="humans.txt">
       <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.0.2/firebase-ui-auth.css" />
       <script src="https://www.gstatic.com/firebasejs/ui/6.0.2/firebase-ui-auth.js"></script>
@@ -299,6 +301,10 @@
     </div>
 
     <div class="terminal__row" id="terminal__row">
+      <div>
+        <nav class="main-menu" id="file-browser">
+        </nav>
+      </div>
       <div class="sidebar" id="sidebar_options">
         <div class="fullscreen-toggle tooltip" id="togglescreen-button" onclick="ToggleFunction();"><i class="fa fa-expand"></i><span class="tooltiptext">Maximize</span></div>
         <div class="fullscreen-toggle tooltip" id="editor-button" onclick="ToggleEditor();"><i class="fa fa-pencil"></i><span class="tooltiptext">Use Editor</span></div>
@@ -306,7 +312,7 @@
         <div class="fullscreen-toggle tooltip" id="play-button" onclick="CompileandRun();"><i class="fa fas fa-play"></i><span class="tooltiptext">Run Editor Code</span></div>
         <div class="fullscreen-toggle tooltip" id="debug-play-button" onclick="RunandDebug();"><i class="fa fas" style="font-size:12px;">debug</i><span class="tooltiptext">Debug Editor Code</span></div>
         <div class="fullscreen-toggle tooltip" id="download-button" onclick="DownloadEditor();"><i class="fa fa-download"></i><span class="tooltiptext">Download Editor Code</span></div>
-        <div class="fullscreen-toggle tooltip" id="upload-button" onclick="document.getElementById('fileToLoad').click();"><i class="fa fa-upload"><input type="file" id="fileToLoad" oninput="UploadEditor();" style="display: none;"></i><span class="tooltiptext">Upload to Editor</span></div>
+        <div class="fullscreen-toggle tooltip" id="upload-button" onclick="document.getElementById('fileToLoad').click();"><i class="fa fa-upload"><input type="file" id="fileToLoad" oninput="uploadFile();" style="display: none;"></i><span class="tooltiptext">Upload Files to OpenREPL Server</span></div>
       </div>
       <div class="ide" id="ide" >
         <h2>Welcome to <span class="go__color">Open</span>REPL</h2>
@@ -318,6 +324,8 @@
           <!--form >
             <input id="input" name="id" placeholder="Editor name">
           </form--> 
+          <input type="text" class="select-input ide-menu-item" style="width:auto;padding: inherit;" id="env_flags" value="" placeholder="Env Vars/Paths (space delim)">
+          <input type="text" class="select-input ide-menu-item" style="width:auto;padding: inherit;" id="compiler_flags" value="" placeholder="Compiler/Repl Args">
           <input type="number" class="select-input ide-menu-item" style="width:3em" id="efontSize" min="5" max="30" value ="14">
           <select id="select-theme" class="select-input ide-menu-item">
             <optgroup label="Bright">
@@ -369,7 +377,7 @@
             <option value="asciidoc" disabled>AsciiDoc</option>
             <option value="assembly_x86" disabled>Assembly x86</option>
             <option value="autohotkey" disabled>AutoHotKey</option>
-            <option value="batchfile" disabled>BatchFile</option>
+            <option value="batchfile">BatchFile</option>
             <option value="bro" disabled>Bro</option>
             <option value="c_cpp">C and C++</option>
             <option value="c9search" disabled>C9Search</option>
@@ -379,16 +387,16 @@
             <option value="coffee" disabled>CoffeeScript</option>
             <option value="coldfusion" disabled>ColdFusion</option>
             <option value="csharp" disabled>C#</option>
-            <option value="css" disabled>CSS</option>
+            <option value="css">CSS</option>
             <option value="curly" disabled>Curly</option>
             <option value="d" disabled>D</option>
             <option value="dart" disabled>Dart</option>
-            <option value="diff" disabled>Diff</option>
-            <option value="dockerfile" disabled>Dockerfile</option>
+            <option value="diff">Diff</option>
+            <option value="dockerfile">Dockerfile</option>
             <option value="dot" disabled>Dot</option>
             <option value="drools" disabled>Drools</option>
-            <option value="dummy" disabled>Dummy</option>
-            <option value="dummysyntax" disabled>DummySyntax</option>
+            <option value="dummy">Dummy</option>
+            <option value="dummysyntax">DummySyntax</option>
             <option value="eiffel" disabled>Eiffel</option>
             <option value="ejs" disabled>EJS</option>
             <option value="elixir" disabled>Elixir</option>
@@ -410,10 +418,10 @@
             <option value="haskell_cabal" disabled>Haskell Cabal</option>
             <option value="haxe" disabled>haXe</option>
             <option value="hjson" disabled>Hjson</option>
-            <option value="html" disabled>HTML</option>
+            <option value="html">HTML</option>
             <option value="html_elixir" disabled>HTML (Elixir)</option>
             <option value="html_ruby" disabled>HTML (Ruby)</option>
-            <option value="ini" disabled>INI</option>
+            <option value="ini">INI</option>
             <option value="io" disabled>Io</option>
             <option value="jack" disabled>Jack</option>
             <option value="jade" disabled>Jade</option>
@@ -435,7 +443,7 @@
             <option value="lua" disabled>Lua</option>
             <option value="luapage" disabled>LuaPage</option>
             <option value="lucene" disabled>Lucene</option>
-            <option value="makefile" disabled>Makefile</option>
+            <option value="makefile">Makefile</option>
             <option value="markdown" disabled>Markdown</option>
             <option value="mask" disabled>Mask</option>
             <option value="matlab" disabled>MATLAB</option>
@@ -455,7 +463,7 @@
             <option value="praat" disabled>Praat</option>
             <option value="prolog" disabled>Prolog</option>
             <option value="properties" disabled>Properties</option>
-            <option value="protobuf" disabled>Protobuf</option>
+            <option value="protobuf">Protobuf</option>
             <option value="python">Python</option>
             <option value="r" disabled>R</option>
             <option value="razor" disabled>Razor</option>
@@ -480,23 +488,23 @@
             <option value="stylus" disabled>Stylus</option>
             <option value="svg" disabled>SVG</option>
             <option value="swift" disabled>Swift</option>
-            <option value="tcl" disabled>Tcl</option>
+            <option value="tcl">Tcl</option>
             <option value="tex" disabled>Tex</option>
             <option value="text">Text</option>
             <option value="textile" disabled>Textile</option>
-            <option value="toml" disabled>Toml</option>
+            <option value="toml">Toml</option>
             <option value="tsx" disabled>TSX</option>
             <option value="twig" disabled>Twig</option>
-            <option value="typescript" disabled>Typescript</option>
+            <option value="typescript">Typescript</option>
             <option value="vala" disabled>Vala</option>
             <option value="vbscript" disabled>VBScript</option>
             <option value="velocity" disabled>Velocity</option>
             <option value="verilog" disabled>Verilog</option>
             <option value="vhdl" disabled>VHDL</option>
             <option value="wollok" disabled>Wollok</option>
-            <option value="xml" disabled>XML</option>
+            <option value="xml">XML</option>
             <option value="xquery" disabled>XQuery</option>
-            <option value="yaml" disabled>YAML</option>
+            <option value="yaml">YAML</option>
             <option value="django" disabled>Django</option>
           </select>
           <div class="share-btn ide-menu-item" onclick="CompileandRun();"><i class="fas fa-play"></i> Run</div>
@@ -629,7 +637,8 @@
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js" type="text/javascript" charset="utf-8"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ext-language_tools.min.js" type="text/javascript" charset="utf-8"></script>
-    <script src="http://cdn.jsdelivr.net/g/filesaver.js"></script>
+    <script src="./js/filesaver.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.15/jstree.min.js"></script>
     <script src="./js/scribbler.js"></script>
     <script>
           /*var inst = Split(['.ide', '.terminal'], {

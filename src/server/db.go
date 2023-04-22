@@ -187,7 +187,23 @@ func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 
 func handleLoginSession(rw http.ResponseWriter, req *http.Request) {
 	log.Println("method:", req.Method)
+	homedirjob := func () {
+		uid := cookie.Get_Uid(req)
+		// we need this here as first API to be hit to generate homedir and save it to cookie
+		homedir := cookie.GetOrUpdateHomeDir(rw, req, uid)
+		defer func () {
+			if uid == "" {
+					// reset the job to delete the guests working dir after a certain deadline
+					jobname := utils.REMOVE_JOB_KEY+homedir
+					utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+						utils.RemoveDir(homedir)
+					})
+			}
+		}()
+
+	}
 	if req.Method == "POST" {
+		defer homedirjob();
 		req.ParseForm()
 		//var session UserSession
 		for key, val := range req.Form {
@@ -229,6 +245,7 @@ func handleLoginSession(rw http.ResponseWriter, req *http.Request) {
 		}
 
 	} else if req.Method == "GET" {
+		homedirjob();	// first thing to login and create the directory so that other following apis can reuse the homedir
 		log.Println("handleLoginSession: GET");
 		req.ParseForm()
 		//var session UserSession

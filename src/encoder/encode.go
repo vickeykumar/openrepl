@@ -37,13 +37,15 @@ func EncodePID(pid interface{}) string {
 }
 
 func DecodeToPID(jid string) int {
-        pidbytes,err := RawURLEncoding.DecodeString(jid)
-        if err == nil {
-                decoded := new(big.Int).SetBytes(pidbytes)
-                decoded.Div(decoded, largesecret)
-                return int(decoded.Int64())
-        }
-        log.Println("invalid pid recieved :"+jid, string(pidbytes), err.Error())
+	if jid != "" {
+        	pidbytes,err := RawURLEncoding.DecodeString(jid)
+        	if err == nil {
+                	decoded := new(big.Int).SetBytes(pidbytes)
+                	decoded.Div(decoded, largesecret)
+                	return int(decoded.Int64())
+        	}
+        	log.Println("invalid pid recieved :"+jid, string(pidbytes), err.Error())
+	}
         return -1
 }
 

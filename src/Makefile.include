@@ -2,7 +2,7 @@ GIT_TOP=$(shell git rev-parse --show-toplevel 2>/dev/null)
 UNAME := $(shell uname)
 
 ifeq ($(UNAME), Linux)
-	GOROOT=${GIT_TOP}/go_19/go
+	GOROOT=${GIT_TOP}/go_1.19/go
 else
 	GOROOT=$(shell python -c 'import os.path; print(os.path.realpath("/usr/local/bin/go").rstrip("/bin/go"))')
 endif

@@ -14,6 +14,7 @@ import (
 	"utils"
 	"user"
 	"net/url"
+	"strings"
 )
 
 const (
@@ -45,18 +46,17 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 		// using working directory of parent process only 
 		cmd.Dir = containers.GetWorkingDir(ppid)
 	} else {
-		// get working for a user uid
+		// get working for a user uid, same as homedir generated
 		if homedir == "" {
-			cmd.Dir = user.GetHomeDir(uid)+"/"+command
+			cmd.Dir = user.GetHomeDir(uid)
 		} else {
-			cmd.Dir = homedir+"/"+command
+			cmd.Dir = homedir
 		}
 		os.MkdirAll(cmd.Dir, 0755)
 		if uid == "" {
-				// reset the job to delete the guests working dir after a certain deadline 
+				// reset the job to delete the guests working dir after a certain deadline, longer now as session has just started
 				jobname := utils.REMOVE_JOB_KEY+cmd.Dir
-				utils.GottyJobs.RemoveJob(jobname)
-				utils.GottyJobs.AddJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+				utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
 					utils.RemoveDir(cmd.Dir)
 				})
 		}
@@ -72,6 +72,25 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	cmd.Env = append(cmd.Env, "GCC_EXEC_PREFIX=/usr/lib/gcc/")
 	cmd.Env = append(cmd.Env, utils.IdeLangKey+"="+utils.GetCompilerLang(params))
 	cmd.Env = append(cmd.Env, utils.CompilerOptionKey+"="+utils.GetCompilerOption(params))
+	cmd.Env = append(cmd.Env, utils.IdeFileNameKey+"="+utils.GetIdeFileName(params))
+
+	//fill other env variables recieved from client
+	envargs := utils.GetEnvFlags(params)
+	envvars := strings.Split(envargs, " ")
+
+	for _, envvar := range envvars {
+		// sanitize 
+		if strings.Contains(envvar, "$") {
+	        // Expand nested environment variable references
+	        envvar = os.ExpandEnv(envvar)
+	    }
+	    if strings.Contains(envvar, "~/") {
+	        // Replace '~' with user's home directory
+		envvar = strings.ReplaceAll(envvar, "~/", homedir+"/")
+	    }
+	    cmd.Env = append(cmd.Env, envvar)
+	} // done filling env vars
+
 	pty, err := pty.Start(command, cmd, ppid, params)
 	if err != nil {
 		// todo close cmd?
@@ -112,8 +131,7 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 				// reset the job to delete the working dir after a certain deadline 
 				// if guest is not conecting again
 				jobname := utils.REMOVE_JOB_KEY+lcmd.cmd.Dir
-				utils.GottyJobs.RemoveJob(jobname)
-				utils.GottyJobs.AddJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+				utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
 					utils.RemoveDir(lcmd.cmd.Dir)
 				})
 			}

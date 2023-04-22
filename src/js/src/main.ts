@@ -1,6 +1,6 @@
 import { Hterm } from "./hterm";
 import { Xterm } from "./xterm";
-import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, CompilerOptionKey } from "./webtty";
+import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, IdeFileNameKey, CompilerOptionKey, CompilerFlagsKey, EnvFlagsKey, setEventHandler } from "./webtty";
 import { ConnectionFactory } from "./websocket";
 import { InitializeApp, FireTTY, DisableShareBtn } from "./firetty";
 
@@ -67,6 +67,27 @@ function getSelectValue() {
     }
     return null;
 }
+
+// compiler/repl args
+function getCompilerArgs() {
+    // body...
+    const compiler_flags = (document.getElementById("compiler_flags") as HTMLInputElement).value;
+    if(compiler_flags!==null) {
+        return compiler_flags;
+    }
+    return "";
+}
+
+// Env Variables
+function getEnvVars() {
+    // body...
+    const env_flags = (document.getElementById("env_flags") as HTMLInputElement).value;
+    if(env_flags!==null) {
+        return env_flags;
+    }
+    return "";
+}
+
 const optionMenu = document.getElementById("optionMenu");
 if(optionMenu!==null) {
     const SelectOption = (optionMenu.getElementsByClassName("list")[0] as HTMLSelectElement);
@@ -92,17 +113,28 @@ function fetchEditorContent() {
     return "";
 }
 
+function fetchEditorFileName() {
+    var editor: any = window["editor"];
+    if( editor.env && editor.env.filename ) {
+        return editor.env.filename;
+    }
+    return "";
+}
+
 function updatePayload(eventname="", debug=false) {
     var pload: Object = {
                                 "test":"test",
                         };
     if (eventname == "optionrun") {
         pload[IdeLangKey] = getSelectValue();
-        pload[IdeContentKey] = fetchEditorContent(); 
+        pload[IdeContentKey] = fetchEditorContent();
     }
     if (debug === true) {
         pload[CompilerOptionKey] = "debug";
     }
+    pload[IdeFileNameKey] = fetchEditorFileName();
+    pload[CompilerFlagsKey] = getCompilerArgs();
+    pload[EnvFlagsKey] = getEnvVars();
     return pload;
 }
 
@@ -114,7 +146,8 @@ if (!hash) {
 }
 InitializeApp();
 
-const elem = document.getElementById("terminal")
+const elem = document.getElementById("terminal");
+const launcher = () => {
 if (elem !== null) {
     var term: Terminal;
     var wt: WebTTYFactory;
@@ -275,3 +308,8 @@ if (elem !== null) {
         }, 500);
     });
 };
+}; //end of launcher
+
+// exported to be used outside bundle for other tasks
+export { setEventHandler, launcher};
+

@@ -12,13 +12,22 @@ import (
 	"net/url"
 	"sync/atomic"
 	"time"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
 
 	"webtty"
+	"filebrowser"
 	"utils"
 	"cookie"
+	"io"
+	"io/ioutil"
+	"encoding/base64"
+	"crypto/sha256"
+	"os"
+	"archive/zip"
+	"path/filepath"
 )
 
 
@@ -141,6 +150,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 
 // process websocket connection for uid (user)
 // req_payload is initial payload carried by request
+// Note: Any time consuming API in this same routing will lead to performance issue with websocket
 func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, req_payload map[string]string) error {
 	conn.SetWriteDeadline(time.Now().Add(utils.DEADLINE_MINUTES * time.Minute)) // only 15 min sessions for services are allowed
 	typ, initLine, err := conn.ReadMessage()
@@ -222,6 +232,29 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 		return errors.Wrapf(err, "failed to create webtty")
 	}
 
+	homedir := req_payload[utils.HOME_DIR_KEY]
+	root := homedir
+	deferwatch := utils.Iscompiled(params)
+	if deferwatch {
+		// watch only parent/filename being run, will betaken care by browser
+		filename := utils.GetIdeFileName(params)
+		if filename != "" {
+			root = filename
+		}
+	}
+	// defer any browser notifications till compilation and execution is done, (performance)
+	fb, err := filebrowser.New(root, tty, true, deferwatch)
+	if err != nil {
+		log.Println("failed to create filebrowser: ", err)
+		//error in filebrowser, let the user delete unwanted files and reconnect again
+		WriteMessageToTerminal(conn, err.Error())
+		return err
+	} else {
+		fb.StartWatching()
+	}
+	defer fb.Close()
+
+
 	log.Println("running webtty: ")
 	err = tty.Run(ctx)
 
@@ -257,7 +290,18 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		server.errorHandler(w, r, http.StatusNotFound)
 		return
 	}
-	cookie.GetOrUpdateHomeDir(w, r, cookie.Get_Uid(r))	// move this to file browser handler later
+	uid := cookie.Get_Uid(r)
+	// we need this here as first API to be hit to generate homedir and save it to cookie
+	homedir := cookie.GetOrUpdateHomeDir(w, r, uid)
+	defer func () {
+                if uid == "" {
+                                // reset the job to delete the guests working dir after a certain deadline 
+                                jobname := utils.REMOVE_JOB_KEY+homedir
+                                utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+                                        utils.RemoveDir(homedir)
+                                })
+                }
+        }()
 
 	titleVars := server.titleVariables(
 		[]string{"server", "master"},
@@ -324,4 +368,187 @@ func (server *Server) titleVariables(order []string, varUnits map[string]map[str
 	}
 
 	return titleVars
+}
+
+
+func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Request) {
+	bodybuf, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		log.Println("error reading body : ", err)
+	}
+   	log.Println("body: ", string(bodybuf))
+	req.ParseForm()
+	log.Println("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
+	uid := cookie.Get_Uid(req)
+	homedir := cookie.GetOrUpdateHomeDir(rw, req, uid)
+	//command := req.Form.Get("command")
+	defer func () {
+		if uid == "" {
+				// reset the job to delete the guests working dir after a certain deadline 
+				jobname := utils.REMOVE_JOB_KEY+homedir
+				utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+					utils.RemoveDir(homedir)
+				})
+		}
+	}()
+
+	query := req.Form.Get("q")
+	path := req.Form.Get("filepath")
+	if path!="" && !strings.HasPrefix(path, homedir) {	// something fishy, bad request, return
+		http.Error(rw, path+" not Found", http.StatusNotFound)
+		return
+	}
+	if path == "" {
+		path = homedir
+	}
+	fb, err := filebrowser.New(path, nil, false, true)	// without watcher on path directories, deferwatch=true
+	if err != nil {
+		log.Println("failed to create filebrowser: ", err)
+		// still proceed as user can take necessary actions like free up the space
+	}
+
+	if req.Method == "GET" {
+		if query == "load" {
+			if !utils.IsFile(path) {
+				log.Println("Not a File: ", path)
+				http.Error(rw, path+" is not a Valid file", http.StatusBadRequest)
+				return
+			}
+			content, err := ioutil.ReadFile(path)
+		    if err != nil {
+		        http.Error(rw, err.Error(), http.StatusInternalServerError)
+		        return
+		    }
+
+		    // encode the content in base64
+		    encoded := base64.StdEncoding.EncodeToString(content)
+
+		    // set the response header and write the encoded content
+		    rw.Header().Set("Content-Type", "text/plain")
+		    fmt.Fprintf(rw, encoded)
+		} else if query == "zip" {
+			parentDir := filepath.Dir(homedir)	// get parent of homedir
+			filename := strings.TrimPrefix(path, parentDir+"/")
+			// Set the content type and attachment header
+			rw.Header().Set("Content-Type", "application/zip")
+			rw.Header().Set("Content-Disposition", "attachment; filename="+filename+".zip")
+
+			// Create a new zip archive
+			zipWriter := zip.NewWriter(rw)
+			defer zipWriter.Close()
+			fb.Writezip(zipWriter)
+		} else {
+			tree, err := fb.GetJsonTree()
+		    if err != nil {
+		        log.Println("Error: ",err)
+		    }
+		    log.Println("file Tree: ", tree)
+			rw.Write(utils.JsonMarshal(tree))
+		}
+	} else if req.Method == "POST" {
+		if query == "save" {
+			decoded, err := base64.StdEncoding.DecodeString(string(bodybuf))
+			if err != nil {
+				http.Error(rw, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			// Write the decoded data to a file
+			err = ioutil.WriteFile(path, decoded, os.ModePerm)
+			if err != nil {
+				http.Error(rw, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			// Return a success response
+			rw.WriteHeader(http.StatusOK)
+		} else {
+			var event filebrowser.Event
+		    err := json.Unmarshal(bodybuf, &event)
+		    if err != nil {
+		    	log.Println("failed unmarhalling body : ", err)
+		        http.Error(rw, err.Error(), http.StatusBadRequest)
+		        return
+		    }
+		    if !strings.HasPrefix(event.Name, homedir) {	// something fishy, bad request, return
+		    	http.Error(rw, event.Name+" not Found", http.StatusNotFound)
+		    	return
+		    }
+		    fb.ProcessEventRequests(rw, req, event)
+		}
+	}
+}
+
+func (server *Server) handleFileUpload(w http.ResponseWriter, req *http.Request) {
+	// Parse the form data and get the file and its properties
+	req.ParseMultipartForm(5 << 20) // Limit the amount of memory used to parse the form data
+	log.Println("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
+	uid := cookie.Get_Uid(req)
+	homedir := cookie.GetOrUpdateHomeDir(w, req, uid)
+
+	fb, err := filebrowser.New(homedir, nil, false, true)	// without watcher on path directories, deferwatch=true
+	if err != nil {
+		log.Println("failed to create filebrowser: ", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+	}
+
+	// prevent create requests if dir quota is reached
+    if fb.GetSize() > float64(filebrowser.MAXDISKUSAGE_MB) {
+        errstr := fmt.Sprintf("Max Disk Usage Limit of %dMB Reached for : %s Please delete unwanted files and try again.\n", filebrowser.MAXDISKUSAGE_MB, homedir)
+        http.Error(w, errstr, http.StatusInsufficientStorage)
+        return
+    }
+
+	file, handler, err := req.FormFile("file")
+	if err != nil {
+		log.Println("Failed to retrieve file from request: ", err)
+		http.Error(w, "Failed to retrieve file from request", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	filename := handler.Filename
+
+	// Get the checksum of the file from the form data
+	checksum := req.FormValue("checksum")
+
+	// Create a buffer to store the file contents
+	buf := bytes.NewBuffer(nil)
+	if _, err := io.Copy(buf, file); err != nil {
+		log.Println("Failed to read file from request: ", err)
+		http.Error(w, "Failed to read file from request", http.StatusInternalServerError)
+		return
+	}
+
+	 // Remove the BOM from the file contents, if it has
+    if bytes.HasPrefix(buf.Bytes(), []byte("\xef\xbb\xbf")) {
+        buf.Next(3)
+    }
+
+	//log.Println("buffer: ", buf.String())
+	localchecksum := fmt.Sprintf("%x", sha256.Sum256(buf.Bytes()))
+	// Verify the checksum of the file
+	if localchecksum != checksum {
+		log.Println("Checksum verification failed: still proceeding..", localchecksum, checksum)
+		//http.Error(w, "Checksum verification failed", http.StatusBadRequest)
+		//return
+	}
+
+	// Save the file to disk
+	f, err := os.OpenFile(homedir+"/"+filename, os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		log.Println("Failed to create file on server: ", err)
+		http.Error(w, "Failed to create file on server", http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, buf); err != nil {
+		log.Println("Failed to save file on server: ", err)
+		http.Error(w, "Failed to save file on server", http.StatusInternalServerError)
+		return
+	}
+
+	// Return a success response
+	w.Write([]byte("File uploaded successfully"))
 }
