@@ -121,6 +121,9 @@ git clone https://github.com/vickeykumar/perli.git
 cd perli && make install
 cd ~
 
+#install tcl
+apt-get install -y --no-install-recommends tcl
+
 # Docker: Error response from daemon: cgroups: cgroup mountpoint does not exist: unknown
 # if using docker use privileged mode with cgroup mounted (-v /sys/fs/cgroup:/sys/fs/cgroup:rw )
 mkdir /sys/fs/cgroup/systemd
@@ -160,6 +163,7 @@ if [ $run_tests -eq 1 ]; then
 		"java --version"
 		"gdb --version"
 		"jq --version"
+		"echo 'puts [info patchlevel]' | tclsh"
 	)
 
 

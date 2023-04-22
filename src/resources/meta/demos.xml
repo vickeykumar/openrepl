@@ -1806,4 +1806,80 @@ fi
 printf "\n";
 		</Compiler>
 	</Demo>
+
+	<Demo>
+		<Name>tclsh</Name>
+		<Doc>https://www.tcl.tk/man/tcl8.5/tutorial/tcltutorial.html</Doc>
+		<Codes>
+			<Code>
+				<Prompt>%</Prompt>
+				<Statement> puts "Hello, World!!"</Statement>
+				<Result>Hello, World!!</Result>
+			</Code>
+			<Code>
+				<Prompt>%</Prompt>
+				<Statement> set x 1</Statement>
+				<Result>1</Result>
+			</Code>
+			<Code>
+				<Prompt>%</Prompt>
+				<Statement> while {$x &lt; 5} {
+    puts "Hello $x"
+    set x [expr {$x + 1}]
+}</Statement>
+				<Result>Hello 1
+Hello 2
+Hello 3
+Hello 4</Result>
+			</Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>%</Prompt>
+				<Statement> for {set i 0} {$i &lt; 10} {incr i} {
+    puts "loop: $i"
+}</Statement>
+				<Result>loop: 0
+loop: 1
+loop: 2
+loop: 3
+loop: 4
+loop: 5
+loop: 6
+loop: 7
+loop: 8
+loop: 9</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>info commands</Command>
+			<Description>shows lists of all available tcl commands.</Description>
+		</Usage>
+		<Usage>
+			<Command>exit</Command>
+			<Description>exits the tclsh.</Description>
+		</Usage>
+		<Content>#!/usr/bin/tclsh
+# Welcome to OpenREPL!
+
+puts "Hello, World!"
+		</Content>
+		<Compiler>
+COMPILER=tclsh
+FILE=test.tcl
+debug=false
+WORKDIR=$HOME
+printf "\n";
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER "$WORKDIR/$FILE" $@;
+fi
+printf "\n";
+		</Compiler>
+	</Demo>
 </DemoList>

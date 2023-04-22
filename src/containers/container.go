@@ -21,6 +21,7 @@ var Commands2memLimitMap = map[string]int64{
 	"cling":         11, // threshold : 11
 	"gointerpreter": 45, // 44 with pp
 	"yaegi":	 5,
+	"python":    2,
 	"python2.7":     2,  // 3
 	"bash":          2,  // 2
 	"ipython":       8,
@@ -29,6 +30,7 @@ var Commands2memLimitMap = map[string]int64{
 	"perli":         3,
 	"node":          10,
 	"jq-repl":       2,
+	"tclsh":       2,
 }
 
 var memLimitMutex sync.Mutex
