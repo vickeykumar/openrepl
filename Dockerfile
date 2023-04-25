@@ -7,6 +7,8 @@ WORKDIR /opt/openrepl
 
 #ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
+# place timezone in /etc/timezone
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 COPY ./install_prerequisite.sh /opt/openrepl/
 COPY ./bin/gdb /usr/bin/
