@@ -1,4 +1,5 @@
-import { Terminal } from "./webtty";
+import { Terminal, CloserArgs } from "./webtty";
+export declare const UID: string;
 export declare const getExampleRef: () => any;
 export declare const firebaseconfig: {
     apiKey: string;
@@ -14,7 +15,13 @@ export declare class FireTTY {
     active: boolean;
     firebasedbref: any;
     dbpath: string;
+    lastrestarted: string;
+    uid: string;
+    private static sharedlastrestarted;
+    private static applyingchanges;
+    private static setngetrestart();
+    private static getrestart();
     constructor(term: Terminal, master: boolean);
-    open(): () => void;
+    open(): (args: CloserArgs) => void;
     dboutput(type: string, data: any): void;
 }

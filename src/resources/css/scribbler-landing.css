@@ -677,6 +677,34 @@ display: block;
     float: left;
     cursor: ew-resize;
 }
+/* Add arrow indicator to the gutter */
+.gutter::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px; /* Adjust image width */
+    height: 4px; /* Adjust image height */
+    cursor: ew-resize; /* Change cursor to indicate draggable */
+    z-index: 1; /* Ensure the image is above the content */
+    right: var(--gutter-right);
+}
+
+/* Optionally, adjust the horizontal gutter arrow */
+.gutter.gutter-horizontal::after {
+    /* Additional styles for horizontal gutters */
+    border-top: none; /* Remove the top border */
+    border-bottom: 10px solid var(--accent-color-light); /* Add bottom border for horizontal arrow */
+    border-left: 5px solid transparent; /* Adjust the size of the arrow */
+    border-right: 5px solid transparent; /* Adjust the size of the arrow */
+    cursor: ew-resize; /* Change cursor to indicate draggable */
+    transform: translateY(-50%) rotate(var(--gutter-rotate)); /* Rotate the arrow for horizontal gutters */
+    opacity: 0.2;
+}
+
+.gutter.gutter-horizontal:hover::after {
+  opacity: 0.8;
+}
 
 /* On screens that are 800px wide or less, make the columns stack on top of each other instead of next to each other */
 @media screen and (max-width: 800px) {

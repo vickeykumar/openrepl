@@ -1,11 +1,14 @@
 import * as firebase from 'firebase';
-import { Terminal, eventHandler } from "./webtty";
+import { Terminal, eventHandler, CloserArgs} from "./webtty";
 
 
 var dbpath = "";
 var getrepl_firebasedbref = () => {
 	return firebase.database().ref("openrepl");
 };
+
+export const UID = Math.random().toString();
+const MIN_SAFE_INTEGER = 1<<31;
 
 export const getExampleRef = () => {
       if(window['dbpath']) {
@@ -48,6 +51,22 @@ export class FireTTY {
     active: boolean;
     firebasedbref: any;
     dbpath: string;
+    lastrestarted: string;
+    uid: string;
+
+    // static property to share accross class
+    private static sharedlastrestarted: string = MIN_SAFE_INTEGER.toString();
+    private static applyingchanges: boolean = false;
+
+    private static setngetrestart(): string {
+        // updates the shared restart timing of all the firetty terminals in this window.
+        this.sharedlastrestarted = Date.now().toString();
+        return this.sharedlastrestarted;
+    }
+
+    private static getrestart(): string {
+        return this.sharedlastrestarted;
+    }
 
     constructor(term: Terminal, master: boolean) {
         this.term = term;
@@ -59,6 +78,8 @@ export class FireTTY {
             window['dbpath']=dbpath;
         }
         this.dbpath = dbpath;
+        this.lastrestarted = FireTTY.getrestart();
+        this.uid = UID;
     };
 
     open() {
@@ -68,11 +89,25 @@ export class FireTTY {
             const optionMenu = document.getElementById("optionMenu");
             if(optionMenu!==null) {
                 const option = (optionMenu.getElementsByClassName("list")[0] as HTMLSelectElement).value;
+                if (!this.master && this.lastrestarted==MIN_SAFE_INTEGER.toString()) {
+                    // slave don't need to update the option in firebase at the start
+                    this.lastrestarted = FireTTY.setngetrestart();
+                    return;
+                }
+                this.lastrestarted = FireTTY.setngetrestart();
+                if (!this.master && FireTTY.applyingchanges) {
+                    // no notification back as i am applying my notification change here.
+                    console.log("slave applying its own change request...")
+                    FireTTY.applyingchanges = false;
+                    return;
+                }
                 this.firebasedbref.push ({
                    eventT: "option",
-                   Data: option
+                   Data: option,
+                   last: this.lastrestarted,
+                   uid: this.uid
                 });
-                //console.log("optionhandler: "+option);
+                console.log("optionhandler updated by uid: "+this.uid + " option: " + option + " at " + this.lastrestarted);
             }
         };
 
@@ -86,6 +121,7 @@ export class FireTTY {
 
     	const setupMaster = () => {
             let masterterm = this.term;
+            let thisinst = this;
     		this.firebasedbref.on("child_added", function(data, prevChildKey) {
 				let d = data.val();
                 //console.log("master: ", d.eventT, d.Data);
@@ -108,6 +144,27 @@ export class FireTTY {
                         console.log("optiondebug requested at master.");
                         masterterm.dispatchEvent(new Event("optiondebug"));
                         break;
+                    case "option":
+                        console.log("master caught optionevent:"+d.Data+" event: ", d);
+                        if (d.uid==thisinst.uid) {
+                            console.log("event triggered by me only, skipping..");
+                            return;
+                        }
+                        if (d.last<=thisinst.lastrestarted) {
+                            // = check as i am master
+                            console.log("ignoring previous restarts.");
+                            return;
+                        }
+                        const optionMenu = document.getElementById("optionMenu");
+                        if(optionMenu!==null) {
+                            const SelectOption = (optionMenu.getElementsByClassName("list")[0] as HTMLSelectElement);
+                            if (SelectOption !== null) {   //once
+                                SelectOption.value = d.Data;
+                                let event = new Event('change');
+                                SelectOption.dispatchEvent(event);
+                            }
+                        }
+                        break;
                     default:
                         console.log("unhandled type: ", d.eventT, d.Data);
                         break;
@@ -116,6 +173,7 @@ export class FireTTY {
         };
         const setupSlave = () => {
             let slaveterm = this.term;
+            let thisinst = this;
         	this.firebasedbref.on("child_added", function(data, prevChildKey) {
                 let d = data.val();
                 //console.log("slave: ", d.eventT, d.Data);
@@ -127,15 +185,25 @@ export class FireTTY {
                         slaveterm.output(d.Data);
                         break;
                     case "option":
-                        console.log("slave caught optionevent:"+d.Data)
+                        console.log("slave caught optionevent:"+d.Data+" event: ", d);
+                        if (d.uid==thisinst.uid) {
+                            console.log("event triggered by me only, skipping..");
+                            return;
+                        }
+                        if (d.last<thisinst.lastrestarted) {
+                            console.log("ignoring previous restarts.");
+                            return;
+                        }
                         slaveterm.hardreset();
                         const optionMenu = document.getElementById("optionMenu");
                         if(optionMenu!==null) {
                             const SelectOption = (optionMenu.getElementsByClassName("list")[0] as HTMLSelectElement);
                             if (SelectOption !== null && SelectOption.value !== d.Data) {   //once
                                 SelectOption.value = d.Data;
-                                var event = new Event('change');
+                                let event = new Event('change');
+                                FireTTY.applyingchanges = true; 
                                 SelectOption.dispatchEvent(event);
+                                // fire the event back to restart the terminal with new changeset
                             }
                         }
                         break;
@@ -173,6 +241,7 @@ export class FireTTY {
 
         if (!this.master) {			//Slave
         	enablehandler();
+            optionhandler();
         	setupSlave();
         } else {					// Master
             this.firebasedbref.set ({
@@ -186,14 +255,16 @@ export class FireTTY {
             setupMaster();
         }
 
-    	return () => {
+    	return (args: CloserArgs) => {
             console.log("closing connection in Firebase");
             this.active = false;
-            this.firebasedbref.off(); // detach all callback
+            if (!args.keepdbcallbacks) {
+                this.firebasedbref.off(); // detach all callback
+            }
             this.term.removeEventListener("optionrun", optionrunhandler);
             this.term.reset();
             this.term.deactivate()
-            if (this.master) {
+            if (!args.keepdb && this.master) {
                 this.firebasedbref.remove();    // remove database upon closure of master
             }
         }

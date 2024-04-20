@@ -21,6 +21,8 @@
   --code-error-color: #cb4b15;
   --code-data-type-color: #008000;
   --terminal-bg-color: black;
+  --gutter-rotate: 90deg; /* Initial rotation angle */
+  --gutter-right: 3px;
 }
 
 /* normalized */

@@ -1,4 +1,5 @@
 bindata
+src/js/dist/*
 src/js/node_modules/*
 go_19/*
 src/tags
