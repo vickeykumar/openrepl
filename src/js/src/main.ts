@@ -1,6 +1,6 @@
 import { Hterm } from "./hterm";
 import { Xterm } from "./xterm";
-import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, IdeFileNameKey, CompilerOptionKey, CompilerFlagsKey, EnvFlagsKey, setEventHandler } from "./webtty";
+import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, IdeFileNameKey, CompilerOptionKey, CompilerFlagsKey, EnvFlagsKey, setEventHandler, CloserArgs } from "./webtty";
 import { ConnectionFactory } from "./websocket";
 import { InitializeApp, FireTTY, DisableShareBtn } from "./firetty";
 
@@ -13,6 +13,9 @@ var master = false;
 var option2args = {
 			"c":"arg=-xc&arg=-noruntime",
 		  };
+
+// list of languages can't be handled in backend, java because of jvm
+const unhandledLanguages: string[] = ['java', 'javascript'];
 
 function handleTerminalOptions(elem, option, event="optionchange") {
     var flag = true;
@@ -96,7 +99,13 @@ if(optionMenu!==null) {
     }
 }
 
-export function ActionOnChange() {
+export function ActionOnChange(e: any) {
+    let isSilent = e.detail && e.detail.silent;
+    if (isSilent) {
+        // its a silent event
+        console.log("its a silent event, return...");
+        return;
+    }
     // body...
     const elem = document.getElementById("terminal");
     if (elem !== null) {
@@ -193,9 +202,17 @@ if (elem !== null) {
 		console.log("webtty created: ");
     }
 
-    window.addEventListener("unload", () => {
-        console.log("closing connection")
-        closer();
+    window.addEventListener("unload", (e: any) => {
+        let args : CloserArgs | undefined = e.detail;
+        if (!args) {
+            // If customunloadevent.detail is undefined, create a new CloserArgs object
+            args = {
+                keepdb: false,
+                keepdbcallbacks: false
+            };
+        }
+        console.log("closing connection with args: ", args);
+        closer(args);
         term.close();
     });
 
@@ -207,14 +224,26 @@ if (elem !== null) {
         elem.dispatchEvent(event);
     });
 
+    
     elem.addEventListener("optionchange", () => {
         console.log("event caught: change");
-        var event = new Event('unload');
-        window.dispatchEvent(event);
+        const option = getSelectValue();
+        console.log("option caught: ",option);
+        const customunloadevent = new CustomEvent('unload', {
+                          detail: {
+                                keepdb: true,
+                                keepdbcallbacks: false
+                            } as CloserArgs
+                        });
+        if (option && unhandledLanguages.indexOf(option) !== -1) {
+            customunloadevent.detail.keepdbcallbacks = true;
+            // want to keep the callbacks to recieve further notifications on firebase
+        } else {
+            customunloadevent.detail.keepdbcallbacks = false;
+        }
+        window.dispatchEvent(customunloadevent);
         setTimeout(function(){                // timeout between two events
             //var term: Terminal;
-            const option = getSelectValue();
-            console.log("option caught: ",option);
             if (!handleTerminalOptions(elem, option)) {
                 return;
             }
@@ -260,9 +289,14 @@ if (elem !== null) {
     //compile and run from editor
     elem.addEventListener("optionrun", (e) => {
         console.log("event caught: optionrun");
+        const customunloadevent = new CustomEvent('unload', {
+                          detail: {
+                                keepdb: true,
+                                keepdbcallbacks: false
+                            } as CloserArgs
+                        });
         if(master) {
-            var event = new Event('unload');
-            window.dispatchEvent(event);    
+            window.dispatchEvent(customunloadevent);    
         } else {
                 //wait till optionrun is dispatched to master
                 setTimeout(function(){

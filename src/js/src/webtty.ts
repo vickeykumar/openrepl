@@ -96,8 +96,13 @@ export interface ConnectionFactory {
     create(): Connection;
 }
 
+export type CloserArgs = {
+    keepdb: boolean;
+    keepdbcallbacks: boolean;
+};
+
 export interface Icallback {
-    (): void;
+    (args: CloserArgs): void;
 }
 
 export interface WebTTYFactory {
@@ -294,13 +299,13 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
         }
 
         setup();
-        return () => {
+        return (args: CloserArgs) => {
             console.log("closing connection in webtty")
 	        sessionCookieObj.DecrementSessionCount();
             clearTimeout(reconnectTimeout);
             connection.close();
             this.term.removeEventListener('slaveinputEvent', slaveInputhandler);
-            firecloser();
+            firecloser(args);
         }
     };
 };

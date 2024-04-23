@@ -244,9 +244,36 @@ function ToggleEditor() {
       editorbtn.classList.toggle("toggle-accent-color");
     }
     if (einst === null) {
+      let default_right = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--gutter-right')) || 0;
+      let default_prevMouseX = 0;
       einst = Split(['#ide', '#terminal'], {
         gutterSize: 3,
-        sizes: [55,45]
+        sizes: [55,45],
+        onDrag: function(event) {
+          let currentMouseX = event[0] || 0;
+          let prevMouseX = default_prevMouseX;
+          let gutterright = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--gutter-right')) || 0;
+          
+          let direction = (prevMouseX < currentMouseX) ? 'right':'left';
+          if (direction==='left') {
+            document.documentElement.style.setProperty('--gutter-rotate', '-90deg');
+          } else {
+            document.documentElement.style.setProperty('--gutter-rotate', '90deg');
+          }
+          default_prevMouseX = currentMouseX;
+          gutterright++;
+          if (gutterright > 20) {
+            // rotate
+            gutterright = 0;
+          }
+          document.documentElement.style.setProperty('--gutter-right', `${gutterright}px`);
+        },
+        onDragEnd: function (e) {
+          console.log("onDragEnd", e);
+          default_prevMouseX = e[0] || 0;
+          document.documentElement.style.setProperty('--gutter-rotate', '90deg'); // right at the end
+          document.documentElement.style.setProperty('--gutter-right', `${default_right}px`);
+        } 
       });
       if (ideElement !==undefined && ideElement !== null) {
         ideElement.style.display = "block";
@@ -1001,7 +1028,7 @@ $(function() {
       firebase.initializeApp(firebaseconfig);
     }
     
-    const changeOptionByData = (data="") => {
+    const changeOptionByData = (data="", is_silent=false) => {
       var optionMenu = $('#optionMenu > select')[0];
       if (optionMenu) {
         console.log("changeOptionByData: ",data);
@@ -1009,7 +1036,11 @@ $(function() {
           var option = optionMenu.options[i];
           if (option.getAttribute("data-editor") === data) {
             optionMenu.value = option.value;
-            optionMenu.dispatchEvent(new Event("change"));
+            const customEvent = new CustomEvent('change', {
+                detail: { silent: is_silent }
+            });
+            // propagate the change event further
+            optionMenu.dispatchEvent(customEvent);
             return;
           }
         }
@@ -1051,11 +1082,17 @@ $(function() {
     });
     
     // Select the desired programming language you want to code in 
-    var $selectLang = $("#select-lang").change(function () {
+    var $selectLang = $("#select-lang").change(function (event) {
+        // Check if the silent event
+        let is_silent = (event.detail && event.detail.silent) || false;
+        console.log("is silent change: ", is_silent, event);
         // Set the language in the Firebase object
         // This is a preference per editor
         currentEditorValue.update({
-            lang: this.value
+            lang: {
+              data: this.value,
+              silent: is_silent // trigger event only when told
+            }
         });
         // Set the editor language
         if (editor) {
@@ -1067,7 +1104,7 @@ $(function() {
         if ( optionlang && optionlang !== this.value ) {
           //local change triggered from editor
           //reflect in option menu
-          changeOptionByData(this.value);
+          changeOptionByData(this.value, is_silent);
         }
     });
 
@@ -1095,11 +1132,20 @@ $(function() {
 
         // Somebody changed the lang. Hey, we have to update it in our editor too!
         currentEditorValue.child("lang").on("value", function (r) {
-            var value = r.val();
+            let langdata = r.val();
+            let value = langdata.data;
+            let is_silent = langdata.silent || false;
+            console.log("data recieved from remote: ",langdata);
             // Set the language
             var cLang = $selectLang.val();
-            if (cLang !== value) {
-                $selectLang.val(value).change();
+            if (value!==undefined && cLang !== value) {
+                const customEvent = $.Event('change', {
+                    detail: {
+                        silent: is_silent
+                    }
+                });
+
+                $selectLang.val(value).trigger(customEvent);
             }
         });
 
@@ -1239,7 +1285,10 @@ $(function() {
       	    }
             // Here's where we set the initial content of the editor
             editorValues.child(editorId).set({
-                lang: optionlang,
+                lang: {
+                  data: optionlang,
+                  silent: true // trigger event only when told
+                },
                 queue: {},
                 content: val
             });
@@ -1281,7 +1330,27 @@ $(function() {
   const MIN_WRITES = 10;  // minimum number of write events before we fetch the data again from server
   const STATE_TTL = 900;  // TTL to save the state of selected node
 
-  const codeext = ['js', 'html', 'css', 'py', 'rb', 'java', 'c', 'cpp', 'go', 'pl', 'sh', 'ksh', 'bash'];
+    const codeext2menuoption = {
+      'js': 'javascript',
+      'html': 'html',
+      'css': 'css',
+      'py': 'python',
+      'rb': 'ruby',
+      'java': 'java',
+      'c': 'c_cpp',
+      'cpp': 'c_cpp',
+      'go': 'golang',
+      'pl': 'perl',
+      'sh': 'sh',
+      'ksh': 'sh',
+      'bash': 'sh',
+      'json': 'json',
+      'text': 'text',
+      'txt': 'text',
+      'xml': 'xml',
+      'toml': 'toml',
+      'yaml': 'yaml'
+  };
   const imageext = ['jpg', 'jpeg', 'gif', 'png', 'bmp', 'webp', 'svg', 'ico'];
   const archiveext = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'];
   const audioext = ['mp3', 'wav', 'wma', 'aac', 'flac', 'm4a', 'ogg', 'opus'];
@@ -1299,7 +1368,7 @@ $(function() {
 
   function isCodeFile(filename) {
       var ext = filename.split('.').pop().toLowerCase();
-      return codeext.includes(ext);
+      return ext in codeext2menuoption;
   }
 
   function isObjFile(filename) {
@@ -1434,6 +1503,44 @@ $(function() {
         }
   }
 
+  var lang_change_scheduled = false;
+  function changelangbyselectednode() {
+    var ide = get('#ide');
+    var lang_selector = get('#select-lang', ide);
+    var filename = "";
+    var filetype = "";
+    // code to get the selected node
+    var tree = $('#file-browser').jstree(true);
+    if (tree) {
+      var sel = tree.get_selected();
+      if (sel.length > 0) { 
+        filename = sel[0];
+        filetype = tree.get_type(sel);
+      }
+    }
+    var ext = filename.split('.').pop().toLowerCase();
+    if (filetype == "file" && ext in codeext2menuoption) {
+      if (lang_selector.value !== codeext2menuoption[ext]) {
+        console.log("editor language detected: ",codeext2menuoption[ext]);
+        lang_selector.value = codeext2menuoption[ext];
+        //notify editor to do the needfull
+
+        if (!lang_change_scheduled) {
+          lang_change_scheduled = true;
+          setTimeout(function() {
+            const customEvent = new CustomEvent('change', {
+                detail: { silent: true }
+            });
+            lang_selector.dispatchEvent(customEvent);
+            // change the menu option without firing the reconnect of new language
+            // will catch up if user reconnects it
+            lang_change_scheduled = false;
+          }, 1000); // schedule a change in editor lang if applicable
+        }
+
+      }
+    }
+  }
 
   // eventhandler to process events recieved by server
     function eventhandler (eventdata) {
@@ -1604,6 +1711,10 @@ $(function() {
                                 }).done(function(data) {
                                   // Handle successful response
                                   console.log("success creating folder: ", newid);
+                                  setTimeout(function() {
+                                      $('#file-browser').jstree(true).deselect_all();
+                                      $('#file-browser').jstree(true).select_node(newid);
+                                  }, 100);
                                 }).fail(function(xhr, status, error) {
                                   // Handle error
                                   console.log("Folder Create Failed ", status, error);
@@ -1639,6 +1750,10 @@ $(function() {
                                   // Handle successful response
                                   console.log("success creating file: ", newid);
                                   ref.set_icon(newid, filename2IconClass(newid));
+                                  setTimeout(function() {
+                                      $('#file-browser').jstree(true).deselect_all();
+                                      $('#file-browser').jstree(true).select_node(newid);
+                                  }, 100);
                                 }).fail(function(xhr, status, error) {
                                   // Handle error
                                   console.log("File Create Failed ", status, error);
@@ -1794,7 +1909,12 @@ $(function() {
             } 
             // refresh on optionchange, doing that in option run can be costly so skip
             if (event.type=="optionchange") {
+              var selected_node = $('#file-browser').jstree(true).get_selected();
               $('#file-browser').jstree(true).refresh();
+              if (selected_node.length > 0) {
+                $('#file-browser').jstree(true).select_node(selected_node, true); 
+              }
+              // select back the previous node after refresh, no dup events
               console.log('tree refreshed on: ', event.type);
             }
           });
@@ -1805,7 +1925,10 @@ $(function() {
           });
 
         }).on('refresh.jstree', function() {
+                // reinitialize all the shared stuffs
                 $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
+                applying_select = false;
+                lang_change_scheduled = false;
           // call your custom function here
         }).on("move_node.jstree copy_node.jstree", function (e, data) {
           var op = eventOp.Rename;  // move
@@ -1881,13 +2004,15 @@ $(function() {
 
         // sync selected nodes accross all shares
         thisbrowser.child("selected_node").on("value", function (snapshot) {
+            const nodeid = snapshot.val();
             if (applying_select) {
                 // this seleect is triggered by me only, return
-                console.log("selection triggered by me: ", (isMaster()?"master":"slave"));
+                console.log("selection triggered by me: ", (isMaster()?"master":"slave"), nodeid);
                 applying_select = false;
+                changelangbyselectednode(); 
+                //check if we can update the new language for new selection
                 return;
             }
-            const nodeid = snapshot.val();
             if (nodeid) {
               console.log("new node selected: ", nodeid);
               // deselect the node and select node with node id

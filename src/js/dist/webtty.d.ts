@@ -55,8 +55,12 @@ export interface Connection {
 export interface ConnectionFactory {
     create(): Connection;
 }
+export declare type CloserArgs = {
+    keepdb: boolean;
+    keepdbcallbacks: boolean;
+};
 export interface Icallback {
-    (): void;
+    (args: CloserArgs): void;
 }
 export interface WebTTYFactory {
     open(): Icallback;
@@ -73,5 +77,5 @@ export declare class WebTTY {
     iscompiled: boolean;
     constructor(term: Terminal, connectionFactory: ConnectionFactory, ft: WebTTYFactory, payload: Object, args: string, authToken: string);
     dboutput(type: string, data: any): void;
-    open(): () => void;
+    open(): (args: CloserArgs) => void;
 }
