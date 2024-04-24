@@ -129,6 +129,13 @@ apt-get install -y --no-install-recommends tcl
 mkdir /sys/fs/cgroup/systemd
 mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
 
+# check /sys/fs/cgroup/memory is mounted correctly, if not
+# enable memory cgroup V1 by changing /etc/default/grub
+# GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=0"
+# cgroup_enable=memory
+# reboot
+
+
 # currently stable gdb version is 8.1.1, can be copied from bin/ build from src
 #apt-get install -y --no-install-recommends gdb
 
