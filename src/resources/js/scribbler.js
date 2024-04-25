@@ -246,7 +246,7 @@ function ToggleEditor() {
     if (einst === null) {
       let default_right = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--gutter-right')) || 0;
       let default_prevMouseX = 0;
-      einst = Split(['#ide', '#terminal'], {
+      einst = Split(['#ide', '#terminal-div'], {
         gutterSize: 3,
         sizes: [55,45],
         onDrag: function(event) {

@@ -514,7 +514,13 @@
         <!-- ends here -->
       </div>
       <div class="gutter gutter-horizontal" id="gutter-div"></div>
-      <div class="terminal" id="terminal"></div>
+      <div class="terminal-div" id="terminal-div">
+        <div class="terminal-tabs" id="terminal-tabs">
+            <div class="tab active">Tab 1 <button class="close-tab" onclick="closeTab(event)">×</button></div>
+            <button class="add-tab" onclick="addTab()">+</button>
+        </div>
+        <div class="terminal" id="terminal"></div>
+      </div>
     </div>
     
     <div class="wrapper">

@@ -163,6 +163,17 @@ if (elem !== null) {
     var ft: WebTTYFactory;
     var closer: Icallback;
     var factory: ConnectionFactory;
+
+    const Cleanup = (keepdb: boolean, keepdbcallbacks: boolean) => {
+        let args : CloserArgs = {
+                keepdb: keepdb,
+                keepdbcallbacks: keepdbcallbacks
+            };
+        console.log("closing connection with args: ", args);
+        closer(args);
+        term.close();
+    };
+
     // payload to transmit body and other large data over websocket
     var payload: Object = {
                                 "test":"test",
@@ -202,20 +213,6 @@ if (elem !== null) {
 		console.log("webtty created: ");
     }
 
-    window.addEventListener("unload", (e: any) => {
-        let args : CloserArgs | undefined = e.detail;
-        if (!args) {
-            // If customunloadevent.detail is undefined, create a new CloserArgs object
-            args = {
-                keepdb: false,
-                keepdbcallbacks: false
-            };
-        }
-        console.log("closing connection with args: ", args);
-        closer(args);
-        term.close();
-    });
-
     elem.addEventListener("optiondebug", () => {
         debug = true;
         const event = new CustomEvent('optionrun', {
@@ -229,19 +226,12 @@ if (elem !== null) {
         console.log("event caught: change");
         const option = getSelectValue();
         console.log("option caught: ",option);
-        const customunloadevent = new CustomEvent('unload', {
-                          detail: {
-                                keepdb: true,
-                                keepdbcallbacks: false
-                            } as CloserArgs
-                        });
         if (option && unhandledLanguages.indexOf(option) !== -1) {
-            customunloadevent.detail.keepdbcallbacks = true;
+            Cleanup(true, true);
             // want to keep the callbacks to recieve further notifications on firebase
         } else {
-            customunloadevent.detail.keepdbcallbacks = false;
+            Cleanup(true, false);
         }
-        window.dispatchEvent(customunloadevent);
         setTimeout(function(){                // timeout between two events
             //var term: Terminal;
             if (!handleTerminalOptions(elem, option)) {
@@ -277,11 +267,6 @@ if (elem !== null) {
             
                 closer = wt.open();
                 console.log("webtty created:");
-                /*window.addEventListener("unload", () => {
-                    console.log("closing connection")
-                    closer();
-                    term.close();
-                });*/
             }
         }, 500);
     });
@@ -289,19 +274,12 @@ if (elem !== null) {
     //compile and run from editor
     elem.addEventListener("optionrun", (e) => {
         console.log("event caught: optionrun");
-        const customunloadevent = new CustomEvent('unload', {
-                          detail: {
-                                keepdb: true,
-                                keepdbcallbacks: false
-                            } as CloserArgs
-                        });
         if(master) {
-            window.dispatchEvent(customunloadevent);    
+           Cleanup(true, false);    
         } else {
                 //wait till optionrun is dispatched to master
                 setTimeout(function(){
-                    var event = new Event('unload');
-                    window.dispatchEvent(event); 
+                    Cleanup(false, false); 
                 }, 100);
         }
         setTimeout(function(){                // timeout between two events
@@ -333,11 +311,6 @@ if (elem !== null) {
             
                 closer = wt.open();
                 console.log("webtty created:");
-                /*window.addEventListener("unload", () => {
-                    console.log("closing connection")
-                    closer();
-                    term.close();
-                });*/
             }
         }, 500);
     });
