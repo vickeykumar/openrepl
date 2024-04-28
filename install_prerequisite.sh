@@ -2,6 +2,12 @@
 # please run as sudo
 # reboot once after installing to take effect for cgroups and containers
 
+GOTTY_DIR=/opt/gotty 
+mkdir -p $GOTTY_DIR || true
+chmod -R 644 $GOTTY_DIR
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+echo "running script from : " $SCRIPT_DIR
+
 retVal=0
 
 display_usage() {
@@ -33,7 +39,6 @@ cd ~
 
 #export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 apt-get update -y
 apt-get install -y --no-install-recommends make gcc g++ default-jdk git
@@ -88,12 +93,20 @@ npm install npm@8.5.1 -g
 #/usr/bin/ld.gold --strip-all --no-map-whole-files --no-keep-memory --no-keep-files-mapped $@ 
 # cling takes some time to init first instance, add below lines to rc.local(startup)
 #/usr/bin/cling 21321 .q > /dev/null 2>&1 &
-cd ~
-wget https://raw.githubusercontent.com/vickeykumar/openrepl/e596c6f0918e48eeba7a0bf7b7d2632f6b155ffb/repls/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
-tar -xvf cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
-chmod 755 cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling
-ln -s $HOME/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling /usr/local/bin/cling
-rm cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
+cd $GOTTY_DIR
+
+if [[ -e "/usr/local/bin/cling" ]]; then
+    echo "File /usr/local/bin/cling exists."
+else
+    echo "File /usr/local/bin/cling does not exist. installing..."
+    wget https://raw.githubusercontent.com/vickeykumar/openrepl/e596c6f0918e48eeba7a0bf7b7d2632f6b155ffb/repls/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
+		tar -xvf cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
+		chmod 755 cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling
+		ln -s $GOTTY_DIR/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling /usr/local/bin/cling
+		chmod 755 /usr/local/bin/cling
+		rm cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
+fi
+
 
 #install gointerpreter
 git clone https://github.com/vickeykumar/Go-interpreter.git
@@ -127,8 +140,8 @@ apt-get install -y --no-install-recommends tcl
 
 # Docker: Error response from daemon: cgroups: cgroup mountpoint does not exist: unknown
 # if using docker use privileged mode with cgroup mounted (-v /sys/fs/cgroup:/sys/fs/cgroup:rw )
-mkdir /sys/fs/cgroup/systemd
-mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
+mkdir /sys/fs/cgroup/systemd || true
+mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd 2>&1 || true
 
 # check /sys/fs/cgroup/memory is mounted correctly, if not
 # enable memory cgroup V1 by changing /etc/default/grub
@@ -139,9 +152,9 @@ mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
 
 # currently stable gdb version is 8.1.1, can be copied from bin/ build from src
 #apt-get install -y --no-install-recommends gdb
-cp SCRIPT_DIR/bin/gdb /usr/local/bin/ 
-chmod 755 /usr/local/bin/gdb
-
+cp $SCRIPT_DIR/bin/gdb /usr/local/bin/ || true
+chmod 755 /usr/local/bin/gdb || true
+chmod -R 777 /tmp/home || true
 
 #cleanup
 # remove tools used in between to optimize the container space

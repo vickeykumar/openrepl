@@ -86,10 +86,19 @@
           }
         }
 
-	function onrecaptchaSuccess(token) {
-		document.getElementById("feedback-form").action = "/feedback";
-     		document.getElementById("feedback-submit").disabled=false;
-   	}
+    function onrecaptchaSuccess(token) {
+    		document.getElementById("feedback-form").action = "/feedback";
+        document.getElementById("feedback-submit").disabled=false;
+    }
+    document.addEventListener('click', function(e) {
+        let myDropdown = document.getElementById('myDropdown');
+        let target = e.target;
+
+        if (myDropdown && !myDropdown.contains(target) && target.id !== 'share-btn-1' && getComputedStyle(myDropdown).display === 'block') {
+            myDropDownToggle();
+        }
+    });
+
       </script>
       
       <!-- style for contact section start -->

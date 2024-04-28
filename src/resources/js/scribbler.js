@@ -1516,6 +1516,13 @@ $(function() {
               errcallback();
             }
           });
+        } else {
+          // folder type, clear filename
+          let editor = window["editor"];
+          if (editor && editor.env) {
+            editor.env.filename = "";
+            console.log("resetting filename for foldertype.", newSelectedNodeId);
+          }
         }
   }
 

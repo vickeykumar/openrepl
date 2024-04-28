@@ -38,6 +38,14 @@ export function ActionOnChange(e: any) {
     };
 }
 
+function showTabContextMenu(event) {
+    event.preventDefault();
+    const contextMenu = document.getElementById('tabContextMenu') as HTMLDivElement;
+    contextMenu.style.left = `${event.clientX}px`;
+    contextMenu.style.top = `${event.clientY}px`;
+    contextMenu.style.display = 'block';
+}
+
 InitializeApp();
 
 var primaryterm: GottyTerminal; // primary terminal tab
@@ -76,6 +84,7 @@ const launcher = () => {
             firsttab.gottyterm.activateDisplay();
         });
     };
+
     window.addEventListener("unload", (e: any) => {
         console.log("Window unload event: closing connections");
         const tabsContainer = document.getElementById('terminal-tabs') as HTMLElement;
@@ -91,6 +100,42 @@ const launcher = () => {
             }
         }
     });
+
+    // create Tab context menu and add it to body
+    const originalOption = document.getElementById('optionlist') as HTMLSelectElement;
+    if (originalOption) {
+        const contextMenu = document.createElement('div') as HTMLDivElement;
+        contextMenu.id = 'tabContextMenu';
+        contextMenu.style.position = 'absolute';
+        contextMenu.style.zIndex = '10';
+        contextMenu.style.display= 'none';
+        const optionMenu = originalOption.cloneNode(true) as HTMLSelectElement;
+        optionMenu.id = 'tabOptionMenu';
+        optionMenu.size = 7;
+        optionMenu.value=originalOption.value;
+        contextMenu.appendChild(optionMenu);
+        document.body.appendChild(contextMenu);
+        // Add event listener to synchronize option selection
+        optionMenu.addEventListener('change', function() {
+            console.log("contextmenu selected value: ", this.value);
+            originalOption.value = this.value;
+            // Remove the context menu after selection
+            contextMenu.style.display= 'none';
+            originalOption.dispatchEvent(new Event("change"));
+        });
+
+        // Remove the context menu if clicked outside
+        document.addEventListener('click', function(e) {
+            if (!contextMenu.contains(e.target as Node) && contextMenu.style.display=='block') {
+                contextMenu.style.display= 'none';
+            }
+        });
+    }
+
+    const tabsContainer = document.getElementById('terminal-tabs') as HTMLElement;
+    // Add event listener to tabcontainer show context menu on right-click
+    tabsContainer.addEventListener('contextmenu', showTabContextMenu);
+
 }; //end of launcher
 
 function addTab(terminalid:string="", skipdb:boolean=false) {
@@ -292,5 +337,5 @@ setTabEventHandler((eventdata: TabEventData) => {
 });
 
 // exported to be used outside bundle for other tasks
-export { setEventHandler, launcher, addTab, closeTab, primaryterm};
+export { setEventHandler, launcher, addTab, closeTab};
 

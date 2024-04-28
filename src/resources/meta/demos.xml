@@ -1164,6 +1164,7 @@ JAVA=java
 FILE=HelloWorld.java
 debug=false
 WORKDIR=$HOME
+runall=1
 if [ "$CompilerOption" = "debug" ]; then
 	echo "Debugging not Supported for Java.";
 	exit;
@@ -1172,14 +1173,19 @@ printf "\n";
 if [ "$IdeFileName" != "" ]; then
 	WORKDIR=$(dirname "$IdeFileName");
 	FILE=$(basename "$IdeFileName");
+	runall=0;
 else
 	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 CLASS_NAME="${FILE%.*}"
-cd $WORKDIR
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
-    $COMPILER $FILE $@;
-    $JAVA $CLASS_NAME $@;
+	if [ "$runall" -eq 1 ]; then
+	    $JAVA "$WORKDIR"/*.java $@;
+	else
+		cd $WORKDIR;
+	    $COMPILER $FILE $@;
+    	$JAVA $CLASS_NAME $@;
+	fi
 fi
 printf "\n";
 		</Compiler>
