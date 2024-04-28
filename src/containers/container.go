@@ -18,19 +18,20 @@ const MB = 1024 * 1024
 
 // Command Name to memory limit in MB (megabytes).
 var Commands2memLimitMap = map[string]int64{
-	"cling":         11, // threshold : 11
+	"cling":         22, // threshold : 11
 	"gointerpreter": 45, // 44 with pp
-	"yaegi":	 5,
-	"python":    2,
+	"yaegi":	     10,
+	"python":        2,
 	"python2.7":     2,  // 3
-	"bash":          2,  // 2
-	"ipython":       8,
-	"ipython3":	     8,
-	"irb":           4,
+	"bash":          10,  // 2, for simultaneous bash consoles
+	"ipython":       10,
+	"ipython3":	     20,
+	"irb":           10,
 	"perli":         3,
 	"node":          10,
 	"jq-repl":       2,
-	"tclsh":       2,
+	"tclsh":       	 2,
+	"java":			 128, // jvm takes lot of memory
 }
 
 var memLimitMutex sync.Mutex

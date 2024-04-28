@@ -1093,10 +1093,11 @@ overflow: hidden;
   width: 100%;
   background-color: #000;
   color: #fff;
-  position: relative;
+  position: inherit;
   height: 100%;
   display: flex;
   flex-direction: column;
+  border-bottom: 1px solid var(--accent-color);
 }
 
 .terminal-tabs {
@@ -1107,13 +1108,14 @@ overflow: hidden;
 .tab {
     flex-grow: 1; /* Ensure equal width distribution */
     padding: 8px 12px;
-    border-right: 1px solid #666;
+    border-right: 1px solid var(--accent-color);
     cursor: pointer;
     position: relative;
+    background-color: #666;
 }
 
 .tab.active {
-    background-color: #666;
+    background-color: inherit;
     align-content: center;
     font-weight: bold;
 }
@@ -1143,12 +1145,20 @@ overflow: hidden;
 }
 
 .add-tab:hover {
-    background-color: #b0b0b0;
+    background-color: var(--accent-color);
     color: #0f0e0e;
 }
 
 .terminal {
   flex-grow: 1; /* Take up remaining space */
   overflow: auto; /* Add overflow to handle content overflow */
+}
+
+.terminal.active {
+  display: block;
+}
+
+.terminal.inactive {
+  display: none;
 }
 /* End of terminal tabs */

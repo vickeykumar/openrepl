@@ -16,7 +16,7 @@ import (
 )
 
 const oneMB = 1024*1024
-const MAXDISKUSAGE_MB = 10
+const MAXDISKUSAGE_MB = 20
 
 type TreeNode struct {
     Id       string      `json:"id"`

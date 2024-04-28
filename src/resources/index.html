@@ -516,10 +516,10 @@
       <div class="gutter gutter-horizontal" id="gutter-div"></div>
       <div class="terminal-div" id="terminal-div">
         <div class="terminal-tabs" id="terminal-tabs">
-            <div class="tab active">Tab 1 <button class="close-tab" onclick="closeTab(event)">×</button></div>
-            <button class="add-tab" onclick="addTab()">+</button>
+            <div class="tab active"><span class="tab-title">Terminal</span></div>
+            <button class="add-tab" id="add-tab" onclick="gotty.addTab()">+</button>
         </div>
-        <div class="terminal" id="terminal"></div>
+        <div class="terminal active" id="terminal"></div>
       </div>
     </div>
     

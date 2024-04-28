@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"utils"
 	"net/url"
+	"strings"
 )
 
 // flags for nsenter
@@ -256,4 +257,52 @@ func GetWorkingDir(pid int) string {
 		return ""
 	}
 	return wd
+}
+
+// splitEnv splits a string containing null-separated environment variable entries into a slice
+func splitEnv(env string) []string {
+	return strings.Split(env, "\x00")
+}
+
+// parseEnv parses an environment variable entry of the form "NAME=value" and returns the name, value, and a boolean indicating success
+func parseEnv(entry string) (name, value string, ok bool) {
+	parts := strings.SplitN(entry, "=", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+// GetHomeDirFromEnv returns the home directory of the user associated with the given PID
+func GetHomeDirFromEnv(pid int) (string, error) {
+	// Get the environment variables of the process
+	envPath := "/proc/" + strconv.Itoa(pid) + "/environ"
+	file, err := os.Open(envPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// Read the environment variables
+	buf := make([]byte, 8192) // Allocate a buffer for reading
+	n, err := file.Read(buf)
+	if err != nil {
+		return "", err
+	}
+
+	// Convert the buffer to a string and split it into environment variables
+	env := string(buf[:n])
+	var homeDir string
+	for _, entry := range splitEnv(env) {
+		if name, value, ok := parseEnv(entry); ok && name == "HOME" {
+			homeDir = value
+			break
+		}
+	}
+
+	if homeDir == "" {
+		return "", os.ErrNotExist // HOME environment variable not found
+	}
+
+	return homeDir, nil
 }

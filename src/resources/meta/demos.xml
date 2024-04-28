@@ -294,6 +294,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	else
     	$COMPILER run "$WORKDIR/$FILE" $@;
     fi
+    go clean -cache
 fi
 printf "\n";
 		</Compiler>
@@ -415,6 +416,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	else
     	$COMPILER run "$WORKDIR/$FILE" $@;
     fi
+    go clean -cache
 fi
 printf "\n";
 		</Compiler>
@@ -1148,6 +1150,7 @@ printf "\n";
 			<Description>quit the REPL.</Description>
 		</Usage>
 		<Content>/* Welcome to OpenREPL! */
+import java.util.*;
 
 public class HelloWorld {
     public static void main(String[] args) {
@@ -1156,8 +1159,9 @@ public class HelloWorld {
 }
 		</Content>
 		<Compiler>
-COMPILER=java
-FILE=test.java
+COMPILER=javac
+JAVA=java
+FILE=HelloWorld.java
 debug=false
 WORKDIR=$HOME
 if [ "$CompilerOption" = "debug" ]; then
@@ -1171,8 +1175,11 @@ if [ "$IdeFileName" != "" ]; then
 else
 	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
+CLASS_NAME="${FILE%.*}"
+cd $WORKDIR
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
-    $COMPILER "$WORKDIR"/*.java $@;
+    $COMPILER $FILE $@;
+    $JAVA $CLASS_NAME $@;
 fi
 printf "\n";
 		</Compiler>
@@ -1249,6 +1256,8 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
+#hold the pty to write output, for short programs
 		</Compiler>
 	</Demo>
 
@@ -1804,6 +1813,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1880,6 +1890,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 </DemoList>

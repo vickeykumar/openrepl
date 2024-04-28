@@ -33,6 +33,7 @@ cd ~
 
 #export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 apt-get update -y
 apt-get install -y --no-install-recommends make gcc g++ default-jdk git
@@ -138,6 +139,8 @@ mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
 
 # currently stable gdb version is 8.1.1, can be copied from bin/ build from src
 #apt-get install -y --no-install-recommends gdb
+cp SCRIPT_DIR/bin/gdb /usr/local/bin/ 
+chmod 755 /usr/local/bin/gdb
 
 
 #cleanup
