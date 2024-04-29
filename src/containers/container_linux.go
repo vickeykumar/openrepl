@@ -153,7 +153,7 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 		        Mems:   "0",
 		},*/
 		Memory: &specs.LinuxMemory{
-			Limit: &memlimit,
+			Limit: nil, // unlimited, will impose memlimit when adding it to subgroups
 		},
 	})
 	if err != nil {
@@ -179,7 +179,7 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 		},
 	}
 	containerObj.SubCgroups = make(map[int]cgroups.Cgroup)
-	log.Println("INFO: New Container created for : ", name)
+	log.Println("INFO: New Container created for : ", name, memlimit)
 	return &containerObj, nil
 }
 
