@@ -286,11 +286,12 @@ else
 	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 
+cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
-		go build -gcflags=all="-N -l" -o "$WORKDIR/$FILE".o "$WORKDIR/$FILE" $@;
+		go build -gcflags=all="-N -l" -o "$FILE".o "$FILE" $@;
 		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
-		gdb "$WORKDIR/$FILE".o -d $GOROOT $@;
+		gdb "$FILE".o -d $GOROOT $@;
 	else
     	$COMPILER run "$WORKDIR/$FILE" $@;
     fi
@@ -408,13 +409,14 @@ else
 	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 
+cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
-		go build -gcflags=all="-N -l" -o "$WORKDIR/$FILE".o "$WORKDIR/$FILE" $@;
+		go build -gcflags=all="-N -l" -o "$FILE".o $FILE $@;
 		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
-		gdb "$WORKDIR/$FILE".o -d "$GOROOT" $@;
+		gdb "$FILE".o -d "$GOROOT" $@;
 	else
-    	$COMPILER run "$WORKDIR/$FILE" $@;
+    	$COMPILER run $FILE $@;
     fi
     go clean -cache
 fi

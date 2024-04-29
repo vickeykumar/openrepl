@@ -22,6 +22,9 @@ ExecStartPre=-+/bin/chmod 4755 /usr/bin/nsenter
 ExecStart=/usr/local/bin/gotty -w --max-connection 2564 --port 80 --title-format "<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>"
 ExecStop=/usr/bin/pkill gotty
 LimitNOFILE=4096
+#to be filled by environment variables
+MemoryLimit=${TOTAL_MEMORY}K
+CPUQuota=${CPU_QUOTA}%
 Restart=always
 RestartPreventExitStatus=126
 # Wait for 1 second before going for next start on failure case

@@ -2,6 +2,13 @@
 # postinst
 
 chmod 0755 /usr/local/bin/gotty
+
+#fill the bash template on target system to generate the service file
+export TOTAL_MEMORY=$(awk "/^MemTotal:/ {print \$2}" /proc/meminfo)
+export CPU_QUOTA=$((100 / $(grep -c '^processor' /proc/cpuinfo)))
+CONTENT=$(cat /usr/lib/systemd/system/gotty.service | envsubst)
+echo "$CONTENT" > /usr/lib/systemd/system/gotty.service
 chmod 0644 /usr/lib/systemd/system/gotty.service
+
 systemctl enable gotty
 systemctl start gotty
