@@ -24,6 +24,8 @@ if(optionMenu!==null) {
 }
 
 export function ActionOnChange(e: any) {
+    const target = e.target as HTMLSelectElement;
+    const selectedValue = target.value;
     let isSilent = e.detail && e.detail.silent;
     if (isSilent) {
         // its a silent event
@@ -35,6 +37,11 @@ export function ActionOnChange(e: any) {
     if (elem !== null) {
         var event = new Event('optionchange');
         elem.dispatchEvent(event);
+        const taboption = document.getElementById('tabOptionMenu') as HTMLSelectElement;
+        if (taboption) {
+            // no events here, cz its triggered globally
+            taboption.value = selectedValue;
+        }
     };
 }
 
@@ -103,18 +110,15 @@ const launcher = () => {
 
     // create Tab context menu and add it to body
     const originalOption = document.getElementById('optionlist') as HTMLSelectElement;
-    if (originalOption) {
-        const contextMenu = document.createElement('div') as HTMLDivElement;
-        contextMenu.id = 'tabContextMenu';
+    const contextMenu = document.getElementById('tabContextMenu') as HTMLElement;
+    if (originalOption && contextMenu) {
         contextMenu.style.position = 'absolute';
-        contextMenu.style.zIndex = '10';
         contextMenu.style.display= 'none';
         const optionMenu = originalOption.cloneNode(true) as HTMLSelectElement;
         optionMenu.id = 'tabOptionMenu';
         optionMenu.size = 7;
         optionMenu.value=originalOption.value;
         contextMenu.appendChild(optionMenu);
-        document.body.appendChild(contextMenu);
         // Add event listener to synchronize option selection
         optionMenu.addEventListener('change', function() {
             console.log("contextmenu selected value: ", this.value);

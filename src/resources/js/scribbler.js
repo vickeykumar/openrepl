@@ -1365,7 +1365,8 @@ $(function() {
       'txt': 'text',
       'xml': 'xml',
       'toml': 'toml',
-      'yaml': 'yaml'
+      'yaml': 'yaml',
+      'proto': 'protobuf'
   };
   const imageext = ['jpg', 'jpeg', 'gif', 'png', 'bmp', 'webp', 'svg', 'ico'];
   const archiveext = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'];

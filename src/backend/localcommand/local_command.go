@@ -79,6 +79,11 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	cmd.Env = append(cmd.Env, utils.CompilerOptionKey+"="+utils.GetCompilerOption(params))
 	cmd.Env = append(cmd.Env, utils.IdeFileNameKey+"="+utils.GetIdeFileName(params))
 
+	// Append /opt/gotty/bin to the PATH environment variable
+	path := os.Getenv("PATH")
+	path += string(os.PathListSeparator) + "/opt/gotty/bin"
+	cmd.Env = append(cmd.Env, "PATH="+path)
+
 	//fill other env variables recieved from client
 	envargs := utils.GetEnvFlags(params)
 	envvars := strings.Split(envargs, " ")

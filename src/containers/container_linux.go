@@ -96,7 +96,7 @@ func (c *container) AddProcesstoNewSubCgroup(pid int, iscompiled bool) {
 	pidstr := strconv.Itoa(pid)
 	memlimit := Commands2memLimitMap[c.Name] * MB // mem limit in MBs
 	if iscompiled {
-		memlimit = int64(math.Floor(2.0*float64(memlimit)))
+		memlimit = int64(math.Floor(3.0*float64(memlimit)))
 		log.Println("effective memlimit: ",memlimit)
 	}
 	control, err := c.Control.New(pidstr, &specs.LinuxResources{
