@@ -188,6 +188,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE.o" ]; then
     fi
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 	
@@ -298,6 +299,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     go clean -cache
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -421,6 +423,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     go clean -cache
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -745,6 +748,7 @@ else
 	echo $0|base64 --decode|jq-repl $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -830,6 +834,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -915,6 +920,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1000,6 +1006,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1085,6 +1092,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1190,6 +1198,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	fi
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1354,6 +1363,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1645,6 +1655,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
