@@ -125,3 +125,33 @@ html, body {
     display: none;
   }
 }
+
+/*
+blog css
+*/
+
+.blog-post {
+    margin-bottom: 30px;
+}
+
+.blog-post h2 {
+    margin-bottom: 10px;
+}
+
+.post-meta {
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.read-more {
+    display: inline-block;
+    background-color: #333;
+    color: #fff;
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 3px;
+}
+
+.read-more:hover {
+    background-color: #555;
+}

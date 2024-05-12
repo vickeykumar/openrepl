@@ -21,6 +21,7 @@ func common_setup() {
 	// load pending jobs from previous births
 	utils.GottyJobs.LoadJobsFromFile(utils.GOTTY_PATH+"/"+utils.JobFile, nil)
 	server.InitFeedbackDBHandle()
+	server.InitBlogDBHandle()
 	user.InitSessionDBHandle()
 	containers.InitContainers()
 }
@@ -34,6 +35,7 @@ func common_cleanup() {
 
 	utils.GottyJobs.SaveJobsToFile(utils.GOTTY_PATH+"/"+utils.JobFile)
 	server.CloseFeedbackDBHandle()
+	server.CloseBlogDBHandle()
 	user.CloseSessionDBHandle()
 	containers.DeleteContainers()
 	cleanup_done = true

@@ -1,0 +1,182 @@
+<!doctype html>
+<html itemscope itemtype="http://schema.org/CreativeWork">
+  <head>
+    <meta charset="utf-8">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>profile edit data OpenREPL</title>
+    <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.0/dist/js/bootstrap.bundle.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
+    <link rel="stylesheet" href="./css/scribbler-global.css">
+    <link rel="stylesheet" href="./css/scribbler-doc.css">
+    <script src="./js/preprocessing.js"></script>
+    <link rel="author" href="humans.txt">
+    <!-- utility functions -->
+    <script type="text/javascript">
+        function logout () {
+          xhr = new XMLHttpRequest();
+          var url = window.location.origin + "/logout";
+          xhr.open("POST", url, true);
+          xhr.setRequestHeader("Content-Type", "application/json");
+          xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4 && xhr.status === 200) {
+            console.log("logout success");
+          }
+          console.log("logout status: ",xhr.status);
+          // logout anyway
+          location.assign("/")
+          };
+          xhr.send();
+        }
+        // Function to fetch JSON data for a selected name and populate the form fields
+        function populateForm(name, elem) {
+            fetch('/blog?q=json&name=' + encodeURIComponent(name))
+                .then(response => response.json())
+                .then(data => {
+                    // Update the form fields with the JSON data
+                    document.getElementById('blogname').value = data.name;
+                    document.getElementById('blogtype').value = data.title;
+                    document.getElementById('blogdesc').value = data.desc;
+                    tinymce.activeEditor.setContent(data.content);
+                    document.querySelectorAll('.doc__nav ul li').forEach(item => {
+                        item.classList.remove('selected');
+                    });
+                    elem.classList.add('selected');
+                })
+                .catch(error => {
+                    alert('Error fetching JSON data');
+                    console.error(error);   
+                });
+        }
+
+        function updateAsideBar() {
+            fetch('/blog?q=list')
+                .then(response => response.json())
+                .then(data => {
+                    // Get the aside element
+                    var asideElement = document.querySelector('.doc__nav ul');
+                    
+                    // Clear the existing list items
+                    asideElement.innerHTML = '';
+
+                    // Iterate over the list of names and create list items
+                    data.forEach(name => {
+                        var listItem = document.createElement('li');
+                        listItem.textContent = name;
+                        listItem.classList.add('js-btn');
+                        asideElement.appendChild(listItem);
+                        listItem.addEventListener('click', function() {
+                            // Call the populateForm function with the selected name
+                            populateForm(name, listItem);
+                        });
+                    });
+                })
+                .catch(error => console.error('Error fetching list of names:', error));
+        }
+
+        function submitForm(action) {
+            // Modify the form action based on the action value
+            if (action === 'delete') {
+                document.getElementById('editor-form').action = '/blog?q=delete';
+            } else {
+                document.getElementById('editor-form').action = '/blog';
+            }
+            document.getElementById('editor-form').submit(); // Submit the form
+        }
+        function onLoadFn(){
+          try {
+            var frame = document.getElementById('resultFrame');
+            var target = document.getElementById("resonsediv");
+            if(!target){
+              return
+            }
+            if(frame && frame.contentWindow.document){
+              if(frame.contentWindow.document.body.innerHTML.trim()==='') return;
+              target.innerHTML = '<h3 class="link link--light-rev">'+(frame.contentWindow.document.body.innerHTML)+'</h3><br>';
+              updateAsideBar();
+            } else {
+              alert("Unable to reach server now");
+            }
+          }
+          catch(error) {
+            alert("Unable to reach server now");
+            console.log(error);
+          }
+        }
+
+    </script>
+    <script src="https://cdn.tiny.cloud/1/e9qy3omh8w79g1g08zzhq1lgkc4c89ppnhute6gvqcp4tst5/tinymce/7/tinymce.min.js" referrerpolicy="origin"></script>
+  </head>
+  <body>
+    <nav class="header">
+      <h1 class="logo"><span class="go__color"><br>Open</span>REPL</h1>
+      <ul class="menu">
+        <div class="menu__item toggle"><span></span></div>
+        <li class="menu__item"><a id="sign-in-button" class="link link--dark" onclick="logout()"><i id = "auth-icon" class="fa fa-sign-out"></i> Logout</a></li>
+        <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
+      </ul>
+    </nav>
+    <br>
+    <div class="wrapper">
+        <aside class="doc__nav">
+        <ul>
+          <li class="js-btn selected">Cling for C/C++</li>
+          <li class="js-btn">Golang</li>
+        </ul>
+      </aside>
+      <div class="container">
+            <form id="editor-form" method="post" action="/blog" target="resultFrame">
+                <table>
+                
+                <tr>
+                    <td><input type="text" name="name" id="blogname" placeholder="Name" required="required"/></td>
+                    <td><input type="text" name="title" id="blogtype" placeholder="Title"/></td>
+                    <td><input type="text" name="desc" id="blogdesc" placeholder="Description"/></td>
+                </tr>
+                
+                <tr style="height: 100%;">
+                    <td colspan="3"><textarea name="content" id="blog-editor" placeholder="Welcome to TinyMCE!" ></textarea></td>
+                </tr>
+                
+                <tr>
+                    <td colspan="3" align="center">
+                        <input id="blogeditor-submit" type="submit" value="Save" onclick="submitForm('save')"/>
+                        <input id="blogeditor-delete" type="submit" value="Delete" onclick="submitForm('delete')"/>
+                    </td>
+                </tr>
+                
+                </table>
+            </form>
+            <div id="resonsediv"></div>
+            <iframe name="resultFrame" id="resultFrame" width="100%" style="border:none;display:none" onload="onLoadFn()"></iframe>
+      </div>
+    </div>
+    <footer class="footer">
+    <a href="./about.html" class="link link--light">About</a> <span class="dot"></span>
+    <a href="" class="link link--light">References</a> <span class="dot"></span>
+    <span id="copyright_year">
+        <script>document.getElementById('copyright_year').appendChild(document.createTextNode(new Date().getFullYear()))</script>
+    </span>&copy;<span class="go__color">Open</span>REPL 
+    </footer>
+    <!-- Place the following <script> and <textarea> tags your HTML's <body> -->
+    <script>
+      tinymce.init({
+        selector: '#blog-editor',
+        license_key: 'gpl',
+        plugins: 'anchor autolink charmap codesample emoticons image link lists media searchreplace table visualblocks wordcount checklist mediaembed casechange export formatpainter pageembed linkchecker a11ychecker tinymcespellchecker permanentpen powerpaste advtable advcode editimage advtemplate ai mentions tableofcontents footnotes mergetags autocorrect typography inlinecss markdown fullscreen save preview',
+        toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline strikethrough | link image media table mergetags | addcomment showcomments | spellcheckdialog a11ycheck typography | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat | fullscreen | save | preview',
+        ai_request: (request, respondWith) => respondWith.string(() => Promise.reject("See docs to implement AI Assistant")),
+        custom_ui_selector: '#blogeditor-submit #blogname #blogtitle #blogdescription',
+        save_onsavecallback: () => {
+            document.getElementById('editor-form').submit();
+            console.log('Saved');
+          },
+      });
+      updateAsideBar();
+    </script>
+    <script src="./js/common.js"></script>
+  </body>
+</html>

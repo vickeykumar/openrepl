@@ -135,6 +135,10 @@ func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 	if req.Method == "POST" {
 		query := req.Form.Get("q")
 		if query == "delete" {
+			if IsUserAdmin(rw, req) == false {
+				http.Error(rw, "Unauthorized Access!! Please Sign in again as Admin.", http.StatusUnauthorized)
+				return
+			}
 			key := req.Form.Get("key")
 			err := deleteFeedbackData(key)
 			if err != nil {
@@ -390,7 +394,5 @@ func handleUserProfile(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 }
-
-
 
 

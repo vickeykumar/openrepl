@@ -145,6 +145,24 @@ var FeedbackTemplate =`
 </script>
 `
 
+var BlogList_Template = `<article class="doc__content">
+			{{range $key, $value := .}}
+        <section class="blog-post">
+              <h2>{{$value.Title}}</h2>
+              <p class="post-meta">Last updated on {{formatDate $value.Lastupdated}}</p>
+              <p>{{$value.Desc}}</p>
+              <a href="/blog?name={{$key}}" class="read-more">Read More</a>
+              <hr />
+        </section>
+      {{end}}
+      </article>`
+
+var Blog_Template = `<article class="doc__content">
+        <h2>{{.Title}}</h2>
+        <p class="post-meta">Last updated on {{formatDate .Lastupdated}}</p>
+        {{htmlify .Content}}
+      </article>`
+
 var CommonTemplate = `<!doctype html>
 <html>
   <head>
@@ -164,7 +182,6 @@ var CommonTemplate = `<!doctype html>
     <link rel="author" href="humans.txt">
   </head>
   <body>
-    <div class="doc__bg"></div>
     <nav class="header">
       <h1 class="logo"><span class="go__color">Open</span>REPL</h1>
       <ul class="menu">
@@ -185,7 +202,9 @@ var CommonTemplate = `<!doctype html>
   </body>
 </html>`
 
-
+func htmlify(content string) template.HTML {
+	return template.HTML(content)
+}
 
 // common errorHandler
 func errorHandler(w http.ResponseWriter, r *http.Request, body string, status int) {
