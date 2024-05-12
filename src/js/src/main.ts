@@ -53,12 +53,11 @@ function showTabContextMenu(event) {
     contextMenu.style.display = 'block';
 }
 
-InitializeApp();
-
 var primaryterm: GottyTerminal; // primary terminal tab
 const termelem = document.getElementById("terminal") as CustomHTMLElement;
 const isprimary : boolean = true;
-const launcher = () => {
+const launcher = (firebaseconfig: any) => {
+    InitializeApp(firebaseconfig);
     if (termelem !== null) {
         primaryterm = new GottyTerminal(termelem, gotty_term, gotty_auth_token, isprimary); // create a gotty terminal instance and register for the callbacks
         // start the gotty terminal instance on the element #terminal

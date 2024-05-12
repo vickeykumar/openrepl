@@ -16,14 +16,6 @@ const MAX_FILESIZE = 20 * 1024 * 1024;
 const HOME_DIR_KEY = "homedir";
 var homedir = ""; // home directory
 
-// Initialize Firebase configuration
-const firebaseconfig = {
-  apiKey: "AIzaSyASgAaRv6yXUJQVcHaA_lRFVMy9AYZeRls",
-  authDomain: "openrepl-app.firebaseapp.com",
-  projectId: "openrepl-app",
-  databaseURL: "https://openrepl-app-default-rtdb.firebaseio.com"
-};
-
 const getExampleRef = () => {
   if(window.dbpath) {
     return window.dbpath;
@@ -2074,7 +2066,9 @@ $(function() {
        console.log('menu blurred');
       $(this).removeClass('expanded');
     });
-    setTimeout(gotty.launcher, 1000);
+    setTimeout(function() {
+      gotty.launcher(firebaseconfig); // launch gotty term
+    }, 1000);
   });
 
 })();

@@ -36,14 +36,7 @@ export const getExampleRef = () => {
       return "xyz";
 };
 
-export const firebaseconfig = {
-    apiKey: "AIzaSyASgAaRv6yXUJQVcHaA_lRFVMy9AYZeRls",
-    authDomain: "openrepl-app.firebaseapp.com",
-    projectId: "openrepl-app",
-    databaseURL: "https://openrepl-app-default-rtdb.firebaseio.com"
-};
-
-export const InitializeApp = () => {
+export const InitializeApp = (firebaseconfig: any) => {
     if (firebase.apps.length === 0) {
 	   firebase.initializeApp(firebaseconfig);
     }
