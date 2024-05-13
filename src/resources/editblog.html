@@ -12,6 +12,7 @@
     <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
     <link rel="stylesheet" href="./css/scribbler-global.css">
     <link rel="stylesheet" href="./css/scribbler-doc.css">
+    <script src="./config.js"></script>
     <script src="./js/preprocessing.js"></script>
     <link rel="author" href="humans.txt">
     <!-- utility functions -->
@@ -38,7 +39,7 @@
                 .then(data => {
                     // Update the form fields with the JSON data
                     document.getElementById('blogname').value = data.name;
-                    document.getElementById('blogtype').value = data.title;
+                    document.getElementById('blogtitle').value = data.title;
                     document.getElementById('blogdesc').value = data.desc;
                     tinymce.activeEditor.setContent(data.content);
                     document.querySelectorAll('.doc__nav ul li').forEach(item => {
@@ -133,7 +134,7 @@
                 
                 <tr>
                     <td><input type="text" name="name" id="blogname" placeholder="Name" required="required"/></td>
-                    <td><input type="text" name="title" id="blogtype" placeholder="Title"/></td>
+                    <td><input type="text" name="title" id="blogtitle" placeholder="Title"/></td>
                     <td><input type="text" name="desc" id="blogdesc" placeholder="Description"/></td>
                 </tr>
                 
@@ -166,14 +167,35 @@
       tinymce.init({
         selector: '#blog-editor',
         license_key: 'gpl',
-        plugins: 'anchor autolink charmap codesample emoticons image link lists media searchreplace table visualblocks wordcount checklist mediaembed casechange export formatpainter pageembed linkchecker a11ychecker tinymcespellchecker permanentpen powerpaste advtable advcode editimage advtemplate ai mentions tableofcontents footnotes mergetags autocorrect typography inlinecss markdown fullscreen save preview',
-        toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline strikethrough | link image media table mergetags | addcomment showcomments | spellcheckdialog a11ycheck typography | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat | fullscreen | save | preview',
-        ai_request: (request, respondWith) => respondWith.string(() => Promise.reject("See docs to implement AI Assistant")),
-        custom_ui_selector: '#blogeditor-submit #blogname #blogtitle #blogdescription',
+        // 1. Add the plugin to the list of external plugins
+        external_plugins: {
+            chatgpt:
+              "/js/chatgpt_plugin.js",
+        },
+        plugins: 'anchor autolink charmap codesample emoticons image link lists media searchreplace table visualblocks wordcount checklist mediaembed casechange export formatpainter pageembed linkchecker a11ychecker tinymcespellchecker permanentpen powerpaste advtable advcode editimage advtemplate mentions tableofcontents footnotes mergetags autocorrect typography inlinecss markdown fullscreen save preview',
+        toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline strikethrough | link image media table mergetags | addcomment showcomments | spellcheckdialog a11ycheck typography | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat | fullscreen | save | preview | code | codesample | chatgpt',
+        custom_ui_selector: '#blogeditor-submit #blogname #blogtitle #blogdesc',
         save_onsavecallback: () => {
             document.getElementById('editor-form').submit();
             console.log('Saved');
           },
+
+      // 2. Configure the ChatGPT plugin
+      openai: {
+        api_key: "sk-proj-UR_ACCESS_TOKEN_or_API_KEY", // Your OpenAI API key
+        model: "gpt-3.5-turbo",
+        temperature: 0.5,
+        max_tokens: 800,
+        prompts: [
+          "Translate from English to Italian",
+          "Summarize",
+          "Proofread",
+          "Write a blog post about",
+        ],
+        // Optional: Add your custom LLM
+        // baseUri: "https://your-llm-endpoint.com",
+      },
+
       });
       updateAsideBar();
     </script>
