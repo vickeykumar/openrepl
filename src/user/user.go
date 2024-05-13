@@ -296,7 +296,7 @@ func UpdateAndStoreSessionData(Uid, SessionID string, ss *UserSession, isdelete 
     if err != nil {
         log.Println("ERROR: Fetching UserProfile for user: "+Uid+" Error: "+ err.Error())
     }
-     go PurgeExpiredSessionData(Uid)
+     PurgeExpiredSessionData(Uid)
     //purge expired data sessions before going out
 
     if isdelete {
