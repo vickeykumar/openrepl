@@ -345,11 +345,11 @@ toggle terminal */
     z-index: 100;
     border: 1px solid rgba(255,255,255,0.3);
     border-radius: 50px;
-    height: 44px;
-    line-height: 44px;
+    height: 40px;
+    line-height: 40px;
     text-align: center;
-    width: 44px;
-    margin-bottom: 12px;
+    width: 40px;
+    margin-bottom: 15px;
     transition: color 0.5s,border-color 0.5s,background-color 0.5s;
     -moz-transition: color 0.5s,border-color 0.5s,background-color 0.5s;
     -webkit-transition: color 0.5s,border-color 0.5s,background-color 0.5s;
@@ -724,6 +724,7 @@ display: block;
     border-radius: inherit;
     overflow: inherit;
     padding: inherit;
+    top: 25px;
 }
 
 /* editor */
@@ -1086,3 +1087,78 @@ overflow: hidden;
 
 
 /* end of nav-bar */
+
+/* Terminal tabs */
+.terminal-div {
+  width: 100%;
+  background-color: #000;
+  color: #fff;
+  position: inherit;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--accent-color);
+}
+
+.terminal-tabs {
+  display: flex;
+  height: 28px;
+}
+
+.tab {
+    flex-grow: 1; /* Ensure equal width distribution */
+    padding: 8px 12px;
+    border-right: 1px solid var(--accent-color);
+    cursor: pointer;
+    position: relative;
+    background-color: #666;
+}
+
+.tab.active {
+    background-color: inherit;
+    align-content: center;
+    font-weight: bold;
+}
+
+.close-tab {
+    background: transparent;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 5px;
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.add-tab {
+    background-color: #333;
+    color: #fff;
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    position: relative;
+    right: inherit;
+    top: 0;
+}
+
+.add-tab:hover {
+    background-color: var(--accent-color);
+    color: #0f0e0e;
+}
+
+.terminal {
+  flex-grow: 1; /* Take up remaining space */
+  overflow: auto; /* Add overflow to handle content overflow */
+}
+
+.terminal.active {
+  display: block;
+}
+
+.terminal.inactive {
+  display: none;
+}
+/* End of terminal tabs */

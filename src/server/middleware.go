@@ -49,3 +49,13 @@ func (server *Server) wrapBasicAuth(handler http.Handler, credential string) htt
 		handler.ServeHTTP(w, r)
 	})
 }
+
+func (server *Server) wrapAdmin(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if !IsUserAdmin(rw, req) {
+	        errorHandler(rw, req, "Unauthorized Access!! Please Sign in again as Admin.", http.StatusUnauthorized)
+	        return
+	    }
+	    handler.ServeHTTP(rw, req)
+	})
+}

@@ -12,17 +12,9 @@ var getAll = function (selector, scope) {
 
 const CONTENT_KEY = "editorContent";
 const CMD_KEY = "command";
-const MAX_FILESIZE = 10 * 1024 * 1024;
+const MAX_FILESIZE = 20 * 1024 * 1024;
 const HOME_DIR_KEY = "homedir";
 var homedir = ""; // home directory
-
-// Initialize Firebase configuration
-const firebaseconfig = {
-  apiKey: "AIzaSyASgAaRv6yXUJQVcHaA_lRFVMy9AYZeRls",
-  authDomain: "openrepl-app.firebaseapp.com",
-  projectId: "openrepl-app",
-  databaseURL: "https://openrepl-app-default-rtdb.firebaseio.com"
-};
 
 const getExampleRef = () => {
   if(window.dbpath) {
@@ -237,7 +229,7 @@ function SaveSelectedNodeToFile(oldSelectedNodeId, errcallback=null) {
 }
 
 function ToggleEditor() {
-    TermElement = get("#terminal");
+    TermElement = get("#terminal-div");
     ideElement =  get("#ide");
     editorbtn = get("#editor-button");
     if(editorbtn !==undefined && editorbtn !== null ) {
@@ -246,7 +238,7 @@ function ToggleEditor() {
     if (einst === null) {
       let default_right = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--gutter-right')) || 0;
       let default_prevMouseX = 0;
-      einst = Split(['#ide', '#terminal'], {
+      einst = Split(['#ide', '#terminal-div'], {
         gutterSize: 3,
         sizes: [55,45],
         onDrag: function(event) {
@@ -346,7 +338,7 @@ function StartTour() {
     },
     {
       title: 'Terminal Window',
-      element: document.querySelector('#terminal'),
+      element: document.querySelector('#terminal-div'),
       intro: 'This is the Terminal window you will use to interact with OpenREPL interactively or see the ide code results when you run.'
     },
     {
@@ -412,16 +404,32 @@ function StartTour() {
 }
 
 function CompileandRun() {
-    const termElem = get("#terminal");
-    if(termElem!==undefined) {
-        termElem.dispatchEvent(new Event("optionrun"));
+    const termdiv = get("#terminal-div");
+    if(termdiv) {
+        const allterm = getAll(".terminal.active", termdiv);
+        // dispatch event to all active terminals
+        for (let i = 0; i < allterm.length; i++) {
+            const termElem = allterm[i];
+            const computedStyle = getComputedStyle(termElem);
+            if (computedStyle.display !== 'none') {
+                termElem.dispatchEvent(new Event("optionrun"));
+            }
+        }
     }
 }
 
 function RunandDebug() {
-    const termElem = get("#terminal");
-    if(termElem!==undefined) {
-        termElem.dispatchEvent(new Event("optiondebug"));
+    const termdiv = get("#terminal-div");
+    if(termdiv) {
+        const allterm = getAll(".terminal.active", termdiv);
+        // dispatch event to all active terminals
+        for (let i = 0; i < allterm.length; i++) {
+            const termElem = allterm[i];
+            const computedStyle = getComputedStyle(termElem);
+            if (computedStyle.display !== 'none') {
+                termElem.dispatchEvent(new Event("optiondebug"));
+            }
+        }
     }
 }
 
@@ -1349,7 +1357,8 @@ $(function() {
       'txt': 'text',
       'xml': 'xml',
       'toml': 'toml',
-      'yaml': 'yaml'
+      'yaml': 'yaml',
+      'proto': 'protobuf'
   };
   const imageext = ['jpg', 'jpeg', 'gif', 'png', 'bmp', 'webp', 'svg', 'ico'];
   const archiveext = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'];
@@ -1500,6 +1509,13 @@ $(function() {
               errcallback();
             }
           });
+        } else {
+          // folder type, clear filename
+          let editor = window["editor"];
+          if (editor && editor.env) {
+            editor.env.filename = "";
+            console.log("resetting filename for foldertype.", newSelectedNodeId);
+          }
         }
   }
 
@@ -1892,7 +1908,7 @@ $(function() {
           $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
 
           // refresh the tree when an change or run is triggered on terminal to get uptodate homedir
-          $("#terminal").on('optionchange optionrun', function(event) {
+          $("#terminal.active").on('optionchange optionrun', function(event) {
             if (!isMaster()) {
               // no need of redundant saves
               return;
@@ -2050,7 +2066,9 @@ $(function() {
        console.log('menu blurred');
       $(this).removeClass('expanded');
     });
-    setTimeout(gotty.launcher, 1000);
+    setTimeout(function() {
+      gotty.launcher(firebaseconfig); // launch gotty term
+    }, 1000);
   });
 
 })();

@@ -43,8 +43,13 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	commandArgs := containers.GetCommandArgs(command, argv, ppid, params)
 	cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
 	if ppid != -1 {
-		// using working directory of parent process only 
-		cmd.Dir = containers.GetWorkingDir(ppid)
+		var err error
+		// using home directory of parent process only 
+		cmd.Dir, err = containers.GetHomeDirFromEnv(ppid)
+		if err!=nil {
+			// try to get the current working directory, if failed
+			cmd.Dir = containers.GetWorkingDir(ppid)
+		}
 	} else {
 		// get working for a user uid, same as homedir generated
 		if homedir == "" {
@@ -73,6 +78,11 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	cmd.Env = append(cmd.Env, utils.IdeLangKey+"="+utils.GetCompilerLang(params))
 	cmd.Env = append(cmd.Env, utils.CompilerOptionKey+"="+utils.GetCompilerOption(params))
 	cmd.Env = append(cmd.Env, utils.IdeFileNameKey+"="+utils.GetIdeFileName(params))
+
+	// Append /opt/gotty/bin to the PATH environment variable
+	path := os.Getenv("PATH")
+	path += string(os.PathListSeparator) + "/opt/gotty/bin"
+	cmd.Env = append(cmd.Env, "PATH="+path)
 
 	//fill other env variables recieved from client
 	envargs := utils.GetEnvFlags(params)

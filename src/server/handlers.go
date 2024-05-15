@@ -345,6 +345,16 @@ func (server *Server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
 func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript")
 	w.Write([]byte("var gotty_term = '" + server.options.Term + "';"))
+	
+	fbconfig := "CmNvbnN0IGZpcmViYXNlY29uZmlnID0gewogIGFwaUtleTogIkFJemFTeUFTZ0Fh" +
+	"UnY2eVhVSlFWY0hhQV9sUkZWTXk5QVlaZVJscyIsCiAgYXV0aERvbWFpbjogIm9wZW5yZXBsLWFwc" +
+	"C5maXJlYmFzZWFwcC5jb20iLAogIHByb2plY3RJZDogIm9wZW5yZXBsLWFwcCIsCiAgZGF0YWJhc2" +
+	"VVUkw6ICJodHRwczovL29wZW5yZXBsLWFwcC1kZWZhdWx0LXJ0ZGIuZmlyZWJhc2Vpby5jb20iCn07Cgo="
+
+    decoded, err := base64.StdEncoding.DecodeString(fbconfig)
+    if err==nil {
+    	w.Write(decoded)
+    }
 }
 
 // titleVariables merges maps in a specified order.

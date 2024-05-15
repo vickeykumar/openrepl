@@ -188,6 +188,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE.o" ]; then
     fi
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 	
@@ -286,16 +287,19 @@ else
 	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 
+cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
-		go build -gcflags=all="-N -l" -o "$WORKDIR/$FILE".o "$WORKDIR/$FILE" $@;
+		go build -gcflags=all="-N -l" -o "$FILE".o "$FILE" $@;
 		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
-		gdb "$WORKDIR/$FILE".o -d $GOROOT $@;
+		gdb "$FILE".o -d $GOROOT $@;
 	else
     	$COMPILER run "$WORKDIR/$FILE" $@;
     fi
+    go clean -cache
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -407,16 +411,19 @@ else
 	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 
+cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
-		go build -gcflags=all="-N -l" -o "$WORKDIR/$FILE".o "$WORKDIR/$FILE" $@;
+		go build -gcflags=all="-N -l" -o "$FILE".o $FILE $@;
 		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
-		gdb "$WORKDIR/$FILE".o -d "$GOROOT" $@;
+		gdb "$FILE".o -d "$GOROOT" $@;
 	else
-    	$COMPILER run "$WORKDIR/$FILE" $@;
+    	$COMPILER run $FILE $@;
     fi
+    go clean -cache
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -741,6 +748,7 @@ else
 	echo $0|base64 --decode|jq-repl $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -826,6 +834,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -911,6 +920,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -996,6 +1006,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1081,6 +1092,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1148,6 +1160,7 @@ printf "\n";
 			<Description>quit the REPL.</Description>
 		</Usage>
 		<Content>/* Welcome to OpenREPL! */
+import java.util.*;
 
 public class HelloWorld {
     public static void main(String[] args) {
@@ -1156,10 +1169,12 @@ public class HelloWorld {
 }
 		</Content>
 		<Compiler>
-COMPILER=java
-FILE=test.java
+COMPILER=javac
+JAVA=java
+FILE=HelloWorld.java
 debug=false
 WORKDIR=$HOME
+runall=1
 if [ "$CompilerOption" = "debug" ]; then
 	echo "Debugging not Supported for Java.";
 	exit;
@@ -1168,13 +1183,22 @@ printf "\n";
 if [ "$IdeFileName" != "" ]; then
 	WORKDIR=$(dirname "$IdeFileName");
 	FILE=$(basename "$IdeFileName");
+	runall=0;
 else
 	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
+CLASS_NAME="${FILE%.*}"
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
-    $COMPILER "$WORKDIR"/*.java $@;
+	if [ "$runall" -eq 1 ]; then
+	    $JAVA "$WORKDIR"/*.java $@;
+	else
+		cd $WORKDIR;
+	    $COMPILER $FILE $@;
+    	$JAVA $CLASS_NAME $@;
+	fi
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1249,6 +1273,8 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
+#hold the pty to write output, for short programs
 		</Compiler>
 	</Demo>
 
@@ -1337,6 +1363,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1628,6 +1655,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1804,6 +1832,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 
@@ -1880,6 +1909,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER "$WORKDIR/$FILE" $@;
 fi
 printf "\n";
+sleep 0.05
 		</Compiler>
 	</Demo>
 </DemoList>

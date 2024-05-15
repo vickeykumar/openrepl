@@ -14,14 +14,21 @@ Environment="GOPATH=/opt/gotty/"
 Environment="GOPATH=/opt/gotty/"
 Environment="GCC_EXEC_PREFIX=/usr/lib/gcc/"
 Environment="GODEBUG=cgocheck=0"
+PermissionsStartOnly=true
 ExecStartPre=-+/bin/mkdir /sys/fs/cgroup/systemd
 ExecStartPre=-+/bin/mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
 ExecStartPre=-+/bin/chgrp -R cgroupusers /sys/fs/cgroup
 ExecStartPre=-+/bin/chmod -R u=rwx,g=rwx /sys/fs/cgroup
 ExecStartPre=-+/bin/chmod 4755 /usr/bin/nsenter
-ExecStart=/usr/local/bin/gotty -w --max-connection 2564 --port 80 --title-format "<fmt><title>{{ .command }}@OpenREPL</title><jid>{{ encodePID .pid }}</jid></fmt>"
+ExecStartPre=-+/bin/chmod 644 /opt/gotty/.gitconfig
+ExecStart=/usr/local/bin/gotty -w --max-connection 2564 --port 80 --title-format "<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>"
+ExecStartPost=/bin/sleep 1
+ExecStartPost=/bin/chmod 400 /opt/gotty/.gitconfig
 ExecStop=/usr/bin/pkill gotty
 LimitNOFILE=4096
+#to be filled by environment variables
+MemoryLimit=${TOTAL_MEMORY}K
+CPUQuota=${CPU_QUOTA}%
 Restart=always
 RestartPreventExitStatus=126
 # Wait for 1 second before going for next start on failure case

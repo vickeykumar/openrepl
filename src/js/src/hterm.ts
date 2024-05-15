@@ -23,6 +23,14 @@ export class Hterm {
         this.term.installKeyboard();
     };
 
+    getID() : string {
+        // return id of the terminal
+        if (this.elem.id) {
+            return this.elem.id;
+        }
+        return "terminal";
+    }
+
     info(): { columns: number, rows: number } {
         return { columns: this.columns, rows: this.rows };
     };
@@ -49,6 +57,19 @@ export class Hterm {
 
     setWindowTitle(title: string) {
         this.term.setWindowTitle(title);
+    };
+
+    setTabTitle(title: string) {
+        const elem = this.elem as HTMLElement & { tab: any };
+        if (elem.tab) {
+            const tab = elem.tab as HTMLDivElement;
+            if (tab) {
+                const titleSpan = tab.querySelector('.tab-title') as HTMLElement;
+                if (titleSpan) {
+                    titleSpan.textContent = title;
+                }
+            }
+        }
     };
 
     setPreferences(value: object) {

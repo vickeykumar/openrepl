@@ -20,7 +20,7 @@ gotty:	asset ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: bindata/static/js/gotty-bundle.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta
+asset: bindata/static/js/gotty-bundle.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	GO111MODULE=off $(GOROOT)/bin/gofmt -w server/asset.go
 
@@ -49,6 +49,9 @@ bindata/static/meta: bindata/static resources/meta/*
 
 bindata/static/doc.html: bindata/static resources/doc.html bindata/static/docs
 	cp resources/doc.html bindata/static/doc.html
+
+bindata/static/editblog.html: bindata/static resources/editblog.html
+	cp resources/editblog.html bindata/static/editblog.html
 
 bindata/static/about.html: bindata/static resources/about.html resources/references.html
 	cp resources/about.html bindata/static/about.html
@@ -96,11 +99,13 @@ jsconsole/node_modules/webpack:
 	cd jsconsole && \
 	npm install
 
-jsconsole/build/static/js/jsconsole.js: bindata/static/js jsconsole/node_modules/webpack
+JS_FILES := $(wildcard jsconsole/*) $(wildcard jsconsole/*/*) $(wildcard jsconsole/*/*/*) 
+
+jsconsole/build/static/js/jsconsole.js: jsconsole/node_modules/webpack $(JS_FILES)
 	cd jsconsole && \
 	NODE_ENV=production REACT_APP_VERSION=${VERSION} `npm bin`/webpack
 
-bindata/static/js/jsconsole.js: bindata/static/js jsconsole/build/static/js/jsconsole.js
+bindata/static/js/jsconsole.js: jsconsole/build/static/js/jsconsole.js
 	cp jsconsole/build/static/js/jsconsole.js bindata/static/js/jsconsole.js
 
 deb: all

@@ -31,14 +31,14 @@ const clickhandler = () => {
                                 }
                             };
 
-export type eventhandler = (eventdata: Object) => void;
+export type eventhandlertype = (eventdata: Object) => void;
 
-export var eventHandler : eventhandler = (eventdata: Object) => {
+export var eventHandler : eventhandlertype = (eventdata: Object) => {
                         console.log("Event data recieved: ", eventdata);
 
                         }
 
-export function setEventHandler(callback: eventhandler): void {
+export function setEventHandler(callback: eventhandlertype): void {
   eventHandler = callback;
 }
 
@@ -64,11 +64,13 @@ export const jidHandler = (jid: string) => {
                 };
 
 export interface Terminal {
+    getID() : string;
     info(): { columns: number, rows: number };
     output(data: string): void;
     showMessage(message: string, timeout: number): void;
     removeMessage(): void;
     setWindowTitle(title: string): void;
+    setTabTitle(title: string): void;
     setPreferences(value: object): void;
     onInput(callback: (input: string) => void): void;
     onResize(callback: (colmuns: number, rows: number) => void): void;
@@ -110,6 +112,8 @@ export interface WebTTYFactory {
     dboutput(type: string, data: any): void;
 }
 
+const url = new URL(window.location.href);
+
 export class WebTTY {
     term: Terminal;
     connectionFactory: ConnectionFactory;
@@ -119,6 +123,16 @@ export class WebTTY {
     firebaseref: any;
     Payload: Object;
     iscompiled: boolean;
+    private static jid: string = url.searchParams.get('jid')!==null ? ": jid-"+url.searchParams.get('jid') : "";
+    // job id of main process
+
+    private static setjid(jid: string): void {
+        this.jid = jid;
+    }
+
+    private static getjid(): string {
+        return this.jid;
+    }
 
     constructor(term: Terminal, connectionFactory: ConnectionFactory, ft: WebTTYFactory, payload:Object, args: string, authToken: string) {
         this.term = term;
@@ -132,10 +146,21 @@ export class WebTTY {
         if(payload[IdeLangKey] && payload[IdeContentKey]) {
             this.iscompiled = true; //its a compilation request
         }
+        if (!this.firebaseref.isprimary && WebTTY.getjid()!=="" && this.args.match("jid=")==null) {
+            // add jid only when it is not found, only to secondary terminal tabs
+            const jidstr = "jid="+WebTTY.getjid();
+            if (this.args==="") {
+                this.args+='?'+jidstr;
+            } else {
+                this.args+='&'+jidstr;
+            }
+        }
     };
 
     dboutput(type: string, data: any) {
-        this.firebaseref.dboutput(type, data);
+        if (this.firebaseref.isactive()) {
+            this.firebaseref.dboutput(type, data);
+        }
     };
 
     open() {
@@ -234,8 +259,20 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                                 console.log("xml parsererror: ",e);
                             }
                         }
-                        this.term.setWindowTitle(title);
-                        jidHandler(jid);
+                        
+                        if (this.firebaseref.isprimary) {
+                            // only primary tab sets jid and window title
+                            this.term.setWindowTitle(title+"@OpenREPL");
+                            WebTTY.setjid(jid);
+                            jidHandler(jid);
+                        }
+                        // other tabs can update its own tab title
+                        this.term.setTabTitle(title);
+                        this.dboutput("tab", {
+                            op: "title",
+                            termid: this.term.getID(),
+                            title: title
+                        });
                         break;
                     case msgSetPreferences:
                         const preferences = JSON.parse(payload);
@@ -247,6 +284,9 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         this.reconnect = autoReconnect;
                         break;
                     case msgEvent:
+                        if (!this.firebaseref.isprimary) {
+                            break; // no need to notify through secondary tabs
+                        }
                         const eventdata = JSON.parse(atob(payload));
                         this.dboutput("filebrowser-event", eventdata);  // send filebrowser event to firebase   
                         eventHandler(eventdata);    // fire the event locally
@@ -269,11 +309,17 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 }
                 sessionCookieObj.DecrementSessionCount();
                 console.log("close event: ",closeEvent['code'],closeEvent['reason'], connection.isClosed());
-                const url = new URL(window.location.href);
-                let jidstr = url.searchParams.get('jid')!==null ? ": jid-"+url.searchParams.get('jid') : "";
                 switch(closeEvent['code']) {
                     case 1000:
-                        TermOutput("connection closed by remote host"+jidstr);
+                        if (closeEvent['reason'].match("local command")) {
+                            TermOutput("[Program Exited] Jobid: "+WebTTY.getjid());
+                        } else {
+                            TermOutput("connection closed by remote host "+WebTTY.getjid());
+                            if (!this.firebaseref.isprimary && closeEvent['reason'].match("error.*invalid parent id")) {
+                                // parent terminal disconnected
+                                TermOutput(" [Primary Terminal is disconnected, Please reconnect and try again.]");
+                            }
+                        }
                         break;
 
                     case 1005:
@@ -283,6 +329,8 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                     default:
                         TermOutput("connection closed by remote host");
                         if (!this.iscompiled) {
+                            let jidstr = WebTTY.getjid();
+                            jidstr = (jidstr=="") ? "" : (": "+jidstr);
                             TermOutput("\r\n OR");
                             TermOutput("\r\nResource"+jidstr+" unavailable, Please try again after some time.");
                         }

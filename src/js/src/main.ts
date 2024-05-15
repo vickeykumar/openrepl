@@ -1,95 +1,19 @@
-import { Hterm } from "./hterm";
-import { Xterm } from "./xterm";
-import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, IdeFileNameKey, CompilerOptionKey, CompilerFlagsKey, EnvFlagsKey, setEventHandler, CloserArgs } from "./webtty";
-import { ConnectionFactory } from "./websocket";
-import { InitializeApp, FireTTY, DisableShareBtn } from "./firetty";
+import { GottyTerminal, getSelectValue, CustomHTMLElement } from "./gotty";
+import { setEventHandler } from "./webtty";
+import { InitializeApp, setTabEventHandler } from "./firetty";
+
+/*
+next task is to make this modular in to another class as GottyTerm
+- indicates a single gotty instance , will be use full to create multiple tabs
+*/
+
+const MAX_TABS=5;
 
 // @TODO remove these
 declare var gotty_auth_token: string;
 declare var gotty_term: string;
 
-var master = false;
 
-var option2args = {
-			"c":"arg=-xc&arg=-noruntime",
-		  };
-
-// list of languages can't be handled in backend, java because of jvm
-const unhandledLanguages: string[] = ['java', 'javascript'];
-
-function handleTerminalOptions(elem, option, event="optionchange") {
-    var flag = true;
-    if (option!==null && elem!==null) {
-        var javaframe = elem.getElementsByClassName("javaframe")[0];
-        if (javaframe !== undefined) {
-            elem.removeChild(javaframe);
-        }
-        switch (option) {
-                case "java":
-                    // code...
-                    if (event==="optionrun") {
-                        break;
-                    }
-                    var iframe = document.createElement("IFRAME");
-                    iframe.setAttribute("class","javaframe");
-                    iframe.setAttribute("src","https://tryjshell.org");
-                    iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
-                    elem.appendChild(iframe);
-                    DisableShareBtn(option);
-                    flag=false;
-                    break;
-
-                case "javascript":
-                    // code...
-                    var iframe = document.createElement("IFRAME");
-                    iframe.setAttribute("class","javaframe");
-                    iframe.setAttribute("src","./jsconsole.html");
-                    iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
-                    elem.appendChild(iframe);
-                    DisableShareBtn(option);
-                    flag=false;
-                    break; 
-                
-                default:
-                    // code...
-                    flag=true;
-                    break;
-        }
-    }
-    jidHandler("");
-    return flag;
-}
-
-// changes
-function getSelectValue() {
-    // body...
-    const optionMenu = document.getElementById("optionMenu");
-    if(optionMenu!==null) {
-        const option = (optionMenu.getElementsByClassName("list")[0] as HTMLSelectElement).value;
-        return option;
-    }
-    return null;
-}
-
-// compiler/repl args
-function getCompilerArgs() {
-    // body...
-    const compiler_flags = (document.getElementById("compiler_flags") as HTMLInputElement).value;
-    if(compiler_flags!==null) {
-        return compiler_flags;
-    }
-    return "";
-}
-
-// Env Variables
-function getEnvVars() {
-    // body...
-    const env_flags = (document.getElementById("env_flags") as HTMLInputElement).value;
-    if(env_flags!==null) {
-        return env_flags;
-    }
-    return "";
-}
 
 const optionMenu = document.getElementById("optionMenu");
 if(optionMenu!==null) {
@@ -100,250 +24,321 @@ if(optionMenu!==null) {
 }
 
 export function ActionOnChange(e: any) {
+    const target = e.target as HTMLSelectElement;
+    const selectedValue = target.value;
     let isSilent = e.detail && e.detail.silent;
     if (isSilent) {
         // its a silent event
         console.log("its a silent event, return...");
         return;
     }
-    // body...
-    const elem = document.getElementById("terminal");
+    // select one active terminal and fire event
+    const elem = document.querySelector(".terminal.active") as CustomHTMLElement;
     if (elem !== null) {
         var event = new Event('optionchange');
         elem.dispatchEvent(event);
+        const taboption = document.getElementById('tabOptionMenu') as HTMLSelectElement;
+        if (taboption) {
+            // no events here, cz its triggered globally
+            taboption.value = selectedValue;
+        }
     };
 }
 
-function fetchEditorContent() {
-    var editor: any = window["editor"];
-    if( editor.env && editor.env.editor && editor.env.editor.getValue && (typeof(editor.env.editor.getValue) === "function")) {
-        return btoa(unescape(encodeURIComponent(editor.env.editor.getValue())));
-    }
-    return "";
+function showTabContextMenu(event) {
+    event.preventDefault();
+    const contextMenu = document.getElementById('tabContextMenu') as HTMLDivElement;
+    contextMenu.style.left = `${event.clientX}px`;
+    contextMenu.style.top = `${event.clientY}px`;
+    contextMenu.style.display = 'block';
 }
 
-function fetchEditorFileName() {
-    var editor: any = window["editor"];
-    if( editor.env && editor.env.filename ) {
-        return editor.env.filename;
-    }
-    return "";
-}
+var primaryterm: GottyTerminal; // primary terminal tab
+const termelem = document.getElementById("terminal") as CustomHTMLElement;
+const isprimary : boolean = true;
+const launcher = (firebaseconfig: any) => {
+    InitializeApp(firebaseconfig);
+    if (termelem !== null) {
+        primaryterm = new GottyTerminal(termelem, gotty_term, gotty_auth_token, isprimary); // create a gotty terminal instance and register for the callbacks
+        // start the gotty terminal instance on the element #terminal
+        primaryterm.spawnGotty(getSelectValue());
+        // u ned to close this gottyterm before unload
+        // save this term in main tab
+        let firsttab = document.querySelector('#terminal-tabs .tab') as CustomHTMLElement;
+        firsttab.gottyterm = primaryterm;
+        termelem.tab=firsttab; // save the tab correspondin to this term element
+        firsttab.addEventListener('click', (event : MouseEvent) => {
+            const target = event.target as HTMLElement;
+            console.log("inside click for : ", target);
+            const activeTab = document.querySelector('.tab.active') as CustomHTMLElement;
+            if (activeTab) {
+                if (activeTab==firsttab) {
+                    console.log("target already active.");
+                    return;
+                }
+                activeTab.classList.remove('active');
+                activeTab.gottyterm.deactivateDisplay();
+            }
 
-function updatePayload(eventname="", debug=false) {
-    var pload: Object = {
-                                "test":"test",
-                        };
-    if (eventname == "optionrun") {
-        pload[IdeLangKey] = getSelectValue();
-        pload[IdeContentKey] = fetchEditorContent();
-    }
-    if (debug === true) {
-        pload[CompilerOptionKey] = "debug";
-    }
-    pload[IdeFileNameKey] = fetchEditorFileName();
-    pload[CompilerFlagsKey] = getCompilerArgs();
-    pload[EnvFlagsKey] = getEnvVars();
-    return pload;
-}
+            // send from primary tab always, (as of now).
+            primaryterm.publishDB("tab", {
+                op: "click",
+                termid: primaryterm.getID(),
+            });
 
-var hash = window.location.hash.replace(/#/g, '');
-if (!hash) {
-    master = true;
-} else {
-    master = false;
-}
-InitializeApp();
-
-const elem = document.getElementById("terminal");
-const launcher = () => {
-if (elem !== null) {
-    var term: Terminal;
-    var wt: WebTTYFactory;
-    var ft: WebTTYFactory;
-    var closer: Icallback;
-    var factory: ConnectionFactory;
-    // payload to transmit body and other large data over websocket
-    var payload: Object = {
-                                "test":"test",
-                          };
-    var debug: boolean = false;
-    const option = getSelectValue();
-    console.log("option caught: ",option);
-
-	// handle the terminal here only if this api tells to handle,
-	// else it will be handled in the handleTerminalOptions itself
-    if (handleTerminalOptions(elem, option)) {
-		if (gotty_term == "hterm") {
-			term = new Hterm(elem);
-		} else {
-			term = new Xterm(elem);
-		}
-		if (master) {
-			const httpsEnabled = window.location.protocol == "https:";
-			const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws' + '_' + option;
-			const args = window.location.search;
-		let args2 = '';
-		if ( option && option2args[option] && option2args[option] !== undefined ) {
-			args2 = option2args[option];
-			if (args==="") {
-				args2='?'+args2;
-			} else {
-				args2='&'+args2;
-			}
-		}
-			ft = new FireTTY(term, master);
-			factory = new ConnectionFactory(url, protocols);
-			wt = new WebTTY(term, factory, ft, payload, args+args2, gotty_auth_token);
-		} else {
-			wt = new FireTTY(term, master);
-		}
-		closer = wt.open();
-		console.log("webtty created: ");
-    }
+            firsttab.classList.add('active');
+            firsttab.gottyterm.activateDisplay();
+        });
+    };
 
     window.addEventListener("unload", (e: any) => {
-        let args : CloserArgs | undefined = e.detail;
-        if (!args) {
-            // If customunloadevent.detail is undefined, create a new CloserArgs object
-            args = {
-                keepdb: false,
-                keepdbcallbacks: false
-            };
+        console.log("Window unload event: closing connections");
+        const tabsContainer = document.getElementById('terminal-tabs') as HTMLElement;
+        const tabs = tabsContainer.querySelectorAll('.tab');
+        for (let i = 0; i < tabs.length; i++) {
+            const tab = tabs[i] as CustomHTMLElement;
+            try {
+                // Close and Cleanup the terminal instance
+                tab.gottyterm.Cleanup(false, false);
+                console.log("cleaning up: ",tab.gottyterm.elem.id);
+            } catch (error) {
+                console.error('Error occurred while cleaning up terminal:', error);
+            }
         }
-        console.log("closing connection with args: ", args);
-        closer(args);
-        term.close();
     });
 
-    elem.addEventListener("optiondebug", () => {
-        debug = true;
-        const event = new CustomEvent('optionrun', {
-                          detail: { optionT: "optiondebug"}
-                        });
-        elem.dispatchEvent(event);
-    });
+    // create Tab context menu and add it to body
+    const originalOption = document.getElementById('optionlist') as HTMLSelectElement;
+    const contextMenu = document.getElementById('tabContextMenu') as HTMLElement;
+    if (originalOption && contextMenu) {
+        contextMenu.style.position = 'absolute';
+        contextMenu.style.display= 'none';
+        const optionMenu = originalOption.cloneNode(true) as HTMLSelectElement;
+        optionMenu.id = 'tabOptionMenu';
+        optionMenu.size = 7;
+        optionMenu.value=originalOption.value;
+        contextMenu.appendChild(optionMenu);
+        // Add event listener to synchronize option selection
+        optionMenu.addEventListener('change', function() {
+            console.log("contextmenu selected value: ", this.value);
+            originalOption.value = this.value;
+            // Remove the context menu after selection
+            contextMenu.style.display= 'none';
+            originalOption.dispatchEvent(new Event("change"));
+        });
 
-    
-    elem.addEventListener("optionchange", () => {
-        console.log("event caught: change");
-        const option = getSelectValue();
-        console.log("option caught: ",option);
-        const customunloadevent = new CustomEvent('unload', {
-                          detail: {
-                                keepdb: true,
-                                keepdbcallbacks: false
-                            } as CloserArgs
-                        });
-        if (option && unhandledLanguages.indexOf(option) !== -1) {
-            customunloadevent.detail.keepdbcallbacks = true;
-            // want to keep the callbacks to recieve further notifications on firebase
-        } else {
-            customunloadevent.detail.keepdbcallbacks = false;
-        }
-        window.dispatchEvent(customunloadevent);
-        setTimeout(function(){                // timeout between two events
-            //var term: Terminal;
-            if (!handleTerminalOptions(elem, option)) {
-                return;
+        // Remove the context menu if clicked outside
+        document.addEventListener('click', function(e) {
+            if (!contextMenu.contains(e.target as Node) && contextMenu.style.display=='block') {
+                contextMenu.style.display= 'none';
             }
-            if (gotty_term == "hterm") {
-                term = new Hterm(elem);
-            } else {
-                term = new Xterm(elem);
-            }
-            
-            if (option !== null) {
-                if (master) {
-                    const httpsEnabled = window.location.protocol == "https:";
-                    const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws' + '_' + option;
-                    const args = window.location.search;
-		    let args2 = '';
-                    if ( option && option2args[option] && option2args[option] !== undefined ) {
-                        args2 = option2args[option];
-			if (args==="") {
-                        	args2='?'+args2;
-                	} else {
-                        	args2='&'+args2;
-                	}
-                    }
-                    ft = new FireTTY(term, master);
-                    factory = new ConnectionFactory(url, protocols);
-                    payload = updatePayload("optionchange");
-                    wt = new WebTTY(term, factory, ft, payload, args+args2, gotty_auth_token);
-                } else {
-                    wt = new FireTTY(term, master);
-                }
-            
-                closer = wt.open();
-                console.log("webtty created:");
-                /*window.addEventListener("unload", () => {
-                    console.log("closing connection")
-                    closer();
-                    term.close();
-                });*/
-            }
-        }, 500);
-    });
+        });
+    }
 
-    //compile and run from editor
-    elem.addEventListener("optionrun", (e) => {
-        console.log("event caught: optionrun");
-        const customunloadevent = new CustomEvent('unload', {
-                          detail: {
-                                keepdb: true,
-                                keepdbcallbacks: false
-                            } as CloserArgs
-                        });
-        if(master) {
-            window.dispatchEvent(customunloadevent);    
-        } else {
-                //wait till optionrun is dispatched to master
-                setTimeout(function(){
-                    var event = new Event('unload');
-                    window.dispatchEvent(event); 
-                }, 100);
-        }
-        setTimeout(function(){                // timeout between two events
-            //var term: Terminal;
-            const option = getSelectValue();
-            console.log("option caught: ",option);
-            if (!handleTerminalOptions(elem, option, "optionrun")) {
-                return;
-            }
-            if (gotty_term == "hterm") {
-                term = new Hterm(elem);
-            } else {
-                term = new Xterm(elem);
-            }
-            
-            if (option !== null) {
-                if (master) {
-                    const httpsEnabled = window.location.protocol == "https:";
-                    const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws' + '_' + option;
-                    const args = window.location.search;
-                    ft = new FireTTY(term, master);
-                    factory = new ConnectionFactory(url, protocols);
-                    payload = updatePayload("optionrun", debug);
-                    debug=false;
-                    wt = new WebTTY(term, factory, ft, payload, args, gotty_auth_token);
-                } else {
-                    wt = new FireTTY(term, master);
-                }
-            
-                closer = wt.open();
-                console.log("webtty created:");
-                /*window.addEventListener("unload", () => {
-                    console.log("closing connection")
-                    closer();
-                    term.close();
-                });*/
-            }
-        }, 500);
-    });
-};
+    const tabsContainer = document.getElementById('terminal-tabs') as HTMLElement;
+    // Add event listener to tabcontainer show context menu on right-click
+    tabsContainer.addEventListener('contextmenu', showTabContextMenu);
+
 }; //end of launcher
 
+function addTab(terminalid:string="", skipdb:boolean=false) {
+    const tabsContainer = document.getElementById('terminal-tabs') as HTMLElement;
+    const tabs = tabsContainer.querySelectorAll('.tab');
+    const tabids = Array.prototype.slice.call(tabs).map(tab => tab.gottyterm.elem.id);
+    console.log("Existing terminal ids: ", tabids);
+    const tabCount = tabs.length;
+
+    if (tabCount >= MAX_TABS) {
+        window.alert("Maximum number of allowed connections reached.");
+        return;
+    }
+    // now find a sutable terminal id
+    if (terminalid == "") {
+        let id=1;
+        terminalid = `terminal-${id}`;
+        while (tabids.indexOf(terminalid) !== -1) {
+            // already present, choose another one
+            id ++
+            terminalid = `terminal-${id}`;
+        }
+        console.log("got a terminal id: ", terminalid);
+    }
+
+    // disable old tab
+    const activeTab = document.querySelector('.tab.active') as CustomHTMLElement;
+    if (activeTab) {
+        activeTab.classList.remove('active');
+        activeTab.gottyterm.deactivateDisplay();
+        // hide previous terminal
+    }
+
+    
+
+    const newTab = document.createElement('div') as HTMLDivElement & { gottyterm: any };
+    newTab.classList.add('tab', 'active');
+    newTab.innerHTML += `<span class="tab-title">${terminalid}</span>`;
+    newTab.innerHTML += '<button class="close-tab" onclick="gotty.closeTab(event)">×</button>';
+
+    // last add button should be safe
+    const lastAddButton = tabsContainer.querySelector('.add-tab:last-of-type') as HTMLElement;
+    tabsContainer.insertBefore(newTab, lastAddButton);
+
+
+    
+    // Initialize new gotty terminal element
+    const terminalContainer = document.createElement('div') as HTMLDivElement & { tab: any; gottyterm: any; isprimary:boolean };
+    terminalContainer.classList.add('terminal', 'active');
+    terminalContainer.id = terminalid;
+    terminalContainer.tab = newTab; // save for later reference
+    const parentcontainer = tabsContainer.parentNode as HTMLElement;
+    parentcontainer.appendChild(terminalContainer);
+    
+    try {
+        newTab.gottyterm = new GottyTerminal(terminalContainer, gotty_term, gotty_auth_token);
+        newTab.gottyterm.spawnGotty(getSelectValue());
+        if (!skipdb) {
+            // skip pushdb if its a local event
+            primaryterm.publishDB("tab", {
+                op: "add",
+                termid: newTab.gottyterm.getID(), 
+            });
+        }
+    } catch (error) {
+        console.error('Error occurred while adding tab: ', error);
+    }
+    
+
+    newTab.addEventListener('click', (event: any) => {
+        let skipdb = false;
+        if (event.detail && event.detail.skipdb) {
+            skipdb = true;
+        }
+        const target = event.target as HTMLElement;
+        console.log("inside click: ", target);
+        const activeTab = document.querySelector('.tab.active') as CustomHTMLElement;
+        if (activeTab) {
+            if (activeTab==target) {
+                console.log("target already active.");
+                return;
+            }
+            activeTab.classList.remove('active');
+            activeTab.gottyterm.deactivateDisplay();
+        }
+        if (!skipdb) {
+            primaryterm.publishDB("tab", {
+                op: "click",
+                termid: newTab.gottyterm.getID(),
+            });
+        }
+        newTab.classList.add('active');
+        newTab.gottyterm.activateDisplay();
+    });
+}
+
+function closeTab(event: any, skipdb:boolean=false) {
+    const activeTab = document.querySelector('.tab.active') as CustomHTMLElement;
+    const target = event.target as HTMLElement;
+    const tab = target.parentNode as CustomHTMLElement;
+    console.log(tab, event);
+    
+    let nextactive = activeTab;
+    // if no valid next active found
+    if ((!nextactive) || tab==activeTab) {
+        // active is going,  make just next guy active
+        nextactive = tab.nextElementSibling as CustomHTMLElement;
+        if (nextactive.id=="add-tab") {
+            // make first guy then if last node reached
+            nextactive = document.querySelector('.tab') as CustomHTMLElement;
+        }
+    }
+
+    
+
+    try {
+        // Close and Cleanup the terminal instance
+        tab.gottyterm.Cleanup(false, false);
+        tab.gottyterm.deactivateDisplay();
+    } catch (error) {
+        console.error('Error occurred while cleaning up terminal:', error);
+    }
+    let id = tab.gottyterm.getID();
+    tab.gottyterm.elem.remove();
+    tab.gottyterm=null;
+    // Remove the tab and its associated content
+    tab.remove();
+    if (!skipdb) {
+        // send from primary tab always
+        primaryterm.publishDB("tab", {
+            op: "close",
+            termid: id,
+        });
+    }
+    console.log("cleanup done, clicking nextactive: ", nextactive);
+    if (nextactive) {
+        setTimeout(function() {
+            nextactive.click();
+        }, 100);
+    }
+}
+
+interface TabEventData {
+    op: string;
+    termid: string;
+    title?:string;
+}
+
+setTabEventHandler((eventdata: TabEventData) => {
+    console.log("Tab Event data recieved in main: ", eventdata);
+    let elem: CustomHTMLElement | null;
+    switch (eventdata.op) {
+    case "add":
+        addTab(eventdata.termid, true);
+        // add a tab with termid
+        break;
+    case "close":
+        elem = document.getElementById(eventdata.termid) as CustomHTMLElement;
+        if (elem) {
+            const tab =  elem.tab as HTMLElement;
+            if (tab) {
+                const targetnode = tab.querySelector('.close-tab') as HTMLElement;
+                if (targetnode) {
+                    // finally found the target close button i have to click
+                    // Construct a custom event object with the target node as the target
+                    const customEvent = {
+                        target: targetnode
+                    };
+
+                    closeTab(customEvent, true);
+                }
+            }
+        }
+        break;
+    case "click":
+        elem = document.getElementById(eventdata.termid) as CustomHTMLElement;
+        if (elem) {
+            const tab =  elem.tab as HTMLElement;
+            if (tab) {
+                const customMouseEvent = new CustomEvent('click', {
+                    detail: { skipdb: true }, // Include custom data in the detail property
+                });
+                tab.dispatchEvent(customMouseEvent);
+            }
+        }
+        break;
+    case "title":
+        elem = document.getElementById(eventdata.termid) as CustomHTMLElement;
+        if (elem) {
+            const tab =  elem.tab as CustomHTMLElement;
+            if (tab && eventdata.title) {
+                tab.gottyterm.setTabTitle(eventdata.title);
+            }
+        }
+        break;
+    default:
+        console.log("unhandled event recieved in tabhandler.");
+    }
+});
+
 // exported to be used outside bundle for other tasks
-export { setEventHandler, launcher};
+export { setEventHandler, launcher, addTab, closeTab};
 

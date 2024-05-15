@@ -48,6 +48,8 @@
       <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.0.2/firebase-ui-auth.css" />
       <script src="https://www.gstatic.com/firebasejs/ui/6.0.2/firebase-ui-auth.js"></script>
       <script src="https://kit.fontawesome.com/f54540db67.js" crossorigin="anonymous"></script>
+      <script src="./auth_token.js"></script>
+      <script src="./config.js"></script>
       <script src="./js/preprocessing.js"></script>
       <script src="https://www.google.com/recaptcha/api.js" async defer></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/intro.js/6.0.0/intro.min.js"></script>
@@ -86,10 +88,19 @@
           }
         }
 
-	function onrecaptchaSuccess(token) {
-		document.getElementById("feedback-form").action = "/feedback";
-     		document.getElementById("feedback-submit").disabled=false;
-   	}
+    function onrecaptchaSuccess(token) {
+    		document.getElementById("feedback-form").action = "/feedback";
+        document.getElementById("feedback-submit").disabled=false;
+    }
+    document.addEventListener('click', function(e) {
+        let myDropdown = document.getElementById('myDropdown');
+        let target = e.target;
+
+        if (myDropdown && !myDropdown.contains(target) && target.id !== 'share-btn-1' && getComputedStyle(myDropdown).display === 'block') {
+            myDropDownToggle();
+        }
+    });
+
       </script>
       
       <!-- style for contact section start -->
@@ -187,6 +198,7 @@
         </li>
         <li class="menu__item"><a id="sign-in-button" class="link link--dark"><i id = "auth-icon" class="fa fa-sign-in"></i> Login</a></li>
         <li class="menu__item"><a class="link link--dark" onclick="StartTour()"><i class="fa fa-rocket" aria-hidden="true"></i> Getting started</a></li>
+        <li class="menu__item"><a href="/blog" class="link link--dark"><i class="fa fa-book"></i> Blogs</a></li>
         <li class="menu__item"><a href="doc.html" class="link link--dark" target="_blank"><i class="fa fa-book"></i> Documentation</a></li>
         <li class="menu__item">         </li>
       </ul>
@@ -514,8 +526,20 @@
         <!-- ends here -->
       </div>
       <div class="gutter gutter-horizontal" id="gutter-div"></div>
-      <div class="terminal" id="terminal"></div>
+      <div class="terminal-div" id="terminal-div">
+        <div class="terminal-tabs" id="terminal-tabs">
+            <div class="tab active"><span class="tab-title">Terminal</span></div>
+            <button class="add-tab" id="add-tab" onclick="gotty.addTab()">+</button>
+        </div>
+        <div class="terminal active" id="terminal"></div>
+      </div>
     </div>
+    <!-- Terminal tab contextmenu -->
+    <ul id="tabContextMenu" class="vakata-context" style="display: none;">
+      <li class="" id="tabrefresh" onclick='ToggleReconnect(); this.parentNode.style.display = "none";'>
+        <a><i></i><span class="vakata-contextmenu-sep">&nbsp;</span>Refresh</a>
+      </li>
+    </ul>
     
     <div class="wrapper">
       <hr/>
@@ -660,8 +684,6 @@
       }
     </script>
     <script src="./js/common.js"></script>
-    <script src="./auth_token.js"></script>
-    <script src="./config.js"></script>
     <script src="./js/gotty-bundle.js"></script>
     <script async defer src="https://buttons.github.io/buttons.js"></script>
   </body>
