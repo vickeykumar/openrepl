@@ -99,11 +99,13 @@ jsconsole/node_modules/webpack:
 	cd jsconsole && \
 	npm install
 
-jsconsole/build/static/js/jsconsole.js: bindata/static/js jsconsole/node_modules/webpack
+JS_FILES := $(wildcard jsconsole/*) $(wildcard jsconsole/*/*) $(wildcard jsconsole/*/*/*) 
+
+jsconsole/build/static/js/jsconsole.js: jsconsole/node_modules/webpack $(JS_FILES)
 	cd jsconsole && \
 	NODE_ENV=production REACT_APP_VERSION=${VERSION} `npm bin`/webpack
 
-bindata/static/js/jsconsole.js: bindata/static/js jsconsole/build/static/js/jsconsole.js
+bindata/static/js/jsconsole.js: jsconsole/build/static/js/jsconsole.js
 	cp jsconsole/build/static/js/jsconsole.js bindata/static/js/jsconsole.js
 
 deb: all
