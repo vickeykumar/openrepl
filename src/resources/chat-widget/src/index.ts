@@ -167,6 +167,7 @@ const setupFBListener = () => {
         }
       } else {
         createNewMessageEntry(d.message, d.timestamp, d.from, true);
+        addMessageToHistory(d.from, d.message);
       }
     });
   } catch(error) {
