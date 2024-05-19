@@ -15,7 +15,7 @@ const CHAT_LIST_KEY = "chat-list"
 
 let chatfirebasedbref: firebase.database.Reference | null = null;
 const UID = Math.random().toString();
-let interviewmode: boolean = false;
+let peerchatmode: boolean = false;
 
 export type WidgetConfig = {
   url: string;
@@ -115,26 +115,26 @@ let cleanup = () => {
   console.log("cleanup done.");
 };
 
-let interviewSwitchlistener = (e: Event) => {
-  const interviewSwitchElem = (e?.target as HTMLInputElement) || null;
-  if (interviewSwitchElem) {
-    if (interviewSwitchElem.checked) {
-      console.log('Interview switch is ON');
-      interviewmode=true;
+let peerchatSwitchlistener = (e: Event) => {
+  const peerchatSwitchElem = (e?.target as HTMLInputElement) || null;
+  if (peerchatSwitchElem) {
+    if (peerchatSwitchElem.checked) {
+      console.log('PeerChat switch is ON');
+      peerchatmode=true;
     } else {
-      console.log('Interview switch is OFF');
-      interviewmode=false;
+      console.log('PeerChat switch is OFF');
+      peerchatmode=false;
     }
     if (chatfirebasedbref) {
       // push event to firebase db
       chatfirebasedbref.push ({
-           eventT: "interviewmode",
-           val: interviewmode,
+           eventT: "peerchatmode",
+           val: peerchatmode,
            uid: UID,
       });
     }
   } else {
-    console.error("interviewSwitchlistener: an unexpected error occurred: null element.");
+    console.error("peerchatSwitchlistener: an unexpected error occurred: null element.");
   }
 };
 
@@ -157,13 +157,13 @@ const setupFBListener = () => {
         console.log("chat event triggered by me only, skipping..");
         return;
       }
-      if (d.eventT && d.eventT=="interviewmode") {
-        console.log("received an interviewmode event: ", d);
+      if (d.eventT && d.eventT=="peerchatmode") {
+        console.log("received an peerchatmode event: ", d);
         // its a event message
-        interviewmode=d.val;
-        const interviewSwitchElem = document.getElementById("interview-switch") as HTMLInputElement;
-        if (interviewSwitchElem) {
-          interviewSwitchElem.checked=interviewmode;
+        peerchatmode=d.val;
+        const peerchatSwitchElem = document.getElementById("peerchat-switch") as HTMLInputElement;
+        if (peerchatSwitchElem) {
+          peerchatSwitchElem.checked=peerchatmode;
         }
       } else {
         createNewMessageEntry(d.message, d.timestamp, d.from, true);
@@ -273,10 +273,10 @@ function open(e: Event) {
     .getElementById("chat-widget__form")!
     .addEventListener("submit", submit);
 
-  const interviewSwitchElem = document.getElementById("interview-switch") as HTMLInputElement;
-  if (interviewSwitchElem) {
-    interviewSwitchElem.checked = interviewmode;
-    interviewSwitchElem.addEventListener("change", interviewSwitchlistener);
+  const peerchatSwitchElem = document.getElementById("peerchat-switch") as HTMLInputElement;
+  if (peerchatSwitchElem) {
+    peerchatSwitchElem.checked = peerchatmode;
+    peerchatSwitchElem.addEventListener("change", peerchatSwitchlistener);
   }
 }
 
@@ -434,7 +434,7 @@ async function submit(e: Event) {
     requestHeaders.append('Authorization', 'Bearer ' + config.api_key);
   }
   let myrole: "system" | "user" = 'user';
-  if (interviewmode && isMaster()) {
+  if (peerchatmode && isMaster()) {
     myrole = 'system';
   }
   const msg = (target.elements as any).message.value;
@@ -450,9 +450,9 @@ async function submit(e: Event) {
 
   await createNewMessageEntry(msg, Date.now(), myrole);
   target.reset();
-  if (interviewmode) {
+  if (peerchatmode) {
     submitElement.removeAttribute("disabled");
-    // not much to do in interview mode
+    // not much to do in peerchat mode
     return;
   }
   messagesHistory.prepend(thinkingBubble);

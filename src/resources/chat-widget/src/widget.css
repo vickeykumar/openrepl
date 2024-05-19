@@ -328,7 +328,7 @@
   cursor: default;
 }
 
-/* interview switch */
+/* peerchat switch */
 .switch {
   position: relative;
   display: inline-block;
@@ -374,4 +374,4 @@ input:checked + .slider {
 input:checked + .slider:before {
   transform: translateX(26px);
 }
-/*interview switch ends */
+/*peerchat switch ends */
