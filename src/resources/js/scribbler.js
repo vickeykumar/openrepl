@@ -1068,7 +1068,7 @@ $(function() {
     // This function will return the user theme or the Monokai theme (which
     // is the default)
     function getTheme() {
-        return localStorage.getItem(LS_THEME_KEY) || "ace/theme/terminal";
+        return localStorage.getItem(LS_THEME_KEY) || "ace/theme/monokai";
     }
     
     // Select the desired theme of the editor

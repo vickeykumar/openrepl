@@ -28,6 +28,7 @@ import (
 	"os"
 	"archive/zip"
 	"path/filepath"
+	"encoder"
 )
 
 
@@ -354,6 +355,24 @@ func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
     decoded, err := base64.StdEncoding.DecodeString(fbconfig)
     if err==nil {
     	w.Write(decoded)
+    } else {
+    	log.Println("Error: decoding fbconfig: ", err)
+    }
+
+    _, secret := cookie.GetOpenApiAccessToken(r) 
+	// check if already a secret present from prev active session.
+	if string(secret)=="" {
+		secret = encoder.GenerateLargePrime().Bytes()
+	}
+    access_token, err := encoder.Encrypt([]byte(defaultToken), secret)
+    if err == nil {
+    	err = cookie.SetOpenApiAccessToken(w, r, access_token, secret)
+    	if err != nil {
+    		log.Println("Error: saving access_token: ", err)
+    	}
+    	w.Write([]byte("var openai_access_token = '" + string(access_token) + "';"))
+    } else {
+    	log.Println("Error: encrypting access_token: ", err)
     }
 }
 

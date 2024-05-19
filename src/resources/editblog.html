@@ -182,7 +182,7 @@
 
       // 2. Configure the ChatGPT plugin
       openai: {
-        api_key: "sk-proj-UR_ACCESS_TOKEN_or_API_KEY", // Your OpenAI API key
+        api_key: openai_access_token, // Your OpenAI API key
         model: "gpt-3.5-turbo",
         temperature: 0.5,
         max_tokens: 800,
@@ -193,7 +193,7 @@
           "Write a blog post about",
         ],
         // Optional: Add your custom LLM
-        // baseUri: "https://your-llm-endpoint.com",
+        baseUri: "/chat/completions",
       },
 
       });

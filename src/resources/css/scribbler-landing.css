@@ -1162,3 +1162,25 @@ overflow: hidden;
   display: none;
 }
 /* End of terminal tabs */
+
+/* chatgpt button */
+.floating-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    border: none;
+    width: 50px;  /* Button width */
+    height: 50px; /* Button height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.floating-button img {
+    width: 40px; /* SVG width */
+    height: 40px; /* SVG height */
+}
+/* chatgpt button ends */

@@ -37,6 +37,14 @@ const DEADLINE_MINUTES = 60 	// keep the deadline to delete the homedir for gues
 const JobFile = "jobfile"
 const REMOVE_JOB_KEY = "REMOVE-"
 
+// openai related keys
+const OPENAI_REQUEST_COUNT_KEY = "OPENAI_REQUEST_COUNT"
+const OPENAI_REQUEST_LAST_ACCESS = "OPENAI_REQUEST_LAST_ACCESS"
+const GUEST_FACTOR = 0.33 // 0.33 request per minute for guest, with initial balance of 20 req
+const USER_FACTOR = 1 // 1 requests per minute for loggedin user, initial balance 60
+const ACCESS_TOKEN_KEY = "ACCESS_TOKEN"
+const ACCESS_SECRET_KEY = "ACCESS_SECRET"
+
 const USER_PRIVILEGE_KEY = "usermode"
 const ADMIN = "admin"
 const GUEST = "guest"

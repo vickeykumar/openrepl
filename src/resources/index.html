@@ -306,7 +306,6 @@
                   </div>
 
                 </div>
-
           </div>
         </div>
       </div>
@@ -641,7 +640,7 @@
       </div>
     </div>
    </div>
-    
+
   <footer class="footer" id="footer">
     	<a href="about.html" class="link link--light" target="_blank">About</a> <span class="dot"></span>
     	<a href="references.html" class="link link--light" target="_blank">References</a> <span class="dot"></span>
@@ -686,5 +685,42 @@
     <script src="./js/common.js"></script>
     <script src="./js/gotty-bundle.js"></script>
     <script async defer src="https://buttons.github.io/buttons.js"></script>
+
+    <!-- chatgpt Section start -->
+    <script src="./js/chat-widget.js" defer></script>
+    <script>
+      window.addEventListener("load", () => {
+        window.ChatWidget.config.widgetTitle = "Ask GPT";
+        window.ChatWidget.config.greetingMessage =
+          "Hello there! Welcome to openrepl.com.\nAn opensource platform to write and run your code snippets in REPL.";
+        window.ChatWidget.config.url = "/chat/completions";
+        window.ChatWidget.config.api_key = openai_access_token;
+        window.ChatWidget.config.firebaseconfig = firebaseconfig;
+        window.ChatWidget.config.dbpath=getExampleRef();
+        if (!ismob()) {
+          window.ChatWidget.config.openOnLoad = true;
+        }
+        window.insertcodesnippet = (encodedcode) => {
+          const code = atob(encodedcode);
+          console.log("code insert hit: ", code);
+          try {
+            let editor = window["editor"];
+            if( editor.env && editor.env.editor) {
+              editor = editor.env.editor;
+              let selectionRange = editor.getSelectionRange();
+              editor.getSession().replace(selectionRange, code);
+            }
+          }
+          catch(error) {
+            alert("Unable to insert code");
+            console.error(error);
+          }
+        };
+      });
+    </script>
+    <button data-chat-widget-button class="share-btn floating-button" style="position: fixed; right: 20px; bottom: 20px; border-radius: 10%;z-index: 9999;">
+      <img src="./images/chatgpt.svg" alt="Ask GPT" />
+    </button>
+    <!-- chatgpt Section end -->
   </body>
 </html>
