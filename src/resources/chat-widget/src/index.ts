@@ -13,8 +13,14 @@ const WIDGET_MESSAGES_HISTORY_CONTAINER_ID =
 const WIDGET_THINKING_BUBBLE_ID = "chat-widget__thinking_bubble";
 const CHAT_LIST_KEY = "chat-list"
 
+function generateFiveCharUUID(): string {
+  // Generate a UUID and extract the first 5 characters
+  const uuid: string = crypto.randomUUID();
+  return uuid.substring(0, 5);
+}
+
 let chatfirebasedbref: firebase.database.Reference | null = null;
-const UID = Math.random().toString();
+const UID = generateFiveCharUUID();
 let peerchatmode: boolean = false;
 
 export type WidgetConfig = {
@@ -85,13 +91,17 @@ interface MessageType {
 }
 
 const NUM_MANDATORY_ENTRIES = 3;
-const MAX_HISTORY_SIZE = 15; 
+const MAX_HISTORY_SIZE = 20; 
 // older conversation history might not be usefull
 // Initialize the conversationHistory array
 let conversationHistory: MessageType[] = [];
 
 // Function to add a message to the conversation history
-function addMessageToHistory(role: string, content: string): void {
+function addMessageToHistory(role: string, content: string, uid: string=UID): void {
+  if (role=="user") {
+    // to handle multiple peer users
+    content = `[${role}-${uid}] ` + content;
+  }
   conversationHistory.push({ role: role, content: content });
   if (conversationHistory.length > MAX_HISTORY_SIZE) {
       // Trim the oldest non-mandatory message from the beginning, preserving mandatory entries of docs
@@ -167,7 +177,7 @@ const setupFBListener = () => {
         }
       } else {
         createNewMessageEntry(d.message, d.timestamp, d.from, true);
-        addMessageToHistory(d.from, d.message);
+        addMessageToHistory(d.from, d.message, d.uid); // remote uid needed here as its not my chat
       }
     });
   } catch(error) {
