@@ -35,20 +35,36 @@ const getExampleRef = () => {
 };
 
 
-/*
-function reloadCss()
-{
-    var links = document.getElementsByTagName("link");
-    for (var cl in links)
-    {
-        var link = links[cl];
-        if (link.rel === "stylesheet") {
-            link.href += "";
-            console.log("reloaded:%s",link.href);
-        }
+function handleClickOutside(elementselector, callback) {
+  $(document).on('click', function(event) {
+    var element = $(elementselector);
+    if (!element.length) return; // If the element is not found, exit the function
+
+    var target = $(event.target);
+
+    // Check if the clicked target is the element or its descendants
+    if (element.is(target) || element.has(target).length > 0) {
+      return; // Clicked inside the element or its children, do nothing
     }
+
+    // Get the bounding rectangle of the element
+    var rect = element[0].getBoundingClientRect();
+    
+    // Check if the click is within the bounding rectangle of the element
+    var clickInside = (
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom
+    );
+
+    if (!clickInside) {
+      callback(); // Take the specified action
+    }
+  });
 }
-*/
+
+
 function ismob() {
    if(window.innerWidth <= 800 || window.innerHeight <= 480) {
      return true;
@@ -2069,6 +2085,12 @@ $(function() {
     setTimeout(function() {
       gotty.launcher(firebaseconfig); // launch gotty term
     }, 1000);
+
+    handleClickOutside("#file-browser", function() {
+      if ($('#file-browser').hasClass('expanded')) {
+        $('#file-browser').removeClass('expanded');
+      }
+    });
   });
 
 })();
