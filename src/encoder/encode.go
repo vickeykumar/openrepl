@@ -32,13 +32,13 @@ func GenerateLargePrime(bits ...int) *big.Int {
 }
 
 var RawURLEncoding = base64.URLEncoding.WithPadding(base64.NoPadding)
-var largesecret *big.Int = GenerateLargePrime()
+var smallsecret *big.Int = GenerateLargePrime(16)
 
 
 func EncodePID(pid interface{}) string {
         ppid, _ := pid.(int)
         message := big.NewInt(int64(ppid))
-        message = message.Mul(message, largesecret)
+        message = message.Mul(message, smallsecret)
         // send the encoded Bytes
         return RawURLEncoding.EncodeToString(message.Bytes())
 }
@@ -48,7 +48,7 @@ func DecodeToPID(jid string) int {
         	pidbytes,err := RawURLEncoding.DecodeString(jid)
         	if err == nil {
                 	decoded := new(big.Int).SetBytes(pidbytes)
-                	decoded.Div(decoded, largesecret)
+                	decoded.Div(decoded, smallsecret)
                 	return int(decoded.Int64())
         	}
         	log.Println("invalid pid recieved :"+jid, string(pidbytes), err.Error())
