@@ -490,3 +490,11 @@ input[type=text],[type=email], select, textarea, email {
     transform: translate3d(0,0,0);
   }
 }
+
+.opaq {
+  opacity: 0.5;
+}
+
+.opaq:hover {
+  opacity: 1;
+}
