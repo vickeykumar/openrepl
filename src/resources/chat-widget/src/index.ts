@@ -37,6 +37,7 @@ export type WidgetConfig = {
   api_key: string;
   firebaseconfig: any;
   dbpath: string;
+  submitOnKeydown: boolean;
 };
 
 
@@ -81,6 +82,7 @@ const config: WidgetConfig = {
   api_key: "",
   firebaseconfig: {},
   dbpath: "xyz",
+  submitOnKeydown: false,
   ...(window as any).ChatWidget?.config,
 };
 
@@ -283,6 +285,18 @@ function open(e: Event) {
   document
     .getElementById("chat-widget__form")!
     .addEventListener("submit", submit);
+
+  if (config.submitOnKeydown) {
+    document
+      .getElementById("chat-widget__input")!
+      .addEventListener("keydown", (e: KeyboardEvent)=> {
+        if (e.which === 13 && !e.shiftKey) {
+          e.preventDefault();
+          const submitBtn = document.getElementById("chat-widget__submit") as HTMLButtonElement;;
+          submitBtn.click();
+        }
+      });
+  }
 
   const peerchatSwitchElem = document.getElementById("peerchat-switch") as HTMLInputElement;
   if (peerchatSwitchElem) {

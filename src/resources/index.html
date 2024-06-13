@@ -699,6 +699,7 @@
         window.ChatWidget.config.dbpath=getExampleRef();
         if (!ismob()) {
           window.ChatWidget.config.openOnLoad = true;
+          window.ChatWidget.config.submitOnKeydown = true;
         }
         window.insertcodesnippet = (encodedcode) => {
           const code = atob(encodedcode);
