@@ -341,8 +341,7 @@ table td:first-child {
 /* CSS for form inputs */
 input[type=text],[type=email], select, textarea, email {
       width: 100%;
-      padding: 10px;
-      
+      padding: 5px;
       border: 1px solid #ccc;
       border-radius: 5px;
       box-sizing: border-box;
