@@ -213,40 +213,6 @@
       <p class="hero__description">Read–Eval–Print-Loop</p>
       <p class="hero__warning" style="display: none;">Please try in a device with resolution more than 800x480 for best experience.</p>
       
-
-     <!-- code for share buttons start-->
-<div id="share-buttons">
-    
-    
-    <!-- Email -->
-    <a href="mailto:?Subject=OpenREPL&amp;Body=I%20saw%20this%20and%20thought%20of%20you!%20 www.openrepl.com">
-        <img src="./images/mail.svg" alt="Email" />
-    </a>
- 
-    <!-- Facebook -->
-    <a href="http://www.facebook.com/sharer.php?u=www.openrepl.com" target="_blank">
-        <img src="./images/facebook.svg" alt="Facebook" />
-    </a>
-    
-    <!-- LinkedIn -->
-    <a href="http://www.linkedin.com/shareArticle?mini=true&amp;url=www.openrepl.com" target="_blank">
-        <img src="./images/linkedin.svg" alt="LinkedIn" />
-    </a>
-    
-    <!-- Pinterest -->
-    <a href="javascript:void((function(){var%20e=document.createElement('script');e.setAttribute('type','text/javascript');e.setAttribute('charset','UTF-8');e.setAttribute('src','https://assets.pinterest.com/js/pinmarklet.js?r='+Math.random()*99999999);document.body.appendChild(e)})());" target="_top">
-        <img src="./images/pinterest.svg" alt="Pinterest" />
-    </a>
-    
-    <!-- Twitter -->
-    <a href="https://twitter.com/share?url=www.openrepl.com&amp;text=www.openrepl.com&amp;hashtags=OpenREPL" target="_blank">
-        <img src="./images/twitter.svg" alt="Twitter" />
-    </a>
-
-</div>
-
-<!-- code for share buttons end-->
-      
     <a class="github-button" id="github-star" href="https://github.com/vickeykumar/openrepl" data-color-scheme="no-preference: dark; light: dark; dark: dark;" data-icon="octicon-star" data-show-count="true" aria-label="Star vickeykumar/openrepl on GitHub">Star</a>
     <!-- Place this tag where you want the button to render. -->
     <a class="github-button" href="https://github.com/sponsors/vickeykumar" data-color-scheme="no-preference: dark; light: dark; dark: dark;" data-icon="octicon-heart" aria-label="Sponsor @vickeykumar on GitHub">Sponsor</a>
@@ -254,21 +220,21 @@
       
       <div id="optionMenu">
         <select class="list" id="optionlist" style="margin:7px;font-size:15px;width:200px;">
-                <option value="c" data-editor="c_cpp">C</option>
-                <option value="cpp" data-editor="c_cpp">CPP</option>
-                <option value="go" data-editor="golang">Go</option>
-		<option value="yaegi" data-editor="golang">Go-yaegi</option>
-                <option value="java" data-editor="java">Java</option>
-                <option value="javascript" data-editor="javascript">JavaScript</option>
-		<option value="jq-repl" data-editor="json">JSON</option>
-                <option value="node" data-editor="javascript">NodeJS</option>
-              	<option value="python" data-editor="python">Python</option>
-		<option value="python2.7" data-editor="python">Python2.7</option>
-                <option value="ipython3" data-editor="python">IPython3</option>
-                <option value="irb" data-editor="ruby">Ruby</option>
-                <option value="perli" data-editor="perl">Perl</option>
-                <option value="bash" data-editor="sh">bash</option>
-                <option value="tclsh" data-editor="tcl">Tcl</option>
+          <option value="c" data-editor="c_cpp">C</option>
+          <option value="cpp" data-editor="c_cpp">CPP</option>
+          <option value="go" data-editor="golang">Go</option>
+          <option value="yaegi" data-editor="golang">Go-yaegi</option>
+          <option value="java" data-editor="java">Java</option>
+          <option value="javascript" data-editor="javascript">JavaScript</option>
+          <option value="jq-repl" data-editor="json">JSON</option>
+          <option value="node" data-editor="javascript">NodeJS</option>
+        	<option value="python" data-editor="python">Python</option>
+          <option value="python2.7" data-editor="python">Python2.7</option>
+          <option value="ipython3" data-editor="python">IPython3</option>
+          <option value="irb" data-editor="ruby">Ruby</option>
+          <option value="perli" data-editor="perl">Perl</option>
+          <option value="bash" data-editor="sh">bash</option>
+          <option value="tclsh" data-editor="tcl">Tcl</option>
         </select>
 
         <div class="widget" id="fork-widget">
@@ -642,14 +608,35 @@
    </div>
 
   <footer class="footer" id="footer">
+      <!-- code for share buttons start-->
+      <div id="share-buttons">     
+          <!-- Email -->
+          <a href="mailto:?Subject=OpenREPL&amp;Body=I%20saw%20this%20and%20thought%20of%20you!%20 www.openrepl.com">
+              <img src="./images/mail.svg" alt="Email" />
+          </a>
+          <!-- Facebook -->
+          <a href="http://www.facebook.com/sharer.php?u=www.openrepl.com" target="_blank">
+              <img src="./images/facebook.svg" alt="Facebook" />
+          </a>
+          <!-- LinkedIn -->
+          <a href="http://www.linkedin.com/shareArticle?mini=true&amp;url=www.openrepl.com" target="_blank">
+              <img src="./images/linkedin.svg" alt="LinkedIn" />
+          </a>
+          <!-- Pinterest -->
+          <a href="javascript:void((function(){var%20e=document.createElement('script');e.setAttribute('type','text/javascript');e.setAttribute('charset','UTF-8');e.setAttribute('src','https://assets.pinterest.com/js/pinmarklet.js?r='+Math.random()*99999999);document.body.appendChild(e)})());" target="_top">
+              <img src="./images/pinterest.svg" alt="Pinterest" />
+          </a>
+          <!-- Twitter -->
+          <a href="https://twitter.com/share?url=www.openrepl.com&amp;text=www.openrepl.com&amp;hashtags=OpenREPL" target="_blank">
+              <img src="./images/twitter.svg" alt="Twitter" />
+          </a>
+      </div>
+      <!-- code for share buttons end-->
     	<a href="about.html" class="link link--light" target="_blank">About</a> <span class="dot"></span>
     	<a href="references.html" class="link link--light" target="_blank">References</a> <span class="dot"></span>
     	<span id="copyright_year">
         <script>document.getElementById('copyright_year').appendChild(document.createTextNode(new Date().getFullYear()))</script>
     </span>&copy;<span class="go__color">Open</span>REPL
-      	<div>
-      		<div style="position: sticky; bottom: 0; right: 0; border: 0; font-size: 10px;" align="right">Template by <a href="https://themewagon.com" class="link link--light" target="_blank">ThemeWagon</a></div>
-  		</div>
    </footer>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
     <script>hljs.initHighlightingOnLoad();</script>
