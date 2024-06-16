@@ -108,7 +108,7 @@ jsconsole/build/static/js/jsconsole.js: jsconsole/node_modules/webpack $(JS_FILE
 bindata/static/js/jsconsole.js: jsconsole/build/static/js/jsconsole.js
 	cp jsconsole/build/static/js/jsconsole.js bindata/static/js/jsconsole.js
 
-CHAT_JS_FILES := $(wildcard resources/chat-widget/src/widget.*) $(wildcard resources/chat-widget/*.json) $(wildcard resources/chat-widget/*.js) resources/chat-widget/src/index.ts
+CHAT_JS_FILES := $(wildcard resources/chat-widget/src/widget.*) $(wildcard resources/chat-widget/*.json) $(wildcard resources/chat-widget/*.js) resources/chat-widget/src/index.ts resources/chat-widget/src/openreplkeywords.ts
 
 resources/chat-widget/dist/index.umd.js: $(CHAT_JS_FILES)
 	@echo "building chat-widget: "

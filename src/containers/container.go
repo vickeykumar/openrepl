@@ -32,6 +32,7 @@ var Commands2memLimitMap = map[string]int64{
 	"jq-repl":       2,
 	"tclsh":       	 2,
 	"java":			 128, // jvm takes lot of memory
+	"evcxr":		 50,  // rust REPL
 }
 
 var memLimitMutex sync.Mutex
