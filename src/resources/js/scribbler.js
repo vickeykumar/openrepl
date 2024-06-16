@@ -1151,9 +1151,11 @@ $(function() {
     // apply the changes in the future only
     var openPageTimestamp = Date.now();
 
-    // Take the editor value on start and set it in the editor
-    currentEditorValue.child("content").once("value", function (contentRef) {
-
+    var editorInitialized = false;
+    const initializeEditorApp = (initalcontent="/* Welcome to openrepl! */") => {
+      if (!editorInitialized) {
+        //all init for editor goes here
+        editorInitialized = true;
         // Somebody changed the lang. Hey, we have to update it in our editor too!
         currentEditorValue.child("lang").on("value", function (r) {
             let langdata = r.val();
@@ -1180,29 +1182,29 @@ $(function() {
         // Initialize the ACE editor
         editor = ace.edit("editor");
         editor.setTheme(getTheme());
-	editor.setFontSize("14px");
+        editor.setFontSize("14px");
         editor.$blockScrolling = Infinity;
         editor.setOptions({
             enableBasicAutocompletion: true,
             enableSnippets: true,
             enableLiveAutocompletion: true
         });
-	
-	// drag and drop feature
-	editor.container.addEventListener("dragover", function(e) {
-	  e.preventDefault();	// prevent default behaviour given by browser
-	});
+  
+        // drag and drop feature
+        editor.container.addEventListener("dragover", function(e) {
+          e.preventDefault(); // prevent default behaviour given by browser
+        });
 
-	editor.container.addEventListener("drop", function(e) {
-	  e.preventDefault();
-	  var file = e.dataTransfer.files[0];
-	  var reader = new FileReader();
-	  reader.onload = function(e) {
-	    var contents = e.target.result;
-	    editor.setValue(contents);
-	  };
-	  reader.readAsText(file);
-	});
+        editor.container.addEventListener("drop", function(e) {
+          e.preventDefault();
+          var file = e.dataTransfer.files[0];
+          var reader = new FileReader();
+          reader.onload = function(e) {
+            var contents = e.target.result;
+            editor.setValue(contents);
+          };
+          reader.readAsText(file);
+        });
 
         // key binding for file save
         editor.commands.addCommand({
@@ -1288,25 +1290,22 @@ $(function() {
             //  3. Turn off the applyingDeltas
             applyingDeltas = false;
         });
-
-        // Get the current content
-        var val = contentRef.val();
         
         // If the editor doesn't exist already....
-        if (val === null) {
+        if (initalcontent === null) {
             // ...we will initialize a new one. 
             // ...with this content:
             if (window[CONTENT_KEY]) {
-              val = window[CONTENT_KEY];
+              initalcontent = window[CONTENT_KEY];
             } else {
-              val = "/* Welcome to openrepl! */\n/* Editor underdevelopment! */";
+              initalcontent = "/* Welcome to openrepl! */\n/* Editor underdevelopment! */";
             }
 
-	           //get language from optionmenu
+             //get language from optionmenu
             var optionlang = $('#optionMenu > select option:selected').data('editor');
-      	    if (optionlang==null) {
-      		    optionlang="c_cpp"
-      	    }
+            if (optionlang==null) {
+              optionlang="c_cpp"
+            }
             // Here's where we set the initial content of the editor
             editorValues.child(editorId).set({
                 lang: {
@@ -1314,7 +1313,7 @@ $(function() {
                   silent: true // trigger event only when told
                 },
                 queue: {},
-                content: val
+                content: initalcontent
             });
         }
 
@@ -1324,7 +1323,7 @@ $(function() {
         // ...then set the value
         // -1 will move the cursor at the begining of the editor, preventing
         // selecting all the code in the editor (which is happening by default)
-        editor.setValue(val, -1);
+        editor.setValue(initalcontent, -1);
         
         // ...then set applyingDeltas to false
         applyingDeltas = false;
@@ -1332,7 +1331,17 @@ $(function() {
         // And finally, focus the editor!
         editor.focus();
         $("#select-lang").trigger('change');
+      }
+    };  // end of editor init App
+
+    // Take the editor value on start and set it in the editor
+    currentEditorValue.child("content").once("value", function (contentRef) {
+      // Get the current content
+      var val = contentRef.val();
+      initializeEditorApp(val);        
     });
+    // initalize the editor App after 10s delay if above fails to
+    setTimeout(initializeEditorApp, 10000);
 });
 
 
