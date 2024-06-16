@@ -1383,7 +1383,9 @@ $(function() {
       'xml': 'xml',
       'toml': 'toml',
       'yaml': 'yaml',
-      'proto': 'protobuf'
+      'proto': 'protobuf',
+      'tcl':  'tcl',
+      'rs': 'rust'
   };
   const imageext = ['jpg', 'jpeg', 'gif', 'png', 'bmp', 'webp', 'svg', 'ico'];
   const archiveext = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'];

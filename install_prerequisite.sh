@@ -120,21 +120,21 @@ else
 		rm cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
 fi
 
-#install rust and set all the required env
-RUSTUP_HOME="$GOTTY_DIR/rust"
-CARGO_HOME="$GOTTY_DIR/rust"
-if [ -e "$RUSTUP_HOME/bin/rustc" ]; then
-    echo "File $RUSTUP_HOME/bin/rustc exists."
+#install evcxr and set all the required dependencies
+if [ -e "/usr/local/bin/evcxr" ]; then
+    echo "File /usr/local/bin/evcxr exists."
 else
-    echo "File $RUSTUP_HOME/bin/rustc does not exist. installing..."
-    mkdir -p $RUSTUP_HOME
-    curl https://sh.rustup.rs -sSf | env RUSTUP_HOME=$RUSTUP_HOME CARGO_HOME=$CARGO_HOME sh -s -- --default-toolchain stable --profile default -y
-    echo "export RUSTUP_HOME=$RUSTUP_HOME" | tee /etc/profile.d/rust.sh
-    echo "export CARGO_HOME=$CARGO_HOME" | tee -a /etc/profile.d/rust.sh
-    echo "export PATH=\$PATH:\$RUSTUP_HOME/bin" | tee -a /etc/profile.d/rust.sh
-    chmod +x /etc/profile.d/rust.sh
-    bash -c 'echo "if [ -f /etc/profile.d/rust.sh ]; then . /etc/profile.d/rust.sh; fi" >> /etc/bash.bashrc'
-    bash -c 'echo "if [ -f /etc/profile.d/rust.sh ]; then . /etc/profile.d/rust.sh; fi" >> /etc/profile'
+    echo "File /usr/local/bin/evcxr does not exist. installing..."
+    apt-get install -y --no-install-recommends rustc
+    apt-get install -y --no-install-recommends rust-gdb
+    apt-get install -y --no-install-recommends cargo
+    #evcxr install
+    wget https://github.com/evcxr/evcxr/releases/download/v0.17.0/evcxr-v0.17.0-x86_64-unknown-linux-gnu.tar.gz
+    tar -xvf evcxr-v0.17.0-x86_64-unknown-linux-gnu.tar.gz
+    cp evcxr-v0.17.0-x86_64-unknown-linux-gnu/evcxr /usr/local/bin/evcxr
+    chmod 755 /usr/local/bin/evcxr
+    rm evcxr-v0.17.0-x86_64-unknown-linux-gnu.tar.gz
+    rm -rf evcxr-v0.17.0-x86_64-unknown-linux-gnu
 fi
 
 
@@ -224,6 +224,7 @@ if [ $run_tests -eq 1 ]; then
 		"echo 'puts [info patchlevel]' | tclsh"
 		"rustc --version"
 		"rust-gdb --version"
+		"evcxr --version"
 	)
 
 
