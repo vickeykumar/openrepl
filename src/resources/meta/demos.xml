@@ -2035,4 +2035,129 @@ printf "\n";
 sleep 0.05
 		</Compiler>
 	</Demo>
+
+	<!-- SQL demo -->
+	<Demo>
+		<Name>sqlite3</Name>
+		<Github>https://github.com/sqlite/sqlite</Github>
+		<Doc>https://sqlite.org/cli.html</Doc>
+		<Codes>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>create table tbl1(one text, two int);</Statement>
+		    </Code>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>insert into tbl1 values('hello!',10);</Statement>
+		    </Code>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>insert into tbl1 values('goodbye', 20);</Statement>
+		    </Code>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>select * from tbl1;</Statement>
+		        <Result>hello!|10
+goodbye|20</Result>
+		    </Code>
+		</Codes>
+		<Codes>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>.open ex1.db</Statement>
+		    </Code>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>.save ex1.db</Statement>
+		    </Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>sqlite&gt;</Prompt>
+				<Statement>.help</Statement>
+				<Result>.archive ...             Manage SQL archives
+.auth ON|OFF             Show authorizer callbacks
+.backup ?DB? FILE        Backup DB (default "main") to FILE
+.bail on|off             Stop after hitting an error.  Default OFF
+.cd DIRECTORY            Change the working directory to DIRECTORY
+...
+.dump ?OBJECTS?          Render database content as SQL
+.echo on|off             Turn command echo on or off
+.eqp on|off|full|...     Enable or disable automatic EXPLAIN QUERY PLAN
+.excel                   Display the output of next command in spreadsheet
+...
+</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>.help</Command>
+			<Description>Print command help</Description>
+		</Usage>
+		<Usage>
+			<Command>.quit</Command>
+			<Description>Quit evaluation and exit</Description>
+		</Usage>
+		<Content>-- Welcome to OpenREPL!
+-- Create the Resources table
+CREATE TABLE IF NOT EXISTS Resources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    language TEXT,
+    title TEXT,
+    documentation TEXT,
+    github TEXT
+);
+
+-- Insert the data
+INSERT INTO Resources (language, title, documentation, github) VALUES
+('C++', 'Cling Documentation', './docs/cling.html', 'https://github.com/root-project/cling'),
+('Go', 'Yaegi Documentation', 'https://pkg.go.dev/github.com/traefik/yaegi', 'https://github.com/traefik/yaegi'),
+('Go', 'Go Interpreter Documentation', './docs/gointerpreter.html', 'https://github.com/vickeykumar/Go-interpreter'),
+('jq', 'jq Manual', 'https://stedolan.github.io/jq/manual', 'https://github.com/vickeykumar/jq-repl'),
+('Python', 'Python Documentation', './docs/python.html', ''),
+('Java', 'Java Documentation', './docs/java.html', 'https://github.com/javaterminal/tryjshell'),
+('Bash', 'Linux Command', 'http://linuxcommand.org/index.php', ''),
+('Ruby', 'Ruby Quickstart', 'https://www.ruby-lang.org/en/documentation/quickstart/', ''),
+('JavaScript', 'JavaScript Documentation', 'https://developer.mozilla.org/bm/docs/Web/JavaScript', 'https://github.com/vickeykumar/jsconsole'),
+('Node.js', 'Node.js REPL Documentation', 'https://nodejs.org/dist/latest-v10.x/docs/api/repl.html', 'https://github.com/nodejs/node'),
+('Perl', 'Perl Tutorials', 'https://www.guru99.com/perl-tutorials.html', 'https://github.com/mklement0/perli'),
+('Tcl', 'Tcl Tutorial', 'https://www.tcl.tk/man/tcl8.5/tutorial/tcltutorial.html', ''),
+('Rust', 'Rust Book', 'https://doc.rust-lang.org/book/title-page.html', 'https://github.com/evcxr/evcxr'),
+('SQLite', 'SQLite Doc', 'https://sqlite.org/cli.html', 'https://github.com/sqlite/sqlite');
+
+-- List all records
+SELECT * FROM Resources;
+		</Content>
+		<Compiler>
+COMPILER=sqlite3
+FILE=test.sql
+debug=false
+WORKDIR=$HOME
+if [ "$CompilerOption" = "debug" ]; then
+    debug=true;
+fi
+
+if [ "$IdeFileName" != "" ]; then
+    WORKDIR=$(dirname "$IdeFileName");
+    FILE=$(basename "$IdeFileName");
+else
+    echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+
+cd $WORKDIR;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    if $debug; then
+        $COMPILER $@&lt;&lt;EOF
+.eqp full
+.echo on
+.timer on
+.read $FILE
+EOF
+    else
+        $COMPILER $@ -init $FILE
+    fi
+fi
+printf "\n";
+sleep 0.05
+		</Compiler>
+	</Demo>
 </DemoList>

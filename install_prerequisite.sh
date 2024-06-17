@@ -169,6 +169,9 @@ cd ~
 #install tcl
 apt-get install -y --no-install-recommends tcl
 
+#install sqlite3
+apt-get install -y --no-install-recommends sqlite3
+
 # Docker: Error response from daemon: cgroups: cgroup mountpoint does not exist: unknown
 # if using docker use privileged mode with cgroup mounted (-v /sys/fs/cgroup:/sys/fs/cgroup:rw )
 mkdir /sys/fs/cgroup/systemd || true
@@ -225,6 +228,7 @@ if [ $run_tests -eq 1 ]; then
 		"rustc --version"
 		"rust-gdb --version"
 		"evcxr --version"
+		"sqlite3 --version"
 	)
 
 

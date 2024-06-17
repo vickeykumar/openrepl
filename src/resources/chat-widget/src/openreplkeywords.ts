@@ -75,6 +75,12 @@ export const documentation = `\nOpenREPL is an Online platform for checking code
       "title": "Rust Book",
       "documentation": "https://doc.rust-lang.org/book/title-page.html",
       "github": "https://github.com/evcxr/evcxr"
+    },
+    {
+      "language": "SQLite",
+      "title": "SQLite Doc",
+      "documentation": "https://sqlite.org/cli.html",
+      "github": "https://github.com/sqlite/sqlite"
     }
   ]
 }`
