@@ -234,6 +234,8 @@ if [ $run_tests -eq 1 ]; then
 		"rust-gdb --version"
 		"evcxr --version"
 		"sqlite3 --version"
+		"tsc --version"
+		"ts-node --version"
 	)
 
 
