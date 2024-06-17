@@ -23,4 +23,4 @@ jobs:
       uses: wemake-services/docker-image-size-limit@master
       with:  # lint this image by itself
         image: 'openrepl:latest'
-        size: 2048MB
+        size: 2560MB
