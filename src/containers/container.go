@@ -34,6 +34,7 @@ var Commands2memLimitMap = map[string]int64{
 	"java":			 128, // jvm takes lot of memory
 	"evcxr":		 50,  // rust REPL
 	"sqlite3":       10,
+    "ts-node":       50,
 }
 
 var memLimitMutex sync.Mutex

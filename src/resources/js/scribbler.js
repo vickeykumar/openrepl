@@ -1386,7 +1386,8 @@ $(function() {
       'proto': 'protobuf',
       'tcl':  'tcl',
       'rs': 'rust',
-      'sql': 'sql'
+      'sql': 'sql',
+      'ts': 'typescript'
   };
   const imageext = ['jpg', 'jpeg', 'gif', 'png', 'bmp', 'webp', 'svg', 'ico'];
   const archiveext = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'];

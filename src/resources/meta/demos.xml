@@ -2160,4 +2160,107 @@ printf "\n";
 sleep 0.05
 		</Compiler>
 	</Demo>
+
+    <!-- typescript demo -->
+    <Demo>
+        <Name>ts-node</Name>
+        <Github>https://github.com/TypeStrong/ts-node</Github>
+        <Doc>https://typestrong.org/ts-node/</Doc>
+        <Codes>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>.help</Statement>
+                <Result>.break    Sometimes you get stuck, this gets you out
+.clear    Alias for .break
+.editor   Enter editor mode
+.exit     Exit the REPL
+.help     Print this help message
+.load     Load JS from a file into the REPL session
+.save     Save all evaluated commands in this REPL session to a file
+.type     Check the type of a TypeScript identifier</Result>
+            </Code>
+        </Codes>
+        <Codes>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>console.log("Hello, world!");</Statement>
+                <Result>Hello, world!</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>const x = 10;</Statement>
+                <Result>undefined</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>const y = 'foo';</Statement>
+                <Result>undefined</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>y</Statement>
+                <Result>'foo'</Result>
+            </Code>
+        </Codes>
+        <Codes>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>function add(x:any, y:any) { return x+y; }</Statement>
+                <Result>undefined</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>add(1, 2);</Statement>
+                <Result>3</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>add('hello ', 'world!');</Statement>
+                <Result>hello world!</Result>
+            </Code>
+        </Codes>
+        <Usage>
+            <Command>.help</Command>
+            <Description>Print command help</Description>
+        </Usage>
+        <Usage>
+            <Command>.quit</Command>
+            <Description>Quit evaluation and exit</Description>
+        </Usage>
+        <Content>/* Welcome to OpenREPL! */
+
+function greet() {
+    console.log("Hello, World!");
+}
+
+greet();
+</Content>
+        <Compiler>
+COMPILER=ts-node
+FILE=test.ts
+debug=false
+WORKDIR=$HOME
+if [ "$CompilerOption" = "debug" ]; then
+    debug=true;
+fi
+
+if [ "$IdeFileName" != "" ]; then
+    WORKDIR=$(dirname "$IdeFileName");
+    FILE=$(basename "$IdeFileName");
+else
+    echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+
+cd $WORKDIR;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    if $debug; then
+        TS_NODE_DEBUG=true $COMPILER $FILE $@
+    else
+        $COMPILER $FILE $@
+    fi
+fi
+printf "\n";
+sleep 0.05
+        </Compiler>
+    </Demo>
 </DemoList>

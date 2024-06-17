@@ -81,6 +81,12 @@ export const documentation = `\nOpenREPL is an Online platform for checking code
       "title": "SQLite Doc",
       "documentation": "https://sqlite.org/cli.html",
       "github": "https://github.com/sqlite/sqlite"
+    },
+    {
+      "language": "typescript",
+      "title": "Typescript Doc",
+      "documentation": "https://typestrong.org/ts-node/",
+      "github": "https://github.com/TypeStrong/ts-node"
     }
   ]
 }`

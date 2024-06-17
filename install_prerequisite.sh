@@ -172,6 +172,11 @@ apt-get install -y --no-install-recommends tcl
 #install sqlite3
 apt-get install -y --no-install-recommends sqlite3
 
+#install typescript and ts-node
+npm install -g typescript@4.9.5
+npm install -g ts-node
+npm link typescript
+
 # Docker: Error response from daemon: cgroups: cgroup mountpoint does not exist: unknown
 # if using docker use privileged mode with cgroup mounted (-v /sys/fs/cgroup:/sys/fs/cgroup:rw )
 mkdir /sys/fs/cgroup/systemd || true
