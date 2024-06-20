@@ -170,6 +170,20 @@ function ToggleFunction() {
 
 var einst = null;
 var direction = null;
+// process dark and bright theme
+const processtheme = () => {
+  var selectedOption = $('#select-theme').find(':selected');
+  var themedetected = selectedOption.closest('optgroup').attr('label');
+  
+  if (themedetected === 'Bright') {
+      console.log('Bright theme selected.');
+      // want to add dark background for buttons for tooltip only if direction is vertical 
+      if (direction==='vertical') $('.fullscreen-toggle').addClass('rev-accent-background');
+  } else if (themedetected === 'Dark') {
+      console.log('Dark theme selected.');
+      $('.fullscreen-toggle').removeClass('rev-accent-background');
+  }
+};
 
 // updates editor content by ID
 function updateEditorContent(cmd="", content="/* Welcome to openrepl! */", forceupdate=false) {
@@ -245,7 +259,7 @@ function SaveSelectedNodeToFile(oldSelectedNodeId, errcallback=null) {
     }
 }
 
-function ToggleEditor(direction=null) {
+function ToggleEditor() {
     if (direction===null) {
       // first time
       if (ismob()) {
@@ -324,7 +338,7 @@ function ToggleRotateEditor() {
   }
   einst.destroy();
   einst = null; // destroy and reset splitter
-  ToggleEditor(direction);
+  ToggleEditor();
 }
 
 function ToggleReconnect() {

@@ -497,3 +497,12 @@ input[type=text],[type=email], select, textarea, email {
 .opaq:hover {
   opacity: 1;
 }
+
+/* theme specific class */
+.accent-background {
+  background: var(--accent-color);
+}
+.rev-accent-background {
+  background: var(--rev-accent-color);
+}
+/* them classes ends */

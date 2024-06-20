@@ -671,7 +671,12 @@
     <!-- chatgpt Section start -->
     <script src="./js/chat-widget.js" defer></script>
     <script>
-      window.addEventListener("load", () => {
+      $(document).ready(function() {
+        $('#select-theme').on('change', function() {
+            processtheme();
+        });
+        processtheme();
+        /* chatwidget */
         window.ChatWidget.config.widgetTitle = "Ask GPT";
         window.ChatWidget.config.greetingMessage =
           "Hello there! Welcome to openrepl.com.\nAn opensource platform to write and run your code snippets in REPL.";
