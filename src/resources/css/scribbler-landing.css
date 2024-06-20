@@ -71,8 +71,8 @@ nav {
 }
 
 .ide {
-  width: 0%;
-  height: inherit;
+  width: 100%;
+  height: 100%;
   position: inherit;
   margin: initial;
   text-align: left;
@@ -97,7 +97,7 @@ nav {
 
 .terminal {
   width: 100%;
-  height: inherit;
+  height: 100%;
   position: inherit;
   margin: initial;
   text-align: left;
@@ -308,12 +308,6 @@ nav {
 }
 
 @media (max-width: 750px) {
-  .terminal {
-    width: 70%;
-  }
-  .demo__terminal {
-    width: 70%;
-  }
   .tab__container > ul {
     right: auto;
     left: 0;
@@ -677,6 +671,13 @@ display: block;
     float: left;
     cursor: ew-resize;
 }
+
+.gutter.gutter-vertical {
+    width: 100%;
+    float: left;
+    cursor: ew-resize;
+}
+
 /* Add arrow indicator to the gutter */
 .gutter::after {
     content: '';
@@ -702,7 +703,7 @@ display: block;
     opacity: 0.2;
 }
 
-.gutter.gutter-horizontal:hover::after {
+.gutter.gutter-vertical:hover::after {
   opacity: 0.8;
 }
 

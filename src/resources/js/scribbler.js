@@ -169,6 +169,7 @@ function ToggleFunction() {
 }
 
 var einst = null;
+var direction = null;
 
 // updates editor content by ID
 function updateEditorContent(cmd="", content="/* Welcome to openrepl! */", forceupdate=false) {
@@ -244,7 +245,16 @@ function SaveSelectedNodeToFile(oldSelectedNodeId, errcallback=null) {
     }
 }
 
-function ToggleEditor() {
+function ToggleEditor(direction=null) {
+    if (direction===null) {
+      // first time
+      if (ismob()) {
+        direction = 'vertical';
+      } else {
+        direction = 'horizontal'
+      }
+      
+    }
     TermElement = get("#terminal-div");
     ideElement =  get("#ide");
     editorbtn = get("#editor-button");
@@ -257,6 +267,7 @@ function ToggleEditor() {
       einst = Split(['#ide', '#terminal-div'], {
         gutterSize: 3,
         sizes: [55,45],
+        direction: direction,
         onDrag: function(event) {
           let currentMouseX = event[0] || 0;
           let prevMouseX = default_prevMouseX;
@@ -293,6 +304,27 @@ function ToggleEditor() {
       }
       einst = null;
     }
+}
+/* rotates direction of editor/REPL vertical <-> horizontal */
+function ToggleRotateEditor() {
+  if (direction===null) {
+    // first time
+    if (ismob()) {
+      direction = 'vertical';
+    } else {
+      direction = 'horizontal';
+    }
+  } else {
+    //toggle direction
+    if (direction=='vertical') {
+      direction = 'horizontal';
+    } else if (direction=='horizontal') {
+      direction = 'vertical';
+    }
+  }
+  einst.destroy();
+  einst = null; // destroy and reset splitter
+  ToggleEditor(direction);
 }
 
 function ToggleReconnect() {

@@ -294,6 +294,7 @@
         <div class="fullscreen-toggle tooltip" id="debug-play-button" onclick="RunandDebug();"><i class="fa fas" style="font-size:12px;">debug</i><span class="tooltiptext">Debug Editor Code</span></div>
         <div class="fullscreen-toggle tooltip" id="download-button" onclick="DownloadEditor();"><i class="fa fa-download"></i><span class="tooltiptext">Download Editor Code</span></div>
         <div class="fullscreen-toggle tooltip" id="upload-button" onclick="document.getElementById('fileToLoad').click();"><i class="fa fa-upload"><input type="file" id="fileToLoad" oninput="uploadFile();" style="display: none;"></i><span class="tooltiptext">Upload Files to OpenREPL Server</span></div>
+        <div class="fullscreen-toggle rotate-fa tooltip" id="rotate-button" onclick="ToggleRotateEditor();"><i class="fa fa-mobile"></i><span class="tooltiptext revrotate-fa">Flip/Rotate Editor and REPL</span></div>
       </div>
       <div class="ide" id="ide" >
         <h2>Welcome to <span class="go__color">Open</span>REPL</h2>
@@ -493,7 +494,6 @@
 
         <!-- ends here -->
       </div>
-      <div class="gutter gutter-horizontal" id="gutter-div"></div>
       <div class="terminal-div" id="terminal-div">
         <div class="terminal-tabs" id="terminal-tabs">
             <div class="tab active"><span class="tab-title">Terminal</span></div>
@@ -655,16 +655,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.15/jstree.min.js"></script>
     <script src="./js/scribbler.js"></script>
     <script>
-          /*var inst = Split(['.ide', '.terminal'], {
-            gutterSize: 3,
-            sizes: [50,50]
-          });*/
-          if (ismob()) {
-            $("#gutter-div").toggleClass("hide-tag");
-          } else {
-            ToggleEditor();
-          }
-	  LoadOptionFromUrl();
+      ToggleEditor();
+      LoadOptionFromUrl();
       var demo_done = localStorage.getItem("OpenREPL_Demo");
       if (demo_done !== "done") {
         // demo not done
