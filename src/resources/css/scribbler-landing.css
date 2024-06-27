@@ -1170,8 +1170,7 @@ overflow: hidden;
     bottom: 20px;
     right: 20px;
     border: none;
-    width: 50px;  /* Button width */
-    height: 50px; /* Button height */
+    width: 60px;  /* Button width */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1183,5 +1182,16 @@ overflow: hidden;
 .floating-button img {
     width: 40px; /* SVG width */
     height: 40px; /* SVG height */
+}
+.floating-button:hover img {
+    animation: shake 0.5s infinite;
+}
+
+@keyframes shake {
+    0% { transform: rotate(0deg); }
+    25% { transform: rotate(-45deg); }
+    50% { transform: rotate(0deg); }
+    75% { transform: rotate(45deg); }
+    100% { transform: rotate(0deg); }
 }
 /* chatgpt button ends */

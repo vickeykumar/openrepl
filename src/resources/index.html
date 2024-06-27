@@ -677,9 +677,9 @@
         });
         processtheme();
         /* chatwidget */
-        window.ChatWidget.config.widgetTitle = "Ask GPT";
+        window.ChatWidget.config.widgetTitle = "Ask Genie";
         window.ChatWidget.config.greetingMessage =
-          "Hello there! Welcome to openrepl.com.\nAn opensource platform to write and run your code snippets in REPL.";
+          "Hello there! Welcome to openrepl.com.\nAn opensource platform to write and run your code snippets in REPL.\nI am Genie, your OpenRepl AI assistant.";
         window.ChatWidget.config.url = "/chat/completions";
         window.ChatWidget.config.api_key = openai_access_token;
         window.ChatWidget.config.firebaseconfig = firebaseconfig;
@@ -707,7 +707,7 @@
       });
     </script>
     <button data-chat-widget-button class="share-btn floating-button opaq" style="position: fixed; right: 20px; bottom: 20px; border-radius: 10%;z-index: 9999;">
-      <img src="./images/chatgpt.svg" alt="Ask GPT" />
+      <img src="./images/genie.svg" alt="Ask Genie" />
     </button>
     <!-- chatgpt Section end -->
   </body>

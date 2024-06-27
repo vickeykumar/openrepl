@@ -207,7 +207,7 @@ async function init() {
     );
     open({ target } as Event);
   }
-  addMessageToHistory("system", "welcome to openrepl.com");
+  addMessageToHistory("system", "welcome to openrepl.com!! I am Genie. your OpenRepl AI assistant.");
   addMessageToHistory("system", "documentation: "+documentation);
   addMessageToHistory("system", "keywords: "+ keywords);
   setupFBListener();
