@@ -111,7 +111,7 @@ func handleModifyHeaderRequest(rw http.ResponseWriter, req *http.Request) error 
 	if err!=nil {
 		handleChatProxyError(rw, req, http.StatusUnauthorized, 
         	NewErrorResponse(
-        		"Unauthorized Request Access Token.",
+        		"Unauthorized or Expired Request Access Token. please refresh to start again...",
         		"StatusUnauthorized",
         		"StatusUnauthorized",
         		"",
