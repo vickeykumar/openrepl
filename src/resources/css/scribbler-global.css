@@ -468,6 +468,7 @@ input[type=text],[type=email], select, textarea, email {
   .menu {
     text-align: right;
     padding: 0.5rem 1rem;
+    z-index: 1;
   }
 
   .toggle {
