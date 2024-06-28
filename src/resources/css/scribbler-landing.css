@@ -1184,14 +1184,15 @@ overflow: hidden;
     height: 40px; /* SVG height */
 }
 .floating-button:hover img {
+    --shake-degree: 30deg;
     animation: shake 0.5s infinite;
 }
 
 @keyframes shake {
     0% { transform: rotate(0deg); }
-    25% { transform: rotate(-45deg); }
+    25% { transform: rotate(calc(var(--shake-degree) * -1)); }
     50% { transform: rotate(0deg); }
-    75% { transform: rotate(45deg); }
+    75% { transform: rotate(var(--shake-degree)); }
     100% { transform: rotate(0deg); }
 }
 /* chatgpt button ends */
