@@ -12,6 +12,7 @@ User=gottyuser
 Environment="TERM=xterm"
 Environment="GOPATH=/opt/gotty/"
 Environment="GOPATH=/opt/gotty/"
+Environment="GOCACHE=/tmp/go_cache/.cache/go-build/"
 Environment="GCC_EXEC_PREFIX=/usr/lib/gcc/"
 Environment="GODEBUG=cgocheck=0"
 PermissionsStartOnly=true

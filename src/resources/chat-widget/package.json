@@ -1,0 +1,38 @@
+{
+  "name": "@app/chat-widget",
+  "version": "1.4.1",
+  "description": "A chat widget for openrepl.",
+  "keywords": [
+    "chat",
+    "widget",
+    "assistant"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "source": "src/index.ts",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    "types": "./dist/src/index.d.ts",
+    "require": "./dist/index.cjs",
+    "default": "./dist/index.modern.js"
+  },
+  "unpkg": "dist/index.umd.js",
+  "files": [
+    "dist/**/*"
+  ],
+  "module": "dist/index.module.js",
+  "scripts": {
+    "build": "node ./generate-widget-html-string && microbundle --define process.env.NODE_ENV=production --css inline",
+    "dev": "node ./generate-widget-html-string && microbundle watch --define process.env.NODE_ENV=production --css inline",
+    "prepare": "node ./generate-widget-html-string && microbundle --define process.env.NODE_ENV=production --css inline"
+  },
+  "devDependencies": {
+    "@floating-ui/dom": "^1.6.3",
+    "focus-trap": "^7.5.4",
+    "html-minifier": "^4.0.0",
+    "marked": "^12.0.0",
+    "microbundle": "^0.15.1",
+    "firebase": "^3.6.6"
+  }
+}

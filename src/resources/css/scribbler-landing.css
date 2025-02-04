@@ -71,8 +71,8 @@ nav {
 }
 
 .ide {
-  width: 0%;
-  height: inherit;
+  width: 100%;
+  height: 100%;
   position: inherit;
   margin: initial;
   text-align: left;
@@ -97,7 +97,7 @@ nav {
 
 .terminal {
   width: 100%;
-  height: inherit;
+  height: 100%;
   position: inherit;
   margin: initial;
   text-align: left;
@@ -308,12 +308,6 @@ nav {
 }
 
 @media (max-width: 750px) {
-  .terminal {
-    width: 70%;
-  }
-  .demo__terminal {
-    width: 70%;
-  }
   .tab__container > ul {
     right: auto;
     left: 0;
@@ -435,7 +429,7 @@ Fork REPL button */
 }
 
 .widget {
-  display: inline-block;
+  display: inline-flex;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   font-size:0;
@@ -447,8 +441,7 @@ Fork REPL button */
 }
 .forkbtn,
 .social-count {
-  display:inline-block;
-  height:16px;
+  display:inline-flex;
   padding:0.5px 3px;
   font-size:11px;font-weight:600;
   line-height:14px;
@@ -456,6 +449,7 @@ Fork REPL button */
   cursor:pointer;
   border:1px solid #c5c9cc;
   border-radius:0.25em;
+  align-items: center;
 }
 .forkbtn {
   background-color:#eff3f6;
@@ -677,6 +671,13 @@ display: block;
     float: left;
     cursor: ew-resize;
 }
+
+.gutter.gutter-vertical {
+    width: 100%;
+    float: left;
+    cursor: ew-resize;
+}
+
 /* Add arrow indicator to the gutter */
 .gutter::after {
     content: '';
@@ -702,7 +703,7 @@ display: block;
     opacity: 0.2;
 }
 
-.gutter.gutter-horizontal:hover::after {
+.gutter.gutter-vertical:hover::after {
   opacity: 0.8;
 }
 
@@ -1162,3 +1163,36 @@ overflow: hidden;
   display: none;
 }
 /* End of terminal tabs */
+
+/* chatgpt button */
+.floating-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    border: none;
+    width: 60px;  /* Button width */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.floating-button img {
+    width: 40px; /* SVG width */
+    height: 40px; /* SVG height */
+}
+.floating-button:hover img {
+    --shake-degree: 30deg;
+    animation: shake 0.5s infinite;
+}
+
+@keyframes shake {
+    0% { transform: rotate(0deg); }
+    25% { transform: rotate(calc(var(--shake-degree) * -1)); }
+    50% { transform: rotate(0deg); }
+    75% { transform: rotate(var(--shake-degree)); }
+    100% { transform: rotate(0deg); }
+}
+/* chatgpt button ends */

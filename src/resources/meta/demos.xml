@@ -296,7 +296,6 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	else
     	$COMPILER run "$WORKDIR/$FILE" $@;
     fi
-    go clean -cache
 fi
 printf "\n";
 sleep 0.05
@@ -420,7 +419,6 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	else
     	$COMPILER run $FILE $@;
     fi
-    go clean -cache
 fi
 printf "\n";
 sleep 0.05
@@ -1912,4 +1910,357 @@ printf "\n";
 sleep 0.05
 		</Compiler>
 	</Demo>
+
+	<!-- rust demo -->
+	<Demo>
+		<Name>evcxr</Name>
+		<Github>https://github.com/evcxr/evcxr</Github>
+		<Doc>https://doc.rust-lang.org/book/title-page.html</Doc>
+		<Codes>
+		    <Code>
+		        <Prompt>&gt;&gt;</Prompt>
+		        <Statement>println!("Hello, World!!");</Statement>
+		        <Result>Hello, World!!</Result>
+		    </Code>
+		    <Code>
+		        <Prompt>&gt;&gt;</Prompt>
+		        <Statement>let x = 1;</Statement>
+		        <Result>1</Result>
+		    </Code>
+		</Codes>
+		<Codes>
+		    <Code>
+		        <Prompt>&gt;&gt;</Prompt>
+		        <Statement>let mut x = 1;
+while x &lt; 5 {
+    println!("Hello {}", x);
+    x += 1;
+}</Statement>
+		        <Result>Hello 1
+Hello 2
+Hello 3
+Hello 4</Result>
+		    </Code>
+		</Codes>
+		<Codes>
+		    <Code>
+		        <Prompt>&gt;&gt;</Prompt>
+		        <Statement>for i in 0..10 {
+    println!("loop: {}", i);
+}</Statement>
+		        <Result>loop: 0
+loop: 1
+loop: 2
+loop: 3
+loop: 4
+loop: 5
+loop: 6
+loop: 7
+loop: 8
+loop: 9</Result>
+		    </Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>&gt;&gt;</Prompt>
+				<Statement> :help</Statement>
+				<Result>:allow_static_linking Set whether to allow static linking of dependencies (0/1)
+:build_env        Set environment variables when building code (key=value)
+:cache            Set cache size in MiB, or 0 to disable.
+:clear            Clear all state, keeping compilation cache
+...
+:doc              show the documentation of a variable, keyword, type or module
+:env              Set an environment variable (key=value)
+:explain          Print explanation of last error
+:help             Print command help
+...
+</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>:help</Command>
+			<Description>Print command help</Description>
+		</Usage>
+		<Usage>
+			<Command>:quit</Command>
+			<Description>Quit evaluation and exit</Description>
+		</Usage>
+		<Content>/* Welcome to OpenREPL! */
+fn main() {
+    println!("Hello, World!");
+
+    let a = 5;
+    let b = 10;
+
+    let result = sum(a, b);
+
+    println!("The sum of {} and {} is {}", a, b, result);
+}
+
+fn sum(x: i32, y: i32) -> i32 {
+    x + y
+}
+		</Content>
+		<Compiler>
+COMPILER=rustc
+FILE=test.rs
+debug=false
+WORKDIR=$HOME
+if [ "$CompilerOption" = "debug" ]; then
+	debug=true;
+fi
+if [ "$IdeLang" = "rust" ] || [ "$IdeLang" = "evcxr" ]; then
+	COMPILER=rustc
+fi
+printf "\n";
+
+if [ "$IdeFileName" != "" ]; then
+	WORKDIR=$(dirname "$IdeFileName");
+	FILE=$(basename "$IdeFileName");
+else
+	echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+
+cd $WORKDIR;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+	if $debug; then
+		$COMPILER -g -o "$FILE".o $FILE $@;
+		rust-gdb "$FILE".o $@;
+	else
+    	$COMPILER $FILE -o "$FILE".o;
+        "$WORKDIR/$FILE".o $@;
+    fi
+fi
+printf "\n";
+sleep 0.05
+		</Compiler>
+	</Demo>
+
+	<!-- SQL demo -->
+	<Demo>
+		<Name>sqlite3</Name>
+		<Github>https://github.com/sqlite/sqlite</Github>
+		<Doc>https://sqlite.org/cli.html</Doc>
+		<Codes>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>create table tbl1(one text, two int);</Statement>
+		    </Code>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>insert into tbl1 values('hello!',10);</Statement>
+		    </Code>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>insert into tbl1 values('goodbye', 20);</Statement>
+		    </Code>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>select * from tbl1;</Statement>
+		        <Result>hello!|10
+goodbye|20</Result>
+		    </Code>
+		</Codes>
+		<Codes>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>.open ex1.db</Statement>
+		    </Code>
+		    <Code>
+		        <Prompt>sqlite&gt;</Prompt>
+		        <Statement>.save ex1.db</Statement>
+		    </Code>
+		</Codes>
+		<Codes>
+			<Code>
+				<Prompt>sqlite&gt;</Prompt>
+				<Statement>.help</Statement>
+				<Result>.archive ...             Manage SQL archives
+.auth ON|OFF             Show authorizer callbacks
+.backup ?DB? FILE        Backup DB (default "main") to FILE
+.bail on|off             Stop after hitting an error.  Default OFF
+.cd DIRECTORY            Change the working directory to DIRECTORY
+...
+.dump ?OBJECTS?          Render database content as SQL
+.echo on|off             Turn command echo on or off
+.eqp on|off|full|...     Enable or disable automatic EXPLAIN QUERY PLAN
+.excel                   Display the output of next command in spreadsheet
+...
+</Result>
+			</Code>
+		</Codes>
+		<Usage>
+			<Command>.help</Command>
+			<Description>Print command help</Description>
+		</Usage>
+		<Usage>
+			<Command>.quit</Command>
+			<Description>Quit evaluation and exit</Description>
+		</Usage>
+		<Content>-- Welcome to OpenREPL!
+-- Create the Resources table
+CREATE TABLE IF NOT EXISTS Resources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    language TEXT,
+    title TEXT,
+    documentation TEXT,
+    github TEXT
+);
+
+-- Insert the data
+INSERT INTO Resources (language, title, documentation, github) VALUES
+('C++', 'Cling Documentation', './docs/cling.html', 'https://github.com/root-project/cling'),
+('Go', 'Yaegi Documentation', 'https://pkg.go.dev/github.com/traefik/yaegi', 'https://github.com/traefik/yaegi'),
+('Go', 'Go Interpreter Documentation', './docs/gointerpreter.html', 'https://github.com/vickeykumar/Go-interpreter'),
+('jq', 'jq Manual', 'https://stedolan.github.io/jq/manual', 'https://github.com/vickeykumar/jq-repl'),
+('Python', 'Python Documentation', './docs/python.html', ''),
+('Java', 'Java Documentation', './docs/java.html', 'https://github.com/javaterminal/tryjshell'),
+('Bash', 'Linux Command', 'http://linuxcommand.org/index.php', ''),
+('Ruby', 'Ruby Quickstart', 'https://www.ruby-lang.org/en/documentation/quickstart/', ''),
+('JavaScript', 'JavaScript Documentation', 'https://developer.mozilla.org/bm/docs/Web/JavaScript', 'https://github.com/vickeykumar/jsconsole'),
+('Node.js', 'Node.js REPL Documentation', 'https://nodejs.org/dist/latest-v10.x/docs/api/repl.html', 'https://github.com/nodejs/node'),
+('Perl', 'Perl Tutorials', 'https://www.guru99.com/perl-tutorials.html', 'https://github.com/mklement0/perli'),
+('Tcl', 'Tcl Tutorial', 'https://www.tcl.tk/man/tcl8.5/tutorial/tcltutorial.html', ''),
+('Rust', 'Rust Book', 'https://doc.rust-lang.org/book/title-page.html', 'https://github.com/evcxr/evcxr'),
+('SQLite', 'SQLite Doc', 'https://sqlite.org/cli.html', 'https://github.com/sqlite/sqlite');
+
+-- List all records
+SELECT * FROM Resources;
+		</Content>
+		<Compiler>
+COMPILER=sqlite3
+FILE=test.sql
+debug=false
+WORKDIR=$HOME
+if [ "$CompilerOption" = "debug" ]; then
+    debug=true;
+fi
+
+if [ "$IdeFileName" != "" ]; then
+    WORKDIR=$(dirname "$IdeFileName");
+    FILE=$(basename "$IdeFileName");
+else
+    echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+
+cd $WORKDIR;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    if $debug; then
+        $COMPILER $@&lt;&lt;EOF
+.eqp full
+.echo on
+.timer on
+.read $FILE
+EOF
+    else
+        $COMPILER $@ -init $FILE
+    fi
+fi
+printf "\n";
+sleep 0.05
+		</Compiler>
+	</Demo>
+
+    <!-- typescript demo -->
+    <Demo>
+        <Name>ts-node</Name>
+        <Github>https://github.com/TypeStrong/ts-node</Github>
+        <Doc>https://typestrong.org/ts-node/</Doc>
+        <Codes>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>.help</Statement>
+                <Result>.break    Sometimes you get stuck, this gets you out
+.clear    Alias for .break
+.editor   Enter editor mode
+.exit     Exit the REPL
+.help     Print this help message
+.load     Load JS from a file into the REPL session
+.save     Save all evaluated commands in this REPL session to a file
+.type     Check the type of a TypeScript identifier</Result>
+            </Code>
+        </Codes>
+        <Codes>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>console.log("Hello, world!");</Statement>
+                <Result>Hello, world!</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>const x = 10;</Statement>
+                <Result>undefined</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>const y = 'foo';</Statement>
+                <Result>undefined</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>y</Statement>
+                <Result>'foo'</Result>
+            </Code>
+        </Codes>
+        <Codes>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>function add(x:any, y:any) { return x+y; }</Statement>
+                <Result>undefined</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>add(1, 2);</Statement>
+                <Result>3</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>add('hello ', 'world!');</Statement>
+                <Result>hello world!</Result>
+            </Code>
+        </Codes>
+        <Usage>
+            <Command>.help</Command>
+            <Description>Print command help</Description>
+        </Usage>
+        <Usage>
+            <Command>.quit</Command>
+            <Description>Quit evaluation and exit</Description>
+        </Usage>
+        <Content>/* Welcome to OpenREPL! */
+
+function greet() {
+    console.log("Hello, World!");
+}
+
+greet();
+</Content>
+        <Compiler>
+COMPILER=ts-node
+FILE=test.ts
+debug=false
+WORKDIR=$HOME
+if [ "$CompilerOption" = "debug" ]; then
+    debug=true;
+fi
+
+if [ "$IdeFileName" != "" ]; then
+    WORKDIR=$(dirname "$IdeFileName");
+    FILE=$(basename "$IdeFileName");
+else
+    echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+
+cd $WORKDIR;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    if $debug; then
+        TS_NODE_DEBUG=true $COMPILER $FILE $@
+    else
+        $COMPILER $FILE $@
+    fi
+fi
+printf "\n";
+sleep 0.05
+        </Compiler>
+    </Demo>
 </DemoList>

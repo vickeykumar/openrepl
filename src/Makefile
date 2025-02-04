@@ -20,7 +20,7 @@ gotty:	asset ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: bindata/static/js/gotty-bundle.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta
+asset: bindata/static/js/gotty-bundle.js bindata/static/js/chat-widget.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	GO111MODULE=off $(GOROOT)/bin/gofmt -w server/asset.go
 
@@ -108,6 +108,16 @@ jsconsole/build/static/js/jsconsole.js: jsconsole/node_modules/webpack $(JS_FILE
 bindata/static/js/jsconsole.js: jsconsole/build/static/js/jsconsole.js
 	cp jsconsole/build/static/js/jsconsole.js bindata/static/js/jsconsole.js
 
+CHAT_JS_FILES := $(wildcard resources/chat-widget/src/widget.*) $(wildcard resources/chat-widget/*.json) $(wildcard resources/chat-widget/*.js) resources/chat-widget/src/index.ts resources/chat-widget/src/openreplkeywords.ts
+
+resources/chat-widget/dist/index.umd.js: $(CHAT_JS_FILES)
+	@echo "building chat-widget: "
+	cd resources/chat-widget && \
+	npm install
+
+bindata/static/js/chat-widget.js: resources/chat-widget/dist/index.umd.js
+	cp resources/chat-widget/dist/index.umd.js bindata/static/js/chat-widget.js
+
 deb: all
 	mkdir -p ${DEBIAN_ROOT}/gotty/usr/lib/systemd/system
 	mkdir -p ${DEBIAN_ROOT}/gotty/usr/local/bin
@@ -141,6 +151,9 @@ clean:
 cleanjs:
 	rm -rf js/node_modules
 	rm -rf jsconsole/node_modules
+	rm -rf resources/chat-widget/node_modules
+	rm -rf js/dist/*
+	rm -rf resources/chat-widget/dist/*
 	@echo ".... Clean Done"
 
 

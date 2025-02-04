@@ -72,6 +72,7 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "TERM=xterm")
 	cmd.Env = append(cmd.Env, "GOPATH=/opt/gotty/")
+	cmd.Env = append(cmd.Env, "GOCACHE=/tmp/go_cache/.cache/go-build/")
 	cmd.Env = append(cmd.Env, "HOME="+cmd.Dir)
 	cmd.Env = append(cmd.Env, "HOSTNAME="+command)
 	cmd.Env = append(cmd.Env, "GCC_EXEC_PREFIX=/usr/lib/gcc/")

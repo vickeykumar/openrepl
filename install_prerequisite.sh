@@ -4,9 +4,8 @@
 
 GOTTY_DIR=/opt/gotty 
 mkdir -p $GOTTY_DIR || true
-chmod -R 644 $GOTTY_DIR
+chmod 644 $GOTTY_DIR
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-echo "running script from : " $SCRIPT_DIR
 
 retVal=0
 
@@ -16,24 +15,38 @@ display_usage() {
   echo "  --cleanup-tools        Cleanup tools after REPLs installation"
   echo "  --run-tests            Run tests"
   echo "  --help                 Display this help message"
+  echo "  --username USERNAME    Specify the username for installation"
 }
 
 cleanup_tools=0
 run_tests=0
+username=$(whoami)
 
-for arg in "$@"; do
-  case $arg in
-    --cleanup-tools) cleanup_tools=1
-    ;;
-    --run-tests) run_tests=1
-    ;;
-    --help) display_usage; exit 0
-    ;;
-    *) echo "Invalid argument: $arg"; display_usage; exit 1
-    ;;
+# Parse command-line arguments
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    --cleanup-tools) cleanup_tools=1; shift ;;
+    --run-tests) run_tests=1; shift ;;
+    --help) display_usage; exit 0 ;;
+    --username)
+      if [[ -n "$2" && "$2" != --* ]]; then
+        username="$2"; shift 2
+      else
+        echo "Error: --username requires a value"
+        display_usage
+        exit 1
+      fi
+      ;;
+    *)
+      echo "Invalid argument: $1"
+      display_usage
+      exit 1
+      ;;
   esac
 done
 
+echo "running script from : " $SCRIPT_DIR
+echo "username: " $username
 
 cd ~
 
@@ -95,7 +108,7 @@ npm install npm@8.5.1 -g
 #/usr/bin/cling 21321 .q > /dev/null 2>&1 &
 cd $GOTTY_DIR
 
-if [[ -e "/usr/local/bin/cling" ]]; then
+if [ -e "/usr/local/bin/cling" ]; then
     echo "File /usr/local/bin/cling exists."
 else
     echo "File /usr/local/bin/cling does not exist. installing..."
@@ -106,6 +119,24 @@ else
 		chmod 755 /usr/local/bin/cling
 		rm cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
 fi
+
+#install evcxr and set all the required dependencies
+if [ -e "/usr/local/bin/evcxr" ]; then
+    echo "File /usr/local/bin/evcxr exists."
+else
+    echo "File /usr/local/bin/evcxr does not exist. installing..."
+    apt-get install -y --no-install-recommends rustc
+    apt-get install -y --no-install-recommends rust-gdb
+    apt-get install -y --no-install-recommends cargo
+    #evcxr install
+    wget https://github.com/evcxr/evcxr/releases/download/v0.17.0/evcxr-v0.17.0-x86_64-unknown-linux-gnu.tar.gz
+    tar -xvf evcxr-v0.17.0-x86_64-unknown-linux-gnu.tar.gz
+    cp evcxr-v0.17.0-x86_64-unknown-linux-gnu/evcxr /usr/local/bin/evcxr
+    chmod 755 /usr/local/bin/evcxr
+    rm evcxr-v0.17.0-x86_64-unknown-linux-gnu.tar.gz
+    rm -rf evcxr-v0.17.0-x86_64-unknown-linux-gnu
+fi
+
 
 
 #install gointerpreter
@@ -138,6 +169,14 @@ cd ~
 #install tcl
 apt-get install -y --no-install-recommends tcl
 
+#install sqlite3
+apt-get install -y --no-install-recommends sqlite3
+
+#install typescript and ts-node
+npm install -g typescript@4.9.5
+npm install -g ts-node
+npm link typescript
+
 # Docker: Error response from daemon: cgroups: cgroup mountpoint does not exist: unknown
 # if using docker use privileged mode with cgroup mounted (-v /sys/fs/cgroup:/sys/fs/cgroup:rw )
 mkdir /sys/fs/cgroup/systemd || true
@@ -165,6 +204,10 @@ if [ $cleanup_tools -eq 1 ]; then
 	apt-get -y autoremove
 fi
 
+# finally give the ownership to username 
+chown -R $username:$username $GOTTY_DIR
+chmod -R 755 $GOTTY_DIR
+
 #test
 if [ $run_tests -eq 1 ]; then
 	test_commands=(
@@ -187,6 +230,12 @@ if [ $run_tests -eq 1 ]; then
 		"gdb --version"
 		"jq --version"
 		"echo 'puts [info patchlevel]' | tclsh"
+		"rustc --version"
+		"rust-gdb --version"
+		"evcxr --version"
+		"sqlite3 --version"
+		"tsc --version"
+		"ts-node --version"
 	)
 
 

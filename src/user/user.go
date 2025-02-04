@@ -1,13 +1,13 @@
 package user
 
 import (
-    "crypto/rand"
     "encoding/json"
     "log"
     "os"
     "errors"
     "utils"
     "cachedb"
+    "encoder"
 )
 
 const SESSION_KEY = "SESSION_KEY"
@@ -177,25 +177,18 @@ func InitSessionDBHandle() {
     }
 
     secret , err := session_db_handle.Fetch([]byte(SESSION_KEY))
-    log.Println("secret: ", secret, err)
+    log.Println("secret fetched: ", err)
     if err != nil {
         // no session key created in past, create and store
-        key := make([]byte, 64)
-
-        _, err := rand.Read(key)
-        if err != nil {
-                // handle error here, can't do any better
-                key = []byte(SESSION_KEY)
-        }
-        err = session_db_handle.Store([]byte(SESSION_KEY), key)
+        secret = encoder.GenerateLargePrime().Bytes()
+        err := session_db_handle.Store([]byte(SESSION_KEY), secret)
         if err != nil {
             log.Println("ERROR: storing SESSION_KEY in SESSION_DB: "+err.Error())
-            key = []byte(SESSION_KEY)
+            secret = []byte(SESSION_KEY)
         }
-        secret = key
     }
 
-    log.Println("Successfully initialized session handle: with secret: ", string(secret), session_db_handle)
+    log.Println("Successfully initialized session handle.")
 }
 
 func CloseSessionDBHandle() {
