@@ -192,7 +192,7 @@ export class GottyTerminal {
         if (option !== null) {
             if (this.ismaster) {
                 const httpsEnabled = window.location.protocol == "https:";
-                const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + window.location.pathname + 'ws' + '_' + option;
+                const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + '/ws' + '_' + option;
                 let args = window.location.search;
                 let args2 = '';
                 if ( eventname=="optionchange" && option && option2args[option] && option2args[option] !== undefined ) {

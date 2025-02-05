@@ -19,6 +19,15 @@ function generateFiveCharUUID(): string {
   return uuid.substring(0, 5);
 }
 
+function fetchEditorContent(): string {
+    var editor: any = window["editor"];
+    if( editor && editor.env && editor.env.editor && 
+      editor.env.editor.getValue && (typeof(editor.env.editor.getValue) === "function")) {
+        return editor.env.editor.getValue();
+    }
+    return "";
+}
+
 let chatfirebasedbref: firebase.database.Reference | null = null;
 const UID = generateFiveCharUUID();
 let peerchatmode: boolean = false;
@@ -57,8 +66,9 @@ renderer.code = (code, infostring, escaped) => {
   // Create and append the button
   const encodedcode = btoa(code);
   const insertButton = `<button class="share-btn" onclick="insertcodesnippet('${encodedcode}')">Insert</button>`
+  const replaceButton = `<button class="share-btn" onclick="replacecodesnippet('${encodedcode}')">Replace</button>`
   
-  return parsedcode+insertButton;
+  return parsedcode+insertButton+replaceButton;
 };
 
 marked.setOptions({
@@ -92,7 +102,7 @@ interface MessageType {
   content: string;
 }
 
-const NUM_MANDATORY_ENTRIES = 3;
+const NUM_MANDATORY_ENTRIES = 4;
 const MAX_HISTORY_SIZE = 20; 
 // older conversation history might not be usefull
 // Initialize the conversationHistory array
@@ -103,7 +113,15 @@ function addMessageToHistory(role: string, content: string, uid: string=UID): vo
   if (role=="user") {
     // to handle multiple peer users
     content = `[${role}-${uid}] ` + content;
+    if (conversationHistory.length >= NUM_MANDATORY_ENTRIES) {
+      // update editors content to msg history everytime user writes/sends message
+      conversationHistory[NUM_MANDATORY_ENTRIES-1] = { 
+        role: "system", 
+        content: "Openrepl IDE/Editor Code Content: "+ fetchEditorContent(),
+      }
+    }
   }
+
   conversationHistory.push({ role: role, content: content });
   if (conversationHistory.length > MAX_HISTORY_SIZE) {
       // Trim the oldest non-mandatory message from the beginning, preserving mandatory entries of docs
@@ -210,6 +228,7 @@ async function init() {
   addMessageToHistory("system", "welcome to openrepl.com!! I am Genie. your OpenRepl AI assistant.");
   addMessageToHistory("system", "documentation: "+documentation);
   addMessageToHistory("system", "keywords: "+ keywords);
+  addMessageToHistory("system", "Openrepl IDE/EditorCodeContent: "+ fetchEditorContent());
   setupFBListener();
 }
 window.addEventListener("load", init);
@@ -516,7 +535,9 @@ declare global {
   interface Window {
     ChatWidget: typeof ChatWidget;
     insertcodesnippet: () => void;
+    replacecodesnippet: () => void;
     firebase: typeof import('firebase');
+    editor?: any;
   }
 }
 
