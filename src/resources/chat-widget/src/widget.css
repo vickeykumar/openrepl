@@ -166,7 +166,7 @@
     width: 100%;
     height: 100%;
     background-image: url('images/genie-large.png'); /* Path to your animated GIF */
-    background-size: cover; /* Make the background cover the entire container */
+    background-size: contain; /* Make the background contained */
     background-position: center; /* Center the background image */
     background-repeat: no-repeat; /* Prevent the background image from repeating */
     opacity: 0.5; /* Adjust opacity as needed */

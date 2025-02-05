@@ -117,7 +117,9 @@ function addMessageToHistory(role: string, content: string, uid: string=UID): vo
       // update editors content to msg history everytime user writes/sends message
       conversationHistory[NUM_MANDATORY_ENTRIES-1] = { 
         role: "system", 
-        content: "Openrepl IDE/Editor Code Content: "+ fetchEditorContent(),
+        content: `Openrepl IDE/Editor real-time Code Content user is working on, 
+        (refer this code whenever user ask to debug editor/ide 
+        code without providing any code in message): `+ fetchEditorContent(),
       }
     }
   }
@@ -256,6 +258,87 @@ const trap = createFocusTrap(containerElement, {
   allowOutsideClick: true,
 });
 
+function makeResizable(containerElement: HTMLElement, target: HTMLElement) {
+  // Create a resizer div
+  const resizer = document.createElement("div");
+  resizer.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 20 20">
+      <line x1="4" y1="16" x2="16" y2="4" stroke="gray" stroke-width="2" />
+      <line x1="8" y1="16" x2="16" y2="8" stroke="gray" stroke-width="2" />
+    </svg>
+  `;
+  resizer.style.position = "absolute";
+  resizer.style.left = "5px";
+  resizer.style.top = "5px";
+  resizer.style.cursor = "nwse-resize";
+  resizer.style.opacity = "0.7";
+  resizer.style.transition = "opacity 0.2s";
+  resizer.style.display = "flex";
+  resizer.style.alignItems = "center";
+  resizer.style.justifyContent = "center";
+  resizer.style.width = "15px";
+  resizer.style.height = "15px";
+
+  // Style the container for a modern feel
+  Object.assign(containerElement.style, {
+    position: "absolute",
+    borderRadius: "10px",
+    boxShadow: "0 4px 10px rgba(0, 0, 0, 0.2)",
+    overflow: "hidden",
+    resize: "none", // Disable native resize
+    transition: "width 0.2s ease, height 0.2s ease",
+  });
+
+  containerElement.appendChild(resizer);
+
+  let isResizing = false;
+
+  resizer.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    isResizing = true;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = containerElement.offsetWidth;
+    const startHeight = containerElement.offsetHeight;
+
+    function resize(e: MouseEvent) {
+      if (!isResizing) return;
+      const newWidth = Math.max(150, startWidth + (startX - e.clientX)); // Min width: 150px
+      const newHeight = Math.max(100, startHeight + (startY - e.clientY)); // Min height: 100px
+      containerElement.style.width = `${newWidth}px`;
+      containerElement.style.height = `${newHeight}px`;
+
+      // Recompute floating position to keep alignment
+      updatePosition();
+    }
+
+    function stopResize() {
+      isResizing = false;
+      document.removeEventListener("mousemove", resize);
+      document.removeEventListener("mouseup", stopResize);
+    }
+
+    document.addEventListener("mousemove", resize);
+    document.addEventListener("mouseup", stopResize);
+  });
+
+  function updatePosition() {
+    computePosition(target, containerElement, {
+      placement: "top-start",
+      middleware: [flip(), shift({ crossAxis: true, padding: 8 })],
+      strategy: "fixed",
+    }).then(({ x, y }) => {
+      Object.assign(containerElement.style, {
+        left: `${x}px`,
+        top: `${y}px`,
+      });
+    });
+  }
+
+  return updatePosition; // Return the function so it can be used if needed
+}
+
 function open(e: Event) {
   if (config.closeOnOutsideClick) {
     document.body.appendChild(optionalBackdrop);
@@ -293,6 +376,7 @@ function open(e: Event) {
     });
   });
 
+  makeResizable(containerElement, target);
   trap.activate();
 
   if (config.closeOnOutsideClick) {
