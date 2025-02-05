@@ -194,6 +194,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 
 	var siteMux = http.NewServeMux()
 	siteMux.HandleFunc(pathPrefix, server.handleIndex)
+	//siteMux.HandleFunc(pathPrefix+"practice", server.handleIndex)
 	siteMux.HandleFunc(pathPrefix+"feedback", handleFeedback)
 	siteMux.HandleFunc(pathPrefix+"blog", handleBlog)
 	siteMux.HandleFunc(pathPrefix+"demo", handleDemo)

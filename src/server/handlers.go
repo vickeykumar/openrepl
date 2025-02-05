@@ -287,7 +287,7 @@ func (server *Server) errorHandler(w http.ResponseWriter, r *http.Request, statu
 }
 
 func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	if r.URL.Path != "/" && r.URL.Path != "/practice"{
 		server.errorHandler(w, r, http.StatusNotFound)
 		return
 	}

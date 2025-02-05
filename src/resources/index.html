@@ -199,7 +199,7 @@
         <li class="menu__item"><a id="sign-in-button" class="link link--dark"><i id = "auth-icon" class="fa fa-sign-in"></i> Login</a></li>
         <li class="menu__item"><a class="link link--dark" onclick="StartTour()"><i class="fa fa-rocket" aria-hidden="true"></i> Getting started</a></li>
         <li class="menu__item"><a href="/blog" class="link link--dark"><i class="fa fa-book"></i> Blogs</a></li>
-        <li class="menu__item"><a href="doc.html" class="link link--dark" target="_blank"><i class="fa fa-book"></i> Documentation</a></li>
+        <li class="menu__item"><a href="/doc.html" class="link link--dark" target="_blank"><i class="fa fa-book"></i> Documentation</a></li>
         <li class="menu__item">         </li>
       </ul>
     </nav>
@@ -701,6 +701,25 @@
           }
           catch(error) {
             alert("Unable to insert code");
+            console.error(error);
+          }
+        };
+        window.replacecodesnippet = (encodedcode) => {
+          const code = atob(encodedcode);
+          console.log("code replace hit: ", code);
+          try {
+            if (window.location.pathname.includes("practice")) {
+              alert("Unable to replace code in practice mode");
+              return;
+            }
+            let editor = window["editor"];
+            if( editor.env && editor.env.editor) {
+              editor = editor.env.editor;
+              editor.setValue(code);
+            }
+          }
+          catch(error) {
+            alert("Unable to replace code");
             console.error(error);
           }
         };

@@ -774,7 +774,7 @@ function uploadFile() {
     var http = new XMLHttpRequest();
     cmd = getSelectValue();
     console.log('command: ',cmd);
-    var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "demo?q=" + cmd;
+    var url = window.location.protocol + "//" + window.location.host + "/demo?q=" + cmd;
     http.onreadystatechange = function() {
       if (this.readyState == 4 && this.status == 200) {
         try {
@@ -854,7 +854,7 @@ if (document.getElementsByClassName('demo').length > 0) {
 
 function logout () {
       var xhr = new XMLHttpRequest();
-      var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "logout";
+      var url = window.location.protocol + "//" + window.location.host + "/logout";
       xhr.open("POST", url, true);
       xhr.setRequestHeader("Content-Type", "application/json");
       xhr.onreadystatechange = function () {
@@ -870,7 +870,7 @@ function logout () {
 
 function renderProfileData () {
       var xhr = new XMLHttpRequest();
-      var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "profile?q=json";
+      var url = window.location.protocol + "//" + window.location.host + "/profile?q=json";
       xhr.open("GET", url, true);
       xhr.setRequestHeader("Content-Type", "application/json");
       xhr.onreadystatechange = function () {
@@ -918,7 +918,7 @@ $(function() {
 	  if ((authResult.user) && (authResult.user.emailVerified)) {
               // User is signed in and email is verified, so proceed with login
               xhr = new XMLHttpRequest();
-              var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "login";
+              var url = window.location.protocol + "//" + window.location.host + "/login";
               xhr.open("POST", url, true);
               xhr.setRequestHeader("Content-Type", "application/json");
               xhr.onreadystatechange = function () {
@@ -1040,7 +1040,7 @@ $(function() {
 
     // check if already logged in 
     xhr = new XMLHttpRequest();
-    var url = window.location.protocol + "//" + window.location.host + window.location.pathname + "login";
+    var url = window.location.protocol + "//" + window.location.host + "/login";
     xhr.open("GET", url, true);
     xhr.setRequestHeader("Content-Type", "application/json");
     xhr.onreadystatechange = function () {
