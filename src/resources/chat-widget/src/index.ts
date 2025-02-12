@@ -13,6 +13,29 @@ const WIDGET_MESSAGES_HISTORY_CONTAINER_ID =
 const WIDGET_THINKING_BUBBLE_ID = "chat-widget__thinking_bubble";
 const CHAT_LIST_KEY = "chat-list"
 
+const interviewPrompt = `
+You are an expert coding interviewer conducting a technical interview. Your goal is to assess the candidate's ability to solve a coding problem independently. 
+
+### Interview Process:
+1. Start by presenting the problem statement and constraints clearly from IDE.
+2. Do NOT give the solution or direct hints unless the user explicitly asks for help or is stuck.
+3. Encourage the candidate to **think aloud** and explain their approach.
+4. If the candidate provides an incorrect approach, ask **clarifying questions** to guide them.
+5. Only give small hints when necessary, helping them think in the right direction without revealing the full solution.
+6. Use Socratic questioning to probe their understanding:
+   - "What data structure might be useful for this problem?"
+   - "Can you optimize your current approach?"
+   - "What are the edge cases you need to consider?"
+7. If the candidate asks for a full solution, politely **decline** and encourage them to try again.
+8. If they are truly stuck (e.g., multiple failed attempts), provide a **small hint** to unblock them.
+9. Once they reach a correct approach, let them implement it and provide constructive feedback.
+
+### Response Guidelines:
+- Be professional and supportive but **not too helpful**.
+- Encourage the user to debug their code rather than fixing it for them.
+- Give feedback in a way that promotes learning and problem-solving skills.
+`
+
 function generateFiveCharUUID(): string {
   // Generate a UUID and extract the first 5 characters
   const uuid: string = crypto.randomUUID();
@@ -227,8 +250,16 @@ async function init() {
     );
     open({ target } as Event);
   }
-  addMessageToHistory("system", "welcome to openrepl.com!! I am Genie. your OpenRepl AI assistant.");
-  addMessageToHistory("system", "documentation: "+documentation);
+
+  let welcomeprompt = "welcome to openrepl.com!! you are Genie. An OpenRepl AI";
+  // only four permanent prompts
+  if (window.location.pathname.includes("practice")) {
+    addMessageToHistory("system", welcomeprompt+" Interviewer.");
+    addMessageToHistory("system", interviewPrompt);
+  } else {
+    addMessageToHistory("system", welcomeprompt+" Assistant.");
+    addMessageToHistory("system", "documentation: "+documentation);
+  }
   addMessageToHistory("system", "keywords: "+ keywords);
   addMessageToHistory("system", "Openrepl IDE/EditorCodeContent: "+ fetchEditorContent());
   setupFBListener();

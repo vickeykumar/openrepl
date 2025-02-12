@@ -46,6 +46,8 @@
 
       <link rel="author" href="humans.txt">
       <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.0.2/firebase-ui-auth.css" />
+      <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css" rel="stylesheet" />
+      <link rel="stylesheet" href="./css/scribbler-misc.css">
       <script src="https://www.gstatic.com/firebasejs/ui/6.0.2/firebase-ui-auth.js"></script>
       <script src="https://kit.fontawesome.com/f54540db67.js" crossorigin="anonymous"></script>
       <script src="./auth_token.js"></script>
@@ -197,6 +199,7 @@
           </div>
         </li>
         <li class="menu__item"><a id="sign-in-button" class="link link--dark"><i id = "auth-icon" class="fa fa-sign-in"></i> Login</a></li>
+        <li class="menu__item"><a href="/practice/dsa-questions" class="link link--dark"><i class="fa fa-pen"></i> Practice</a></li>
         <li class="menu__item"><a class="link link--dark" onclick="StartTour()"><i class="fa fa-rocket" aria-hidden="true"></i> Getting started</a></li>
         <li class="menu__item"><a href="/blog" class="link link--dark"><i class="fa fa-book"></i> Blogs</a></li>
         <li class="menu__item"><a href="/doc.html" class="link link--dark" target="_blank"><i class="fa fa-book"></i> Documentation</a></li>
@@ -653,6 +656,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.9.6/ext-language_tools.min.js" type="text/javascript" charset="utf-8"></script>
     <script src="./js/filesaver.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.15/jstree.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"></script>
     <script src="./js/scribbler.js"></script>
     <script>
       ToggleEditor();
@@ -729,5 +733,265 @@
       <img src="./images/genie.svg" alt="Ask Genie" />
     </button>
     <!-- chatgpt Section end -->
+
+            <!-- Modal Structure -->
+      <div class="modal-container" id="modal">
+        <div class="modal">
+          <button class="close-btn" id="close">
+            <i class="fa fa-times"></i>
+          </button>
+          <div class="modal-header"><h3>New Question</h3></div>
+          <div class="modal-content">
+            <p>Please provide criteria to generate a new question</p>
+            <form class="modal-form">
+              <!-- Topic Selection with Searchable Dropdown -->
+              <div>
+                <label for="topic">Topic</label>
+                <select name="topic" id="topic" class="form-input">
+                  <option value="">Select a Topic</option>
+                </select>
+              </div>
+
+              <!-- Difficulty Selection -->
+              <div class="modal-rows">
+                <label for="difficulty">Difficulty Level</label>
+                <select name="difficulty" id="difficulty" class="form-input">
+                  <option value="">Select Difficulty</option>
+                  <option value="Easy">Easy</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Hard">Hard</option>
+                </select>
+                <label for="temperature">Temperature</label>
+                <input type="number" class="select-input ide-menu-item" style="width:3em" id="temperature" min="0.0" max="1.0" step="0.1" value="0.3" data-gtm-form-interact-field-id="0">
+              </div>
+
+              <!-- Custom Prompt Textarea -->
+              <div id="customPromptContainer">
+                  <label for="customPrompt">Custom Prompt</label>
+                  <textarea id="customPrompt" name="customPrompt" class="form-input" placeholder="Enter your custom prompt here..."></textarea>
+              </div>
+
+              <input type="submit" value="Submit" class="submit-btn" id="qsubmit-btn" />
+            </form>
+          </div>
+        </div>
+        <script type="text/javascript">
+          $(document).ready(function() {
+            // update the modal topics
+            const $topicSelect = $("#topic");
+            topics.forEach(topic => {
+                $topicSelect.append(`<option value="${topic}">${topic}</option>`);
+            });
+            $("#topic").select2({
+                placeholder: "Select a Topic or leave empty for any random topic..",
+                allowClear: true
+            });
+
+            function fetchLanguageTmplAndSetEditorcode(nameHyphenated, selectedLanguage) {
+              // Fetch stored questions
+              let storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
+
+              // Find the question by nameHyphenated
+              let newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenated);
+
+              if (!newQuestion) {
+                  console.error("Question not found: ", nameHyphenated);
+                  alert("Question not found: "+nameHyphenated+", Cick on  'New Question' to Add a new question.")
+                  return null;
+              }
+
+              // Call getCodeTemplate to fetch the missing template
+              let editor = window["editor"];
+              if( editor.env && editor.env.editor) {
+                editor = editor.env.editor;
+                getCodeTemplate(newQuestion.nameHyphenated, selectedLanguage, {temperature: globaltemperature})
+                    .then((language_template) => {
+                        if (language_template) {
+                            updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+
+                              newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+
+                              language_template.multiline_comment_start+"\n"+newQuestion.delimeter+"\n"+language_template.multiline_comment_end+"\n"+language_template.template+"\n\n\n\n", true);
+                        } else {
+                            console.error("Failed to fetch code template for:", selectedLanguage);
+                            updateEditorContent(selectedLanguage, "/*\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n*/\n\n\n\n", true);
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("Error fetching code template:", error);
+                        updateEditorContent(selectedLanguage, "/*\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n*/\n\n\n\n", true);
+                    });
+              }
+            }
+
+            // Get URL query parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            // Extract the 'question name' parameter
+            let nameHyphenatedlatest = urlParams.get('name');
+
+            if (window.location.pathname.includes("practice")) {
+                $("#fork-widget").hide();
+                $("#optionMenu").append(`
+                    <button id="randomQuestionBtn" class="share-btn">🎲 Random</button>
+                    <button id="newQuestionBtn" class="share-btn">+ New Question</button>
+                `);
+
+                $("#sidebar_options").append(`
+                    <div class="fullscreen-toggle tooltip" id="completeCheckbox"><i class="fa fa-circle"></i><span class="tooltiptext">Mark as Completed</span></div>
+                  `);
+
+                let icon = $("#completeCheckbox").find("i"); // Select the <i> inside the div
+                let tooltipText = $("#completeCheckbox").find(".tooltiptext"); // Select the tooltip text
+                $("#completeCheckbox").click(function() {
+                    // Retrieve stored data from localStorage.
+                    let bookmarkedRows = JSON.parse(localStorage.getItem('bookmarkedRows')) || [];
+                    let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+                    // Find the question by nameHyphenatedlatest
+                    let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
+                    if (!question) return; // Exit if question is not found
+
+                    if (icon.hasClass("fa-circle")) {
+                        bookmarkedRows.push(question.id);
+                        icon.removeClass("fa-circle").addClass("fa-check").addClass("toggle-accent-color"); // Add color class
+                        tooltipText.text("Completed ✅");
+                    } else {
+                        bookmarkedRows = bookmarkedRows.filter(id => id !== question.id);
+                        icon.removeClass("fa-check").addClass("fa-circle").removeClass("toggle-accent-color"); // Remove color class
+                        tooltipText.text("Mark as Completed");
+                    }
+                    localStorage.setItem('bookmarkedRows', JSON.stringify(bookmarkedRows));
+                });
+
+                function loadnewquestion() {
+                  console.log("latest Question Name:", nameHyphenatedlatest);
+                  let selectedLanguage = $("#optionlist option:selected").text();
+                  fetchLanguageTmplAndSetEditorcode(nameHyphenatedlatest, selectedLanguage);
+
+                  // load completed status whenever a new question gets loaded
+                  let bookmarkedRows = JSON.parse(localStorage.getItem('bookmarkedRows')) || [];
+                  let storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
+                  // Find the question by nameHyphenated
+                  let newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
+                  if (newQuestion && bookmarkedRows.includes(newQuestion.id)) {
+                    icon.removeClass("fa-circle").addClass("fa-check").addClass("toggle-accent-color"); // Add color class
+                    tooltipText.text("Completed ✅");
+                  }
+                }
+
+                let lastSelectedLanguage = $("#optionlist option:selected").text();
+                function SaveLastLanguageProgress(language) {
+                    // save code progress in localstorage
+                    let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+                    // Find the question by nameHyphenatedlatest
+                    let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
+
+                    if (!question) return; // Exit if question is not found
+
+                    language = language || $("#optionlist option:selected").text();
+                    // Check if the code template already exists for the given language
+                    let editor = window["editor"];
+                    if (question.code_templates && question.code_templates[language]) {
+                        let language_template = question.code_templates[language];
+                        if( editor.env && editor.env.editor) {
+                          editor = editor.env.editor;
+                          let tmp = editor.getValue().split(language_template.multiline_comment_start+"\n"+question.delimeter+"\n"+language_template.multiline_comment_end);
+                          if (tmp.length >= 2) {
+                            language_template.template = tmp.slice(1).join("\n").trim();
+                            question.code_templates[language]=language_template;
+                            // 🚀 **Ensure the modified data is stored back**
+                            localStorage.setItem("questions", JSON.stringify(storedQuestions));
+                          }
+                        }
+                    }
+                }
+
+                $(window).on("unload", SaveLastLanguageProgress);
+
+                $("#optionlist").on("change", function () {
+                    SaveLastLanguageProgress(lastSelectedLanguage);
+                    loadnewquestion();
+                    lastSelectedLanguage = $("#optionlist option:selected").text();
+                });
+                setTimeout(loadnewquestion, 4000);
+            }
+
+            // Modal
+            const close = document.getElementById("close");
+            const modal = document.getElementById("modal");
+            const button = document.getElementById("qsubmit-btn");
+            $("#temperature").val(globaltemperature); // one time init
+            button.addEventListener("click", function(event) {
+              event.preventDefault(); // Prevent form submission
+
+              // Get values from form inputs
+              let topic = document.getElementById("topic").value.trim();
+              let difficultyLevel = document.getElementById("difficulty").value.trim();
+              let customPrompt = document.getElementById("customPrompt").value.trim();
+              let selectedLanguage = $("#optionlist option:selected").text();
+              let tempValue = parseFloat($("#temperature").val());
+              if (!isNaN(tempValue)) {
+                globaltemperature = tempValue;
+                localStorage.setItem("temperature", tempValue); // Save to localStorage
+              }
+              
+              // Call the function and handle the Promise
+              generateNewQuestion(topic, difficultyLevel, customPrompt, selectedLanguage)
+                  .then(newQuestion => {
+                      if (!newQuestion) {
+                          return;
+                      }
+
+                      // Store and display the new question
+                      let result = saveNewQuestions(newQuestion);
+
+                      if (result.error === null) {
+                          console.log("New question added:", newQuestion);
+                          nameHyphenatedlatest = newQuestion.nameHyphenated;
+                          // reload with new name
+                          window.open(`/practice?name=${nameHyphenatedlatest}`, "_self");
+                      } else {
+                          alert("Error occurred while saving new question: " + result.error);
+                      }
+                      modal.classList.remove("show-modal");
+
+                      let language_template = newQuestion.code_templates[selectedLanguage];
+                      // update editor content
+                      let editor = window["editor"];
+                      if( editor.env && editor.env.editor) {
+                        editor = editor.env.editor;
+                        if (language_template) {
+                          updateEditorContent(language_template, language_template.multiline_comment_start+"\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+language_template.multiline_comment_start+"\n"+newQuestion.delimeter+"\n"+language_template.multiline_comment_end+"\n"+
+                          language_template.template+"\n\n\n\n", true);
+                        } else {
+                          fetchLanguageTmplAndSetEditorcode(newQuestion.nameHyphenated, selectedLanguage);
+                        }
+                      }
+                  })
+                  .catch(error => {
+                      console.error("Error generating a new question:", error);
+                      alert("An unexpected error occurred while generating a new question.");
+                  });
+            });
+
+            close.addEventListener("click", () => modal.classList.remove("show-modal"));
+            window.addEventListener("click", (e) =>
+              e.target == modal ? modal.classList.remove("show-modal") : false
+            );
+
+            // new questions button
+            $("#newQuestionBtn").click(() => $("#modal").addClass("show-modal"));
+            // Handle random question button.
+            $('#randomQuestionBtn').click(function() {
+              let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+              if (storedQuestions.length === 0) {
+                alert("No questions available!");
+                return;
+              }
+              let randomIndex = Math.floor(Math.random() * storedQuestions.length);
+              let randomQuestion = storedQuestions[randomIndex];
+              window.open(`/practice?name=${randomQuestion.nameHyphenated}`, "_self");
+            });
+          });
+        </script>
+      </div>
+      <!-- end of modal-->
   </body>
 </html>

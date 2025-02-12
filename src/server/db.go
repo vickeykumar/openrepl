@@ -396,3 +396,37 @@ func handleUserProfile(rw http.ResponseWriter, req *http.Request) {
 }
 
 
+func handlePracticeQuestions(rw http.ResponseWriter, req *http.Request) {
+	log.Println("handlePracticeQuestions: method:", req.Method)
+	if req.Method == "GET" {
+		req.ParseForm()
+		for key, val := range req.Form {
+			log.Println("%s: %s", key, val);
+		}
+
+		practiceData, err := Asset("static/practice.html")
+		if err != nil {
+			log.Println("Error : practice template not found") // must be in bindata
+			errorHandler(rw, req, "404 Page Not Found", http.StatusNotFound)
+			return
+		}
+		practiceTemplate, err := template.New("practice").Parse(string(practiceData))
+		if err != nil {
+			log.Println("practice template parse failed") // must be valid
+			errorHandler(rw, req, "404 Page Not Found", http.StatusNotFound)
+			return
+		}
+
+		// Render the template (pass data if needed, or nil for no data)
+		if err := practiceTemplate.Execute(rw, nil); err != nil {
+		    log.Println("Error executing practice template:", err)
+			errorHandler(rw, req, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+	} else if req.Method == "POST" {
+		log.Println("Error: invalid request type: POST")
+		errorHandler(rw, req, "Invalid Request Method", http.StatusBadRequest)
+		return
+	}
+}
+

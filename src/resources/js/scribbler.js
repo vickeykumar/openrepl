@@ -101,7 +101,7 @@ function getSelectValue() {
           return option.value;
         }
     }
-    return '';
+    return 'c';
 }
 
 function getjidstr() {
@@ -786,7 +786,10 @@ function uploadFile() {
               i=0;
             });
             setTimeout(PrintGithub, 200, obj["Demo"]["Github"]);
-            setTimeout(updateEditorContent, 200, cmd, obj["Demo"]["Content"]);
+            if (!window.location.pathname.includes("practice")) {
+              // don't override the questions
+              setTimeout(updateEditorContent, 200, cmd, obj["Demo"]["Content"]);
+            }
             setTimeout(PrintUsage, 400, obj["Demo"]["Usage"],obj["Demo"]["Doc"],cmd);
           } else {
             console.log("Error: Unable to render Demo and Usage");
