@@ -1354,7 +1354,7 @@ $(function() {
             if (window[CONTENT_KEY]) {
               initalcontent = window[CONTENT_KEY];
             } else {
-              initalcontent = "/* Welcome to openrepl! */\n/* Editor underdevelopment! */";
+              initalcontent = "/* Welcome to openrepl! */";
             }
 
              //get language from optionmenu
