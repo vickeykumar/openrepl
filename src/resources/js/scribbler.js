@@ -433,6 +433,11 @@ function StartTour() {
       intro: 'Documentation on current REPL used.'
     },
     {
+      title: 'Practice dsa with AI',
+      element: document.querySelector('#practice_dsa'),
+      intro: 'follow this page to practice dsa questions with AI.'
+    },
+    {
       title: 'Fork this REPL',
       element: document.querySelector('#fork-widget'),
       intro: 'Fork this REPL/Terminal to share same containers and codepath/home\
