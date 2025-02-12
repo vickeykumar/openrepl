@@ -946,7 +946,7 @@
                           console.log("New question added:", newQuestion);
                           nameHyphenatedlatest = newQuestion.nameHyphenated;
                           // reload with new name
-                          window.open(`/practice?name=${nameHyphenatedlatest}`, "_self");
+                          window.open(`/practice?${selectedLanguage}&name=${nameHyphenatedlatest}`, "_self");
                       } else {
                           alert("Error occurred while saving new question: " + result.error);
                       }
@@ -987,7 +987,8 @@
               }
               let randomIndex = Math.floor(Math.random() * storedQuestions.length);
               let randomQuestion = storedQuestions[randomIndex];
-              window.open(`/practice?name=${randomQuestion.nameHyphenated}`, "_self");
+              let selectedLanguage = $("#optionlist option:selected").text();
+              window.open(`/practice?${selectedLanguage}&name=${randomQuestion.nameHyphenated}`, "_self");
             });
           });
         </script>
