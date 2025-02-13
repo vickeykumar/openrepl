@@ -131,6 +131,16 @@ const MAX_HISTORY_SIZE = 20;
 // Initialize the conversationHistory array
 let conversationHistory: MessageType[] = [];
 
+function getcurrentIDECode(): MessageType {
+  let idecodemsg =  { 
+        role: "system", 
+        content: `Openrepl IDE/Editor real-time Code Content user is working on, 
+        (refer this code whenever user ask to debug editor/ide 
+        code without providing any code in message): `+ fetchEditorContent(),
+      }
+  return idecodemsg; 
+}
+
 // Function to add a message to the conversation history
 function addMessageToHistory(role: string, content: string, uid: string=UID): void {
   if (role=="user") {
@@ -138,12 +148,7 @@ function addMessageToHistory(role: string, content: string, uid: string=UID): vo
     content = `[${role}-${uid}] ` + content;
     if (conversationHistory.length >= NUM_MANDATORY_ENTRIES) {
       // update editors content to msg history everytime user writes/sends message
-      conversationHistory[NUM_MANDATORY_ENTRIES-1] = { 
-        role: "system", 
-        content: `Openrepl IDE/Editor real-time Code Content user is working on, 
-        (refer this code whenever user ask to debug editor/ide 
-        code without providing any code in message): `+ fetchEditorContent(),
-      }
+      conversationHistory[NUM_MANDATORY_ENTRIES-1] = getcurrentIDECode();
     }
   }
 
@@ -601,7 +606,7 @@ async function submit(e: Event) {
   const data = {
     ...config.user,
     model: config.model,
-    messages: conversationHistory,
+    messages: [...conversationHistory, getcurrentIDECode()],
     temperature: config.temperature,
     max_tokens: config.max_tokens,
     stream: config.responseIsAStream,

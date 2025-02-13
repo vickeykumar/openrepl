@@ -902,9 +902,24 @@
                           }
                         }
                     }
+
+                    // save current topic and difficultylevel
+                    let topic = $("#topic").val().trim();
+                    let difficultyLevel = $("#difficulty").val().trim();
+
+                    localStorage.setItem("topic", topic);
+                    localStorage.setItem("difficultyLevel", difficultyLevel);
                 }
 
                 $(window).on("unload", SaveLastLanguageProgress);
+                const existingHandler = window.onbeforeunload;
+                window.onbeforeunload = function(event) {
+                    // Call existing handler first (if any)
+                    if (existingHandler) {
+                        return existingHandler(event);
+                    }
+                    SaveLastLanguageProgress();
+                };
 
                 $("#optionlist").on("change", function () {
                     SaveLastLanguageProgress(lastSelectedLanguage);
@@ -919,6 +934,11 @@
             const modal = document.getElementById("modal");
             const button = document.getElementById("qsubmit-btn");
             $("#temperature").val(globaltemperature); // one time init
+
+            let savedTopic = localStorage.getItem("topic") || "";
+            let savedDifficultyLevel = localStorage.getItem("difficultyLevel") || "";
+            $("#topic").val(savedTopic).trigger('change');
+            $("#difficulty").val(savedDifficultyLevel);
             button.addEventListener("click", function(event) {
               event.preventDefault(); // Prevent form submission
 
