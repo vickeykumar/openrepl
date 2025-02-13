@@ -1443,7 +1443,8 @@ $(function() {
       'tcl':  'tcl',
       'rs': 'rust',
       'sql': 'sql',
-      'ts': 'typescript'
+      'ts': 'typescript',
+      'asm': 'assembly_x86'
   };
   const imageext = ['jpg', 'jpeg', 'gif', 'png', 'bmp', 'webp', 'svg', 'ico'];
   const archiveext = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'];
