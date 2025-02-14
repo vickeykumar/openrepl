@@ -802,25 +802,21 @@
               }
 
               // Call getCodeTemplate to fetch the missing template
-              let editor = window["editor"];
-              if( editor.env && editor.env.editor) {
-                editor = editor.env.editor;
-                getCodeTemplate(newQuestion.nameHyphenated, selectedLanguage, {temperature: globaltemperature})
-                    .then((language_template) => {
-                        if (language_template) {
-                            updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+
-                              newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+
-                              language_template.multiline_comment_start+"\n"+newQuestion.delimeter+"\n"+language_template.multiline_comment_end+"\n"+language_template.template+"\n\n\n\n", true);
-                        } else {
-                            console.error("Failed to fetch code template for:", selectedLanguage);
-                            updateEditorContent(selectedLanguage, "/*\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n*/\n\n\n\n", true);
-                        }
-                    })
-                    .catch((error) => {
-                        console.error("Error fetching code template:", error);
-                        updateEditorContent(selectedLanguage, "/*\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n*/\n\n\n\n", true);
-                    });
-              }
+              getCodeTemplate(newQuestion.nameHyphenated, selectedLanguage, {temperature: globaltemperature})
+                  .then((language_template) => {
+                      if (language_template) {
+                          updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+
+                            newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+
+                            language_template.multiline_comment_start+"\n"+newQuestion.delimeter+"\n"+language_template.multiline_comment_end+"\n"+language_template.template+"\n\n\n\n", true);
+                      } else {
+                          console.error("Failed to fetch code template for:", selectedLanguage);
+                          updateEditorContent(selectedLanguage, "/*\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n*/\n\n\n\n", true);
+                      }
+                  })
+                  .catch((error) => {
+                      console.error("Error fetching code template:", error);
+                      updateEditorContent(selectedLanguage, "/*\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n*/\n\n\n\n", true);
+                  });
             }
 
             // Get URL query parameters
@@ -975,15 +971,11 @@
 
                       let language_template = newQuestion.code_templates[selectedLanguage];
                       // update editor content
-                      let editor = window["editor"];
-                      if( editor.env && editor.env.editor) {
-                        editor = editor.env.editor;
-                        if (language_template) {
-                          updateEditorContent(language_template, language_template.multiline_comment_start+"\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+language_template.multiline_comment_start+"\n"+newQuestion.delimeter+"\n"+language_template.multiline_comment_end+"\n"+
-                          language_template.template+"\n\n\n\n", true);
-                        } else {
-                          fetchLanguageTmplAndSetEditorcode(newQuestion.nameHyphenated, selectedLanguage);
-                        }
+                      if (language_template) {
+                        updateEditorContent(language_template, language_template.multiline_comment_start+"\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+language_template.multiline_comment_start+"\n"+newQuestion.delimeter+"\n"+language_template.multiline_comment_end+"\n"+
+                        language_template.template+"\n\n\n\n", true);
+                      } else {
+                        fetchLanguageTmplAndSetEditorcode(newQuestion.nameHyphenated, selectedLanguage);
                       }
                   })
                   .catch(error => {

@@ -1208,7 +1208,7 @@ $(function() {
     var openPageTimestamp = Date.now();
 
     var editorInitialized = false;
-    const initializeEditorApp = (initalcontent="/* Welcome to openrepl! */") => {
+    const initializeEditorApp = (initialcontent) => {
       if (!editorInitialized) {
         //all init for editor goes here
         editorInitialized = true;
@@ -1348,13 +1348,13 @@ $(function() {
         });
         
         // If the editor doesn't exist already....
-        if (initalcontent === null) {
+        if (!initialcontent) {
             // ...we will initialize a new one. 
             // ...with this content:
             if (window[CONTENT_KEY]) {
-              initalcontent = window[CONTENT_KEY];
+              initialcontent = window[CONTENT_KEY];
             } else {
-              initalcontent = "/* Welcome to openrepl! */";
+              initialcontent = "/* Welcome to openrepl! */";
             }
 
              //get language from optionmenu
@@ -1369,7 +1369,7 @@ $(function() {
                   silent: true // trigger event only when told
                 },
                 queue: {},
-                content: initalcontent
+                content: initialcontent
             });
         }
 
@@ -1379,7 +1379,7 @@ $(function() {
         // ...then set the value
         // -1 will move the cursor at the begining of the editor, preventing
         // selecting all the code in the editor (which is happening by default)
-        editor.setValue(initalcontent, -1);
+        editor.setValue(initialcontent, -1);
         
         // ...then set applyingDeltas to false
         applyingDeltas = false;
