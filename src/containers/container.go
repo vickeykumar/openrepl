@@ -35,6 +35,7 @@ var Commands2memLimitMap = map[string]int64{
 	"evcxr":		 50,  // rust REPL
 	"sqlite3":       10,
     "ts-node":       50,
+    "rappel": 		 2,
 }
 
 var memLimitMutex sync.Mutex

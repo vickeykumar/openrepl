@@ -1,5 +1,4 @@
 /* global tinymce */
-
 tinymce.PluginManager.add('chatgpt', function (editor) {
   const OPENAI = editor.getParam('openai')
 
@@ -74,7 +73,12 @@ tinymce.PluginManager.add('chatgpt', function (editor) {
         let prompt = data.prompt ?? ''
         prompt += input
         // Get response from OpenAI
-        getResponseFromOpenAI(prompt)
+        getResponseFromOpenAI(OPENAI.api_key, prompt, {
+          baseUri: OPENAI.baseUri, 
+          model: OPENAI.model,
+          temperature: OPENAI.temperature,
+          max_tokens: OPENAI.max_tokens,
+         })
           .then((res) => {
             if (!res.ok) {
               throw new Error(`Request failed with status ${res.status}`);
@@ -126,34 +130,6 @@ tinymce.PluginManager.add('chatgpt', function (editor) {
             api.unblock();
           });
       }
-    })
-  }
-
-  /**
-   * Get the current selection and set it as the default input
-   * @param prompt
-   * @returns {Promise<Response>}
-   */
-  function getResponseFromOpenAI (prompt) {
-    const baseUri = OPENAI.baseUri || 'https://api.openai.com/v1/chat/completions'
-
-    const requestBody = {
-      model: OPENAI.model,
-      messages: [{
-        role: 'user',
-        content: prompt
-      }],
-      temperature: OPENAI.temperature,
-      max_tokens: OPENAI.max_tokens
-    }
-
-    return fetch(baseUri, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + OPENAI.api_key
-      },
-      body: JSON.stringify(requestBody)
     })
   }
 

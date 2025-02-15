@@ -137,7 +137,20 @@ else
     rm -rf evcxr-v0.17.0-x86_64-unknown-linux-gnu
 fi
 
-
+#install rappel, nasm and set all the required dependencies
+if [ -e "/usr/local/bin/rappel" ]; then
+    echo "File /usr/local/bin/rappel exists."
+else
+    echo "File /usr/local/bin/rappel does not exist. installing..."
+    apt-get install -y --no-install-recommends libedit-dev
+    apt-get install -y --no-install-recommends nasm
+    git clone https://github.com/yrp604/rappel.git
+    cd rappel
+    make
+    ln -s $GOTTY_DIR/rappel/bin/rappel /usr/local/bin/rappel
+    chmod 755 /usr/local/bin/rappel
+    cd ..
+fi
 
 #install gointerpreter
 git clone https://github.com/vickeykumar/Go-interpreter.git
@@ -236,6 +249,7 @@ if [ $run_tests -eq 1 ]; then
 		"sqlite3 --version"
 		"tsc --version"
 		"ts-node --version"
+    "echo "nop" | rappel"
 	)
 
 
