@@ -916,6 +916,9 @@
                     }
                     SaveLastLanguageProgress();
                 };
+                $("#play-button").on("click", function () {
+                  SaveLastLanguageProgress();
+                });
 
                 $("#optionlist").on("change", function () {
                     SaveLastLanguageProgress(lastSelectedLanguage);
