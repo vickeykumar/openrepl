@@ -1267,15 +1267,23 @@ $(function() {
             name: 'Save',
             bindKey: {win: 'Ctrl-S',  mac: 'Command-S'},
             exec: function(editor) {
+              let ispractice = window.location.pathname.includes("practice")
               if ((editor.env.filename) && $('#file-browser').jstree(true).is_selected(editor.env.filename)) {
                 SaveSelectedNodeToFile(editor.env.filename, function(){
                   // in case of failure refresh the tree to fetch from server
                   $('#file-browser').jstree(true).refresh();
                 });
                 console.log("file save triggered: ", editor.env.filename);
-              } else {
+              } else if (!ispractice) {
                 alert("No File Selected To Save.");
               }
+
+              // Fire 'savecode' event
+              const event = new CustomEvent('savecode', {
+                  detail: { message: 'Code saved!', editor }
+              });
+
+              window.dispatchEvent(event);
             },
             readOnly: false, // false if this command should not apply in readOnly mode
         });

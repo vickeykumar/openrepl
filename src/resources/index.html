@@ -916,6 +916,10 @@
                 let lastSelectedLanguage = $("#optionlist option:selected").text();
 
                 $(window).on("unload", SaveLastLanguageProgress);
+                $(window).on('savecode', function(event) {
+                    SaveLastLanguageProgress();
+                });
+
                 const existingHandler = window.onbeforeunload;
                 window.onbeforeunload = function(event) {
                     // Call existing handler first (if any)
