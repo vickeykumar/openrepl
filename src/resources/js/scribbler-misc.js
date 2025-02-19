@@ -12,9 +12,9 @@
       let table = $('#questionsTable').DataTable({
         "scrollX": true, // Enables horizontal scrolling
         "columnDefs": [
-          { targets: [0, 5], orderable: false },
+          { targets: [0, 4, 6], orderable: false },
         ],
-        order: [[4, 'desc']], // Default sorting: Most recent questions first
+        order: [[5, 'desc']], // Default sorting: Most recent questions first
         "responsive": true, // Enable responsive behavior
         "autoWidth": false, // Prevent automatic width expansion
         "language": {
@@ -74,6 +74,12 @@
           <td><a href="/practice?name=${q.nameHyphenated}" class="question-link" target="_blank">${q.name}</a></td>
           <td>${q.topic}</td>
           <td>${q.difficulty}</td>
+          <td>
+            <div class="remarks-display">
+              <span class="remarks-content">${q.remarks || 'Add remarks...'}</span>
+              <i class="fa fa-pencil edit-icon"></i>
+            </div>
+          </td>
           <td data-order="${q.added}">${new Date(q.added).toLocaleString()}</td>
           <td><button class="delete-btn">🗑 Delete</button></td>
         </tr>`;
@@ -108,6 +114,41 @@
         localStorage.setItem('bookmarkedRows', JSON.stringify(bookmarkedRows));
         updateBookmarks();
       });
+
+
+      // Click edit (pencil icon) → Convert cell to contenteditable
+      $(document).on('click', '.edit-icon', function () {
+        let cell = $(this).closest('td');
+        let currentContent = cell.find('.remarks-content').html(); // Get current HTML content
+        let rowId = cell.closest('tr').attr('data-id');
+
+        // Replace display with editable content div
+        cell.html(`
+          <div contenteditable="true" class="remarks-editable">${currentContent}</div>
+        `);
+        let editableDiv = cell.find('.remarks-editable');
+        editableDiv.focus();
+
+        // Handle blur inside this context (avoids replacing before capturing content)
+        editableDiv.on('blur', function () {
+          let newContent = editableDiv.html().trim();
+          // Persist to localStorage
+          let question = storedQuestions.find(q => q.id === rowId);
+          if (question) {
+            question.remarks = newContent;
+            localStorage.setItem('questions', JSON.stringify(storedQuestions));
+          }
+
+          // Swap back to view mode (rich text with pen icon)
+          cell.html(`
+            <div class="remarks-display">
+              <span class="remarks-content">${newContent || 'Add remarks...'}</span>
+              <i class="fa fa-pencil edit-icon"></i>
+            </div>
+          `);
+        });
+      });
+
 
       // Handle row deletion.
       $('#questionsTable tbody').on('click', '.delete-btn', function() {
