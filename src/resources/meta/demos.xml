@@ -2263,4 +2263,147 @@ printf "\n";
 sleep 0.05
         </Compiler>
     </Demo>
+
+    <!-- Assembly demo -->
+    <Demo>
+        <Name>rappel</Name>
+        <Github>https://github.com/yrp604/rappel</Github>
+        <Doc>https://cs.lmu.edu/~ray/notes/nasmtutorial/</Doc>
+        <Codes>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>.help</Statement>
+                <Result>Commands:
+.quit                    - quit
+.help                    - display this help
+.info                    - display registers
+.begin                   - start a block, input will not be assembled/run until '.end'
+.end                     - assemble and run the prior block
+.showmap                 - shortcut for cat /proc/&lt;pid&gt;/maps
+.allregs &lt;on|off&gt;        - toggle all register display
+.read &lt;address&gt; [amount] - read &lt;amount&gt; bytes of data from address using ptrace [16]
+.write &lt;address&gt; &lt;data&gt;  - write data starting at address using ptrace
+</Result>
+            </Code>
+        </Codes>
+        <Codes>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>inc rax</Statement>
+                <Result>rax=0000000000000001 rbx=0000000000000000 rcx=0000000000000000
+rdx=0000000000000000 rsi=0000000000000000 rdi=0000000000000000
+rip=0000000000400004 rsp=00007ffdedb264a0 rbp=0000000000000000
+ r8=0000000000000000  r9=0000000000000000 r10=0000000000000000
+r11=0000000000000000 r12=0000000000000000 r13=0000000000000000
+r14=0000000000000000 r15=0000000000000000
+[cf:0, zf:0, of:0, sf:0, pf:0, af:0, df:0]
+cs=0033  ss=002b  ds=0000  es=0000  fs=0000  gs=0000            efl=00000202</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>push rax</Statement>
+                <Result>rax=0000000000000001 rbx=0000000000000000 rcx=0000000000000000
+rdx=0000000000000000 rsi=0000000000000000 rdi=0000000000000000
+rip=0000000000400002 rsp=00007ffdedb26498 rbp=0000000000000000
+ r8=0000000000000000  r9=0000000000000000 r10=0000000000000000
+r11=0000000000000000 r12=0000000000000000 r13=0000000000000000
+r14=0000000000000000 r15=0000000000000000
+[cf:0, zf:0, of:0, sf:0, pf:0, af:0, df:0]
+cs=0033  ss=002b  ds=0000  es=0000  fs=0000  gs=0000            efl=00000202</Result>
+            </Code>
+        </Codes>
+        <Codes>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>pop rbx</Statement>
+                <Result>rax=0000000000000001 rbx=0000000000000001 rcx=0000000000000000
+rdx=0000000000000000 rsi=0000000000000000 rdi=0000000000000000
+rip=0000000000400002 rsp=00007ffdedb264a0 rbp=0000000000000000
+ r8=0000000000000000  r9=0000000000000000 r10=0000000000000000
+r11=0000000000000000 r12=0000000000000000 r13=0000000000000000
+r14=0000000000000000 r15=0000000000000000
+[cf:0, zf:0, of:0, sf:0, pf:0, af:0, df:0]
+cs=0033  ss=002b  ds=0000  es=0000  fs=0000  gs=0000            efl=00000202</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>cmp rax, rbx</Statement>
+                <Result>rax=0000000000000001 rbx=0000000000000001 rcx=0000000000000000
+rdx=0000000000000000 rsi=0000000000000000 rdi=0000000000000000
+rip=0000000000400004 rsp=00007ffdedb264a0 rbp=0000000000000000
+ r8=0000000000000000  r9=0000000000000000 r10=0000000000000000
+r11=0000000000000000 r12=0000000000000000 r13=0000000000000000
+r14=0000000000000000 r15=0000000000000000
+[cf:0, zf:1, of:0, sf:0, pf:1, af:0, df:0]
+cs=0033  ss=002b  ds=0000  es=0000  fs=0000  gs=0000            efl=00000246</Result>
+            </Code>
+            <Code>
+                <Prompt>&gt;</Prompt>
+                <Statement>.quit</Statement>
+                <Result>$</Result>
+            </Code>
+        </Codes>
+        <Usage>
+            <Command>.help</Command>
+            <Description>Print command help</Description>
+        </Usage>
+        <Usage>
+            <Command>.quit</Command>
+            <Description>Quit evaluation and exit</Description>
+        </Usage>
+        <Content>;-------- Welcome to OpenREPL! ---------
+
+section .data
+    hello db 'Hello, World!', 0
+
+section .text
+    global _start
+
+_start:
+    ; write Hello, World! to stdout
+    mov eax, 4         ; sys_write
+    mov ebx, 1         ; file descriptor 1 (stdout)
+    mov ecx, hello     ; message to write
+    mov edx, 13        ; message length
+    int 0x80           ; call kernel
+
+    ; exit the program
+    mov eax, 1         ; sys_exit
+    xor ebx, ebx       ; exit code 0
+    int 0x80           ; call kernel
+</Content>
+        <Compiler>
+COMPILER=nasm
+FILE=test.asm
+debug=false
+WORKDIR=$HOME
+if [ "$CompilerOption" = "debug" ]; then
+    debug=true;
+fi
+
+if [ "$IdeFileName" != "" ]; then
+    WORKDIR=$(dirname "$IdeFileName");
+    FILE=$(basename "$IdeFileName");
+else
+    echo $0|base64 --decode > "$WORKDIR/$FILE";
+fi
+
+cd $WORKDIR;
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
+    $COMPILER -felf64 -o "$WORKDIR/$FILE".o "$WORKDIR/$FILE" $@;
+fi
+
+if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE.o" ]; then
+	ld -o "$WORKDIR/$FILE".out "$WORKDIR/$FILE".o 
+	if $debug; then
+		gdb "$WORKDIR/$FILE".out $@;
+	else
+		#second quoate with escape, as -c option takes a string argument.
+    	$SHELL -c "\"$WORKDIR/$FILE\".out $@";
+    fi
+fi
+printf "\n";
+sleep 0.05
+        </Compiler>
+    </Demo>
 </DemoList>

@@ -174,11 +174,11 @@ var CommonTemplate = `<!doctype html>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/css/jquery.dataTables.min.css">
     <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
-    <link rel="stylesheet" href="./css/scribbler-global.css">
-    <link rel="stylesheet" href="./css/scribbler-doc.css">
+    <link rel="stylesheet" href="/css/scribbler-global.css">
+    <link rel="stylesheet" href="/css/scribbler-doc.css">
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/js/jquery.dataTables.min.js"></script>
-    <script src="./js/preprocessing.js"></script>
+    <script src="/js/preprocessing.js"></script>
     <link rel="author" href="humans.txt">
   </head>
   <body>
@@ -198,7 +198,7 @@ var CommonTemplate = `<!doctype html>
         <script>document.getElementById('copyright_year').appendChild(document.createTextNode(new Date().getFullYear()))</script>
     </span>&copy;<span class="go__color">Open</span>REPL 
     </footer>
-    <script src="./js/common.js"></script>
+    <script src="/js/common.js"></script>
   </body>
 </html>`
 

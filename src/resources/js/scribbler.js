@@ -101,7 +101,7 @@ function getSelectValue() {
           return option.value;
         }
     }
-    return '';
+    return 'c';
 }
 
 function getjidstr() {
@@ -431,6 +431,11 @@ function StartTour() {
       title: 'Documentation',
       element: document.querySelector('#callout_doc'),
       intro: 'Documentation on current REPL used.'
+    },
+    {
+      title: 'Practice dsa with AI',
+      element: document.querySelector('#practice_dsa'),
+      intro: 'follow this page to practice dsa questions with AI.'
     },
     {
       title: 'Fork this REPL',
@@ -786,7 +791,10 @@ function uploadFile() {
               i=0;
             });
             setTimeout(PrintGithub, 200, obj["Demo"]["Github"]);
-            setTimeout(updateEditorContent, 200, cmd, obj["Demo"]["Content"]);
+            if (!window.location.pathname.includes("practice")) {
+              // don't override the questions
+              setTimeout(updateEditorContent, 200, cmd, obj["Demo"]["Content"]);
+            }
             setTimeout(PrintUsage, 400, obj["Demo"]["Usage"],obj["Demo"]["Doc"],cmd);
           } else {
             console.log("Error: Unable to render Demo and Usage");
@@ -1200,7 +1208,7 @@ $(function() {
     var openPageTimestamp = Date.now();
 
     var editorInitialized = false;
-    const initializeEditorApp = (initalcontent="/* Welcome to openrepl! */") => {
+    const initializeEditorApp = (initialcontent) => {
       if (!editorInitialized) {
         //all init for editor goes here
         editorInitialized = true;
@@ -1340,13 +1348,13 @@ $(function() {
         });
         
         // If the editor doesn't exist already....
-        if (initalcontent === null) {
+        if (!initialcontent) {
             // ...we will initialize a new one. 
             // ...with this content:
             if (window[CONTENT_KEY]) {
-              initalcontent = window[CONTENT_KEY];
+              initialcontent = window[CONTENT_KEY];
             } else {
-              initalcontent = "/* Welcome to openrepl! */\n/* Editor underdevelopment! */";
+              initialcontent = "/* Welcome to openrepl! */";
             }
 
              //get language from optionmenu
@@ -1361,7 +1369,7 @@ $(function() {
                   silent: true // trigger event only when told
                 },
                 queue: {},
-                content: initalcontent
+                content: initialcontent
             });
         }
 
@@ -1371,7 +1379,7 @@ $(function() {
         // ...then set the value
         // -1 will move the cursor at the begining of the editor, preventing
         // selecting all the code in the editor (which is happening by default)
-        editor.setValue(initalcontent, -1);
+        editor.setValue(initialcontent, -1);
         
         // ...then set applyingDeltas to false
         applyingDeltas = false;
@@ -1435,7 +1443,8 @@ $(function() {
       'tcl':  'tcl',
       'rs': 'rust',
       'sql': 'sql',
-      'ts': 'typescript'
+      'ts': 'typescript',
+      'asm': 'assembly_x86'
   };
   const imageext = ['jpg', 'jpeg', 'gif', 'png', 'bmp', 'webp', 'svg', 'ico'];
   const archiveext = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'];

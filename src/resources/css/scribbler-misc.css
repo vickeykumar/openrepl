@@ -1,0 +1,197 @@
+.wrapper .wrapper-body {
+  padding: 10px;
+  width: 100%;
+  background-color: #f5f5f5;
+}
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  background: #fff;
+  padding: 10px 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+.toolbar select, .toolbar input {
+  padding: 7px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+}
+#newQuestionBtn, #randomQuestionBtn, #completeBtn {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.3s;
+}
+#newQuestionBtn:hover, #randomQuestionBtn:hover, #completeBtn:hover {
+  background-color: #0056b3;
+}
+
+.question-link {
+  text-decoration: none;
+  color: #007bff;
+  font-weight: bold;
+}
+.question-link:hover {
+  text-decoration: underline;
+}
+.bookmarked-row {
+  background-color: #d1ffd1 !important;
+}
+
+.bookmark {
+    appearance: none; /* Remove default checkbox */
+    width: 18px;
+    height: 18px;
+    border: 2px solid #ccc;
+    border-radius: 5px;
+    cursor: pointer;
+    display: inline-block;
+    position: relative;
+}
+
+.bookmark:checked::before {
+    content: "✅"; /* Unicode checkmark */
+    font-size: 18px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.delete-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.delete-btn:hover {
+  background: #b02a37;
+}
+
+/* modal */
+.select2-container {
+    min-width: 200px !important;  /* Adjust as needed */
+    width: 100% !important;  /* Ensure it takes full available space */
+}
+
+.modal-container {
+  background-color: var(--overlay-color);
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: none;
+}
+
+.modal-container.show-modal {
+  display: block;
+  z-index: 100;
+}
+
+.modal {
+  background-color: var(--clear-color);
+  border-radius: 5px;
+  box-shadow: 0 0 10px var(--shadow-color);
+  position: absolute;
+  overflow: hidden;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 100%;
+  width: 400px;
+  animation-name: modalopen;
+  animation-duration: var(--modal-duration);
+}
+
+.modal-header {
+  background: var(--primary-color);
+  color: var(--clear-color);
+  padding: 15px;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+.modal-content {
+  padding: 20px;
+}
+
+.modal-form div {
+  margin: 15px 0;
+}
+
+.modal-form label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.modal-form .form-input {
+  padding: 8px;
+  width: 100%;
+}
+
+.modal-rows {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* Adjust spacing */
+}
+
+.close-btn {
+  background: transparent;
+  font-size: 25px;
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+@keyframes modalopen {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* question table */
+#questionsTable {
+    width: 100% !important;
+}
+
+#questionsTable th,
+#questionsTable td {
+    overflow: hidden;
+    white-space: nowrap; /* Prevent text wrapping */
+    text-overflow: ellipsis; /* Truncate long text with '...' */
+}
+
+/* Bookmark column (smallest width, checkbox) */
+#questionsTable th:nth-child(1),
+#questionsTable td:nth-child(1) {
+    width: 5% !important;
+    text-align: center;
+}
+
+/* Name column (widest) */
+#questionsTable th:nth-child(2),
+#questionsTable td:nth-child(2) {
+    width: 35% !important;
+}
+
+/* Other columns (equal distribution) */
+#questionsTable th:nth-child(n+3),
+#questionsTable td:nth-child(n+3) {
+    width: 15% !important;
+}

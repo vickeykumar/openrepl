@@ -13,6 +13,29 @@ const WIDGET_MESSAGES_HISTORY_CONTAINER_ID =
 const WIDGET_THINKING_BUBBLE_ID = "chat-widget__thinking_bubble";
 const CHAT_LIST_KEY = "chat-list"
 
+const interviewPrompt = `
+You are an expert coding interviewer conducting a technical interview. Your goal is to assess the candidate's ability to solve a coding problem independently. 
+
+### Interview Process:
+1. Start by presenting the problem statement and constraints clearly from IDE.
+2. Do NOT give the solution or direct hints unless the user explicitly asks for help or is stuck.
+3. Encourage the candidate to **think aloud** and explain their approach.
+4. If the candidate provides an incorrect approach, ask **clarifying questions** to guide them.
+5. Only give small hints when necessary, helping them think in the right direction without revealing the full solution.
+6. Use Socratic questioning to probe their understanding:
+   - "What data structure might be useful for this problem?"
+   - "Can you optimize your current approach?"
+   - "What are the edge cases you need to consider?"
+7. If the candidate asks for a full solution, politely **decline** and encourage them to try again.
+8. If they are truly stuck (e.g., multiple failed attempts), provide a **small hint** to unblock them.
+9. Once they reach a correct approach, let them implement it and provide constructive feedback.
+
+### Response Guidelines:
+- Be professional and supportive but **not too helpful**.
+- Encourage the user to debug their code rather than fixing it for them.
+- Give feedback in a way that promotes learning and problem-solving skills.
+`
+
 function generateFiveCharUUID(): string {
   // Generate a UUID and extract the first 5 characters
   const uuid: string = crypto.randomUUID();
@@ -108,6 +131,16 @@ const MAX_HISTORY_SIZE = 20;
 // Initialize the conversationHistory array
 let conversationHistory: MessageType[] = [];
 
+function getcurrentIDECode(): MessageType {
+  let idecodemsg =  { 
+        role: "system", 
+        content: `Openrepl IDE/Editor real-time Code Content user is working on, 
+        (refer this code whenever user ask to debug editor/ide 
+        code without providing any code in message): `+ fetchEditorContent(),
+      }
+  return idecodemsg; 
+}
+
 // Function to add a message to the conversation history
 function addMessageToHistory(role: string, content: string, uid: string=UID): void {
   if (role=="user") {
@@ -115,10 +148,7 @@ function addMessageToHistory(role: string, content: string, uid: string=UID): vo
     content = `[${role}-${uid}] ` + content;
     if (conversationHistory.length >= NUM_MANDATORY_ENTRIES) {
       // update editors content to msg history everytime user writes/sends message
-      conversationHistory[NUM_MANDATORY_ENTRIES-1] = { 
-        role: "system", 
-        content: "Openrepl IDE/Editor Code Content: "+ fetchEditorContent(),
-      }
+      conversationHistory[NUM_MANDATORY_ENTRIES-1] = getcurrentIDECode();
     }
   }
 
@@ -225,8 +255,16 @@ async function init() {
     );
     open({ target } as Event);
   }
-  addMessageToHistory("system", "welcome to openrepl.com!! I am Genie. your OpenRepl AI assistant.");
-  addMessageToHistory("system", "documentation: "+documentation);
+
+  let welcomeprompt = "welcome to openrepl.com!! you are Genie. An OpenRepl AI";
+  // only four permanent prompts
+  if (window.location.pathname.includes("practice")) {
+    addMessageToHistory("system", welcomeprompt+" Interviewer.");
+    addMessageToHistory("system", interviewPrompt);
+  } else {
+    addMessageToHistory("system", welcomeprompt+" Assistant.");
+    addMessageToHistory("system", "documentation: "+documentation);
+  }
   addMessageToHistory("system", "keywords: "+ keywords);
   addMessageToHistory("system", "Openrepl IDE/EditorCodeContent: "+ fetchEditorContent());
   setupFBListener();
@@ -255,6 +293,87 @@ const trap = createFocusTrap(containerElement, {
   initialFocus: "#chat-widget__input",
   allowOutsideClick: true,
 });
+
+function makeResizable(containerElement: HTMLElement, target: HTMLElement) {
+  // Create a resizer div
+  const resizer = document.createElement("div");
+  resizer.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 20 20">
+      <line x1="4" y1="16" x2="16" y2="4" stroke="gray" stroke-width="2" />
+      <line x1="8" y1="16" x2="16" y2="8" stroke="gray" stroke-width="2" />
+    </svg>
+  `;
+  resizer.style.position = "absolute";
+  resizer.style.left = "5px";
+  resizer.style.top = "5px";
+  resizer.style.cursor = "nwse-resize";
+  resizer.style.opacity = "0.7";
+  resizer.style.transition = "opacity 0.2s";
+  resizer.style.display = "flex";
+  resizer.style.alignItems = "center";
+  resizer.style.justifyContent = "center";
+  resizer.style.width = "15px";
+  resizer.style.height = "15px";
+
+  // Style the container for a modern feel
+  Object.assign(containerElement.style, {
+    position: "absolute",
+    borderRadius: "10px",
+    boxShadow: "0 4px 10px rgba(0, 0, 0, 0.2)",
+    overflow: "hidden",
+    resize: "none", // Disable native resize
+    transition: "width 0.2s ease, height 0.2s ease",
+  });
+
+  containerElement.appendChild(resizer);
+
+  let isResizing = false;
+
+  resizer.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    isResizing = true;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = containerElement.offsetWidth;
+    const startHeight = containerElement.offsetHeight;
+
+    function resize(e: MouseEvent) {
+      if (!isResizing) return;
+      const newWidth = Math.max(150, startWidth + (startX - e.clientX)); // Min width: 150px
+      const newHeight = Math.max(100, startHeight + (startY - e.clientY)); // Min height: 100px
+      containerElement.style.width = `${newWidth}px`;
+      containerElement.style.height = `${newHeight}px`;
+
+      // Recompute floating position to keep alignment
+      updatePosition();
+    }
+
+    function stopResize() {
+      isResizing = false;
+      document.removeEventListener("mousemove", resize);
+      document.removeEventListener("mouseup", stopResize);
+    }
+
+    document.addEventListener("mousemove", resize);
+    document.addEventListener("mouseup", stopResize);
+  });
+
+  function updatePosition() {
+    computePosition(target, containerElement, {
+      placement: "top-start",
+      middleware: [flip(), shift({ crossAxis: true, padding: 8 })],
+      strategy: "fixed",
+    }).then(({ x, y }) => {
+      Object.assign(containerElement.style, {
+        left: `${x}px`,
+        top: `${y}px`,
+      });
+    });
+  }
+
+  return updatePosition; // Return the function so it can be used if needed
+}
 
 function open(e: Event) {
   if (config.closeOnOutsideClick) {
@@ -293,6 +412,7 @@ function open(e: Event) {
     });
   });
 
+  makeResizable(containerElement, target);
   trap.activate();
 
   if (config.closeOnOutsideClick) {
@@ -486,7 +606,7 @@ async function submit(e: Event) {
   const data = {
     ...config.user,
     model: config.model,
-    messages: conversationHistory,
+    messages: [...conversationHistory, getcurrentIDECode()],
     temperature: config.temperature,
     max_tokens: config.max_tokens,
     stream: config.responseIsAStream,
