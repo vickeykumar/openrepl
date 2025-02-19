@@ -842,43 +842,7 @@
 
                 let icon = $("#completeCheckbox").find("i"); // Select the <i> inside the div
                 let tooltipText = $("#completeCheckbox").find(".tooltiptext"); // Select the tooltip text
-                $("#completeCheckbox").click(function() {
-                    // Retrieve stored data from localStorage.
-                    let bookmarkedRows = JSON.parse(localStorage.getItem('bookmarkedRows')) || [];
-                    let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
-                    // Find the question by nameHyphenatedlatest
-                    let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
-                    if (!question) return; // Exit if question is not found
 
-                    if (icon.hasClass("fa-circle")) {
-                        bookmarkedRows.push(question.id);
-                        icon.removeClass("fa-circle").addClass("fa-check").addClass("toggle-accent-color"); // Add color class
-                        tooltipText.text("Completed ✅");
-                    } else {
-                        bookmarkedRows = bookmarkedRows.filter(id => id !== question.id);
-                        icon.removeClass("fa-check").addClass("fa-circle").removeClass("toggle-accent-color"); // Remove color class
-                        tooltipText.text("Mark as Completed");
-                    }
-                    localStorage.setItem('bookmarkedRows', JSON.stringify(bookmarkedRows));
-                });
-
-                function loadnewquestion() {
-                  console.log("latest Question Name:", nameHyphenatedlatest);
-                  let selectedLanguage = $("#optionlist option:selected").text();
-                  fetchLanguageTmplAndSetEditorcode(nameHyphenatedlatest, selectedLanguage);
-
-                  // load completed status whenever a new question gets loaded
-                  let bookmarkedRows = JSON.parse(localStorage.getItem('bookmarkedRows')) || [];
-                  let storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
-                  // Find the question by nameHyphenated
-                  let newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
-                  if (newQuestion && bookmarkedRows.includes(newQuestion.id)) {
-                    icon.removeClass("fa-circle").addClass("fa-check").addClass("toggle-accent-color"); // Add color class
-                    tooltipText.text("Completed ✅");
-                  }
-                }
-
-                let lastSelectedLanguage = $("#optionlist option:selected").text();
                 function SaveLastLanguageProgress(language) {
                     // save code progress in localstorage
                     let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
@@ -911,6 +875,45 @@
                     localStorage.setItem("topic", topic);
                     localStorage.setItem("difficultyLevel", difficultyLevel);
                 }
+
+                $("#completeCheckbox").click(function() {
+                    // Retrieve stored data from localStorage.
+                    let bookmarkedRows = JSON.parse(localStorage.getItem('bookmarkedRows')) || [];
+                    let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+                    // Find the question by nameHyphenatedlatest
+                    let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
+                    if (!question) return; // Exit if question is not found
+
+                    if (icon.hasClass("fa-circle")) {
+                        bookmarkedRows.push(question.id);
+                        icon.removeClass("fa-circle").addClass("fa-check").addClass("toggle-accent-color"); // Add color class
+                        tooltipText.text("Completed ✅");
+                    } else {
+                        bookmarkedRows = bookmarkedRows.filter(id => id !== question.id);
+                        icon.removeClass("fa-check").addClass("fa-circle").removeClass("toggle-accent-color"); // Remove color class
+                        tooltipText.text("Mark as Completed");
+                    }
+                    localStorage.setItem('bookmarkedRows', JSON.stringify(bookmarkedRows));
+                    SaveLastLanguageProgress();
+                });
+
+                function loadnewquestion() {
+                  console.log("latest Question Name:", nameHyphenatedlatest);
+                  let selectedLanguage = $("#optionlist option:selected").text();
+                  fetchLanguageTmplAndSetEditorcode(nameHyphenatedlatest, selectedLanguage);
+
+                  // load completed status whenever a new question gets loaded
+                  let bookmarkedRows = JSON.parse(localStorage.getItem('bookmarkedRows')) || [];
+                  let storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
+                  // Find the question by nameHyphenated
+                  let newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
+                  if (newQuestion && bookmarkedRows.includes(newQuestion.id)) {
+                    icon.removeClass("fa-circle").addClass("fa-check").addClass("toggle-accent-color"); // Add color class
+                    tooltipText.text("Completed ✅");
+                  }
+                }
+
+                let lastSelectedLanguage = $("#optionlist option:selected").text();
 
                 $(window).on("unload", SaveLastLanguageProgress);
                 const existingHandler = window.onbeforeunload;
