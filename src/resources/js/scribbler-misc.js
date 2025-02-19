@@ -71,14 +71,26 @@
           const response = await fetch('/js/dsa.json');
           const questions = await response.json();
 
+          // Map existing questions by nameHyphenated for easy lookup
+          const storedMap = new Map(storedQuestions.map(q => [q.nameHyphenated, q]));
+
           const formattedQuestions = questions.map(({ title, topic, difficulty, description = null }, index) => {
-            let addedEpoch = Date.now();
-            let idInt = parseInt(addedEpoch)+index;
-            let id = `${idInt}`;
+            const nameHyphenated = title.replace(/\s+/g, '-').toLowerCase();
+
+            if (storedMap.has(nameHyphenated)) {
+              // Use existing question from localStorage
+              return storedMap.get(nameHyphenated);
+            }
+
+            // Create a new question if not found in storedMap
+            const addedEpoch = Date.now();
+            const idInt = parseInt(addedEpoch) + index;
+            const id = `${idInt}`;
+
             return {
               id,
               name: title,
-              nameHyphenated: title.replace(/\s+/g, '-').toLowerCase(),
+              nameHyphenated,
               topic,
               difficulty,
               description,
@@ -88,6 +100,7 @@
             };
           });
 
+          // Save updated questions back to localStorage
           localStorage.setItem('questions', JSON.stringify(formattedQuestions));
           storedQuestions = formattedQuestions;
         } catch (error) {
@@ -95,12 +108,11 @@
         }
       }
 
+
       // Load stored questions and add them to the table.
       async function loadStoredQuestions() {
         // fetch sample questions from server if no questions are present
-        if (storedQuestions.length === 0) {
-          await fetchAndStoreQuestions();
-        }
+        await fetchAndStoreQuestions();
         storedQuestions.forEach(q => addQuestionRow(q));
       }
 
