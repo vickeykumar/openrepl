@@ -59,9 +59,40 @@
         bookmarkedRowsList.forEach(row => $('#questionsTable tbody').append(row));
       }
 
+      async function fetchAndStoreQuestions() {
+        try {
+          const response = await fetch('/js/dsa.json');
+          const questions = await response.json();
+
+          const formattedQuestions = questions.map(({ title, topic, difficulty, description = null }, index) => {
+            let addedEpoch = Date.now();
+            let id = `${addedEpoch}-${index}`;
+            return {
+              id,
+              name: title,
+              nameHyphenated: title.replace(/\s+/g, '-').toLowerCase(),
+              topic,
+              difficulty,
+              description,
+              code_templates: {},
+              added: addedEpoch,
+              delimeter: ' Welcome to OpenREPL!! you can start coding here. ',
+            };
+          });
+
+          localStorage.setItem('questions', JSON.stringify(formattedQuestions));
+          storedQuestions = formattedQuestions;
+        } catch (error) {
+          console.error('Failed to fetch questions:', error);
+        }
+      }
 
       // Load stored questions and add them to the table.
-      function loadStoredQuestions() {
+      async function loadStoredQuestions() {
+        // fetch sample questions from server if no questions are present
+        if (storedQuestions.length === 0) {
+          await fetchAndStoreQuestions();
+        }
         storedQuestions.forEach(q => addQuestionRow(q));
       }
 

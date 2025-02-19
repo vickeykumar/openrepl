@@ -802,8 +802,13 @@
               }
 
               // Call getCodeTemplate to fetch the missing template
-              getCodeTemplate(newQuestion.nameHyphenated, selectedLanguage, {temperature: globaltemperature})
+              getCodeTemplate(nameHyphenated, selectedLanguage, {temperature: globaltemperature})
                   .then((language_template) => {
+                      if (!newQuestion.description) {
+                        // see if the description got updated by gen codetmpl function
+                        storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
+                        newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenated);
+                      }
                       if (language_template) {
                           updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+
                             newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+

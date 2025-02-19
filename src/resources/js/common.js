@@ -124,8 +124,8 @@ function saveNewQuestions(newQuestion) {
 
   storedQuestions.push(newQuestion);
 
-  // Keep only the latest 100 entries
-  if (storedQuestions.length > 100) {
+  // Keep only the latest 1000 entries
+  if (storedQuestions.length > 1000) {
     storedQuestions = storedQuestions.slice(-100);
   }
 
@@ -167,7 +167,7 @@ async function generateNewQuestion(topic, difficultyLevel, customPrompt, languag
 
   let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
   // Extract the list of previous question names
-	let previousTitles = storedQuestions.map(q => q.name).join(", ");
+	let previousTitles = storedQuestions.filter(q => q.topic === topic).map(q => q.name).join(", ");
 
 	const prompt = `Generate a unique data structure and algorithm coding question based on these criteria:
     
@@ -283,13 +283,16 @@ async function getCodeTemplate(nameHyphenated, language) {
         return question.code_templates[language];
     }
 
+    const descriptionprompt = `- Each line in description is wrapped to a maximum of 100 characters, breaking at word boundaries( use \\n).
+- The problem description should explain the requirements and constraints in detail.
+- Use **stick figure drawings** whenever necessary to visually explain the problem.
+- Provide at least two sample test cases, formatted using \\n as separator.`;
     // Construct OpenAI prompt
     const prompt = `Generate a code template for solving the following problem:
 
 ### **Problem Title**: ${question.name}
 
-### **Problem Description**:
-${question.description}
+${question.description ? `### **Problem Description**:\n${question.description}\n` : ''}
 
 ### **Output Format**:
 The output should be a valid JSON object containing a code template for **${language}**.
@@ -300,10 +303,12 @@ Ensure that:
 3. Use the correct comment syntax for the given language.
 4. Do not repeat the prompt text in the output.
 5. The response must be in **valid JSON format**.
+${question.description ? '' : descriptionprompt}
 
 ### **Output Format**: // generate only json part only
 \`\`\`json
 {
+  ${question.description ? '' : '"description": "Detailed problem description with sample test cases ...",'}
   "${language}": {
     "template": "<function signature/code template here>",
     "multiline_comment_start": "<start comment syntax>",
@@ -340,6 +345,10 @@ Ensure that:
 
             // Update the stored question with the new template
             question.code_templates[language] = generatedTemplate[language];
+            if (!question.description) {
+                // set newely generated description
+                question.description = generatedTemplate.description;
+            }
 
             // Save the updated questions list back to localStorage
             localStorage.setItem("questions", JSON.stringify(storedQuestions));
