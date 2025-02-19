@@ -1,7 +1,7 @@
 [
   {"title": "two-sum", "topic": "Arrays", "difficulty": "Easy"},
   {"title": "best-time-to-buy-and-sell-stock", "topic": "Arrays", "difficulty": "Easy"},
-  {"title": "plus-one", "topic": "Arrays", "difficulty": "Easy"},
+  {"title": "merge-sorted-array", "topic": "Arrays", "difficulty": "Easy"},
   {"title": "move-zeroes", "topic": "Arrays", "difficulty": "Easy"},
   {"title": "best-time-to-buy-and-sell-stock-ii", "topic": "Arrays", "difficulty": "Easy"},
   {"title": "find-pivot-index", "topic": "Arrays", "difficulty": "Easy"},
