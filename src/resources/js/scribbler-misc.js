@@ -49,7 +49,14 @@
 
         // Sort non-bookmarked rows in descending order of `data-added`
         nonBookmarkedRows.sort((a, b) => {
-            return parseInt($(b).attr('data-added')) - parseInt($(a).attr('data-added'));
+            const addedA = parseInt($(a).attr('data-added'));
+            const addedB = parseInt($(b).attr('data-added'));
+
+            if (addedA !== addedB) {
+                return addedB - addedA; // Sort by 'data-added' DESC
+            }
+
+            return parseInt($(a).attr('data-id')) - parseInt($(b).attr('data-id')); // Sort by 'index' ASC
         });
 
         // Append sorted non-bookmarked rows first
@@ -66,7 +73,8 @@
 
           const formattedQuestions = questions.map(({ title, topic, difficulty, description = null }, index) => {
             let addedEpoch = Date.now();
-            let id = `${addedEpoch}-${index}`;
+            let idInt = parseInt(addedEpoch)+index;
+            let id = `${idInt}`;
             return {
               id,
               name: title,
