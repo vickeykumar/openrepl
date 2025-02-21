@@ -298,8 +298,8 @@ ${question.description ? `### **Problem Description**:\n${question.description}\
 The output should be a valid JSON object containing a code template for **${language}**.
 
 Ensure that:
-1. The template includes a function signature.
-2. It should also contain a main function with expected and actual output to test the function.
+1. The template includes a function signature. don't implement it.
+2. It should also contain a main function with expected and actual output to call and test above function.
 3. Use the correct comment syntax for the given language.
 4. Do not repeat the prompt text in the output.
 5. The response must be in **valid JSON format**.
