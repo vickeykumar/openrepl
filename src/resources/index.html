@@ -878,22 +878,21 @@
 
                 $("#completeCheckbox").click(function() {
                     // Retrieve stored data from localStorage.
-                    let bookmarkedRows = JSON.parse(localStorage.getItem('bookmarkedRows')) || [];
                     let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
                     // Find the question by nameHyphenatedlatest
                     let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
                     if (!question) return; // Exit if question is not found
 
                     if (icon.hasClass("fa-circle")) {
-                        bookmarkedRows.push(question.id);
+                        question.bookmarkStatus = true;
                         icon.removeClass("fa-circle").addClass("fa-check").addClass("toggle-accent-color"); // Add color class
                         tooltipText.text("Completed ✅");
                     } else {
-                        bookmarkedRows = bookmarkedRows.filter(id => id !== question.id);
+                        question.bookmarkStatus = false;
                         icon.removeClass("fa-check").addClass("fa-circle").removeClass("toggle-accent-color"); // Remove color class
                         tooltipText.text("Mark as Completed");
                     }
-                    localStorage.setItem('bookmarkedRows', JSON.stringify(bookmarkedRows));
+                    localStorage.setItem('questions', JSON.stringify(storedQuestions));
                     SaveLastLanguageProgress();
                 });
 
@@ -903,11 +902,10 @@
                   fetchLanguageTmplAndSetEditorcode(nameHyphenatedlatest, selectedLanguage);
 
                   // load completed status whenever a new question gets loaded
-                  let bookmarkedRows = JSON.parse(localStorage.getItem('bookmarkedRows')) || [];
                   let storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
                   // Find the question by nameHyphenated
                   let newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
-                  if (newQuestion && bookmarkedRows.includes(newQuestion.id)) {
+                  if (newQuestion?.bookmarkStatus) {
                     icon.removeClass("fa-circle").addClass("fa-check").addClass("toggle-accent-color"); // Add color class
                     tooltipText.text("Completed ✅");
                   }

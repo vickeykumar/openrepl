@@ -23,20 +23,19 @@
       });
 
       // Retrieve stored data from localStorage.
-      let bookmarkedRows = JSON.parse(localStorage.getItem('bookmarkedRows')) || [];
       let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
 
       // Update bookmark checkboxes and (in default mode) reorder rows so that pinned rows come first.
       function updateBookmarks() {
-        let currentSort = $('#sortBy').val();
         let nonBookmarkedRows = [];
         let bookmarkedRowsList = [];
 
         $('#questionsTable tbody tr').each(function() {
             let rowId = $(this).attr('data-id');
             let checkbox = $(this).find('.bookmark');
-            
-            if (bookmarkedRows.includes(rowId)) {
+            let question = storedQuestions.find(q => q.id === rowId);
+
+            if (question?.bookmarkStatus) {
                 checkbox.prop('checked', true);
                 $(this).addClass('bookmarked-row');
                 bookmarkedRowsList.push($(this)); // Collect bookmarked rows
@@ -96,6 +95,7 @@
               description,
               code_templates: {},
               added: addedEpoch,
+              bookmarkStatus: false,
               delimeter: ' Welcome to OpenREPL!! you can start coding here. ',
             };
           });
@@ -121,7 +121,7 @@
         // The "Last Added" cell displays a human-readable date/time (using toLocaleString)
         // and uses a data-order attribute (with the epoch timestamp) for sorting.
         let newRow = `<tr data-id="${q.id}" data-difficulty="${q.difficulty}" data-added="${q.added}">
-          <td><input type="checkbox" class="bookmark"></td>
+          <td><input type="checkbox" class="bookmark" ${q.bookmarkStatus ? 'checked' : ''}></td>
           <td><a href="/practice?name=${q.nameHyphenated}" class="question-link" target="_blank">${q.name}</a></td>
           <td>${q.topic}</td>
           <td>${q.difficulty}</td>
@@ -157,13 +157,13 @@
       $('#questionsTable tbody').on('change', '.bookmark', function() {
         let row = $(this).closest('tr');
         let rowId = row.attr('data-id');
-        if ($(this).prop('checked')) {
-          bookmarkedRows.push(rowId);
-        } else {
-          bookmarkedRows = bookmarkedRows.filter(id => id !== rowId);
+        let question = storedQuestions.find(q => q.id === rowId);
+
+        if (question) {
+          question.bookmarkStatus = $(this).prop('checked');
+          localStorage.setItem('questions', JSON.stringify(storedQuestions));
+          updateBookmarks();
         }
-        localStorage.setItem('bookmarkedRows', JSON.stringify(bookmarkedRows));
-        updateBookmarks();
       });
 
 
@@ -207,8 +207,6 @@
         let rowId = row.attr('data-id');
         storedQuestions = storedQuestions.filter(q => q.id !== rowId);
         localStorage.setItem('questions', JSON.stringify(storedQuestions));
-        bookmarkedRows = bookmarkedRows.filter(id => id !== rowId);
-        localStorage.setItem('bookmarkedRows', JSON.stringify(bookmarkedRows));
         table.row(row).remove().draw();
         updateBookmarks();
       });
