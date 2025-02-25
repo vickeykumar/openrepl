@@ -22,15 +22,13 @@
         }
       });
 
-      // Retrieve stored data from localStorage.
-      let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
-
       // Update bookmark checkboxes and (in default mode) reorder rows so that pinned rows come first.
       function updateBookmarks() {
         let nonBookmarkedRows = [];
         let bookmarkedRowsList = [];
 
         $('#questionsTable tbody tr').each(function() {
+            let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
             let rowId = $(this).attr('data-id');
             let checkbox = $(this).find('.bookmark');
             let question = storedQuestions.find(q => q.id === rowId);
@@ -69,7 +67,7 @@
         try {
           const response = await fetch('/js/dsa.json');
           const questions = await response.json();
-
+          let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
           // Map existing questions by nameHyphenated for quick lookup
           const storedMap = new Map(storedQuestions.map(q => [q.nameHyphenated, q]));
 
@@ -119,6 +117,7 @@
         }).catch(error => {
           console.error('Error fetching new questions:', error);
         });
+        let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
         storedQuestions.forEach(q => addQuestionRow(q));
       }
 
@@ -146,8 +145,6 @@
         let newRowNode = table.row(lastIndex).node();
         $(newRowNode).prependTo('#questionsTable tbody');
 
-        updateBookmarks();
-
         // Ensure the topic is added to the filter dropdown if it's new
         if ($("#topicsFilter option[value='" + q.topic + "']").length === 0) {
           $("#topicsFilter").append(`<option value="${q.topic}">${q.topic}</option>`);
@@ -159,10 +156,42 @@
         }
       }
 
+      function updateQuestionRow(q) {
+        // Find the row in the DataTable by the question ID
+        let row = table.row(`[data-id="${q.id}"]`);
+
+        if (row.length) {
+          // Update the row data
+          let updatedRow = `<tr data-id="${q.id}" data-difficulty="${q.difficulty}" data-added="${q.updated}"${q.bookmarkStatus ? ' class="bookmarked-row"' : ''}>
+            <td><input type="checkbox" class="bookmark" ${q.bookmarkStatus ? 'checked' : ''}></td>
+            <td><a href="/practice?name=${q.nameHyphenated}" class="question-link" target="_blank">${q.name}</a></td>
+            <td>${q.topic}</td>
+            <td>${q.difficulty}</td>
+            <td>
+              <div class="remarks-display">
+                <span class="remarks-content">${q.remarks || 'Add remarks...'}</span>
+                <i class="fa fa-pencil edit-icon"></i>
+              </div>
+            </td>
+            <td data-order="${q.updated}">${new Date(q.updated).toLocaleString()}</td>
+            <td><button class="delete-btn">🗑 Delete</button></td>
+          </tr>`;
+
+          // Replace the row with updated content
+          row.node().innerHTML = updatedRow;
+
+          // Redraw the table to reflect changes
+          table.draw(false);
+        } else {
+          console.warn('Row not found for question ID:', q.id);
+        }
+      }
+
       // Handle bookmark checkbox changes.
       $('#questionsTable tbody').on('change', '.bookmark', function() {
         let row = $(this).closest('tr');
         let rowId = row.attr('data-id');
+        let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
         let question = storedQuestions.find(q => q.id === rowId);
 
         if (question) {
@@ -177,7 +206,8 @@
       $(document).on('click', '.edit-icon', function () {
         let cell = $(this).closest('td');
         let currentContent = cell.find('.remarks-content').html(); // Get current HTML content
-        let rowId = cell.closest('tr').attr('data-id');
+        let rowElement = cell.closest('tr'); // Get the table row element
+        let rowId = rowElement.attr('data-id'); // Extract the row ID
 
         // Replace display with editable content div
         cell.html(`
@@ -189,12 +219,18 @@
         // Handle blur inside this context (avoids replacing before capturing content)
         editableDiv.on('blur', function () {
           let newContent = editableDiv.html().trim();
+          let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
           // Persist to localStorage
           let question = storedQuestions.find(q => q.id === rowId);
           if (question) {
             question.remarks = newContent;
             question.updated = Date.now();
             localStorage.setItem('questions', JSON.stringify(storedQuestions));
+            // Update the "Last Updated" cell
+            let updatedDate = new Date(question.updated).toLocaleString();
+            let updatedCell = rowElement.find('td').eq(5); // "Last Updated" is the 6th column
+
+            updatedCell.attr('data-order', question.updated).html(updatedDate);
           }
 
           // Swap back to view mode (rich text with pen icon)
@@ -210,6 +246,7 @@
 
       // Handle row deletion.
       $('#questionsTable tbody').on('click', '.delete-btn', function() {
+        let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
         let row = $(this).closest('tr');
         let rowId = row.attr('data-id');
         storedQuestions = storedQuestions.filter(q => q.id !== rowId);
@@ -236,6 +273,7 @@
 
       // Handle random question button.
       $('#randomQuestionBtn').click(function() {
+        let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
         if (storedQuestions.length === 0) {
           alert("No questions available!");
           return;
@@ -286,7 +324,6 @@
                 if (result.error === null) {
                     addQuestionRow(newQuestion);
                     console.log("New question added:", newQuestion);
-                    storedQuestions = result.storedQuestions;
                 } else {
                     alert("Error occurred while saving new question: " + result.error);
                 }
