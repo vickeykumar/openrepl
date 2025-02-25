@@ -126,7 +126,7 @@ function saveNewQuestions(newQuestion) {
 
   // Keep only the latest 1000 entries
   if (storedQuestions.length > 1000) {
-    storedQuestions = storedQuestions.slice(-100);
+    storedQuestions = storedQuestions.slice(-1000);
   }
 
   localStorage.setItem('questions', JSON.stringify(storedQuestions));

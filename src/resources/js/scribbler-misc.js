@@ -70,44 +70,43 @@
           const response = await fetch('/js/dsa.json');
           const questions = await response.json();
 
-          // Map existing questions by nameHyphenated for easy lookup
+          // Map existing questions by nameHyphenated for quick lookup
           const storedMap = new Map(storedQuestions.map(q => [q.nameHyphenated, q]));
 
-          const formattedQuestions = questions.map(({ title, topic, difficulty, description = null }, index) => {
-            const nameHyphenated = title.replace(/\s+/g, '-').toLowerCase();
+          const newQuestions = questions
+            .filter(({ title }) => {
+              const nameHyphenated = title.replace(/\s+/g, '-').toLowerCase();
+              return !storedMap.has(nameHyphenated); // Keep only new questions
+            })
+            .map(({ title, topic, difficulty, description = null }, index) => {
+              const nameHyphenated = title.replace(/\s+/g, '-').toLowerCase();
+              const addedEpoch = Date.now();
+              const idInt = parseInt(addedEpoch) + index;
+              const id = `${idInt}`;
 
-            if (storedMap.has(nameHyphenated)) {
-              // Use existing question from localStorage
-              return storedMap.get(nameHyphenated);
-            }
+              return {
+                id,
+                name: title,
+                nameHyphenated,
+                topic,
+                difficulty,
+                description,
+                code_templates: {},
+                added: addedEpoch,
+                bookmarkStatus: false,
+                delimeter: ' Welcome to OpenREPL!! you can start coding here. ',
+              };
+            });
 
-            // Create a new question if not found in storedMap
-            const addedEpoch = Date.now();
-            const idInt = parseInt(addedEpoch) + index;
-            const id = `${idInt}`;
-
-            return {
-              id,
-              name: title,
-              nameHyphenated,
-              topic,
-              difficulty,
-              description,
-              code_templates: {},
-              added: addedEpoch,
-              bookmarkStatus: false,
-              delimeter: ' Welcome to OpenREPL!! you can start coding here. ',
-            };
-          });
-
-          // Save updated questions back to localStorage
-          localStorage.setItem('questions', JSON.stringify(formattedQuestions));
-          storedQuestions = formattedQuestions;
+          // Only update if there are new questions
+          if (newQuestions.length > 0) {
+            storedQuestions = [...storedQuestions, ...newQuestions];
+            localStorage.setItem('questions', JSON.stringify(storedQuestions));
+          }
         } catch (error) {
           console.error('Failed to fetch questions:', error);
         }
       }
-
 
       // Load stored questions and add them to the table.
       async function loadStoredQuestions() {
