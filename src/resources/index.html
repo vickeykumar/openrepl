@@ -862,6 +862,7 @@
                           if (tmp.length >= 2) {
                             language_template.template = tmp.slice(1).join("\n").trim();
                             question.code_templates[language]=language_template;
+                            question.updated = Date.now();
                             // 🚀 **Ensure the modified data is stored back**
                             localStorage.setItem("questions", JSON.stringify(storedQuestions));
                           }
@@ -892,6 +893,7 @@
                         icon.removeClass("fa-check").addClass("fa-circle").removeClass("toggle-accent-color"); // Remove color class
                         tooltipText.text("Mark as Completed");
                     }
+                    question.updated = Date.now();
                     localStorage.setItem('questions', JSON.stringify(storedQuestions));
                     SaveLastLanguageProgress();
                 });

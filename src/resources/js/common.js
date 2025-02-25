@@ -142,7 +142,7 @@ function saveNewQuestions(newQuestion) {
  * @property {string} topic - The topic of the question.
  * @property {"Easy" | "Medium" | "Hard"} difficulty - The difficulty level.
  * @property {string} language - The programming language.
- * @property {number} added - Timestamp of when the question was created.
+ * @property {number} updated - Timestamp of when the question was last updated.
  * @property {string} delimeter - Delimeter string that separates problem description section to code.
  */
 
@@ -243,7 +243,7 @@ ${customPrompt ? customPrompt : ""}
 				      difficulty: difficultyLevel,
 				      description: generatedQuestion.description,
 				      code_templates: generatedQuestion.code_templates,
-				      added: addedEpoch,
+				      updated: addedEpoch,
                       delimeter: " Welcome to OpenREPL!! you can start coding here. ",
 				  };
       } else {
@@ -349,7 +349,7 @@ ${question.description ? '' : descriptionprompt}
                 // set newely generated description
                 question.description = generatedTemplate.description;
             }
-
+            question.updated = Date.now();
             // Save the updated questions list back to localStorage
             localStorage.setItem("questions", JSON.stringify(storedQuestions));
 

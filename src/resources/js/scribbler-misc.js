@@ -8,7 +8,7 @@
           $topicSelect.append(`<option value="${topic}">${topic}</option>`);
       });
 
-      // Initialize DataTable. Column 4 (Last Added) is treated as number.
+      // Initialize DataTable. Column 5 (Last updated) is treated as number.
       let table = $('#questionsTable').DataTable({
         "scrollX": true, // Enables horizontal scrolling
         "columnDefs": [
@@ -92,7 +92,7 @@
                 difficulty,
                 description,
                 code_templates: {},
-                added: addedEpoch,
+                updated: addedEpoch,
                 bookmarkStatus: false,
                 delimeter: ' Welcome to OpenREPL!! you can start coding here. ',
               };
@@ -117,9 +117,9 @@
 
       // Add a question row to the DataTable.
       function addQuestionRow(q) {
-        // The "Last Added" cell displays a human-readable date/time (using toLocaleString)
+        // The "Last Updated" cell displays a human-readable date/time (using toLocaleString)
         // and uses a data-order attribute (with the epoch timestamp) for sorting.
-        let newRow = `<tr data-id="${q.id}" data-difficulty="${q.difficulty}" data-added="${q.added}">
+        let newRow = `<tr data-id="${q.id}" data-difficulty="${q.difficulty}" data-added="${q.updated}">
           <td><input type="checkbox" class="bookmark" ${q.bookmarkStatus ? 'checked' : ''}></td>
           <td><a href="/practice?name=${q.nameHyphenated}" class="question-link" target="_blank">${q.name}</a></td>
           <td>${q.topic}</td>
@@ -130,7 +130,7 @@
               <i class="fa fa-pencil edit-icon"></i>
             </div>
           </td>
-          <td data-order="${q.added}">${new Date(q.added).toLocaleString()}</td>
+          <td data-order="${q.updated}">${new Date(q.updated).toLocaleString()}</td>
           <td><button class="delete-btn">🗑 Delete</button></td>
         </tr>`;
         table.row.add($(newRow)).draw(false);
@@ -186,6 +186,7 @@
           let question = storedQuestions.find(q => q.id === rowId);
           if (question) {
             question.remarks = newContent;
+            question.updated = Date.now();
             localStorage.setItem('questions', JSON.stringify(storedQuestions));
           }
 
