@@ -157,35 +157,28 @@
       }
 
       function updateQuestionRow(q) {
-        // Find the row in the DataTable by the question ID
-        let row = table.row(`[data-id="${q.id}"]`);
+          // Find the row in the DataTable by the question ID
+          let row = table.row(`[data-id="${q.id}"]`);
 
-        if (row.length) {
-          // Update the row data
-          let updatedRow = `<tr data-id="${q.id}" data-difficulty="${q.difficulty}" data-added="${q.updated}"${q.bookmarkStatus ? ' class="bookmarked-row"' : ''}>
-            <td><input type="checkbox" class="bookmark" ${q.bookmarkStatus ? 'checked' : ''}></td>
-            <td><a href="/practice?name=${q.nameHyphenated}" class="question-link" target="_blank">${q.name}</a></td>
-            <td>${q.topic}</td>
-            <td>${q.difficulty}</td>
-            <td>
-              <div class="remarks-display">
-                <span class="remarks-content">${q.remarks || 'Add remarks...'}</span>
-                <i class="fa fa-pencil edit-icon"></i>
-              </div>
-            </td>
-            <td data-order="${q.updated}">${new Date(q.updated).toLocaleString()}</td>
-            <td><button class="delete-btn">🗑 Delete</button></td>
-          </tr>`;
-
-          // Replace the row with updated content
-          row.node().innerHTML = updatedRow;
-
-          // Redraw the table to reflect changes
-          table.draw(false);
-        } else {
-          console.warn('Row not found for question ID:', q.id);
-        }
+          if (row.length) {
+              // Update only the data in place, without replacing the entire row
+              row.data([
+                  `<input type="checkbox" class="bookmark" ${q.bookmarkStatus ? 'checked' : ''}>`,
+                  `<a href="/practice?name=${q.nameHyphenated}" class="question-link" target="_blank">${q.name}</a>`,
+                  q.topic,
+                  q.difficulty,
+                  `<div class="remarks-display">
+                      <span class="remarks-content">${q.remarks || 'Add remarks...'}</span>
+                      <i class="fa fa-pencil edit-icon"></i>
+                  </div>`,
+                  `<td data-order="${q.updated}">${new Date(q.updated).toLocaleString()}</td>`,
+                  `<button class="delete-btn">🗑 Delete</button>`
+              ]).draw(false); // Update the data and keep the current table state
+          } else {
+              console.warn('Row not found for question ID:', q.id);
+          }
       }
+
 
       // Handle bookmark checkbox changes.
       $('#questionsTable tbody').on('change', '.bookmark', function() {
@@ -226,20 +219,9 @@
             question.remarks = newContent;
             question.updated = Date.now();
             localStorage.setItem('questions', JSON.stringify(storedQuestions));
-            // Update the "Last Updated" cell
-            let updatedDate = new Date(question.updated).toLocaleString();
-            let updatedCell = rowElement.find('td').eq(5); // "Last Updated" is the 6th column
-
-            updatedCell.attr('data-order', question.updated).html(updatedDate);
+            // Update the table row
+            updateQuestionRow(question)
           }
-
-          // Swap back to view mode (rich text with pen icon)
-          cell.html(`
-            <div class="remarks-display">
-              <span class="remarks-content">${newContent || 'Add remarks...'}</span>
-              <i class="fa fa-pencil edit-icon"></i>
-            </div>
-          `);
         });
       });
 
