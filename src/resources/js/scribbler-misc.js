@@ -14,7 +14,6 @@
         "columnDefs": [
           { targets: [0, 4, 6], orderable: false },
         ],
-        order: [[5, 'desc']], // Default sorting: Most recent questions first
         "responsive": true, // Enable responsive behavior
         "autoWidth": false, // Prevent automatic width expansion
         "language": {
@@ -221,6 +220,13 @@
                 question.updated = Date.now();
                 localStorage.setItem('questions', JSON.stringify(storedQuestions));
 
+                // Re-initialize the editable cell after update
+                cell.html(`
+                  <div class="remarks-display">
+                    <span class="remarks-content">${newContent || 'Add remarks...'}</span>
+                    <i class="fa fa-pencil edit-icon"></i>
+                  </div>
+                `);
                 // Update the table row
                 updateQuestionRow(question);
             }
