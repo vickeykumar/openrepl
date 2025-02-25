@@ -209,20 +209,25 @@
         let editableDiv = cell.find('.remarks-editable');
         editableDiv.focus();
 
-        // Handle blur inside this context (avoids replacing before capturing content)
-        editableDiv.on('blur', function () {
-          let newContent = editableDiv.html().trim();
-          let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
-          // Persist to localStorage
-          let question = storedQuestions.find(q => q.id === rowId);
-          if (question) {
-            question.remarks = newContent;
-            question.updated = Date.now();
-            localStorage.setItem('questions', JSON.stringify(storedQuestions));
-            // Update the table row
-            updateQuestionRow(question)
-          }
-        });
+        // Handle blur & touchend (for mobile)
+        function saveRemarks() {
+            let newContent = editableDiv.html().trim();
+            let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+            
+            // Persist to localStorage
+            let question = storedQuestions.find(q => q.id === rowId);
+            if (question) {
+                question.remarks = newContent;
+                question.updated = Date.now();
+                localStorage.setItem('questions', JSON.stringify(storedQuestions));
+
+                // Update the table row
+                updateQuestionRow(question);
+            }
+        }
+
+        editableDiv.on('blur', saveRemarks);
+        editableDiv.on('touchend', saveRemarks); // Handle touchend for mobile
       });
 
 
