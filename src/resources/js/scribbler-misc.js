@@ -103,15 +103,22 @@
             storedQuestions = [...storedQuestions, ...newQuestions];
             localStorage.setItem('questions', JSON.stringify(storedQuestions));
           }
+          return newQuestions; // Return the list of new questions
         } catch (error) {
           console.error('Failed to fetch questions:', error);
+          return []; // Return an empty array in case of error
         }
       }
 
       // Load stored questions and add them to the table.
       async function loadStoredQuestions() {
         // fetch sample questions from server if no questions are present
-        await fetchAndStoreQuestions();
+        fetchAndStoreQuestions().then(newQuestions => {
+          console.log('Adding New Questions');
+          newQuestions.forEach(q => addQuestionRow(q));
+        }).catch(error => {
+          console.error('Error fetching new questions:', error);
+        });
         storedQuestions.forEach(q => addQuestionRow(q));
       }
 
@@ -119,7 +126,7 @@
       function addQuestionRow(q) {
         // The "Last Updated" cell displays a human-readable date/time (using toLocaleString)
         // and uses a data-order attribute (with the epoch timestamp) for sorting.
-        let newRow = `<tr data-id="${q.id}" data-difficulty="${q.difficulty}" data-added="${q.updated}">
+        let newRow = `<tr data-id="${q.id}" data-difficulty="${q.difficulty}" data-added="${q.updated}"${q.bookmarkStatus ? ' class="bookmarked-row"' : ''}>
           <td><input type="checkbox" class="bookmark" ${q.bookmarkStatus ? 'checked' : ''}></td>
           <td><a href="/practice?name=${q.nameHyphenated}" class="question-link" target="_blank">${q.name}</a></td>
           <td>${q.topic}</td>
