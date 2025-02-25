@@ -215,7 +215,7 @@
         let selectedSort = $(this).val();
         if (selectedSort === "recent") {
           // Sort by the epoch timestamp (descending).
-          table.order([4, 'desc']).draw();
+          table.order([5, 'desc']).draw();
         } else if (selectedSort === "") {
           // Default case: clear filters and then move bookmarked rows to the top.
           table.search('').columns().search('').draw();
