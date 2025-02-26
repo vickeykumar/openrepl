@@ -651,6 +651,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.17.1/firebase-app-compat.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.17.1/firebase-auth-compat.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.17.1/firebase-auth-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.17.1/firebase-firestore-compat.min.js"></script>
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.17.1/firebase-database-compat.min.js"></script>
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.9.6/ace.js" type="text/javascript" charset="utf-8"></script>
@@ -865,6 +866,8 @@
                             question.updated = Date.now();
                             // 🚀 **Ensure the modified data is stored back**
                             localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
+                            console.log("updating: ", question);
+                            updatequestiondb(question.nameHyphenated, question);
                           }
                         }
                     }
@@ -875,6 +878,8 @@
 
                     localStorage.setItem("topic", topic);
                     localStorage.setItem("difficultyLevel", difficultyLevel);
+
+                    commitFirestoreBatch();
                 }
 
                 $("#completeCheckbox").click(function() {
@@ -895,6 +900,7 @@
                     }
                     question.updated = Date.now();
                     localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
+                    updatequestiondb(question.nameHyphenated, question);
                     SaveLastLanguageProgress();
                 });
 
@@ -937,7 +943,36 @@
                     loadnewquestion();
                     lastSelectedLanguage = $("#optionlist option:selected").text();
                 });
-                setTimeout(loadnewquestion, 4000);
+                setTimeout(function(){
+                  getUserLogin()
+                  .then((loginData) => {
+                    if (loginData.loggedIn && loginData.uid) {
+                        currentUserID = loginData.uid;
+                        QUESTIONS_KEY = QUESTIONS_KEY+'-'+loginData.uid; // Update the key to user's UID
+                        console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
+
+                        // Start session timeout handler
+                        const timeLeft = loginData.expirationTime - Date.now();
+                        if (timeLeft > 0) {
+                            setTimeout(() => {
+                                currentUserID=null;
+                                alert("Session expired. Redirecting to home page...");
+                                window.location.reload();
+                            }, timeLeft+5); // wait for more 5 milisec before refreshing
+                            console.log(`Session will expire in ${timeLeft / 1000} seconds`);
+                        }
+                    } else {
+                        console.warn("User not logged in or UID missing");
+                    }
+                  })
+                  .catch((error) => {
+                      console.error("Error during login check:", error);
+                  })
+                  .finally(() => {
+                      // Load questions after login check (even if failed)
+                      loadnewquestion();
+                  });
+                }, 4000);
             }
 
             // Modal

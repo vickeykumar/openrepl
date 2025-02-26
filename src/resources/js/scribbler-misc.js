@@ -8,6 +8,69 @@
           $topicSelect.append(`<option value="${topic}">${topic}</option>`);
       });
 
+      async function SyncRemoteQuestions(userId) {
+        if (!userId) return [];
+        // Load from localStorage
+        const localData = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
+        let storedQuestions = new Map(localData.map(q => [q.nameHyphenated, q]));
+        let newIncomingQuestions = [];
+        const commondata = [];
+
+        try {
+          const questionsRef = firestoredb.collection(`users/${userId}/questions`);
+          const querySnapshot = await questionsRef.get();
+
+          querySnapshot.forEach((doc) => {
+            const remoteQuestion = doc.data();
+            const localQuestion = storedQuestions.get(remoteQuestion.nameHyphenated);
+
+            if (!localQuestion) {
+              // Take the remote question
+              storedQuestions.set(remoteQuestion.nameHyphenated, remoteQuestion);
+              newIncomingQuestions.push(remoteQuestion);
+            } else if (remoteQuestion.updated > localQuestion.updated) {
+              // Take the remote question if it’s newer
+              if (remoteQuestion.id !== localQuestion.id) {
+                // this should not have happened
+                console.error("id mismatch for : ", remoteQuestion.nameHyphenated);
+                remoteQuestion.id = localQuestion.id; // corrected the id
+              }
+              storedQuestions.set(remoteQuestion.nameHyphenated, remoteQuestion);
+              newIncomingQuestions.push(remoteQuestion);
+            } else if (localQuestion.updated > remoteQuestion.updated) {
+                // Local question is newer — update Firestore
+                updatequestiondb(remoteQuestion.nameHyphenated, localQuestion);
+                console.log(`Updated remote question with local data: ${localQuestion.nameHyphenated}`);
+            } else if (localQuestion.updated === remoteQuestion.updated) {
+                commondata.push(localQuestion);
+            }
+          });
+
+          // Save merged result locally
+          const mergedQuestions = Array.from(storedQuestions.values());
+          localStorage.setItem(QUESTIONS_KEY, JSON.stringify(mergedQuestions));
+
+          // Find the difference (questions in storedQuestions but not in newIncomingQuestions or commondata)
+          const differenceList = mergedQuestions.filter(q => 
+              !newIncomingQuestions.some(newQ => newQ.nameHyphenated === q.nameHyphenated) &&
+              !commondata.some(commonQ => commonQ.nameHyphenated === q.nameHyphenated)
+          );
+
+          // Push missing questions back to Firestore
+          differenceList.forEach(q => {
+            updatequestiondb(q.nameHyphenated, q);
+            console.log(`Restored missing question to Firestore: ${q.nameHyphenated}`);
+          });
+
+          commitFirestoreBatch();
+        } catch (error) {
+          console.error('Failed to load questions:', error);
+        }
+
+        return newIncomingQuestions;
+      }
+
+
       // Initialize DataTable. Column 5 (Last updated) is treated as number.
       let table = $('#questionsTable').DataTable({
         "scrollX": true, // Enables horizontal scrolling
@@ -17,7 +80,7 @@
         "responsive": true, // Enable responsive behavior
         "autoWidth": false, // Prevent automatic width expansion
         "language": {
-            "emptyTable": "No coding questions available yet. Please click on 'New Question' to add new questions."
+            "emptyTable": "No coding questions available yet. Please wait or click on 'New Question' to add new questions."
         }
       });
 
@@ -77,9 +140,9 @@
             })
             .map(({ title, topic, difficulty, description = null }, index) => {
               const nameHyphenated = title.replace(/\s+/g, '-').toLowerCase();
-              const addedEpoch = Date.now();
-              const idInt = parseInt(addedEpoch) + index;
-              const id = `${idInt}`;
+              const addedEpoch = 0; // very old epoch for server questions
+              const idInt = parseInt(addedEpoch) + index+1;
+              const id = `${idInt}-${nameHyphenated}`;
 
               return {
                 id,
@@ -99,6 +162,7 @@
           if (newQuestions.length > 0) {
             storedQuestions = [...storedQuestions, ...newQuestions];
             localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
+            console.log("storedQuestions: ", storedQuestions);
           }
           return newQuestions; // Return the list of new questions
         } catch (error) {
@@ -110,14 +174,16 @@
       // Load stored questions and add them to the table.
       async function loadStoredQuestions() {
         // fetch sample questions from server if no questions are present
-        fetchAndStoreQuestions().then(newQuestions => {
+        try {
+          // Fetch sample questions from server if no questions are present
+          const newQuestions = await fetchAndStoreQuestions();
           console.log('Adding New Questions');
-          newQuestions.forEach(q => addQuestionRow(q));
-        }).catch(error => {
+          newQuestions.forEach(q => updateQuestionRow(q, true));
+        } catch (error) {
           console.error('Error fetching new questions:', error);
-        });
+        }
         let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-        storedQuestions.forEach(q => addQuestionRow(q));
+        storedQuestions.forEach(q => updateQuestionRow(q, true));
       }
 
       // Add a question row to the DataTable.
@@ -155,7 +221,7 @@
         }
       }
 
-      function updateQuestionRow(q) {
+      function updateQuestionRow(q, forceupdate=false) {
           // Find the row in the DataTable by the question ID
           let row = table.row(`[data-id="${q.id}"]`);
 
@@ -174,7 +240,13 @@
                   `<button class="delete-btn">🗑 Delete</button>`
               ]).draw(false); // Update the data and keep the current table state
           } else {
-              console.warn('Row not found for question ID:', q.id);
+              // create a new row 
+              if (forceupdate) {
+                console.log('Row not found, creating a new row for question ID:', q.id);
+                addQuestionRow(q);
+              } else {
+                console.warn('Row not found for question ID:', q.id);
+              }
           }
       }
 
@@ -190,6 +262,8 @@
           question.bookmarkStatus = $(this).prop('checked');
           localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
           updateBookmarks();
+          updatequestiondb(question.nameHyphenated, question);
+          commitFirestoreBatch();
         }
       });
 
@@ -239,6 +313,8 @@
                     `);
                     // Update the table row
                     updateQuestionRow(question);
+                    updatequestiondb(question.nameHyphenated, question);
+                    commitFirestoreBatch();
                     console.log("remarks saved for rowId: ", rowId);
                 }
             }
@@ -273,12 +349,14 @@
 
           if (rowId) {
               // Remove from localStorage
+              const question = storedQuestions.find(q => q.id === rowId);
               storedQuestions = storedQuestions.filter(q => q.id !== rowId);
               localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
 
               // Remove the row and redraw
               row.remove().draw();
               updateBookmarks();
+              deletequestiondb(question.nameHyphenated);
 
               console.log(`Deleted row with ID: ${rowId}`);
           } else {
@@ -389,14 +467,54 @@
           );
       });
 
-      checkLoginAndSetKey()
+      getUserLogin()
+      .then((loginData) => {
+        if (loginData.loggedIn && loginData.uid) {
+            currentUserID = loginData.uid;
+            QUESTIONS_KEY = QUESTIONS_KEY+'-'+loginData.uid; // Update the key to user's UID
+            console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
+
+            // Start session timeout handler
+            const timeLeft = loginData.expirationTime - Date.now();
+            if (timeLeft > 0) {
+                setTimeout(() => {
+                    currentUserID=null;
+                    alert("Session expired. Redirecting to home page...");
+                    window.location.reload();
+                }, timeLeft+5); // wait for more 5 milisec before refreshing
+                console.log(`Session will expire in ${timeLeft / 1000} seconds`);
+            }
+
+            $(window).on("unload", commitFirestoreBatch);
+
+            const existingHandler = window.onbeforeunload;
+            window.onbeforeunload = function(event) {
+                // Call existing handler first (if any)
+                if (existingHandler) {
+                    return existingHandler(event);
+                }
+                commitFirestoreBatch();
+            };
+        } else {
+            console.warn("User not logged in or UID missing");
+        }
+      })
       .catch((error) => {
           console.error("Error during login check:", error);
       })
-      .finally(() => {
+      .finally(async () => {
           // Load questions after login check (even if failed)
           // Initialize by loading stored questions.
-          loadStoredQuestions();
+          await loadStoredQuestions();
+          // sync only if logged in
+          SyncRemoteQuestions(currentUserID)
+            .then(newQuestions => {
+                console.log('Adding New Questions from remote db: ', newQuestions);
+                newQuestions.forEach(q => updateQuestionRow(q, true));
+            })
+            .catch((error) => {
+                console.error("Failed to sync questions:", error);
+            });
           updateBookmarks();
       });
     });

@@ -13,6 +13,49 @@ var globaltemperature = localStorage.getItem("temperature");
 globaltemperature = isNaN(parseFloat(globaltemperature)) ? 0.3 : parseFloat(globaltemperature);
 
 var QUESTIONS_KEY = 'questions';
+
+// Initialize Firebase App
+  if (firebase.apps.length === 0) {
+    firebase.initializeApp(firebaseconfig);
+  }
+  const firestoredb = firebase.firestore(); // Initialize Firestore
+  let currentUserID = null;
+  let batch = firestoredb.batch();        // Create a Firestore batch
+
+  function getQuestionDocRef(docName) {
+    if (!currentUserID) {
+      return null
+    }
+    return firestoredb.collection(`users/${currentUserID}/questions`).doc(docName);
+  }
+
+  function updatequestiondb(docName, question) {
+    const docRef = getQuestionDocRef(docName)
+    if (docRef) {
+      console.log("updated: ", question);
+      batch.set(docRef, question, { merge: true });
+    }
+  }
+
+  function deletequestiondb(docName) {
+    const docRef = getQuestionDocRef(docName)
+    if (docRef) {
+      batch.delete(docRef);
+      commitFirestoreBatch();
+    }
+  }
+
+  function commitFirestoreBatch() {
+    batch.commit()
+    .then(() => {
+      console.log("Sync complete!");
+      batch = firestoredb.batch();
+    })
+    .catch((error) => {
+      console.error("Batch commit failed:", error);
+    });
+  }
+
 const topics = [
     "Two Pointers",
     "Hash Maps and Sets",
@@ -115,15 +158,16 @@ async function getResponseFromOpenAI(api_key, prompt, options = {}) {
     });
 }
 
-// Save questions, ensuring a maximum of 100 entries.
-function saveNewQuestions(newQuestion) {
+// Save questions, ensuring a maximum of 1000 entries.
+function saveNewQuestions(newQuestion, userId) {
   let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
   let exists = storedQuestions.some(q => q.nameHyphenated === newQuestion.nameHyphenated);
 
   if (exists) {
     return { error: "This question already exists.", storedQuestions };
   }
-
+  // Track questions before adding new ones
+  const previousQuestionNames = new Set(storedQuestions.map(q => q.nameHyphenated));
   storedQuestions.push(newQuestion);
 
   // Keep only the latest 1000 entries
@@ -132,6 +176,15 @@ function saveNewQuestions(newQuestion) {
   }
 
   localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
+
+   updatequestiondb(newQuestion.nameHyphenated, newQuestion);
+
+  // Calculate deleted questions
+  const newQuestionNames = new Set(storedQuestions.map(q => q.nameHyphenated));
+  const deletedQuestions = [...previousQuestionNames].filter(name => !newQuestionNames.has(name));
+
+  // Delete questions from Firestore
+  deletedQuestions.forEach(qname => deletequestiondb(qname));
 
   return { error: null, storedQuestions };
 }
@@ -237,7 +290,7 @@ ${customPrompt ? customPrompt : ""}
                     topic = "Random Topic";
                   }
           // Create new question object and return
-				  return {
+				  return  {
 				      id,
 				      name,
 				      nameHyphenated,
@@ -354,7 +407,7 @@ ${question.description ? '' : descriptionprompt}
             question.updated = Date.now();
             // Save the updated questions list back to localStorage
             localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
-
+            updatequestiondb(question.nameHyphenated, question);
             return generatedTemplate[language];
         } else {
             throw new Error("No valid content returned from OpenAI API.");
@@ -367,7 +420,7 @@ ${question.description ? '' : descriptionprompt}
 
 
 // Function to fetch login data and update QUESTIONS_KEY
-function checkLoginAndSetKey() {
+function getUserLogin() {
     return new Promise(async (resolve, reject) => {
         try {
             const response = await fetch('/login');
@@ -377,22 +430,6 @@ function checkLoginAndSetKey() {
 
             const data = await response.json();
 
-            if (data.loggedIn && data.uid) {
-                QUESTIONS_KEY = QUESTIONS_KEY+'-'+data.uid; // Update the key to user's UID
-                console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
-
-                // Start session timeout handler
-                const timeLeft = data.expirationTime - Date.now();
-                if (timeLeft > 0) {
-                    setTimeout(() => {
-                        alert("Session expired. Redirecting to home page...");
-                        window.location.reload();
-                    }, timeLeft+5); // wait for more 5 milisec before refreshing
-                    console.log(`Session will expire in ${timeLeft / 1000} seconds`);
-                }
-            } else {
-                console.warn("User not logged in or UID missing");
-            }
             resolve(data);
         } catch (error) {
             console.error('Failed to fetch login status:', error);
