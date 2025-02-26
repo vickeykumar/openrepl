@@ -27,7 +27,7 @@
         let bookmarkedRowsList = [];
 
         $('#questionsTable tbody tr').each(function() {
-            let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+            let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
             let rowId = $(this).attr('data-id');
             let checkbox = $(this).find('.bookmark');
             let question = storedQuestions.find(q => q.id === rowId);
@@ -66,7 +66,7 @@
         try {
           const response = await fetch('/js/dsa.json');
           const questions = await response.json();
-          let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+          let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
           // Map existing questions by nameHyphenated for quick lookup
           const storedMap = new Map(storedQuestions.map(q => [q.nameHyphenated, q]));
 
@@ -98,7 +98,7 @@
           // Only update if there are new questions
           if (newQuestions.length > 0) {
             storedQuestions = [...storedQuestions, ...newQuestions];
-            localStorage.setItem('questions', JSON.stringify(storedQuestions));
+            localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
           }
           return newQuestions; // Return the list of new questions
         } catch (error) {
@@ -116,7 +116,7 @@
         }).catch(error => {
           console.error('Error fetching new questions:', error);
         });
-        let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+        let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
         storedQuestions.forEach(q => addQuestionRow(q));
       }
 
@@ -183,12 +183,12 @@
       $('#questionsTable tbody').on('change', '.bookmark', function() {
         let row = $(this).closest('tr');
         let rowId = row.attr('data-id');
-        let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+        let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
         let question = storedQuestions.find(q => q.id === rowId);
 
         if (question) {
           question.bookmarkStatus = $(this).prop('checked');
-          localStorage.setItem('questions', JSON.stringify(storedQuestions));
+          localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
           updateBookmarks();
         }
       });
@@ -221,14 +221,14 @@
                 let newContent = editableDiv.html().trim();
                 console.log("save remarks fired for rowId: ", rowId, newContent);
 
-                let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+                let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
                 
                 // Persist to localStorage
                 let question = storedQuestions.find(q => q.id === rowId);
                 if (question) {
                     question.remarks = newContent;
                     question.updated = Date.now();
-                    localStorage.setItem('questions', JSON.stringify(storedQuestions));
+                    localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
 
                     // Re-initialize the editable cell after update
                     cell.html(`
@@ -259,7 +259,7 @@
 
       // Handle row deletion.
       $('#questionsTable tbody').on('click', '.delete-btn', function () {
-          let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+          let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
           let rowElement = $(this).parents('tr');
 
           if (rowElement.hasClass('child')) {
@@ -274,7 +274,7 @@
           if (rowId) {
               // Remove from localStorage
               storedQuestions = storedQuestions.filter(q => q.id !== rowId);
-              localStorage.setItem('questions', JSON.stringify(storedQuestions));
+              localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
 
               // Remove the row and redraw
               row.remove().draw();
@@ -304,7 +304,7 @@
 
       // Handle random question button.
       $('#randomQuestionBtn').click(function() {
-        let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+        let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
         if (storedQuestions.length === 0) {
           alert("No questions available!");
           return;

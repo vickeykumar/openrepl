@@ -11,6 +11,8 @@ var getAll = function (selector, scope) {
 
 var globaltemperature = localStorage.getItem("temperature");
 globaltemperature = isNaN(parseFloat(globaltemperature)) ? 0.3 : parseFloat(globaltemperature);
+
+var QUESTIONS_KEY = 'questions';
 const topics = [
     "Two Pointers",
     "Hash Maps and Sets",
@@ -115,7 +117,7 @@ async function getResponseFromOpenAI(api_key, prompt, options = {}) {
 
 // Save questions, ensuring a maximum of 100 entries.
 function saveNewQuestions(newQuestion) {
-  let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+  let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
   let exists = storedQuestions.some(q => q.nameHyphenated === newQuestion.nameHyphenated);
 
   if (exists) {
@@ -129,7 +131,7 @@ function saveNewQuestions(newQuestion) {
     storedQuestions = storedQuestions.slice(-1000);
   }
 
-  localStorage.setItem('questions', JSON.stringify(storedQuestions));
+  localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
 
   return { error: null, storedQuestions };
 }
@@ -165,7 +167,7 @@ async function generateNewQuestion(topic, difficultyLevel, customPrompt, languag
     return null;
   }
 
-  let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+  let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
   // Extract the list of previous question names
 	let previousTitles = storedQuestions.filter(q => q.topic === topic).map(q => q.name).join(", ");
 
@@ -267,7 +269,7 @@ ${customPrompt ? customPrompt : ""}
  */
 async function getCodeTemplate(nameHyphenated, language) {
     // Fetch stored questions
-    let storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
+    let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
 
     // Find the question by nameHyphenated
     let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenated);
@@ -351,7 +353,7 @@ ${question.description ? '' : descriptionprompt}
             }
             question.updated = Date.now();
             // Save the updated questions list back to localStorage
-            localStorage.setItem("questions", JSON.stringify(storedQuestions));
+            localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
 
             return generatedTemplate[language];
         } else {

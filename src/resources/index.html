@@ -790,7 +790,7 @@
 
             function fetchLanguageTmplAndSetEditorcode(nameHyphenated, selectedLanguage) {
               // Fetch stored questions
-              let storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
+              let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
 
               // Find the question by nameHyphenated
               let newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenated);
@@ -806,7 +806,7 @@
                   .then((language_template) => {
                       if (!newQuestion.description) {
                         // see if the description got updated by gen codetmpl function
-                        storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
+                        storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
                         newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenated);
                       }
                       if (language_template) {
@@ -845,7 +845,7 @@
 
                 function SaveLastLanguageProgress(language) {
                     // save code progress in localstorage
-                    let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+                    let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
                     // Find the question by nameHyphenatedlatest
                     let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
 
@@ -864,7 +864,7 @@
                             question.code_templates[language]=language_template;
                             question.updated = Date.now();
                             // 🚀 **Ensure the modified data is stored back**
-                            localStorage.setItem("questions", JSON.stringify(storedQuestions));
+                            localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
                           }
                         }
                     }
@@ -879,7 +879,7 @@
 
                 $("#completeCheckbox").click(function() {
                     // Retrieve stored data from localStorage.
-                    let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+                    let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
                     // Find the question by nameHyphenatedlatest
                     let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
                     if (!question) return; // Exit if question is not found
@@ -894,7 +894,7 @@
                         tooltipText.text("Mark as Completed");
                     }
                     question.updated = Date.now();
-                    localStorage.setItem('questions', JSON.stringify(storedQuestions));
+                    localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
                     SaveLastLanguageProgress();
                 });
 
@@ -904,7 +904,7 @@
                   fetchLanguageTmplAndSetEditorcode(nameHyphenatedlatest, selectedLanguage);
 
                   // load completed status whenever a new question gets loaded
-                  let storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
+                  let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
                   // Find the question by nameHyphenated
                   let newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
                   if (newQuestion?.bookmarkStatus) {
@@ -1008,7 +1008,7 @@
             $("#newQuestionBtn").click(() => $("#modal").addClass("show-modal"));
             // Handle random question button.
             $('#randomQuestionBtn').click(function() {
-              let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+              let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
               if (storedQuestions.length === 0) {
                 alert("No questions available!");
                 return;
