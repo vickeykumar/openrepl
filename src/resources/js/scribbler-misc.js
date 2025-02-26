@@ -193,59 +193,97 @@
         }
       });
 
-
       // Click edit (pencil icon) → Convert cell to contenteditable
       $(document).on('click', '.edit-icon', function () {
-        let cell = $(this).closest('td');
-        let currentContent = cell.find('.remarks-content').html(); // Get current HTML content
-        let rowElement = cell.closest('tr'); // Get the table row element
-        let rowId = rowElement.attr('data-id'); // Extract the row ID
+            let cell = $(this).closest('td');
+            let currentContent = cell.find('.remarks-content').html(); // Get current HTML content
+            let rowElement = $(this).parents('tr');
 
-        // Replace display with editable content div
-        cell.html(`
-          <div contenteditable="true" class="remarks-editable">${currentContent}</div>
-        `);
-        let editableDiv = cell.find('.remarks-editable');
-        editableDiv.focus();
-
-        // Handle blur & touchend (for mobile)
-        function saveRemarks() {
-            let newContent = editableDiv.html().trim();
-            let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
-            
-            // Persist to localStorage
-            let question = storedQuestions.find(q => q.id === rowId);
-            if (question) {
-                question.remarks = newContent;
-                question.updated = Date.now();
-                localStorage.setItem('questions', JSON.stringify(storedQuestions));
-
-                // Re-initialize the editable cell after update
-                cell.html(`
-                  <div class="remarks-display">
-                    <span class="remarks-content">${newContent || 'Add remarks...'}</span>
-                    <i class="fa fa-pencil edit-icon"></i>
-                  </div>
-                `);
-                // Update the table row
-                updateQuestionRow(question);
+            if (rowElement.hasClass('child')) {
+                console.warn("div inside child row — finding parent...");
+                rowElement = rowElement.prev('tr');
             }
-        }
 
-        editableDiv.on('blur', saveRemarks);
-        editableDiv.on('touchend', saveRemarks); // Handle touchend for mobile
-      });
+            let row = table.row(rowElement);
+            // Try to get the ID from the row attribute
+            let rowId = rowElement.attr('data-id');
 
+
+            // Replace display with editable content div
+            cell.html(`
+              <div contenteditable="true" class="remarks-editable">${currentContent}</div>
+            `);
+            let editableDiv = cell.find('.remarks-editable');
+            editableDiv.focus();
+
+            // Handle blur & touchend (for mobile)
+            function saveRemarks() {
+                let newContent = editableDiv.html().trim();
+                console.log("save remarks fired for rowId: ", rowId, newContent);
+
+                let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+                
+                // Persist to localStorage
+                let question = storedQuestions.find(q => q.id === rowId);
+                if (question) {
+                    question.remarks = newContent;
+                    question.updated = Date.now();
+                    localStorage.setItem('questions', JSON.stringify(storedQuestions));
+
+                    // Re-initialize the editable cell after update
+                    cell.html(`
+                      <div class="remarks-display">
+                        <span class="remarks-content">${newContent || 'Add remarks...'}</span>
+                        <i class="fa fa-pencil edit-icon"></i>
+                      </div>
+                    `);
+                    // Update the table row
+                    updateQuestionRow(question);
+                    console.log("remarks saved for rowId: ", rowId);
+                }
+            }
+
+            // Handle outside click/tap
+            function handleOutsideClick(event) {
+                if (!editableDiv.is(event.target) && editableDiv.has(event.target).length === 0) {
+                    requestAnimationFrame(() => {
+                        saveRemarks(); // Save remarks directly
+                        $(document).off('click touchend', handleOutsideClick); // Clean up listeners
+                    });
+                }
+            }
+
+            // Listen for outside clicks/taps
+            $(document).on('click touchend', handleOutsideClick);
+        });
 
       // Handle row deletion.
-      $('#questionsTable tbody').on('click', '.delete-btn', function() {
-        let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
-        let row = $(this).closest('tr');
-        let rowId = row.attr('data-id');
-        storedQuestions = storedQuestions.filter(q => q.id !== rowId);
-        localStorage.setItem('questions', JSON.stringify(storedQuestions));
-        table.row(row).remove().draw();
-        updateBookmarks();
+      $('#questionsTable tbody').on('click', '.delete-btn', function () {
+          let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+          let rowElement = $(this).parents('tr');
+
+          if (rowElement.hasClass('child')) {
+              console.warn("Button inside child row — finding parent...");
+              rowElement = rowElement.prev('tr');
+          }
+
+          let row = table.row(rowElement);
+          // Try to get the ID from the row attribute
+          let rowId = rowElement.attr('data-id');
+
+          if (rowId) {
+              // Remove from localStorage
+              storedQuestions = storedQuestions.filter(q => q.id !== rowId);
+              localStorage.setItem('questions', JSON.stringify(storedQuestions));
+
+              // Remove the row and redraw
+              row.remove().draw();
+              updateBookmarks();
+
+              console.log(`Deleted row with ID: ${rowId}`);
+          } else {
+              console.warn('Row ID not found!');
+          }
       });
 
       // Handle sort/filter changes.
