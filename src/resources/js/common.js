@@ -366,6 +366,41 @@ ${question.description ? '' : descriptionprompt}
 }
 
 
+// Function to fetch login data and update QUESTIONS_KEY
+function checkLoginAndSetKey() {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const response = await fetch('/login');
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const data = await response.json();
+
+            if (data.loggedIn && data.uid) {
+                QUESTIONS_KEY = QUESTIONS_KEY+'-'+data.uid; // Update the key to user's UID
+                console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
+
+                // Start session timeout handler
+                const timeLeft = data.expirationTime - Date.now();
+                if (timeLeft > 0) {
+                    setTimeout(() => {
+                        alert("Session expired. Redirecting to home page...");
+                        window.location.reload();
+                    }, timeLeft+5); // wait for more 5 milisec before refreshing
+                    console.log(`Session will expire in ${timeLeft / 1000} seconds`);
+                }
+            } else {
+                console.warn("User not logged in or UID missing");
+            }
+            resolve(data);
+        } catch (error) {
+            console.error('Failed to fetch login status:', error);
+            reject(error); // Reject promise on error
+        }
+    });
+}
+
 // common App
 (function commonApp() {
 	// body...

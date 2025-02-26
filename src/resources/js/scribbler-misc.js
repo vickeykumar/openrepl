@@ -17,7 +17,7 @@
         "responsive": true, // Enable responsive behavior
         "autoWidth": false, // Prevent automatic width expansion
         "language": {
-            "emptyTable": "No coding questions available. Please click on 'New Question' to add new questions."
+            "emptyTable": "No coding questions available yet. Please click on 'New Question' to add new questions."
         }
       });
 
@@ -314,9 +314,6 @@
         window.open(`/practice?name=${randomQuestion.nameHyphenated}`, "_blank");
       });
 
-      // Initialize by loading stored questions.
-      loadStoredQuestions();
-      updateBookmarks();
       $("#topic").select2({
           placeholder: "Search or Select a Topic",
           allowClear: true
@@ -390,6 +387,17 @@
               (topicsFilter === "" || topics.includes(topicsFilter)) &&
               (difficultyFilter === "" || difficulty.includes(difficultyFilter))
           );
+      });
+
+      checkLoginAndSetKey()
+      .catch((error) => {
+          console.error("Error during login check:", error);
+      })
+      .finally(() => {
+          // Load questions after login check (even if failed)
+          // Initialize by loading stored questions.
+          loadStoredQuestions();
+          updateBookmarks();
       });
     });
 })();
