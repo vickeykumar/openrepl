@@ -467,6 +467,27 @@
           );
       });
 
+      firebase.auth().onAuthStateChanged((user) => {
+        if (user) {
+          console.log('User is logged in:', user);
+          firebaseAuth = firebase.auth();
+          currentUserID = user.uid;
+          QUESTIONS_KEY = QUESTIONS_KEY+'-'+currentUserID; // Update the key to user's UID
+          console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
+        } else {
+          console.log('No user logged in');
+          if (currentUserID) {
+              // user was logged in earlier and was thrown out
+              currentUserID=null;
+              alert(`Session expired for the current user. Redirecting to home page...`);
+              commitFirestoreBatch();
+              setTimeout(() => {
+                window.location.href = "/";
+              }, 200); // wait for 200ms before redirecting
+          }
+        }
+      });
+
       getUserLogin()
       .then((loginData) => {
         if (loginData.loggedIn && loginData.uid) {
@@ -479,8 +500,11 @@
             if (timeLeft > 0) {
                 setTimeout(() => {
                     currentUserID=null;
-                    alert("Session expired. Redirecting to home page...");
-                    window.location.reload();
+                    alert("Session expired for the current user. Redirecting to home page...");
+                    commitFirestoreBatch();
+                    setTimeout(() => {
+                      window.location.href = "/";
+                    }, 200); // wait for 200ms before redirecting
                 }, timeLeft+5); // wait for more 5 milisec before refreshing
                 console.log(`Session will expire in ${timeLeft / 1000} seconds`);
             }

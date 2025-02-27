@@ -18,9 +18,10 @@ var QUESTIONS_KEY = 'questions';
   if (firebase.apps.length === 0) {
     firebase.initializeApp(firebaseconfig);
   }
-  const firestoredb = firebase.firestore(); // Initialize Firestore
-  let currentUserID = null;
-  let batch = firestoredb.batch();        // Create a Firestore batch
+  var firestoredb = firebase.firestore(); // Initialize Firestore
+  var firebaseAuth = firebase.auth(); // Initialize Firebase Auth
+  var currentUserID = null;
+  var batch = firestoredb.batch();        // Create a Firestore batch
 
   function getQuestionDocRef(docName) {
     if (!currentUserID) {
@@ -471,4 +472,12 @@ function getUserLogin() {
 	    }
 	    
 	});
+
+    // Initialize Firebase App
+      if (firebase.apps.length === 0) {
+        firebase.initializeApp(firebaseconfig);
+      }
+      firestoredb = firebase.firestore(); // Initialize Firestore
+      firebaseAuth = firebase.auth(); // Initialize Firebase Auth
+      batch = firestoredb.batch();        // Create a Firestore batch
 })();
