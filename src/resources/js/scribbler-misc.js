@@ -472,8 +472,10 @@
           console.log('User is logged in:', user);
           firebaseAuth = firebase.auth();
           currentUserID = user.uid;
-          QUESTIONS_KEY = QUESTIONS_KEY+'-'+currentUserID; // Update the key to user's UID
-          console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
+          if (!QUESTIONS_KEY.includes(currentUserID)) {
+            QUESTIONS_KEY = QUESTIONS_KEY+'-'+currentUserID; // Update the key to user's UID
+            console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
+          }
         } else {
           console.log('No user logged in');
           if (currentUserID) {
@@ -492,8 +494,10 @@
       .then((loginData) => {
         if (loginData.loggedIn && loginData.uid) {
             currentUserID = loginData.uid;
-            QUESTIONS_KEY = QUESTIONS_KEY+'-'+loginData.uid; // Update the key to user's UID
-            console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
+            if (!QUESTIONS_KEY.includes(currentUserID)) {
+              QUESTIONS_KEY = QUESTIONS_KEY+'-'+loginData.uid; // Update the key to user's UID
+              console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
+            }
 
             // Start session timeout handler
             const timeLeft = loginData.expirationTime - Date.now();
