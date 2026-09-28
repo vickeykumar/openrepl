@@ -18,6 +18,9 @@ OpenREPL initially Forked from [gotty](https://github.com/yudai/gotty.git). GoTT
 You can checkout on our website for more info on REPL playgrounds and try them as well: [openrepl.com](http://openrepl.com) (earlier [gorepl.com](http://gorepl.com))
 
 
+> **Design docs:** see [Architecture (High-Level Design)](#architecture-high-level-design) below and the low-level designs in [`docs/`](docs/README.md).
+
+
 # Installation
 
 Fork openrepl to start the REPL servers in your local system, Please make sure all pre-requisites are installed.
@@ -172,9 +175,130 @@ For additional security, you can use the SSL/TLS client certificate authenticati
 
 To build the frontend part (JS files and other static files), you need `npm`.
 
-## Architecture
+## Architecture (High-Level Design)
 
-GoTTY uses [xterm.js](https://xtermjs.org/) and [hterm](https://groups.google.com/a/chromium.org/forum/#!forum/chromium-hterm) to run a JavaScript based terminal on web browsers. GoTTY itself provides a websocket server that simply relays output from the TTY to clients and receives input from clients and forwards it to the TTY. This hterm + websocket idea is inspired by [Wetty](https://github.com/krishnasrinivas/wetty).
+This section gives the big picture. Each component has a low-level design (LLD) in [`docs/`](docs/README.md).
+
+### Overview
+
+OpenREPL is one Go binary (`bin/gotty`, a fork of GoTTY). The same binary does three jobs:
+
+1. **Serves the web app.** The HTML, CSS, JS and images are compiled into the binary with `go-bindata`.
+2. **Starts a REPL for each browser terminal.** Each REPL runs as a child process on a pseudo-terminal (PTY), inside a lightweight container made of Linux namespaces and a cgroup v1 memory limit.
+3. **Streams the terminal over a WebSocket.** It relays PTY output to the browser (xterm.js) and keystrokes back to the REPL.
+
+Three external services sit around the core:
+
+- **Firebase:** Authentication (sign-in) and the Realtime Database (live sharing of a REPL, and Genie chat history).
+- **OpenAI:** reached only through a server-side proxy, for the *Genie* assistant and *Practice* question generation.
+- **tryjshell.org:** embedded in an iframe for interactive Java.
+
+### System context
+
+```mermaid
+flowchart LR
+    subgraph Browser["Browser (openrepl.com)"]
+        UI["index.html + scribbler.js<br/>Ace editor, jstree file browser"]
+        TERM["gotty-bundle.js<br/>xterm.js terminal tabs"]
+        CHAT["chat-widget.js<br/>Genie assistant"]
+    end
+
+    subgraph Host["OpenREPL host (Docker or systemd)"]
+        subgraph GOTTY["gotty process"]
+            HTTP["HTTP mux<br/>pages, REST APIs"]
+            WS["WebSocket handlers<br/>/ws_&lt;repl&gt;"]
+            WT["webtty<br/>protocol bridge"]
+            LC["localcommand<br/>PTY + process"]
+            FB["filebrowser<br/>fsnotify watcher"]
+            CP["chat proxy<br/>/chat/completions"]
+        end
+        CG["containers<br/>namespaces + cgroup v1"]
+        REPL["REPL processes<br/>cling, python, node, ..."]
+        FS[("/tmp/home/*<br/>user workspaces")]
+        DB[("/opt/gotty/*.db<br/>UnQLite: sessions,<br/>feedback, blogs")]
+    end
+
+    FAUTH["Firebase Auth"]
+    FRTDB["Firebase Realtime DB"]
+    OAI["OpenAI API"]
+    JSH["tryjshell.org"]
+
+    UI -- "HTTPS" --> HTTP
+    TERM -- "WSS (webtty protocol)" --> WS
+    WS --> WT --> LC --> CG --> REPL
+    LC -. "cwd / HOME" .-> FS
+    FB -. "watch" .-> FS
+    FB -- "file events" --> WT
+    HTTP --> DB
+    CHAT -- "HTTPS" --> CP -- "API key added server-side" --> OAI
+    UI -- "sign-in" --> FAUTH
+    TERM -- "share / mirror" --> FRTDB
+    CHAT -- "chat history" --> FRTDB
+    UI -. "iframe (Java)" .-> JSH
+```
+
+### Components
+
+| Component | Source | Responsibility |
+|---|---|---|
+| Entrypoint and config | `src/gotty/main.go`, `src/utils/flags.go`, `.gotty` | Loads settings in this order: defaults, then the HCL config file, then CLI flags. Opens the databases, creates the containers, starts the server and handles graceful shutdown. |
+| HTTP server | `src/server/` | Routing, middleware (logging, gzip, basic auth), pages, and the REST APIs: login, profile, feedback, blog, demo, file browser, upload, chat proxy. |
+| WebTTY | `src/webtty/` | Transport-agnostic bridge between a *master* (the browser connection) and a *slave* (the PTY), using GoTTY's single-byte message protocol. |
+| Local command backend | `src/backend/localcommand/`, `src/github.com/kr/pty/` (patched) | Builds the REPL command line and environment, starts it on a PTY, handles resize and close. |
+| Containers | `src/containers/` | One parent cgroup per REPL type and one child cgroup per process with a memory limit. Also sets up the namespaces (UTS, PID, mount, net, user) and joins forked sessions through `nsenter`. |
+| File browser | `src/filebrowser/` | Workspace tree, a 50 MB quota, and fsnotify events pushed to the browser. |
+| Users and sessions | `src/user/`, `src/cookie/`, `src/cachedb/` | Firebase-backed login sessions and the signed session cookie. Maps each user to a home directory. Storage is UnQLite with a freecache read cache. |
+| Utilities | `src/utils/`, `src/encoder/` | Constants, the job scheduler (removes guest workspaces), `demos.xml` types, AES-GCM helpers, and the process-id encoding used for fork links. |
+| REPL catalog | `src/resources/meta/demos.xml` | One `<Demo>` per REPL: the demo animation, usage, docs link, starter code, and the `<Compiler>` script used by **Run**. |
+| Web frontend | `src/resources/`, `src/js/` | Landing page and IDE (`index.html`, `scribbler.js`), terminal engine (`js/src/*.ts` → `gotty-bundle.js`), Genie chat widget, Practice pages, and the JavaScript console (`jsconsole`). |
+
+### Key flows
+
+1. **Open a REPL.** The user picks a language. The browser opens `wss://…/ws_<repl>` and sends an init message: `{Arguments, AuthToken, Payload}`. The server resolves the user's home directory, starts the REPL on a PTY inside new namespaces and its own memory cgroup, and pipes I/O through WebTTY. Output is base64-encoded, and file-system changes arrive as `Event` messages.
+2. **Run or debug editor code.** **Run** reconnects the terminal with the editor content in the init payload (`IdeLang`, `IdeContent`, `IdeFileName`, flags). The server writes the content to the selected file, then runs `/bin/bash -c <Compiler script from demos.xml>` in the same sandbox, with 3× the memory limit.
+3. **Fork a REPL and add terminal tabs.** The window title carries a `jid`, an encoded PID. **Fork REPL** and every extra tab open `?jid=<id>`, and the server `nsenter`s the new shell into the parent's namespaces and working directory. This lets two terminals talk to each other, for example for socket programming.
+4. **Share a REPL.** The owner's browser (the *master*) mirrors terminal output, language changes and file events to Firebase RTDB under `openrepl/<id>`. A viewer who opens `…/#<id>` renders that stream, and their keystrokes are relayed to the master's WebSocket. The viewer never starts a REPL of their own.
+5. **Sign in.** FirebaseUI (email/password or Google, with email verification) signs the user in. The browser then posts the user to `/login`. The server stores the session in `user_sessions.db` and sets the `user-session` cookie. Signed-in users get a stable home directory. Guest directories are deleted 60 minutes after last use.
+6. **Ask Genie or generate a practice question.** The browser calls `/chat/completions` with a per-session access token. The server checks the origin, the token and a cookie-based rate limit, then forwards the request to OpenAI with the server's API key.
+
+### Deployment view
+
+```mermaid
+flowchart TB
+    U["Users"] --> CF["CDN / tunnel<br/>(e.g. Cloudflare)"]
+    CF --> H["Linux VM (cgroup v1 host)"]
+    subgraph H
+        D["Docker container<br/>--privileged, /sys/fs/cgroup mounted<br/>run_app.sh → gotty -w ..."]
+        S["or: systemd gotty.service<br/>(deb package, user gottyuser)"]
+    end
+    D --> V1[("/opt/gotty<br/>DBs, jobfile, .gitconfig")]
+    D --> V2[("/tmp/home<br/>workspaces")]
+    D --> V3[("/gottyTraces<br/>logs")]
+```
+
+- **Image:** the multi-stage `Dockerfile` builds on Ubuntu 22.04. `install_prerequisite.sh` installs every REPL toolchain, and `make all` builds the binary. CI builds the image on every PR and push to `master`. Pushes to `master` also publish `:<sha>` and `:latest`.
+- **Sandboxing needs cgroup v1.** With `--privileged` and `/sys/fs/cgroup` mounted, each REPL gets its own namespaces and memory cgroup. Without them, REPLs still run but share the container.
+- **Server-side secrets** live in a git-config file, `/opt/gotty/.gitconfig` (falling back to `/etc/.gitconfig`):
+  - `user.email` is the admin account.
+  - `user.OpenaiAPIKey` is the OpenAI key, base64-encoded.
+  - `user.host` is the origin the chat proxy accepts.
+
+### Supported REPLs
+
+| UI option | WebSocket path | Backend command | Memory limit (MB) |
+|---|---|---|---|
+| C / C++ | `/ws_c`, `/ws_cpp` | `cling` (C adds `-xc -noruntime`) | 22 |
+| Go / Go-yaegi | `/ws_go`, `/ws_yaegi` | `gointerpreter`, `yaegi` | 45, 10 |
+| Java | iframe to tryjshell.org; **Run** uses `/ws_java` | `java` (Run only) | 128 |
+| JavaScript | iframe to `jsconsole.html` (runs in the browser) | n/a | n/a |
+| TypeScript, NodeJS | `/ws_ts-node`, `/ws_node` | `ts-node`, `node` | 50, 10 |
+| Python, Python2.7, IPython3 | `/ws_python`, `/ws_python2.7`, `/ws_ipython3` | same names | 2, 2, 20 |
+| Ruby, Perl, Tcl, bash | `/ws_irb`, `/ws_perli`, `/ws_tclsh`, `/ws_bash` | same names | 10, 3, 2, 10 |
+| Rust, SQLite, JSON, Assembly x86 | `/ws_evcxr`, `/ws_sqlite3`, `/ws_jq-repl`, `/ws_rappel` | same names | 50, 10, 2, 2 |
+
+The memory limits come from `Commands2memLimitMap`. They double as admission-control weights: a new connection is refused when either the number of connections or the total weight exceeds `--max-connection`. See [docs/lld/09-adding-a-repl.md](docs/lld/09-adding-a-repl.md) to add a language.
+
+GoTTY's original design notes still apply to the terminal core. It uses [xterm.js](https://xtermjs.org/) and [hterm](https://groups.google.com/a/chromium.org/forum/#!forum/chromium-hterm), and the hterm + websocket idea was inspired by [Wetty](https://github.com/krishnasrinivas/wetty).
 
 ## Alternatives
 
