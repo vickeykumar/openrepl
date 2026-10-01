@@ -388,13 +388,22 @@
           select_node: true,
           "items": function ($globalitemnode) {
             console.log("globalitemnode: ", $globalitemnode);
-            return {
+            // jstree runs the item whose "shortcut" is the pressed key code while the menu is open
+            // (Cmd/Ctrl+X works as well as a plain X); a string shortcut only shows the label
+            var mod = /Mac|iP(hone|ad)/.test(navigator.platform) ? "\u2318" : "Ctrl+";
+            var menuKey = function (code, letter, off) {
+              return { "shortcut": off ? "off" : code, "shortcut_label": mod + letter };
+            };
+            var protectedNode = $globalitemnode.state.disabled ? true : false;
+            var items = {
                 "create": {
                   "label": "New",
+                  "icon": "ctx-i ctx-i-plus",
                   "_disabled": ($globalitemnode.state.disabled || $globalitemnode.type=='file') ? true : false,
                   "submenu": {
                     "create_folder": {
                       "label": "Folder",
+                      "icon": "ctx-i ctx-i-folder-plus",
                       "action": function (data) {
                         var ref = $.jstree.reference(data.reference);
                         var sel = ref.get_selected();
@@ -434,6 +443,7 @@
                     },
                     "create_file": {
                       "label": "File",
+                      "icon": "ctx-i ctx-i-file-plus",
                       "action": function (data) {
                         var ref = $.jstree.reference(data.reference);
                         var sel = ref.get_selected();
@@ -475,6 +485,8 @@
                 },
                 "rename": {
                   "label": "Rename",
+                  "icon": "ctx-i ctx-i-pencil",
+                  "separator_after": true,
                   "_disabled": $globalitemnode.state.disabled ? true : false,
                   "action": function (data) {
                     var ref = $.jstree.reference(data.reference);
@@ -508,6 +520,9 @@
                 },
                 "delete": {
                       "label": "Delete",
+                      "icon": "ctx-i ctx-i-trash",
+                      "_class": "ctx-danger",
+                      "separator_before": true,
 			// disable delete, why if user needs to cleanup
                       "action": function (data) {
                         var ref = $.jstree.reference(data.reference);
@@ -533,35 +548,37 @@
                         }
                       }
                     },
-                "edit": {
-                  "label": "Edit",
-                  "_disabled": $globalitemnode.state.disabled ? true : false,
-                  "submenu": {
-                    "cut": {
-                      "label": "Cut",
-                      "action": function (data) {
-                        var ref = $.jstree.reference(data.reference);
-                        ref.cut(data.reference);
-                      }
-                    },
-                    "copy": {
-                      "label": "Copy",
-                      "action": function (data) {
-                        var ref = $.jstree.reference(data.reference);
-                        ref.copy(data.reference);
-                      }
-                    },
-                    "paste": {
-                      "label": "Paste",
-                      "action": function (data) {
-                        var ref = $.jstree.reference(data.reference);
-                        ref.paste(data.reference);
-                      }
-                    },
+                "cut": Object.assign({
+                  "label": "Cut",
+                  "icon": "ctx-i ctx-i-cut",
+                  "_disabled": protectedNode,
+                  "action": function (data) {
+                    var ref = $.jstree.reference(data.reference);
+                    ref.cut(data.reference);
                   }
-                },
-                "save": {
+                }, menuKey(88, "X", protectedNode)),
+                "copy": Object.assign({
+                  "label": "Copy",
+                  "icon": "ctx-i ctx-i-copy",
+                  "_disabled": protectedNode,
+                  "action": function (data) {
+                    var ref = $.jstree.reference(data.reference);
+                    ref.copy(data.reference);
+                  }
+                }, menuKey(67, "C", protectedNode)),
+                "paste": Object.assign({
+                  "label": "Paste",
+                  "icon": "ctx-i ctx-i-paste",
+                  "separator_after": true,
+                  "_disabled": protectedNode,
+                  "action": function (data) {
+                    var ref = $.jstree.reference(data.reference);
+                    ref.paste(data.reference);
+                  }
+                }, menuKey(86, "V", protectedNode)),
+                "save": Object.assign({
                   "label": "Save",
+                  "icon": "ctx-i ctx-i-save",
                   "_disabled": ($globalitemnode.state.disabled || $globalitemnode.type!=='file') ? true : false,
                   "action": function (data) {
                     var ref = $.jstree.reference(data.reference);
@@ -573,9 +590,10 @@
                       $('#file-browser').jstree(true).refresh();
                     });
                   }
-                },
+                }, menuKey(83, "S", ($globalitemnode.state.disabled || $globalitemnode.type!=='file'))),
                 "download": {
                   "label": "Download",
+                  "icon": "ctx-i ctx-i-download",
                   "_disabled": ($globalitemnode.state.disabled && $globalitemnode.text.startsWith('.')) ? true : false,
                   "action": function (data) {
                     var ref = $.jstree.reference(data.reference);
@@ -588,8 +606,20 @@
                     link.click();
                   }
                 }
-              }
+            };
+            // New only makes sense on a folder, and File is the common one
+            if ($globalitemnode.type == 'file') {
+              delete items.create;
+            } else {
+              var created = items.create.submenu;
+              items.create.submenu = { "create_file": created.create_file, "create_folder": created.create_folder };
             }
+            var menu = {};
+            ["create", "rename", "cut", "copy", "paste", "save", "download", "delete"].forEach(function (name) {
+              if (items[name]) { menu[name] = items[name]; }
+            });
+            return menu;
+          }
       },
 
       }).on('ready.jstree', function() {

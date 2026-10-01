@@ -474,11 +474,12 @@
       </div>
     </section>
     <!-- Terminal tab contextmenu -->
-    <ul id="tabContextMenu" class="vakata-context" style="display: none;">
-      <li class="" id="tabrefresh" onclick='ToggleReconnect(); this.parentNode.style.display = "none";'>
-        <a><i></i><span class="vakata-contextmenu-sep">&nbsp;</span>Refresh</a>
-      </li>
-    </ul>
+    <div id="tabContextMenu" class="ctx-menu" role="menu" aria-label="Terminal tab" hidden>
+      <button type="button" class="ctx-item" role="menuitem" id="tabrefresh"><i class="ctx-i ctx-i-refresh" aria-hidden="true"></i><span class="ctx-item__label">Reconnect</span></button>
+      <div class="ctx-sep" role="separator"></div>
+      <div class="ctx-heading" id="tab-lang-heading">Run in this tab</div>
+      <div class="ctx-list" id="tabLangList" role="group" aria-labelledby="tab-lang-heading"></div>
+    </div>
     
     <main class="landing" id="landing">
 

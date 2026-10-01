@@ -24,8 +24,6 @@ if(optionMenu!==null) {
 }
 
 export function ActionOnChange(e: any) {
-    const target = e.target as HTMLSelectElement;
-    const selectedValue = target.value;
     let isSilent = e.detail && e.detail.silent;
     if (isSilent) {
         // its a silent event
@@ -37,20 +35,69 @@ export function ActionOnChange(e: any) {
     if (elem !== null) {
         var event = new Event('optionchange');
         elem.dispatchEvent(event);
-        const taboption = document.getElementById('tabOptionMenu') as HTMLSelectElement;
-        if (taboption) {
-            // no events here, cz its triggered globally
-            taboption.value = selectedValue;
-        }
     };
 }
 
-function showTabContextMenu(event) {
+// file extension shown beside each language in the tab menu
+const LANG_EXT: {[value: string]: string} = {
+    "c": ".c", "cpp": ".cpp", "go": ".go", "yaegi": ".go", "java": ".java", "javascript": ".js",
+    "ts-node": ".ts", "jq-repl": ".json", "node": ".mjs", "python": ".py", "python2.7": ".py",
+    "ipython3": ".py", "irb": ".rb", "perli": ".pl", "bash": ".sh", "tclsh": ".tcl",
+    "evcxr": ".rs", "sqlite3": ".sql", "rappel": ".asm"
+};
+const TAB_MENU_MARGIN = 8; // keep the menu this far inside the window
+var tabMenuOpener: HTMLElement | null = null; // element to give focus back to
+
+function tabMenuItems(menu: HTMLElement): HTMLElement[] {
+    return Array.prototype.slice.call(menu.querySelectorAll('button.ctx-item:not(:disabled)'));
+}
+
+function hideTabContextMenu(restoreFocus: boolean = false) {
+    const contextMenu = document.getElementById('tabContextMenu') as HTMLElement | null;
+    if (contextMenu === null || contextMenu.hidden) {
+        return;
+    }
+    contextMenu.hidden = true;
+    if (restoreFocus && tabMenuOpener !== null) {
+        tabMenuOpener.focus();
+    }
+    tabMenuOpener = null;
+}
+
+function showTabContextMenu(event: MouseEvent) {
+    const contextMenu = document.getElementById('tabContextMenu') as HTMLElement | null;
+    const picker = document.getElementById('optionlist') as HTMLSelectElement | null;
+    if (contextMenu === null || picker === null) {
+        return;
+    }
     event.preventDefault();
-    const contextMenu = document.getElementById('tabContextMenu') as HTMLDivElement;
-    contextMenu.style.left = `${event.clientX}px`;
-    contextMenu.style.top = `${event.clientY}px`;
-    contextMenu.style.display = 'block';
+    // tick the language the picker shows now
+    contextMenu.querySelectorAll('#tabLangList .ctx-item').forEach((item) => {
+        item.setAttribute('aria-checked', (item as HTMLElement).dataset.value === picker.value ? 'true' : 'false');
+    });
+    const target = event.target as HTMLElement;
+    tabMenuOpener = (target.closest('.tab') || document.querySelector('#terminal-tabs .tab.active')) as HTMLElement | null;
+
+    // measure first, then place it inside the window (position: fixed, so scrolling the page doesn't matter)
+    contextMenu.style.maxHeight = `${window.innerHeight - 2 * TAB_MENU_MARGIN}px`;
+    contextMenu.hidden = false;
+    let x = event.clientX;
+    let y = event.clientY;
+    if (x === 0 && y === 0 && tabMenuOpener !== null) {
+        // opened from the keyboard: sit under the tab
+        const rect = tabMenuOpener.getBoundingClientRect();
+        x = rect.left;
+        y = rect.bottom;
+    }
+    const width = contextMenu.offsetWidth;
+    const height = contextMenu.offsetHeight;
+    const left = Math.max(TAB_MENU_MARGIN, Math.min(x, window.innerWidth - width - TAB_MENU_MARGIN));
+    const top = y + height + TAB_MENU_MARGIN > window.innerHeight ? Math.max(TAB_MENU_MARGIN, y - height) : y;
+    contextMenu.style.left = `${left}px`;
+    contextMenu.style.top = `${top}px`;
+
+    const current = contextMenu.querySelector('.ctx-item[aria-checked="true"]') as HTMLElement | null;
+    (current || tabMenuItems(contextMenu)[0]).focus();
 }
 
 var primaryterm: GottyTerminal; // primary terminal tab
@@ -107,32 +154,76 @@ const launcher = (firebaseconfig: any) => {
         }
     });
 
-    // create Tab context menu and add it to body
+    // fill the Tab context menu: Reconnect, and one entry per language in the picker
     const originalOption = document.getElementById('optionlist') as HTMLSelectElement;
     const contextMenu = document.getElementById('tabContextMenu') as HTMLElement;
-    if (originalOption && contextMenu) {
-        contextMenu.style.position = 'absolute';
-        contextMenu.style.display= 'none';
-        const optionMenu = originalOption.cloneNode(true) as HTMLSelectElement;
-        optionMenu.id = 'tabOptionMenu';
-        optionMenu.size = 7;
-        optionMenu.value=originalOption.value;
-        contextMenu.appendChild(optionMenu);
-        // Add event listener to synchronize option selection
-        optionMenu.addEventListener('change', function() {
-            console.log("contextmenu selected value: ", this.value);
-            originalOption.value = this.value;
-            // Remove the context menu after selection
-            contextMenu.style.display= 'none';
-            originalOption.dispatchEvent(new Event("change"));
+    const langList = document.getElementById('tabLangList') as HTMLElement;
+    const reconnect = document.getElementById('tabrefresh') as HTMLElement;
+    if (originalOption && contextMenu && langList && reconnect) {
+        reconnect.addEventListener('click', function() {
+            hideTabContextMenu();
+            (window as any).ToggleReconnect();
+        });
+        Array.prototype.slice.call(originalOption.options).forEach((option: HTMLOptionElement) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'ctx-item';
+            item.setAttribute('role', 'menuitemradio');
+            item.setAttribute('aria-checked', 'false');
+            item.dataset.value = option.value;
+            const check = document.createElement('i');
+            check.className = 'ctx-i ctx-i-check';
+            check.setAttribute('aria-hidden', 'true');
+            const label = document.createElement('span');
+            label.className = 'ctx-item__label';
+            label.textContent = option.text;
+            const ext = document.createElement('span');
+            ext.className = 'ctx-item__ext';
+            ext.textContent = LANG_EXT[option.value] || '';
+            item.append(check, label, ext);
+            item.addEventListener('click', function() {
+                const changed = originalOption.value !== option.value;
+                console.log("contextmenu selected value: ", option.value);
+                hideTabContextMenu(true);
+                if (changed) {
+                    originalOption.value = option.value;
+                    originalOption.dispatchEvent(new Event("change"));
+                }
+            });
+            langList.appendChild(item);
         });
 
-        // Remove the context menu if clicked outside
-        document.addEventListener('click', function(e) {
-            if (!contextMenu.contains(e.target as Node) && contextMenu.style.display=='block') {
-                contextMenu.style.display= 'none';
+        // arrow keys move through the items, Esc closes and returns to the tab
+        contextMenu.addEventListener('keydown', function(e: KeyboardEvent) {
+            const items = tabMenuItems(contextMenu);
+            const at = items.indexOf(document.activeElement as HTMLElement);
+            let next = -1;
+            if (e.key === 'ArrowDown') { next = (at + 1) % items.length; }
+            else if (e.key === 'ArrowUp') { next = (at - 1 + items.length) % items.length; }
+            else if (e.key === 'Home') { next = 0; }
+            else if (e.key === 'End') { next = items.length - 1; }
+            else if (e.key === 'Escape') { e.preventDefault(); hideTabContextMenu(true); return; }
+            else if (e.key === 'Tab') { hideTabContextMenu(); return; }
+            if (next >= 0) {
+                e.preventDefault();
+                items[next].focus();
             }
         });
+
+        // close when clicking elsewhere, or when the window changes under it
+        document.addEventListener('click', function(e) {
+            if (!contextMenu.hidden && !contextMenu.contains(e.target as Node)) {
+                hideTabContextMenu();
+            }
+        });
+        window.addEventListener('resize', function() { hideTabContextMenu(); });
+        window.addEventListener('blur', function() { hideTabContextMenu(); });
+        document.addEventListener('scroll', function(e) {
+            // only the page moving closes it; the terminal and the language list scroll on their own
+            if (e.target === document) {
+                hideTabContextMenu();
+            }
+        }, true);
     }
 
     const tabsContainer = document.getElementById('terminal-tabs') as HTMLElement;

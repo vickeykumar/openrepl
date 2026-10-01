@@ -2580,3 +2580,179 @@ body.modal-open { overflow: hidden; }
 /* common.js adds a spinner while a question is generated; the button says so instead */
 .modal-container > .loader { display: none; }
 .modal-container.is-busy .modal { cursor: progress; }
+
+/* ---- Right-click menus: file browser (jstree) and terminal tab ----
+   Both are always dark, like the IDE they open over. jstree builds the
+   file menu (ul.vakata-context); the tab menu is #tabContextMenu (.ctx-menu).
+   Icons are masks, so one colour variable tints them. */
+.vakata-context,
+.vakata-context ul,
+.ctx-menu {
+  box-sizing: border-box;
+  min-width: 216px;
+  padding: 4px 0;
+  background: var(--ink-750);
+  border: 1px solid var(--ink-500);
+  border-radius: 10px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+  font-family: var(--font-ui);
+}
+.vakata-context,
+.ctx-menu { z-index: 10040; /* above the Genie panel, below the palette */ }
+.vakata-context ul {
+  min-width: 150px;
+  margin-top: -39px; /* line the first item up with the item that opened it */
+  margin-left: -4px;
+}
+.vakata-context li > a,
+.ctx-item {
+  --ctx-icon: var(--muted-2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  box-sizing: border-box;
+  margin: 0 4px;
+  padding: 0 10px;
+  font: 400 14px/1 var(--font-ui);
+  color: var(--paper);
+  text-align: left;
+  text-decoration: none;
+  text-shadow: none;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: none;
+  cursor: pointer;
+}
+.vakata-context li > a { width: auto; }
+.ctx-item { width: calc(100% - 8px); }
+.vakata-context li > a:hover,
+.vakata-context .vakata-context-hover > a,
+.ctx-item:hover,
+.ctx-item:focus-visible {
+  position: static;
+  background: var(--ink-600);
+  box-shadow: none;
+}
+/* jstree moves focus on hover, so the file menu shows its highlight with the background only.
+   The T15 ring is !important, so these need it too. */
+body .vakata-context li > a:focus-visible { outline: 0 !important; }
+body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !important; outline-offset: -2px !important; }
+.vakata-context li > a .vakata-contextmenu-sep { display: none; }
+.vakata-context li > a.vakata-context-parent { background-image: none; }
+.vakata-context li > a.vakata-context-parent::after {
+  content: "";
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  background-color: var(--muted-2);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.vakata-context .vakata-contextmenu-shortcut {
+  display: inline;
+  margin-left: auto;
+  font: 500 11px var(--font-code);
+  color: var(--muted-3);
+  opacity: 1;
+}
+.vakata-context li.vakata-context-separator > a,
+.vakata-context li.vakata-context-separator > a:hover {
+  height: 1px;
+  min-height: 1px;
+  max-height: 1px;
+  margin: 4px 0;
+  padding: 0;
+  font-size: 0;
+  background: var(--ink-600);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+.vakata-context .vakata-contextmenu-disabled > a,
+.vakata-context .vakata-contextmenu-disabled > a:hover {
+  --ctx-icon: #55535F;
+  color: #6B6978;
+  background: transparent;
+  cursor: default;
+}
+.vakata-context .vakata-contextmenu-disabled .vakata-contextmenu-shortcut { color: #55535F; }
+.vakata-context li.ctx-danger > a { --ctx-icon: var(--danger-color); color: var(--danger-color); }
+.vakata-context li.ctx-danger > a:hover,
+.vakata-context li.ctx-danger.vakata-context-hover > a { background: rgba(240, 113, 113, 0.14); }
+
+/* icons */
+.ctx-i,
+.vakata-context li > a > i.ctx-i {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  background-color: var(--ctx-icon, var(--muted-2));
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+.ctx-i-plus { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5v14 M5 12h14'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5v14 M5 12h14'/%3E%3C/svg%3E"); }
+.ctx-i-file-plus { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z M14 3v5h5 M12 12v6 M9 15h6'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z M14 3v5h5 M12 12v6 M9 15h6'/%3E%3C/svg%3E"); }
+.ctx-i-folder-plus { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z M12 11v5 M9.5 13.5h5'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z M12 11v5 M9.5 13.5h5'/%3E%3C/svg%3E"); }
+.ctx-i-pencil { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4'/%3E%3C/svg%3E"); }
+.ctx-i-trash { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6'/%3E%3C/svg%3E"); }
+.ctx-i-cut { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.1 7.9L20 19 M8.1 16.1L20 5'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.1 7.9L20 19 M8.1 16.1L20 5'/%3E%3C/svg%3E"); }
+.ctx-i-copy { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 8h11v12H8z M5 16V4h11'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 8h11v12H8z M5 16V4h11'/%3E%3C/svg%3E"); }
+.ctx-i-paste { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4h6v3H9z M7 5H5v16h14V5h-2'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4h6v3H9z M7 5H5v16h14V5h-2'/%3E%3C/svg%3E"); }
+.ctx-i-save { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 4h12l3 3v13H5z M8 4v5h7V4 M8 20v-6h8v6'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 4h12l3 3v13H5z M8 4v5h7V4 M8 20v-6h8v6'/%3E%3C/svg%3E"); }
+.ctx-i-download { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11 M7 11l5 5 5-5 M5 20h14'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11 M7 11l5 5 5-5 M5 20h14'/%3E%3C/svg%3E"); }
+.ctx-i-refresh { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7'/%3E%3C/svg%3E"); }
+.ctx-i-check { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E"); }
+
+/* terminal tab menu */
+.ctx-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  width: 244px;
+  overflow: hidden;
+  color: var(--paper);
+}
+.ctx-menu[hidden] { display: none; }
+.ctx-item__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ctx-item__ext { font: 500 11px var(--font-code); color: var(--muted-3); }
+.ctx-sep { flex: none; height: 1px; margin: 4px 0; background: var(--ink-600); }
+.ctx-heading {
+  flex: none;
+  padding: 8px 14px 6px;
+  font: 600 11px/1 var(--font-ui);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted-3);
+}
+.ctx-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 232px;
+  padding-bottom: 4px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-500) transparent;
+}
+.ctx-list .ctx-item { height: 32px; }
+.ctx-list .ctx-i-check { --ctx-icon: var(--accent-on-dark); opacity: 0; }
+.ctx-list .ctx-item[aria-checked="true"] { background: rgba(254, 106, 107, 0.12); }
+.ctx-list .ctx-item[aria-checked="true"]:hover,
+.ctx-list .ctx-item[aria-checked="true"]:focus-visible { background: var(--ink-600); }
+.ctx-list .ctx-item[aria-checked="true"] .ctx-i-check { opacity: 1; }
+@media (max-width: 800px) {
+  .vakata-context li > a,
+  .ctx-item,
+  .ctx-list .ctx-item { height: 44px; }
+  .vakata-context ul { margin-top: -49px; }
+}
