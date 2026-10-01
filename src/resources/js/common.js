@@ -115,6 +115,8 @@ async function getResponseFromOpenAI(api_key, prompt, options = {}) {
 
 // Save questions, ensuring a maximum of 100 entries.
 function saveNewQuestions(newQuestion) {
+  // PracticeStore (js/practice-store.js) keeps the list and syncs it to the account (T17)
+  if (window.PracticeStore) return PracticeStore.add(newQuestion);
   let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
   let exists = storedQuestions.some(q => q.nameHyphenated === newQuestion.nameHyphenated);
 
@@ -161,7 +163,7 @@ async function generateNewQuestion(topic, difficultyLevel, customPrompt, languag
     israndomtopic = true;
   }
   if (!["Easy", "Medium", "Hard"].includes(difficultyLevel)) {
-    alert("Invalid difficulty level! Must be one of: Easy, Medium, Hard.");
+    notify("Choose Easy, Medium or Hard.", { type: "error", title: "Invalid difficulty" });
     return null;
   }
 
@@ -251,7 +253,7 @@ ${customPrompt ? customPrompt : ""}
       }
   } catch (error) {
   		console.error("Error fetching new question:", error);
-      alert("Error fetching new question, error:"+error.message);
+      notify(error.message, { type: "error", title: "Couldn't fetch a new question" });
       return null;
   } finally {
       // Remove the loader after completion (success or failure)
@@ -274,7 +276,7 @@ async function getCodeTemplate(nameHyphenated, language) {
 
     if (!question) {
         console.error("Question not found: ", nameHyphenated);
-        alert("Question not found: "+nameHyphenated+", Cick on  'New Question' to Add a new question.")
+        notify("Click New question to create one.", { type: "info", title: "Question not found" })
         return null;
     }
 
@@ -341,8 +343,9 @@ Ensure that:
             // Update the stored question with the new template
             question.code_templates[language] = generatedTemplate[language];
 
-            // Save the updated questions list back to localStorage
-            localStorage.setItem("questions", JSON.stringify(storedQuestions));
+            // Save the updated question back
+            if (window.PracticeStore) PracticeStore.update(question);
+            else localStorage.setItem("questions", JSON.stringify(storedQuestions));
 
             return generatedTemplate[language];
         } else {
@@ -370,8 +373,11 @@ Ensure that:
 	        topNav.className = 'menu';
 	        icon.classList.remove('open');
 	      }
+	      var btn = icon.querySelector('button') || icon;
+	      btn.setAttribute('aria-expanded', icon.classList.contains('open') ? 'true' : 'false');
 	    }
 	    icon.addEventListener('click', showNav);
+	    // the menu toggle holds a real <button> (T15), so Enter and Space work through its click
 	    //replace all urls with with origin url in case of iframe webredirect
 	    var parent_origin = '';
 	    if (document.referrer !== '') {

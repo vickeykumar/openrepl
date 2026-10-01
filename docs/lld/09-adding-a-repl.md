@@ -6,7 +6,7 @@ Adding a language touches four layers. The example below adds **Lua**, using the
 flowchart LR
     A["1. Install the runtime<br/>install_prerequisite.sh"] --> B["2. Register limits<br/>containers/container.go"]
     B --> C["3. Describe it<br/>resources/meta/demos.xml"]
-    C --> D["4. Expose it in the UI<br/>resources/index.html (+ scribbler.js)"]
+    C --> D["4. Expose it in the UI<br/>resources/index.html (+ js/src/page)"]
     D --> E["5. make all, then test"]
 ```
 
@@ -60,7 +60,7 @@ See LLD 04 §2 for the Compiler script contract (`$0`, `$1`, `$IdeLang`, `$Compi
   ```
 
 - In the editor's `#select-lang` list, make sure the Ace mode is not `disabled`. `lua` is disabled today.
-- Optional: map a file extension to the mode in `codeext2menuoption` (`scribbler.js`), so opening `*.lua` in the file browser switches the editor mode.
+- Optional: map a file extension to the mode in `codeext2menuoption` (`src/js/src/page/07-file-browser.js`), so opening `*.lua` in the file browser switches the editor mode.
 - Optional: if the REPL needs fixed extra arguments when selected, add them to `option2args` in `src/js/src/gotty.ts`. For example, C uses `arg=-xc&arg=-noruntime`.
 - Optional: add a docs page under `src/resources/docs/` and point `<Doc>` at it.
 

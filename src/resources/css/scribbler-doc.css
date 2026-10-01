@@ -155,3 +155,15 @@ blog css
 .read-more:hover {
     background-color: #555;
 }
+
+/* Accessibility fixes for the older pages (T15) */
+.go__color { color: var(--accent-text); }
+.doc__nav .selected { color: var(--accent-text); }
+.doc__nav .selected:after { background-color: var(--accent-text); }
+h2.section__title { font-family: inherit; font-size: 1.17em; }
+.doc__links { margin: 0; padding: 0; list-style: none; }
+.doc__links--bullets { padding-left: 1.2em; list-style: disc; }
+.doc__content p a,
+.doc__content li a { text-decoration: underline; text-underline-offset: 2px; }
+.footer:not(.site-footer) .link--light { color: #FF8C8D; text-decoration: underline; text-underline-offset: 2px; }
+.footer:not(.site-footer) .go__color { color: #FF8C8D; }

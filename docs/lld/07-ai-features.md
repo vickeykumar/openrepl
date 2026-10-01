@@ -50,10 +50,12 @@ flowchart TD
 
 ## 4. Genie assistant (chat widget)
 
+- **Opening:** on the home page Genie no longer opens on load. It opens from the app bar's Ask Genie button, the floating button, or the note that appears after the first error in a terminal, which fills in that error (`setupGenieErrorNudge` in `scribbler.js`). On `/practice` it still opens on load, because it plays the interviewer.
+- **Panel:** a dark panel docked to the bottom-right corner (a sheet across the bottom on phones), styled after the mockup's "Genie panel" (`chat-widget/src/widget.html` and `widget.css`). The header shows the title, "Reads <file>" from `#editor-filename`, the Peer chat switch and a close button. It is not modal: the page sets `closeOnOutsideClick = false`, so there is no backdrop or focus trap, and you can keep typing in the editor while it is open. It closes with the × button, Esc, or the app bar button (`ChatWidget.toggle`). While it is open, `body.genie-open` hides the floating "Ask Genie" button (`.genie-fab`) and marks the app bar button as pressed. Drag the top-left corner to resize it. Setting `closeOnOutsideClick = true` brings back the old modal behaviour.
 - **Model:** `gpt-3.5-turbo` (the widget default; `index.html` does not override it).
 - **Context:** a system message with the live editor content, followed by the conversation history.
 - **History sync:** every message is pushed to Firebase `chat-list/<dbpath>`. Shared viewers see the same conversation, and the master's `cleanup()` deletes it.
-- **Output handling:** fenced code blocks get Insert and Replace buttons, which call `window.insertcodesnippet` and `window.replacecodesnippet` (base64 payload). Replace is blocked in practice mode.
+- **Output handling:** fenced code blocks get Insert and Replace file buttons, which call `window.insertcodesnippet` and `window.replacecodesnippet`. The payload is UTF-8 base64 (`btoa(unescape(encodeURIComponent(code)))`), decoded by `decodeGenieCode` in `index.html`, so non-ASCII code no longer breaks the reply. Replace is blocked in practice mode.
 
 ## 5. Practice question generation (`common.js`)
 
@@ -64,4 +66,4 @@ flowchart TD
 
 - Both call `getResponseFromOpenAI(openai_access_token, prompt, {baseUri: "/chat/completions"})`: model `gpt-4o-mini`, `max_tokens` 800, and `temperature` from `localStorage.temperature` (default 0.3).
 - Topics come from the `topics` array in `common.js` (for example Two Pointers, DP, Graphs and System Design).
-- Results are stored only in `localStorage.questions`, which keeps the latest 100.
+- Results are saved through `PracticeStore` in `localStorage.questions`, which keeps the latest 100, and for signed-in users in their account (LLD 05, 06).

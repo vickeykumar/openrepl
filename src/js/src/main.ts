@@ -149,7 +149,12 @@ function addTab(terminalid:string="", skipdb:boolean=false) {
     const tabCount = tabs.length;
 
     if (tabCount >= MAX_TABS) {
-        window.alert("Maximum number of allowed connections reached.");
+        const notify = (window as any).notify;
+        if (typeof notify === "function") {
+            notify("You can have up to " + MAX_TABS + " terminals open. Close one to open another.", { type: "info" });
+        } else {
+            window.alert("Maximum number of allowed connections reached.");
+        }
         return;
     }
     // now find a sutable terminal id

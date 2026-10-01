@@ -18,6 +18,8 @@ OpenREPL initially Forked from [gotty](https://github.com/yudai/gotty.git). GoTT
 You can checkout on our website for more info on REPL playgrounds and try them as well: [openrepl.com](http://openrepl.com) (earlier [gorepl.com](http://gorepl.com))
 
 
+> **Run it locally:** see [Run locally on macOS (Colima)](#run-locally-on-macos-colima).
+>
 > **Design docs:** see [Architecture (High-Level Design)](#architecture-high-level-design) below and the low-level designs in [`docs/`](docs/README.md).
 
 
@@ -90,6 +92,102 @@ To deploy and run a local copy of openrepl :
         -p 8080:8080 vickeykumar/openrepl:latest \
         -p 8080 [ <other CLI Options>]
       ```
+
+
+# Run locally on macOS (Colima)
+
+The OpenREPL image is **amd64 only**: the bundled Go toolchain, `go-bindata`, cling, evcxr and gdb are x86-64 binaries. On an Apple Silicon Mac, run it in a [Colima](https://github.com/abiosoft/colima) VM that uses Rosetta to emulate x86-64.
+
+> Paste the commands without comments. zsh does not treat `#` as a comment when you paste commands.
+
+### One-time setup
+
+```bash
+brew install colima docker docker-buildx
+mkdir -p ~/.docker/cli-plugins
+ln -sfn "$(brew --prefix)/opt/docker-buildx/bin/docker-buildx" ~/.docker/cli-plugins/docker-buildx
+softwareupdate --install-rosetta --agree-to-license
+colima start openrepl --vm-type vz --vz-rosetta --cpu 4 --memory 8 --disk 80 --kubernetes=false
+docker context use colima-openrepl
+docker run --rm --platform linux/amd64 ubuntu:22.04 uname -m
+```
+
+The last command should print `x86_64`. The build needs at least 8 GB of VM memory and 80 GB of disk.
+
+On an Intel Mac, leave out `--vm-type vz --vz-rosetta`, and leave out every `--platform linux/amd64` in this section.
+
+### Build and run the full image
+
+Use this the first time, after changing the `Dockerfile` or `install_prerequisite.sh`, or to test the exact image you deploy. The first build is slow because it installs every language toolchain. Later builds reuse that layer.
+
+```bash
+cd ~/Documents/openrepl/openrepl
+docker build --platform linux/amd64 -t openrepl:dev .
+docker run -d --name openrepl-dev --platform linux/amd64 -p 8080:80 openrepl:dev
+open http://localhost:8080
+```
+
+To view the server logs, run `docker exec openrepl-dev tail -f /gottyTraces/gotty.log`.
+
+To pick up changes, rebuild the image and replace the container:
+
+```bash
+docker build --platform linux/amd64 -t openrepl:dev .
+docker rm -f openrepl-dev
+docker run -d --name openrepl-dev --platform linux/amd64 -p 8080:80 openrepl:dev
+```
+
+### Fast edit-and-test loop (dev container)
+
+For day-to-day changes to HTML, CSS, JS, TypeScript, `demos.xml` or Go code, mount the repo into the build stage instead of rebuilding the whole image. Stop `openrepl-dev` first (`docker rm -f openrepl-dev`), because both use port 8080.
+
+Start the dev container once, in its own terminal tab:
+
+```bash
+cd ~/Documents/openrepl/openrepl
+docker build --platform linux/amd64 --target build-image -t openrepl:build .
+docker run -it --rm --name openrepl-devbox --platform linux/amd64 -p 8080:8080 -v "$PWD":/opt/openrepl -w /opt/openrepl/src openrepl:build bash
+```
+
+Inside the container, build everything once:
+
+```bash
+make all
+```
+
+The build finds the repo root on its own, even though git inside the container refuses the mounted folder (it belongs to your Mac user, and the container runs as root). To use git commands inside the container, run `git config --global --add safe.directory /opt/openrepl` each time you start it. The container is started with `--rm`, so the setting doesn't survive a restart.
+
+After each change, press Ctrl+C in the container, run the line below, then hard-refresh the browser (Cmd+Shift+R):
+
+```bash
+rm -rf bindata && make gotty && ../bin/gotty -w -p 8080 --title-format '<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>'
+```
+
+`rm -rf bindata` forces every web asset to be re-embedded. Without it, the Makefile misses edits inside existing files under `src/resources/js/`.
+
+### Tests
+
+Run the Go unit tests inside the dev container:
+
+```bash
+GO111MODULE=off GOPATH=/opt/openrepl ../go_1.19/go/bin/go test webtty
+```
+
+Then do a quick manual check at `localhost:8080`:
+
+1. Open a Python REPL.
+2. Run code from the editor, and debug a C file.
+3. In the file browser, create, upload and download a file.
+4. Add a terminal tab and fork a REPL.
+5. Open the share link in a second browser.
+6. Sign in.
+
+### Notes
+
+- **No per-REPL sandboxing locally.** Colima's VM uses cgroup v2, so the log shows `Unable to create Container` and REPLs run without their own namespaces or memory limits. Test sandboxing on a cgroup v1 host.
+- **Don't commit `bin/gotty`.** The dev container rebuilds this tracked file. Restore it before committing with `git checkout -- bin/gotty`, and don't commit `node_modules` or `dist` folders.
+- **Genie and Practice question generation need an OpenAI key.** Put it in `/opt/gotty/.gitconfig` inside the container as `user.OpenaiAPIKey` (base64-encoded), then restart the server.
+- **Stopping and restarting the VM:** `colima stop openrepl` and `colima start openrepl`. `colima delete openrepl` removes the VM and its images.
 
 
 # Usage
@@ -250,7 +348,7 @@ flowchart LR
 | Users and sessions | `src/user/`, `src/cookie/`, `src/cachedb/` | Firebase-backed login sessions and the signed session cookie. Maps each user to a home directory. Storage is UnQLite with a freecache read cache. |
 | Utilities | `src/utils/`, `src/encoder/` | Constants, the job scheduler (removes guest workspaces), `demos.xml` types, AES-GCM helpers, and the process-id encoding used for fork links. |
 | REPL catalog | `src/resources/meta/demos.xml` | One `<Demo>` per REPL: the demo animation, usage, docs link, starter code, and the `<Compiler>` script used by **Run**. |
-| Web frontend | `src/resources/`, `src/js/` | Landing page and IDE (`index.html`, `scribbler.js`), terminal engine (`js/src/*.ts` → `gotty-bundle.js`), Genie chat widget, Practice pages, and the JavaScript console (`jsconsole`). |
+| Web frontend | `src/resources/`, `src/js/` | Landing page and IDE (`index.html`, and `scribbler.js` built from `js/src/page/`), terminal engine (`js/src/*.ts` → `gotty-bundle.js`), Genie chat widget, Practice pages, and the JavaScript console (`jsconsole`). |
 
 ### Key flows
 

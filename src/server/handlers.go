@@ -139,6 +139,8 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			closeReason = "cancelation"
 		case webtty.ErrSlaveClosed:
 			closeReason = server.factory.Name()
+		case errSlaveKilled:
+			closeReason = server.factory.Name() + ": killed"
 		case webtty.ErrMasterClosed:
 			closeReason = "client"
 		default:
@@ -258,9 +260,19 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 
 	log.Println("running webtty: ")
 	err = tty.Run(ctx)
+	if err == webtty.ErrSlaveClosed {
+		// tell the browser when the program was killed (usually the memory limit)
+		if er, ok := slave.(interface{ ExitReason() string }); ok && er.ExitReason() == "killed" {
+			return errSlaveKilled
+		}
+	}
 
 	return err
 }
+
+// errSlaveKilled means the command ended because it was killed, which is how
+// the container's memory limit stops a program.
+var errSlaveKilled = errors.New("slave killed")
 
 func (server *Server) errorHandler(w http.ResponseWriter, r *http.Request, status int) {
 	w.WriteHeader(status)
@@ -287,7 +299,7 @@ func (server *Server) errorHandler(w http.ResponseWriter, r *http.Request, statu
 }
 
 func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" && r.URL.Path != "/practice"{
+	if _, isLangPage := langPageFor(r.URL.Path); r.URL.Path != "/" && r.URL.Path != "/practice" && !isLangPage {
 		server.errorHandler(w, r, http.StatusNotFound)
 		return
 	}
@@ -324,6 +336,7 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	indexVars := map[string]interface{}{
 		"title": titleBuf.String(),
+		"Page":  indexPageFor(r), // title, meta tags and hero for "/" or a language page (T12)
 	}
 
 	indexBuf := new(bytes.Buffer)
@@ -466,6 +479,20 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 			zipWriter := zip.NewWriter(rw)
 			defer zipWriter.Close()
 			fb.Writezip(zipWriter)
+		} else if query == "usage" {
+			// workspace size for the Files panel (T7)
+			used := 0.0
+			if fb != nil {
+				used = fb.GetSize()
+			}
+			rw.Header().Set("Content-Type", "application/json")
+			rw.Header().Set("Cache-Control", "no-store")
+			rw.Write(utils.JsonMarshal(map[string]interface{}{
+				"usedMB":             used,
+				"limitMB":            filebrowser.MAXDISKUSAGE_MB,
+				"guest":              uid == "",
+				"deleteAfterMinutes": utils.DEADLINE_MINUTES,
+			}))
 		} else {
 			tree, err := fb.GetJsonTree()
 		    if err != nil {

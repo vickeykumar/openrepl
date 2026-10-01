@@ -1,4 +1,10 @@
 GIT_TOP=$(shell git rev-parse --show-toplevel 2>/dev/null)
+# git refuses a repo owned by another user (a folder mounted into the dev
+# container, until safe.directory is set). Then the repo root is simply the
+# folder above this file, which works from src/ and from src/gotty/.
+ifeq ($(GIT_TOP),)
+GIT_TOP := $(abspath $(dir $(realpath $(lastword $(MAKEFILE_LIST))))..)
+endif
 UNAME := $(shell uname)
 
 ifeq ($(UNAME), Linux)

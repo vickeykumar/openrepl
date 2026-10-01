@@ -1,6 +1,6 @@
 # LLD 01: Server, startup and routing
 
-Scope: `src/gotty/main.go`, `src/utils/{flags,default,utils}.go`, `src/server/{server,options,middleware,handlers,utils,handler_atomic,run_option}.go`.
+Scope: `src/gotty/main.go`, `src/utils/{flags,default,utils}.go`, `src/server/{server,options,middleware,handlers,utils,handler_atomic,run_option,langpages,snippets,practice}.go`.
 
 ## 1. Process startup
 
@@ -16,7 +16,7 @@ sequenceDiagram
     Init->>Init: user/cookie.init: open user_sessions.db, load SESSION_KEY, NewCookieStore
     Init->>Init: server/chatproxy.init: read user.OpenaiAPIKey and user.host from GitConfig
     OS->>Main: exec gotty [flags] [command args]
-    Main->>Main: common_setup(): LoadJobsFromFile, InitFeedbackDBHandle, InitBlogDBHandle, InitSessionDBHandle, containers.InitContainers()
+    Main->>Main: common_setup(): LoadJobsFromFile, InitFeedbackDBHandle, InitBlogDBHandle, InitSnippetDBHandle, InitPracticeDBHandle, InitSessionDBHandle, containers.InitContainers()
     Main->>Main: ApplyDefaultValues → ApplyConfigFile(~/.gotty) → ApplyFlags(CLI/env)
     Main->>Main: command = args[0] or "cling", then localcommand.NewFactory(command, argv, backendOptions)
     Main->>Srv: server.New(factory, appOptions)
@@ -72,21 +72,28 @@ All paths are relative to `pathPrefix`: `/`, or `/<random>/` with `--random-url`
 
 | Path | Methods | Handler | Access | Purpose |
 |---|---|---|---|---|
-| `/` , `/practice` | GET | `Server.handleIndex` | public | Renders the index template. Any other unmatched path returns 404 through `errorHandler`. Also creates or refreshes the caller's home directory cookie and guest cleanup job. |
+| `/` , `/practice`, `/<language>` | GET | `Server.handleIndex` | public | Renders the index template. The 16 language pages (`/python`, `/cpp`, `/rust` and so on, listed in `langPages` in `server/langpages.go`) render the same template with their own title, description, canonical URL and hero heading, and preselect that REPL (section 4). Any other unmatched path returns 404 through `errorHandler`. Also creates or refreshes the caller's home directory cookie and guest cleanup job. |
 | `/practice/dsa-questions` | GET | `handlePracticeQuestions` | public | Renders `static/practice.html`. |
+| `/practice/progress` | GET, PUT (POST accepted) | `handlePracticeProgress` | session | A signed-in user's practice questions and done marks (LLD 05). GET returns the stored document, or `{"signedIn": false}` for guests. PUT merges the body into the stored copy and returns the result; guests get 401. Bodies up to 2 MB, 200 questions, 1,000 marks; 240 writes per user per 10 minutes. |
+| `/sitemap.xml` | GET | `handleSitemap` | public | The home page, practice list, docs, about, privacy and terms pages, and every language page. `robots.txt` points to it. |
+| `/snippet` | GET, POST | `handleSnippet` | public, 30 new links per IP per 10 minutes | Share-code links. POST `{lang, code}` (code up to 64 KB) stores a snapshot and returns `{id, url}`; GET `?id=` returns `{lang, code, created}`. Errors: 400 unknown language or no code, 413 too large, 429 rate limit, 503 store unavailable. |
+| `/s/<id>` | GET | `handleSnippetLink` | public | Redirects (302) to the language's page with `?s=<id>`, or to `/?repl=<lang>&s=<id>`; 404 page for an unknown id. |
 | `/login` | GET, POST | `handleLoginSession` | public | GET: current session status as JSON. POST: create a session from the Firebase sign-in result (LLD 05). |
 | `/logout` | POST | `handleLogoutSession` | session | Deletes the session and cookie. |
 | `/profile` | GET | `handleUserProfile` | session | HTML profile (`static/profile.html` template), or JSON with `?q=json`. |
-| `/feedback` | POST, GET | `handleFeedback` | POST public, `?q=delete` admin; GET admin | Stores the contact form. GET renders a DataTables admin view. |
+| `/feedback` | POST, GET | `handleFeedback` | POST public, `?q=delete` admin; GET admin | Stores the footer form ("Which language should we add next?" plus general feedback): `name` (optional, sent as "Anonymous" when empty), `email` and `message` (free text). GET renders a DataTables admin view. |
 | `/blog` | GET, POST | `handleBlog` | GET public; POST admin | GET: list, `?name=` post, `?q=list` keys, `?q=json`. POST: upsert or `?q=delete`. |
 | `/editblog.html` | GET | static behind `wrapAdmin` | admin | Blog editor UI. |
 | `/demo?q=<command>` | GET | `handleDemo` | public | `utils.DemoResp` JSON for a REPL (LLD 04). |
 | `/chat/completions` | POST | `handleChatProxy` | origin-checked, token, rate limit | OpenAI proxy (LLD 07). |
-| `/ws_filebrowser` | GET, POST | `Server.handleFileBrowser` | cookie homedir | File tree, load, save, zip and file ops (LLD 04). Despite the name, this is plain HTTP. |
+| `/ws_filebrowser` | GET, POST | `Server.handleFileBrowser` | cookie homedir | File tree, load, save, zip, workspace usage (`?q=usage`) and file ops (LLD 04). Despite the name, this is plain HTTP. |
 | `/upload_file` | POST (multipart) | `Server.handleFileUpload` | cookie homedir | Upload into the homedir (LLD 04). |
 | `/auth_token.js` | GET | `handleAuthToken` | public | `var gotty_auth_token = '<--credential>'`. |
 | `/config.js` | GET | `handleConfig` | public | `gotty_term`, `firebaseconfig`, `openai_access_token` (LLD 07). |
-| `/js/`, `/css/`, `/images/`, `/media/`, `/docs/`, `/doc.html`, `/about.html`, `/references.html`, `/robots.txt`, `/jsconsole.html` | GET | bindata `AssetFS` | public | Static assets. |
+| `/settings.js` | GET | `handleSettingsJS` | public | `var site_settings = {"colorOfTheDay": <bool>}`, sent with `Cache-Control: no-store` (LLD 05, 06). |
+| `/admin` | GET | `handleAdminPage` behind `wrapAdmin` | admin | Admin console: the site settings form (`AdminSettings_Template` rendered through `CommonTemplate`). `?saved=1` shows a confirmation. |
+| `/admin/settings` | POST | `handleAdminSettings` | admin | Saves the form to `settings.json`, then redirects with 303 to `/admin?saved=1`. Other methods get 405. |
+| `/js/`, `/css/`, `/images/`, `/media/`, `/docs/`, `/doc.html`, `/about.html`, `/references.html`, `/privacy.html`, `/terms.html`, `/robots.txt`, `/jsconsole.html` | GET | bindata `AssetFS` | public | Static assets. |
 | `/ws`, `/ws_c`, `/ws_cpp`, `/ws_go`, `/ws_<name>` | GET (Upgrade) | `generateHandleWS` | init `AuthToken` | Terminal sessions. `/ws_c` and `/ws_cpp` map to `cling`, `/ws_go` maps to `gointerpreter`, and each `demos.xml` `<Name>` gets `/ws_<Name>` (LLD 02). |
 
 ## 4. Server-rendered pages
@@ -97,7 +104,7 @@ All paths are relative to `pathPrefix`: `/`, or `/<random>/` with `--random-url`
 - `FeedbackTemplate`: the admin table with a delete button (POST `/feedback?q=delete&key=`).
 - `BlogList_Template`, `Blog_Template`: the blog list and a single post (`htmlify` renders stored HTML).
 
-`profile.html` and `practice.html` are parsed as templates at request time. `index.html` is parsed once at start-up.
+`profile.html` and `practice.html` are parsed as templates at request time. `index.html` is parsed once at start-up and executed per request with `.Page` from `indexPageFor(r)` (`server/langpages.go`): `URL`, `Title`, `Description`, `Eyebrow`, `Heading`, `HeadingColor`, `Blurb`, and `Client`, a JSON object written to `window.OPENREPL_PAGE` (`{repl, slug, pages[]}`) so the page knows its language and can move between language pages without a reload (LLD 06).
 
 ## 5. Admin model
 

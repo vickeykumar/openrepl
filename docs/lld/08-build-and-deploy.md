@@ -4,20 +4,22 @@ Scope: `src/Makefile`, `src/Makefile.include`, `src/gotty/Makefile`, `src/js/{pa
 
 ## 1. Toolchain and layout
 
-- **GOPATH.** `Makefile.include` sets `ROOT = GOPATH = <git top>`, and `GO111MODULE=off`. Packages are imported by directory name under `src/`.
+- **GOPATH.** `Makefile.include` sets `ROOT = GOPATH = <git top>`, and `GO111MODULE=off`. When `git rev-parse` fails (git refuses a repo owned by another user, as in the dev container with the repo mounted), it falls back to the folder above `Makefile.include`. Packages are imported by directory name under `src/`.
 - **Go version.** On Linux, `GOROOT` is the checked-in `go_1.19/go`. Elsewhere it is derived from `/usr/local/bin/go`.
 - **Dependencies.** Third-party Go packages are vendored as plain directories: `src/github.com/…`, `src/golang.org/x/…`, `src/pkg/…`. Some of them are **patched**, for example `github.com/kr/pty/run.go` (LLD 02). `Godeps/Godeps.json` records the original versions.
 - **Helper binaries.** `bin/` holds `go-bindata`, `godep`, `gox`, `ghr` and a `gdb` build copied into the Docker image.
 
 ## 2. Build pipeline (`make all`)
 
+The terminal client (`src/js`) builds with webpack 5, ts-loader 9 and TypeScript 4.9, pinned in `package-lock.json` (lockfile v2). All of them run on Node 12 with npm 8.5.1, the versions in the build image. `js/node_modules/webpack` depends on `js/package.json`, so `make` runs `npm install` again whenever the dependencies change, and it calls `./node_modules/.bin/webpack` directly instead of `npm bin`.
+
 ```mermaid
 flowchart LR
     subgraph JS["JavaScript builds"]
-        TS["src/js/src/*.ts"] -- "npm install, webpack 2" --> GB["js/dist/gotty-bundle.js<br/>js/dist/preprocessing.js"]
+        TS["src/js/src/*.ts"] -- "npm install, webpack 5" --> GB["js/dist/gotty-bundle.js<br/>js/dist/hterm.js<br/>js/dist/scribbler.js<br/>js/dist/preprocessing.js"]
         CW["resources/chat-widget/src"] -- "npm install (prepare: microbundle)" --> CWD["chat-widget/dist/index.umd.js"]
         JC["src/jsconsole"] -- "npm install, webpack" --> JCD["jsconsole/build/static/*"]
-        XT["js/node_modules/xterm/dist/xterm.css"]
+        XT["js/node_modules/@xterm/xterm/css/xterm.css"]
     end
     RES["resources/*.html, css, js,<br/>images, docs, meta/demos.xml"]
     GB --> BD["bindata/static/…"]
@@ -44,6 +46,8 @@ flowchart LR
   | `make test` | Only checks `go fmt` |
 
 - **Version string.** `main.Version` + `main.CommitID` are set by `-ldflags`. `gotty/Makefile` uses `VERSION=2.0.0-alpha.3`.
+
+For a local build and test loop on macOS (Colima with Rosetta, plus a dev container that mounts the repo), see [Run locally on macOS (Colima)](../../README.md#run-locally-on-macos-colima).
 
 ## 3. Container image (`Dockerfile`)
 

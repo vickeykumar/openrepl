@@ -7,7 +7,7 @@
 
 .logo svg text {
   fill:var(--accent-color);
-  font-family:Arial;
+  font-family: var(--font-display);
   font-size:15px;
 }
 
@@ -260,7 +260,7 @@ nav {
   border: 1px solid var(--light-gray-color);
   box-shadow: 0 1px 0 0 var(--medium-gray-color);
   border-radius: 3px;
-  font-family: Courier;
+  font-family: var(--font-code);
   font-size: 0.8rem;
   color: var(--dark-gray-color);
   padding: 3px 3px 1px 3px;
@@ -431,7 +431,7 @@ Fork REPL button */
 .widget {
   display: inline-flex;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
   font-size:0;
   white-space:nowrap;
   -webkit-user-select:none;
@@ -536,7 +536,7 @@ Fork REPL button */
 /* share button */
 
 .share-btn {
-font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif,Apple Color Emoji,Segoe UI Emoji;
+font-family: var(--font-ui);
 position: relative;
 display: inline-block;
 font-weight: 500;
@@ -552,7 +552,7 @@ border-radius: .25em;
 -webkit-appearance: none;
 color: #fff;
 background-color: var(--rev-accent-color);
-background-image: linear-gradient(-180deg,var(--rev-accent-color-light),var(--rev-accent-color) 45%);
+background-image: none;
 padding: 3px 8px;
 font-size: 11px;
 line-height: 12px;
@@ -562,7 +562,7 @@ list-style: none;
 
 .share-btn:hover {
     background-color: var(--rev-accent-color-dark);
-    background-image: linear-gradient(-180deg,var(--rev-accent-color),var(--rev-accent-color-dark) 45%);
+    background-image: none;
     background-position: -.5em;
     border-color: rgba(27,31,35,.5);
 }
@@ -597,7 +597,7 @@ list-style: none;
 /**dnsfbdsf**/
 
 .get-repo-modal-options {
-font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif,Apple Color Emoji,Segoe UI Emoji;
+font-family: var(--font-ui);
 font-size: 14px;
 line-height: 1.5;
 color: #24292e;
@@ -628,7 +628,7 @@ display: block;
     width: 98%;
 }
 .input-monospace {
-    font-family: SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace;
+    font-family: var(--font-code);
 }
 .input-sm {
     min-height: 20px;
@@ -732,7 +732,7 @@ display: block;
 
 h2 {
   text-align: center;
-  font-family: 'Pacifico', cursive;
+  font-family: var(--font-display);
   font-size: 30px;
   margin-top: 85px;
   color: gray;
@@ -1169,3 +1169,71 @@ overflow: hidden;
     100% { transform: rotate(0deg); }
 }
 /* chatgpt button ends */
+
+/* third-party widgets follow the site's UI font */
+.introjs-tooltip,
+.introjs-button,
+.firebaseui-container,
+.firebaseui-container .mdl-button {
+  font-family: var(--font-ui);
+}
+
+/* Genie nudge after the first terminal error (T3) */
+.genie-nudge {
+  position: fixed;
+  right: 20px;
+  bottom: 88px;
+  z-index: 9998;
+  max-width: 280px;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  background: var(--rev-accent-color);
+  color: #F2F0EC;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.genie-nudge--hide {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.genie-nudge__text {
+  margin: 0 0 10px 0;
+  color: inherit;
+  font-weight: 500;
+}
+.genie-nudge__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.genie-nudge__ask {
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent-color);
+  color: var(--on-accent-color);
+  font-weight: 600;
+  cursor: pointer;
+}
+.genie-nudge__ask:hover,
+.genie-nudge__ask:focus-visible {
+  filter: brightness(1.08);
+}
+.genie-nudge__close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #F2F0EC;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.genie-nudge__close:hover,
+.genie-nudge__close:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+}

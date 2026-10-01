@@ -23,16 +23,18 @@ These are quirks and debt found during the code walkthrough, ordered by impact w
 | P3 | **REPLs share the host filesystem view** (new mount namespace, no chroot). Workspaces are separated only by cwd and `$HOME`. | Consider a read-only base plus a per-user bind mount (pivot_root), or an OCI runtime. |
 | P4 | **Only memory is limited.** CPU shares are commented out, and there is no pids or disk-I/O limit. The disk quota is checked only on session start, create and upload. | Enable the `cpu` and `pids` controllers, and consider per-workspace quotas (XFS project quotas or loopback images). |
 | P5 | **Minimal automated tests.** Only `webtty/webtty_test.go` exists. `make test` checks only `go fmt`, and CI only builds the image. | Add handler tests (routing, file-browser path checks, rate limiter) and run `go test` in CI. |
-| P6 | **Legacy build stack.** Go 1.19 with GOPATH and vendored copies (some patched in place), TypeScript 2.3, webpack 2, xterm.js 2.7, firebase 3.x in the bundle. | Migrate to Go modules (keeping the pty patch as a fork), then upgrade xterm.js (5.x) and the bundler. |
+| P6 | **Legacy Go build.** Go 1.19 with GOPATH and vendored copies (some patched in place). The terminal client was upgraded in Phase 3 (T19): xterm.js 6, webpack 5, TypeScript 4.9, and no bundled Firebase. The build image still uses Node 12, which keeps TypeScript below 5. | Migrate to Go modules (keeping the pty patch as a fork), and move the build image to a current Node LTS. |
 
 ## Frontend
 
 | # | Issue | Suggested fix |
 |---|---|---|
-| F1 | **Two Firebase SDKs.** The bundle uses firebase 3.x, and the page loads the 9.x compat SDK (with `firebase-auth-compat` included twice). | Standardise on the page's modular SDK and drop the bundle copy. |
+| F1 | ~~**Two Firebase SDKs.**~~ Fixed in Phase 2 (T16): the bundle uses the page's 9.x compat SDK, and `firebase-auth-compat` loads once. | Moving to the modular SDK is still open. |
 | F2 | **Every terminal output chunk is pushed to Firebase**, even when nobody is viewing the share link. This adds latency and RTDB cost. | Mirror only after a viewer joins (presence node), or batch writes. |
-| F3 | **`scribbler.js` is a 2,100-line global script**, and many head scripts block rendering. | Split it into modules, `defer` third-party scripts, and lazy-load reCAPTCHA, intro.js and the chat widget. |
+| F3 | ~~**`scribbler.js` is a 3,000-line global script.**~~ Split in Phase 3 (T20) into 18 feature files under `src/js/src/page/`, bundled by webpack. They still share page globals rather than importing from each other. | Move shared helpers to real imports file by file when you next change them. |
 | F4 | **The chat rate limit lives in the session cookie**, so it is per browser and resets when cookies are cleared. | Keep counters server-side, keyed by uid or IP. |
-| F5 | **Upload inconsistencies.** The alert says 10 MB but the limit is 20 MB. The checksum is computed from a text read, and a mismatch is ignored on the server. | Hash the ArrayBuffer, and either enforce the checksum or drop it. |
-| F6 | **One URL for every language** (`/?python`). The `index.html` template variables are unused, several pages have empty meta descriptions, and `practice.html` has the title "About OpenREPL…". | Add per-language routes that render the index template with their own title, description and H1, plus `sitemap.xml` and canonical tags. |
-| F7 | **Leftover files.** `resources/NewFile.html` (an Eclipse "Insert title here" stub) is still bundled, and `index_backup.html`/`.css` are unused. | Delete them. |
+| F5 | **Upload inconsistencies.** (The 10 MB message is fixed; it now says 20 MB.) The checksum is computed from a text read, and a mismatch is ignored on the server. | Hash the ArrayBuffer, and either enforce the checksum or drop it. |
+| F6 | ~~**One URL for every language.**~~ Fixed in Phase 2 (T12): language pages, `sitemap.xml`, canonical links, and a proper title and description on the practice page. | None. |
+| F7 | **Leftover files.** `resources/NewFile.html` (an Eclipse "Insert title here" stub) is still bundled, `index_backup.html`/`.css` are unused, and `css/scribbler-misc.css` is no longer loaded by any page after the practice redesign. | Delete them. |
+| F8 | **Practice sync trusts the session's `uid`.** `/practice/progress` checks the session cookie against `user_sessions.db`, but `POST /login` accepts any `uid` (launch blocker B2), so someone who knows a user's `uid` could read or change that user's practice list. | Verify the Firebase ID token in `/login` (fixes B2 for everything keyed by `uid`). |
+| F9 | **Practice merge is per question id.** Two browsers that generate a question with the same title get two entries after they sync, and edits to the same question's code in two browsers keep only the newer copy. | Acceptable for now; dedupe by title in `PracticeStore` if it shows up. |
