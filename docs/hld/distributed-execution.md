@@ -1726,7 +1726,7 @@ RemoteBackend
 
 Settled after inspecting the OpenREPL codebase and `sish-lb`:
 
-- **Transport:** SSH (`golang.org/x/crypto/ssh`). The worker dials out once; the gateway opens one SSH channel per proxied request or WebSocket. SSH keepalives serve as the heartbeat and connection state as ONLINE/OFFLINE.
+- **Transport:** SSH (`golang.org/x/crypto/ssh`), carried over a WebSocket on the gateway's public port (`wss://<gateway>/api/tunnel`, recommended) or, optionally, over raw TCP (`ssh://<gateway>:2222`). Both feed the same SSH server code. The worker dials out once; the gateway opens one SSH channel per proxied request or WebSocket. SSH keepalives serve as the heartbeat and connection state as ONLINE/OFFLINE.
 - **sish-lb reuse:** `sish-lb` is a `package main` driven by global flags, so it cannot be imported. The `ServerPool` weighted selection, the reverse-proxy-over-channel pattern and `copyBoth`/`IdleTimeoutConn` are extracted and adapted into `src/` (GOPATH layout, `GO111MODULE=off`). The hostname routing key is replaced by the session key.
 - **Cookie secret:** the session-cookie secret stays on the gateway only. The gateway authenticates the user and injects trusted identity headers (uid, home dir) over the tunnel; workers honour them only on the tunnel listener, never from the public internet.
 - **Session key:** the gateway keeps its own `uid -> backend` registry, because OpenREPL sessions are signed cookies with no server-side store. The workspace is the user's `homedir`.
@@ -1750,10 +1750,14 @@ The same `gotty` binary runs every role; `--mode` selects it. Full flag and conf
 gotty -w -p 8080
 
 # gateway
-GOTTY_WORKER_TOKEN=... gotty -w --mode=gateway --port 80 --tunnel-addr 0.0.0.0:2222
+GOTTY_WORKER_TOKEN=... gotty -w --mode=gateway --port 80
 
 # worker (outbound only, no public port)
 GOTTY_WORKER_TOKEN=... gotty -w --mode=worker \
-    --worker-server gateway.example.com:2222 \
+    --worker-server wss://gateway.example.com/api/tunnel --worker-id worker-01
+
+# worker over raw SSH (optional; needs the gateway's --tunnel-addr and a pinned host key)
+GOTTY_WORKER_TOKEN=... gotty -w --mode=worker \
+    --worker-server ssh://gateway.example.com:2222 \
     --worker-hostkey 'SHA256:<fingerprint from gateway log>' --worker-id worker-01
 ```

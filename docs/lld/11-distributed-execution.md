@@ -44,12 +44,13 @@ Derived from `setupHandlers` (`src/server/server.go`).
 
 | Class | Routes | Runs on |
 |---|---|---|
-| Gateway only | `/admin`, `/admin/*`, `editblog.html`, `login`, `logout`, `profile`, `auth_token.js`, `config.js`, `settings.js`, `chat/completions`, `feedback`, `blog`, `snippet`, `s/`, `demo`, `practice/*`, `sitemap.xml`, static assets, `/` and language pages | Gateway handlers, always |
+| Gateway only | `/api/tunnel` (worker tunnel, section 9), `/admin`, `/admin/*`, `editblog.html`, `login`, `logout`, `profile`, `auth_token.js`, `config.js`, `settings.js`, `chat/completions`, `feedback`, `blog`, `snippet`, `s/`, `demo`, `practice/*`, `sitemap.xml`, static assets, `/` and language pages | Gateway handlers, always |
 | Execution-bound | `ws`, `ws_c`, `ws_cpp`, `ws_go`, every `ws_<command>`, `ws_filebrowser`, `upload_file` | Backend chosen by affinity: `LocalBackend` or a worker |
 
 `gateway.Router.ServeHTTP`:
 
 ```text
+path == tunnelPath                              -> tunnel.Server.ServeWS (local; worker connections only)
 path == "/admin" || HasPrefix(path, "/admin/")  -> site mux (local, never proxied)
 isExecutionBound(path)                          -> ExecutionManager.Resolve(r) -> backend
 otherwise                                       -> site mux
@@ -157,13 +158,26 @@ This replaces the earlier "sniff the title frame" idea: the worker already knows
 
 ## 9. Tunnel (`src/tunnel`)
 
-Transport is SSH (`golang.org/x/crypto/ssh`), one connection per worker, dialed outbound from the worker.
+Transport is SSH (`golang.org/x/crypto/ssh`), one connection per worker, dialed outbound from the worker. The SSH session can ride on either of two byte streams; both feed the same `ssh.NewServerConn` on the gateway, so everything above the stream (registration, heartbeat, channels) is identical.
+
+| `--worker-server` value | Stream | Use |
+|---|---|---|
+| `wss://gateway.example.com/api/tunnel` (recommended), `ws://` for local tests | A WebSocket on the gateway's normal HTTP(S) port | One public port, works through HTTP-only fronts (nginx, Cloudflare, load balancers), TLS comes from the existing HTTPS termination |
+| `ssh://gateway.example.com:2222` | Raw TCP to a dedicated SSH listener (`--tunnel-addr`) | Networks where WebSocket is not allowed but the port is open |
+
+### WebSocket carrier (`src/tunnel/wsconn.go`)
+
+- `wsConn` wraps a `*websocket.Conn` (gorilla, already vendored) as a `net.Conn`: binary frames, `Read` drains the current frame then fetches the next, `Write` sends one binary frame, a mutex serialises writers.
+- Gateway: `tunnel.Server.ServeWS` is registered on the outer mux at `--tunnel-path` (default `/api/tunnel`, relative to the random-URL prefix if one is set). It sits outside `gziphandler`, `wrapHeaders` and the basic-auth wrapper, because workers cannot answer a basic-auth challenge and gzip must not touch an upgraded connection.
+- The upgrade is rejected unless the request has `Authorization: Bearer <worker-token>` (constant-time compare). Browsers cannot send this header and workers send no `Origin`, so any request carrying an `Origin` is also rejected. After the upgrade the SSH handshake authenticates again with the same token.
+- Keepalive: WebSocket ping every 20 s (below the idle timeout of common proxies) in addition to the SSH keepalive. A missed pong closes the carrier and the worker goes `OFFLINE`.
+- Failed upgrades are rate-limited per client IP.
 
 ```mermaid
 sequenceDiagram
     participant W as Worker
     participant G as Gateway tunnel.Server
-    W->>G: SSH connect (user=worker-id, password=--worker-token, host key pinned)
+    W->>G: connect (wss upgrade with Bearer token, or raw TCP), then SSH handshake (user=worker-id, password=--worker-token)
     G-->>W: auth ok
     W->>G: global request "register" {id, version, os, arch, languages[], capacity, weight}
     G-->>W: reply {connection_id, heartbeat_interval}
@@ -177,7 +191,7 @@ sequenceDiagram
 
 | Item | Detail |
 |---|---|
-| Auth | Token as SSH password for v1 (compared in constant time); host key from `--tunnel-hostkey`, pinned by the worker via `--worker-hostkey`. Mutual-TLS-style hardening can use key auth later. |
+| Auth | Token as SSH password for v1 (compared in constant time); over `wss://` the TLS certificate authenticates the gateway; over `ssh://` the worker must pin the gateway host key via `--worker-hostkey`. Key-based worker auth can replace the token later. |
 | Control messages | Global requests: `register`, `heartbeat`, `jid-open`, `jid-close`, `unregister`. Gateway→worker: `drain` (sets worker to stop reporting available capacity; the gateway-side flag is what blocks assignment). |
 | Data | One SSH channel per proxied HTTP request or WebSocket. A channel is a `net.Conn` wrapper, closed when either side closes. `copyBoth` / `IdleTimeoutConn` from sish-lb are reused for idle handling. |
 | Liveness | `keepalive@openssh.com` at `heartbeat_interval`; no heartbeat for `timeout` (30 s) or a closed connection ⇒ `OFFLINE`. |
@@ -244,18 +258,19 @@ New fields on `server.Options` (same tag convention: `hcl`, `flagName`, `default
 | Flag / HCL key | Default | Mode |
 |---|---|---|
 | `--mode` / `mode` | `standalone` | all |
-| `--tunnel-addr` / `tunnel_addr` | `0.0.0.0:2222` | gateway |
-| `--tunnel-hostkey` / `tunnel_hostkey` | `~/.gotty.tunnel_key` (private key; generated if absent, its SHA256 fingerprint is logged at startup) | gateway |
-| `--worker-hostkey` / `worker_hostkey` | none (required) | worker: the gateway's SHA256 fingerprint to pin |
+| `--tunnel-path` / `tunnel_path` | `/api/tunnel` (WebSocket tunnel endpoint on the public port) | gateway |
+| `--tunnel-addr` / `tunnel_addr` | empty = raw SSH listener disabled; e.g. `0.0.0.0:2222` to enable | gateway |
+| `--tunnel-hostkey` / `tunnel_hostkey` | `~/.gotty.tunnel_key` (private key; generated if absent, its SHA256 fingerprint is logged at startup) | gateway (used by both carriers) |
+| `--worker-hostkey` / `worker_hostkey` | none; required for `ssh://`, optional for `wss://` | worker: the gateway's SHA256 fingerprint to pin |
 | `--worker-token` / `worker_token` | empty (required) | gateway, worker |
 | `--local-weight` / `local_weight` | `10` (0 = routing-only gateway) | gateway |
 | `--worker-id` / `worker_id` | hostname | worker |
-| `--worker-server` / `worker_server` | none | worker |
+| `--worker-server` / `worker_server` | none (required). URL: `wss://host/api/tunnel` or `ssh://host:2222` | worker |
 | `--worker-weight` / `worker_weight` | `10` | worker |
 | `--worker-capacity` / `worker_capacity` | derived from RAM | worker |
 | `--worker-languages` / `worker_languages` | auto-detected from installed REPLs | worker |
 
-Validation (`Options.Validate`): gateway requires a token; worker requires `worker-server` and a token; `standalone` ignores the rest.
+Validation (`Options.Validate`): gateway requires a token; worker requires a `worker-server` URL with a `wss`, `ws` or `ssh` scheme, a token, and a `worker-hostkey` when the scheme is `ssh`; `standalone` ignores the rest.
 
 ## 13. Usage
 
@@ -271,14 +286,13 @@ The binary is the same `gotty` for every mode; `--mode` selects the role. Every 
 
 ```bash
 export GOTTY_WORKER_TOKEN='<shared secret>'
-gotty -w --mode=gateway --port 80 --max-connection 2564 \
-      --tunnel-addr 0.0.0.0:2222 --local-weight 10
+gotty -w --mode=gateway --port 80 --max-connection 2564 --local-weight 10
 ```
 
-- Public traffic on `--port` as today; workers connect to `--tunnel-addr`.
-- On first start it generates `~/.gotty.tunnel_key` and logs the fingerprint (`SHA256:...`). Copy that value to each worker's `--worker-hostkey`.
+- Workers connect to `/api/tunnel` on the same public port, so no extra port or firewall rule is needed.
 - `--local-weight 0` makes the gateway routing-only (it runs no sessions itself).
-- Open inbound TCP `2222` (or your `--tunnel-addr` port) to workers only; it is not a browser port.
+- Optional raw SSH listener for networks that block WebSockets: add `--tunnel-addr 0.0.0.0:2222` and open that TCP port to workers only. On first start the gateway generates `~/.gotty.tunnel_key` and logs its fingerprint (`SHA256:...`); workers using `ssh://` pin it with `--worker-hostkey`.
+- If a reverse proxy sits in front, it must allow WebSocket upgrades on `/api/tunnel` and an idle timeout above 60 s (pings keep the link active).
 
 Equivalent `~/.gotty`:
 
@@ -286,7 +300,7 @@ Equivalent `~/.gotty`:
 mode         = "gateway"
 port         = "80"
 max_connection = 2564
-tunnel_addr  = "0.0.0.0:2222"
+# tunnel_addr = "0.0.0.0:2222"   # optional raw SSH listener
 local_weight = 10
 # worker_token comes from $GOTTY_WORKER_TOKEN
 ```
@@ -296,9 +310,17 @@ local_weight = 10
 ```bash
 export GOTTY_WORKER_TOKEN='<same shared secret>'
 gotty -w --mode=worker \
-      --worker-server gateway.example.com:2222 \
-      --worker-hostkey 'SHA256:<fingerprint from the gateway log>' \
+      --worker-server wss://gateway.example.com/api/tunnel \
       --worker-id worker-01 --worker-weight 10
+```
+
+Raw SSH instead (needs the gateway's `--tunnel-addr` and a pinned host key):
+
+```bash
+gotty -w --mode=worker \
+      --worker-server ssh://gateway.example.com:2222 \
+      --worker-hostkey 'SHA256:<fingerprint from the gateway log>' \
+      --worker-id worker-01
 ```
 
 - Outbound only: no inbound port or public address is needed, so it works behind NAT or a firewall.
@@ -310,8 +332,8 @@ Equivalent `~/.gotty`:
 
 ```hcl
 mode            = "worker"
-worker_server   = "gateway.example.com:2222"
-worker_hostkey  = "SHA256:<fingerprint>"
+worker_server   = "wss://gateway.example.com/api/tunnel"
+# worker_hostkey = "SHA256:<fingerprint>"   # only needed for ssh://
 worker_id       = "worker-01"
 worker_weight   = 10
 ```
@@ -320,7 +342,8 @@ worker_weight   = 10
 
 - **systemd:** copy `src/services/gotty.service` and change `ExecStart` to the gateway or worker command above (the title format flag is no longer needed). Use `EnvironmentFile=` for `GOTTY_WORKER_TOKEN`.
 - **Docker:** run the existing image with the same arguments; for a worker no `-p` port mapping is required.
-- **TLS:** terminate HTTPS on the gateway (`--tls`) or in front of it. The tunnel is SSH and encrypted independently.
+- **TLS:** terminate HTTPS on the gateway (`--tls`) or in front of it and use `wss://`; the certificate then authenticates the gateway. The SSH layer inside the tunnel encrypts independently.
+- **Basic auth:** if `--credential` basic auth is enabled it does not apply to `/api/tunnel` (workers authenticate with the token instead).
 - **Rolling out:** start the gateway, then workers. Drain a worker before maintenance (below), wait for its active count to reach 0, then stop it.
 
 ### Operating the fleet
@@ -333,7 +356,7 @@ curl -b "$ADMIN_COOKIE" -X POST https://openrepl.example.com/admin/workers/worke
 curl -b "$ADMIN_COOKIE" -X POST https://openrepl.example.com/admin/workers/worker-01/undrain
 ```
 
-Validation at startup fails fast: a gateway or worker without a token, or a worker without `--worker-server` / `--worker-hostkey`, exits with an error instead of running half-configured.
+Validation at startup fails fast: a gateway or worker without a token, or a worker without `--worker-server` (or without `--worker-hostkey` when using `ssh://`), exits with an error instead of running half-configured.
 
 ## 14. Failure handling
 
@@ -351,7 +374,8 @@ Validation at startup fails fast: a gateway or worker without a token, or a work
 
 - Strip all inbound `X-OpenREPL-*` headers on the gateway. Workers accept them only on the tunnel listener.
 - Workers have no public listener in worker mode; the tunnel is outbound only.
-- Constant-time token comparison; host key pinning; rate-limit failed registrations.
+- `/api/tunnel` is on the public port: Bearer-token check before upgrade, reject any request with an `Origin`, per-IP rate limit on failures, then SSH auth again inside.
+- Constant-time token comparison; host key pinning for `ssh://`; rate-limit failed registrations.
 - Remove client-supplied `homedir` for remote sessions; validate `jid` ownership by uid.
 - `ws_filebrowser` already requires paths under the homedir (`strings.HasPrefix(path, homedir)`); that check now uses the worker-resolved homedir.
 - The affinity cookie carries only a random guest id, signed on the gateway.
