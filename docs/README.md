@@ -1,6 +1,6 @@
 # OpenREPL design docs
 
-These docs describe how OpenREPL is built. The high-level design (HLD) lives in the [project README](../README.md#architecture-high-level-design). The proposed distributed-execution design is in [docs/hld/distributed-execution.md](hld/distributed-execution.md). The low-level design (LLD) documents below explain each subsystem at code level, naming the files, functions and data formats involved.
+These docs describe how OpenREPL is built. The high-level design (HLD) lives in the [project README](../README.md#architecture-high-level-design). The distributed-execution design is in [docs/hld/distributed-execution.md](hld/distributed-execution.md), and how to run a gateway and workers is in the [operator guide](distributed-mode.md). The proposed workspace-synchronization design is in [docs/hld/workspace-sync.md](hld/workspace-sync.md). The low-level design (LLD) documents below explain each subsystem at code level, naming the files, functions and data formats involved.
 
 To build, run and test OpenREPL on your machine, see [Run locally on macOS (Colima)](../README.md#run-locally-on-macos-colima) in the project README.
 
@@ -18,7 +18,8 @@ To build, run and test OpenREPL on your machine, see [Run locally on macOS (Coli
 | 08 | [Build, packaging and deployment](lld/08-build-and-deploy.md) | Makefile and bindata pipeline, Docker, CI, systemd, runtime file layout |
 | 09 | [Adding a new REPL](lld/09-adding-a-repl.md) | Step-by-step checklist that touches every layer |
 | 10 | [Known limitations and tech debt](lld/10-known-limitations.md) | Quirks found during the code walkthrough, with suggested fixes |
-| 11 | [Distributed execution](lld/11-distributed-execution.md) | Proposed: gateway/worker modes, route ownership, session affinity, SSH tunnel, jid routing, capacity, failure handling |
+| 11 | [Distributed execution](lld/11-distributed-execution.md) | Implemented: gateway/worker modes, route ownership, session affinity, SSH tunnel, jid routing, capacity, failure handling |
+| 12 | [Workspace synchronization](lld/12-workspace-sync.md) | Proposed: a copy of each home on the gateway and on its owning node, two-way sync over the tunnel, base record, reconcile on reconnect, `SYNCING` state, gateway fallback for file requests, guest expiry, copy on placement |
 
 ## Source map
 
@@ -33,6 +34,8 @@ Go code uses a GOPATH layout: the repo root is `GOPATH`, packages live under `sr
 | `src/github.com/kr/pty/` | Vendored **and patched** `pty.Start` (adds container attributes) | 02, 03 |
 | `src/containers/` | Namespaces, cgroups, `nsenter` | 03 |
 | `src/filebrowser/` | Workspace tree, quota, fsnotify | 04 |
+| `src/gateway/`, `src/tunnel/`, `src/trusted/` | Distributed execution: session-affinity router and backends, the gateway-worker SSH tunnel (over WebSocket or TCP), trusted identity headers | 11 |
+| `src/golang.org/x/crypto/` | Vendored `x/crypto` v0.14.0, only the packages `ssh` needs (`ssh`, `chacha20`, `curve25519`, `blowfish`, `internal/alias`, `internal/poly1305`), without tests | 11 |
 | `src/user/`, `src/cookie/`, `src/cachedb/` | Sessions, cookies, cached UnQLite | 05 |
 | `src/utils/`, `src/encoder/` | Constants, flags, job scheduler, demo types, crypto helpers | 01, 03, 05 |
 | `src/resources/` | HTML, CSS, JS, images, `meta/demos.xml`, chat widget source | 04, 06 |

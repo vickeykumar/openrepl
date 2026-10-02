@@ -1,6 +1,23 @@
 # LLD 11: Distributed execution (gateway and workers)
 
-Status: proposed. Implements [hld/distributed-execution.md](../hld/distributed-execution.md) against the current code. Nothing here exists yet; file names are the planned ones.
+Status: steps 1 to 3 are implemented on the `distributed-execution` branch. See the next section for exactly what exists and what is left. Implements [hld/distributed-execution.md](../hld/distributed-execution.md) against the current code.
+
+## Implementation status
+
+| Piece | State |
+|---|---|
+| `--mode` (`standalone`, `gateway`, `worker`), option validation | Implemented |
+| `gateway` package: router, session registry, guest affinity cookie, `LocalBackend`, `RemoteBackend`, route map | Implemented, unit and in-process cluster tests |
+| `tunnel` package: WebSocket carrier at `/api/tunnel`, optional raw `ssh://` listener, registration, heartbeat, reconnect, streams | Implemented and tested |
+| `trusted` package: identity headers and worker workspace naming | Implemented and tested |
+| Worker mode: serves only tunnel streams, trusted identity, cookie-secret and auth-token sync, guest cleanup | Implemented, checked end to end with a gateway and a worker container |
+| Cross-session routing of `jid` and `homedir`, client puts `jid` on the WebSocket URL | Implemented |
+| Signed-in users with a workspace on the gateway stay on `local` | Implemented |
+| Placement | `gateway.Pool`: randomized weighted selection over the online backends that have a weight and free capacity (section 8) |
+| Durable `uid -> worker` pin in the user database | Implemented (`user/pin.go`), unit-tested through the router; not exercised with a real sign-in |
+| Drain, `/admin/workers`, `/admin/sessions`, `--local-weight`, `--worker-languages` | Implemented and tested (the admin API in-process; over HTTP only the 401 for a caller who is not an admin) |
+
+Known limits: a drain set through the admin API is kept in memory, so a gateway restart clears it; a client that never loads a page gets no affinity (section 20); a signed-in user cannot be moved to another worker (section 18).
 
 Scope today: `src/server/{server,handlers,options}.go`, `src/cookie/cookie.go`, `src/user/util.go`, `src/containers/container_linux.go`, `src/gotty/main.go`. New: `src/gateway/`, `src/worker/`, `src/tunnel/`.
 
@@ -81,7 +98,7 @@ type ExecutionContext struct {
 | `Touch(key)` | Slides a guest's expiry on each execution-bound request. |
 | `Release(key)` | Removes it (guest expiry, explicit logout). |
 
-- **Signed-in users are pinned.** `uid -> worker` is persisted (a record in the existing UnQLite user store, written through the `user` package) so it survives a gateway restart. New sessions for that user go to the same worker. If it is `DRAINING` or `OFFLINE` the request fails with 503 "workspace node unavailable"; the pool is not consulted.
+- **Signed-in users are pinned.** A user counts as signed in only while the session cookie says so and has not expired, the same rule `cookie.GetOrUpdateHomeDir` uses; otherwise the request is a guest's. `uid -> worker` is persisted (key `worker-pin:<uid>` in `user_sessions.db`, `user/pin.go`) the first time the pool places the user, so it survives a gateway restart. With no live context the router reads the pin and goes straight to that backend. If it is not connected or not `ONLINE`, the request fails with 503 "workspace node unavailable"; the pool is not consulted and the pin is not changed. A user who already has a session keeps it while the worker drains.
 - **Guests are placed freely.** Their context lives in memory only. The guest id is carried in an `or-aff` cookie, signed with the existing `cookie.SECRET_KEY` (gateway side only) via `securecookie`.
 - **First assignment happens on the first page load**, not on the first `ws*` call. The IDE page fires several requests at once (terminal WebSocket, file tree, usage), and today the index page is what creates the cookie and homedir so those requests share one directory (`handleIndex` comment, `handlers.go:307`). The gateway therefore issues the guest id and picks the backend when it serves `/` or a language page, and any later execution-bound request without a context (API clients) is assigned on the spot. This costs nothing: capacity is consumed only while a WebSocket is open (section 8), a registry entry is not a slot.
 - **Existing signed-in users stay where their files are.** Today every user's homedir is on the one server's disk. For a signed-in user with no stored pin, the gateway checks whether their homedir already exists locally (`HOME_DIR + generateHomeDirectoryID(...)`) and, if so, pins them to `local`. Only users with no existing local workspace go through the pool. Without this rule the first login after enabling gateway mode could land an existing user on an empty worker.
@@ -94,13 +111,14 @@ type ExecutionContext struct {
 type Backend interface {
     ID() string
     State() State                  // Online, Draining, Offline
-    Capacity() (used, max int64)   // memory-weight units, section 8
-    HasLanguage(cmd string) bool
     Serve(w http.ResponseWriter, r *http.Request) error
+    Weight() int                   // share of new sessions, 0 = never chosen
+    Capacity() (used, max int64)   // memory-weight MB, max 0 = no limit
+    HasLanguage(command string) bool
 }
 ```
 
-- **`LocalBackend`** (`gateway/local.go`). `Serve` calls the existing site/ws mux handler directly. No proxy hop. Capacity is `--max-connection` / total weight as today. `--local-weight=0` makes the gateway routing-only (never selected by the pool).
+- **`LocalBackend`** (`gateway/backend.go`). `Serve` calls the existing site/ws mux handler directly. No proxy hop. Capacity is `--max-connection` / total weight as today. `--local-weight=0` makes the gateway routing-only (never selected by the pool).
 - **`RemoteBackend`** (`gateway/remote.go`). Wraps a `*tunnel.Conn`. `Serve` runs a `httputil.ReverseProxy` whose `Transport.DialContext` opens a new SSH channel `openrepl-http` to the worker. Go 1.19's `ReverseProxy` already handles `Upgrade`, so WebSockets are bridged without `koding/websocketproxy`. `Host`, method, path, query, cookies and body are preserved.
 
 Gateway-added headers on the proxied request (any `X-OpenREPL-*` header supplied by the client is deleted first):
@@ -132,7 +150,7 @@ Decision: workers may read the session cookie (for example to take the homedir f
 
 - **Secret sync.** The cookie secret (`cookie.SECRET_KEY`) is sent to the worker in the `register` reply, on every connect and reconnect, over the authenticated tunnel. The worker calls `cookie.Init_SessionStore(secret)` with it, replacing the temporary secret its own `init()` generated. It is held in memory only: never written to disk, never logged, and not part of any admin output. A gateway restart or secret change reaches workers on their next reconnect; a worker never keeps a secret from a previous connection.
 - **Cookie forwarded.** The gateway forwards the `Cookie` header unchanged. The worker can therefore decode `user-session` and read `uid`, `loggedIn`, `expirationTime` and the stored `homedir` with the existing `cookie.Get_*` functions.
-- **Trusted headers stay authoritative for identity and privilege.** `X-OpenREPL-Uid`, `X-OpenREPL-Priv` and `X-OpenREPL-Home-ID` are set by the gateway after it has validated the session against the DB. A signature-valid cookie does not prove the session is still live (logout and expiry live in the gateway DB), so the worker must not use the cookie to decide who the user is or whether they are an admin. `IsUserAdmin` and `session.LogOut()` are never called on a worker; they need the user DB.
+- **Trusted headers stay authoritative for identity and privilege.** `X-OpenREPL-Uid`, `X-OpenREPL-Priv` and `X-OpenREPL-Home-ID` are set by the gateway after it has validated the session against the DB. A signature-valid cookie does not prove the session is still live (logout and expiry live in the gateway DB), so the worker must not use the cookie to decide who the user is or whether they are an admin. `IsUserAdmin` is never called on a worker; it reads the user profile and session records, which only the gateway has.
 - **Cookie reads are for data the cookie carries** (for example `homedir`), used only as a hint where headers are absent, never to override a header.
 - **Writes stay with the gateway.** The gateway deletes any `Set-Cookie` on worker responses, so the worker never sets or refreshes a browser cookie. If a later change wants workers to update the cookie (for instance its `homedir`), extend this to an allow-list for the `user-session` cookie rather than removing the filter.
 - **No DB sync.** The user DB (sessions, profiles, blog, snippets, practice) is not copied to workers in v1 (see section 19).
@@ -153,7 +171,7 @@ Residual risk, accepted: a worker that holds the secret can mint a validly signe
 
 Unchanged. `processWSConn` → `server.factory.New(params)` → `containers.GetCommandArgs` → PTY in namespaces + cgroup. Run/Debug carries the editor content in the WebSocket init payload; `SaveIdeContentToFile` writes it into the worker's own homedir, so no file sync is needed. `ws_filebrowser` and `upload_file` hit the same directory.
 
-One required fix first: `generateHandleWS` calls `server.SetNewCommand(command)` on shared state per request. Make the command per-connection before relying on concurrency.
+The shared-state race in `generateHandleWS` (`server.SetNewCommand` on the single factory) is fixed in step 1: the command is passed per connection through `factory.NewWithCommand`.
 
 ## 7. Fork (`jid`) routing
 
@@ -161,7 +179,7 @@ One required fix first: `generateHandleWS` calls `server.SetNewCommand(command)`
 
 A fork link (`?jid=...`, the Fork button in `webtty.ts` `jidHandler`) can be opened by someone other than the owner, so `jid` routing must not depend on the caller's uid.
 
-- **Record.** When a worker creates a slave it sends an SSH global request `route-open {kind:"jid", key, ...}` to the gateway *before* it writes the title message to the browser; on slave close, `route-close`. The same message carries `kind:"home"` for a homedir the worker is serving (needed by shared-session viewers, section 6.2). The gateway keeps one `RouteMap` of `key -> workerID`.
+- **Record.** When a node creates a slave it announces `{kind:"jid", key}` *before* the title message is written to the browser, and withdraws it when the slave closes (`routeTracker` in `server/identity.go`). It announces `{kind:"home", key}` for a workspace it resolved for its own session (not one named by a `homedir` or `jid` override), and withdraws it after two hours without use. A worker sends these as `route-open@openrepl` / `route-close@openrepl` and waits up to 2 s for the gateway's reply; the gateway's own backend writes them straight into the map, so keys owned by `local` are routable too. The gateway keeps one `RouteMap` of `(kind, key) -> backend id`. After a reconnect the worker announces its open keys again.
 - **Route, HTTP.** `ws_filebrowser`, `upload_file` and downloads carry `jid` and `homedir` in the query (`preprocessurl`). The gateway looks them up in `RouteMap` first; a hit overrides normal affinity.
 - **Route, WebSocket.** The terminal sends `jid` only inside the init message (`webtty.ts`: `this.args += "jid=..."`), which arrives after the upgrade, when the gateway has already chosen a backend. Fix: the client also puts `jid` on the WebSocket URL (a one-line change where the connection URL is built in `gotty.ts`/`websocket.ts`). The init message is unchanged, so the worker still reads `jid` from `params`.
 - **Unknown key.** An unknown `jid` or `homedir` falls back to the caller's normal affinity; the worker then finds no such process or directory and fails as it does today. It is never re-balanced to a new worker.
@@ -172,10 +190,23 @@ This replaces the earlier "sniff the title frame" idea: the worker already knows
 
 ## 8. Capacity and load balancing
 
-- **Unit:** the existing memory weights, `containers.GetCommandWieght(command)` (the units behind `--max-connection`).
-- **Worker capacity** is advertised at registration (`--worker-capacity`, default derived from `/proc/meminfo`). `used` is the sum of weights of active sessions, reported in each heartbeat and also maintained locally by the gateway (increment when a session opens, decrement when its stream closes) so selection does not wait for a heartbeat.
-- **Selection** (`gateway/pool.go`, adapted from `sish-lb/lb.go`): filter to `Online` workers that `HasLanguage(cmd)` and have `max-used >= weight(cmd)`, then pick by weighted random using each worker's configured weight. Changes from sish-lb: no global flags, no `rand.Seed` on the global RNG (one `*rand.Rand` per pool under the mutex), no hostname keys, `Delete` by worker id, `Add` keeps the cumulative-total array.
-- `LocalBackend` participates as one more candidate when `--local-weight > 0`.
+- **Unit:** the existing memory weights in MB, `containers.GetCommandWieght(command)`, the units behind `--max-connection`.
+- **Worker capacity** is advertised at registration (`--worker-capacity`, default the machine's RAM from `/proc/meminfo`). The worker also enforces it: unless `--max-connection` is set, it uses the capacity as its own admission limit, so a terminal that does not fit is refused with the usual "exceeding max number of connections" message.
+- **Used capacity** as the gateway sees it is the larger of two numbers: what the worker last reported in a heartbeat, and the weight of the terminals currently open through this gateway (`RemoteBackend.tracked`, raised for the life of each terminal WebSocket). The second is immediate, so a burst of arrivals does not all see the same stale figure.
+- **The gateway's own backend** has weight `--local-weight` (default 10, 0 = routing-only) and capacity `--max-connection` (0 = no limit).
+
+### Selection (`gateway/pool.go`)
+
+Randomized weighted selection, the method of `ServerPool.Select` in `sish-lb/lb.go`:
+
+1. Candidates are the backends that are `ONLINE`, have a weight above 0 and have free capacity (`max == 0` or `used < max`).
+2. If none has free capacity, the candidates are all `ONLINE` backends with a weight. The session is still placed, and the node refuses the terminal itself, as a full single server does.
+3. If there is still none, placement fails with "no execution node available" (the page still loads; the terminal gets 503).
+4. The candidates are ordered by weight and their weights summed into a running total. A uniform random integer in `1..total` selects the first candidate whose running total reaches it (`sort.SearchInts`). A backend with weight 30 is chosen three times as often as one with weight 10.
+
+Differences from sish-lb: the candidate list is rebuilt on every pick because eligibility changes with state and load; there are no global flags; the pool has its own `*rand.Rand` under a mutex instead of calling `rand.Seed` on the shared generator; the key is the session, not a hostname.
+
+Placement happens once per session, on the first page load, before the language is known. So the language is not part of selection: a worker that lacks the requested REPL (`--worker-languages`) answers that terminal with 503 "this language is not available on your execution node". With no `--worker-languages` a worker is taken to have every REPL.
 
 ## 9. Tunnel (`src/tunnel`)
 
@@ -201,8 +232,8 @@ sequenceDiagram
     W->>G: connect (wss upgrade with Bearer token, or raw TCP), then SSH handshake (user=worker-id, password=--worker-token)
     G-->>W: auth ok
     W->>G: global request "register" {id, version, os, arch, languages[], capacity, weight}
-    G-->>W: reply {connection_id, heartbeat_interval, cookie_secret, auth_token}
-    loop every heartbeat_interval
+    G-->>W: reply {connection_id, heartbeat_ms, cookie_secret, auth_token}
+    loop every heartbeat_ms
         W->>G: global request "heartbeat" {used, cpu, mem}
     end
     Note over G: browser request for worker-N
@@ -213,9 +244,9 @@ sequenceDiagram
 | Item | Detail |
 |---|---|
 | Auth | Token as SSH password for v1 (compared in constant time); over `wss://` the TLS certificate authenticates the gateway; over `ssh://` the worker must pin the gateway host key via `--worker-hostkey`. Key-based worker auth can replace the token later. |
-| Control messages | Global requests: `register`, `heartbeat`, `route-open`, `route-close`, `unregister`. Gateway→worker: `drain` (sets worker to stop reporting available capacity; the gateway-side flag is what blocks assignment). |
-| Data | One SSH channel per proxied HTTP request or WebSocket. A channel is a `net.Conn` wrapper, closed when either side closes. `copyBoth` / `IdleTimeoutConn` from sish-lb are reused for idle handling. |
-| Liveness | `keepalive@openssh.com` at `heartbeat_interval`; no heartbeat for `timeout` (30 s) or a closed connection ⇒ `OFFLINE`. |
+| Control messages | SSH global requests from the worker, all answered: `register@openrepl`, `heartbeat@openrepl`, `route-open@openrepl`, `route-close@openrepl` (`tunnel/protocol.go`). The SSH user must equal the registered worker id. Drain is a gateway-side flag on the worker id, set through the admin API (section 11). |
+| Data | One SSH channel (`openrepl-http`) per proxied HTTP connection or WebSocket. `tunnel/conn.go` wraps it as a `net.Conn` with working read and write deadlines, which the terminal's session time limit relies on. `httputil.ReverseProxy` does the copying, so sish-lb's `copyBoth` was not needed. |
+| Liveness | The worker sends `heartbeat@openrepl` every interval the gateway names in its reply (`heartbeat_ms`, default 10 s). A worker silent for 30 s, or a closed connection, is `OFFLINE`. The worker likewise drops a gateway that does not answer within three intervals. The WebSocket carrier adds a ping every 20 s. |
 | Reconnect | Worker retries with capped exponential backoff and re-registers; it comes back `ONLINE` with `used=0` (sessions on the old connection are gone). |
 | Vendoring | `x/crypto/ssh` and its dependencies are not in `src/golang.org/x` today (only `sys`, `tools`); they must be vendored. The build is `GO111MODULE=off`. |
 
@@ -263,14 +294,16 @@ sequenceDiagram
 
 ## 11. Admin API (gateway-local)
 
-Registered under the existing `wrapAdmin`:
+`gateway/admin.go`, mounted by the server in gateway mode behind the existing `wrapAdmin` check. In standalone and worker mode these routes do not exist.
 
 | Route | Purpose |
 |---|---|
-| `GET /admin/workers` | JSON: id, state, last heartbeat, used/max capacity, languages, weight, active sessions |
-| `POST /admin/workers/{id}/drain` | `ONLINE` → `DRAINING` |
-| `POST /admin/workers/{id}/undrain` | `DRAINING` → `ONLINE` |
-| `GET /admin/sessions` | execution contexts (key, backend, expiry) |
+| `GET /admin/workers` | `{"workers":[...]}`: one row per backend, including `local`. Fields: `id`, `state`, `weight`, `usedMB`, `maxMB` (0 = no limit), `sessions` (execution contexts assigned), and for workers `terminals`, `languages`, `remoteAddr`, `lastSeen`, `connectionId`, `os`, `arch` |
+| `POST /admin/workers/{id}/drain` | The worker stops receiving new sessions; existing ones carry on. Replies `{"id","state"}` |
+| `POST /admin/workers/{id}/undrain` | Resumes placement |
+| `GET /admin/sessions` | `{"sessions":[...]}`: `key`, `uid`, `backend`, `created`, `expires` |
+
+Errors: 405 for the wrong method, 404 for an unknown worker or path, 400 for draining `local` (use `--local-weight 0`). The drain flag belongs to the worker id on the gateway (`tunnel.Server.SetDraining`), so it survives the worker reconnecting. It is kept in memory and is cleared by a gateway restart.
 
 ## 12. Configuration
 
@@ -279,19 +312,21 @@ New fields on `server.Options` (same tag convention: `hcl`, `flagName`, `default
 | Flag / HCL key | Default | Mode |
 |---|---|---|
 | `--mode` / `mode` | `standalone` | all |
+| `--local-weight` / `local_weight` | `10`; 0 = routing-only gateway | gateway |
 | `--tunnel-path` / `tunnel_path` | `/api/tunnel` (WebSocket tunnel endpoint on the public port) | gateway |
 | `--tunnel-addr` / `tunnel_addr` | empty = raw SSH listener disabled; e.g. `0.0.0.0:2222` to enable | gateway |
 | `--tunnel-hostkey` / `tunnel_hostkey` | `~/.gotty.tunnel_key` (private key; generated if absent, its SHA256 fingerprint is logged at startup) | gateway (used by both carriers) |
 | `--worker-hostkey` / `worker_hostkey` | none; required for `ssh://`, optional for `wss://` | worker: the gateway's SHA256 fingerprint to pin |
-| `--worker-token` / `worker_token` | empty (required) | gateway, worker |
-| `--local-weight` / `local_weight` | `10` (0 = routing-only gateway) | gateway |
+| `--worker-token` / `worker_token` (`$GOTTY_WORKER_TOKEN`) | empty. Required on a worker; a gateway without it accepts no workers | gateway, worker |
 | `--worker-id` / `worker_id` | hostname | worker |
 | `--worker-server` / `worker_server` | none (required). URL: `wss://host/api/tunnel` or `ssh://host:2222` | worker |
 | `--worker-weight` / `worker_weight` | `10` | worker |
-| `--worker-capacity` / `worker_capacity` | derived from RAM | worker |
-| `--worker-languages` / `worker_languages` | auto-detected from installed REPLs | worker |
+| `--worker-capacity` / `worker_capacity` | `0` = RAM in MB from `/proc/meminfo` | worker |
+| `--worker-languages` / `worker_languages` | empty = every REPL; otherwise a comma-separated list of REPL command names such as `python,bash,cling` | worker |
 
-Validation (`Options.Validate`): gateway requires a token; worker requires a `worker-server` URL with a `wss`, `ws` or `ssh` scheme, a token, and a `worker-hostkey` when the scheme is `ssh`; `standalone` ignores the rest.
+
+
+Validation (`Options.Validate`): a gateway without a token starts with workers disabled (every session runs locally, as in step 1); worker requires a `worker-server` URL with a `wss`, `ws` or `ssh` scheme, a token, and a `worker-hostkey` when the scheme is `ssh`; `standalone` ignores the rest.
 
 ## 13. Usage
 
@@ -307,11 +342,12 @@ The binary is the same `gotty` for every mode; `--mode` selects the role. Every 
 
 ```bash
 export GOTTY_WORKER_TOKEN='<shared secret>'
-gotty -w --mode=gateway --port 80 --max-connection 2564 --local-weight 10
+gotty -w --mode=gateway --port 80 --max-connection 2564
 ```
 
 - Workers connect to `/api/tunnel` on the same public port, so no extra port or firewall rule is needed.
-- `--local-weight 0` makes the gateway routing-only (it runs no sessions itself).
+- Without `GOTTY_WORKER_TOKEN` (or `--worker-token`) the gateway accepts no workers and runs every session itself.
+- New sessions are spread over the gateway and the online workers by weight. `--local-weight 0` makes the gateway routing-only (it runs no sessions itself, except for signed-in users whose files are already on its disk).
 - Optional raw SSH listener for networks that block WebSockets: add `--tunnel-addr 0.0.0.0:2222` and open that TCP port to workers only. On first start the gateway generates `~/.gotty.tunnel_key` and logs its fingerprint (`SHA256:...`); workers using `ssh://` pin it with `--worker-hostkey`.
 - If a reverse proxy sits in front, it must allow WebSocket upgrades on `/api/tunnel` and an idle timeout above 60 s (pings keep the link active).
 
@@ -322,7 +358,6 @@ mode         = "gateway"
 port         = "80"
 max_connection = 2564
 # tunnel_addr = "0.0.0.0:2222"   # optional raw SSH listener
-local_weight = 10
 # worker_token comes from $GOTTY_WORKER_TOKEN
 ```
 
@@ -345,7 +380,7 @@ gotty -w --mode=worker \
 ```
 
 - Outbound only: no inbound port or public address is needed, so it works behind NAT or a firewall.
-- It must have the same runtime as a normal server (the Dockerfile image, REPL toolchains, `nsenter`, cgroup v1 access). It advertises only the languages it finds installed unless `--worker-languages` is set.
+- It must have the same runtime as a normal server (the Dockerfile image, REPL toolchains, `nsenter`, cgroup v1 access). If it has only some REPLs, list them with `--worker-languages` (the command names behind the `ws_<name>` routes, for example `python,bash,cling,gointerpreter`).
 - `--worker-capacity` (memory-weight units) defaults to a value derived from RAM. It replaces `--max-connection` for admission on the worker side.
 - It reconnects automatically with backoff if the gateway restarts or the link drops.
 
@@ -417,16 +452,16 @@ Because sish-lb is `package main` with global flags, code is copied into `src/` 
 
 ## 17. Implementation order and tests
 
-1. **Router and LocalBackend, behaviour unchanged.** `gateway` package, `isExecutionBound`, `SessionRegistry`, `/admin` prefix match, per-connection command fix. Tests: route classification table, admin always local, standalone mode bypasses the router entirely, affinity cookie issue/validate, registry create/resolve/expire.
-2. **Tunnel and RemoteBackend with one worker.** `tunnel`, `worker`, trusted-header branch in `fetchRequestedPayload`, worker homedir, `handleIndex` homedir skip. Tests: register/heartbeat/timeout/reconnect against an in-process SSH server; proxied request preserves method, path, query, cookie, body; WebSocket echo through the bridge; closing the browser closes the worker stream; header stripping (spoofed `X-OpenREPL-Uid` is ignored); `homedir`/`jid` override rejected.
-3. **Pool, pinning, jid routing, drain, admin.** Tests: weighted selection with capacity, language filtering, draining/offline exclusion, pinned user gets 503 when their worker is down, `jid` routes to owner and rejects other uids, drain flow, admin JSON.
-4. **Integration:** gateway plus two worker processes: distribute sessions, verify affinity of terminal and file APIs to one worker, kill a worker (new sessions avoid it, existing fail), reconnect.
+1. **Done.** **Router and LocalBackend, behaviour unchanged.** `gateway` package, `isExecutionBound`, `SessionRegistry`, `/admin` prefix match, per-connection command fix. Tests: route classification table, admin always local, standalone mode bypasses the router entirely, affinity cookie issue/validate, registry create/resolve/expire.
+2. **Done.** **Tunnel and RemoteBackend with one worker.** `tunnel`, `worker`, trusted-header branch in `fetchRequestedPayload`, worker homedir, `handleIndex` homedir skip. Tests: register/heartbeat/timeout/reconnect against an in-process SSH server; proxied request preserves method, path, query, cookie, body; WebSocket echo through the bridge; closing the browser closes the worker stream; header stripping (spoofed `X-OpenREPL-Uid` is ignored); `homedir`/`jid` override rejected.
+3. **Done.** **Pool, pinning, jid routing, drain, admin.** Tests: weighted selection with capacity, language filtering, draining/offline exclusion, pinned user gets 503 when their worker is down, `jid` routes to owner and rejects other uids, drain flow, admin JSON.
+4. **Done** (in-process cluster tests in `gateway/integration_test.go`, and a manual run with one gateway and two worker containers). **Integration:** gateway plus two worker processes: distribute sessions, verify affinity of terminal and file APIs to one worker, kill a worker (new sessions avoid it, existing fail), reconnect.
 
 Run `go test -race ./...` for the new packages. Today only `webtty` has tests, so these are the first tests for server-side routing.
 
 ## 18. Open items
 
-- Where exactly `uid -> worker` is persisted (a new UnQLite collection in `src/user` is the plan).
+- Persisting the drain flag across gateway restarts.
 - Whether logged-in users need a way to be re-pinned by an admin (e.g. when a worker is decommissioned). Not in v1.
 - Per-worker versioning: the gateway should refuse workers whose protocol version it does not support.
 
@@ -445,7 +480,7 @@ A later phase may replace the per-gateway UnQLite stores with a shared replicate
 
 Reviewed against `server/{server,handlers,middleware,utils,handler_atomic}.go`, `cookie/cookie.go`, `user/util.go`, `containers/container_linux.go` and the page scripts under `js/src`.
 
-**Standalone behaviour.** With `--mode=standalone` nothing new is on the request path. Two small edits touch standalone code and must be behaviour-preserving: the `/admin` exact route becomes a prefix match, and `SetNewCommand` becomes per-connection instead of mutating the shared factory.
+**Standalone behaviour.** With `--mode=standalone` nothing new is on the request path. One edit touches standalone code: `SetNewCommand` became per-connection (`NewWithCommand`) instead of mutating the shared factory. The one visible effect is that `/ws` with no command now runs the startup command rather than the last-used one. The `/admin` prefix match lives in the gateway router only, so the standalone mux is unchanged.
 
 **Existing features and how they are covered**
 
@@ -465,7 +500,8 @@ Reviewed against `server/{server,handlers,middleware,utils,handler_atomic}.go`, 
 
 **Package structure.** `server` builds the mux and calls `gateway.NewRouter(mux, ...)`. `gateway` must not import `server` (import cycle); shared hooks are passed as interfaces.
 
-**Not yet verified in code; check during step 2**
-- Whether `containers` namespace and cgroup setup, or `utils.RemoveDir`, assume the homedir location beyond `utils.HOME_DIR`.
-- Where `Session-Counter` cookies (`IncrementCounterCookies`) are written and whether any execution-bound request depends on them.
-- That a `Set-Cookie` set on the 101 response of a proxied WebSocket (guest id fallback for API clients) reaches browsers; the primary path sets it on the page load instead.
+**Checked during step 2**
+- `utils.RemoveDir` only requires the path to be under `utils.HOME_DIR`, and `containers` uses `HOME_DIR + command` only. Worker workspaces live under `HOME_DIR`, so both hold.
+- The `Session-Counter` cookie helpers in `cookie.go` are not called by any server handler; the count is kept by the page script, so no execution-bound request depends on them.
+- Fork terminals (`nsenter` into the parent's namespaces) fail in the unprivileged local dev container in standalone mode too (`invalid parent id`), so they could not be exercised end to end there. The file request of a fork link was verified through the gateway.
+- Verified in step 1: a `Set-Cookie` set before a WebSocket upgrade does **not** reach the client (the upgrader writes its own 101 headers). So the guest id is issued on the entry page only; a client that never loads a page gets a fresh id per connection. This is acceptable for step 1 and means such clients have no affinity in step 2.

@@ -44,6 +44,11 @@ After that, `EnableBasicAuth` is set when `--credential` is given, and `EnableTL
 | `--close-signal` | 1 (SIGHUP) | Sent to the REPL when the WebSocket closes. |
 | `--close-timeout` | -1 | When < 0 the option is not applied, so `LocalCommand` keeps its default of 10 s before SIGKILL. |
 | `--term` | xterm | Sent to the page through `config.js` (`gotty_term`); `hterm` is also supported. |
+| `--mode` | standalone | `standalone` (today's behaviour), `gateway` (puts the `gateway` router in front of every route, see below) or `worker` (no public port; dials a gateway and serves the sessions it forwards). See LLD 11. |
+| `--worker-token` | "" | Shared secret between a gateway and its workers; prefer `$GOTTY_WORKER_TOKEN`. A gateway without it accepts no workers. |
+| `--local-weight` | 10 | Gateway: its own share of new sessions next to the workers; 0 makes it routing-only. |
+| `--tunnel-path`, `--tunnel-addr`, `--tunnel-hostkey` | `/api/tunnel`, "", `~/.gotty.tunnel_key` | Gateway: the WebSocket endpoint workers connect to, an optional raw SSH listener, and the tunnel host key file (created if missing). |
+| `--worker-server`, `--worker-hostkey`, `--worker-id`, `--worker-weight`, `--worker-capacity`, `--worker-languages` | "", "", hostname, 10, 0, "" | Worker: gateway URL (`wss://host/api/tunnel` or `ssh://host:port`), pinned host-key fingerprint (required for `ssh://`), id, placement weight, session budget in MB (0 = RAM), and the REPL commands it can run (empty = all). |
 | `--index` | "" | Serve a custom `index.html` from disk instead of the embedded one. |
 | `--random-url`, `--once`, `--timeout`, `--reconnect`, `--width/--height`, `--ws-origin`, TLS flags | | Inherited from GoTTY, semantics unchanged. |
 
@@ -65,6 +70,22 @@ flowchart LR
 ```
 
 WebSocket routes skip the logger, gzip and basic-auth wrappers. The init message's `AuthToken` authenticates them instead (LLD 02).
+
+### Gateway mode (`--mode=gateway`)
+
+`setupHandlers` wraps the whole tree above in `gateway.Router` (`server/gateway.go`). In standalone mode this wrapper does not exist. The router classifies the path (relative to `pathPrefix`):
+
+| Path | Handling |
+|---|---|
+| `admin`, `admin/...` | Straight to the existing handlers, never assigned a backend. In gateway mode this includes `admin/workers`, `admin/workers/<id>/drain`, `admin/workers/<id>/undrain` and `admin/sessions` (`gateway/admin.go`, behind `wrapAdmin`; see LLD 11) |
+| the tunnel path (default `api/tunnel`) | The worker tunnel endpoint (`tunnel.Server`), only when a worker token is set. It needs a Bearer token and refuses requests with an `Origin` |
+| `ws`, `ws_<anything>`, `upload_file` (execution-bound) | Resolve or create the session's execution context, then serve on its backend: the local backend (the same handler tree, no proxy hop) or a worker through `gateway.RemoteBackend`. A `jid` or `homedir` query that another node announced is served by that node instead |
+| `/`, `/practice`, language pages (entry pages) | Assign the session first (so the parallel requests the page makes agree on one backend), then serve normally |
+| everything else | Straight to the existing handlers |
+
+`handleIndex`, `handleFileBrowser`, `handleFileUpload` and the WebSocket handler get the user id and workspace from `Server.requestIdentity` (`server/identity.go`): the session cookie as before, or, on a worker, the gateway's `X-Openrepl-*` headers, which are honoured only on tunnel streams and stripped from every client request by the router. For a session that runs on a worker the gateway's `handleIndex` does not create a workspace.
+
+A guest is identified by a signed `or-aff` cookie (random id, HttpOnly, one hour like the guest session); a signed-in user by `cookie.Get_Uid`. The cookie is issued on the entry page. A client that opens a WebSocket without ever loading a page is assigned a new id per connection, because `Set-Cookie` on the `101` upgrade response is dropped by the WebSocket upgrader. See LLD 11.
 
 ## 3. Route table
 

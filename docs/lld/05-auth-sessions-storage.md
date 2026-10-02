@@ -81,7 +81,7 @@ All server-side stores are embedded **UnQLite** databases (`github.com/nobonobo/
 
 | File | Wrapper | Key → value | Used by |
 |---|---|---|---|
-| `user_sessions.db` | `cachedb.Database` (UnQLite + 15 MB `freecache`, write-through, read-through) | `SESSION_KEY` → cookie HMAC key; `<uid>` → `UserProfile` JSON | `user`, `cookie` |
+| `user_sessions.db` | `cachedb.Database` (UnQLite + 15 MB `freecache`, write-through, read-through) | `SESSION_KEY` → cookie HMAC key; `<uid>` → `UserProfile` JSON; `worker-pin:<uid>` → the execution node that holds the user's workspace (written by a gateway, `user/pin.go`, LLD 11) | `user`, `cookie` |
 | `feedback.db` | raw UnQLite | `<UnixNano timestamp>` → `{Name, Email, Message}` | `/feedback` |
 | `blog.db` | raw UnQLite | `<blog name>` → `BlogPost` JSON | `/blog` |
 | `snippets.db` | raw UnQLite, guarded by a mutex | `<8-character id>` → `snippet` JSON | `/snippet`, `/s/<id>` (LLD 01) |

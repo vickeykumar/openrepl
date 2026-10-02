@@ -79,6 +79,13 @@ func (counter *counter) count() int {
 	return counter.connections
 }
 
+func (counter *counter) weight() int {
+	counter.mutex.Lock()
+	defer counter.mutex.Unlock()
+
+	return counter.totalWieght
+}
+
 func (counter *counter) wait() {
 	counter.wg.Wait()
 }

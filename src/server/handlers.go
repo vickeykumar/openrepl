@@ -38,10 +38,17 @@ func updateparams(params *url.Values, payload map[string]string) {
 	}
 }
 
-func fetchRequestedPayload(w http.ResponseWriter, r *http.Request) (req_payload map[string]string) {
+func (server *Server) fetchRequestedPayload(w http.ResponseWriter, r *http.Request) (req_payload map[string]string) {
 	req_payload = make(map[string]string)
-	uid := cookie.Get_Uid(r)
-	homedir := cookie.GetOrUpdateHomeDir(w, r, uid)
+	if isTrusted(r) {
+		// On a worker the gateway has already decided who the user is.
+		uid, homedir, privilege := server.trustedIdentity(r)
+		req_payload[utils.UidKey] = uid
+		req_payload[utils.HOME_DIR_KEY] = homedir
+		req_payload[utils.USER_PRIVILEGE_KEY] = privilege
+		return
+	}
+	uid, homedir := server.requestIdentity(w, r)
 	req_payload[utils.UidKey] = uid
 	req_payload[utils.HOME_DIR_KEY] = homedir
 	if IsUserAdmin(w, r) {
@@ -67,7 +74,6 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		var command string
 		if len(commands) > 0 {
 			command = commands[0]
-			server.SetNewCommand(command)
 		}
 		if server.options.Once {
 			success := atomic.CompareAndSwapInt64(once, 0, 1)
@@ -101,7 +107,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			return
 		}
 
-		req_payload := fetchRequestedPayload(w, r)
+		req_payload := server.fetchRequestedPayload(w, r)
 		// any cookie needs to be saved before upgrading to websocket
 		conn, err := server.upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -132,7 +138,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		)
 
 		log.Println("Connection upgraded successfully: ")
-		err = server.processWSConn(ctx, conn, req_payload)
+		err = server.processWSConn(ctx, conn, command, req_payload)
 
 		switch err {
 		case ctx.Err():
@@ -154,7 +160,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 // process websocket connection for uid (user)
 // req_payload is initial payload carried by request
 // Note: Any time consuming API in this same routing will lead to performance issue with websocket
-func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, req_payload map[string]string) error {
+func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, command string, req_payload map[string]string) error {
 	conn.SetWriteDeadline(time.Now().Add(utils.DEADLINE_MINUTES * time.Minute)) // only 15 min sessions for services are allowed
 	typ, initLine, err := conn.ReadMessage()
 	if err != nil {
@@ -169,7 +175,7 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 	if err != nil {
 		return errors.Wrapf(err, "failed to authenticate websocket connection")
 	}
-	if init.AuthToken != server.options.Credential {
+	if init.AuthToken != server.credential() {
 		return errors.New("failed to authenticate websocket connection")
 	}
 
@@ -188,16 +194,19 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 	//log.Println("updated params: ", params)
 
 	var slave Slave
-	slave, err = server.factory.New(params)
+	slave, err = server.factory.NewWithCommand(command, params)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create backend")
 	}
 	defer slave.Close()
 
+	// Let a fork link opened from another session find this process.
+	defer server.routes.jidOpen(slave.WindowTitleVariables()["pid"])()
+
 	titleVars := server.titleVariables(
 		[]string{"server", "master", "slave"},
 		map[string]map[string]interface{}{
-			"server": server.options.TitleVariables,
+			"server": server.serverTitleVariables(command),
 			"master": map[string]interface{}{
 				"remote_addr": conn.RemoteAddr(),
 			},
@@ -304,10 +313,17 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := cookie.Get_Uid(r)
-	// we need this here as first API to be hit to generate homedir and save it to cookie
-	homedir := cookie.GetOrUpdateHomeDir(w, r, uid)
+	var homedir string
+	if ownsWorkspace(r) {
+		// we need this here as first API to be hit to generate homedir and save it to cookie
+		_, homedir = server.requestIdentity(w, r)
+	} else {
+		// The session runs on a worker, which creates the workspace itself.
+		// Still refresh the guest session cookie as the call above would.
+		cookie.UpdateGuestSessionCookieAge(w, r, utils.DEADLINE_MINUTES*60)
+	}
 	defer func () {
-                if uid == "" {
+                if uid == "" && homedir != "" {
                                 // reset the job to delete the guests working dir after a certain deadline 
                                 jobname := utils.REMOVE_JOB_KEY+homedir
                                 utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
@@ -389,6 +405,20 @@ func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
     }
 }
 
+// serverTitleVariables returns the title variables for one connection. The
+// command is per connection, so it is set on a copy rather than on the shared
+// options map.
+func (server *Server) serverTitleVariables(command string) map[string]interface{} {
+	vars := make(map[string]interface{}, len(server.options.TitleVariables)+1)
+	for k, v := range server.options.TitleVariables {
+		vars[k] = v
+	}
+	if command != "" {
+		vars["command"] = command
+	}
+	return vars
+}
+
 // titleVariables merges maps in a specified order.
 // varUnits are name-keyed maps, whose names will be iterated using order.
 func (server *Server) titleVariables(order []string, varUnits map[string]map[string]interface{}) map[string]interface{} {
@@ -421,8 +451,7 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
    	log.Println("body: ", string(bodybuf))
 	req.ParseForm()
 	log.Println("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
-	uid := cookie.Get_Uid(req)
-	homedir := cookie.GetOrUpdateHomeDir(rw, req, uid)
+	uid, homedir := server.requestIdentity(rw, req)
 	//command := req.Form.Get("command")
 	defer func () {
 		if uid == "" {
@@ -538,8 +567,7 @@ func (server *Server) handleFileUpload(w http.ResponseWriter, req *http.Request)
 	// Parse the form data and get the file and its properties
 	req.ParseMultipartForm(5 << 20) // Limit the amount of memory used to parse the form data
 	log.Println("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
-	uid := cookie.Get_Uid(req)
-	homedir := cookie.GetOrUpdateHomeDir(w, req, uid)
+	_, homedir := server.requestIdentity(w, req)
 
 	fb, err := filebrowser.New(homedir, nil, false, true)	// without watcher on path directories, deferwatch=true
 	if err != nil {

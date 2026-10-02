@@ -198,7 +198,12 @@ export class GottyTerminal {
         if (option !== null) {
             if (this.ismaster) {
                 const httpsEnabled = window.location.protocol == "https:";
-                const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + '/ws' + '_' + option;
+                // A fork link (?jid=) names a process on one execution node. The jid
+                // also travels in the init message, but a gateway has to pick the
+                // node before that arrives, so it is put on the URL as well.
+                const forkjid = new URL(window.location.href).searchParams.get('jid');
+                const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + '/ws' + '_' + option
+                    + (forkjid ? '?jid=' + encodeURIComponent(forkjid) : '');
                 let args = window.location.search;
                 let args2 = '';
                 if ( eventname=="optionchange" && option && option2args[option] && option2args[option] !== undefined ) {

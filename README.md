@@ -170,7 +170,7 @@ rm -rf bindata && make gotty && ../bin/gotty -w -p 8080 --title-format '<fmt><ti
 Run the Go unit tests inside the dev container:
 
 ```bash
-GO111MODULE=off GOPATH=/opt/openrepl ../go_1.19/go/bin/go test webtty
+GO111MODULE=off GOPATH=/opt/openrepl ../go_1.19/go/bin/go test -race gateway tunnel trusted
 ```
 
 Then do a quick manual check at `localhost:8080`:
@@ -189,6 +189,92 @@ Then do a quick manual check at `localhost:8080`:
 - **Genie and Practice question generation need an OpenAI key.** Put it in `/opt/gotty/.gitconfig` inside the container as `user.OpenaiAPIKey` (base64-encoded), then restart the server.
 - **Stopping and restarting the VM:** `colima stop openrepl` and `colima start openrepl`. `colima delete openrepl` removes the VM and its images.
 
+
+# Distributed mode (gateway and workers)
+
+One public server, the **gateway**, serves the site and hands REPL sessions to **workers**. A worker needs no public port: it connects out to the gateway. Same binary, same URLs for the browser.
+
+**1. Create a shared token**
+
+```bash
+openssl rand -hex 32
+```
+
+**2. Start the gateway** (the public server)
+
+```bash
+GOTTY_WORKER_TOKEN=<token> gotty -w --mode=gateway --port 80
+```
+
+**3. Start each worker**
+
+```bash
+GOTTY_WORKER_TOKEN=<token> gotty -w --mode=worker --worker-server wss://gateway.example.com/api/tunnel
+```
+
+That is all. New visitors are now spread over the gateway and the workers at random, in proportion to each node's weight, and each visitor stays on one node. Check the fleet at `/admin/workers` (admin sign-in).
+
+Useful options:
+
+| Option | Where | Effect |
+|---|---|---|
+| `--local-weight 0` | gateway | The gateway only routes; all sessions run on workers. |
+| `--worker-weight 30` | worker | Three times the share of a worker with the default 10. |
+| `--worker-id worker-01` | worker | A name for the worker; defaults to its host name. |
+
+## In production
+
+**1. Keep the token in a file**, readable only by the service user, with the same content on the gateway and every worker. Use a new token, not one from a test run.
+
+```bash
+umask 077
+echo "GOTTY_WORKER_TOKEN=$(openssl rand -hex 32)" > /etc/openrepl/tunnel.env
+```
+
+**2. Run the gateway with HTTPS**, either in the gateway itself or in a proxy (nginx, a load balancer) in front of it.
+
+```bash
+set -a; . /etc/openrepl/tunnel.env; set +a
+gotty -w --mode=gateway --port 443 --max-connection 2564 \
+  --tls --tls-crt /etc/openrepl/fullchain.pem --tls-key /etc/openrepl/privkey.pem
+```
+
+**3. Connect workers with `wss://`** and the gateway's public name. Never use `ws://` outside a test: it sends the token in clear text.
+
+```bash
+set -a; . /etc/openrepl/tunnel.env; set +a
+gotty -w --mode=worker --worker-id worker-01 --worker-server wss://openrepl.example.com/api/tunnel
+```
+
+**4. No HTTPS between worker and gateway?** Use SSH instead of `ws://`. It is encrypted, and the worker checks the gateway's key before it sends the token. Start the gateway with `--tunnel-addr 0.0.0.0:2222` (open that port to the workers only), and the worker with:
+
+```bash
+set -a; . /etc/openrepl/tunnel.env; set +a
+gotty -w --mode=worker --worker-id worker-01 \
+  --worker-server ssh://10.0.0.5:2222 --worker-hostkey 'SHA256:<fingerprint>'
+```
+
+The fingerprint is in the gateway's `/gottyTraces/gotty.log` (`tunnel host key SHA256:...`), or run `ssh-keygen -lf ~/.gotty.tunnel_key` on the gateway. The gateway creates that key on first start; keep the file, or the fingerprint changes.
+
+**5. Run both as services** that restart on failure (systemd `EnvironmentFile=/etc/openrepl/tunnel.env`, or `docker run --env-file`). A worker reconnects by itself when the gateway restarts.
+
+**6. Before stopping a worker**, drain it and wait for its terminals to finish:
+
+```bash
+curl -b "user-session=<admin session cookie>" -X POST https://openrepl.example.com/admin/workers/worker-01/drain
+```
+
+Every worker needs the same REPLs and sandbox setup as a normal OpenREPL server (the same image). Users' files stay on the node that runs their sessions, so give that directory (`/tmp/home`) durable storage.
+
+## Testing on one machine
+
+With two containers, use `ws://` (the test gateway has no HTTPS) and the gateway container's address and port as the worker sees them, not `localhost`, which is the worker itself:
+
+```bash
+GOTTY_WORKER_TOKEN=<token> gotty -w --mode=worker --worker-server ws://<gateway container IP>:<gateway port>/api/tunnel
+```
+
+Everything else (config files, private certificates, the nginx, Docker and systemd examples, every option, troubleshooting) is in the [operator guide](docs/distributed-mode.md).
 
 # Usage
 
@@ -225,6 +311,18 @@ By default, GoTTY starts a web server at port 8080. Open the URL on your web bro
 --height value                Static height of the screen, 0(default) means dynamically resize (default: 0) [$GOTTY_HEIGHT]
 --ws-origin value             A regular expression that matches origin URLs to be accepted by WebSocket. No cross origin requests are acceptable by default [$GOTTY_WS_ORIGIN]
 --term value                  Terminal name to use on the browser, one of xterm or hterm. (default: "xterm") [$GOTTY_TERM]
+--mode value                  Run mode: standalone, gateway or worker (default: "standalone") [$GOTTY_MODE]
+--worker-token value          Shared secret between the gateway and its workers (prefer the GOTTY_WORKER_TOKEN environment variable) [$GOTTY_WORKER_TOKEN]
+--local-weight value          Gateway: its own share of new sessions next to the workers, 0 makes it routing-only (default: 10) [$GOTTY_LOCAL_WEIGHT]
+--tunnel-path value           Gateway: path of the WebSocket endpoint workers connect to (default: "/api/tunnel") [$GOTTY_TUNNEL_PATH]
+--tunnel-addr value           Gateway: also accept workers over raw SSH on this address (e.g. 0.0.0.0:2222), disabled when empty [$GOTTY_TUNNEL_ADDR]
+--tunnel-hostkey value        Gateway: SSH host key file for the worker tunnel, created if missing (default: "~/.gotty.tunnel_key") [$GOTTY_TUNNEL_HOSTKEY]
+--worker-server value         Worker: gateway URL, wss://host/api/tunnel or ssh://host:port [$GOTTY_WORKER_SERVER]
+--worker-hostkey value        Worker: SHA256 fingerprint of the gateway tunnel host key (required for ssh://) [$GOTTY_WORKER_HOSTKEY]
+--worker-id value             Worker: unique id, defaults to the hostname [$GOTTY_WORKER_ID]
+--worker-weight value         Worker: relative share of new sessions (default: 10) [$GOTTY_WORKER_WEIGHT]
+--worker-languages value      Worker: comma separated REPL commands it can run (e.g. python,bash,cling), empty means all [$GOTTY_WORKER_LANGUAGES]
+--worker-capacity value       Worker: memory budget in MB for sessions, 0 derives it from RAM (default: 0) [$GOTTY_WORKER_CAPACITY]
 --close-signal value          Signal sent to the command process when gotty close it (default: SIGHUP) (default: 1) [$GOTTY_CLOSE_SIGNAL]
 --close-timeout value         Time in seconds to force kill process after client is disconnected (default: -1) (default: -1) [$GOTTY_CLOSE_TIMEOUT]
 --config value                Config file path (default: "~/.gotty") [$GOTTY_CONFIG]

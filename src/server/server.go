@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"sync/atomic"
 	noesctmpl "text/template"
 	"time"
 
@@ -36,6 +37,30 @@ type Server struct {
 	upgrader      *websocket.Upgrader
 	indexTemplate *template.Template
 	titleTemplate *noesctmpl.Template
+
+	// routes announces the jids and workspaces this node owns. It is nil in
+	// standalone mode.
+	routes *routeTracker
+	// terminals maps each WebSocket route (without the prefix) to the REPL
+	// command it starts.
+	terminals map[string]string
+	// gatewayAdmin serves /admin/workers and /admin/sessions on a gateway.
+	gatewayAdmin http.Handler
+	// workerCredential is the gateway's WebSocket auth token, received by a
+	// worker when it registers.
+	workerCredential atomic.Value
+}
+
+// credential is the token a WebSocket's init message must carry.
+func (server *Server) credential() string {
+	if v, ok := server.workerCredential.Load().(string); ok {
+		return v
+	}
+	return server.options.Credential
+}
+
+func (server *Server) setCredential(token string) {
+	server.workerCredential.Store(token)
 }
 
 // New creates a new instance of Server.
@@ -107,7 +132,15 @@ func (server *Server) Run(ctx context.Context, options ...RunOption) error {
 		path = "/" + randomstring.Generate(server.options.RandomUrlLength) + "/"
 	}
 
-	handlers := server.setupHandlers(cctx, cancel, path, counter)
+	handlers, err := server.setupHandlers(cctx, cancel, path, counter)
+	if err != nil {
+		cancel()
+		return errors.Wrapf(err, "failed to setup the handlers")
+	}
+	if server.options.Mode == ModeWorker {
+		defer cancel()
+		return server.runWorker(cctx, handlers, counter)
+	}
 	srv, err := server.setupHTTPServer(handlers)
 	if err != nil {
 		return errors.Wrapf(err, "failed to setup an HTTP server")
@@ -187,7 +220,7 @@ func (server *Server) Run(ctx context.Context, options ...RunOption) error {
 	return err
 }
 
-func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFunc, pathPrefix string, counter *counter) http.Handler {
+func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFunc, pathPrefix string, counter *counter) (http.Handler, error) {
 	staticFileHandler := http.FileServer(
 		&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, Prefix: "static"},
 	)
@@ -229,10 +262,20 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.Handle(pathPrefix+"admin", server.wrapAdmin(http.HandlerFunc(handleAdminPage)))
 	siteMux.HandleFunc(pathPrefix+"admin/settings", handleAdminSettings)
 	siteMux.HandleFunc(pathPrefix+"config.js", server.handleConfig)
+	if server.options.Mode == ModeGateway {
+		// Worker and session administration. Like every /admin route these
+		// run on the gateway itself.
+		admin := server.wrapAdmin(http.HandlerFunc(server.handleGatewayAdmin))
+		siteMux.Handle(pathPrefix+"admin/workers", admin)
+		siteMux.Handle(pathPrefix+"admin/workers/", admin)
+		siteMux.Handle(pathPrefix+"admin/sessions", admin)
+	}
 
 	siteHandler := http.Handler(siteMux)
 
-	if server.options.EnableBasicAuth {
+	// A worker is reached only through the gateway, which has already
+	// applied basic auth to the browser's request.
+	if server.options.EnableBasicAuth && server.options.Mode != ModeWorker {
 		log.Printf("Using Basic Authentication")
 		siteHandler = server.wrapBasicAuth(siteHandler, server.options.Credential)
 	}
@@ -246,6 +289,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	wsMux.HandleFunc(pathPrefix+"ws_c", server.generateHandleWS(ctx, cancel, counter, "cling"))
 	wsMux.HandleFunc(pathPrefix+"ws_cpp", server.generateHandleWS(ctx, cancel, counter, "cling"))
 	wsMux.HandleFunc(pathPrefix+"ws_go", server.generateHandleWS(ctx, cancel, counter, "gointerpreter"))
+	server.terminals = map[string]string{"ws": "", "ws_c": "cling", "ws_cpp": "cling", "ws_go": "gointerpreter"}
 
 	// Expose all other APIs form Commands2DemoMap, refer utils.go
 	if utils.Commands2DemoMap == nil {
@@ -254,11 +298,16 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	for command, _ := range utils.Commands2DemoMap {
 		log.Printf("Exposing API for %d\n", command)
 		wsMux.HandleFunc(pathPrefix+"ws_"+command, server.generateHandleWS(ctx, cancel, counter, command))
+		server.terminals["ws_"+command] = command
 	}
 
 	siteHandler = http.Handler(wsMux)
 
-	return siteHandler
+	if server.options.Mode == ModeGateway {
+		return server.wrapGateway(ctx, siteHandler, pathPrefix, counter)
+	}
+
+	return siteHandler, nil
 }
 
 func (server *Server) setupHTTPServer(handler http.Handler) (*http.Server, error) {
@@ -294,8 +343,3 @@ func (server *Server) tlsConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-func (server *Server) SetNewCommand(command string) {
-	server.factory.SetNewCommand(command)
-	server.options.TitleVariables["command"] = command
-	log.Println("New Command set successfully: " + command)
-}

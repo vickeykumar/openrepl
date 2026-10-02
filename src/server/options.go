@@ -1,7 +1,16 @@
 package server
 
 import (
+	"net/url"
+
 	"github.com/pkg/errors"
+)
+
+// Run modes. Standalone is the default and behaves exactly as before.
+const (
+	ModeStandalone = "standalone"
+	ModeGateway    = "gateway"
+	ModeWorker     = "worker"
 )
 
 type Options struct {
@@ -30,6 +39,18 @@ type Options struct {
 	Height              int              `hcl:"height" flagName:"height" flagDescribe:"Static height of the screen, 0(default) means dynamically resize" default:"0"`
 	WSOrigin            string           `hcl:"ws_origin" flagName:"ws-origin" flagDescribe:"A regular expression that matches origin URLs to be accepted by WebSocket. No cross origin requests are acceptable by default" default:""`
 	Term                string           `hcl:"term" flagName:"term" flagDescribe:"Terminal name to use on the browser, one of xterm or hterm." default:"xterm"`
+	Mode                string           `hcl:"mode" flagName:"mode" flagDescribe:"Run mode: standalone, gateway or worker" default:"standalone"`
+	WorkerToken         string           `hcl:"worker_token" flagName:"worker-token" flagDescribe:"Shared secret between the gateway and its workers (prefer the GOTTY_WORKER_TOKEN environment variable)" default:""`
+	LocalWeight         int              `hcl:"local_weight" flagName:"local-weight" flagDescribe:"Gateway: its own share of new sessions next to the workers, 0 makes it routing-only" default:"10"`
+	TunnelPath          string           `hcl:"tunnel_path" flagName:"tunnel-path" flagDescribe:"Gateway: path of the WebSocket endpoint workers connect to" default:"/api/tunnel"`
+	TunnelAddr          string           `hcl:"tunnel_addr" flagName:"tunnel-addr" flagDescribe:"Gateway: also accept workers over raw SSH on this address (e.g. 0.0.0.0:2222), disabled when empty" default:""`
+	TunnelHostKey       string           `hcl:"tunnel_hostkey" flagName:"tunnel-hostkey" flagDescribe:"Gateway: SSH host key file for the worker tunnel, created if missing" default:"~/.gotty.tunnel_key"`
+	WorkerServer        string           `hcl:"worker_server" flagName:"worker-server" flagDescribe:"Worker: gateway URL, wss://host/api/tunnel or ssh://host:port" default:""`
+	WorkerHostKey       string           `hcl:"worker_hostkey" flagName:"worker-hostkey" flagDescribe:"Worker: SHA256 fingerprint of the gateway tunnel host key (required for ssh://)" default:""`
+	WorkerID            string           `hcl:"worker_id" flagName:"worker-id" flagDescribe:"Worker: unique id, defaults to the hostname" default:""`
+	WorkerWeight        int              `hcl:"worker_weight" flagName:"worker-weight" flagDescribe:"Worker: relative share of new sessions" default:"10"`
+	WorkerLanguages     string           `hcl:"worker_languages" flagName:"worker-languages" flagDescribe:"Worker: comma separated REPL commands it can run (e.g. python,bash,cling), empty means all" default:""`
+	WorkerCapacity      int              `hcl:"worker_capacity" flagName:"worker-capacity" flagDescribe:"Worker: memory budget in MB for sessions, 0 derives it from RAM" default:"0"`
 
 	TitleVariables map[string]interface{}
 }
@@ -37,6 +58,28 @@ type Options struct {
 func (options *Options) Validate() error {
 	if options.EnableTLSClientAuth && !options.EnableTLS {
 		return errors.New("TLS client authentication is enabled, but TLS is not enabled")
+	}
+	switch options.Mode {
+	case ModeStandalone, ModeGateway:
+	case ModeWorker:
+		if options.WorkerToken == "" {
+			return errors.New("worker mode needs --worker-token (or GOTTY_WORKER_TOKEN)")
+		}
+		u, err := url.Parse(options.WorkerServer)
+		if err != nil || u.Host == "" {
+			return errors.New("worker mode needs --worker-server, e.g. wss://gateway.example.com/api/tunnel")
+		}
+		switch u.Scheme {
+		case "wss", "ws":
+		case "ssh":
+			if options.WorkerHostKey == "" {
+				return errors.New("--worker-server ssh:// needs --worker-hostkey, the fingerprint the gateway logs at startup")
+			}
+		default:
+			return errors.Errorf("--worker-server must start with wss://, ws:// or ssh://, got %q", options.WorkerServer)
+		}
+	default:
+		return errors.Errorf("unknown mode %q, expected standalone, gateway or worker", options.Mode)
 	}
 	return nil
 }

@@ -10,7 +10,7 @@ classDiagram
         <<interface server.Factory>>
         +Name() string
         +New(params) Slave
-        +SetNewCommand(command)
+        +NewWithCommand(command, params) Slave
     }
     class Slave {
         <<interface server.Slave>>
@@ -67,7 +67,7 @@ sequenceDiagram
     participant C as containers
     participant FB as filebrowser
     B->>H: GET /ws_python (Upgrade, subprotocol "webtty")
-    H->>H: factory.SetNewCommand(cmd), counter.add(1), addWieght(memLimit[cmd])
+    H->>H: counter.add(1), addWieght(memLimit[cmd]) (cmd stays local to this connection)
     H->>H: fetchRequestedPayload(): uid, homedir (cookie), usermode admin|guest
     H->>B: 101 Switching Protocols
     alt over --max-connection (count or weight)
