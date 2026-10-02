@@ -1,6 +1,6 @@
 # OpenREPL design docs
 
-These docs describe how OpenREPL is built. The high-level design (HLD) lives in the [project README](../README.md#architecture-high-level-design). The low-level design (LLD) documents below explain each subsystem at code level, naming the files, functions and data formats involved.
+These docs describe how OpenREPL is built. The high-level design (HLD) lives in the [project README](../README.md#architecture-high-level-design). The proposed distributed-execution design is in [docs/hld/distributed-execution.md](hld/distributed-execution.md). The low-level design (LLD) documents below explain each subsystem at code level, naming the files, functions and data formats involved.
 
 To build, run and test OpenREPL on your machine, see [Run locally on macOS (Colima)](../README.md#run-locally-on-macos-colima) in the project README.
 
