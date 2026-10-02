@@ -9,7 +9,7 @@ Scope today: `src/server/{server,handlers,options}.go`, `src/cookie/cookie.go`, 
 1. **Standalone is the default and must not change.** With `--mode=standalone` (default) none of the new code is on the request path.
 2. **Only execution-bound routes use affinity.** Account and website routes always run on the gateway. See section 3.
 3. **The worker runs the existing server.** The same `setupHandlers` mux, `processWSConn`, `factory.New`, cgroups and `filebrowser` run on the worker. We add a trusted identity input and a tunnel listener; we do not fork the handlers.
-4. **The gateway owns identity.** The session-cookie secret never leaves the gateway. Workers get identity from trusted headers that only arrive over the authenticated tunnel.
+4. **The gateway owns identity.** Session records (session ids, profiles, the user DB) stay on the gateway. Workers get identity from trusted headers that only arrive over the authenticated tunnel, and they can also read the signed session cookie because the gateway hands them the cookie secret at registration (6.1a).
 5. **No migration.** If a worker dies its sessions fail; they are never re-placed.
 
 ## 2. Modes and process layout
@@ -128,10 +128,16 @@ else                     -> existing cookie logic (standalone, local backend)
 
 ### 6.1a Cookies on the worker leg
 
-- The gateway does **not** forward the `Cookie` header to workers. Identity is already converted into the trusted headers above, and the signed session cookie holds a gateway filesystem path and a gateway-only secret's signature.
-- In the trusted branch the worker never calls `IsUserAdmin`, `Get_SessionCookie`, `GetOrUpdateHomeDir`'s cookie paths or any cookie writer (`UpdateGuestSessionCookieAge`, `session.LogOut`). Privilege comes from `X-OpenREPL-Priv`.
-- The gateway deletes any `Set-Cookie` header on responses coming back from a worker, so a worker can never set or overwrite a browser cookie.
-- The user DB (UnQLite) and the cookie secret stay on the gateway only. No DB is synced to workers in v1 (see section 19).
+Decision: workers may read the session cookie (for example to take the homedir from it later), while session ids and the user DB stay on the gateway.
+
+- **Secret sync.** The cookie secret (`cookie.SECRET_KEY`) is sent to the worker in the `register` reply, on every connect and reconnect, over the authenticated tunnel. The worker calls `cookie.Init_SessionStore(secret)` with it, replacing the temporary secret its own `init()` generated. It is held in memory only: never written to disk, never logged, and not part of any admin output. A gateway restart or secret change reaches workers on their next reconnect; a worker never keeps a secret from a previous connection.
+- **Cookie forwarded.** The gateway forwards the `Cookie` header unchanged. The worker can therefore decode `user-session` and read `uid`, `loggedIn`, `expirationTime` and the stored `homedir` with the existing `cookie.Get_*` functions.
+- **Trusted headers stay authoritative for identity and privilege.** `X-OpenREPL-Uid`, `X-OpenREPL-Priv` and `X-OpenREPL-Home-ID` are set by the gateway after it has validated the session against the DB. A signature-valid cookie does not prove the session is still live (logout and expiry live in the gateway DB), so the worker must not use the cookie to decide who the user is or whether they are an admin. `IsUserAdmin` and `session.LogOut()` are never called on a worker; they need the user DB.
+- **Cookie reads are for data the cookie carries** (for example `homedir`), used only as a hint where headers are absent, never to override a header.
+- **Writes stay with the gateway.** The gateway deletes any `Set-Cookie` on worker responses, so the worker never sets or refreshes a browser cookie. If a later change wants workers to update the cookie (for instance its `homedir`), extend this to an allow-list for the `user-session` cookie rather than removing the filter.
+- **No DB sync.** The user DB (sessions, profiles, blog, snippets, practice) is not copied to workers in v1 (see section 19).
+
+Residual risk, accepted: a worker that holds the secret can mint a validly signed cookie for any `uid`. The impact is limited because the gateway re-validates the session id against its DB before it grants identity or admin rights, and a worker has no session ids except the ones in cookies it receives, so an admin who is routed to a worker exposes their own session cookie to it. Mitigations: keep the secret memory-only, rotate it on reconnect, and prefer to keep admin accounts' sessions on `local`. A fully trusted-fleet deployment is assumed.
 
 ### 6.2 Homedir on the worker
 
@@ -141,7 +147,7 @@ else                     -> existing cookie logic (standalone, local backend)
 - **Gateway change:** in `handleIndex`, when `--mode=gateway`, skip `GetOrUpdateHomeDir` and the cleanup `defer`, because the directory may belong to a worker. The ws/upload paths still call it, so `LocalBackend` sessions create their directory lazily.
 - **Query overrides are routed, not stripped.** `GetOrUpdateHomeDir` honours `homedir` and `jid` from the query, and the page uses both on purpose: `preprocessurl` (`js/src/page/01-session.js`) appends `homedir=<master's path>` to every file-browser, upload and download request of a shared-session viewer, and `jid` to requests made from a fork link. They can come from a different browser session than the owner, so they must reach the node that owns the directory or process. The worker keeps honouring them exactly as today; the gateway routes on them (section 7). Their trust model is unchanged: the path or jid acts as a capability. Tightening that (for example a signed share token) is a separate, later change.
 - **Worker `Run` does not bind a public port.** `Server.Run` listens on `options.Address:options.Port` today. In worker mode it serves the same mux only on the tunnel `chanListener`, and ignores `EnableBasicAuth`.
-- **`AuthToken`.** `processWSConn` rejects a WebSocket whose init `AuthToken` differs from `options.Credential` (the WebSocket routes are registered outside the basic-auth wrapper, so this check is their only gate). The worker receives the gateway's credential in the `register` reply and compares against that, so a worker needs no `--credential` flag.
+- **`AuthToken`.** `processWSConn` rejects a WebSocket whose init `AuthToken` differs from `options.Credential` (the WebSocket routes are registered outside the basic-auth wrapper, so this check is their only gate). The worker receives the gateway's credential (`auth_token`) in the `register` reply, together with the cookie secret, and compares against that, so a worker needs no `--credential` flag.
 
 ### 6.3 Execution
 
@@ -195,7 +201,7 @@ sequenceDiagram
     W->>G: connect (wss upgrade with Bearer token, or raw TCP), then SSH handshake (user=worker-id, password=--worker-token)
     G-->>W: auth ok
     W->>G: global request "register" {id, version, os, arch, languages[], capacity, weight}
-    G-->>W: reply {connection_id, heartbeat_interval}
+    G-->>W: reply {connection_id, heartbeat_interval, cookie_secret, auth_token}
     loop every heartbeat_interval
         W->>G: global request "heartbeat" {used, cpu, mem}
     end
@@ -393,7 +399,8 @@ Validation at startup fails fast: a gateway or worker without a token, or a work
 - Constant-time token comparison; host key pinning for `ssh://`; rate-limit failed registrations.
 - `homedir` and `jid` from the client are routed through `RouteMap` and then honoured by the worker as today (same capability-style trust as the single-node server). Hardening that is out of scope for v1.
 - `ws_filebrowser` already requires paths under the homedir (`strings.HasPrefix(path, homedir)`); that check now uses the worker-resolved homedir.
-- The affinity cookie carries only a random guest id, signed on the gateway.
+- The cookie secret is delivered over the authenticated tunnel at register/reconnect, held in memory on workers only, and never logged. A compromised worker can forge cookies but not session ids (see 6.1a).
+- The affinity cookie carries only a random guest id, signed with the cookie secret.
 
 ## 16. sish-lb reuse map
 
@@ -431,7 +438,7 @@ A later phase may replace the per-gateway UnQLite stores with a shared replicate
 
 - Replication must cover session create, logout and expiry with revocation visible to workers promptly; a connect-time snapshot is not enough.
 - Needs single-writer or conflict rules for session writes (`LogOut`, cookie refresh) and for `uid -> worker` pins.
-- A shared DB lets workers verify identity themselves, but putting the cookie secret or full user data on workers that run untrusted code is still a security risk. Prefer gateway-signed short-lived tokens (workers hold only a verification key) over sharing the secret.
+- A shared DB would let workers validate sessions themselves (revocation, expiry, admin checks), so trusted headers could become optional. v1 already syncs the cookie secret to workers (6.1a); the shared DB phase would add session data, which puts user data on machines that run untrusted code. Weigh that against gateway-signed short-lived tokens (workers hold only a verification key).
 - The `Backend`/`SessionRegistry` seams in this design are where a shared store plugs in; handlers need no change.
 
 ## 20. Compatibility review against the current code
@@ -451,7 +458,7 @@ Reviewed against `server/{server,handlers,middleware,utils,handler_atomic}.go`, 
 | Guest first load | Parallel first requests would each create their own homedir without a shared cookie | Backend and guest id assigned at page load; worker guest dir is deterministic (4, 6.2) |
 | Existing signed-in users | Their files are on the gateway disk today | Pinned to `local` when a local workspace exists (4) |
 | Basic auth and `AuthToken` | WS routes bypass the basic-auth wrapper; worker would also bind a public port | Worker ignores basic auth, uses the gateway's credential, serves only the tunnel listener (6.2) |
-| Admin (`wrapAdmin`, `IsUserAdmin`) | Needs the user DB, which workers lack | Gateway only; worker uses `X-OpenREPL-Priv` (6.1a) |
+| Admin (`wrapAdmin`, `IsUserAdmin`) | Needs the user DB, which workers lack | Gateway only; worker uses `X-OpenREPL-Priv`, and reads the cookie only for data it carries (6.1a) |
 | Login, profile, blog, snippets, practice, chat proxy, sitemap | DB-backed | Gateway only (3) |
 | Per-process connection counter and weights | Per-machine | Each node keeps its own; the gateway pool uses worker-reported capacity (8) |
 | Firebase sharing and the Practice client sync | Browser-to-Firebase, independent of the server | No change |
