@@ -35,7 +35,7 @@ Scope today: `src/server/{server,handlers,options}.go`, `src/cookie/cookie.go`, 
 |---|---|---|
 | standalone | `--mode=standalone` (default) | Today's server. No tunnel, no registry. |
 | gateway | `--mode=gateway` | Public server plus `gateway` router, tunnel server, registry, pool. May also run sessions itself (`LocalBackend`). |
-| worker | `--mode=worker` | The server mux on a tunnel-only listener, plus a dialer to the gateway. No public port. |
+| worker | `--mode=worker` | The server mux on a tunnel listener, plus a dialer to the gateway. No port of its own unless `--port` or `--address` is given (6.2a). |
 
 ```mermaid
 flowchart LR
@@ -164,8 +164,23 @@ Residual risk, accepted: a worker that holds the secret can mint a validly signe
 - **Cleanup:** the guest removal job (`utils.REMOVE_JOB_KEY + homedir`, `GottyJobs.ResetJob`) is scheduled on the worker that owns the directory.
 - **Gateway change:** in `handleIndex`, when `--mode=gateway`, skip `GetOrUpdateHomeDir` and the cleanup `defer`, because the directory may belong to a worker. The ws/upload paths still call it, so `LocalBackend` sessions create their directory lazily.
 - **Query overrides are routed, not stripped.** `GetOrUpdateHomeDir` honours `homedir` and `jid` from the query, and the page uses both on purpose: `preprocessurl` (`js/src/page/01-session.js`) appends `homedir=<master's path>` to every file-browser, upload and download request of a shared-session viewer, and `jid` to requests made from a fork link. They can come from a different browser session than the owner, so they must reach the node that owns the directory or process. The worker keeps honouring them exactly as today; the gateway routes on them (section 7). Their trust model is unchanged: the path or jid acts as a capability. Tightening that (for example a signed share token) is a separate, later change.
-- **Worker `Run` does not bind a public port.** `Server.Run` listens on `options.Address:options.Port` today. In worker mode it serves the same mux only on the tunnel `chanListener`, and ignores `EnableBasicAuth`.
+- **Worker `Run` binds no port by default.** `Server.Run` listens on `options.Address:options.Port` in the other modes. In worker mode it serves the same mux on the tunnel `chanListener`, whose connections `trustTunnel` marks as trusted. If the operator gave `--port` or `--address`, it also serves that address (6.2a). Requests that arrive over the tunnel skip basic auth.
 - **`AuthToken`.** `processWSConn` rejects a WebSocket whose init `AuthToken` differs from `options.Credential` (the WebSocket routes are registered outside the basic-auth wrapper, so this check is their only gate). The worker receives the gateway's credential (`auth_token`) in the `register` reply, together with the cookie secret, and compares against that, so a worker needs no `--credential` flag.
+
+### 6.2a The worker's own port
+
+`main` sets `Options.LocalListen` when `--port` or `--address` was given on the command line, in the environment, or in the config file (`utils.ConfigKeys` reads the file's keys, so a value equal to the default still counts). `Run` then calls `serveLocal`, the same code the standalone server uses, with a second `http.Server` that has no `ConnContext`. The tunnel server and this one share one handler, and the only difference between their requests is `isTrusted(r)`.
+
+| Concern | On the tunnel (trusted) | On the worker's own port |
+|---|---|---|
+| Identity and home | `X-OpenREPL-*` headers, `trusted.HomeDir` | Session cookie and `GetOrUpdateHomeDir`, as in standalone. The headers are ignored. |
+| Basic auth (`wrapSiteAuth`) | Skipped; the gateway did it | Applied when the worker has `--credential` |
+| WebSocket `AuthToken` (`credentialFor`) | The gateway's token from the register reply | The worker's own `Credential`, which `/auth_token.js` serves there |
+| Routes (`announce`) | `jid` and `homedir` keys are announced to the gateway | Nothing is announced; the session is not reachable through the gateway |
+| Workspace sync (`waitWorkspace`) | Waits until the home is in step | Does not wait and starts no sync; the home is not synchronized (LLD 12) |
+| Capacity | Counted | Counted, by the same `counter` |
+
+A failure to listen ends `Run` before the worker connects to the gateway. A listener that stops later cancels the worker's context, like a standalone server. On shutdown `runWorker` closes both servers, then waits for the live WebSockets.
 
 ### 6.3 Execution
 
@@ -254,13 +269,19 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Online: register ok
+    [*] --> Syncing: register ok, workspace sync on
+    [*] --> Online: register ok, workspace sync off
+    Syncing --> Online: sync-ready (LLD 12)
     Online --> Draining: POST /admin/workers/{id}/drain
     Draining --> Online: undrain
     Online --> Offline: connection lost or heartbeat timeout
+    Syncing --> Offline: connection lost or sync timeout
     Draining --> Offline: connection lost
-    Offline --> Online: reconnect and register
+    Offline --> Syncing: reconnect and register, sync on
+    Offline --> Online: reconnect and register, sync off
 ```
+
+`SYNCING` exists only with `--workspace-sync` ([LLD 12](12-workspace-sync.md)): a worker that has just registered takes no new sessions until its homes are in step with the gateway.
 
 ## 10. Request flows
 
@@ -298,7 +319,7 @@ sequenceDiagram
 
 | Route | Purpose |
 |---|---|
-| `GET /admin/workers` | `{"workers":[...]}`: one row per backend, including `local`. Fields: `id`, `state`, `weight`, `usedMB`, `maxMB` (0 = no limit), `sessions` (execution contexts assigned), and for workers `terminals`, `languages`, `remoteAddr`, `lastSeen`, `connectionId`, `os`, `arch` |
+| `GET /admin/workers` | `{"workers":[...]}`: one row per backend, including `local`. Fields: `id`, `state`, `weight`, `usedMB`, `maxMB` (0 = no limit), `sessions` (execution contexts assigned), `picked` (sessions the picker has given the node since the gateway started, `Router.countPick` in `place`), `pickedPercent` (its share of all picks, one decimal) and `weightPercent` (the share its weight gives it among the backends that take new sessions now: `ONLINE` with weight above 0, else 0), and for workers `terminals`, `languages`, `remoteAddr`, `lastSeen`, `connectionId`, `os`, `arch`. The reply also carries `pickedTotal` and `pickedSince`. Only the picker's choices are counted, not a signed-in user going back to their pinned worker; the counts are in memory and start again when the gateway restarts; a backend that has left keeps its picks in the total but has no row |
 | `POST /admin/workers/{id}/drain` | The worker stops receiving new sessions; existing ones carry on. Replies `{"id","state"}` |
 | `POST /admin/workers/{id}/undrain` | Resumes placement |
 | `GET /admin/sessions` | `{"sessions":[...]}`: `key`, `uid`, `backend`, `created`, `expires` |
@@ -379,7 +400,7 @@ gotty -w --mode=worker \
       --worker-id worker-01
 ```
 
-- Outbound only: no inbound port or public address is needed, so it works behind NAT or a firewall.
+- Outbound only: no inbound port or public address is needed, so it works behind NAT or a firewall. It opens a port of its own only when asked (6.2a).
 - It must have the same runtime as a normal server (the Dockerfile image, REPL toolchains, `nsenter`, cgroup v1 access). If it has only some REPLs, list them with `--worker-languages` (the command names behind the `ws_<name>` routes, for example `python,bash,cling,gointerpreter`).
 - `--worker-capacity` (memory-weight units) defaults to a value derived from RAM. It replaces `--max-connection` for admission on the worker side.
 - It reconnects automatically with backoff if the gateway restarts or the link drops.
@@ -429,7 +450,7 @@ Validation at startup fails fast: a gateway or worker without a token, or a work
 ## 15. Security notes
 
 - Strip all inbound `X-OpenREPL-*` headers on the gateway. Workers accept them only on the tunnel listener.
-- Workers have no public listener in worker mode; the tunnel is outbound only.
+- A worker has no listener unless `--port` or `--address` is given; the tunnel is outbound only. On that port the trusted headers are never believed (only tunnel connections carry the trust mark), basic auth uses the worker's own `--credential`, and its sessions are not announced to the gateway.
 - `/api/tunnel` is on the public port: Bearer-token check before upgrade, reject any request with an `Origin`, per-IP rate limit on failures, then SSH auth again inside.
 - Constant-time token comparison; host key pinning for `ssh://`; rate-limit failed registrations.
 - `homedir` and `jid` from the client are routed through `RouteMap` and then honoured by the worker as today (same capability-style trust as the single-node server). Hardening that is out of scope for v1.
@@ -456,6 +477,7 @@ Because sish-lb is `package main` with global flags, code is copied into `src/` 
 2. **Done.** **Tunnel and RemoteBackend with one worker.** `tunnel`, `worker`, trusted-header branch in `fetchRequestedPayload`, worker homedir, `handleIndex` homedir skip. Tests: register/heartbeat/timeout/reconnect against an in-process SSH server; proxied request preserves method, path, query, cookie, body; WebSocket echo through the bridge; closing the browser closes the worker stream; header stripping (spoofed `X-OpenREPL-Uid` is ignored); `homedir`/`jid` override rejected.
 3. **Done.** **Pool, pinning, jid routing, drain, admin.** Tests: weighted selection with capacity, language filtering, draining/offline exclusion, pinned user gets 503 when their worker is down, `jid` routes to owner and rejects other uids, drain flow, admin JSON.
 4. **Done** (in-process cluster tests in `gateway/integration_test.go`, and a manual run with one gateway and two worker containers). **Integration:** gateway plus two worker processes: distribute sessions, verify affinity of terminal and file APIs to one worker, kill a worker (new sessions avoid it, existing fail), reconnect.
+5. **Done.** **The worker's own port** (6.2a). Tests in `server/local_test.go`: the expected WebSocket token differs between a forwarded request and a visitor of the worker's port; basic auth asks direct visitors only; a direct session is not announced; no sync wait for a direct request; the removal guard keeps only homes with a record. `utils/flags_test.go`: which keys a config file sets. Manual run with a gateway and two worker containers: the port serves and the other worker opens none, a terminal there keeps its files on the worker, `--credential` asks for a password there and not through the gateway, a port already in use stops the worker before it connects, and the port can come from the flag, `GOTTY_PORT` or the config file.
 
 Run `go test -race ./...` for the new packages. Today only `webtty` has tests, so these are the first tests for server-side routing.
 
@@ -492,7 +514,7 @@ Reviewed against `server/{server,handlers,middleware,utils,handler_atomic}.go`, 
 | Fork links (`jid=`) | Opened by other sessions; WS carries `jid` only after the upgrade | Routed by `RouteMap`; client adds `jid` to the WS URL (7) |
 | Guest first load | Parallel first requests would each create their own homedir without a shared cookie | Backend and guest id assigned at page load; worker guest dir is deterministic (4, 6.2) |
 | Existing signed-in users | Their files are on the gateway disk today | Pinned to `local` when a local workspace exists (4) |
-| Basic auth and `AuthToken` | WS routes bypass the basic-auth wrapper; worker would also bind a public port | Worker ignores basic auth, uses the gateway's credential, serves only the tunnel listener (6.2) |
+| Basic auth and `AuthToken` | WS routes bypass the basic-auth wrapper; worker would also bind a public port | Worker skips basic auth for forwarded requests and uses the gateway's credential for them; on its own port, if it has one, it applies its own `--credential` (6.2, 6.2a) |
 | Admin (`wrapAdmin`, `IsUserAdmin`) | Needs the user DB, which workers lack | Gateway only; worker uses `X-OpenREPL-Priv`, and reads the cookie only for data it carries (6.1a) |
 | Login, profile, blog, snippets, practice, chat proxy, sitemap | DB-backed | Gateway only (3) |
 | Per-process connection counter and weights | Per-machine | Each node keeps its own; the gateway pool uses worker-reported capacity (8) |

@@ -12,6 +12,7 @@ import (
 	"containers"
 	"cookie"
 	"encoder"
+	"gateway"
 	"trusted"
 	"tunnel"
 	"user"
@@ -41,12 +42,38 @@ func (server *Server) requestIdentity(w http.ResponseWriter, r *http.Request) (u
 		uid, homedir, _ = server.trustedIdentity(r)
 		return uid, homedir
 	}
+	if home := gateway.WorkspaceOf(r); home != "" && !(gateway.OwnWorkspace(r) && homeOverridden(r)) {
+		// The gateway is working in its own copy of the session's home:
+		// either because the worker that runs the session is away, or because
+		// the gateway runs the session itself.
+		if cookie.Is_UserLoggedIn(r) && !cookie.IsSessionExpired(r) {
+			uid = cookie.Get_Uid(r)
+		}
+		homedir = utils.HOME_DIR + home
+		os.MkdirAll(homedir, 0755)
+		if gateway.OwnWorkspace(r) {
+			// Let a fork link or a shared session opened elsewhere find it.
+			server.routes.home(homedir)
+		}
+		return uid, homedir
+	}
 	uid = cookie.Get_Uid(r)
 	homedir = cookie.GetOrUpdateHomeDir(w, r, uid)
 	if !homeOverridden(r) {
-		server.routes.home(homedir)
+		server.announce(r).home(homedir)
 	}
 	return uid, homedir
+}
+
+// announce returns the route tracker to tell about what r opens. A worker
+// announces only what it runs for the gateway: a session opened directly on
+// the worker's own port stays on the worker and is not reachable through the
+// gateway.
+func (server *Server) announce(r *http.Request) *routeTracker {
+	if server.options.Mode == ModeWorker && !isTrusted(r) {
+		return nil
+	}
+	return server.routes
 }
 
 // homeOverridden reports whether the request names its workspace itself (a

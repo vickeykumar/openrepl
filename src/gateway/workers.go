@@ -21,6 +21,8 @@ func (rt *Router) BindTunnel(cfg *tunnel.ServerConfig) {
 				switch {
 				case !w.Online():
 					return Offline
+				case w.Syncing():
+					return Syncing
 				case w.Draining():
 					return Draining
 				}

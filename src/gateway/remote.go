@@ -72,20 +72,42 @@ func NewRemoteBackend(cfg RemoteConfig) *RemoteBackend {
 		// Pass the worker's encoding through as is.
 		DisableCompression: true,
 	}
-	b.proxy = &httputil.ReverseProxy{
+	b.proxy = b.newProxy(b.transport)
+	return b
+}
+
+func (b *RemoteBackend) newProxy(transport http.RoundTripper) *httputil.ReverseProxy {
+	return &httputil.ReverseProxy{
 		Director:      b.direct,
-		Transport:     b.transport,
+		Transport:     transport,
 		FlushInterval: -1, // stream downloads and long responses
 		ModifyResponse: func(resp *http.Response) error {
 			resp.Header.Del("Set-Cookie")
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			log.Printf("gateway: worker %s: %s %s: %v", cfg.ID, r.Method, r.URL.Path, err)
+			log.Printf("gateway: worker %s: %s %s: %v", b.cfg.ID, r.Method, r.URL.Path, err)
 			http.Error(w, "execution node unavailable", http.StatusServiceUnavailable)
 		},
 	}
-	return b
+}
+
+// guardedProxy is a proxy for one WebSocket whose worker end is a closeGuard:
+// if the worker goes away under it, the browser is told how long to wait. It
+// has a transport of its own, with no connection reuse, because the guard
+// must only ever see this one stream.
+func (b *RemoteBackend) guardedProxy(away func() time.Duration) *httputil.ReverseProxy {
+	return b.newProxy(&http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			c, err := b.cfg.Dial(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return &closeGuard{Conn: c, away: away, wait: 2 * time.Second}, nil
+		},
+		DisableKeepAlives:  true,
+		DisableCompression: true,
+	})
 }
 
 func (b *RemoteBackend) direct(req *http.Request) {
@@ -146,7 +168,11 @@ func (b *RemoteBackend) Serve(w http.ResponseWriter, r *http.Request) error {
 		atomic.AddInt64(&b.tracked, weight)
 		defer atomic.AddInt64(&b.tracked, -weight)
 	}
-	b.proxy.ServeHTTP(w, r)
+	proxy := b.proxy
+	if away := awayOf(r); away != nil && isWebSocketRequest(r) {
+		proxy = b.guardedProxy(away)
+	}
+	proxy.ServeHTTP(w, r)
 	return nil
 }
 

@@ -88,14 +88,18 @@ func main() {
 		}*/ // implementing cling interpreter by default
 
 		configFile := c.String("config")
+		listen := c.IsSet("port") || c.IsSet("address")
 		_, err := os.Stat(homedir.Expand(configFile))
 		if configFile != "~/.gotty" || !os.IsNotExist(err) {
 			if err := utils.ApplyConfigFile(configFile, appOptions, backendOptions); err != nil {
 				exit(err, 2)
 			}
+			keys := utils.ConfigKeys(configFile)
+			listen = listen || keys["port"] || keys["address"]
 		}
 
 		utils.ApplyFlags(cliFlags, flagMappings, c, appOptions, backendOptions)
+		appOptions.LocalListen = listen
 
 		appOptions.EnableBasicAuth = c.IsSet("credential")
 		appOptions.EnableTLSClientAuth = c.IsSet("tls-ca-crt")

@@ -108,6 +108,10 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		}
 
 		req_payload := server.fetchRequestedPayload(w, r)
+		if err := server.waitWorkspace(r, req_payload[utils.HOME_DIR_KEY]); err != nil {
+			http.Error(w, "workspace is synchronizing, please try again", http.StatusServiceUnavailable)
+			return
+		}
 		// any cookie needs to be saved before upgrading to websocket
 		conn, err := server.upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -138,7 +142,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		)
 
 		log.Println("Connection upgraded successfully: ")
-		err = server.processWSConn(ctx, conn, command, req_payload)
+		err = server.processWSConn(ctx, conn, r, command, req_payload)
 
 		switch err {
 		case ctx.Err():
@@ -160,7 +164,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 // process websocket connection for uid (user)
 // req_payload is initial payload carried by request
 // Note: Any time consuming API in this same routing will lead to performance issue with websocket
-func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, command string, req_payload map[string]string) error {
+func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r *http.Request, command string, req_payload map[string]string) error {
 	conn.SetWriteDeadline(time.Now().Add(utils.DEADLINE_MINUTES * time.Minute)) // only 15 min sessions for services are allowed
 	typ, initLine, err := conn.ReadMessage()
 	if err != nil {
@@ -175,7 +179,7 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, c
 	if err != nil {
 		return errors.Wrapf(err, "failed to authenticate websocket connection")
 	}
-	if init.AuthToken != server.credential() {
+	if init.AuthToken != server.credentialFor(r) {
 		return errors.New("failed to authenticate websocket connection")
 	}
 
@@ -201,7 +205,7 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, c
 	defer slave.Close()
 
 	// Let a fork link opened from another session find this process.
-	defer server.routes.jidOpen(slave.WindowTitleVariables()["pid"])()
+	defer server.announce(r).jidOpen(slave.WindowTitleVariables()["pid"])()
 
 	titleVars := server.titleVariables(
 		[]string{"server", "master", "slave"},
@@ -452,6 +456,10 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 	req.ParseForm()
 	log.Println("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
 	uid, homedir := server.requestIdentity(rw, req)
+	if err := server.waitWorkspace(req, homedir); err != nil {
+		http.Error(rw, "workspace is synchronizing, please try again", http.StatusServiceUnavailable)
+		return
+	}
 	//command := req.Form.Get("command")
 	defer func () {
 		if uid == "" {
@@ -568,6 +576,10 @@ func (server *Server) handleFileUpload(w http.ResponseWriter, req *http.Request)
 	req.ParseMultipartForm(5 << 20) // Limit the amount of memory used to parse the form data
 	log.Println("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
 	_, homedir := server.requestIdentity(w, req)
+	if err := server.waitWorkspace(req, homedir); err != nil {
+		http.Error(w, "workspace is synchronizing, please try again", http.StatusServiceUnavailable)
+		return
+	}
 
 	fb, err := filebrowser.New(homedir, nil, false, true)	// without watcher on path directories, deferwatch=true
 	if err != nil {

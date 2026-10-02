@@ -5,7 +5,7 @@ The short version is in the [project README](../README.md#distributed-mode-gatew
 By default OpenREPL runs everything on one machine (`--mode=standalone`). In distributed mode one public server, the **gateway**, keeps serving the website and can hand the REPL sessions to other machines, the **workers**. The design is in [docs/hld/distributed-execution.md](hld/distributed-execution.md) and [docs/lld/11-distributed-execution.md](lld/11-distributed-execution.md).
 
 - The **gateway** is the only public address. It serves the pages, sign-in, blog, snippets, practice, the AI proxy and `/admin`. For each visitor it picks one execution node and sends that visitor's terminals, file browser and uploads there every time.
-- A **worker** has no public port. It connects *out* to the gateway, so it can sit behind NAT or a firewall. It runs the REPLs and holds the users' files.
+- A **worker** needs no public port. It connects *out* to the gateway, so it can sit behind NAT or a firewall. It runs the REPLs and holds the users' files. If you want, it can also open a port of its own for people on the same network (see [the worker's own port](#the-workers-own-port)).
 - The browser does not change: same URLs, same pages. It never talks to a worker directly.
 - The same `gotty` binary does all three jobs. `--mode` selects one.
 
@@ -178,7 +178,7 @@ worker_token     = "<the token from step 1>"  // or GOTTY_WORKER_TOKEN
 
 | Worker option | Default | Meaning |
 |---|---|---|
-| `--mode=worker` | | No public port is opened. `--port` and `--address` are ignored. |
+| `--mode=worker` | | No port is opened, unless you give `--port` or `--address` (see below). |
 | `--worker-server` | required | `wss://host/api/tunnel` (recommended), `ssh://host:port`, or `ws://host/api/tunnel` for tests. |
 | `--worker-token` / `$GOTTY_WORKER_TOKEN` | required | The shared secret. |
 | `--worker-hostkey` | empty | The gateway's `SHA256:` fingerprint. Required for `ssh://`. With `wss://` it is an extra check on top of the TLS certificate. |
@@ -188,6 +188,22 @@ worker_token     = "<the token from step 1>"  // or GOTTY_WORKER_TOKEN
 | `--worker-languages` | empty = all | Comma-separated REPL commands this worker has, e.g. `python,bash,cling,gointerpreter`. Set it only if the worker lacks some REPLs. |
 
 A worker reconnects by itself, with a delay that grows from 1 to 30 seconds, when the gateway restarts or the network drops.
+
+### The worker's own port
+
+A worker opens no port by default. Give it `--port` (or `--address`) and it also serves that address, like a standalone server, so people on the same network can use the worker directly at `http://<worker-address>:<port>/`:
+
+```bash
+GOTTY_WORKER_TOKEN=<token> gotty -w --mode=worker --worker-server wss://gateway.example.com/api/tunnel --port 9090
+```
+
+`--port` and `--address` count as given when they come from the command line, from `GOTTY_PORT` / `GOTTY_ADDRESS`, or from the config file. The worker keeps working through the gateway as before.
+
+- **A second door, not the gateway's.** Visitors of that port have their own cookies, sign-in, files and sessions, as on a standalone server. Their sessions are not visible to the gateway, cannot be reached through it, and are not part of workspace sync. A guest's files there expire on the worker's own one-hour timer.
+- **It shares the worker's capacity.** Those sessions count against `--worker-capacity`, so the gateway sees the real load.
+- **Nothing is trusted from outside.** The identity headers the gateway adds are believed only on the tunnel, never on this port.
+- **No gateway in front of it.** The gateway's `--credential` does not apply here. To ask visitors for a password, start the worker with `--credential user:pass`; the worker asks only visitors of its own port, never the gateway. Use `--address 127.0.0.1` to keep the port to the machine itself, and do not expose it to the internet.
+- **The port must be free.** If it is taken, the worker stops with `failed to listen` before it connects to the gateway.
 
 **Raw SSH instead of WebSocket.** For a network where the worker cannot use HTTPS to the gateway but can reach a TCP port:
 
@@ -236,13 +252,42 @@ The `/keys` volume keeps the gateway's tunnel host key across container replacem
 - **Nothing is moved.** If a worker goes away, its sessions get an error until it is back; they are not restarted elsewhere, because the files and running programs are on that worker.
 - **Guests' files** are deleted after an hour without use, on the node that holds them, as on a single server.
 
+## Keeping the users' files safe: workspace sync
+
+By default a user's files exist only on the worker that runs their session. If that worker is lost, the files are lost, and while it is away the user cannot even browse or download them. Workspace sync keeps a second copy of every home on the gateway, in step with the worker, in both directions. The design is in [LLD 12](lld/12-workspace-sync.md).
+
+Turn it on at the gateway only; workers follow it:
+
+```bash
+gotty -w --mode=gateway --port 80 --workspace-sync --sync-state-dir /var/lib/openrepl/wsync
+```
+
+`--relocate-after` (default `2m`, any duration of at least `1s` such as `30s`) is how long a worker may be away before its sessions are placed again. A shorter time gets users back sooner, but a worker that is only restarting then loses its sessions, and edits it had not yet sent are dropped when it returns.
+
+| What changes | Effect |
+|---|---|
+| Programs and the file API on a worker | Their file changes (create, edit, delete, rename, directories, links) reach the gateway about a second later, and changes made on the gateway reach the worker. |
+| A worker goes away | The file browser, downloads, saves and uploads keep working from the gateway's copy. Terminals still report "execution node unavailable", because the running programs are gone. |
+| A worker (re)connects | It shows as `SYNCING` in `/admin/workers` and takes no new sessions until its homes are reconciled with the gateway's copy, then `ONLINE`. Changes made on both sides while it was away are merged; where both changed the same file, the later modification wins. |
+| A worker is lost for good | For the first 2 minutes (`--relocate-after`) the terminal cannot start, because the worker may only be restarting. The page shows "Your execution node is away. Reconnect in 1:20." with a countdown from the moment the worker drops (or the first time a terminal is started in that period), and Reconnect, Run and Debug stay disabled until it reaches zero. After that its sessions are placed again, on another worker (which is sent the files first) or on the gateway itself, which already has them. The old worker's copy is dropped if it ever returns, so changes it had not yet sent are lost. |
+| A worker is drained | Its signed-in users are placed on other workers at their next session; sessions it already has carry on. |
+| A guest is idle for an hour | The gateway deletes the home on both machines. Workers no longer delete homes on their own timers. A guest with a terminal open never expires. |
+
+Things to do:
+
+- **Give the gateway disk for every user's files**, as a single server would need, and keep `/tmp/home` on durable storage if signed-in users' files must survive a gateway restart. Put `--sync-state-dir` on durable storage too (on a worker as well); losing it deletes nothing, but files deleted while the two sides were apart come back.
+- **Keep the clocks of all machines in step** (NTP). The gateway measures each worker's clock offset at connect and corrects for it, and logs a warning above 2 seconds, but a badly wrong clock can still make the wrong edit win.
+- **Do not enable it half-way**: turn it on at the gateway, restart the gateway, then restart the workers so they reconnect and receive the setting.
+
+Limits: files over 50 MB are not synchronized; sockets, pipes and device files are skipped; names that start with `.wsync-` are reserved; ownership and set-user-id bits are not copied; Linux only.
+
 ## Operating a fleet
 
 These routes run on the gateway and need the same admin sign-in as `/admin` (open them in the browser you are signed in with, or pass that browser's session cookie to `curl`):
 
 | Route | What it does |
 |---|---|
-| `GET /admin/workers` | Every node with its state, weight, used and maximum MB, sessions, last heartbeat, address and languages. |
+| `GET /admin/workers` | Every node with its state, weight, used and maximum MB, sessions, last heartbeat, address and languages, and how many sessions the weighted random choice has given it (see below). |
 | `POST /admin/workers/<id>/drain` | The worker gets no new sessions. Its current ones carry on. |
 | `POST /admin/workers/<id>/undrain` | Back to normal. |
 | `GET /admin/sessions` | Which session is on which node. |
@@ -251,6 +296,29 @@ These routes run on the gateway and need the same admin sign-in as `/admin` (ope
 curl -b "user-session=<your admin session cookie>" https://gateway.example.com/admin/workers
 curl -b "user-session=<your admin session cookie>" -X POST https://gateway.example.com/admin/workers/worker-01/drain
 ```
+
+**Seeing the weighted random choice at work.** Each row of `/admin/workers` has three numbers:
+
+| Field | Meaning |
+|---|---|
+| `picked` | How many sessions the weighted random choice has given this node since the gateway started. |
+| `pickedPercent` | Its share of all such sessions. |
+| `weightPercent` | The share it should get by weight, among the nodes that take new sessions now (`ONLINE` and weight above 0; 0 for any other). |
+
+Over many sessions `pickedPercent` approaches `weightPercent`. For example, a worker with weight 30 and a gateway with weight 10 should each get about 75% and 25%:
+
+```json
+{"workers": [
+  {"id": "local",    "state": "ONLINE", "weight": 10, "picked": 27, "pickedPercent": 27.0, "weightPercent": 25.0},
+  {"id": "worker-1", "state": "ONLINE", "weight": 30, "picked": 73, "pickedPercent": 73.0, "weightPercent": 75.0}],
+ "pickedTotal": 100, "pickedSince": "2026-10-02T09:00:00Z"}
+```
+
+A few things to know when reading it:
+- It counts new sessions, not requests. A visitor stays on the node they were given, so one browser adds 1, however often it reloads. To see the spread, use new visitors (another browser, a private window, cleared cookies, or a guest whose home has expired).
+- Only the weighted choice is counted. A signed-in user who goes back to the worker that holds their files was not picked.
+- The counts start again from zero when the gateway restarts (`pickedSince` says when it started). A worker that has left is no longer listed, but its sessions stay in `pickedTotal`, so the percentages of the rest add up to less than 100.
+- With few sessions the numbers are lumpy: 10 sessions say little, a few hundred say a lot.
 
 **Taking a worker out for maintenance:** drain it, watch `terminals` for it in `/admin/workers` fall to 0, then stop it. A drain is forgotten when the gateway restarts. Signed-in users whose files are on that worker cannot start a new session until it is back.
 
@@ -262,6 +330,10 @@ curl -b "user-session=<your admin session cookie>" -X POST https://gateway.examp
 |---|---|
 | Gateway log: `no --worker-token set, workers are disabled` | Set `GOTTY_WORKER_TOKEN` (or `worker_token`) on the gateway. |
 | Worker exits: `worker mode needs --worker-token` or `needs --worker-server` | A required option is missing. |
+| Gateway log: `the sync channel ... (the worker stays out of rotation)` | The worker is an older version without workspace sync, or its sync handler is off. Update the worker, or run the gateway without `--workspace-sync`. |
+| A worker stays `SYNCING` | It is reconciling a large home, or cannot reach the gateway's sync channel. If the conversation with the gateway ends, the gateway disconnects the worker and it reconnects at once (the log says `asking worker ... to reconnect`); otherwise after 5 minutes the gateway drops it and it tries again. The logs of both sides name the home that is not finishing. |
+| Browser: `workspace is synchronizing, please try again` | The session's home on the worker is not yet in step with the gateway (it just reconnected, or the home is large). It resolves by itself; see `/admin/workers`. |
+| Worker exits: `failed to listen at ...: address already in use` | The port given with `--port` is taken. Choose another, or drop `--port` so the worker opens no port. |
 | Worker log: `connect: connection refused` | Nothing listens at that address and port. Check the port the gateway really uses (its log prints `HTTP server is listening at`). Between containers, `localhost` is the worker itself: use the gateway container's address. |
 | Worker log: `tls: first record does not look like a TLS handshake` | `wss://` was used against a gateway that serves plain HTTP. Use `ws://` for a test setup, or enable HTTPS on the gateway. |
 | Worker log: `bad handshake (HTTP 401)` | The token differs from the gateway's. |

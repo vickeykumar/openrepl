@@ -212,13 +212,24 @@ GOTTY_WORKER_TOKEN=<token> gotty -w --mode=gateway --port 80
 GOTTY_WORKER_TOKEN=<token> gotty -w --mode=worker --worker-server wss://gateway.example.com/api/tunnel
 ```
 
-That is all. New visitors are now spread over the gateway and the workers at random, in proportion to each node's weight, and each visitor stays on one node. Check the fleet at `/admin/workers` (admin sign-in).
+New visitors are now spread over the gateway and the workers at random, in proportion to each node's weight, and each visitor stays on one node. Check the fleet at `/admin/workers` (admin sign-in): it also shows how many sessions the random choice has given each node, next to the share its weight should give it.
+
+**4. Keep a copy of the users' files on the gateway** (optional). Restart the gateway with `--workspace-sync`. Workers reconnect by themselves and need no option, only the same version of the binary.
+
+```bash
+GOTTY_WORKER_TOKEN=<token> gotty -w --mode=gateway --port 80 --workspace-sync
+```
+
+Each user's files are now kept in step, both ways, between the worker that runs them and the gateway. If a worker stops, the file browser, downloads, saves and uploads keep working from the gateway's copy. From the moment the worker drops, the page shows a countdown and keeps Reconnect and Run disabled until it ends. After 2 minutes without the worker (`--relocate-after` changes this), the session continues on the gateway or another worker with all its files; a program that was running is lost. A home is copied the first time its session is used after the option is on, so start it before you need it. Without the option the gateway holds no copy, and a stopped worker means "execution node unavailable". Details in the [operator guide](docs/distributed-mode.md#keeping-the-users-files-safe-workspace-sync).
+
+A worker opens no port. Add `--port 9090` if people on the same network should also be able to open it directly (see the [operator guide](docs/distributed-mode.md#the-workers-own-port)).
 
 Useful options:
 
 | Option | Where | Effect |
 |---|---|---|
 | `--local-weight 0` | gateway | The gateway only routes; all sessions run on workers. |
+| `--workspace-sync` | gateway | Keep a copy of every home on the gateway (step 4). |
 | `--worker-weight 30` | worker | Three times the share of a worker with the default 10. |
 | `--worker-id worker-01` | worker | A name for the worker; defaults to its host name. |
 
@@ -264,7 +275,7 @@ The fingerprint is in the gateway's `/gottyTraces/gotty.log` (`tunnel host key S
 curl -b "user-session=<admin session cookie>" -X POST https://openrepl.example.com/admin/workers/worker-01/drain
 ```
 
-Every worker needs the same REPLs and sandbox setup as a normal OpenREPL server (the same image). Users' files stay on the node that runs their sessions, so give that directory (`/tmp/home`) durable storage.
+Every worker needs the same REPLs and sandbox setup as a normal OpenREPL server (the same image). Users' files live on the node that runs their sessions, and with `--workspace-sync` on the gateway too. Give `/tmp/home` durable storage on the nodes whose loss you cannot accept, and with `--workspace-sync` give `/opt/gotty/wsync` (`--sync-state-dir`) durable storage on the gateway and every worker: it holds the records that tell a deleted file from a new one.
 
 ## Testing on one machine
 
@@ -322,6 +333,9 @@ By default, GoTTY starts a web server at port 8080. Open the URL on your web bro
 --worker-id value             Worker: unique id, defaults to the hostname [$GOTTY_WORKER_ID]
 --worker-weight value         Worker: relative share of new sessions (default: 10) [$GOTTY_WORKER_WEIGHT]
 --worker-languages value      Worker: comma separated REPL commands it can run (e.g. python,bash,cling), empty means all [$GOTTY_WORKER_LANGUAGES]
+--workspace-sync              Gateway: keep a copy of every worker's homes on the gateway, in step with the worker [$GOTTY_WORKSPACE_SYNC]
+--sync-state-dir value        Gateway and worker: where workspace sync keeps its records, keep it on durable storage (default: "/opt/gotty/wsync") [$GOTTY_SYNC_STATE_DIR]
+--relocate-after value        Gateway with --workspace-sync: how long a worker may be away before its sessions are placed elsewhere, e.g. 30s or 2m (default: "2m") [$GOTTY_RELOCATE_AFTER]
 --worker-capacity value       Worker: memory budget in MB for sessions, 0 derives it from RAM (default: 0) [$GOTTY_WORKER_CAPACITY]
 --close-signal value          Signal sent to the command process when gotty close it (default: SIGHUP) (default: 1) [$GOTTY_CLOSE_SIGNAL]
 --close-timeout value         Time in seconds to force kill process after client is disconnected (default: -1) (default: -1) [$GOTTY_CLOSE_TIMEOUT]

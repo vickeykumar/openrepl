@@ -39,6 +39,10 @@ type ClientConfig struct {
 	// OnRegistered runs after each successful registration, before any
 	// stream is served.
 	OnRegistered func(RegisterReply)
+	// OnSyncStream is called, in its own goroutine, with the workspace
+	// synchronization channel the gateway opens after registration. The
+	// handler owns the stream and must close it when done.
+	OnSyncStream func(net.Conn)
 	// TLSConfig is used for wss://. Optional.
 	TLSConfig *tls.Config
 	// MinBackoff and MaxBackoff bound the reconnect delay. Defaults: 1s, 30s.
@@ -245,16 +249,28 @@ func (c *Client) session(ctx context.Context) (bool, error) {
 	}()
 
 	for nc := range chans {
-		if nc.ChannelType() != ChannelHTTP {
+		switch nc.ChannelType() {
+		case ChannelHTTP:
+			ch, chReqs, err := nc.Accept()
+			if err != nil {
+				continue
+			}
+			go ssh.DiscardRequests(chReqs)
+			c.ln.deliver(newStreamConn(ch, c.cfg.Register.WorkerID, "gateway"))
+		case ChannelSync:
+			if c.cfg.OnSyncStream == nil {
+				nc.Reject(ssh.Prohibited, "workspace synchronization is not enabled on this worker")
+				continue
+			}
+			ch, chReqs, err := nc.Accept()
+			if err != nil {
+				continue
+			}
+			go ssh.DiscardRequests(chReqs)
+			go c.cfg.OnSyncStream(newStreamConn(ch, c.cfg.Register.WorkerID, "gateway"))
+		default:
 			nc.Reject(ssh.UnknownChannelType, "unknown channel type")
-			continue
 		}
-		ch, chReqs, err := nc.Accept()
-		if err != nil {
-			continue
-		}
-		go ssh.DiscardRequests(chReqs)
-		c.ln.deliver(newStreamConn(ch, c.cfg.Register.WorkerID, "gateway"))
 	}
 	return true, conn.Wait()
 }
@@ -300,6 +316,18 @@ func (c *Client) sendWithin(conn ssh.Conn, name string, v interface{}, d time.Du
 	case <-time.After(d):
 		return false
 	}
+}
+
+// SyncReady tells the gateway that this worker's homes are reconciled, so it
+// can take new sessions. It reports whether the gateway acknowledged.
+func (c *Client) SyncReady() bool {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+	if conn == nil {
+		return false
+	}
+	return c.send(conn, ReqSyncReady, struct{}{})
 }
 
 // RouteOpen tells the gateway that requests carrying this key belong to this

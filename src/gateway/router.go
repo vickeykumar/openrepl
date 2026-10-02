@@ -18,6 +18,8 @@ type Identity struct {
 	Key     string
 	UID     string
 	GuestID string
+	// Home is the home directory name; set only when Config.HomeOf is.
+	Home string
 }
 
 // Picker chooses the backend for a session that has none yet. It is called
@@ -70,6 +72,26 @@ type Config struct {
 	HasLocalWorkspace func(uid string) bool
 	// Identity returns what a worker should be told about the requester.
 	Identity func(w http.ResponseWriter, r *http.Request, ec ExecutionContext) trusted.Identity
+	// PrepareHome is called once for a session placed on a worker, before its
+	// first request is forwarded: it makes the worker's copy of the home match
+	// the gateway's, so a user moved to another worker finds their files.
+	PrepareHome func(ctx context.Context, home, backendID string) error
+	// OnMoved is called when a signed-in user is placed on another worker than
+	// the one that held their files, so the old copy can be dropped.
+	OnMoved func(home, from, to string)
+	// RelocateAfter is how long a worker may be gone before the signed-in
+	// users pinned to it are placed elsewhere. Default 2 minutes. A worker
+	// that is draining gives up its users at once.
+	RelocateAfter time.Duration
+	// HomeOf names the home directory of a session. When set, the router
+	// records it and, while a session's worker is away, serves the file
+	// browser and uploads from the gateway's own copy of that home.
+	HomeOf func(id Identity) string
+	// TerminalNotice answers a terminal's WebSocket request by telling the
+	// page that the session's worker is away and how long until the session is
+	// placed again, and reports whether it handled the response. The page
+	// shows a countdown. Optional: without it the answer is a plain 503.
+	TerminalNotice func(w http.ResponseWriter, r *http.Request, retryIn time.Duration) bool
 }
 
 // Router sends each request either to the gateway's own handlers or, for
@@ -87,9 +109,27 @@ type Router struct {
 	terminal func(string) (string, int64, bool)
 	hasLocal func(string) bool
 	identity func(http.ResponseWriter, *http.Request, ExecutionContext) trusted.Identity
+	homeOf   func(Identity) string
+	notice   func(http.ResponseWriter, *http.Request, time.Duration) bool
+
+	prepare       func(ctx context.Context, home, backendID string) error
+	onMoved       func(home, from, to string)
+	relocateAfter time.Duration
+	started       time.Time
+	offlineSince  map[string]time.Time // guarded by mu
+
+	// picks counts, per backend, the sessions the picker has given it since
+	// the gateway started (GET admin/workers shows it next to the weights).
+	pickMu sync.Mutex
+	picks  map[string]int64
 
 	tunnelPath string
 	tunnel     http.Handler
+
+	// Per-home activity, kept when workspace sync is on so that the gateway
+	// alone decides when a guest's home has been idle long enough.
+	amu      sync.Mutex
+	activity map[string]*homeActivity
 
 	mu       sync.RWMutex
 	backends map[string]Backend
@@ -106,23 +146,43 @@ func NewRouter(cfg Config) *Router {
 		isEntry = func(string) bool { return false }
 	}
 	local := NewLocalBackend(cfg.Site, cfg.Local)
+	registryTTL := cfg.GuestTTL
+	if cfg.HomeOf != nil {
+		// With workspace sync a guest's context lives as long as its home:
+		// ExpireGuests ends both together, after the guest has really been
+		// idle, instead of the registry dropping the context on its own.
+		registryTTL = 0
+	}
 	rt := &Router{
 		site:     cfg.Site,
 		prefix:   cfg.PathPrefix,
 		isEntry:  isEntry,
 		uid:      uid,
 		affinity: NewAffinity(cfg.Secret, cfg.GuestTTL),
-		registry: NewSessionRegistry(cfg.GuestTTL),
+		registry: NewSessionRegistry(registryTTL),
+		activity: make(map[string]*homeActivity),
 		routes:   NewRouteMap(),
 		picker:   cfg.Picker,
 		pins:     cfg.Pins,
 		terminal: cfg.Terminal,
 		hasLocal: cfg.HasLocalWorkspace,
 		identity: cfg.Identity,
-		backends: map[string]Backend{local.ID(): local},
+		homeOf:   cfg.HomeOf,
+		notice:   cfg.TerminalNotice,
+
+		prepare:       cfg.PrepareHome,
+		onMoved:       cfg.OnMoved,
+		relocateAfter: cfg.RelocateAfter,
+		started:       time.Now(),
+		offlineSince:  make(map[string]time.Time),
+		picks:         make(map[string]int64),
+		backends:      map[string]Backend{local.ID(): local},
 	}
 	if rt.picker == nil {
 		rt.picker = NewPool(rt.Backends)
+	}
+	if rt.relocateAfter <= 0 {
+		rt.relocateAfter = 2 * time.Minute
 	}
 	return rt
 }
@@ -134,6 +194,9 @@ func (rt *Router) SetTunnel(path string, handler http.Handler) {
 	rt.tunnel = handler
 }
 
+// OwnerOf returns the backend that runs the sessions using a home.
+func (rt *Router) OwnerOf(home string) (string, bool) { return rt.registry.HomeOwner(home) }
+
 // Registry exposes the session registry (for the admin API and tests).
 func (rt *Router) Registry() *SessionRegistry { return rt.registry }
 
@@ -144,6 +207,7 @@ func (rt *Router) Routes() *RouteMap { return rt.routes }
 func (rt *Router) AddBackend(b Backend) {
 	rt.mu.Lock()
 	rt.backends[b.ID()] = b
+	delete(rt.offlineSince, b.ID())
 	rt.mu.Unlock()
 }
 
@@ -155,6 +219,7 @@ func (rt *Router) RemoveBackend(b Backend) {
 	removed := rt.backends[b.ID()] == b
 	if removed {
 		delete(rt.backends, b.ID())
+		rt.offlineSince[b.ID()] = time.Now()
 	}
 	rt.mu.Unlock()
 	if removed {
@@ -193,6 +258,39 @@ func IsAdmin(rel string) bool {
 	return rel == "admin" || strings.HasPrefix(rel, "admin/")
 }
 
+// IsFileRoute reports whether the path is the file browser or an upload,
+// which the gateway can serve from its own copy of a home.
+func IsFileRoute(rel string) bool { return rel == "ws_filebrowser" || rel == "upload_file" }
+
+type workspaceKey struct{}
+type ownWorkspaceKey struct{}
+
+func withWorkspace(r *http.Request, home string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), workspaceKey{}, home))
+}
+
+// withOwnWorkspace is withWorkspace for a session the gateway runs itself.
+func withOwnWorkspace(r *http.Request, home string) *http.Request {
+	r = withWorkspace(r, home)
+	return r.WithContext(context.WithValue(r.Context(), ownWorkspaceKey{}, true))
+}
+
+// WorkspaceOf returns the home a request must use instead of the one its
+// cookie names: the gateway's copy of the session's home, which it serves
+// from while the worker is away or runs the session in when it holds it.
+func WorkspaceOf(r *http.Request) string {
+	h, _ := r.Context().Value(workspaceKey{}).(string)
+	return h
+}
+
+// OwnWorkspace reports whether the gateway itself runs the session that
+// WorkspaceOf names the home of, as opposed to serving a worker's files while
+// it is away.
+func OwnWorkspace(r *http.Request) bool {
+	own, _ := r.Context().Value(ownWorkspaceKey{}).(bool)
+	return own
+}
+
 // IsExecutionBound reports whether the path runs user code or touches a
 // user's workspace: the terminal WebSockets, the file browser and uploads.
 func IsExecutionBound(rel string) bool {
@@ -221,6 +319,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		backendID := unassigned
 		if ec, err := rt.assign(w, r); err == nil {
 			backendID = ec.BackendID
+			rt.touchHome(ec.Home)
 		}
 		ctx := context.WithValue(r.Context(), backendKey{}, backendID)
 		rt.site.ServeHTTP(w, r.WithContext(ctx))
@@ -231,25 +330,59 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (rt *Router) execute(w http.ResponseWriter, r *http.Request) {
 	ec, err := rt.assign(w, r)
+	if err == nil {
+		rt.touchHome(ec.Home)
+		if rt.terminal != nil {
+			if _, _, isTerminal := rt.terminal(rt.rel(r.URL.Path)); isTerminal {
+				// A terminal keeps its home in use for as long as it is open.
+				rt.terminalOpened(ec.Home)
+				defer rt.terminalClosed(ec.Home)
+			}
+		}
+	}
 	if err != nil {
 		code := http.StatusServiceUnavailable
 		if err == errIdentity {
 			code = http.StatusInternalServerError
 		}
-		http.Error(w, err.Error(), code)
+		rt.refuseError(w, r, err, code)
 		return
 	}
+	if b, found := rt.Backend(ec.BackendID); found && b.State() != Offline {
+		if err := rt.prepareHome(r, ec); err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+	}
 	backendID := ec.BackendID
-	if owner, ok := rt.routed(r); ok {
+	owner, viaRoute := rt.routed(r)
+	if viaRoute {
 		backendID = owner
 	}
 	b, found := rt.Backend(backendID)
+	if (!found || b.State() == Offline) && rt.homeOf != nil && ec.Home != "" && IsFileRoute(rt.rel(r.URL.Path)) && backendID == ec.BackendID {
+		// The worker is away but the gateway has a copy of the home: serve
+		// the file browser, downloads, saves and uploads from it. Terminals
+		// cannot be served: the programs went with the worker.
+		if local, ok := rt.Backend(LocalID); ok {
+			if err := local.Serve(w, withWorkspace(r, ec.Home)); err != nil {
+				log.Printf("gateway: backend %s: %v", local.ID(), err)
+			}
+			return
+		}
+	}
 	if !found || b.State() == Offline {
 		msg := "execution node unavailable"
-		if ec.UID != "" && backendID == ec.BackendID {
-			msg = ErrWorkspaceUnavailable.Error()
+		var retryIn time.Duration
+		if backendID == ec.BackendID {
+			if ec.UID != "" {
+				msg = ErrWorkspaceUnavailable.Error()
+			}
+			if ec.Home != "" {
+				retryIn = rt.retryIn(backendID)
+			}
 		}
-		http.Error(w, msg, http.StatusServiceUnavailable)
+		rt.refuse(w, r, msg, retryIn)
 		return
 	}
 	if rt.terminal != nil {
@@ -267,6 +400,17 @@ func (rt *Router) execute(w http.ResponseWriter, r *http.Request) {
 			id = rt.identity(w, r, ec)
 		}
 		r = withIdentity(r, id)
+		if rt.homeOf != nil && ec.Home != "" && backendID == ec.BackendID {
+			// If the worker goes away under an open terminal, the browser is
+			// told how long until the session is placed again.
+			r = withAway(r, func() time.Duration { return rt.retryIn(backendID) })
+		}
+	} else if rt.homeOf != nil && ec.Home != "" && !viaRoute {
+		// With workspace sync a session has one home name on every node, the
+		// one a worker would use. A session the gateway runs itself therefore
+		// works in the gateway's copy of that home: this is what a session
+		// that was placed here after its worker was lost finds its files in.
+		r = withOwnWorkspace(r, ec.Home)
 	}
 	if err := b.Serve(w, r); err != nil {
 		log.Printf("gateway: backend %s: %v", b.ID(), err)
@@ -321,48 +465,132 @@ func (rt *Router) assign(w http.ResponseWriter, r *http.Request) (ExecutionConte
 	if err != nil {
 		return ExecutionContext{}, err
 	}
+	replaced := ""
 	if ec, found := rt.registry.Resolve(id.Key); found {
-		rt.registry.Touch(id.Key)
-		return ec, nil
+		if !rt.goneForGood(ec) {
+			rt.registry.Touch(id.Key)
+			return ec, nil
+		}
+		// The worker that held the session has been gone for longer than the
+		// grace period. Its programs are lost, and the gateway has the files,
+		// so the session is placed again, on a worker that is sent them.
+		replaced = ec.BackendID
+		rt.registry.Release(id.Key)
 	}
-	backendID, err := rt.place(id)
+	backendID, from, err := rt.place(id)
 	if err != nil {
 		return ExecutionContext{}, err
+	}
+	if from == "" {
+		from = replaced
+	}
+	if from != "" && from != backendID && rt.onMoved != nil && id.Home != "" {
+		rt.onMoved(id.Home, from, backendID)
 	}
 	return rt.registry.Create(id, backendID), nil
 }
 
+// goneForGood reports whether the worker of a session has been away longer
+// than the grace period, so that the session can be placed elsewhere. It is
+// only ever true with workspace sync, which is what makes the files available
+// on the gateway.
+func (rt *Router) goneForGood(ec ExecutionContext) bool {
+	if rt.homeOf == nil || ec.BackendID == LocalID || ec.Home == "" {
+		return false
+	}
+	if _, found := rt.Backend(ec.BackendID); found {
+		return false
+	}
+	return rt.goneLongEnough(ec.BackendID)
+}
+
+// goneLongEnough reports whether a backend that is not connected has been
+// away for the grace period. After a gateway restart every worker gets the
+// whole period to reconnect.
+func (rt *Router) goneLongEnough(id string) bool {
+	return time.Since(rt.awaySince(id)) >= rt.relocateAfter
+}
+
+// errPrepare means the chosen worker could not be given the session's home.
+var errPrepare = errors.New("the workspace could not be prepared on the execution node")
+
+// prepareHome makes the backend's copy of the session's home match the
+// gateway's, once per session, before the first request is forwarded.
+func (rt *Router) prepareHome(r *http.Request, ec ExecutionContext) error {
+	if rt.prepare == nil || ec.Prepared || ec.Home == "" || ec.BackendID == LocalID {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if err := rt.prepare(ctx, ec.Home, ec.BackendID); err != nil {
+		log.Printf("gateway: preparing home %s on %s: %v", ec.Home, ec.BackendID, err)
+		return errPrepare
+	}
+	rt.registry.MarkPrepared(ec.Key)
+	return nil
+}
+
 // place chooses the backend for a session that has none. A signed-in user
 // goes back to where their files are; everyone else is placed by the picker.
-func (rt *Router) place(id Identity) (string, error) {
+// from is set when a user is placed on another backend than the one that
+// held their files.
+func (rt *Router) place(id Identity) (backendID, from string, err error) {
 	if id.UID != "" {
 		if rt.pins != nil {
 			if pinned, ok := rt.pins.Get(id.UID); ok {
-				// The files are on that backend. Starting somewhere else
-				// would show the user an empty workspace, so fail instead.
-				if b, found := rt.Backend(pinned); !found || b.State() != Online {
-					return "", ErrWorkspaceUnavailable
+				b, found := rt.Backend(pinned)
+				switch {
+				case found && (b.State() == Online || b.State() == Syncing):
+					// Syncing: the worker is catching up with the gateway and
+					// serves this user's home as soon as that home is in step.
+					return pinned, "", nil
+				case rt.canRelocate(pinned, found, b):
+					// Their files are on the gateway as well, so they can be
+					// placed on another worker, which is sent a copy first.
+					from = pinned
+				default:
+					// Starting somewhere else would show the user an empty
+					// workspace, so fail instead.
+					return "", "", rt.withRetry(ErrWorkspaceUnavailable, pinned)
 				}
-				return pinned, nil
 			}
 		}
-		if rt.hasLocal != nil && rt.hasLocal(id.UID) {
-			return LocalID, nil
+		// With workspace sync the files on the gateway are a copy that is sent
+		// to whichever worker is chosen, so they no longer pin the user here.
+		if from == "" && rt.homeOf == nil && rt.hasLocal != nil && rt.hasLocal(id.UID) {
+			return LocalID, "", nil
 		}
 	}
-	backendID, err := rt.picker.Pick(id)
+	backendID, err = rt.picker.Pick(id)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
+	rt.countPick(backendID)
 	if id.UID != "" && rt.pins != nil {
 		rt.pins.Set(id.UID, backendID)
 	}
-	return backendID, nil
+	if backendID == from {
+		from = ""
+	}
+	return backendID, from, nil
+}
+
+// canRelocate reports whether the users pinned to a backend may be placed
+// elsewhere: only with workspace sync (the gateway holds their files), and
+// only when the backend is draining or has been gone for the grace period.
+func (rt *Router) canRelocate(pinned string, found bool, b Backend) bool {
+	if rt.homeOf == nil || pinned == LocalID {
+		return false
+	}
+	if found {
+		return b.State() == Draining
+	}
+	return rt.goneLongEnough(pinned)
 }
 
 func (rt *Router) identify(w http.ResponseWriter, r *http.Request) (Identity, error) {
 	if uid := rt.uid(r); uid != "" {
-		return Identity{Key: "u:" + uid, UID: uid}, nil
+		return rt.withHome(Identity{Key: "u:" + uid, UID: uid}), nil
 	}
 	guest := rt.affinity.GuestID(r)
 	if guest == "" {
@@ -372,7 +600,14 @@ func (rt *Router) identify(w http.ResponseWriter, r *http.Request) (Identity, er
 			return Identity{}, errIdentity
 		}
 	}
-	return Identity{Key: "g:" + guest, GuestID: guest}, nil
+	return rt.withHome(Identity{Key: "g:" + guest, GuestID: guest}), nil
+}
+
+func (rt *Router) withHome(id Identity) Identity {
+	if rt.homeOf != nil {
+		id.Home = rt.homeOf(id)
+	}
+	return id
 }
 
 // newGuest issues a guest id that no live session is using. The id is short

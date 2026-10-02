@@ -416,6 +416,23 @@ func TestReconnectReregistersAndReannouncesRoutes(t *testing.T) {
 	}
 }
 
+func TestDisconnectMakesTheWorkerReconnect(t *testing.T) {
+	gw := newGateway(t, nil)
+	newWorker(t, gw.url, "worker-1", nil, nil)
+	waitFor(t, "registration", func() bool { return gw.srv.Worker("worker-1") != nil })
+	first := gw.srv.Worker("worker-1")
+
+	first.Disconnect() // the gateway wants a fresh connection, e.g. to restart workspace sync
+	waitFor(t, "offline", func() bool { return gw.ev.has("offline:worker-1") })
+	waitFor(t, "reconnect", func() bool {
+		w := gw.srv.Worker("worker-1")
+		return w != nil && w.ConnectionID() != first.ConnectionID() && w.Online()
+	})
+	if first.Online() {
+		t.Fatal("the old connection still reports online")
+	}
+}
+
 func TestSameIDReplacesOldConnectionInOrder(t *testing.T) {
 	gw := newGateway(t, nil)
 	reg := RegisterRequest{WorkerID: "dup", ProtocolVersion: ProtocolVersion}
@@ -566,4 +583,93 @@ func TestDrainSurvivesReconnect(t *testing.T) {
 	if gw.srv.Worker("worker-1").Draining() {
 		t.Fatal("undrain was not applied")
 	}
+}
+
+func TestSyncChannelAndSyncingStateLifecycle(t *testing.T) {
+	var ready sync.Mutex
+	readyCalls := 0
+	gw := newGateway(t, func(c *ServerConfig) {
+		c.WorkspaceSync = true
+		c.OnSyncReady = func(w *Worker) { ready.Lock(); readyCalls++; ready.Unlock() }
+	})
+	var gotReply RegisterReply
+	syncStreams := make(chan net.Conn, 4)
+	wk := newWorker(t, gw.url, "worker-1", nil, func(c *ClientConfig) {
+		c.OnSyncStream = func(conn net.Conn) { syncStreams <- conn }
+		orig := c.OnRegistered
+		c.OnRegistered = func(r RegisterReply) { gotReply = r; orig(r) }
+	})
+	waitFor(t, "registration", func() bool { return gw.srv.Worker("worker-1") != nil && wk.client.Connected() })
+	w := gw.srv.Worker("worker-1")
+	if !gotReply.WorkspaceSync {
+		t.Fatal("the registration reply did not say that workspace sync is on")
+	}
+	if !w.Syncing() {
+		t.Fatal("a new worker must be SYNCING until it reports its homes reconciled")
+	}
+
+	// The gateway opens the sync channel and the worker's handler gets it.
+	conn, err := w.DialSync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	select {
+	case peer := <-syncStreams:
+		defer peer.Close()
+		go func() { io.Copy(peer, peer) }()
+		io.WriteString(conn, "ping")
+		buf := make([]byte, 4)
+		if _, err := io.ReadFull(conn, buf); err != nil || string(buf) != "ping" {
+			t.Fatalf("sync channel echo: %q %v", buf, err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the worker never received the sync channel")
+	}
+
+	if !wk.client.SyncReady() {
+		t.Fatal("the gateway did not acknowledge sync-ready")
+	}
+	if w.Syncing() {
+		t.Fatal("still SYNCING after the worker reported ready")
+	}
+	wk.client.SyncReady() // a second report changes nothing
+	ready.Lock()
+	defer ready.Unlock()
+	if readyCalls != 1 {
+		t.Fatalf("OnSyncReady called %d times, want 1", readyCalls)
+	}
+}
+
+func TestWorkerIsNeverSyncingWhenSyncIsOff(t *testing.T) {
+	gw := newGateway(t, nil)
+	var gotReply RegisterReply
+	wk := newWorker(t, gw.url, "worker-1", nil, func(c *ClientConfig) {
+		orig := c.OnRegistered
+		c.OnRegistered = func(r RegisterReply) { gotReply = r; orig(r) }
+	})
+	waitFor(t, "registration", func() bool { return gw.srv.Worker("worker-1") != nil && wk.client.Connected() })
+	if gw.srv.Worker("worker-1").Syncing() || gotReply.WorkspaceSync {
+		t.Fatal("a worker is SYNCING although workspace sync is off")
+	}
+	// A sync channel is refused when the worker has no handler.
+	if _, err := gw.srv.Worker("worker-1").DialSync(context.Background()); err == nil {
+		t.Fatal("the worker accepted a sync channel it cannot serve")
+	}
+}
+
+func TestWorkerThatNeverFinishesSyncingIsDropped(t *testing.T) {
+	gw := newGateway(t, func(c *ServerConfig) {
+		c.WorkspaceSync = true
+		c.SyncTimeout = 200 * time.Millisecond
+	})
+	newWorker(t, gw.url, "worker-1", nil, func(c *ClientConfig) { c.OnSyncStream = func(net.Conn) {} })
+	waitFor(t, "the first registration", func() bool { return gw.srv.Worker("worker-1") != nil })
+	first := gw.srv.Worker("worker-1")
+	waitFor(t, "the gateway to drop it", func() bool { return !first.Online() })
+	// It reconnects and gets another try.
+	waitFor(t, "a new registration", func() bool {
+		w := gw.srv.Worker("worker-1")
+		return w != nil && w.ConnectionID() != first.ConnectionID()
+	})
 }

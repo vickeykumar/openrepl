@@ -12,6 +12,10 @@ const ProtocolVersion = 1
 // connection. The worker serves HTTP on it.
 const ChannelHTTP = "openrepl-http"
 
+// ChannelSync is the SSH channel type the gateway opens for workspace
+// synchronization. One channel per worker connection carries every home.
+const ChannelSync = "openrepl-sync"
+
 // Subprotocol is the WebSocket subprotocol of the tunnel endpoint.
 const Subprotocol = "openrepl-tunnel"
 
@@ -21,6 +25,9 @@ const (
 	ReqHeartbeat  = "heartbeat@openrepl"
 	ReqRouteOpen  = "route-open@openrepl"
 	ReqRouteClose = "route-close@openrepl"
+	// ReqSyncReady tells the gateway that the worker's homes are reconciled
+	// and it can take new sessions.
+	ReqSyncReady = "sync-ready@openrepl"
 )
 
 // Route kinds: keys that must reach the worker that owns them even when the
@@ -50,6 +57,9 @@ type RegisterReply struct {
 	HeartbeatMillis int    `json:"heartbeat_ms"`
 	CookieSecret    []byte `json:"cookie_secret"`
 	AuthToken       string `json:"auth_token"`
+	// WorkspaceSync says the gateway keeps a copy of the worker's homes. The
+	// worker then stays out of rotation (SYNCING) until it sends ReqSyncReady.
+	WorkspaceSync bool `json:"workspace_sync,omitempty"`
 }
 
 // Heartbeat reports the worker's load.

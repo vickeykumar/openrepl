@@ -5,26 +5,31 @@ import (
 	"bytes"
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/pkg/errors"
 
 	"cookie"
 	"tunnel"
+	"utils"
 )
 
-// runWorker serves the handlers on the streams a gateway opens, instead of
-// on a public port. The worker dials the gateway and keeps reconnecting, so
-// it needs no inbound address.
-func (server *Server) runWorker(ctx context.Context, handlers http.Handler, counter *counter) error {
+// runWorker serves the handlers on the streams a gateway opens. The worker
+// dials the gateway and keeps reconnecting, so it needs no inbound address.
+// local, when not nil, is the worker's own port (see Options.LocalListen):
+// the same handlers, but its visitors are not the gateway's.
+func (server *Server) runWorker(ctx context.Context, handlers http.Handler, counter *counter, local *http.Server) error {
 	id := server.options.WorkerID
 	if id == "" {
 		id, _ = os.Hostname()
 	}
+	server.options.WorkerID = id
 	capacity := int64(server.options.WorkerCapacity)
 	if capacity <= 0 {
 		capacity = memoryCapacityMB()
@@ -42,7 +47,9 @@ func (server *Server) runWorker(ctx context.Context, handlers http.Handler, coun
 		}
 	}
 
-	client, err := tunnel.NewClient(tunnel.ClientConfig{
+	var client *tunnel.Client
+	var err error
+	client, err = tunnel.NewClient(tunnel.ClientConfig{
 		ServerURL: server.options.WorkerServer,
 		Token:     server.options.WorkerToken,
 		HostKey:   server.options.WorkerHostKey,
@@ -57,7 +64,14 @@ func (server *Server) runWorker(ctx context.Context, handlers http.Handler, coun
 		Load: func() tunnel.Heartbeat {
 			return tunnel.Heartbeat{Used: int64(counter.weight()), Active: counter.count()}
 		},
+		OnSyncStream: func(c net.Conn) { server.serveWorkerSync(ctx, client)(c) },
 		OnRegistered: func(rep tunnel.RegisterReply) {
+			if rep.WorkspaceSync {
+				atomic.StoreInt32(&server.workerSync.enabled, 1)
+				// A worker never decides on its own that a home expired: the
+				// gateway tells it (a drop), or the files stay.
+				utils.RemoveDirGuard = server.keepHome
+			}
 			// Held in memory only; replaced on every (re)connect.
 			if len(rep.CookieSecret) > 0 && !bytes.Equal(rep.CookieSecret, cookie.SECRET_KEY) {
 				cookie.SECRET_KEY = rep.CookieSecret
@@ -76,8 +90,17 @@ func (server *Server) runWorker(ctx context.Context, handlers http.Handler, coun
 
 	log.Printf("Worker %s connecting to gateway %s (capacity %d MB, weight %d)",
 		id, server.options.WorkerServer, capacity, server.options.WorkerWeight)
+	if local != nil {
+		log.Printf("Worker %s also serves its own port; sessions opened there stay on this worker", id)
+	}
 	err = client.Run(ctx)
 	srv.Close()
+	if local != nil {
+		local.Close()
+	}
+	if m := server.workerSync.mgr; m != nil {
+		m.Close()
+	}
 
 	if conn := counter.count(); conn > 0 {
 		log.Printf("Waiting for %d connections to be closed", conn)

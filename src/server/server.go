@@ -41,6 +41,8 @@ type Server struct {
 	// routes announces the jids and workspaces this node owns. It is nil in
 	// standalone mode.
 	routes *routeTracker
+	// workerSync is the workspace-sync state of a worker.
+	workerSync workerSyncState
 	// terminals maps each WebSocket route (without the prefix) to the REPL
 	// command it starts.
 	terminals map[string]string
@@ -61,6 +63,38 @@ func (server *Server) credential() string {
 
 func (server *Server) setCredential(token string) {
 	server.workerCredential.Store(token)
+}
+
+// credentialFor is the token a WebSocket opened by r must carry. A request
+// forwarded by the gateway carries the gateway's token. A visitor of a
+// worker's own port gets the worker's own credential from /auth_token.js, so
+// that is the one to expect.
+func (server *Server) credentialFor(r *http.Request) string {
+	if server.options.Mode == ModeWorker && !isTrusted(r) {
+		return server.options.Credential
+	}
+	return server.credential()
+}
+
+// wrapSiteAuth applies basic auth to the site when a credential is set. A
+// worker has already been authenticated by the gateway for the requests it
+// forwards, so only visitors of the worker's own port are asked.
+func (server *Server) wrapSiteAuth(handler http.Handler) http.Handler {
+	if !server.options.EnableBasicAuth {
+		return handler
+	}
+	log.Printf("Using Basic Authentication")
+	asked := server.wrapBasicAuth(handler, server.options.Credential)
+	if server.options.Mode != ModeWorker {
+		return asked
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isTrusted(r) {
+			handler.ServeHTTP(w, r)
+			return
+		}
+		asked.ServeHTTP(w, r)
+	})
 }
 
 // New creates a new instance of Server.
@@ -139,57 +173,33 @@ func (server *Server) Run(ctx context.Context, options ...RunOption) error {
 	}
 	if server.options.Mode == ModeWorker {
 		defer cancel()
-		return server.runWorker(cctx, handlers, counter)
+		// A worker is reached through the gateway. When the operator also
+		// gave it a port, it serves that port too, so people on the same
+		// network can open the worker directly.
+		var local *http.Server
+		if server.options.LocalListen {
+			var localErr <-chan error
+			local, localErr, err = server.serveLocal(handlers, path)
+			if err != nil {
+				return err
+			}
+			go func() {
+				select {
+				case err := <-localErr:
+					if err != http.ErrServerClosed {
+						log.Printf("The worker's own port stopped: %v", err)
+						cancel()
+					}
+				case <-cctx.Done():
+				}
+			}()
+		}
+		return server.runWorker(cctx, handlers, counter, local)
 	}
-	srv, err := server.setupHTTPServer(handlers)
+	srv, srvErr, err := server.serveLocal(handlers, path)
 	if err != nil {
-		return errors.Wrapf(err, "failed to setup an HTTP server")
+		return err
 	}
-
-	if server.options.PermitWrite {
-		log.Printf("Permitting clients to write input to the PTY.")
-	}
-	if server.options.Once {
-		log.Printf("Once option is provided, accepting only one client")
-	}
-
-	if server.options.Port == "0" {
-		log.Printf("Port number configured to `0`, choosing a random port")
-	}
-	hostPort := net.JoinHostPort(server.options.Address, server.options.Port)
-	listener, err := net.Listen("tcp", hostPort)
-	if err != nil {
-		return errors.Wrapf(err, "failed to listen at `%s`", hostPort)
-	}
-
-	scheme := "http"
-	if server.options.EnableTLS {
-		scheme = "https"
-	}
-	host, port, _ := net.SplitHostPort(listener.Addr().String())
-	log.Printf("HTTP server is listening at: %s", scheme+"://"+host+":"+port+path)
-	if server.options.Address == "0.0.0.0" {
-		for _, address := range listAddresses() {
-			log.Printf("Alternative URL: %s", scheme+"://"+address+":"+port+path)
-		}
-	}
-
-	srvErr := make(chan error, 1)
-	go func() {
-		if server.options.EnableTLS {
-			crtFile := homedir.Expand(server.options.TLSCrtFile)
-			keyFile := homedir.Expand(server.options.TLSKeyFile)
-			log.Printf("TLS crt file: " + crtFile)
-			log.Printf("TLS key file: " + keyFile)
-
-			err = srv.ServeTLS(listener, crtFile, keyFile)
-		} else {
-			err = srv.Serve(listener)
-		}
-		if err != nil {
-			srvErr <- err
-		}
-	}()
 
 	go func() {
 		select {
@@ -218,6 +228,62 @@ func (server *Server) Run(ctx context.Context, options ...RunOption) error {
 	counter.wait()
 
 	return err
+}
+
+// serveLocal listens on --address and --port and serves handlers there in the
+// background. The channel receives the error that ended the server.
+func (server *Server) serveLocal(handlers http.Handler, path string) (*http.Server, <-chan error, error) {
+	srv, err := server.setupHTTPServer(handlers)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to setup an HTTP server")
+	}
+
+	if server.options.PermitWrite {
+		log.Printf("Permitting clients to write input to the PTY.")
+	}
+	if server.options.Once {
+		log.Printf("Once option is provided, accepting only one client")
+	}
+
+	if server.options.Port == "0" {
+		log.Printf("Port number configured to `0`, choosing a random port")
+	}
+	hostPort := net.JoinHostPort(server.options.Address, server.options.Port)
+	listener, err := net.Listen("tcp", hostPort)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to listen at `%s`", hostPort)
+	}
+
+	scheme := "http"
+	if server.options.EnableTLS {
+		scheme = "https"
+	}
+	host, port, _ := net.SplitHostPort(listener.Addr().String())
+	log.Printf("HTTP server is listening at: %s", scheme+"://"+host+":"+port+path)
+	if server.options.Address == "0.0.0.0" {
+		for _, address := range listAddresses() {
+			log.Printf("Alternative URL: %s", scheme+"://"+address+":"+port+path)
+		}
+	}
+
+	srvErr := make(chan error, 1)
+	go func() {
+		var err error
+		if server.options.EnableTLS {
+			crtFile := homedir.Expand(server.options.TLSCrtFile)
+			keyFile := homedir.Expand(server.options.TLSKeyFile)
+			log.Printf("TLS crt file: " + crtFile)
+			log.Printf("TLS key file: " + keyFile)
+
+			err = srv.ServeTLS(listener, crtFile, keyFile)
+		} else {
+			err = srv.Serve(listener)
+		}
+		if err != nil {
+			srvErr <- err
+		}
+	}()
+	return srv, srvErr, nil
 }
 
 func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFunc, pathPrefix string, counter *counter) (http.Handler, error) {
@@ -273,12 +339,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 
 	siteHandler := http.Handler(siteMux)
 
-	// A worker is reached only through the gateway, which has already
-	// applied basic auth to the browser's request.
-	if server.options.EnableBasicAuth && server.options.Mode != ModeWorker {
-		log.Printf("Using Basic Authentication")
-		siteHandler = server.wrapBasicAuth(siteHandler, server.options.Credential)
-	}
+	siteHandler = server.wrapSiteAuth(siteHandler)
 
 	withGz := gziphandler.GzipHandler(server.wrapHeaders(siteHandler))
 	siteHandler = server.wrapLogger(withGz)

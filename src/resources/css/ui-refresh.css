@@ -940,7 +940,7 @@ body.files-collapsed .files-panel { display: none; }
 .term-banner__dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--danger-color); }
 .term-banner[data-tone="warn"] .term-banner__dot { background: var(--warn-color); }
 .term-banner[data-tone="neutral"] .term-banner__dot { background: var(--muted-3); }
-.term-banner__text { flex: 1; color: #E6E4EC; }
+.term-banner__text { flex: 1; color: #E6E4EC; font-variant-numeric: tabular-nums; }
 .term-banner__text strong { color: var(--paper); font-weight: 600; }
 .term-banner__action {
   flex-shrink: 0;
@@ -956,6 +956,10 @@ body.files-collapsed .files-panel { display: none; }
 .term-banner[data-tone="warn"] .term-banner__action { background: var(--warn-color); }
 .term-banner__action:hover,
 .term-banner__action:focus-visible { filter: brightness(1.07); }
+/* Controls held back while the execution node is away (11-terminal-state.js). */
+.is-away,
+.is-away:hover,
+.is-away:focus-visible { opacity: 0.4; cursor: not-allowed; filter: none; }
 
 .term-footer {
   display: flex;

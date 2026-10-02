@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -18,6 +19,17 @@ type WorkerInfo struct {
 	UsedMB   int64  `json:"usedMB"`
 	MaxMB    int64  `json:"maxMB"` // 0 means no limit
 	Sessions int    `json:"sessions"`
+
+	// Picked is how many sessions the weighted random choice has given this
+	// node since the gateway started, PickedPercent its share of all such
+	// sessions, and WeightPercent the share it should get by weight among the
+	// nodes that take new sessions now (0 for one that does not). Over many
+	// sessions the first two approach the third. A session that was not
+	// picked, such as a signed-in user going back to their worker, is not
+	// counted.
+	Picked        int64   `json:"picked"`
+	PickedPercent float64 `json:"pickedPercent"`
+	WeightPercent float64 `json:"weightPercent"`
 
 	Terminals    int64    `json:"terminals,omitempty"`
 	Languages    []string `json:"languages,omitempty"`
@@ -55,7 +67,12 @@ func (rt *Router) AdminHandler(ts *tunnel.Server) http.Handler {
 			if !allow(w, r, http.MethodGet) {
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]interface{}{"workers": rt.workerInfo(ts)})
+			total := rt.pickTotal()
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"workers":     rt.workerInfo(ts),
+				"pickedTotal": total,
+				"pickedSince": rt.started.UTC().Format(time.RFC3339),
+			})
 		case rel == "sessions":
 			if !allow(w, r, http.MethodGet) {
 				return
@@ -110,6 +127,15 @@ func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
 		sessions[ec.BackendID]++
 	}
 	backends := rt.Backends()
+	// The shares nodes should get by weight: among those that take new
+	// sessions now, as the pool decides.
+	weightSum := 0
+	for _, b := range backends {
+		if b.State() == Online && b.Weight() > 0 {
+			weightSum += b.Weight()
+		}
+	}
+	picks, total := rt.pickCounts()
 	out := make([]WorkerInfo, 0, len(backends))
 	for _, b := range backends {
 		used, max := b.Capacity()
@@ -120,6 +146,13 @@ func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
 			UsedMB:   used,
 			MaxMB:    max,
 			Sessions: sessions[b.ID()],
+			Picked:   picks[b.ID()],
+		}
+		if total > 0 {
+			info.PickedPercent = percent(float64(info.Picked), float64(total))
+		}
+		if b.State() == Online && b.Weight() > 0 {
+			info.WeightPercent = percent(float64(b.Weight()), float64(weightSum))
 		}
 		if ts != nil {
 			if tw := ts.Worker(b.ID()); tw != nil {
@@ -135,6 +168,14 @@ func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
 		out = append(out, info)
 	}
 	return out
+}
+
+// percent is part as a percentage of whole, to one decimal.
+func percent(part, whole float64) float64 {
+	if whole <= 0 {
+		return 0
+	}
+	return math.Round(part/whole*1000) / 10
 }
 
 func (rt *Router) sessionInfo() []SessionInfo {

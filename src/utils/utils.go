@@ -260,7 +260,23 @@ func IsDirEmpty(dirPath string) bool {
 }
 
 // attempts to remove the directories recursively
+// RemoveDirGuard, if set, is asked before RemoveDir deletes a directory and
+// returns true to keep it. With workspace sync, homes are deleted only by the
+// gateway when a guest has been idle for good, never by the idle timers of
+// whichever node happens to see no requests. Set it once at start-up.
+var RemoveDirGuard func(dir string) bool
+
+// RemoveDir deletes a home directory, unless RemoveDirGuard keeps it.
 func RemoveDir(dirPath string) {
+	if guard := RemoveDirGuard; guard != nil && guard(filepath.Clean(dirPath)) {
+		log.Printf("Directory %s is kept: workspace sync decides when it expires\n", dirPath)
+		return
+	}
+	RemoveDirNow(dirPath)
+}
+
+// RemoveDirNow deletes a home directory without asking the guard.
+func RemoveDirNow(dirPath string) {
 	absDir, err := filepath.Abs(dirPath)
     	if err != nil {
         	log.Printf("Error getting absolute path: %s\n", err)

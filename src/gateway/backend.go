@@ -17,6 +17,10 @@ const (
 	Draining
 	// Offline backends are unreachable; their sessions fail.
 	Offline
+	// Syncing backends have just connected and are still reconciling their
+	// homes with the gateway. They take no new sessions; the ones they
+	// already have are served once their own home is in step.
+	Syncing
 )
 
 func (s State) String() string {
@@ -25,6 +29,8 @@ func (s State) String() string {
 		return "ONLINE"
 	case Draining:
 		return "DRAINING"
+	case Syncing:
+		return "SYNCING"
 	default:
 		return "OFFLINE"
 	}

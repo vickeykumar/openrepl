@@ -10,11 +10,12 @@ window.activeTermElem = activeTermElem;
 window.hideTermBanner = hideTermBanner;
 window.showTermBanner = showTermBanner;
 window.updateTermFooter = updateTermFooter;
+window.awayWaitMs = awayWaitMs;
 
 // ---------------------------------------------------------------------------
 // Connection state (T6). gotty-bundle fires "ttystate" on each terminal
 // element: connecting, connected, or closed with a kind (exited, killed,
-// failed, timeout, lost, closed, limit). Each tab shows a dot; the active terminal
+// failed, timeout, lost, away, closed, limit). Each tab shows a dot; the active terminal
 // gets a footer with the session time left and a banner when it stops.
 // ---------------------------------------------------------------------------
 window.SESSION_MINUTES = 60;
@@ -39,6 +40,76 @@ function setTabDot(elem, state) {
 
 function activeTermElem() {
   return document.querySelector("#terminal-div .terminal.active");
+}
+
+// ---------------------------------------------------------------------------
+// Execution node away. A gateway whose worker for this session is away cannot
+// start a terminal until it places the session again. It says how long that
+// takes (kind "away", detail.retryIn seconds), and the page counts it down:
+// Reconnect, Run and Debug stay disabled until the time is over, so pressing
+// them cannot only fail again.
+// ---------------------------------------------------------------------------
+var AWAY_CONTROLS = "#play-button, #debug-play-button, #redo-button, #tabrefresh, #run-menu .run-menu__item, #term-banner-action";
+var awayTimer = null;
+
+function awayLeftMs(elem) {
+  if (!elem || !elem.__ttyAwayUntil) return 0;
+  return Math.max(0, elem.__ttyAwayUntil - Date.now());
+}
+
+// How long the active terminal still has to wait, 0 if it need not.
+function awayWaitMs() {
+  var elem = activeTermElem();
+  return elem && elem.__ttyKind === "away" && elem.__ttyState === "closed" ? awayLeftMs(elem) : 0;
+}
+
+function clockText(ms) {
+  var s = Math.ceil(ms / 1000);
+  var m = Math.floor(s / 60);
+  s = s % 60;
+  return m + ":" + (s < 10 ? "0" : "") + s;
+}
+
+// Only the controls this disabled are enabled again, so a control that is
+// disabled for another reason stays so.
+function setAwayDisabled(on) {
+  document.querySelectorAll(AWAY_CONTROLS).forEach(function (el) {
+    if (on) {
+      el.disabled = true;
+      el.setAttribute("aria-disabled", "true");
+      el.classList.add("is-away");
+    } else if (el.classList.contains("is-away")) {
+      el.disabled = false;
+      el.removeAttribute("aria-disabled");
+      el.classList.remove("is-away");
+    }
+  });
+}
+
+function awayBannerBody(left) {
+  return left > 0
+    ? "Your files are safe. Reconnect in " + clockText(left) + "."
+    : "Your files are safe. You can reconnect now.";
+}
+
+function tickAway() {
+  var left = awayWaitMs();
+  setAwayDisabled(left > 0);
+  var b = document.getElementById("term-banner");
+  var elem = activeTermElem();
+  if (b && !b.hidden && elem && elem.__ttyKind === "away") {
+    document.getElementById("term-banner-body").textContent = " " + awayBannerBody(left);
+  }
+  updateTermFooter();
+  if (left <= 0 && awayTimer) {
+    clearInterval(awayTimer);
+    awayTimer = null;
+  }
+}
+
+function startAwayTimer() {
+  if (!awayTimer) awayTimer = setInterval(tickAway, 250);
+  tickAway();
 }
 
 function hideTermBanner() {
@@ -81,6 +152,10 @@ function showTermBanner(kind, compiled) {
     tone = "warn";
     title = "Too many open terminals.";
     body = "Close a terminal tab, then reconnect.";
+  } else if (kind === "away") {
+    tone = "warn";
+    title = "Your execution node is away.";
+    body = awayBannerBody(awayWaitMs());
   } else {
     title = "Connection lost.";
     body = "Your files are safe. Reconnect to start a fresh REPL in the same workspace.";
@@ -95,6 +170,7 @@ function showTermBanner(kind, compiled) {
     b.hidden = false;
     window.dispatchEvent(new Event("resize"));
   }
+  if (kind === "away") startAwayTimer();
 }
 
 function updateTermFooter() {
@@ -114,7 +190,9 @@ function updateTermFooter() {
   } else if (st === "closed") {
     f.setAttribute("data-warn", "false");
     var k = elem.__ttyKind;
-    t.textContent = k === "exited" ? "Finished" : k === "killed" ? "Stopped" : k === "failed" ? "Could not start" : "Disconnected";
+    var wait = k === "away" ? awayLeftMs(elem) : 0;
+    t.textContent = wait > 0 ? "Node away · reconnect in " + clockText(wait)
+      : k === "exited" ? "Finished" : k === "killed" ? "Stopped" : k === "failed" ? "Could not start" : "Disconnected";
   } else {
     t.textContent = "Connecting…";
   }
@@ -128,6 +206,7 @@ $(function () {
     var d = e.detail || {};
     if (!elem) return;
     elem.__ttyState = d.state;
+    if (d.state !== "closed") elem.__ttyAwayUntil = 0;
     if (d.state === "connecting") {
       elem.__ttyPending = true;
       setTabDot(elem, "connecting");
@@ -141,6 +220,9 @@ $(function () {
       elem.__ttyPending = false;
       elem.__ttyKind = d.kind;
       elem.__ttyCompiled = !!d.compiled;
+      elem.__ttyAwayUntil = d.kind === "away" ? Date.now() + (d.retryIn || 0) * 1000 : 0;
+      // The controls are disabled at once, not when the banner appears.
+      if (d.kind === "away") startAwayTimer();
       // A reconnect closes the old connection first; wait to see whether a new one starts.
       setTimeout(function () {
         if (!document.contains(elem) || elem.__ttyPending || elem.__ttyState !== "closed") return;
@@ -149,7 +231,7 @@ $(function () {
         updateTermFooter();
       }, 1500);
     }
-    updateTermFooter();
+    tickAway();
   });
   // switching tabs: show the state of the newly active terminal
   $("#terminal-tabs").on("click", ".tab", function () {
@@ -159,7 +241,7 @@ $(function () {
       if (elem && elem.__ttyState === "closed" && elem.__ttyKind && elem.__ttyKind !== "closed") {
         showTermBanner(elem.__ttyKind, elem.__ttyCompiled);
       }
-      updateTermFooter();
+      tickAway();
     }, 150);
   });
   setInterval(updateTermFooter, 30000);

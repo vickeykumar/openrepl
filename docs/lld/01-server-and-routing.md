@@ -44,8 +44,9 @@ After that, `EnableBasicAuth` is set when `--credential` is given, and `EnableTL
 | `--close-signal` | 1 (SIGHUP) | Sent to the REPL when the WebSocket closes. |
 | `--close-timeout` | -1 | When < 0 the option is not applied, so `LocalCommand` keeps its default of 10 s before SIGKILL. |
 | `--term` | xterm | Sent to the page through `config.js` (`gotty_term`); `hterm` is also supported. |
-| `--mode` | standalone | `standalone` (today's behaviour), `gateway` (puts the `gateway` router in front of every route, see below) or `worker` (no public port; dials a gateway and serves the sessions it forwards). See LLD 11. |
+| `--mode` | standalone | `standalone` (today's behaviour), `gateway` (puts the `gateway` router in front of every route, see below) or `worker` (dials a gateway and serves the sessions it forwards; opens a port of its own only when `--port` or `--address` is given). See LLD 11. |
 | `--worker-token` | "" | Shared secret between a gateway and its workers; prefer `$GOTTY_WORKER_TOKEN`. A gateway without it accepts no workers. |
+| `--workspace-sync`, `--sync-state-dir`, `--relocate-after` | false, `/opt/gotty/wsync`, `2m` | Gateway: keep a copy of every worker's homes on the gateway, in step with the worker (LLD 12). `--relocate-after` is how long a worker may be away before its sessions are placed elsewhere. `--sync-state-dir` (gateway and worker) holds the sync records and should be on durable storage. |
 | `--local-weight` | 10 | Gateway: its own share of new sessions next to the workers; 0 makes it routing-only. |
 | `--tunnel-path`, `--tunnel-addr`, `--tunnel-hostkey` | `/api/tunnel`, "", `~/.gotty.tunnel_key` | Gateway: the WebSocket endpoint workers connect to, an optional raw SSH listener, and the tunnel host key file (created if missing). |
 | `--worker-server`, `--worker-hostkey`, `--worker-id`, `--worker-weight`, `--worker-capacity`, `--worker-languages` | "", "", hostname, 10, 0, "" | Worker: gateway URL (`wss://host/api/tunnel` or `ssh://host:port`), pinned host-key fingerprint (required for `ssh://`), id, placement weight, session budget in MB (0 = RAM), and the REPL commands it can run (empty = all). |
@@ -60,7 +61,7 @@ After that, `EnableBasicAuth` is set when `--credential` is given, and `EnableTL
 - Parses `TitleFormat` with `text/template` and the `encodePID` function.
 - Builds a `websocket.Upgrader` with subprotocol `webtty` and an optional origin regexp (`--ws-origin`).
 
-`Server.Run` opens the listener, serves HTTP or TLS, and blocks until the listener fails or the context is cancelled. It then waits for live WebSockets through `counter.wait()`.
+`Server.Run` opens the listener (`serveLocal`), serves HTTP or TLS, and blocks until the listener fails or the context is cancelled. It then waits for live WebSockets through `counter.wait()`. A worker calls `serveLocal` only when `Options.LocalListen` is set, and otherwise serves only the gateway's tunnel (LLD 11, 6.2a).
 
 ```mermaid
 flowchart LR

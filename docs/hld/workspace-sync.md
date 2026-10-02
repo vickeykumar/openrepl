@@ -2,7 +2,7 @@
 
 ## High-Level Design (HLD)
 
-**Status:** Proposed. Nothing in this document is built yet.
+**Status:** Implemented on the `distributed-execution` branch, behind `--workspace-sync` (off by default).
 **Depends on:** distributed execution ([hld/distributed-execution.md](distributed-execution.md), [LLD 11](../lld/11-distributed-execution.md)).
 **Code-level design:** [LLD 12](../lld/12-workspace-sync.md).
 

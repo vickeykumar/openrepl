@@ -10,9 +10,13 @@ import (
 // and reused for every later request of the session; the backend is never
 // re-chosen for an existing context.
 type ExecutionContext struct {
-	Key       string // "u:<uid>" for signed-in users, "g:<guestID>" for guests
-	UID       string // empty for guests
-	GuestID   string // empty for signed-in users
+	Key     string // "u:<uid>" for signed-in users, "g:<guestID>" for guests
+	UID     string // empty for guests
+	GuestID string // empty for signed-in users
+	Home    string // the home directory name, when workspace sync is on
+	// Prepared is set once the backend's copy of the home has been made to
+	// match the gateway's, before the first request was forwarded to it.
+	Prepared  bool
 	BackendID string
 	CreatedAt time.Time
 	ExpiresAt time.Time // zero means it does not expire
@@ -67,6 +71,7 @@ func (r *SessionRegistry) Create(id Identity, backendID string) ExecutionContext
 		Key:       id.Key,
 		UID:       id.UID,
 		GuestID:   id.GuestID,
+		Home:      id.Home,
 		BackendID: backendID,
 		CreatedAt: now,
 	}
@@ -75,6 +80,15 @@ func (r *SessionRegistry) Create(id Identity, backendID string) ExecutionContext
 	}
 	r.contexts[id.Key] = ec
 	return *ec
+}
+
+// MarkPrepared records that the backend's copy of the home is ready.
+func (r *SessionRegistry) MarkPrepared(key string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ec, ok := r.contexts[key]; ok {
+		ec.Prepared = true
+	}
 }
 
 // Touch slides a guest context's expiry. It does nothing for contexts that
@@ -102,6 +116,21 @@ func (r *SessionRegistry) Len() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.contexts)
+}
+
+// HomeOwner returns the backend of a live context that uses the home.
+func (r *SessionRegistry) HomeOwner(home string) (string, bool) {
+	if home == "" {
+		return "", false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, ec := range r.contexts {
+		if ec.Home == home && !r.expired(ec) {
+			return ec.BackendID, true
+		}
+	}
+	return "", false
 }
 
 // Snapshot returns the live contexts ordered by key.

@@ -45,9 +45,17 @@ type ServerConfig struct {
 	// silent worker stays ONLINE. Defaults: 10s and 30s.
 	HeartbeatInterval time.Duration
 	Timeout           time.Duration
+	// WorkspaceSync turns on workspace synchronization: a worker is SYNCING
+	// from registration until it reports its homes reconciled.
+	WorkspaceSync bool
+	// SyncTimeout is how long a worker may stay SYNCING before the gateway
+	// drops the connection so that it tries again. Default 5 minutes.
+	SyncTimeout time.Duration
 	// OnOnline and OnOffline are called, in order, as workers come and go.
 	OnOnline  func(*Worker)
 	OnOffline func(*Worker)
+	// OnSyncReady is called when a worker reports its homes reconciled.
+	OnSyncReady func(*Worker)
 	// OnRoute is called when a worker announces or withdraws a key it owns.
 	OnRoute func(w *Worker, ev RouteEvent, open bool)
 	// Logf defaults to log.Printf.
@@ -88,6 +96,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 3 * cfg.HeartbeatInterval
 	}
+	if cfg.SyncTimeout <= 0 {
+		cfg.SyncTimeout = 5 * time.Minute
+	}
 	if cfg.Logf == nil {
 		cfg.Logf = log.Printf
 	}
@@ -119,6 +130,8 @@ type Worker struct {
 	lastSeen int64 // atomic, unix nanoseconds
 	draining int32 // atomic
 	offline  int32 // atomic
+	syncing  int32 // atomic: registered but its homes are not reconciled yet
+	syncFrom int64 // atomic, unix nanoseconds: when syncing began
 	replaced bool  // guarded by Server.mu
 }
 
@@ -129,7 +142,15 @@ func (w *Worker) Used() int64           { return atomic.LoadInt64(&w.used) }
 func (w *Worker) Active() int64         { return atomic.LoadInt64(&w.active) }
 func (w *Worker) Online() bool          { return atomic.LoadInt32(&w.offline) == 0 }
 func (w *Worker) Draining() bool        { return atomic.LoadInt32(&w.draining) == 1 }
-func (w *Worker) RemoteAddr() string    { return w.conn.RemoteAddr().String() }
+
+// Syncing reports whether the worker is still reconciling its homes with the
+// gateway. A syncing worker takes no new sessions.
+func (w *Worker) Syncing() bool      { return atomic.LoadInt32(&w.syncing) == 1 }
+func (w *Worker) RemoteAddr() string { return w.conn.RemoteAddr().String() }
+
+// Disconnect closes the worker's connection. The worker reconnects by itself,
+// which starts everything that depends on the connection afresh.
+func (w *Worker) Disconnect() { w.conn.Close() }
 
 // LastSeen is when the worker last sent anything.
 func (w *Worker) LastSeen() time.Time {
@@ -148,6 +169,10 @@ func (w *Worker) touch() { atomic.StoreInt64(&w.lastSeen, time.Now().UnixNano())
 
 // Dial opens a new stream to the worker. The worker serves HTTP on it.
 func (w *Worker) Dial(ctx context.Context) (net.Conn, error) {
+	return w.dialChannel(ctx, ChannelHTTP, "gateway")
+}
+
+func (w *Worker) dialChannel(ctx context.Context, channel, local string) (net.Conn, error) {
 	if !w.Online() {
 		return nil, errors.New("tunnel: worker " + w.id + " is offline")
 	}
@@ -157,7 +182,7 @@ func (w *Worker) Dial(ctx context.Context) (net.Conn, error) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		ch, reqs, err := w.conn.OpenChannel(ChannelHTTP, nil)
+		ch, reqs, err := w.conn.OpenChannel(channel, nil)
 		if err == nil {
 			go ssh.DiscardRequests(reqs)
 		}
@@ -168,7 +193,7 @@ func (w *Worker) Dial(ctx context.Context) (net.Conn, error) {
 		if r.err != nil {
 			return nil, r.err
 		}
-		return newStreamConn(r.ch, "gateway", w.id), nil
+		return newStreamConn(r.ch, local, w.id), nil
 	case <-ctx.Done():
 		go func() {
 			if r := <-done; r.err == nil {
@@ -177,6 +202,11 @@ func (w *Worker) Dial(ctx context.Context) (net.Conn, error) {
 		}()
 		return nil, ctx.Err()
 	}
+}
+
+// DialSync opens the workspace synchronization channel to the worker.
+func (w *Worker) DialSync(ctx context.Context) (net.Conn, error) {
+	return w.dialChannel(ctx, ChannelSync, "sync")
 }
 
 // Workers returns the registered workers ordered by id.
@@ -384,6 +414,18 @@ func (s *Server) ServeConn(c net.Conn) {
 				atomic.StoreInt64(&worker.active, int64(hb.Active))
 			}
 			reply(req, true, "")
+		case ReqSyncReady:
+			if worker == nil {
+				reply(req, false, "not registered")
+				continue
+			}
+			if atomic.CompareAndSwapInt32(&worker.syncing, 1, 0) {
+				s.cfg.Logf("tunnel: worker %s finished reconciling its homes", worker.id)
+				if s.cfg.OnSyncReady != nil {
+					s.cfg.OnSyncReady(worker)
+				}
+			}
+			reply(req, true, "")
 		case ReqRouteOpen, ReqRouteClose:
 			if worker == nil {
 				reply(req, false, "not registered")
@@ -439,6 +481,10 @@ func (s *Server) register(conn ssh.Conn, payload []byte) (*Worker, RegisterReply
 		conn:   conn,
 	}
 	w.touch()
+	if s.cfg.WorkspaceSync {
+		atomic.StoreInt32(&w.syncing, 1)
+		atomic.StoreInt64(&w.syncFrom, time.Now().UnixNano())
+	}
 
 	s.cbMu.Lock()
 	defer s.cbMu.Unlock()
@@ -469,6 +515,7 @@ func (s *Server) register(conn ssh.Conn, payload []byte) (*Worker, RegisterReply
 	rep := RegisterReply{
 		ConnectionID:    w.connID,
 		HeartbeatMillis: int(s.cfg.HeartbeatInterval / time.Millisecond),
+		WorkspaceSync:   s.cfg.WorkspaceSync,
 	}
 	if s.cfg.CookieSecret != nil {
 		rep.CookieSecret = s.cfg.CookieSecret()
@@ -510,6 +557,12 @@ func (s *Server) watch(w *Worker) {
 		}
 		if time.Since(w.LastSeen()) > s.cfg.Timeout {
 			s.cfg.Logf("tunnel: worker %s timed out", w.id)
+			w.conn.Close()
+			return
+		}
+		if w.Syncing() && time.Since(time.Unix(0, atomic.LoadInt64(&w.syncFrom))) > s.cfg.SyncTimeout {
+			// It never finished; reconnecting gives it another try.
+			s.cfg.Logf("tunnel: worker %s did not finish reconciling its homes in %v", w.id, s.cfg.SyncTimeout)
 			w.conn.Close()
 			return
 		}

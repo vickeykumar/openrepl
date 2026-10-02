@@ -231,6 +231,8 @@ function ToggleRotateEditor() {
 }
 
 function ToggleReconnect() {
+    // The execution node is away and the countdown is running (11-terminal-state.js).
+    if (window.awayWaitMs && window.awayWaitMs() > 0) return;
     const optionMenu = get("#optionMenu");
     if(optionMenu!==undefined) {
         const option = get(".list", optionMenu);

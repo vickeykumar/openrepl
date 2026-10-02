@@ -1742,7 +1742,7 @@ Settled after inspecting the OpenREPL codebase and `sish-lb`:
 - **Shared DB is a later phase:** replication of the user/session data through Firebase or MongoDB is deferred (LLD 11, section 19).
 - **Cross-session links are routed by key:** shared-session viewers pass `homedir=` and fork links pass `jid=`; the gateway keeps a `key -> worker` map (workers report keys over the control channel) and routes on it before normal affinity. `jid` is not checked against the caller's uid, because fork links are meant to be opened by others.
 - **Assignment at first page load:** the gateway issues a guest id and picks the backend when it serves the IDE page, so the parallel first requests share one workspace. Signed-in users with an existing workspace on the gateway disk are pinned to `local`.
-- **Worker details:** a worker serves only the tunnel listener, ignores basic auth, and receives the gateway's WebSocket `AuthToken` at registration.
+- **Worker details:** a worker serves the tunnel listener, skips basic auth for what the gateway forwards, and receives the gateway's WebSocket `AuthToken` at registration. It opens no port of its own unless `--port` or `--address` is given; visitors of that port are handled like standalone users and are not the gateway's (their sessions are not announced to it, and the trusted headers are not believed there).
 
 The code-level design is in [LLD 11](../lld/11-distributed-execution.md).
 

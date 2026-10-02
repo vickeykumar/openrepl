@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/url"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -50,7 +51,15 @@ type Options struct {
 	WorkerID            string           `hcl:"worker_id" flagName:"worker-id" flagDescribe:"Worker: unique id, defaults to the hostname" default:""`
 	WorkerWeight        int              `hcl:"worker_weight" flagName:"worker-weight" flagDescribe:"Worker: relative share of new sessions" default:"10"`
 	WorkerLanguages     string           `hcl:"worker_languages" flagName:"worker-languages" flagDescribe:"Worker: comma separated REPL commands it can run (e.g. python,bash,cling), empty means all" default:""`
+	WorkspaceSync       bool             `hcl:"workspace_sync" flagName:"workspace-sync" flagDescribe:"Gateway: keep a copy of every worker's homes on the gateway and in step with the worker" default:"false"`
+	RelocateAfter       string           `hcl:"relocate_after" flagName:"relocate-after" flagDescribe:"Gateway with --workspace-sync: how long a worker may be away before its sessions are placed elsewhere, e.g. 30s or 2m" default:"2m"`
+	SyncStateDir        string           `hcl:"sync_state_dir" flagName:"sync-state-dir" flagDescribe:"Gateway and worker: where workspace sync keeps its records; keep it on durable storage" default:"/opt/gotty/wsync"`
 	WorkerCapacity      int              `hcl:"worker_capacity" flagName:"worker-capacity" flagDescribe:"Worker: memory budget in MB for sessions, 0 derives it from RAM" default:"0"`
+
+	// LocalListen is set by main when the operator gave --port or --address
+	// (on the command line, in the environment or in the config file). A
+	// worker then also serves that address; without it a worker opens no port.
+	LocalListen bool
 
 	TitleVariables map[string]interface{}
 }
@@ -58,6 +67,12 @@ type Options struct {
 func (options *Options) Validate() error {
 	if options.EnableTLSClientAuth && !options.EnableTLS {
 		return errors.New("TLS client authentication is enabled, but TLS is not enabled")
+	}
+	if options.WorkspaceSync && options.Mode != ModeGateway {
+		return errors.New("--workspace-sync is a gateway option; a worker follows its gateway")
+	}
+	if _, err := options.RelocateAfterDuration(); err != nil {
+		return err
 	}
 	switch options.Mode {
 	case ModeStandalone, ModeGateway:
@@ -82,6 +97,15 @@ func (options *Options) Validate() error {
 		return errors.Errorf("unknown mode %q, expected standalone, gateway or worker", options.Mode)
 	}
 	return nil
+}
+
+// RelocateAfterDuration is --relocate-after as a duration.
+func (options *Options) RelocateAfterDuration() (time.Duration, error) {
+	d, err := time.ParseDuration(options.RelocateAfter)
+	if err != nil || d < time.Second {
+		return 0, errors.Errorf("--relocate-after must be a duration of at least one second, such as 30s or 2m, got %q", options.RelocateAfter)
+	}
+	return d, nil
 }
 
 type HtermPrefernces struct {
