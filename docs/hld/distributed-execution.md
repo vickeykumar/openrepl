@@ -1738,6 +1738,8 @@ Settled after inspecting the OpenREPL codebase and `sish-lb`:
 - **Run is carried in the WebSocket init payload** and saved by `SaveIdeContentToFile` on the executing node; no separate upload or file sync.
 - **Homedir is created on the executing node.** The gateway's index handler must not create a homedir in gateway mode. Workers resolve the homedir from trusted headers (a gateway-computed home-ID for signed-in users, a guest id for guests) because they have no user-profile DB.
 - **`jid` is reported by the worker** over the control channel (`jid-open`/`jid-close`) rather than sniffed from the title frame.
+- **Cookies and DB stay on the gateway (v1):** the `Cookie` header is not forwarded to workers, workers never write cookies (the gateway drops `Set-Cookie` from worker responses), and no user DB or cookie secret is synced to workers. Identity reaches workers only as trusted headers.
+- **Shared DB is a later phase:** replication of the user/session data through Firebase or MongoDB is deferred (LLD 11, section 19).
 
 The code-level design is in [LLD 11](../lld/11-distributed-execution.md).
 

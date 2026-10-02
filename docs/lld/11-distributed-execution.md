@@ -124,6 +124,13 @@ else                     -> existing cookie logic (standalone, local backend)
 
 `trustedFromTunnel` is true only when the request arrived on the `chanListener` (a per-listener `ConnContext` sets a context value). The worker has no other public listener, so the headers cannot come from a browser. The same branch is used by `ws_filebrowser` and `upload_file`, which call `GetOrUpdateHomeDir` today.
 
+### 6.1a Cookies on the worker leg
+
+- The gateway does **not** forward the `Cookie` header to workers. Identity is already converted into the trusted headers above, and the signed session cookie holds a gateway filesystem path and a gateway-only secret's signature.
+- In the trusted branch the worker never calls `IsUserAdmin`, `Get_SessionCookie`, `GetOrUpdateHomeDir`'s cookie paths or any cookie writer (`UpdateGuestSessionCookieAge`, `session.LogOut`). Privilege comes from `X-OpenREPL-Priv`.
+- The gateway deletes any `Set-Cookie` header on responses coming back from a worker, so a worker can never set or overwrite a browser cookie.
+- The user DB (UnQLite) and the cookie secret stay on the gateway only. No DB is synced to workers in v1 (see section 19).
+
 ### 6.2 Homedir on the worker
 
 - **Signed-in user:** `utils.HOME_DIR + X-OpenREPL-Home-ID`.
@@ -407,3 +414,15 @@ Run `go test -race ./...` for the new packages. Today only `webtty` has tests, s
 - Where exactly `uid -> worker` is persisted (a new UnQLite collection in `src/user` is the plan).
 - Whether logged-in users need a way to be re-pinned by an admin (e.g. when a worker is decommissioned). Not in v1.
 - Per-worker versioning: the gateway should refuse workers whose protocol version it does not support.
+
+## 19. Future: shared database
+
+Not in v1. v1 keeps all user, session, blog, snippet and practice data in the gateway's UnQLite files and sends workers only trusted headers.
+
+A later phase may replace the per-gateway UnQLite stores with a shared replicated database (Firebase Realtime Database or MongoDB) so every node sees the same data. Notes for that phase:
+
+- Replication must cover session create, logout and expiry with revocation visible to workers promptly; a connect-time snapshot is not enough.
+- Needs single-writer or conflict rules for session writes (`LogOut`, cookie refresh) and for `uid -> worker` pins.
+- A shared DB lets workers verify identity themselves, but putting the cookie secret or full user data on workers that run untrusted code is still a security risk. Prefer gateway-signed short-lived tokens (workers hold only a verification key) over sharing the secret.
+- The `Backend`/`SessionRegistry` seams in this design are where a shared store plugs in; handlers need no change.
+
