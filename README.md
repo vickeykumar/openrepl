@@ -480,7 +480,7 @@ flowchart LR
 2. **Run or debug editor code.** **Run** reconnects the terminal with the editor content in the init payload (`IdeLang`, `IdeContent`, `IdeFileName`, flags). The server writes the content to the selected file, then runs `/bin/bash -c <Compiler script from demos.xml>` in the same sandbox, with 3× the memory limit.
 3. **Fork a REPL and add terminal tabs.** The window title carries a `jid`, an encoded PID. **Fork REPL** and every extra tab open `?jid=<id>`, and the server `nsenter`s the new shell into the parent's namespaces and working directory. This lets two terminals talk to each other, for example for socket programming.
 4. **Share a REPL.** The owner's browser (the *master*) mirrors terminal output, language changes and file events to Firebase RTDB under `openrepl/<id>`. A viewer who opens `…/#<id>` renders that stream, and their keystrokes are relayed to the master's WebSocket. The viewer never starts a REPL of their own.
-5. **Sign in.** FirebaseUI (email/password or Google, with email verification) signs the user in. The browser then posts the user to `/login`. The server stores the session in `user_sessions.db` and sets the `user-session` cookie. Signed-in users get a stable home directory. Guest directories are deleted 60 minutes after last use.
+5. **Sign in.** FirebaseUI, in a dialog over the home page (Google, GitHub or email, with email verification), signs the user in. The browser then posts the user to `/login`. The server stores the session in `user_sessions.db` and sets the `user-session` cookie. Signed-in users get a stable home directory. Guest directories are deleted 60 minutes after last use.
 6. **Ask Genie or generate a practice question.** The browser calls `/chat/completions` with a per-session access token. The server checks the origin, the token and a cookie-based rate limit, then forwards the request to OpenAI with the server's API key.
 
 ### Deployment view
@@ -571,7 +571,7 @@ The REPLs do not get these settings. gotty starts every REPL without its own `OP
 Sign-in goes through Firebase, so to test it without touching the production project, use a development project of your own:
 
 1. In the [Firebase console](https://console.firebase.google.com), add a project, for example `my-openrepl-dev`.
-2. **Authentication**, then **Sign-in method**: enable *Email/Password* and *Google*. Under **Settings**, then **Authorized domains**, `localhost` is already listed. Add any other host you open the site on. Google sign-in only works on `localhost` or over HTTPS; email and password works on any listed host.
+2. **Authentication**, then **Sign-in method**: enable *Email/Password* and *Google*, and *GitHub* if you want that button to work. Under **Settings**, then **Authorized domains**, `localhost` is already listed. Add any other host you open the site on. Google sign-in only works on `localhost` or over HTTPS; email and password works on any listed host.
 3. **Realtime Database**: create a database (test mode is fine for development). The app uses it for shared sessions, and its URL is the `databaseURL` below.
 4. **Project settings**, **General**, **Your apps**: add a *Web* app and copy the `firebaseConfig` object it shows you.
 5. Put it in your env file, and make your own address the admin. `OPENREPL_FIREBASE_CONFIG` takes the config in any of three forms:

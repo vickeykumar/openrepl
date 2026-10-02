@@ -320,6 +320,12 @@ type userProfileReply struct {
 	IsAdmin bool `json:"isAdmin"`
 }
 
+// profilePage is what profile.html is filled from.
+type profilePage struct {
+	user.UserProfile
+	IsAdmin bool
+}
+
 func handleUserProfileJson(rw http.ResponseWriter, req *http.Request, status int, up user.UserProfile) {
 	rw.WriteHeader(status)
 	// nullify the session map before sending probably we will not need it.
@@ -394,7 +400,7 @@ func handleUserProfile(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		profileBuf := new(bytes.Buffer)
-		err = profileTemplate.Execute(profileBuf, up)
+		err = profileTemplate.Execute(profileBuf, profilePage{UserProfile: up, IsAdmin: utils.IsAdminEmail(up.Email)})
 		if err != nil {
 			errorHandler(rw, req, "Internal Server Error", http.StatusInternalServerError)
 			return

@@ -76,7 +76,7 @@ bindata/static/js: bindata/static resources/js/*
 	mkdir -p bindata/static/js
 	cp -Rv resources/js/* bindata/static/js/
 
-bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js js/dist/preprocessing.js
+bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js js/dist/hterm.js js/dist/scribbler.js js/dist/preprocessing.js
 	cp js/dist/gotty-bundle.js bindata/static/js/gotty-bundle.js
 	cp js/dist/hterm.js bindata/static/js/hterm.js
 	cp js/dist/scribbler.js bindata/static/js/scribbler.js

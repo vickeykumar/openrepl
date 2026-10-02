@@ -67,16 +67,25 @@ function renderProfileData () {
               if ( user.photoURL !== undefined && user.photoURL !=="" ) {
                 document.getElementById('user-image').src=user.photoURL;
               }
+              // who is signed in, at the top of the account menu
+              var who = document.getElementById('account-who');
+              if ( who && (user.displayName || user.email) ) {
+                document.getElementById('account-name').textContent = user.displayName || String(user.email).split('@')[0];
+                document.getElementById('account-email').textContent = user.email || '';
+                who.hidden = false;
+              }
               // admins get a link to the dashboard in the account menu
               var menu = document.getElementById('account-dropdown');
               if ( user.isAdmin === true && menu && !document.getElementById('admin-link') ) {
-                var item = document.createElement('li');
                 var link = document.createElement('a');
                 link.id = 'admin-link';
                 link.href = './admin';
-                link.textContent = 'Admin';
-                item.appendChild(link);
-                menu.insertBefore(item, menu.firstChild);
+                link.setAttribute('role', 'menuitem');
+                // the icon is a constant, the label is text
+                link.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>';
+                link.appendChild(document.createTextNode('Admin'));
+                var profileLink = menu.querySelector('a[href="./profile"]');
+                menu.insertBefore(link, profileLink ? profileLink.nextSibling : menu.firstChild);
               }
 
             } else {
@@ -110,99 +119,196 @@ $(function() {
         return ui;
       });
     }
+
+    // ---- the sign-in dialog (index.html #signin-dialog, ui-refresh.css "Sign-in dialog") ----
+    // FirebaseUI draws the sign-in methods and the email steps into
+    // #firebaseui-auth-container. The dialog around it keeps its state in data
+    // attributes that the CSS reads:
+    //   data-mode  signin | signup     the heading and the switch link
+    //   data-step  pick | flow | verify  the method list, an email step, "check your inbox"
+    //   data-state ready | loading | error
+    var dialog = document.getElementById('signin-dialog');
+    var container = document.getElementById('firebaseui-auth-container');
+    var loadingText = document.getElementById('signin-loading-text');
+    var MODES = {
+      signin: { title: 'Sign in to OpenREPL', lead: 'Your files are kept between visits, and Genie allows you more requests.' },
+      signup: { title: 'Create your free account', lead: 'It is free. Your files are kept between visits, and Genie allows you more requests.' }
+    };
+    var loadTimer = null, verifyTimer = null, mode = 'signin';
+
+    function setAttr(name, value) { if (dialog) dialog.setAttribute('data-' + name, value); }
+    function setState(state, text) {
+      clearTimeout(loadTimer);
+      if (loadingText) loadingText.textContent = text || 'Loading sign-in…';
+      setAttr('state', state);
+      // never leave the dialog loading for ever
+      if (state === 'loading') loadTimer = setTimeout(function () { setAttr('state', 'error'); }, 20000);
+    }
+    function setMode(next) {
+      mode = MODES[next] ? next : 'signin';
+      setAttr('mode', mode);
+      document.getElementById('signin-title').textContent = MODES[mode].title;
+      document.getElementById('signin-lead').textContent = MODES[mode].lead;
+    }
+
+    // Once signed in with Firebase, the site makes its own session from the result.
+    function completeLogin(authResult) {
+      setState('loading', 'Signing you in…');
+      var xhr = new XMLHttpRequest();
+      var url = window.location.protocol + "//" + window.location.host + "/login";
+      xhr.open("POST", url, true);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4) {
+              if (xhr.status === 200) {
+                  console.log("login success");
+              } else {
+                  notify("Please try again.", { type: "error", title: "Sign-in failed" });
+              }
+              // redirect anyway
+              location.reload();
+          }
+          console.log("login status: ",xhr.status);
+      };
+      xhr.send(JSON.stringify(authResult));
+    }
+
+    function el(tag, cls, text) {
+      var e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text !== undefined) e.textContent = text;
+      return e;
+    }
+
+    // The address is not verified yet: say so, and let the user resend the link,
+    // carry on once they have opened it, or pick another account.
+    function showVerifyPanel(authResult) {
+      var user = authResult.user;
+      var isNew = !!(authResult.additionalUserInfo && authResult.additionalUserInfo.isNewUser);
+      clearInterval(verifyTimer);
+      setAttr('step', 'verify');
+      setState('ready');
+      resetUI();
+      container.textContent = '';
+
+      var panel = el('div', 'signin__verify');
+      var icon = el('div', 'signin__verify-icon');
+      icon.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path></svg>';
+      var text = el('p', 'signin__verify-text');
+      if (isNew) {
+        text.appendChild(document.createTextNode('We sent a link to '));
+        text.appendChild(el('b', '', user.email || 'your address'));
+        text.appendChild(document.createTextNode('. Open it, then come back here.'));
+      } else {
+        text.appendChild(document.createTextNode('Your address '));
+        text.appendChild(el('b', '', user.email || ''));
+        text.appendChild(document.createTextNode(' has not been verified yet. Send the link, open it, then come back here.'));
+      }
+      var status = el('p', 'signin__verify-status');
+      status.setAttribute('role', 'status');
+      var done = el('button', 'signin__btn signin__btn--primary', "I've verified my email");
+      var again = el('button', 'signin__btn', 'Send the link again');
+      var other = el('button', 'signin__btn', 'Use a different account');
+      [done, again, other].forEach(function (b) { b.type = 'button'; });
+
+      panel.appendChild(icon);
+      panel.appendChild(el('h3', 'signin__verify-title', isNew ? 'Check your inbox' : 'Verify your email'));
+      panel.appendChild(text);
+      panel.appendChild(status);
+      var actions = el('div', 'signin__verify-actions');
+      actions.appendChild(done);
+      actions.appendChild(again);
+      actions.appendChild(other);
+      panel.appendChild(actions);
+      panel.appendChild(el('p', 'signin__verify-note', "Look in your spam folder if you don't see it."));
+      container.appendChild(panel);
+      done.focus();
+
+      // one link a half minute: the button counts down so it is not pressed in vain
+      function cooldown(seconds) {
+        var left = seconds;
+        again.disabled = true;
+        clearInterval(verifyTimer);
+        verifyTimer = setInterval(function () {
+          left--;
+          if (left <= 0) {
+            clearInterval(verifyTimer);
+            again.disabled = false;
+            again.textContent = 'Send the link again';
+          } else {
+            again.textContent = 'Send again in ' + left + 's';
+          }
+        }, 1000);
+        again.textContent = 'Send again in ' + left + 's';
+      }
+      function send() {
+        status.textContent = 'Sending…';
+        return user.sendEmailVerification().then(function () {
+          status.textContent = 'Link sent. It can take a minute to arrive.';
+          cooldown(30);
+        }, function () {
+          status.textContent = "Couldn't send the link. Try again in a minute.";
+          cooldown(30);
+        });
+      }
+      if (isNew) {
+        send();
+      } else {
+        status.textContent = '';
+      }
+      again.addEventListener('click', send);
+      done.addEventListener('click', function () {
+        done.disabled = true;
+        status.textContent = 'Checking…';
+        user.reload().then(function () {
+          done.disabled = false;
+          var fresh = firebase.auth().currentUser;
+          if (fresh && fresh.emailVerified) {
+            completeLogin({ user: fresh });
+          } else {
+            status.textContent = 'Not verified yet. Open the link in the email first.';
+          }
+        }, function () {
+          done.disabled = false;
+          status.textContent = "Couldn't check just now. Try again.";
+        });
+      });
+      other.addEventListener('click', function () {
+        clearInterval(verifyTimer);
+        firebase.auth().signOut().then(startUI, startUI);
+      });
+    }
+
     var uiConfig = {
       callbacks: {
         signInSuccessWithAuthResult: function(authResult, redirectUrl) {
-          // User successfully signed in.
-          // Return type determines whether we continue the redirect automatically
-          // or whether we leave that to developer to handle.
+          // User successfully signed in; the return value keeps FirebaseUI from redirecting.
           console.log("authResult: ",JSON.stringify(authResult), JSON.stringify(redirectUrl));
-
-	  if ((authResult.user) && (authResult.user.emailVerified)) {
-              // User is signed in and email is verified, so proceed with login
-              var xhr = new XMLHttpRequest();
-              var url = window.location.protocol + "//" + window.location.host + "/login";
-              xhr.open("POST", url, true);
-              xhr.setRequestHeader("Content-Type", "application/json");
-              xhr.onreadystatechange = function () {
-                  if (xhr.readyState === 4) {
-                      if (xhr.status === 200) {
-                          console.log("login success");
-                      } else {
-                          notify("Please try again.", { type: "error", title: "Sign-in failed" });
-                      }
-                      // redirect anyway
-                      location.reload();
-                  }
-                  console.log("login status: ",xhr.status);
-              };
-              xhr.send(JSON.stringify(authResult));
+          if (authResult.user && authResult.user.emailVerified) {
+            completeLogin(authResult);
           } else {
-              // User's email is not verified
-              console.log("email not verified.");
-
-              var message = "Please check your inbox and follow the instructions to verify your email address and LogIn again. If you haven't received the verification email, you can click the button below to send again.";
-
-              // Create a header element
-              var header = document.createElement("h2");
-              header.innerText = "A verification email has been sent to your inbox";
-
-              if ((authResult.additionalUserInfo) && (!authResult.additionalUserInfo.isNewUser)) {
-                message = "Your email address has not been verified yet. "+message;
-                header.innerText = "Email not verified";
-              }
-             
-              if ((authResult.additionalUserInfo) && (authResult.additionalUserInfo.isNewUser)) {
-	      // new user send email
-                firebase.auth().currentUser.sendEmailVerification()
-                      .then(function() {
-                          console.log("Verification email sent");
-                      })
-                      .catch(function(error) {
-                          console.log(error);
-                      });
-              }
-
-              // Create a message element
-              var messageElement = document.createElement("h3");
-              messageElement.innerText = message;
-
-              // Create a button element
-              var button = document.createElement("button");
-              button.innerText = "Send again";
-              button.classList.add("share-btn");
-              button.onclick = function() {
-                  firebase.auth().currentUser.sendEmailVerification()
-                      .then(function() {
-                          console.log("Verification email sent");
-                          notify("Check your inbox and follow the link to verify your email address.", { type: "success", title: "Verification email sent" });
-                      })
-                      .catch(function(error) {
-                          console.log(error);
-                      });
-              };
-
-              // Add the elements to the page
-              var container = document.getElementById("firebaseui-auth-container");
-              container.innerHTML = "";
-              container.appendChild(header);
-              container.appendChild(messageElement);
-              container.appendChild(button);
+            showVerifyPanel(authResult);
           }
-
           return false;
         },
+        uiShown: function () {
+          setState('ready');
+          // the dialog opens on its close button; the first thing to do is pick a method
+          var first = container.querySelector('.firebaseui-idp-button');
+          if (first && dialog.contains(document.activeElement) && document.activeElement.id === 'signin-close') first.focus();
+        }
       },
       // Will use popup for IDP Providers sign-in flow instead of the default, redirect.
       signInFlow: 'popup',
       signInSuccessUrl: '/',
       signInOptions: [
         // Leave the lines as is for the providers you want to offer your users.
-        firebase.auth.EmailAuthProvider.PROVIDER_ID,
-        firebase.auth.GoogleAuthProvider.PROVIDER_ID,
+        // The order is the order on the page; email comes last, below an "or".
+        { provider: firebase.auth.GoogleAuthProvider.PROVIDER_ID, fullLabel: 'Continue with Google' },
+        { provider: firebase.auth.GithubAuthProvider.PROVIDER_ID, fullLabel: 'Continue with GitHub' },
+        { provider: firebase.auth.EmailAuthProvider.PROVIDER_ID, fullLabel: 'Continue with email' }
         //firebase.auth.FacebookAuthProvider.PROVIDER_ID,
         //firebase.auth.TwitterAuthProvider.PROVIDER_ID,
-        firebase.auth.GithubAuthProvider.PROVIDER_ID,
         //firebase.auth.PhoneAuthProvider.PROVIDER_ID
       ],
       // Terms of service url.
@@ -211,6 +317,69 @@ $(function() {
       privacyPolicyUrl: '/privacy.html'
     };
 
+    // FirebaseUI replaces what is in the container at every step. The method
+    // list and the email steps need different surroundings (the email steps
+    // have a title of their own), so watch which one is on show.
+    if (container && window.MutationObserver) {
+      new MutationObserver(function () {
+        if (dialog.getAttribute('data-step') === 'verify') return;
+        if (!container.querySelector('.firebaseui-container')) return;
+        setAttr('step', container.querySelector('.firebaseui-idp-list') ? 'pick' : 'flow');
+      }).observe(container, { childList: true, subtree: true });
+    }
+
+    // FirebaseUI forgets what it showed; a failure here must not stop the next start
+    function resetUI() {
+      try { if (ui) ui.reset(); } catch (e) { console.log("firebaseui reset: ", e); }
+    }
+
+    function startUI() {
+      setAttr('step', 'pick');
+      setState('loading');
+      ensureAuthUI().then(function (authUI) {
+        resetUI();
+        authUI.start('#firebaseui-auth-container', uiConfig);
+      }).catch(function (err) {
+        console.log("sign-in could not start: ", err);
+        setState('error');
+      });
+    }
+
+    // Everything the dialog holds is dropped when it closes, so the next time
+    // it opens it starts from the method list.
+    function closeSignIn() {
+      if (dialog.open) dialog.close();
+      clearTimeout(loadTimer);
+      clearInterval(verifyTimer);
+      resetUI();
+      container.textContent = '';
+    }
+
+    function openSignIn(next) {
+      if (!dialog) return;
+      setMode(next);
+      if (!dialog.open) {
+        if (dialog.showModal) dialog.showModal(); else dialog.setAttribute('open', '');
+      }
+      startUI();
+    }
+
+    // other scripts can open the dialog; the page globals are what they reach
+    window.openSignIn = openSignIn;
+    window.showVerifyPanel = showVerifyPanel;
+
+    if (dialog) {
+      // Esc closes the dialog without going through closeSignIn. The close event
+      // can arrive after the dialog was opened again, so only a closed dialog is cleaned up.
+      dialog.addEventListener('close', function () { if (!dialog.open) closeSignIn(); });
+      // a click on the dimmed page behind the card closes it
+      dialog.addEventListener('click', function (e) { if (e.target === dialog) closeSignIn(); });
+      document.getElementById('signin-close').addEventListener('click', closeSignIn);
+      document.getElementById('signin-guest').addEventListener('click', closeSignIn);
+      document.getElementById('signin-retry').addEventListener('click', startUI);
+      document.getElementById('signin-to-signup').addEventListener('click', function () { setMode('signup'); });
+      document.getElementById('signin-to-signin').addEventListener('click', function () { setMode('signin'); });
+    }
 
     // all the auth handling is done in client side to improve performance(cache)
       // in stead of golang templates
@@ -219,33 +388,18 @@ $(function() {
     var signup_btn = document.getElementById('sign-up-button');
     var signout_btn = document.getElementById('sign-out-button');
 
-    function startauth() {
-          // remove sign in button
-          signin_btn.style.display="none";
-          if (signup_btn) signup_btn.style.display="none";
-          /*firebaseuiElem = get('#firebaseui-auth-container');
-          firebaseuiElem.classList.toggle("fullscreen");*/
-          var AllElem = getAll("body > *");
-          for (var i = 0; i < AllElem.length;i++)
-          {
-            var element = AllElem[i];
-
-            if (element.id == "footer") {
-                element.classList.toggle("fixed-footer");
-            }
-
-            if (element.id != "header-nav" && element.id != "footer" && element.id != "firebaseui-auth-container" && element.tagName != "SCRIPT") {
-              element.classList.toggle("hide-tag");
-              console.log("class hidden for %s",element.tagName);
-            }
-          }
-          ensureAuthUI().then(function (authUI) {
-            authUI.start('#firebaseui-auth-container', uiConfig);
-          }).catch(function () {
-            notify("Sign-in couldn't load. Check your connection and try again.", { type: "error" });
-          });
-      }
-
+    // ?signin=1 or ?signup=1 opens the dialog for a visitor who is not signed in,
+    // so another page can send people straight to it.
+    function openFromUrl() {
+      var params = new URLSearchParams(location.search);
+      var want = params.get('signin') !== null ? 'signin' : (params.get('signup') !== null ? 'signup' : '');
+      if (!want) return;
+      params.delete('signin');
+      params.delete('signup');
+      var query = params.toString();
+      history.replaceState(null, '', location.pathname + (query ? '?' + query : '') + location.hash);
+      openSignIn(want);
+    }
 
     // check if already logged in 
     var xhr = new XMLHttpRequest();
@@ -276,6 +430,8 @@ $(function() {
                 setTimeout(renderProfileData, 2800);
             }
 
+          } else {
+            openFromUrl();
           }
         }
         catch(e) {
@@ -290,21 +446,48 @@ $(function() {
 
     // install the auth handler
     if (signin_btn !==null) {
-      signin_btn.addEventListener('click', startauth);
+      signin_btn.addEventListener('click', function () { openSignIn('signin'); });
     }
     if (signup_btn) {
-      signup_btn.addEventListener('click', startauth);
+      signup_btn.addEventListener('click', function () { openSignIn('signup'); });
     }
-    $('#guest-signup').on('click', startauth);
+    $('#guest-signup').on('click', function () { openSignIn('signup'); });
     // the nav links are role=button anchors; let Enter and Space open them too
     $('#sign-in-button, #sign-up-button').on('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startauth(); }
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openSignIn(this.id === 'sign-up-button' ? 'signup' : 'signin');
+      }
     });
 
     if (signout_btn !== null && signout_btn !== undefined) {
       // install signout from firebase as well
       signout_btn.addEventListener('click', function() {
         firebase.auth().signOut();
+      });
+    }
+
+    // Account menu: it opens on hover (CSS), and on click or Enter, which is
+    // what touch screens and keyboards use. Escape, a click elsewhere or
+    // moving focus away closes it.
+    var account = document.getElementById('user-account');
+    var accountButton = document.getElementById('user-account-button');
+    if (account && accountButton) {
+      var setAccountOpen = function (open) {
+        account.classList.toggle('open', open);
+        accountButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
+      accountButton.addEventListener('click', function () {
+        setAccountOpen(!account.classList.contains('open'));
+      });
+      document.addEventListener('click', function (e) {
+        if (!account.contains(e.target)) setAccountOpen(false);
+      });
+      account.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { setAccountOpen(false); accountButton.focus(); }
+      });
+      account.addEventListener('focusout', function (e) {
+        if (e.relatedTarget && !account.contains(e.relatedTarget)) setAccountOpen(false);
       });
     }
 });

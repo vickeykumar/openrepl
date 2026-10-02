@@ -4,7 +4,7 @@ Scope: `src/user/{user,util}.go`, `src/cookie/cookie.go`, `src/cachedb/cachedb.g
 
 ## 1. Sign-in flow
 
-Identity comes from **Firebase Authentication**, which runs in the browser through FirebaseUI (email/password and Google). The Go server keeps its own session, keyed by the Firebase `uid`.
+Identity comes from **Firebase Authentication**, which runs in the browser through FirebaseUI (Google, GitHub and email, shown in the sign-in dialog; LLD 06). The Go server keeps its own session, keyed by the Firebase `uid`.
 
 ```mermaid
 sequenceDiagram
@@ -17,7 +17,7 @@ sequenceDiagram
     S->>S: GetOrUpdateHomeDir (guest dir + cleanup job if not logged in)
     S-->>B: UserSession JSON {uid, sessionID, expirationTime, loggedIn}
     alt not logged in and user clicks Login
-        B->>FA: FirebaseUI popup (email/password or Google)
+        B->>FA: FirebaseUI in the sign-in dialog (Google, GitHub or email)
         FA-->>B: authResult (user, stsTokenManager)
         alt email not verified
             B->>FA: sendEmailVerification() (new users) and show the "verify your email" panel
