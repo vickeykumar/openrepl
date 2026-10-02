@@ -18,6 +18,7 @@ To build, run and test OpenREPL on your machine, see [Run locally on macOS (Coli
 | 08 | [Build, packaging and deployment](lld/08-build-and-deploy.md) | Makefile and bindata pipeline, Docker, CI, systemd, runtime file layout |
 | 09 | [Adding a new REPL](lld/09-adding-a-repl.md) | Step-by-step checklist that touches every layer |
 | 10 | [Known limitations and tech debt](lld/10-known-limitations.md) | Quirks found during the code walkthrough, with suggested fixes |
+| 11 | [Distributed execution](lld/11-distributed-execution.md) | Proposed: gateway/worker modes, route ownership, session affinity, SSH tunnel, jid routing, capacity, failure handling |
 
 ## Source map
 
