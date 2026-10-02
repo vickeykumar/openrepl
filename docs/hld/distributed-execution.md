@@ -1740,3 +1740,20 @@ Settled after inspecting the OpenREPL codebase and `sish-lb`:
 - **`jid` is reported by the worker** over the control channel (`jid-open`/`jid-close`) rather than sniffed from the title frame.
 
 The code-level design is in [LLD 11](../lld/11-distributed-execution.md).
+
+## Running the binary
+
+The same `gotty` binary runs every role; `--mode` selects it. Full flag and config reference: [LLD 11, Usage](../lld/11-distributed-execution.md#13-usage).
+
+```bash
+# standalone (default, unchanged)
+gotty -w -p 8080
+
+# gateway
+GOTTY_WORKER_TOKEN=... gotty -w --mode=gateway --port 80 --tunnel-addr 0.0.0.0:2222
+
+# worker (outbound only, no public port)
+GOTTY_WORKER_TOKEN=... gotty -w --mode=worker \
+    --worker-server gateway.example.com:2222 \
+    --worker-hostkey 'SHA256:<fingerprint from gateway log>' --worker-id worker-01
+```

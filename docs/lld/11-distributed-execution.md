@@ -177,7 +177,7 @@ sequenceDiagram
 
 | Item | Detail |
 |---|---|
-| Auth | Token as SSH password for v1 (compared in constant time); host key from `--tunnel-hostkey`, pinned by the worker. Mutual-TLS-style hardening can use key auth later. |
+| Auth | Token as SSH password for v1 (compared in constant time); host key from `--tunnel-hostkey`, pinned by the worker via `--worker-hostkey`. Mutual-TLS-style hardening can use key auth later. |
 | Control messages | Global requests: `register`, `heartbeat`, `jid-open`, `jid-close`, `unregister`. Gateway→worker: `drain` (sets worker to stop reporting available capacity; the gateway-side flag is what blocks assignment). |
 | Data | One SSH channel per proxied HTTP request or WebSocket. A channel is a `net.Conn` wrapper, closed when either side closes. `copyBoth` / `IdleTimeoutConn` from sish-lb are reused for idle handling. |
 | Liveness | `keepalive@openssh.com` at `heartbeat_interval`; no heartbeat for `timeout` (30 s) or a closed connection ⇒ `OFFLINE`. |
@@ -245,7 +245,8 @@ New fields on `server.Options` (same tag convention: `hcl`, `flagName`, `default
 |---|---|---|
 | `--mode` / `mode` | `standalone` | all |
 | `--tunnel-addr` / `tunnel_addr` | `0.0.0.0:2222` | gateway |
-| `--tunnel-hostkey` / `tunnel_hostkey` | `~/.gotty.tunnel_key` (generated if absent) | gateway, worker (pin) |
+| `--tunnel-hostkey` / `tunnel_hostkey` | `~/.gotty.tunnel_key` (private key; generated if absent, its SHA256 fingerprint is logged at startup) | gateway |
+| `--worker-hostkey` / `worker_hostkey` | none (required) | worker: the gateway's SHA256 fingerprint to pin |
 | `--worker-token` / `worker_token` | empty (required) | gateway, worker |
 | `--local-weight` / `local_weight` | `10` (0 = routing-only gateway) | gateway |
 | `--worker-id` / `worker_id` | hostname | worker |
@@ -256,7 +257,85 @@ New fields on `server.Options` (same tag convention: `hcl`, `flagName`, `default
 
 Validation (`Options.Validate`): gateway requires a token; worker requires `worker-server` and a token; `standalone` ignores the rest.
 
-## 13. Failure handling
+## 13. Usage
+
+The binary is the same `gotty` for every mode; `--mode` selects the role. Every flag below can also be set as an HCL key in `~/.gotty` (or the file named by `--config` / `$GOTTY_CONFIG`) or as an environment variable (`$GOTTY_<FLAG_NAME>`), with the existing precedence: defaults, then config file, then CLI. Prefer the environment variable or the config file for the token so it stays out of `ps` output.
+
+### Standalone (default, unchanged)
+
+```bash
+../bin/gotty -w -p 8080
+```
+
+### Gateway
+
+```bash
+export GOTTY_WORKER_TOKEN='<shared secret>'
+gotty -w --mode=gateway --port 80 --max-connection 2564 \
+      --tunnel-addr 0.0.0.0:2222 --local-weight 10
+```
+
+- Public traffic on `--port` as today; workers connect to `--tunnel-addr`.
+- On first start it generates `~/.gotty.tunnel_key` and logs the fingerprint (`SHA256:...`). Copy that value to each worker's `--worker-hostkey`.
+- `--local-weight 0` makes the gateway routing-only (it runs no sessions itself).
+- Open inbound TCP `2222` (or your `--tunnel-addr` port) to workers only; it is not a browser port.
+
+Equivalent `~/.gotty`:
+
+```hcl
+mode         = "gateway"
+port         = "80"
+max_connection = 2564
+tunnel_addr  = "0.0.0.0:2222"
+local_weight = 10
+# worker_token comes from $GOTTY_WORKER_TOKEN
+```
+
+### Worker
+
+```bash
+export GOTTY_WORKER_TOKEN='<same shared secret>'
+gotty -w --mode=worker \
+      --worker-server gateway.example.com:2222 \
+      --worker-hostkey 'SHA256:<fingerprint from the gateway log>' \
+      --worker-id worker-01 --worker-weight 10
+```
+
+- Outbound only: no inbound port or public address is needed, so it works behind NAT or a firewall.
+- It must have the same runtime as a normal server (the Dockerfile image, REPL toolchains, `nsenter`, cgroup v1 access). It advertises only the languages it finds installed unless `--worker-languages` is set.
+- `--worker-capacity` (memory-weight units) defaults to a value derived from RAM. It replaces `--max-connection` for admission on the worker side.
+- It reconnects automatically with backoff if the gateway restarts or the link drops.
+
+Equivalent `~/.gotty`:
+
+```hcl
+mode            = "worker"
+worker_server   = "gateway.example.com:2222"
+worker_hostkey  = "SHA256:<fingerprint>"
+worker_id       = "worker-01"
+worker_weight   = 10
+```
+
+### Deployment notes
+
+- **systemd:** copy `src/services/gotty.service` and change `ExecStart` to the gateway or worker command above (the title format flag is no longer needed). Use `EnvironmentFile=` for `GOTTY_WORKER_TOKEN`.
+- **Docker:** run the existing image with the same arguments; for a worker no `-p` port mapping is required.
+- **TLS:** terminate HTTPS on the gateway (`--tls`) or in front of it. The tunnel is SSH and encrypted independently.
+- **Rolling out:** start the gateway, then workers. Drain a worker before maintenance (below), wait for its active count to reach 0, then stop it.
+
+### Operating the fleet
+
+As a signed-in admin (the same session that opens `/admin`):
+
+```bash
+curl -b "$ADMIN_COOKIE" https://openrepl.example.com/admin/workers
+curl -b "$ADMIN_COOKIE" -X POST https://openrepl.example.com/admin/workers/worker-01/drain
+curl -b "$ADMIN_COOKIE" -X POST https://openrepl.example.com/admin/workers/worker-01/undrain
+```
+
+Validation at startup fails fast: a gateway or worker without a token, or a worker without `--worker-server` / `--worker-hostkey`, exits with an error instead of running half-configured.
+
+## 14. Failure handling
 
 | Event | Behaviour |
 |---|---|
@@ -268,7 +347,7 @@ Validation (`Options.Validate`): gateway requires a token; worker requires `work
 | Unknown or expired session | Treated as new (guest) or pinned lookup (user). |
 | Worker draining | No new assignments; existing sessions run; `/admin/workers` shows active count. |
 
-## 14. Security notes
+## 15. Security notes
 
 - Strip all inbound `X-OpenREPL-*` headers on the gateway. Workers accept them only on the tunnel listener.
 - Workers have no public listener in worker mode; the tunnel is outbound only.
@@ -277,7 +356,7 @@ Validation (`Options.Validate`): gateway requires a token; worker requires `work
 - `ws_filebrowser` already requires paths under the homedir (`strings.HasPrefix(path, homedir)`); that check now uses the worker-resolved homedir.
 - The affinity cookie carries only a random guest id, signed on the gateway.
 
-## 15. sish-lb reuse map
+## 16. sish-lb reuse map
 
 | sish-lb | Here |
 |---|---|
@@ -290,7 +369,7 @@ Validation (`Options.Validate`): gateway requires a token; worker requires `work
 
 Because sish-lb is `package main` with global flags, code is copied into `src/` with the origin noted in file headers rather than imported.
 
-## 16. Implementation order and tests
+## 17. Implementation order and tests
 
 1. **Router and LocalBackend, behaviour unchanged.** `gateway` package, `isExecutionBound`, `SessionRegistry`, `/admin` prefix match, per-connection command fix. Tests: route classification table, admin always local, standalone mode bypasses the router entirely, affinity cookie issue/validate, registry create/resolve/expire.
 2. **Tunnel and RemoteBackend with one worker.** `tunnel`, `worker`, trusted-header branch in `fetchRequestedPayload`, worker homedir, `handleIndex` homedir skip. Tests: register/heartbeat/timeout/reconnect against an in-process SSH server; proxied request preserves method, path, query, cookie, body; WebSocket echo through the bridge; closing the browser closes the worker stream; header stripping (spoofed `X-OpenREPL-Uid` is ignored); `homedir`/`jid` override rejected.
@@ -299,7 +378,7 @@ Because sish-lb is `package main` with global flags, code is copied into `src/` 
 
 Run `go test -race ./...` for the new packages. Today only `webtty` has tests, so these are the first tests for server-side routing.
 
-## 17. Open items
+## 18. Open items
 
 - Where exactly `uid -> worker` is persisted (a new UnQLite collection in `src/user` is the plan).
 - Whether logged-in users need a way to be re-pinned by an admin (e.g. when a worker is decommissioned). Not in v1.
