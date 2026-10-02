@@ -39,7 +39,7 @@ After that, `EnableBasicAuth` is set when `--credential` is given, and `EnableTL
 |---|---|---|
 | `--permit-write` / `-w` | false | Must be on for REPLs to accept input (both `run_app.sh` and `gotty.service` set it). |
 | `--max-connection` | 0 (unlimited) | Compared against **both** the live connection count and the summed memory *weight* (MB) of live REPLs. See LLD 03. Production uses 2564. |
-| `--title-format` | `{{ .command }}@{{ .hostname }}` | Production sets `<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>`. The client parses this XML to get the fork `jid`. `encodePID` is registered as a template function in `server.New`. |
+| `--title-format` | `<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>` | Built-in default (previously `{{ .command }}@{{ .hostname }}`); override with `--title-format`, `$GOTTY_TITLE_FORMAT`, or `title_format = "..."` in the config file (`~/.gotty` or `--config`). The client parses this XML to get the fork `jid`. `encodePID` is registered as a template function in `server.New`. |
 | `--permit-arguments` | **true** | URL `?arg=…` values are appended to the REPL argv (for example, C mode passes `arg=-xc&arg=-noruntime` to cling). |
 | `--close-signal` | 1 (SIGHUP) | Sent to the REPL when the WebSocket closes. |
 | `--close-timeout` | -1 | When < 0 the option is not applied, so `LocalCommand` keeps its default of 10 s before SIGKILL. |

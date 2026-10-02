@@ -214,7 +214,7 @@ By default, GoTTY starts a web server at port 8080. Open the URL on your web bro
 --tls-key value               TLS/SSL key file path (default: "~/.gotty.key") [$GOTTY_TLS_KEY]
 --tls-ca-crt value            TLS/SSL CA certificate file for client certifications (default: "~/.gotty.ca.crt") [$GOTTY_TLS_CA_CRT]
 --index value                 Custom index.html file [$GOTTY_INDEX]
---title-format value          Title format of browser window (default: "{{ .command }}@{{ .hostname }}") [$GOTTY_TITLE_FORMAT]
+--title-format value          Title format of browser window (default: "<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>") [$GOTTY_TITLE_FORMAT]
 --reconnect                   Enable reconnection [$GOTTY_RECONNECT]
 --reconnect-time value        Time to reconnect (default: 10) [$GOTTY_RECONNECT_TIME]
 --max-connection value        Maximum connection to gotty (default: 0) [$GOTTY_MAX_CONNECTION]
