@@ -83,7 +83,9 @@ type ExecutionContext struct {
 
 - **Signed-in users are pinned.** `uid -> worker` is persisted (a record in the existing UnQLite user store, written through the `user` package) so it survives a gateway restart. New sessions for that user go to the same worker. If it is `DRAINING` or `OFFLINE` the request fails with 503 "workspace node unavailable"; the pool is not consulted.
 - **Guests are placed freely.** Their context lives in memory only. The guest id is carried in an `or-aff` cookie, signed with the existing `cookie.SECRET_KEY` (gateway side only) via `securecookie`.
-- **First assignment is lazy.** Created on the first execution-bound request (`ws*`, `upload_file`), not on the index page, so a visitor who only reads pages never occupies a slot.
+- **First assignment happens on the first page load**, not on the first `ws*` call. The IDE page fires several requests at once (terminal WebSocket, file tree, usage), and today the index page is what creates the cookie and homedir so those requests share one directory (`handleIndex` comment, `handlers.go:307`). The gateway therefore issues the guest id and picks the backend when it serves `/` or a language page, and any later execution-bound request without a context (API clients) is assigned on the spot. This costs nothing: capacity is consumed only while a WebSocket is open (section 8), a registry entry is not a slot.
+- **Existing signed-in users stay where their files are.** Today every user's homedir is on the one server's disk. For a signed-in user with no stored pin, the gateway checks whether their homedir already exists locally (`HOME_DIR + generateHomeDirectoryID(...)`) and, if so, pins them to `local`. Only users with no existing local workspace go through the pool. Without this rule the first login after enabling gateway mode could land an existing user on an empty worker.
+- **v1 assumes homogeneous workers** (same image as the gateway), so assignment at page load does not need to know the language. `--worker-languages` is still advertised and checked at `ws_<command>` time; a missing language returns a clear error instead of silently running elsewhere.
 - **Affinity is never recomputed.** An existing context is used as is, including for WebSockets.
 
 ## 5. Backends
@@ -137,7 +139,9 @@ else                     -> existing cookie logic (standalone, local backend)
 - **Guest:** `utils.HOME_DIR + "guest-" + X-OpenREPL-Guest`, created lazily with `MkdirAll`.
 - **Cleanup:** the guest removal job (`utils.REMOVE_JOB_KEY + homedir`, `GottyJobs.ResetJob`) is scheduled on the worker that owns the directory.
 - **Gateway change:** in `handleIndex`, when `--mode=gateway`, skip `GetOrUpdateHomeDir` and the cleanup `defer`, because the directory may belong to a worker. The ws/upload paths still call it, so `LocalBackend` sessions create their directory lazily.
-- **Query overrides are ignored for remote sessions.** `GetOrUpdateHomeDir` currently honours `homedir` and `jid` from the query. The gateway removes `homedir` from the query on remote requests and validates `jid` (section 7).
+- **Query overrides are routed, not stripped.** `GetOrUpdateHomeDir` honours `homedir` and `jid` from the query, and the page uses both on purpose: `preprocessurl` (`js/src/page/01-session.js`) appends `homedir=<master's path>` to every file-browser, upload and download request of a shared-session viewer, and `jid` to requests made from a fork link. They can come from a different browser session than the owner, so they must reach the node that owns the directory or process. The worker keeps honouring them exactly as today; the gateway routes on them (section 7). Their trust model is unchanged: the path or jid acts as a capability. Tightening that (for example a signed share token) is a separate, later change.
+- **Worker `Run` does not bind a public port.** `Server.Run` listens on `options.Address:options.Port` today. In worker mode it serves the same mux only on the tunnel `chanListener`, and ignores `EnableBasicAuth`.
+- **`AuthToken`.** `processWSConn` rejects a WebSocket whose init `AuthToken` differs from `options.Credential` (the WebSocket routes are registered outside the basic-auth wrapper, so this check is their only gate). The worker receives the gateway's credential in the `register` reply and compares against that, so a worker needs no `--credential` flag.
 
 ### 6.3 Execution
 
@@ -149,10 +153,14 @@ One required fix first: `generateHandleWS` calls `server.SetNewCommand(command)`
 
 `jid` is `encodePID(pid)` and `containers.GetWorkingDir` / `nsenter -t<pid>` only work on the machine that owns the process.
 
-- **Record.** When a worker creates a slave it sends an SSH global request `jid-open {jid, uid}` to the gateway *before* it writes the title message to the browser. The gateway stores `jid -> (workerID, uid)` in `JIDMap`. On slave close the worker sends `jid-close {jid}`.
-- **Route.** A request with a `jid` query parameter or init payload field is resolved through `JIDMap` first and overrides normal affinity.
-- **Validate.** The recorded `uid` must equal the caller's; otherwise 403. A client-supplied `jid` that is unknown yields an error, never a re-balance.
-- **Failure.** Worker `OFFLINE` drops all its `JIDMap` entries; forks fail.
+A fork link (`?jid=...`, the Fork button in `webtty.ts` `jidHandler`) can be opened by someone other than the owner, so `jid` routing must not depend on the caller's uid.
+
+- **Record.** When a worker creates a slave it sends an SSH global request `route-open {kind:"jid", key, ...}` to the gateway *before* it writes the title message to the browser; on slave close, `route-close`. The same message carries `kind:"home"` for a homedir the worker is serving (needed by shared-session viewers, section 6.2). The gateway keeps one `RouteMap` of `key -> workerID`.
+- **Route, HTTP.** `ws_filebrowser`, `upload_file` and downloads carry `jid` and `homedir` in the query (`preprocessurl`). The gateway looks them up in `RouteMap` first; a hit overrides normal affinity.
+- **Route, WebSocket.** The terminal sends `jid` only inside the init message (`webtty.ts`: `this.args += "jid=..."`), which arrives after the upgrade, when the gateway has already chosen a backend. Fix: the client also puts `jid` on the WebSocket URL (a one-line change where the connection URL is built in `gotty.ts`/`websocket.ts`). The init message is unchanged, so the worker still reads `jid` from `params`.
+- **Unknown key.** An unknown `jid` or `homedir` falls back to the caller's normal affinity; the worker then finds no such process or directory and fails as it does today. It is never re-balanced to a new worker.
+- **Same browser needs no lookup.** A new tab in the same browser has the same cookies, so affinity already sends it to the same worker; `RouteMap` matters for cross-session links.
+- **Failure.** Worker `OFFLINE` drops its `RouteMap` entries; forks and viewer requests for it fail.
 
 This replaces the earlier "sniff the title frame" idea: the worker already knows the pid, so reporting it over the control channel avoids parsing WebSocket frames in the gateway.
 
@@ -199,7 +207,7 @@ sequenceDiagram
 | Item | Detail |
 |---|---|
 | Auth | Token as SSH password for v1 (compared in constant time); over `wss://` the TLS certificate authenticates the gateway; over `ssh://` the worker must pin the gateway host key via `--worker-hostkey`. Key-based worker auth can replace the token later. |
-| Control messages | Global requests: `register`, `heartbeat`, `jid-open`, `jid-close`, `unregister`. Gateway→worker: `drain` (sets worker to stop reporting available capacity; the gateway-side flag is what blocks assignment). |
+| Control messages | Global requests: `register`, `heartbeat`, `route-open`, `route-close`, `unregister`. Gateway→worker: `drain` (sets worker to stop reporting available capacity; the gateway-side flag is what blocks assignment). |
 | Data | One SSH channel per proxied HTTP request or WebSocket. A channel is a `net.Conn` wrapper, closed when either side closes. `copyBoth` / `IdleTimeoutConn` from sish-lb are reused for idle handling. |
 | Liveness | `keepalive@openssh.com` at `heartbeat_interval`; no heartbeat for `timeout` (30 s) or a closed connection ⇒ `OFFLINE`. |
 | Reconnect | Worker retries with capped exponential backoff and re-registers; it comes back `ONLINE` with `used=0` (sessions on the old connection are gone). |
@@ -235,7 +243,7 @@ sequenceDiagram
     R->>S: Create(g:<id>, worker-2); Set-Cookie or-aff
     R->>W: proxy WS upgrade + X-OpenREPL-* headers
     W->>W: fetchRequestedPayload(headers) -> processWSConn -> factory.New
-    W->>R: jid-open {jid, uid} (control)
+    W->>R: route-open {jid} (control)
     W-->>B: title frame with <jid> (through proxy)
 ```
 
@@ -383,7 +391,7 @@ Validation at startup fails fast: a gateway or worker without a token, or a work
 - Workers have no public listener in worker mode; the tunnel is outbound only.
 - `/api/tunnel` is on the public port: Bearer-token check before upgrade, reject any request with an `Origin`, per-IP rate limit on failures, then SSH auth again inside.
 - Constant-time token comparison; host key pinning for `ssh://`; rate-limit failed registrations.
-- Remove client-supplied `homedir` for remote sessions; validate `jid` ownership by uid.
+- `homedir` and `jid` from the client are routed through `RouteMap` and then honoured by the worker as today (same capability-style trust as the single-node server). Hardening that is out of scope for v1.
 - `ws_filebrowser` already requires paths under the homedir (`strings.HasPrefix(path, homedir)`); that check now uses the worker-resolved homedir.
 - The affinity cookie carries only a random guest id, signed on the gateway.
 
@@ -426,3 +434,31 @@ A later phase may replace the per-gateway UnQLite stores with a shared replicate
 - A shared DB lets workers verify identity themselves, but putting the cookie secret or full user data on workers that run untrusted code is still a security risk. Prefer gateway-signed short-lived tokens (workers hold only a verification key) over sharing the secret.
 - The `Backend`/`SessionRegistry` seams in this design are where a shared store plugs in; handlers need no change.
 
+## 20. Compatibility review against the current code
+
+Reviewed against `server/{server,handlers,middleware,utils,handler_atomic}.go`, `cookie/cookie.go`, `user/util.go`, `containers/container_linux.go` and the page scripts under `js/src`.
+
+**Standalone behaviour.** With `--mode=standalone` nothing new is on the request path. Two small edits touch standalone code and must be behaviour-preserving: the `/admin` exact route becomes a prefix match, and `SetNewCommand` becomes per-connection instead of mutating the shared factory.
+
+**Existing features and how they are covered**
+
+| Feature | Risk | Handling |
+|---|---|---|
+| Terminal and Run/Debug | Editor content travels in the WS init payload and is saved by `SaveIdeContentToFile` | Runs on the owning node; no sync (6.3) |
+| File browser, upload, download, zip | Absolute paths from the worker tree must pass the `HasPrefix(path, homedir)` check | Same worker resolves the same homedir for both, so paths stay consistent (6.2) |
+| Shared session viewers (`homedir=` on every request) | Viewer is a different browser session, lands on a different worker | Routed by `RouteMap` homedir key (6.2, 7) |
+| Fork links (`jid=`) | Opened by other sessions; WS carries `jid` only after the upgrade | Routed by `RouteMap`; client adds `jid` to the WS URL (7) |
+| Guest first load | Parallel first requests would each create their own homedir without a shared cookie | Backend and guest id assigned at page load; worker guest dir is deterministic (4, 6.2) |
+| Existing signed-in users | Their files are on the gateway disk today | Pinned to `local` when a local workspace exists (4) |
+| Basic auth and `AuthToken` | WS routes bypass the basic-auth wrapper; worker would also bind a public port | Worker ignores basic auth, uses the gateway's credential, serves only the tunnel listener (6.2) |
+| Admin (`wrapAdmin`, `IsUserAdmin`) | Needs the user DB, which workers lack | Gateway only; worker uses `X-OpenREPL-Priv` (6.1a) |
+| Login, profile, blog, snippets, practice, chat proxy, sitemap | DB-backed | Gateway only (3) |
+| Per-process connection counter and weights | Per-machine | Each node keeps its own; the gateway pool uses worker-reported capacity (8) |
+| Firebase sharing and the Practice client sync | Browser-to-Firebase, independent of the server | No change |
+
+**Package structure.** `server` builds the mux and calls `gateway.NewRouter(mux, ...)`. `gateway` must not import `server` (import cycle); shared hooks are passed as interfaces.
+
+**Not yet verified in code; check during step 2**
+- Whether `containers` namespace and cgroup setup, or `utils.RemoveDir`, assume the homedir location beyond `utils.HOME_DIR`.
+- Where `Session-Counter` cookies (`IncrementCounterCookies`) are written and whether any execution-bound request depends on them.
+- That a `Set-Cookie` set on the 101 response of a proxied WebSocket (guest id fallback for API clients) reaches browsers; the primary path sets it on the page load instead.

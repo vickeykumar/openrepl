@@ -1740,6 +1740,9 @@ Settled after inspecting the OpenREPL codebase and `sish-lb`:
 - **`jid` is reported by the worker** over the control channel (`jid-open`/`jid-close`) rather than sniffed from the title frame.
 - **Cookies and DB stay on the gateway (v1):** the `Cookie` header is not forwarded to workers, workers never write cookies (the gateway drops `Set-Cookie` from worker responses), and no user DB or cookie secret is synced to workers. Identity reaches workers only as trusted headers.
 - **Shared DB is a later phase:** replication of the user/session data through Firebase or MongoDB is deferred (LLD 11, section 19).
+- **Cross-session links are routed by key:** shared-session viewers pass `homedir=` and fork links pass `jid=`; the gateway keeps a `key -> worker` map (workers report keys over the control channel) and routes on it before normal affinity. `jid` is not checked against the caller's uid, because fork links are meant to be opened by others.
+- **Assignment at first page load:** the gateway issues a guest id and picks the backend when it serves the IDE page, so the parallel first requests share one workspace. Signed-in users with an existing workspace on the gateway disk are pinned to `local`.
+- **Worker details:** a worker serves only the tunnel listener, ignores basic auth, and receives the gateway's WebSocket `AuthToken` at registration.
 
 The code-level design is in [LLD 11](../lld/11-distributed-execution.md).
 
