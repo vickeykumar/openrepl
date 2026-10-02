@@ -48,6 +48,8 @@ type Server struct {
 	terminals map[string]string
 	// gatewayAdmin serves /admin/workers and /admin/sessions on a gateway.
 	gatewayAdmin http.Handler
+	// admin is what the admin dashboard needs (admin_core.go).
+	admin adminState
 	// workerCredential is the gateway's WebSocket auth token, received by a
 	// worker when it registers.
 	workerCredential atomic.Value
@@ -325,17 +327,10 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 
 	siteMux.HandleFunc(pathPrefix+"auth_token.js", server.handleAuthToken)
 	siteMux.HandleFunc(pathPrefix+"settings.js", handleSettingsJS)
-	siteMux.Handle(pathPrefix+"admin", server.wrapAdmin(http.HandlerFunc(handleAdminPage)))
-	siteMux.HandleFunc(pathPrefix+"admin/settings", handleAdminSettings)
 	siteMux.HandleFunc(pathPrefix+"config.js", server.handleConfig)
-	if server.options.Mode == ModeGateway {
-		// Worker and session administration. Like every /admin route these
-		// run on the gateway itself.
-		admin := server.wrapAdmin(http.HandlerFunc(server.handleGatewayAdmin))
-		siteMux.Handle(pathPrefix+"admin/workers", admin)
-		siteMux.Handle(pathPrefix+"admin/workers/", admin)
-		siteMux.Handle(pathPrefix+"admin/sessions", admin)
-	}
+	server.admin.counter = counter
+	server.registerAdmin(siteMux, pathPrefix)
+	GetSiteSettings() // apply the saved Genie rates before the first request
 
 	siteHandler := http.Handler(siteMux)
 
@@ -365,10 +360,18 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteHandler = http.Handler(wsMux)
 
 	if server.options.Mode == ModeGateway {
-		return server.wrapGateway(ctx, siteHandler, pathPrefix, counter)
+		gw, err := server.wrapGateway(ctx, siteHandler, pathPrefix, counter)
+		if err != nil {
+			return nil, err
+		}
+		return server.wrapControls(gw, pathPrefix), nil
+	}
+	if server.options.Mode == ModeWorker {
+		// The gateway applies the switches before it forwards a terminal.
+		return siteHandler, nil
 	}
 
-	return siteHandler, nil
+	return server.wrapControls(siteHandler, pathPrefix), nil
 }
 
 func (server *Server) setupHTTPServer(handler http.Handler) (*http.Server, error) {

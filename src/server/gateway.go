@@ -84,6 +84,12 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 	}
 
 	cfg.TerminalNotice = server.terminalNotice
+	cfg.UserLabel = func(uid string) string {
+		if up, err := user.FetchUserProfileData(uid); err == nil {
+			return up.Email
+		}
+		return ""
+	}
 	if server.options.WorkspaceSync {
 		// How long a lost worker may stay away before its sessions are placed
 		// again. The option was validated at start-up.
@@ -124,7 +130,17 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 		}
 	}
 
+	cfg.SyncInfo = func(id string) (gateway.SyncInfo, bool) {
+		m := syncMgr
+		if m == nil {
+			return gateway.SyncInfo{}, false
+		}
+		offset, connected := m.Offset(id)
+		return gateway.SyncInfo{Homes: len(m.Homes(id)), Connected: connected, ClockOffset: offset}, true
+	}
+
 	router := gateway.NewRouter(cfg)
+	server.admin.router = router
 	server.routes = newRouteTracker(localRoutes{router.Routes()})
 	if server.options.LocalWeight <= 0 {
 		log.Printf("Gateway mode: --local-weight is 0, new sessions run on workers only")
@@ -139,6 +155,7 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to load the tunnel host key `%s`", keyPath)
 		}
+		server.admin.hostKey = tunnel.Fingerprint(hostKey)
 		tcfg := tunnel.ServerConfig{
 			Token:        server.options.WorkerToken,
 			HostKey:      hostKey,
@@ -157,6 +174,7 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 				return nil, errors.Wrap(err, "failed to start workspace sync")
 			}
 			syncMgr = mgr
+			server.admin.sync = mgr
 			go func() {
 				<-ctx.Done()
 				mgr.Close()
@@ -191,6 +209,7 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 		if err != nil {
 			return nil, err
 		}
+		server.admin.tunnel = ts
 		router.SetTunnel(server.options.TunnelPath, ts)
 		log.Printf("Gateway mode: workers connect to %s%s (tunnel host key %s)",
 			pathPrefix, strings.Trim(server.options.TunnelPath, "/"), tunnel.Fingerprint(hostKey))

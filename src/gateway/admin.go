@@ -38,15 +38,33 @@ type WorkerInfo struct {
 	ConnectionID string   `json:"connectionId,omitempty"`
 	OS           string   `json:"os,omitempty"`
 	Arch         string   `json:"arch,omitempty"`
+	Version      string   `json:"version,omitempty"`
+	Connected    string   `json:"connected,omitempty"` // since when this connection has been up
+
+	// Sync is set when workspace sync is on and a conversation with the worker is running.
+	Sync *WorkerSync `json:"sync,omitempty"`
+}
+
+// WorkerSync is what the gateway knows about the sync of one worker.
+type WorkerSync struct {
+	Homes         int   `json:"homes"`
+	ClockOffsetMs int64 `json:"clockOffsetMs"`
 }
 
 // SessionInfo is one row of GET /admin/sessions.
 type SessionInfo struct {
 	Key     string `json:"key"`
 	UID     string `json:"uid,omitempty"`
+	User    string `json:"user,omitempty"` // Config.UserLabel of the user
 	Backend string `json:"backend"`
 	Created string `json:"created"`
 	Expires string `json:"expires,omitempty"`
+	// Home is the session's home directory name, with workspace sync.
+	Home string `json:"home,omitempty"`
+	// Terminals is how many terminals the session has open now.
+	Terminals int `json:"terminals"`
+	// LastActive is when the session last made a request, with workspace sync.
+	LastActive string `json:"lastActive,omitempty"`
 }
 
 // AdminHandler serves the gateway's own admin API. The caller mounts it under
@@ -56,6 +74,9 @@ type SessionInfo struct {
 //	POST admin/workers/<id>/drain    stop placing new sessions on a worker
 //	POST admin/workers/<id>/undrain  resume
 //	GET  admin/sessions              the execution contexts
+//	POST admin/workers/<id>/reconnect  drop a worker's connection; it reconnects by itself
+//	POST admin/sessions/<key>/end    close a session's terminals and forget its placement
+//	POST admin/sessions/<key>/move   place a session on another node (body {"to": "<id>"})
 //
 // ts is nil when workers are disabled.
 func (rt *Router) AdminHandler(ts *tunnel.Server) http.Handler {
@@ -83,6 +104,16 @@ func (rt *Router) AdminHandler(ts *tunnel.Server) http.Handler {
 				return
 			}
 			rt.drain(w, ts, parts[1], parts[2] == "drain")
+		case len(parts) == 3 && parts[0] == "workers" && parts[2] == "reconnect":
+			if !allow(w, r, http.MethodPost) {
+				return
+			}
+			rt.reconnect(w, ts, parts[1])
+		case len(parts) == 3 && parts[0] == "sessions" && (parts[2] == "end" || parts[2] == "move"):
+			if !allow(w, r, http.MethodPost) {
+				return
+			}
+			rt.sessionAction(w, r, parts[1], parts[2])
 		default:
 			http.NotFound(w, r)
 		}
@@ -119,6 +150,54 @@ func (rt *Router) drain(w http.ResponseWriter, ts *tunnel.Server, id string, on 
 		state = b.State()
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"id": id, "state": state.String()})
+}
+
+func (rt *Router) reconnect(w http.ResponseWriter, ts *tunnel.Server, id string) {
+	if id == LocalID {
+		http.Error(w, "the local backend has no connection to drop", http.StatusBadRequest)
+		return
+	}
+	var tw *tunnel.Worker
+	if ts != nil {
+		tw = ts.Worker(id)
+	}
+	if tw == nil {
+		http.Error(w, "no such worker", http.StatusNotFound)
+		return
+	}
+	// The worker reconnects by itself, which starts the sync conversation
+	// afresh; until then its sessions see it as away.
+	tw.Disconnect()
+	writeJSON(w, http.StatusOK, map[string]string{"id": id})
+}
+
+// sessionAction ends or moves a session. The body of a move is {"to": "<node>"}.
+func (rt *Router) sessionAction(w http.ResponseWriter, r *http.Request, key, action string) {
+	var (
+		closed int
+		err    error
+	)
+	switch action {
+	case "end":
+		closed, err = rt.EndSession(key)
+	default:
+		var body struct {
+			To string `json:"to"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body) != nil || body.To == "" {
+			http.Error(w, `the body must be {"to": "<node id>"}`, http.StatusBadRequest)
+			return
+		}
+		closed, err = rt.MoveSession(key, body.To)
+	}
+	switch {
+	case err == ErrNoSession:
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case err != nil:
+		http.Error(w, err.Error(), http.StatusConflict)
+	default:
+		writeJSON(w, http.StatusOK, map[string]interface{}{"key": key, "terminalsClosed": closed})
+	}
 }
 
 func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
@@ -163,6 +242,13 @@ func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
 				info.LastSeen = tw.LastSeen().UTC().Format(time.RFC3339)
 				info.ConnectionID = tw.ConnectionID()
 				info.OS, info.Arch = reg.OS, reg.Arch
+				info.Version = reg.Version
+				info.Connected = tw.Connected().UTC().Format(time.RFC3339)
+			}
+		}
+		if rt.syncInfo != nil {
+			if si, ok := rt.syncInfo(b.ID()); ok && si.Connected {
+				info.Sync = &WorkerSync{Homes: si.Homes, ClockOffsetMs: si.ClockOffset.Milliseconds()}
 			}
 		}
 		out = append(out, info)
@@ -190,6 +276,23 @@ func (rt *Router) sessionInfo() []SessionInfo {
 		}
 		if !ec.ExpiresAt.IsZero() {
 			s.Expires = ec.ExpiresAt.UTC().Format(time.RFC3339)
+		}
+		s.Home = ec.Home
+		s.Terminals = rt.terminalsOf(ec.Key)
+		if ec.UID != "" && rt.userLabel != nil {
+			s.User = rt.userLabel(ec.UID)
+		}
+		if ec.Home != "" {
+			rt.amu.Lock()
+			a, ok := rt.activity[ec.Home]
+			var last time.Time
+			if ok {
+				last = a.last
+			}
+			rt.amu.Unlock()
+			if !last.IsZero() {
+				s.LastActive = last.UTC().Format(time.RFC3339)
+			}
 		}
 		out = append(out, s)
 	}

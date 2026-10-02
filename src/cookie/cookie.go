@@ -119,9 +119,9 @@ func Set_SessionCookie(rw http.ResponseWriter, req *http.Request, session user.U
 		}
 
 		if session.LoggedIn {
-			session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = (req_count_rem/60)*utils.USER_FACTOR
+			session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = (req_count_rem/60)*utils.UserFactor()
 		} else {
-			session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = (req_count_rem/60)*utils.GUEST_FACTOR
+			session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = (req_count_rem/60)*utils.GuestFactor()
 		}
 
 		log.Println("session cookie save: ", int(session.ExpirationTime-utils.GetUnixMilli())/1000)
@@ -239,13 +239,13 @@ func UpdateOpenApiRequestCountBalance(rw http.ResponseWriter, req *http.Request)
 	var req_count_balance_sec float64 = float64(current_time_mili-GetOpenApiLastAccessTime(req))/1000
 
 	var req_count_balance float64 = 0
-	var max_cap float64 = utils.GUEST_FACTOR*utils.DEADLINE_MINUTES // max num of request per minute a user can make
+	var max_cap float64 = utils.GuestFactor()*utils.DEADLINE_MINUTES // max num of request per minute a user can make
 	if Is_UserLoggedIn(req) {
-		req_count_balance = GetOpenApiRequestCount(req)+(req_count_balance_sec/60)*utils.USER_FACTOR
-		max_cap = utils.USER_FACTOR*utils.DEADLINE_MINUTES
+		req_count_balance = GetOpenApiRequestCount(req)+(req_count_balance_sec/60)*utils.UserFactor()
+		max_cap = utils.UserFactor()*utils.DEADLINE_MINUTES
 	} else {
-		req_count_balance = GetOpenApiRequestCount(req)+(req_count_balance_sec/60)*utils.GUEST_FACTOR
-		max_cap = utils.GUEST_FACTOR*utils.DEADLINE_MINUTES
+		req_count_balance = GetOpenApiRequestCount(req)+(req_count_balance_sec/60)*utils.GuestFactor()
+		max_cap = utils.GuestFactor()*utils.DEADLINE_MINUTES
 	}
 	if max_cap >= req_count_balance {
 		session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = req_count_balance

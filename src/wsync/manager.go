@@ -137,6 +137,16 @@ func (m *Manager) Homes(peer string) []string {
 	return out
 }
 
+// Offset returns the clock offset measured for a connected peer, and whether
+// there is a conversation with it.
+func (m *Manager) Offset(peer string) (time.Duration, bool) {
+	l := m.link(peer)
+	if l == nil {
+		return 0, false
+	}
+	return l.Offset(), true
+}
+
 // HasRecord reports whether any peer has synchronized the home with this
 // node before.
 func (m *Manager) HasRecord(home string) bool {

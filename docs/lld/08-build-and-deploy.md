@@ -98,7 +98,7 @@ There are no Go unit-test or lint steps beyond what the Docker build runs (`inst
 | Path | Contents | Persistence advice |
 |---|---|---|
 | `/usr/local/bin/gotty` | The binary with all web assets | Image |
-| `/opt/gotty/` | `user_sessions.db`, `feedback.db`, `blog.db`, `jobfile`, `.gitconfig` (secrets), `bin/` on `PATH` for REPLs, and `GOPATH` for Go REPLs | **Mount a volume.** Losing it logs everyone out and drops feedback and blogs. |
+| `/opt/gotty/` | `user_sessions.db`, `feedback.db`, `blog.db`, `snippets.db`, `jobfile`, `settings.json`, `admin-audit.jsonl`, `admin-stats.json`, `.gitconfig` (secrets), `bin/` on `PATH` for REPLs, and `GOPATH` for Go REPLs | **Mount a volume.** Losing it logs everyone out and drops feedback, blogs, the site settings and the audit log. |
 | `/opt/gotty/wsync/` | Workspace-sync records and pending drop orders (`<peer>/<home>.json`, `.drop`), only with `--workspace-sync` | Keep it on the same volume as `/opt/gotty`, or override with `--sync-state-dir`. Losing it deletes nothing; files deleted while the two sides were apart come back. |
 | `/tmp/home/` | `guest-*` and user workspaces, plus `/<command>/` dirs | Mount a volume if signed-in users' files should survive restarts. |
 | `/tmp/go_cache/` | Go build cache for Go REPLs | Disposable |

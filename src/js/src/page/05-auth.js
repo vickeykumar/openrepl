@@ -67,6 +67,17 @@ function renderProfileData () {
               if ( user.photoURL !== undefined && user.photoURL !=="" ) {
                 document.getElementById('user-image').src=user.photoURL;
               }
+              // admins get a link to the dashboard in the account menu
+              var menu = document.getElementById('account-dropdown');
+              if ( user.isAdmin === true && menu && !document.getElementById('admin-link') ) {
+                var item = document.createElement('li');
+                var link = document.createElement('a');
+                link.id = 'admin-link';
+                link.href = './admin';
+                link.textContent = 'Admin';
+                item.appendChild(link);
+                menu.insertBefore(item, menu.firstChild);
+              }
 
             } else {
               console.log("undefined response");

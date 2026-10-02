@@ -151,3 +151,33 @@ func (db *Database) Rollback() (err error) {
 	db.Clear()
 	return
 }
+
+// Each calls fn with every key and value in the database until fn returns
+// false. It reads the database itself, not the cache.
+func (db *Database) Each(fn func(key, value []byte) bool) error {
+	cursor, err := db.handle.NewCursor()
+	if err != nil {
+		return err
+	}
+	defer cursor.Close()
+	if err := cursor.First(); err != nil {
+		return nil // an empty database has nothing to visit
+	}
+	for cursor.IsValid() {
+		key, err := cursor.Key()
+		if err != nil {
+			return err
+		}
+		value, err := cursor.Value()
+		if err != nil {
+			return err
+		}
+		if !fn(key, value) {
+			return nil
+		}
+		if err := cursor.Next(); err != nil {
+			return nil
+		}
+	}
+	return nil
+}

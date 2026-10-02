@@ -92,6 +92,23 @@ type Config struct {
 	// placed again, and reports whether it handled the response. The page
 	// shows a countdown. Optional: without it the answer is a plain 503.
 	TerminalNotice func(w http.ResponseWriter, r *http.Request, retryIn time.Duration) bool
+	// UserLabel names a signed-in user in the admin API, e.g. by email
+	// address. Optional: without it only the user id is shown.
+	UserLabel func(uid string) string
+	// SyncInfo reports what workspace sync knows about a worker, for the
+	// admin API. Optional.
+	SyncInfo func(backendID string) (SyncInfo, bool)
+}
+
+// SyncInfo is what the admin API shows of a worker's workspace sync.
+type SyncInfo struct {
+	// Homes is how many homes the gateway keeps in step with the worker.
+	Homes int
+	// Connected is whether the sync conversation with the worker is running.
+	Connected bool
+	// ClockOffset is the worker's clock minus the gateway's, as measured by
+	// the sync conversation.
+	ClockOffset time.Duration
 }
 
 // Router sends each request either to the gateway's own handlers or, for
@@ -111,6 +128,15 @@ type Router struct {
 	identity func(http.ResponseWriter, *http.Request, ExecutionContext) trusted.Identity
 	homeOf   func(Identity) string
 	notice   func(http.ResponseWriter, *http.Request, time.Duration) bool
+
+	userLabel func(uid string) string
+	syncInfo  func(backendID string) (SyncInfo, bool)
+
+	// terms are the open terminals of each session, so that an admin can end
+	// them (terminals.go).
+	tmu     sync.Mutex
+	terms   map[string]map[uint64]context.CancelFunc
+	termSeq uint64
 
 	prepare       func(ctx context.Context, home, backendID string) error
 	onMoved       func(home, from, to string)
@@ -169,6 +195,10 @@ func NewRouter(cfg Config) *Router {
 		identity: cfg.Identity,
 		homeOf:   cfg.HomeOf,
 		notice:   cfg.TerminalNotice,
+
+		userLabel: cfg.UserLabel,
+		syncInfo:  cfg.SyncInfo,
+		terms:     make(map[string]map[uint64]context.CancelFunc),
 
 		prepare:       cfg.PrepareHome,
 		onMoved:       cfg.OnMoved,
@@ -329,6 +359,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (rt *Router) execute(w http.ResponseWriter, r *http.Request) {
+	var ended func() bool // set for a terminal: whether an admin ended it
 	ec, err := rt.assign(w, r)
 	if err == nil {
 		rt.touchHome(ec.Home)
@@ -337,6 +368,12 @@ func (rt *Router) execute(w http.ResponseWriter, r *http.Request) {
 				// A terminal keeps its home in use for as long as it is open.
 				rt.terminalOpened(ec.Home)
 				defer rt.terminalClosed(ec.Home)
+				// An admin can end it: its request is cancelled, which closes
+				// the connection to the worker, or stops the local handler.
+				ctx, cancel := context.WithCancel(r.Context())
+				defer rt.trackTerminal(ec.Key, cancel)()
+				r = r.WithContext(ctx)
+				ended = func() bool { return ctx.Err() != nil }
 			}
 		}
 	}
@@ -403,7 +440,12 @@ func (rt *Router) execute(w http.ResponseWriter, r *http.Request) {
 		if rt.homeOf != nil && ec.Home != "" && backendID == ec.BackendID {
 			// If the worker goes away under an open terminal, the browser is
 			// told how long until the session is placed again.
-			r = withAway(r, func() time.Duration { return rt.retryIn(backendID) })
+			r = withAway(r, func() time.Duration {
+				if ended != nil && ended() {
+					return -1
+				}
+				return rt.awayFor(backendID)
+			})
 		}
 	} else if rt.homeOf != nil && ec.Home != "" && !viaRoute {
 		// With workspace sync a session has one home name on every node, the

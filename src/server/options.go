@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
+	"utils"
 )
 
 // Run modes. Standalone is the default and behaves exactly as before.
@@ -72,6 +74,9 @@ func (options *Options) Validate() error {
 		return errors.New("--workspace-sync is a gateway option; a worker follows its gateway")
 	}
 	if _, err := options.RelocateAfterDuration(); err != nil {
+		return err
+	}
+	if _, _, err := utils.FirebaseConfigFromEnv(); err != nil {
 		return err
 	}
 	switch options.Mode {

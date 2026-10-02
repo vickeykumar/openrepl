@@ -283,18 +283,21 @@ Limits: files over 50 MB are not synchronized; sockets, pipes and device files a
 
 ## Operating a fleet
 
-These routes run on the gateway and need the same admin sign-in as `/admin` (open them in the browser you are signed in with, or pass that browser's session cookie to `curl`):
+The easiest way is the dashboard at `/admin` (admin sign-in): *Workers* lists the nodes with their load, state and how many sessions each has been given, opens a node's details (address, version, languages, sync state, clock difference) and drains, undrains or reconnects it. *Sessions* lists who is on which node, and can end a session or move it to another node. *Add a worker* shows the command line for a new one, with the gateway's tunnel host key fingerprint. The same things are available as routes on the gateway. They need the same admin sign-in; to change something from `curl`, pass the browser's session cookie and the header `X-Requested-With: openrepl-admin` (the dashboard sends it; without it a change is refused):
 
 | Route | What it does |
 |---|---|
 | `GET /admin/workers` | Every node with its state, weight, used and maximum MB, sessions, last heartbeat, address and languages, and how many sessions the weighted random choice has given it (see below). |
 | `POST /admin/workers/<id>/drain` | The worker gets no new sessions. Its current ones carry on. |
 | `POST /admin/workers/<id>/undrain` | Back to normal. |
-| `GET /admin/sessions` | Which session is on which node. |
+| `POST /admin/workers/<id>/reconnect` | The worker drops its connection and connects again by itself. Its terminals close. |
+| `GET /admin/sessions` | Which session is on which node, with the user, open terminals and last activity. |
+| `POST /admin/sessions/<key>/end` | Closes the session's terminals. Their files stay, and the next request places the visitor again. |
+| `POST /admin/sessions/<key>/move` | With body `{"to": "<node>"}`, places the session on another node, which is first sent the gateway's copy of their files. Needs `--workspace-sync`. |
 
 ```bash
 curl -b "user-session=<your admin session cookie>" https://gateway.example.com/admin/workers
-curl -b "user-session=<your admin session cookie>" -X POST https://gateway.example.com/admin/workers/worker-01/drain
+curl -b "user-session=<your admin session cookie>" -H 'X-Requested-With: openrepl-admin' -X POST https://gateway.example.com/admin/workers/worker-01/drain
 ```
 
 **Seeing the weighted random choice at work.** Each row of `/admin/workers` has three numbers:

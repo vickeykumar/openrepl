@@ -8,10 +8,11 @@ The browser never talks to OpenAI directly. Every LLM call goes to `POST /chat/c
 
 | Setting | Source | Default |
 |---|---|---|
-| OpenAI API key | `GitConfig["user.OpenaiAPIKey"]`, base64-encoded | empty (proxy calls fail upstream) |
-| Allowed host | `GitConfig["user.host"]` | `localhost` |
-| Guest refill rate | `utils.GUEST_FACTOR = 0.33` requests/min | about 20 requests per hour |
-| Signed-in refill rate | `utils.USER_FACTOR = 1` request/min | 60 requests per hour |
+| OpenAI API key | `OPENREPL_OPENAI_API_KEY` as it is, or the file's `user.OpenaiAPIKey`, base64-encoded (`utils.OpenAIKey`) | empty (proxy calls fail upstream) |
+| Allowed host | `OPENREPL_HOST`, or the file's `user.host` (`utils.Host`) | `localhost` |
+| Guest refill rate | `utils.GUEST_FACTOR = 0.33` requests/min, or the admin's setting (`utils.GuestFactor()`, LLD 13) | about 20 requests per hour |
+| Signed-in refill rate | `utils.USER_FACTOR = 1` request/min, or the admin's setting (`utils.UserFactor()`) | 60 requests per hour |
+| Switch | `SiteSettings.Genie.Disabled`: the proxy answers 503 `GenieDisabled` to everybody but admins | on |
 | Bucket cap | `factor × DEADLINE_MINUTES (60)` | about 20 for guests, 60 for users |
 
 ## 2. Per-session access token

@@ -78,6 +78,11 @@ func AddProcess(name string, cmd *exec.Cmd) {
 	containerobj.AddProcess(pid)
 }
 
+// Status says how many of the sandboxes that InitContainers tried to make exist.
+// A REPL whose sandbox is missing runs without namespaces and without a memory
+// limit (LLD 03).
+func Status() (ready, total int) { return len(Containers), len(Commands2memLimitMap) }
+
 func InitContainers() {
 	for command, _ := range Commands2memLimitMap {
 		containerObj, err := NewContainer(command, MAX_MEMORY_LIMIT*MB) // memlimit in MB

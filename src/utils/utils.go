@@ -9,19 +9,15 @@ import (
 	"os"
 	"os/exec"
 	"time"
-	"bufio"
 	"path/filepath"
 	"io"
 	"io/ioutil"
-	"bytes"
-	"strings"
 	"errors"
 )
 
 const HOME_DIR = "/tmp/home/"
 const GOTTY_PATH = "/opt/gotty"
 const SYSTEM_CONFIG_PATH = "/etc"
-const GLOBAL_PATH = "~/"
 const GitConfigFile = ".gitconfig"
 const LOG_PATH = "/gottyTraces"
 const IdeLangKey = "IdeLang"
@@ -51,74 +47,6 @@ const GUEST = "guest"
 
 var GitConfig map[string]string
 
-func GetGitConfig() (config map[string]string) {
-	config = make(map[string]string)
-	systemfile := filepath.Join(SYSTEM_CONFIG_PATH, GitConfigFile)
-	globalfile := filepath.Join(GLOBAL_PATH, GitConfigFile)
-	gottyfile := filepath.Join(GOTTY_PATH, GitConfigFile)
-
-	filelist := []string {
-		gottyfile,
-		globalfile,
-		systemfile,
-	}
-	var data []byte
-	var err error
-	for _, file := range(filelist) {
-		// Open the .gitconfig file for reading
-		data, err = ioutil.ReadFile(file)
-		if err != nil {
-			log.Printf("Error: failed reading file : %s, error: %s, trying next file.", file, err.Error())
-		} else {
-			// else break as i already have data from highest priority config file
-			break
-		}
-	}
-	// Create a scanner to read the file line-by-line
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-
-	// Keep track of the current section name
-	currentSection := ""
-
-	// Loop over each line in the file
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Check if the line starts a new section
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			// Set the current section name
-			currentSection = line[1 : len(line)-1]
-			parts := strings.Split(strings.TrimSpace(currentSection), " ")
-			for i, part := range parts {
-            	parts[i] = strings.Trim(part, "\"")
-        	}
-            key := strings.Join(parts, ".")
-			currentSection = key
-			continue
-		}
-
-		// Split the line into a key-value pair
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-
-		// Add the key-value pair to the config map
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-		if currentSection != "" {
-			key = currentSection + "." + key
-		}
-		config[key] = value
-	}
-	return config
-}
-
 func InitLogging(name string) {
 	err := os.MkdirAll(LOG_PATH, 0755)
 	if err == nil {
@@ -140,9 +68,9 @@ func InitLogging(name string) {
 func init() {
 	// init logging
 	InitLogging("gotty")
-	// populate gitconfig
+	// populate the file fallback of the settings (config.go). The summary of
+	// the settings is logged by main, once the env file (envfile.go) is loaded.
 	GitConfig = GetGitConfig()
-	log.Println("config read: ", GitConfig)
 
 	// init the global scheduler
 	InitGottyJobs()

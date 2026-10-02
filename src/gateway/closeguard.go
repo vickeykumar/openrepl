@@ -32,10 +32,16 @@ func AwayReason(retryIn time.Duration) string {
 	return fmt.Sprintf("execution node is away: retry in %ds", secs)
 }
 
+// EndedReason is the WebSocket close reason of a terminal that an admin ended.
+// The page shows what follows "site notice: " (src/js/src/webtty.ts).
+const EndedReason = "site notice: An admin ended this session."
+
 type awayKey struct{}
 
 // withAway attaches a function that returns how long until the session of a
-// request is placed again, 0 if it is not going to be.
+// request is placed again, 0 if it is not going to be, and a negative time if
+// the terminal was closed on purpose (by an admin), which the browser is told
+// with EndedReason.
 func withAway(r *http.Request, retryIn func() time.Duration) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), awayKey{}, retryIn))
 }
@@ -205,7 +211,9 @@ func (g *closeGuard) closeFrame() []byte {
 	deadline := time.Now().Add(g.wait)
 	var retryIn time.Duration
 	for {
-		if retryIn = g.away(); retryIn > 0 {
+		if retryIn = g.away(); retryIn < 0 {
+			return closeFrame(EndedReason) // ended on purpose: no reason to wait
+		} else if retryIn > 0 {
 			break
 		}
 		if !time.Now().Before(deadline) {
@@ -213,6 +221,11 @@ func (g *closeGuard) closeFrame() []byte {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	payload := append([]byte{0x03, 0xE8}, AwayReason(retryIn)...) // 1000, then the reason
-	return append([]byte{0x88, byte(len(payload))}, payload...)   // FIN + close, unmasked
+	return closeFrame(AwayReason(retryIn))
+}
+
+// closeFrame is an unmasked WebSocket close frame with status 1000 and the reason.
+func closeFrame(reason string) []byte {
+	payload := append([]byte{0x03, 0xE8}, reason...)            // 1000, then the reason
+	return append([]byte{0x88, byte(len(payload))}, payload...) // FIN + close, unmasked
 }

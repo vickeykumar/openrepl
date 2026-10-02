@@ -73,7 +73,8 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	if command == "bash" {
 		ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0644)
 	}
-	cmd.Env = os.Environ()
+	// not the server's own environment: its secrets must not reach the user's shell
+	cmd.Env = utils.ChildEnviron(os.Environ())
 	cmd.Env = append(cmd.Env, "TERM=xterm")
 	cmd.Env = append(cmd.Env, "GOPATH=/opt/gotty/")
 	cmd.Env = append(cmd.Env, "GOCACHE=/tmp/go_cache/.cache/go-build/")
@@ -96,8 +97,9 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	for _, envvar := range envvars {
 		// sanitize 
 		if strings.Contains(envvar, "$") {
-	        // Expand nested environment variable references
-	        envvar = os.ExpandEnv(envvar)
+	        // Expand nested environment variable references, in the environment
+	        // the program gets and not in the server's
+	        envvar = utils.ExpandIn(cmd.Env, envvar)
 	    }
 	    if strings.Contains(envvar, "~/") {
 	        // Replace '~' with user's home directory

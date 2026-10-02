@@ -315,14 +315,17 @@ sequenceDiagram
 
 ## 11. Admin API (gateway-local)
 
-`gateway/admin.go`, mounted by the server in gateway mode behind the existing `wrapAdmin` check. In standalone and worker mode these routes do not exist.
+`gateway/admin.go`, mounted by the server in gateway mode behind `adminAPI` (the admin check, the `X-Requested-With: openrepl-admin` header on every change, and `Cache-Control: no-store`; see LLD 13). The admin dashboard shows and drives these routes. In standalone and worker mode they do not exist.
 
 | Route | Purpose |
 |---|---|
-| `GET /admin/workers` | `{"workers":[...]}`: one row per backend, including `local`. Fields: `id`, `state`, `weight`, `usedMB`, `maxMB` (0 = no limit), `sessions` (execution contexts assigned), `picked` (sessions the picker has given the node since the gateway started, `Router.countPick` in `place`), `pickedPercent` (its share of all picks, one decimal) and `weightPercent` (the share its weight gives it among the backends that take new sessions now: `ONLINE` with weight above 0, else 0), and for workers `terminals`, `languages`, `remoteAddr`, `lastSeen`, `connectionId`, `os`, `arch`. The reply also carries `pickedTotal` and `pickedSince`. Only the picker's choices are counted, not a signed-in user going back to their pinned worker; the counts are in memory and start again when the gateway restarts; a backend that has left keeps its picks in the total but has no row |
+| `GET /admin/workers` | `{"workers":[...]}`: one row per backend, including `local`. Fields: `id`, `state`, `weight`, `usedMB`, `maxMB` (0 = no limit), `sessions` (execution contexts assigned), `picked` (sessions the picker has given the node since the gateway started, `Router.countPick` in `place`), `pickedPercent` (its share of all picks, one decimal) and `weightPercent` (the share its weight gives it among the backends that take new sessions now: `ONLINE` with weight above 0, else 0), and for workers `terminals`, `languages`, `remoteAddr`, `lastSeen`, `connectionId`, `os`, `arch`, `version`, `connected` (since when this connection has been up) and, with workspace sync and a running conversation, `sync` {`homes`, `clockOffsetMs`}. The reply also carries `pickedTotal` and `pickedSince`. Only the picker's choices are counted, not a signed-in user going back to their pinned worker; the counts are in memory and start again when the gateway restarts; a backend that has left keeps its picks in the total but has no row |
 | `POST /admin/workers/{id}/drain` | The worker stops receiving new sessions; existing ones carry on. Replies `{"id","state"}` |
 | `POST /admin/workers/{id}/undrain` | Resumes placement |
-| `GET /admin/sessions` | `{"sessions":[...]}`: `key`, `uid`, `backend`, `created`, `expires` |
+| `POST /admin/workers/{id}/reconnect` | Closes the worker's connection (`Worker.Disconnect`); the worker connects again by itself, which starts everything that depends on the connection afresh. 400 for `local` |
+| `GET /admin/sessions` | `{"sessions":[...]}`: `key`, `uid`, `user` (`Config.UserLabel`, the email), `backend`, `created`, `expires`, `home`, `terminals` (open now) and `lastActive` (the last two with the tracking in `gateway/terminals.go`) |
+| `POST /admin/sessions/{key}/end` | Closes the session's terminals and releases its execution context. Replies `{"key","terminalsClosed"}`. 404 for an unknown session |
+| `POST /admin/sessions/{key}/move` | Body `{"to":"<node>"}`. Moves the session as LLD 13 section 4 describes; 409 with the reason when it cannot (no workspace sync, the node is unknown or not `ONLINE`, or it is the current one) |
 
 Errors: 405 for the wrong method, 404 for an unknown worker or path, 400 for draining `local` (use `--local-weight 0`). The drain flag belongs to the worker id on the gateway (`tunnel.Server.SetDraining`), so it survives the worker reconnecting. It is kept in memory and is cleared by a gateway restart.
 
@@ -429,8 +432,8 @@ As a signed-in admin (the same session that opens `/admin`):
 
 ```bash
 curl -b "$ADMIN_COOKIE" https://openrepl.example.com/admin/workers
-curl -b "$ADMIN_COOKIE" -X POST https://openrepl.example.com/admin/workers/worker-01/drain
-curl -b "$ADMIN_COOKIE" -X POST https://openrepl.example.com/admin/workers/worker-01/undrain
+curl -b "$ADMIN_COOKIE" -H 'X-Requested-With: openrepl-admin' -X POST https://openrepl.example.com/admin/workers/worker-01/drain
+curl -b "$ADMIN_COOKIE" -H 'X-Requested-With: openrepl-admin' -X POST https://openrepl.example.com/admin/workers/worker-01/undrain
 ```
 
 Validation at startup fails fast: a gateway or worker without a token, or a worker without `--worker-server` (or without `--worker-hostkey` when using `ssh://`), exits with an error instead of running half-configured.

@@ -260,20 +260,20 @@ func commonHandler(w http.ResponseWriter, r *http.Request,
 }
 
 
-// basic auth to determine if admin user using git config and logged in user id/email
+// IsUserAdmin determines whether the request comes from an admin: a live
+// session whose profile email is one of the configured admin accounts
+// (OPENREPL_ADMIN_EMAILS, or the file's user.email; see utils/config.go).
+// Without a configured admin nobody is one.
 
 func IsUserAdmin(rw http.ResponseWriter, req *http.Request) (isadmin bool) {
 		isadmin = false // testing
 		var session user.UserSession
 		session = cookie.Get_SessionCookie(req)
 		up, err := user.FetchUserProfileData(session.Uid)
-		/* *
-		 * if email is not configured in gitconfig, means no verification as of now
-		 * verify the session in local db and verify logged in users email as well against git configured one
-		 * for admin. 
-		 * */
-		if err != nil || user.IsSessionExpired(session.Uid, session.SessionID)==true || 
-		  utils.GitConfig["user.email"]!=up.Email {
+		// verify the session in local db, and the logged in user's email
+		// against the configured admin accounts
+		if err != nil || user.IsSessionExpired(session.Uid, session.SessionID)==true ||
+		  !utils.IsAdminEmail(up.Email) {
 			session.LogOut()
 			return
 		}

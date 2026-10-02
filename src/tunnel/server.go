@@ -124,6 +124,7 @@ type Worker struct {
 	connID string
 	info   RegisterRequest
 	conn   ssh.Conn
+	since  time.Time // when this connection registered
 
 	used     int64 // atomic
 	active   int64 // atomic
@@ -147,6 +148,9 @@ func (w *Worker) Draining() bool        { return atomic.LoadInt32(&w.draining) =
 // gateway. A syncing worker takes no new sessions.
 func (w *Worker) Syncing() bool      { return atomic.LoadInt32(&w.syncing) == 1 }
 func (w *Worker) RemoteAddr() string { return w.conn.RemoteAddr().String() }
+
+// Connected is when this connection registered.
+func (w *Worker) Connected() time.Time { return w.since }
 
 // Disconnect closes the worker's connection. The worker reconnects by itself,
 // which starts everything that depends on the connection afresh.
@@ -479,6 +483,7 @@ func (s *Server) register(conn ssh.Conn, payload []byte) (*Worker, RegisterReply
 		connID: hex.EncodeToString(idBytes),
 		info:   reg,
 		conn:   conn,
+		since:  time.Now(),
 	}
 	w.touch()
 	if s.cfg.WorkspaceSync {

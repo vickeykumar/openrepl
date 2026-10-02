@@ -26,6 +26,7 @@ type feedback struct {
 	Name    string
 	Email   string
 	Message string
+	Read    bool // set by an admin at /admin
 }
 
 func InitFeedbackDBHandle() {
@@ -109,6 +110,7 @@ func FetchFeedbackDataMap() (fblistmap map[int64]feedback) {
 				log.Println("Failed parsing for key: ", key, err.Error())
 				return
 			}
+			fb = feedback{} // a field missing from the record must not keep the last one's value
 			err = json.Unmarshal(value, &fb)
 			if err != nil {
 				log.Println("ERROR: while unMarshalling for key: ", timestamp, value, " Error: ", err)
@@ -229,6 +231,11 @@ func handleLoginSession(rw http.ResponseWriter, req *http.Request) {
 	    session.Update(session.User)
 	    session.LogIn()
 
+	    if user.IsBlocked(session.Uid) {
+	        http.Error(rw, "This account is blocked.", http.StatusForbidden)
+	        return
+	    }
+
 	    log.Println("session: ", session)
 
 	    err = user.UpdateAndStoreSessionData(session.Uid, session.SessionID, &session, false)
@@ -306,11 +313,18 @@ func handleLogoutSession(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// userProfileReply is the profile as the page receives it. IsAdmin tells the
+// account menu to offer a link to /admin; the dashboard checks it again.
+type userProfileReply struct {
+	user.UserProfile
+	IsAdmin bool `json:"isAdmin"`
+}
+
 func handleUserProfileJson(rw http.ResponseWriter, req *http.Request, status int, up user.UserProfile) {
 	rw.WriteHeader(status)
 	// nullify the session map before sending probably we will not need it.
 	up.SessionMap = nil
-	rw.Write(utils.JsonMarshal(up))
+	rw.Write(utils.JsonMarshal(userProfileReply{UserProfile: up, IsAdmin: status == http.StatusOK && utils.IsAdminEmail(up.Email)}))
 }
 
 func handleUserProfile(rw http.ResponseWriter, req *http.Request) {

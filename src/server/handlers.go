@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
 
+	"gateway"
 	"webtty"
 	"filebrowser"
 	"utils"
@@ -151,6 +152,8 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			closeReason = server.factory.Name()
 		case errSlaveKilled:
 			closeReason = server.factory.Name() + ": killed"
+		case errSessionEnded:
+			closeReason = gateway.EndedReason
 		case webtty.ErrMasterClosed:
 			closeReason = "client"
 		default:
@@ -166,6 +169,18 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 // Note: Any time consuming API in this same routing will lead to performance issue with websocket
 func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r *http.Request, command string, req_payload map[string]string) error {
 	conn.SetWriteDeadline(time.Now().Add(utils.DEADLINE_MINUTES * time.Minute)) // only 15 min sessions for services are allowed
+
+	// An admin who ends the session cancels the request (gateway/terminals.go).
+	ctx, endTerminal := context.WithCancel(ctx)
+	defer endTerminal()
+	go func() {
+		select {
+		case <-r.Context().Done():
+			endTerminal()
+		case <-ctx.Done():
+		}
+	}()
+
 	typ, initLine, err := conn.ReadMessage()
 	if err != nil {
 		return errors.Wrapf(err, "failed to authenticate websocket connection")
@@ -273,6 +288,9 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 
 	log.Println("running webtty: ")
 	err = tty.Run(ctx)
+	if err == context.Canceled && r.Context().Err() != nil {
+		return errSessionEnded
+	}
 	if err == webtty.ErrSlaveClosed {
 		// tell the browser when the program was killed (usually the memory limit)
 		if er, ok := slave.(interface{ ExitReason() string }); ok && er.ExitReason() == "killed" {
@@ -286,6 +304,9 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 // errSlaveKilled means the command ended because it was killed, which is how
 // the container's memory limit stops a program.
 var errSlaveKilled = errors.New("slave killed")
+
+// errSessionEnded means an admin ended the session while this terminal ran.
+var errSessionEnded = errors.New("session ended")
 
 func (server *Server) errorHandler(w http.ResponseWriter, r *http.Request, status int) {
 	w.WriteHeader(status)
@@ -380,24 +401,14 @@ func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript")
 	w.Write([]byte("var gotty_term = '" + server.options.Term + "';"))
 	
-	fbconfig := "CmNvbnN0IGZpcmViYXNlY29uZmlnID0gewogIGFwaUtleTogIkFJemFTeUFTZ0Fh" +
-	"UnY2eVhVSlFWY0hhQV9sUkZWTXk5QVlaZVJscyIsCiAgYXV0aERvbWFpbjogIm9wZW5yZXBsLWFwc" +
-	"C5maXJlYmFzZWFwcC5jb20iLAogIHByb2plY3RJZDogIm9wZW5yZXBsLWFwcCIsCiAgZGF0YWJhc2" +
-	"VVUkw6ICJodHRwczovL29wZW5yZXBsLWFwcC1kZWZhdWx0LXJ0ZGIuZmlyZWJhc2Vpby5jb20iCn07Cgo="
-
-    decoded, err := base64.StdEncoding.DecodeString(fbconfig)
-    if err==nil {
-    	w.Write(decoded)
-    } else {
-    	log.Println("Error: decoding fbconfig: ", err)
-    }
+	w.Write(firebaseConfigJS())
 
     _, secret := cookie.GetOpenApiAccessToken(r) 
 	// check if already a secret present from prev active session.
 	if string(secret)=="" {
 		secret = encoder.GenerateLargePrime().Bytes()
 	}
-    access_token, err := encoder.Encrypt([]byte(defaultToken), secret)
+    access_token, err := encoder.Encrypt([]byte(openAIToken()), secret)
     if err == nil {
     	err = cookie.SetOpenApiAccessToken(w, r, access_token, secret)
     	if err != nil {
@@ -407,6 +418,27 @@ func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
     } else {
     	log.Println("Error: encrypting access_token: ", err)
     }
+}
+
+// builtinFirebaseConfig is the production Firebase project's web config, used
+// unless OPENREPL_FIREBASE_CONFIG names another one.
+const builtinFirebaseConfig = "CmNvbnN0IGZpcmViYXNlY29uZmlnID0gewogIGFwaUtleTogIkFJemFTeUFTZ0FhUnY2eVhV" +
+	"SlFWY0hhQV9sUkZWTXk5QVlaZVJscyIsCiAgYXV0aERvbWFpbjogIm9wZW5yZXBsLWFwcC5m" +
+	"aXJlYmFzZWFwcC5jb20iLAogIHByb2plY3RJZDogIm9wZW5yZXBsLWFwcCIsCiAgZGF0YWJh" +
+	"c2VVUkw6ICJodHRwczovL29wZW5yZXBsLWFwcC1kZWZhdWx0LXJ0ZGIuZmlyZWJhc2Vpby5j" +
+	"b20iCn07Cgo="
+
+// firebaseConfigJS is the part of config.js that defines `firebaseconfig`.
+func firebaseConfigJS() []byte {
+	if js, ok := utils.FirebaseConfigJS(); ok {
+		return js
+	}
+	decoded, err := base64.StdEncoding.DecodeString(builtinFirebaseConfig)
+	if err != nil {
+		log.Println("Error: decoding the built-in firebase config: ", err)
+		return nil
+	}
+	return decoded
 }
 
 // serverTitleVariables returns the title variables for one connection. The

@@ -120,7 +120,7 @@ function hideTermBanner() {
   }
 }
 
-function showTermBanner(kind, compiled) {
+function showTermBanner(kind, compiled, notice) {
   var b = document.getElementById("term-banner");
   if (!b) return;
   var title = "", body = "", action = "Reconnect", tone = "danger", run = ToggleReconnect;
@@ -156,6 +156,11 @@ function showTermBanner(kind, compiled) {
     tone = "warn";
     title = "Your execution node is away.";
     body = awayBannerBody(awayWaitMs());
+  } else if (kind === "notice") {
+    // The site refused the terminal on purpose; the text is the admin's.
+    tone = "warn";
+    title = "Not available right now.";
+    body = notice || "Please try again later.";
   } else {
     title = "Connection lost.";
     body = "Your files are safe. Reconnect to start a fresh REPL in the same workspace.";
@@ -192,7 +197,7 @@ function updateTermFooter() {
     var k = elem.__ttyKind;
     var wait = k === "away" ? awayLeftMs(elem) : 0;
     t.textContent = wait > 0 ? "Node away · reconnect in " + clockText(wait)
-      : k === "exited" ? "Finished" : k === "killed" ? "Stopped" : k === "failed" ? "Could not start" : "Disconnected";
+      : k === "exited" ? "Finished" : k === "killed" ? "Stopped" : k === "failed" ? "Could not start" : k === "notice" ? "Not available" : "Disconnected";
   } else {
     t.textContent = "Connecting…";
   }
@@ -220,6 +225,7 @@ $(function () {
       elem.__ttyPending = false;
       elem.__ttyKind = d.kind;
       elem.__ttyCompiled = !!d.compiled;
+      elem.__ttyNotice = d.notice || "";
       elem.__ttyAwayUntil = d.kind === "away" ? Date.now() + (d.retryIn || 0) * 1000 : 0;
       // The controls are disabled at once, not when the banner appears.
       if (d.kind === "away") startAwayTimer();
@@ -227,7 +233,7 @@ $(function () {
       setTimeout(function () {
         if (!document.contains(elem) || elem.__ttyPending || elem.__ttyState !== "closed") return;
         setTabDot(elem, d.kind === "exited" ? "exited" : "closed");
-        if (elem === activeTermElem() && d.kind !== "closed") showTermBanner(d.kind, d.compiled);
+        if (elem === activeTermElem() && d.kind !== "closed") showTermBanner(d.kind, d.compiled, d.notice);
         updateTermFooter();
       }, 1500);
     }
@@ -239,7 +245,7 @@ $(function () {
       var elem = activeTermElem();
       hideTermBanner();
       if (elem && elem.__ttyState === "closed" && elem.__ttyKind && elem.__ttyKind !== "closed") {
-        showTermBanner(elem.__ttyKind, elem.__ttyCompiled);
+        showTermBanner(elem.__ttyKind, elem.__ttyCompiled, elem.__ttyNotice);
       }
       tickAway();
     }, 150);

@@ -133,6 +133,24 @@ func TestGuardSaysNothingWhenTheWorkerIsNotKnownToBeAway(t *testing.T) {
 	}
 }
 
+func TestGuardTellsTheBrowserAtOnceWhenAnAdminEndedTheTerminal(t *testing.T) {
+	stream := append([]byte(upgradeResponse), frame(1, []byte("hello"))...)
+	g := guardOver(stream, 4096, fixed(-1))
+	g.wait = 5 * time.Second
+	start := time.Now()
+	got, err := io.ReadAll(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatalf("the guard waited %v for a terminal that an admin ended", time.Since(start))
+	}
+	want := append(append([]byte{}, stream...), closeFrame(EndedReason)...)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("got %q, want the stream followed by a close frame with %q", got, EndedReason)
+	}
+}
+
 func TestGuardWaitsForTheWorkerToBeMarkedAway(t *testing.T) {
 	var calls int32
 	away := func() time.Duration {

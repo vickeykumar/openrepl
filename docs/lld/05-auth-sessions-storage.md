@@ -81,14 +81,16 @@ All server-side stores are embedded **UnQLite** databases (`github.com/nobonobo/
 
 | File | Wrapper | Key → value | Used by |
 |---|---|---|---|
-| `user_sessions.db` | `cachedb.Database` (UnQLite + 15 MB `freecache`, write-through, read-through) | `SESSION_KEY` → cookie HMAC key; `<uid>` → `UserProfile` JSON; `worker-pin:<uid>` → the execution node that holds the user's workspace (written by a gateway, `user/pin.go`, LLD 11) | `user`, `cookie` |
-| `feedback.db` | raw UnQLite | `<UnixNano timestamp>` → `{Name, Email, Message}` | `/feedback` |
+| `user_sessions.db` | `cachedb.Database` (UnQLite + 15 MB `freecache`, write-through, read-through) | `SESSION_KEY` → cookie HMAC key; `<uid>` → `UserProfile` JSON; `worker-pin:<uid>` → the execution node that holds the user's workspace (written by a gateway, `user/pin.go`, LLD 11); `blocked:<uid>` → `1` or `0`, set by an admin (`user/admin.go`, LLD 13) | `user`, `cookie` |
+| `feedback.db` | raw UnQLite | `<UnixNano timestamp>` → `{Name, Email, Message, Read}` | `/feedback` |
 | `blog.db` | raw UnQLite | `<blog name>` → `BlogPost` JSON | `/blog` |
 | `snippets.db` | raw UnQLite, guarded by a mutex | `<8-character id>` → `snippet` JSON | `/snippet`, `/s/<id>` (LLD 01) |
 | `practice.db` | raw UnQLite, guarded by a mutex | `u:<uid>` → `practiceDoc` JSON | `/practice/progress` |
 | `jobfile` | `encoding/gob` | `map[name]*Job{Name, ExpirationTime}` | `utils.GottyJobs` (written on shutdown, read and deleted on start) |
-| `.gitconfig` | text (read-only at runtime) | admin email, OpenAI key, allowed host | LLD 01, 07 |
-| `settings.json` | JSON (`server/settings.go`), read once and cached, written atomically (tmp file + rename) | `SiteSettings{colorOfTheDay}`; a missing file means every switch is off | `/settings.js`, `/admin` |
+| `.gitconfig` | text (read-only at runtime), the fallback for the `OPENREPL_*` environment variables | admin email, OpenAI key, allowed host | LLD 01, 07 |
+| `settings.json` | JSON (`server/settings.go`), read once and cached, written atomically (tmp file + rename) | `SiteSettings`: colour of the day, announcement, maintenance, switched-off languages, Genie switch and rates (LLD 13); a missing file means every switch is off | `/settings.js`, `/admin` |
+| `admin-audit.jsonl` | one JSON object per line, appended, mode 0600; the newest 500 are kept in memory | `{time, admin, action, detail, from}` for every change an admin made | `/admin/audit` (LLD 13) |
+| `admin-stats.json` | JSON, rewritten at most every 30 seconds, mode 0600 | per day: visitors, terminals by language, and for today only the keyed hashes of the visitors seen; 60 days | `/admin/stats` (LLD 13) |
 
 Every write calls `Commit()` right away. Listing uses UnQLite cursors (`FetchFeedbackDataMap`, `FetchBlogDataMap`).
 
