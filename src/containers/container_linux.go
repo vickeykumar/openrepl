@@ -1,46 +1,82 @@
+//go:build linux
 // +build linux
 
 package containers
 
 import (
+	"bufio"
+	"bytes"
 	"github.com/containerd/cgroups"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
-	"bytes"
 	"log"
 	"math"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"utils"
-	"net/url"
-	"strings"
 )
 
 // flags for nsenter
 const (
-	CLONE_NEWUTS = "-u"
-	CLONE_NEWPID = "-p"
-	CLONE_NEWNET = "-n"
+	CLONE_NEWUTS  = "-u"
+	CLONE_NEWPID  = "-p"
+	CLONE_NEWNET  = "-n"
 	CLONE_NEWUSER = "-U"
 )
 
-var ns_flags = []string {
+var ns_flags = []string{
 	CLONE_NEWUTS,
 	CLONE_NEWPID,
 	CLONE_NEWNET,
 	CLONE_NEWUSER,
 }
 
-// syscall attributes where an admin get privilege over other 
+const capSysAdmin = 21
+
+// detectCAPSysAdmin reports whether this process has CAP_SYS_ADMIN in its
+// effective capability set. Docker's privileged setting is not visible inside
+// the container, but this is the capability nsenter needs for these namespace
+// operations.
+func detectCAPSysAdmin() bool {
+	status, err := os.Open("/proc/self/status")
+	if err != nil {
+		return false
+	}
+	defer status.Close()
+
+	scanner := bufio.NewScanner(status)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) != 2 || fields[0] != "CapEff:" {
+			continue
+		}
+		mask, err := strconv.ParseUint(fields[1], 16, 64)
+		return err == nil && mask&(uint64(1)<<capSysAdmin) != 0
+	}
+	return false
+}
+
+func processExists(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	_, err := os.Stat("/proc/" + strconv.Itoa(pid))
+	return err == nil
+}
+
+// syscall attributes where an admin get privilege over other
 // admin gets network access
-var admin_privileges = []uintptr {
+var admin_privileges = []uintptr{
 	syscall.CLONE_NEWNET,
 }
 
 const BASH_PATH = "/bin/bash"
+
 var CPUshares = uint64(1024)
 
 type container struct {
@@ -63,7 +99,7 @@ func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr
 	if utils.IsUserAdmin(params) {
 		// give special rights to admin
 		for _, flags := range admin_privileges {
-			containerAttribs.Cloneflags &^= flags  
+			containerAttribs.Cloneflags &^= flags
 		}
 	}
 }
@@ -96,8 +132,8 @@ func (c *container) AddProcesstoNewSubCgroup(pid int, iscompiled bool) {
 	pidstr := strconv.Itoa(pid)
 	memlimit := Commands2memLimitMap[c.Name] * MB // mem limit in MBs
 	if iscompiled {
-		memlimit = int64(math.Floor(3.0*float64(memlimit)))
-		log.Println("effective memlimit: ",memlimit)
+		memlimit = int64(math.Floor(3.0 * float64(memlimit)))
+		log.Println("effective memlimit: ", memlimit)
 	}
 	control, err := c.Control.New(pidstr, &specs.LinuxResources{
 		/*CPU: &specs.LinuxCPU{
@@ -183,23 +219,22 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 	return &containerObj, nil
 }
 
-
 func EnableNetworking(pid int) {
 	//log.Println("euid: ",syscall.Getuid(), syscall.Geteuid())
 	var b bytes.Buffer
 	cmd := exec.Command("/usr/bin/nsenter", "-n", "-t"+strconv.Itoa(pid), "ifconfig", "lo", "up")
-    cmd.Stdout = &b
-    cmd.Stderr = &b
-    err := cmd.Start()
-    if err != nil {
-       log.Println("ERROR: error enabling network for pid: ", pid, "error: ", err.Error(), string(b.Bytes()))
-       return
-    }
+	cmd.Stdout = &b
+	cmd.Stderr = &b
+	err := cmd.Start()
+	if err != nil {
+		log.Println("ERROR: error enabling network for pid: ", pid, "error: ", err.Error(), string(b.Bytes()))
+		return
+	}
 
-    err = cmd.Wait()
-    if err != nil {
-	    log.Println("Error: waiting for network enable for pid: ", pid, err.Error(), string(b.Bytes()))
-    }
+	err = cmd.Wait()
+	if err != nil {
+		log.Println("Error: waiting for network enable for pid: ", pid, err.Error(), string(b.Bytes()))
+	}
 }
 
 func GetCommandArgs(command string, argv []string, ppid int, params map[string][]string) (commandArgs []string) {
@@ -209,13 +244,13 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 	if utils.Iscompiled(params) {
 		commandpath = BASH_PATH
 	} else {
-		commandpath, err = exec.LookPath(command)		// lookup path for absolutepath
+		commandpath, err = exec.LookPath(command) // lookup path for absolutepath
 		if err != nil {
 			commandpath = command
 		}
-		prefix:= utils.GetPrefix(command)
+		prefix := utils.GetPrefix(command)
 		if prefix != "" {
-			commandlist = append(commandlist, prefix)	// add prefix before calling the command
+			commandlist = append(commandlist, prefix) // add prefix before calling the command
 		}
 	}
 	commandlist = append(commandlist, commandpath)
@@ -230,7 +265,7 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 			arg0 = filename
 		}
 		//this is a compilation request
-		compilerOptions := []string {"-c", utils.GetCompilationScript(command), arg0, otherargs}
+		compilerOptions := []string{"-c", utils.GetCompilationScript(command), arg0, otherargs}
 		commandlist = append(commandlist, compilerOptions...)
 	}
 	if ppid == -1 {
@@ -238,9 +273,12 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 	} else {
 		// this process will run in namespace of ppid (forked namespace)
 		// syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWUSER
-		nsenterArgs := []string{"/usr/bin/nsenter", "-t"+strconv.Itoa(ppid)}
-		// add namespace flags to nsenter
-		nsenterArgs = append(nsenterArgs, ns_flags...)
+		nsenterArgs := []string{"/usr/bin/nsenter", "-t" + strconv.Itoa(ppid)}
+		if HasCAPSysAdmin {
+			// Request the parent namespaces only when the process has the
+			// capability required to enter them.
+			nsenterArgs = append(nsenterArgs, ns_flags...)
+		}
 		commandArgs = append(commandArgs, nsenterArgs...)
 		commandArgs = append(commandArgs, commandlist...)
 	}

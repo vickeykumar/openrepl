@@ -167,6 +167,7 @@
 
 /* question table */
 #questionsTable {
+    table-layout: auto !important;
     width: 100% !important;
 }
 
@@ -194,4 +195,50 @@
 #questionsTable th:nth-child(n+3),
 #questionsTable td:nth-child(n+3) {
     width: 15% !important;
+}
+
+#questionsTable th:nth-child(5),
+#questionsTable td:nth-child(5) {
+  min-width: 400px;
+  max-width: none;
+  width: auto;
+  word-break: break-word;
+}
+
+/* Remarks */
+.remarks-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  min-height: 40px;
+  background-color: #f9f9f9;
+  padding: 5px;
+  border: 1px solid #ddd;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.remarks-editable {
+  min-height: 50px;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  padding: 5px;
+  outline: none;
+  word-break: break-word;
+  white-space: pre-wrap;
+  resize: both;
+  overflow: auto;
+  font-size: 14px;
+  width: 100%;
+}
+
+.edit-icon {
+  cursor: pointer;
+  color: #007bff;
+  margin-left: 8px;
+}
+
+.remarks-content {
+  white-space: pre-wrap; /* Show newlines */
+  word-break: break-word;
 }

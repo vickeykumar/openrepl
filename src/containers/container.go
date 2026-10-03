@@ -2,16 +2,19 @@ package containers
 
 import (
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"utils"
-	"net/url"
 )
 
-
 var Containers = make(map[string]*container)
+
+// HasCAPSysAdmin is detected once during startup. It controls whether forked
+// terminals can request the parent process's namespaces through nsenter.
+var HasCAPSysAdmin bool
 
 const MAX_MEMORY_LIMIT = 2564 // Max memory limits in MBs
 const MB = 1024 * 1024
@@ -20,22 +23,22 @@ const MB = 1024 * 1024
 var Commands2memLimitMap = map[string]int64{
 	"cling":         22, // threshold : 11
 	"gointerpreter": 45, // 44 with pp
-	"yaegi":	     10,
+	"yaegi":         10,
 	"python":        2,
 	"python2.7":     2,  // 3
-	"bash":          10,  // 2, for simultaneous bash consoles
+	"bash":          10, // 2, for simultaneous bash consoles
 	"ipython":       10,
-	"ipython3":	     20,
+	"ipython3":      20,
 	"irb":           10,
 	"perli":         3,
 	"node":          10,
 	"jq-repl":       2,
-	"tclsh":       	 2,
-	"java":			 128, // jvm takes lot of memory
-	"evcxr":		 50,  // rust REPL
+	"tclsh":         2,
+	"java":          128, // jvm takes lot of memory
+	"evcxr":         50,  // rust REPL
 	"sqlite3":       10,
-    "ts-node":       50,
-    "rappel": 		 2,
+	"ts-node":       50,
+	"rappel":        2,
 }
 
 var memLimitMutex sync.Mutex
@@ -84,6 +87,9 @@ func AddProcess(name string, cmd *exec.Cmd) {
 func Status() (ready, total int) { return len(Containers), len(Commands2memLimitMap) }
 
 func InitContainers() {
+	HasCAPSysAdmin = detectCAPSysAdmin()
+	log.Println("INFO: CAP_SYS_ADMIN available:", HasCAPSysAdmin)
+
 	for command, _ := range Commands2memLimitMap {
 		containerObj, err := NewContainer(command, MAX_MEMORY_LIMIT*MB) // memlimit in MB
 		if err != nil {
@@ -93,8 +99,8 @@ func InitContainers() {
 		Containers[command] = containerObj
 		os.MkdirAll(utils.HOME_DIR, 0777)
 		os.Chmod(utils.HOME_DIR, 0777)
-		os.MkdirAll(utils.HOME_DIR + command, 0777)
-		os.Chmod(utils.HOME_DIR + command, 0777)
+		os.MkdirAll(utils.HOME_DIR+command, 0777)
+		os.Chmod(utils.HOME_DIR+command, 0777)
 	}
 }
 
@@ -129,6 +135,13 @@ func IsProcess(pid int) bool {
 		if containerObj.IsProcess(pid) {
 			return true
 		}
+	}
+	// In an unprivileged container, cgroup setup can be unavailable even
+	// though the parent terminal is still alive. The nsenter fallback does not
+	// request namespaces in that mode, so accepting a live local process is
+	// safe and lets secondary terminal tabs share its workspace.
+	if !HasCAPSysAdmin && processExists(pid) {
+		return true
 	}
 	return false
 }

@@ -910,7 +910,7 @@ Breakpoint 1, main () at main.c:5
 
             function fetchLanguageTmplAndSetEditorcode(nameHyphenated, selectedLanguage) {
               // Fetch stored questions
-              let storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
+              let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
 
               // Find the question by nameHyphenated
               let newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenated);
@@ -922,8 +922,13 @@ Breakpoint 1, main () at main.c:5
               }
 
               // Call getCodeTemplate to fetch the missing template
-              getCodeTemplate(newQuestion.nameHyphenated, selectedLanguage, {temperature: globaltemperature})
+              getCodeTemplate(nameHyphenated, selectedLanguage, {temperature: globaltemperature})
                   .then((language_template) => {
+                      if (!newQuestion.description) {
+                        // see if the description got updated by gen codetmpl function
+                        storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
+                        newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenated);
+                      }
                       if (language_template) {
                           updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+
                             newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+
@@ -990,7 +995,7 @@ Breakpoint 1, main () at main.c:5
                 let lastSelectedLanguage = $("#optionlist option:selected").text();
                 function SaveLastLanguageProgress(language) {
                     // save code progress in localstorage
-                    let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+                    let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
                     // Find the question by nameHyphenatedlatest
                     let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
 
@@ -1020,9 +1025,54 @@ Breakpoint 1, main () at main.c:5
 
                     localStorage.setItem("topic", topic);
                     localStorage.setItem("difficultyLevel", difficultyLevel);
+
+                    commitFirestoreBatch();
                 }
 
+                $("#completeCheckbox").click(function() {
+                    // Retrieve stored data from localStorage.
+                    let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
+                    // Find the question by nameHyphenatedlatest
+                    let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
+                    if (!question) return; // Exit if question is not found
+
+                    if (icon.hasClass("fa-circle")) {
+                        question.bookmarkStatus = true;
+                        icon.removeClass("fa-circle").addClass("fa-check").addClass("toggle-accent-color"); // Add color class
+                        tooltipText.text("Completed ✅");
+                    } else {
+                        question.bookmarkStatus = false;
+                        icon.removeClass("fa-check").addClass("fa-circle").removeClass("toggle-accent-color"); // Remove color class
+                        tooltipText.text("Mark as Completed");
+                    }
+                    question.updated = Date.now();
+                    localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
+                    updatequestiondb(question.nameHyphenated, question);
+                    SaveLastLanguageProgress();
+                });
+
+                function loadnewquestion() {
+                  console.log("latest Question Name:", nameHyphenatedlatest);
+                  let selectedLanguage = $("#optionlist option:selected").text();
+                  fetchLanguageTmplAndSetEditorcode(nameHyphenatedlatest, selectedLanguage);
+
+                  // load completed status whenever a new question gets loaded
+                  let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
+                  // Find the question by nameHyphenated
+                  let newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenatedlatest);
+                  if (newQuestion?.bookmarkStatus) {
+                    icon.removeClass("fa-circle").addClass("fa-check").addClass("toggle-accent-color"); // Add color class
+                    tooltipText.text("Completed ✅");
+                  }
+                }
+
+                let lastSelectedLanguage = $("#optionlist option:selected").text();
+
                 $(window).on("unload", SaveLastLanguageProgress);
+                $(window).on('savecode', function(event) {
+                    SaveLastLanguageProgress();
+                });
+
                 const existingHandler = window.onbeforeunload;
                 window.onbeforeunload = function(event) {
                     // Call existing handler first (if any)
@@ -1040,7 +1090,36 @@ Breakpoint 1, main () at main.c:5
                     loadnewquestion();
                     lastSelectedLanguage = $("#optionlist option:selected").text();
                 });
-                setTimeout(loadnewquestion, 4000);
+                setTimeout(function(){
+                  getUserLogin()
+                  .then((loginData) => {
+                    if (loginData.loggedIn && loginData.uid) {
+                        currentUserID = loginData.uid;
+                        QUESTIONS_KEY = QUESTIONS_KEY+'-'+loginData.uid; // Update the key to user's UID
+                        console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
+
+                        // Start session timeout handler
+                        const timeLeft = loginData.expirationTime - Date.now();
+                        if (timeLeft > 0) {
+                            setTimeout(() => {
+                                currentUserID=null;
+                                alert("Session expired. Redirecting to home page...");
+                                window.location.reload();
+                            }, timeLeft+5); // wait for more 5 milisec before refreshing
+                            console.log(`Session will expire in ${timeLeft / 1000} seconds`);
+                        }
+                    } else {
+                        console.warn("User not logged in or UID missing");
+                    }
+                  })
+                  .catch((error) => {
+                      console.error("Error during login check:", error);
+                  })
+                  .finally(() => {
+                      // Load questions after login check (even if failed)
+                      loadnewquestion();
+                  });
+                }, 4000);
             }
 
             // Modal

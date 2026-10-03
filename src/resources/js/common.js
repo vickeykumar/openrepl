@@ -11,6 +11,52 @@ var getAll = function (selector, scope) {
 
 var globaltemperature = localStorage.getItem("temperature");
 globaltemperature = isNaN(parseFloat(globaltemperature)) ? 0.3 : parseFloat(globaltemperature);
+
+var QUESTIONS_KEY = 'questions';
+
+// Initialize Firebase App
+  if (firebase.apps.length === 0) {
+    firebase.initializeApp(firebaseconfig);
+  }
+  var firestoredb = firebase.firestore(); // Initialize Firestore
+  var firebaseAuth = firebase.auth(); // Initialize Firebase Auth
+  var currentUserID = null;
+  var batch = firestoredb.batch();        // Create a Firestore batch
+
+  function getQuestionDocRef(docName) {
+    if (!currentUserID) {
+      return null
+    }
+    return firestoredb.collection(`users/${currentUserID}/questions`).doc(docName);
+  }
+
+  function updatequestiondb(docName, question) {
+    const docRef = getQuestionDocRef(docName)
+    if (docRef) {
+      console.log("updated: ", question);
+      batch.set(docRef, question, { merge: true });
+    }
+  }
+
+  function deletequestiondb(docName) {
+    const docRef = getQuestionDocRef(docName)
+    if (docRef) {
+      batch.delete(docRef);
+      commitFirestoreBatch();
+    }
+  }
+
+  function commitFirestoreBatch() {
+    batch.commit()
+    .then(() => {
+      console.log("Sync complete!");
+      batch = firestoredb.batch();
+    })
+    .catch((error) => {
+      console.error("Batch commit failed:", error);
+    });
+  }
+
 const topics = [
     "Two Pointers",
     "Hash Maps and Sets",
@@ -123,15 +169,25 @@ function saveNewQuestions(newQuestion) {
   if (exists) {
     return { error: "This question already exists.", storedQuestions };
   }
-
+  // Track questions before adding new ones
+  const previousQuestionNames = new Set(storedQuestions.map(q => q.nameHyphenated));
   storedQuestions.push(newQuestion);
 
-  // Keep only the latest 100 entries
-  if (storedQuestions.length > 100) {
-    storedQuestions = storedQuestions.slice(-100);
+  // Keep only the latest 1000 entries
+  if (storedQuestions.length > 1000) {
+    storedQuestions = storedQuestions.slice(-1000);
   }
 
-  localStorage.setItem('questions', JSON.stringify(storedQuestions));
+  localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
+
+   updatequestiondb(newQuestion.nameHyphenated, newQuestion);
+
+  // Calculate deleted questions
+  const newQuestionNames = new Set(storedQuestions.map(q => q.nameHyphenated));
+  const deletedQuestions = [...previousQuestionNames].filter(name => !newQuestionNames.has(name));
+
+  // Delete questions from Firestore
+  deletedQuestions.forEach(qname => deletequestiondb(qname));
 
   return { error: null, storedQuestions };
 }
@@ -144,7 +200,7 @@ function saveNewQuestions(newQuestion) {
  * @property {string} topic - The topic of the question.
  * @property {"Easy" | "Medium" | "Hard"} difficulty - The difficulty level.
  * @property {string} language - The programming language.
- * @property {number} added - Timestamp of when the question was created.
+ * @property {number} updated - Timestamp of when the question was last updated.
  * @property {string} delimeter - Delimeter string that separates problem description section to code.
  */
 
@@ -167,9 +223,9 @@ async function generateNewQuestion(topic, difficultyLevel, customPrompt, languag
     return null;
   }
 
-  let storedQuestions = JSON.parse(localStorage.getItem('questions')) || [];
+  let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
   // Extract the list of previous question names
-	let previousTitles = storedQuestions.map(q => q.name).join(", ");
+	let previousTitles = storedQuestions.filter(q => q.topic === topic).map(q => q.name).join(", ");
 
 	const prompt = `Generate a unique data structure and algorithm coding question based on these criteria:
     
@@ -237,7 +293,7 @@ ${customPrompt ? customPrompt : ""}
                     topic = "Random Topic";
                   }
           // Create new question object and return
-				  return {
+				  return  {
 				      id,
 				      name,
 				      nameHyphenated,
@@ -245,7 +301,7 @@ ${customPrompt ? customPrompt : ""}
 				      difficulty: difficultyLevel,
 				      description: generatedQuestion.description,
 				      code_templates: generatedQuestion.code_templates,
-				      added: addedEpoch,
+				      updated: addedEpoch,
                       delimeter: " Welcome to OpenREPL!! you can start coding here. ",
 				  };
       } else {
@@ -269,7 +325,7 @@ ${customPrompt ? customPrompt : ""}
  */
 async function getCodeTemplate(nameHyphenated, language) {
     // Fetch stored questions
-    let storedQuestions = JSON.parse(localStorage.getItem("questions")) || [];
+    let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
 
     // Find the question by nameHyphenated
     let question = storedQuestions.find(q => q.nameHyphenated === nameHyphenated);
@@ -285,27 +341,32 @@ async function getCodeTemplate(nameHyphenated, language) {
         return question.code_templates[language];
     }
 
+    const descriptionprompt = `- Each line in description is wrapped to a maximum of 100 characters, breaking at word boundaries( use \\n).
+- The problem description should explain the requirements and constraints in detail.
+- Use **stick figure drawings** whenever necessary to visually explain the problem.
+- Provide at least two sample test cases, formatted using \\n as separator.`;
     // Construct OpenAI prompt
     const prompt = `Generate a code template for solving the following problem:
 
 ### **Problem Title**: ${question.name}
 
-### **Problem Description**:
-${question.description}
+${question.description ? `### **Problem Description**:\n${question.description}\n` : ''}
 
 ### **Output Format**:
 The output should be a valid JSON object containing a code template for **${language}**.
 
 Ensure that:
-1. The template includes a function signature. don't implement it.
-2. It contains a main function that demonstrates how to call the function.
+1. The template includes an unimplemented function signature with a main function to test it .
+2. test code should contain expected and actual output to call and test above function.
 3. Use the correct comment syntax for the given language.
 4. Do not repeat the prompt text in the output.
 5. The response must be in **valid JSON format**.
+${question.description ? '' : descriptionprompt}
 
 ### **Output Format**: // generate only json part only
 \`\`\`json
 {
+  ${question.description ? '' : '"description": "Detailed problem description with sample test cases ...",'}
   "${language}": {
     "template": "<function signature/code template here>",
     "multiline_comment_start": "<start comment syntax>",
@@ -358,6 +419,25 @@ Ensure that:
 }
 
 
+// Function to fetch login data and update QUESTIONS_KEY
+function getUserLogin() {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const response = await fetch('/login');
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const data = await response.json();
+
+            resolve(data);
+        } catch (error) {
+            console.error('Failed to fetch login status:', error);
+            reject(error); // Reject promise on error
+        }
+    });
+}
+
 // common App
 (function commonApp() {
 	// body...
@@ -394,4 +474,12 @@ Ensure that:
 	    }
 	    
 	});
+
+    // Initialize Firebase App
+      if (firebase.apps.length === 0) {
+        firebase.initializeApp(firebaseconfig);
+      }
+      firestoredb = firebase.firestore(); // Initialize Firestore
+      firebaseAuth = firebase.auth(); // Initialize Firebase Auth
+      batch = firestoredb.batch();        // Create a Firestore batch
 })();

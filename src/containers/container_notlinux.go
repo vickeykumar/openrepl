@@ -1,15 +1,20 @@
+//go:build !linux
 // +build !linux
 
 package containers
 
 import (
 	"log"
+	"net/url"
 	"syscall"
 	"utils"
-	"net/url"
 )
 
 const BASH_PATH = "/bin/bash"
+
+func detectCAPSysAdmin() bool { return false }
+
+func processExists(pid int) bool { return false }
 
 type container struct {
 	// Name of the container as per command Name.
@@ -49,7 +54,7 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 }
 
 func EnableNetworking(pid int) {
-    log.Println("Network enabled for pid: ", pid)
+	log.Println("Network enabled for pid: ", pid)
 }
 
 func GetCommandArgs(command string, argv []string, ppid int, params map[string][]string) (commandArgs []string) {
@@ -72,7 +77,7 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 			arg0 = filename
 		}
 		//this is a compilation request
-		compilerOptions := []string {"-c", utils.GetCompilationScript(command), arg0, otherargs}
+		compilerOptions := []string{"-c", utils.GetCompilationScript(command), arg0, otherargs}
 		commandlist = append(commandlist, compilerOptions...)
 	}
 	commandArgs = append(commandArgs, commandlist...)
@@ -84,7 +89,6 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 func GetWorkingDir(pid int) string {
 	return ""
 }
-
 
 func GetHomeDirFromEnv(pid int) string {
 	return ""
