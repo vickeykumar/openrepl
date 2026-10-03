@@ -20,7 +20,7 @@ gotty:	asset ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: bindata/static/js/gotty-bundle.js bindata/static/js/chat-widget.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta
+asset: bindata/static/js/gotty-bundle.js bindata/static/js/chat-widget.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/admin.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	GO111MODULE=off $(GOROOT)/bin/gofmt -w server/asset.go
 
@@ -54,6 +54,9 @@ bindata/static/doc.html: bindata/static resources/doc.html bindata/static/docs
 bindata/static/editblog.html: bindata/static resources/editblog.html
 	cp resources/editblog.html bindata/static/editblog.html
 
+bindata/static/admin.html: bindata/static resources/admin.html
+	cp resources/admin.html bindata/static/admin.html
+
 bindata/static/about.html: bindata/static resources/about.html resources/references.html resources/privacy.html resources/terms.html
 	cp resources/about.html bindata/static/about.html
 	cp resources/references.html bindata/static/references.html
@@ -69,11 +72,11 @@ bindata/static/images: bindata/static resources/images jsconsole/build/static/me
 	cp -Rv resources/images/* bindata/static/images/
 	cp -Rv jsconsole/build/static/media/* bindata/static/media/
 
-bindata/static/js: bindata/static resources/js
+bindata/static/js: bindata/static resources/js/*
 	mkdir -p bindata/static/js
 	cp -Rv resources/js/* bindata/static/js/
 
-bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js js/dist/preprocessing.js
+bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js js/dist/hterm.js js/dist/scribbler.js js/dist/preprocessing.js
 	cp js/dist/gotty-bundle.js bindata/static/js/gotty-bundle.js
 	cp js/dist/hterm.js bindata/static/js/hterm.js
 	cp js/dist/scribbler.js bindata/static/js/scribbler.js

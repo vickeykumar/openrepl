@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"sync/atomic"
 	noesctmpl "text/template"
 	"time"
 
@@ -36,6 +37,66 @@ type Server struct {
 	upgrader      *websocket.Upgrader
 	indexTemplate *template.Template
 	titleTemplate *noesctmpl.Template
+
+	// routes announces the jids and workspaces this node owns. It is nil in
+	// standalone mode.
+	routes *routeTracker
+	// workerSync is the workspace-sync state of a worker.
+	workerSync workerSyncState
+	// terminals maps each WebSocket route (without the prefix) to the REPL
+	// command it starts.
+	terminals map[string]string
+	// gatewayAdmin serves /admin/workers and /admin/sessions on a gateway.
+	gatewayAdmin http.Handler
+	// admin is what the admin dashboard needs (admin_core.go).
+	admin adminState
+	// workerCredential is the gateway's WebSocket auth token, received by a
+	// worker when it registers.
+	workerCredential atomic.Value
+}
+
+// credential is the token a WebSocket's init message must carry.
+func (server *Server) credential() string {
+	if v, ok := server.workerCredential.Load().(string); ok {
+		return v
+	}
+	return server.options.Credential
+}
+
+func (server *Server) setCredential(token string) {
+	server.workerCredential.Store(token)
+}
+
+// credentialFor is the token a WebSocket opened by r must carry. A request
+// forwarded by the gateway carries the gateway's token. A visitor of a
+// worker's own port gets the worker's own credential from /auth_token.js, so
+// that is the one to expect.
+func (server *Server) credentialFor(r *http.Request) string {
+	if server.options.Mode == ModeWorker && !isTrusted(r) {
+		return server.options.Credential
+	}
+	return server.credential()
+}
+
+// wrapSiteAuth applies basic auth to the site when a credential is set. A
+// worker has already been authenticated by the gateway for the requests it
+// forwards, so only visitors of the worker's own port are asked.
+func (server *Server) wrapSiteAuth(handler http.Handler) http.Handler {
+	if !server.options.EnableBasicAuth {
+		return handler
+	}
+	log.Printf("Using Basic Authentication")
+	asked := server.wrapBasicAuth(handler, server.options.Credential)
+	if server.options.Mode != ModeWorker {
+		return asked
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isTrusted(r) {
+			handler.ServeHTTP(w, r)
+			return
+		}
+		asked.ServeHTTP(w, r)
+	})
 }
 
 // New creates a new instance of Server.
@@ -107,56 +168,40 @@ func (server *Server) Run(ctx context.Context, options ...RunOption) error {
 		path = "/" + randomstring.Generate(server.options.RandomUrlLength) + "/"
 	}
 
-	handlers := server.setupHandlers(cctx, cancel, path, counter)
-	srv, err := server.setupHTTPServer(handlers)
+	handlers, err := server.setupHandlers(cctx, cancel, path, counter)
 	if err != nil {
-		return errors.Wrapf(err, "failed to setup an HTTP server")
+		cancel()
+		return errors.Wrapf(err, "failed to setup the handlers")
 	}
-
-	if server.options.PermitWrite {
-		log.Printf("Permitting clients to write input to the PTY.")
+	if server.options.Mode == ModeWorker {
+		defer cancel()
+		// A worker is reached through the gateway. When the operator also
+		// gave it a port, it serves that port too, so people on the same
+		// network can open the worker directly.
+		var local *http.Server
+		if server.options.LocalListen {
+			var localErr <-chan error
+			local, localErr, err = server.serveLocal(handlers, path)
+			if err != nil {
+				return err
+			}
+			go func() {
+				select {
+				case err := <-localErr:
+					if err != http.ErrServerClosed {
+						log.Printf("The worker's own port stopped: %v", err)
+						cancel()
+					}
+				case <-cctx.Done():
+				}
+			}()
+		}
+		return server.runWorker(cctx, handlers, counter, local)
 	}
-	if server.options.Once {
-		log.Printf("Once option is provided, accepting only one client")
-	}
-
-	if server.options.Port == "0" {
-		log.Printf("Port number configured to `0`, choosing a random port")
-	}
-	hostPort := net.JoinHostPort(server.options.Address, server.options.Port)
-	listener, err := net.Listen("tcp", hostPort)
+	srv, srvErr, err := server.serveLocal(handlers, path)
 	if err != nil {
-		return errors.Wrapf(err, "failed to listen at `%s`", hostPort)
+		return err
 	}
-
-	scheme := "http"
-	if server.options.EnableTLS {
-		scheme = "https"
-	}
-	host, port, _ := net.SplitHostPort(listener.Addr().String())
-	log.Printf("HTTP server is listening at: %s", scheme+"://"+host+":"+port+path)
-	if server.options.Address == "0.0.0.0" {
-		for _, address := range listAddresses() {
-			log.Printf("Alternative URL: %s", scheme+"://"+address+":"+port+path)
-		}
-	}
-
-	srvErr := make(chan error, 1)
-	go func() {
-		if server.options.EnableTLS {
-			crtFile := homedir.Expand(server.options.TLSCrtFile)
-			keyFile := homedir.Expand(server.options.TLSKeyFile)
-			log.Printf("TLS crt file: " + crtFile)
-			log.Printf("TLS key file: " + keyFile)
-
-			err = srv.ServeTLS(listener, crtFile, keyFile)
-		} else {
-			err = srv.Serve(listener)
-		}
-		if err != nil {
-			srvErr <- err
-		}
-	}()
 
 	go func() {
 		select {
@@ -187,7 +232,63 @@ func (server *Server) Run(ctx context.Context, options ...RunOption) error {
 	return err
 }
 
-func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFunc, pathPrefix string, counter *counter) http.Handler {
+// serveLocal listens on --address and --port and serves handlers there in the
+// background. The channel receives the error that ended the server.
+func (server *Server) serveLocal(handlers http.Handler, path string) (*http.Server, <-chan error, error) {
+	srv, err := server.setupHTTPServer(handlers)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to setup an HTTP server")
+	}
+
+	if server.options.PermitWrite {
+		log.Printf("Permitting clients to write input to the PTY.")
+	}
+	if server.options.Once {
+		log.Printf("Once option is provided, accepting only one client")
+	}
+
+	if server.options.Port == "0" {
+		log.Printf("Port number configured to `0`, choosing a random port")
+	}
+	hostPort := net.JoinHostPort(server.options.Address, server.options.Port)
+	listener, err := net.Listen("tcp", hostPort)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to listen at `%s`", hostPort)
+	}
+
+	scheme := "http"
+	if server.options.EnableTLS {
+		scheme = "https"
+	}
+	host, port, _ := net.SplitHostPort(listener.Addr().String())
+	log.Printf("HTTP server is listening at: %s", scheme+"://"+host+":"+port+path)
+	if server.options.Address == "0.0.0.0" {
+		for _, address := range listAddresses() {
+			log.Printf("Alternative URL: %s", scheme+"://"+address+":"+port+path)
+		}
+	}
+
+	srvErr := make(chan error, 1)
+	go func() {
+		var err error
+		if server.options.EnableTLS {
+			crtFile := homedir.Expand(server.options.TLSCrtFile)
+			keyFile := homedir.Expand(server.options.TLSKeyFile)
+			log.Printf("TLS crt file: " + crtFile)
+			log.Printf("TLS key file: " + keyFile)
+
+			err = srv.ServeTLS(listener, crtFile, keyFile)
+		} else {
+			err = srv.Serve(listener)
+		}
+		if err != nil {
+			srvErr <- err
+		}
+	}()
+	return srv, srvErr, nil
+}
+
+func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFunc, pathPrefix string, counter *counter) (http.Handler, error) {
 	staticFileHandler := http.FileServer(
 		&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, Prefix: "static"},
 	)
@@ -226,16 +327,14 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 
 	siteMux.HandleFunc(pathPrefix+"auth_token.js", server.handleAuthToken)
 	siteMux.HandleFunc(pathPrefix+"settings.js", handleSettingsJS)
-	siteMux.Handle(pathPrefix+"admin", server.wrapAdmin(http.HandlerFunc(handleAdminPage)))
-	siteMux.HandleFunc(pathPrefix+"admin/settings", handleAdminSettings)
 	siteMux.HandleFunc(pathPrefix+"config.js", server.handleConfig)
+	server.admin.counter = counter
+	server.registerAdmin(siteMux, pathPrefix)
+	GetSiteSettings() // apply the saved Genie rates before the first request
 
 	siteHandler := http.Handler(siteMux)
 
-	if server.options.EnableBasicAuth {
-		log.Printf("Using Basic Authentication")
-		siteHandler = server.wrapBasicAuth(siteHandler, server.options.Credential)
-	}
+	siteHandler = server.wrapSiteAuth(siteHandler)
 
 	withGz := gziphandler.GzipHandler(server.wrapHeaders(siteHandler))
 	siteHandler = server.wrapLogger(withGz)
@@ -246,6 +345,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	wsMux.HandleFunc(pathPrefix+"ws_c", server.generateHandleWS(ctx, cancel, counter, "cling"))
 	wsMux.HandleFunc(pathPrefix+"ws_cpp", server.generateHandleWS(ctx, cancel, counter, "cling"))
 	wsMux.HandleFunc(pathPrefix+"ws_go", server.generateHandleWS(ctx, cancel, counter, "gointerpreter"))
+	server.terminals = map[string]string{"ws": "", "ws_c": "cling", "ws_cpp": "cling", "ws_go": "gointerpreter"}
 
 	// Expose all other APIs form Commands2DemoMap, refer utils.go
 	if utils.Commands2DemoMap == nil {
@@ -254,11 +354,24 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	for command, _ := range utils.Commands2DemoMap {
 		log.Printf("Exposing API for %d\n", command)
 		wsMux.HandleFunc(pathPrefix+"ws_"+command, server.generateHandleWS(ctx, cancel, counter, command))
+		server.terminals["ws_"+command] = command
 	}
 
 	siteHandler = http.Handler(wsMux)
 
-	return siteHandler
+	if server.options.Mode == ModeGateway {
+		gw, err := server.wrapGateway(ctx, siteHandler, pathPrefix, counter)
+		if err != nil {
+			return nil, err
+		}
+		return server.wrapControls(gw, pathPrefix), nil
+	}
+	if server.options.Mode == ModeWorker {
+		// The gateway applies the switches before it forwards a terminal.
+		return siteHandler, nil
+	}
+
+	return server.wrapControls(siteHandler, pathPrefix), nil
 }
 
 func (server *Server) setupHTTPServer(handler http.Handler) (*http.Server, error) {
@@ -294,8 +407,3 @@ func (server *Server) tlsConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-func (server *Server) SetNewCommand(command string) {
-	server.factory.SetNewCommand(command)
-	server.options.TitleVariables["command"] = command
-	log.Println("New Command set successfully: " + command)
-}

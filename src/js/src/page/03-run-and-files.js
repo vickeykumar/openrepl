@@ -60,6 +60,8 @@ function StartTour() {
 }
 
 function CompileandRun() {
+    // The execution node is away and the countdown is running (11-terminal-state.js).
+    if (window.awayWaitMs && window.awayWaitMs() > 0) return;
     const termdiv = get("#terminal-div");
     if(termdiv) {
         const allterm = getAll(".terminal.active", termdiv);
@@ -75,6 +77,7 @@ function CompileandRun() {
 }
 
 function RunandDebug() {
+    if (window.awayWaitMs && window.awayWaitMs() > 0) return;
     const termdiv = get("#terminal-div");
     if(termdiv) {
         const allterm = getAll(".terminal.active", termdiv);

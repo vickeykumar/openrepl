@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/base64"
 	"log"
 	"net/http"
 	"net/url"
@@ -14,11 +13,21 @@ import (
 )
 
 var (
-	defaultToken  string
 	openaiEndpoint = "https://api.openai.com/v1/chat/completions"
 	authHeader    = "Authorization"
-	host = "localhost"
 )
+
+// openAIToken and chatHost are looked up when they are needed, not at start-up:
+// main loads the env file after package initialisation, and a setting that
+// came from it would be missed by an init().
+func openAIToken() string { return utils.OpenAIKey() }
+
+func chatHost() string {
+	if h := utils.Host(); h != "" {
+		return h
+	}
+	return "localhost"
+}
 
 type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
@@ -45,20 +54,6 @@ func NewErrorResponse(message, msgtype, errcode, param string) *ErrorResponse {
 	return &ErrorResponse{
 		Error: err,
 	}
-}
-
-func init() {
-	encodedtoken := utils.GitConfig["user.OpenaiAPIKey"]
-	tokenbytes, err := base64.StdEncoding.DecodeString(encodedtoken)
-	if err==nil {
-		defaultToken = strings.TrimSpace(string(tokenbytes))
-	}
-	//log.Println("read token: ", defaultToken)
-	hostread := utils.GitConfig["user.host"]
-	if (hostread!="") {
-		host = hostread
-	}
-	log.Println("hosted on: ", host)
 }
 
 func extractHostFromHeader(headerValue string) (string, error) {
@@ -120,7 +115,7 @@ func handleModifyHeaderRequest(rw http.ResponseWriter, req *http.Request) error 
         return err
 	}
 	access_token_key := string(access_keybytes)
-	if access_token_key!=defaultToken {
+	if access_token_key!=openAIToken() {
 		// unautorized request
 		handleChatProxyError(rw, req, http.StatusUnauthorized, 
         	NewErrorResponse(
@@ -134,16 +129,28 @@ func handleModifyHeaderRequest(rw http.ResponseWriter, req *http.Request) error 
 	}
 	// all sorted its a valid request
 	req.Header.Del(authHeader)
-	req.Header.Set(authHeader, "Bearer "+defaultToken)
+	req.Header.Set(authHeader, "Bearer "+openAIToken())
 	req.Header.Set("Content-Type", "application/json")
 	return nil
 }
 
 func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
+	// An admin can switch Genie off for everybody but admins.
+	if GetSiteSettings().Genie.Disabled && !IsUserAdmin(rw, req) {
+		handleChatProxyError(rw, req, http.StatusServiceUnavailable,
+			NewErrorResponse(
+				"Genie is switched off for now. Please try again later.",
+				"GenieDisabled",
+				"StatusServiceUnavailable",
+				"",
+			),
+		)
+		return
+	}
 	log.Println("req header: ", "origin: ",req.Header.Get("Origin"), req.Header.Get("Referer"))
 	originHost, _ := extractHostFromHeader(req.Header.Get("Origin"))
 	refererHost, _ := extractHostFromHeader(req.Header.Get("Referer"))
-	if !strings.Contains(refererHost, host) || !strings.Contains(originHost, host) {
+	if host := chatHost(); !strings.Contains(refererHost, host) || !strings.Contains(originHost, host) {
         handleChatProxyError(rw, req, http.StatusForbidden, 
         	NewErrorResponse(
         		"Origin not allowed.",

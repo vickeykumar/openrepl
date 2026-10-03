@@ -1,6 +1,6 @@
 # OpenREPL design docs
 
-These docs describe how OpenREPL is built. The high-level design (HLD) lives in the [project README](../README.md#architecture-high-level-design). The low-level design (LLD) documents below explain each subsystem at code level, naming the files, functions and data formats involved.
+These docs describe how OpenREPL is built. The high-level design (HLD) lives in the [project README](../README.md#architecture-high-level-design). The distributed-execution design is in [docs/hld/distributed-execution.md](hld/distributed-execution.md), and how to run a gateway and workers is in the [operator guide](distributed-mode.md). The workspace-synchronization design is in [docs/hld/workspace-sync.md](hld/workspace-sync.md). The low-level design (LLD) documents below explain each subsystem at code level, naming the files, functions and data formats involved.
 
 To build, run and test OpenREPL on your machine, see [Run locally on macOS (Colima)](../README.md#run-locally-on-macos-colima) in the project README.
 
@@ -18,6 +18,9 @@ To build, run and test OpenREPL on your machine, see [Run locally on macOS (Coli
 | 08 | [Build, packaging and deployment](lld/08-build-and-deploy.md) | Makefile and bindata pipeline, Docker, CI, systemd, runtime file layout |
 | 09 | [Adding a new REPL](lld/09-adding-a-repl.md) | Step-by-step checklist that touches every layer |
 | 10 | [Known limitations and tech debt](lld/10-known-limitations.md) | Quirks found during the code walkthrough, with suggested fixes |
+| 11 | [Distributed execution](lld/11-distributed-execution.md) | Implemented: gateway/worker modes, route ownership, session affinity, SSH tunnel, jid routing, capacity, failure handling |
+| 12 | [Workspace synchronization](lld/12-workspace-sync.md) | Implemented (flag `--workspace-sync`): a copy of each home on the gateway and on its owning node, two-way sync over the tunnel, base record, reconcile on reconnect, `SYNCING` state, gateway fallback for file requests, guest expiry, copy on placement |
+| 13 | [Admin dashboard](lld/13-admin-dashboard.md) | Implemented: `/admin`, its JSON API and who may use it, site settings (announcement, maintenance, languages, Genie), accounts and moderation, ending and moving sessions, health, usage numbers, log viewer, audit log |
 
 ## Source map
 
@@ -26,15 +29,18 @@ Go code uses a GOPATH layout: the repo root is `GOPATH`, packages live under `sr
 | Path | Kind | Doc |
 |---|---|---|
 | `src/gotty/` | `main` package (the binary) | 01 |
-| `src/server/` | HTTP/WS server, handlers, DB-backed features, chat proxy | 01, 02, 04, 05, 07 |
+| `src/server/` | HTTP/WS server, handlers, DB-backed features, chat proxy, the admin API (`admin_*.go`, `settings.go`) | 01, 02, 04, 05, 07, 13 |
 | `src/webtty/` | Protocol bridge between the browser and the PTY | 02 |
 | `src/backend/localcommand/` | Process + PTY slave implementation | 02 |
 | `src/github.com/kr/pty/` | Vendored **and patched** `pty.Start` (adds container attributes) | 02, 03 |
 | `src/containers/` | Namespaces, cgroups, `nsenter` | 03 |
 | `src/filebrowser/` | Workspace tree, quota, fsnotify | 04 |
-| `src/user/`, `src/cookie/`, `src/cachedb/` | Sessions, cookies, cached UnQLite | 05 |
+| `src/wsync/` | Workspace sync: engine (record, scan, safe file operations, three-way comparison), file watcher, conversation between two nodes, per-node manager | 12 |
+| `src/gateway/`, `src/tunnel/`, `src/trusted/` | Distributed execution: session-affinity router and backends, the gateway-worker SSH tunnel (over WebSocket or TCP), trusted identity headers | 11 |
+| `src/golang.org/x/crypto/` | Vendored `x/crypto` v0.14.0, only the packages `ssh` needs (`ssh`, `chacha20`, `curve25519`, `blowfish`, `internal/alias`, `internal/poly1305`), without tests | 11 |
+| `src/user/`, `src/cookie/`, `src/cachedb/` | Sessions, cookies, cached UnQLite; accounts for the admin (`user/admin.go`) | 05, 13 |
 | `src/utils/`, `src/encoder/` | Constants, flags, job scheduler, demo types, crypto helpers | 01, 03, 05 |
-| `src/resources/` | HTML, CSS, JS, images, `meta/demos.xml`, chat widget source | 04, 06 |
+| `src/resources/` | HTML, CSS, JS, images, `meta/demos.xml`, chat widget source, the admin dashboard (`admin.html`, `css/admin.css`, `js/admin.js`) | 04, 06, 13 |
 | `src/js/` | TypeScript terminal client (webpack → `gotty-bundle.js`, `hterm.js`) and the page script `src/js/src/page/` (→ `scribbler.js`) | 06 |
 | `src/jsconsole/` | Vendored `@remy/jsconsole` (browser JavaScript REPL) | 06 |
 | `src/services/gotty.service`, `scripts/run_app.sh`, `Dockerfile`, `install_prerequisite.sh` | Runtime and packaging | 08 |

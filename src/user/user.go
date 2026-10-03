@@ -238,6 +238,9 @@ func GetUserSessionData(Uid, SessionID string) (session UserSession, err error) 
 }
 
 func IsSessionExpired(Uid, SessionID string) bool {
+    if IsBlocked(Uid) {
+        return true
+    }
     session, err := GetUserSessionData(Uid, SessionID)
     if err != nil {
         // session not found, as good as expired session
@@ -285,6 +288,9 @@ func PurgeExpiredSessionData(Uid string) {
 
 // adds or deletes the sessionids per user
 func UpdateAndStoreSessionData(Uid, SessionID string, ss *UserSession, isdelete bool) error {
+    if !isdelete && IsBlocked(Uid) {
+        return ErrBlocked
+    }
     up, err := FetchUserProfileData(Uid)
     if err != nil {
         log.Println("ERROR: Fetching UserProfile for user: "+Uid+" Error: "+ err.Error())

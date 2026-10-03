@@ -96,6 +96,7 @@
   }
   function goTo(url) { return function () { location.href = url; }; }
   function sendFeedback() {
+    if (window.focusContactForm) { window.focusContactForm(); return; }
     var f = byId("feedback-name") || byId("message");
     if (f) f.focus();
   }

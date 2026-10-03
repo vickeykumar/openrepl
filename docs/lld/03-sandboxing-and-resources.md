@@ -38,6 +38,8 @@ flowchart TB
 
 `AddContainerAttributes` copies `Cloneflags` and the ID maps (not `Unshareflags`) onto the command. When `params["usermode"] == "admin"`, it clears `CLONE_NEWNET` (`admin_privileges`), so admin REPLs share the host network. For everyone else, `EnableNetworking(pid)` runs `nsenter -n -t<pid> ifconfig lo up`, which gives the REPL a loopback-only network.
 
+The REPL's environment is built in `localcommand.New`. It starts from gotty's own, minus the server's settings and anything whose name looks like a secret (`utils.ChildEnviron`: the `OPENREPL_` and `GOTTY_` prefixes, and the words `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `API_KEY`, `APIKEY`, `ACCESS_KEY` and `PRIVATE_KEY` anywhere in a name). The `EnvFlags` the IDE sends (the environment-variables box) are expanded with `utils.ExpandIn` against that same list, never against gotty's own environment, so a `$NAME` in the box can only name a variable the REPL already has.
+
 The mount namespace is new, but the root filesystem is not changed (no `pivot_root` or chroot). A REPL sees the same filesystem as the gotty process, with that process's permissions: root inside the Docker image, `gottyuser` under systemd. Separating workspaces relies on each REPL's cwd and `$HOME`, not on filesystem isolation (LLD 10).
 
 On non-Linux builds (`container_notlinux.go`), all of these are stubs: there are no namespaces or cgroups, and `GetCommandArgs` still handles Run.

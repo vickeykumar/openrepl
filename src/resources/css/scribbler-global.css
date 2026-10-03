@@ -60,6 +60,8 @@
 /* ------------------------------------------------------------------ */
 [data-theme="dark"] {
   color-scheme: dark;
+  /* <html> is white by default (html, body below) and shows under the body on a page longer than one screen */
+  background-color: #25242A;
   --primary-color: #F2F0EC;
   --primary-color-light: #A9A7B4;
   --bg-color: #121218;
@@ -505,10 +507,6 @@ input[type=text],[type=email], select, textarea, email {
   color: white;
   width: 100%;
   bottom: 0;
-}
-
-.fixed-footer {
-  position: fixed;
 }
 
 .interpreter {

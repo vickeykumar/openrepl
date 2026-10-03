@@ -170,7 +170,7 @@ rm -rf bindata && make gotty && ../bin/gotty -w -p 8080 --title-format '<fmt><ti
 Run the Go unit tests inside the dev container:
 
 ```bash
-GO111MODULE=off GOPATH=/opt/openrepl ../go_1.19/go/bin/go test webtty
+GO111MODULE=off GOPATH=/opt/openrepl ../go_1.19/go/bin/go test -race gateway tunnel trusted
 ```
 
 Then do a quick manual check at `localhost:8080`:
@@ -186,9 +186,117 @@ Then do a quick manual check at `localhost:8080`:
 
 - **No per-REPL sandboxing locally.** Colima's VM uses cgroup v2, so the log shows `Unable to create Container` and REPLs run without their own namespaces or memory limits. Test sandboxing on a cgroup v1 host.
 - **Don't commit `bin/gotty`.** The dev container rebuilds this tracked file. Restore it before committing with `git checkout -- bin/gotty`, and don't commit `node_modules` or `dist` folders.
-- **Genie and Practice question generation need an OpenAI key.** Put it in `/opt/gotty/.gitconfig` inside the container as `user.OpenaiAPIKey` (base64-encoded), then restart the server.
+- **Genie and Practice question generation need an OpenAI key.** Set `OPENREPL_OPENAI_API_KEY` (see [Settings and secrets](#settings-and-secrets)), then restart the server.
 - **Stopping and restarting the VM:** `colima stop openrepl` and `colima start openrepl`. `colima delete openrepl` removes the VM and its images.
 
+
+# Distributed mode (gateway and workers)
+
+One public server, the **gateway**, serves the site and hands REPL sessions to **workers**. A worker needs no public port: it connects out to the gateway. Same binary, same URLs for the browser.
+
+**1. Create a shared token**
+
+```bash
+openssl rand -hex 32
+```
+
+**2. Start the gateway** (the public server)
+
+```bash
+GOTTY_WORKER_TOKEN=<token> gotty -w --mode=gateway --port 80
+```
+
+**3. Start each worker**
+
+```bash
+GOTTY_WORKER_TOKEN=<token> gotty -w --mode=worker --worker-server wss://gateway.example.com/api/tunnel
+```
+
+New visitors are now spread over the gateway and the workers at random, in proportion to each node's weight, and each visitor stays on one node. Check the fleet in the [admin dashboard](#admin-dashboard), under *Workers*: it also shows how many sessions the random choice has given each node, next to the share its weight should give it.
+
+**4. Keep a copy of the users' files on the gateway** (optional). Restart the gateway with `--workspace-sync`. Workers reconnect by themselves and need no option, only the same version of the binary.
+
+```bash
+GOTTY_WORKER_TOKEN=<token> gotty -w --mode=gateway --port 80 --workspace-sync
+```
+
+Each user's files are now kept in step, both ways, between the worker that runs them and the gateway. If a worker stops, the file browser, downloads, saves and uploads keep working from the gateway's copy. From the moment the worker drops, the page shows a countdown and keeps Reconnect and Run disabled until it ends. After 2 minutes without the worker (`--relocate-after` changes this), the session continues on the gateway or another worker with all its files; a program that was running is lost. A home is copied the first time its session is used after the option is on, so start it before you need it. Without the option the gateway holds no copy, and a stopped worker means "execution node unavailable". Details in the [operator guide](docs/distributed-mode.md#keeping-the-users-files-safe-workspace-sync).
+
+A worker opens no port. Add `--port 9090` if people on the same network should also be able to open it directly (see the [operator guide](docs/distributed-mode.md#the-workers-own-port)).
+
+Useful options:
+
+| Option | Where | Effect |
+|---|---|---|
+| `--local-weight 0` | gateway | The gateway only routes; all sessions run on workers. |
+| `--workspace-sync` | gateway | Keep a copy of every home on the gateway (step 4). |
+| `--worker-weight 30` | worker | Three times the share of a worker with the default 10. |
+| `--worker-id worker-01` | worker | A name for the worker; defaults to its host name. |
+
+## In production
+
+**1. Keep the token in a file**, readable only by the service user, with the same content on the gateway and every worker. Use a new token, not one from a test run.
+
+```bash
+umask 077
+echo "GOTTY_WORKER_TOKEN=$(openssl rand -hex 32)" > /etc/openrepl/tunnel.env
+```
+
+**2. Run the gateway with HTTPS**, either in the gateway itself or in a proxy (nginx, a load balancer) in front of it.
+
+```bash
+set -a; . /etc/openrepl/tunnel.env; set +a
+gotty -w --mode=gateway --port 443 --max-connection 2564 \
+  --tls --tls-crt /etc/openrepl/fullchain.pem --tls-key /etc/openrepl/privkey.pem
+```
+
+**3. Connect workers with `wss://`** and the gateway's public name. Never use `ws://` outside a test: it sends the token in clear text.
+
+```bash
+set -a; . /etc/openrepl/tunnel.env; set +a
+gotty -w --mode=worker --worker-id worker-01 --worker-server wss://openrepl.example.com/api/tunnel
+```
+
+**4. No HTTPS between worker and gateway?** Use SSH instead of `ws://`. It is encrypted, and the worker checks the gateway's key before it sends the token. Start the gateway with `--tunnel-addr 0.0.0.0:2222` (open that port to the workers only), and the worker with:
+
+```bash
+set -a; . /etc/openrepl/tunnel.env; set +a
+gotty -w --mode=worker --worker-id worker-01 \
+  --worker-server ssh://10.0.0.5:2222 --worker-hostkey 'SHA256:<fingerprint>'
+```
+
+The fingerprint is in the gateway's `/gottyTraces/gotty.log` (`tunnel host key SHA256:...`), or run `ssh-keygen -lf ~/.gotty.tunnel_key` on the gateway. The gateway creates that key on first start; keep the file, or the fingerprint changes.
+
+**5. Run both as services** that restart on failure (systemd `EnvironmentFile=/etc/openrepl/tunnel.env`, or `docker run --env-file`). A worker reconnects by itself when the gateway restarts.
+
+**6. Before stopping a worker**, drain it (*Workers*, then *Drain*) and wait for its terminals to finish. From a script:
+
+```bash
+curl -b "user-session=<admin session cookie>" -H 'X-Requested-With: openrepl-admin' -X POST https://openrepl.example.com/admin/workers/worker-01/drain
+```
+
+Every worker needs the same REPLs and sandbox setup as a normal OpenREPL server (the same image). Users' files live on the node that runs their sessions, and with `--workspace-sync` on the gateway too. Give `/tmp/home` durable storage on the nodes whose loss you cannot accept, and with `--workspace-sync` give `/opt/gotty/wsync` (`--sync-state-dir`) durable storage on the gateway and every worker: it holds the records that tell a deleted file from a new one.
+
+## Testing on one machine
+
+With two containers, use `ws://` (the test gateway has no HTTPS) and the gateway container's address and port as the worker sees them, not `localhost`, which is the worker itself:
+
+```bash
+GOTTY_WORKER_TOKEN=<token> gotty -w --mode=worker --worker-server ws://<gateway container IP>:<gateway port>/api/tunnel
+```
+
+Everything else (config files, private certificates, the nginx, Docker and systemd examples, every option, troubleshooting) is in the [operator guide](docs/distributed-mode.md).
+
+# Admin dashboard
+
+Sign in with an account listed in `OPENREPL_ADMIN_EMAILS` and open `/admin` (an *Admin* link appears in the account menu). One page shows how the site is doing and lets you run it:
+
+- **Overview, Health, Parameters, Log, Audit log**: counts, charts of terminals per day and language, health checks, how the server was started (secrets are never shown), the end of the log with credentials masked, and every change an admin made.
+- **Workers and Sessions** (gateway mode): drain, undrain or reconnect a worker, see who is on which node, end a session or move it to another node, and the command line for adding a worker.
+- **Site settings**: colour of the day, an announcement banner, maintenance mode, switching off a broken language, and the Genie switch and its rate limits.
+- **Feedback, Shared code, Users**: read and clear feedback (export as CSV), remove a shared snippet, sign a user out everywhere or block them.
+
+The design and the API behind it are in [LLD 13](docs/lld/13-admin-dashboard.md).
 
 # Usage
 
@@ -214,7 +322,7 @@ By default, GoTTY starts a web server at port 8080. Open the URL on your web bro
 --tls-key value               TLS/SSL key file path (default: "~/.gotty.key") [$GOTTY_TLS_KEY]
 --tls-ca-crt value            TLS/SSL CA certificate file for client certifications (default: "~/.gotty.ca.crt") [$GOTTY_TLS_CA_CRT]
 --index value                 Custom index.html file [$GOTTY_INDEX]
---title-format value          Title format of browser window (default: "{{ .command }}@{{ .hostname }}") [$GOTTY_TITLE_FORMAT]
+--title-format value          Title format of browser window (default: "<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>") [$GOTTY_TITLE_FORMAT]
 --reconnect                   Enable reconnection [$GOTTY_RECONNECT]
 --reconnect-time value        Time to reconnect (default: 10) [$GOTTY_RECONNECT_TIME]
 --max-connection value        Maximum connection to gotty (default: 0) [$GOTTY_MAX_CONNECTION]
@@ -225,9 +333,25 @@ By default, GoTTY starts a web server at port 8080. Open the URL on your web bro
 --height value                Static height of the screen, 0(default) means dynamically resize (default: 0) [$GOTTY_HEIGHT]
 --ws-origin value             A regular expression that matches origin URLs to be accepted by WebSocket. No cross origin requests are acceptable by default [$GOTTY_WS_ORIGIN]
 --term value                  Terminal name to use on the browser, one of xterm or hterm. (default: "xterm") [$GOTTY_TERM]
+--mode value                  Run mode: standalone, gateway or worker (default: "standalone") [$GOTTY_MODE]
+--worker-token value          Shared secret between the gateway and its workers (prefer the GOTTY_WORKER_TOKEN environment variable) [$GOTTY_WORKER_TOKEN]
+--local-weight value          Gateway: its own share of new sessions next to the workers, 0 makes it routing-only (default: 10) [$GOTTY_LOCAL_WEIGHT]
+--tunnel-path value           Gateway: path of the WebSocket endpoint workers connect to (default: "/api/tunnel") [$GOTTY_TUNNEL_PATH]
+--tunnel-addr value           Gateway: also accept workers over raw SSH on this address (e.g. 0.0.0.0:2222), disabled when empty [$GOTTY_TUNNEL_ADDR]
+--tunnel-hostkey value        Gateway: SSH host key file for the worker tunnel, created if missing (default: "~/.gotty.tunnel_key") [$GOTTY_TUNNEL_HOSTKEY]
+--worker-server value         Worker: gateway URL, wss://host/api/tunnel or ssh://host:port [$GOTTY_WORKER_SERVER]
+--worker-hostkey value        Worker: SHA256 fingerprint of the gateway tunnel host key (required for ssh://) [$GOTTY_WORKER_HOSTKEY]
+--worker-id value             Worker: unique id, defaults to the hostname [$GOTTY_WORKER_ID]
+--worker-weight value         Worker: relative share of new sessions (default: 10) [$GOTTY_WORKER_WEIGHT]
+--worker-languages value      Worker: comma separated REPL commands it can run (e.g. python,bash,cling), empty means all [$GOTTY_WORKER_LANGUAGES]
+--workspace-sync              Gateway: keep a copy of every worker's homes on the gateway, in step with the worker [$GOTTY_WORKSPACE_SYNC]
+--sync-state-dir value        Gateway and worker: where workspace sync keeps its records, keep it on durable storage (default: "/opt/gotty/wsync") [$GOTTY_SYNC_STATE_DIR]
+--relocate-after value        Gateway with --workspace-sync: how long a worker may be away before its sessions are placed elsewhere, e.g. 30s or 2m (default: "2m") [$GOTTY_RELOCATE_AFTER]
+--worker-capacity value       Worker: memory budget in MB for sessions, 0 derives it from RAM (default: 0) [$GOTTY_WORKER_CAPACITY]
 --close-signal value          Signal sent to the command process when gotty close it (default: SIGHUP) (default: 1) [$GOTTY_CLOSE_SIGNAL]
 --close-timeout value         Time in seconds to force kill process after client is disconnected (default: -1) (default: -1) [$GOTTY_CLOSE_TIMEOUT]
 --config value                Config file path (default: "~/.gotty") [$GOTTY_CONFIG]
+--env-file value              File of OPENREPL_* and GOTTY_* settings, loaded before anything else (a default that does not exist is ignored, one you name must) (default: "~/.env") [$GOTTY_ENV_FILE]
 --version, -v                 print the version
 ```
 
@@ -356,7 +480,7 @@ flowchart LR
 2. **Run or debug editor code.** **Run** reconnects the terminal with the editor content in the init payload (`IdeLang`, `IdeContent`, `IdeFileName`, flags). The server writes the content to the selected file, then runs `/bin/bash -c <Compiler script from demos.xml>` in the same sandbox, with 3× the memory limit.
 3. **Fork a REPL and add terminal tabs.** The window title carries a `jid`, an encoded PID. **Fork REPL** and every extra tab open `?jid=<id>`, and the server `nsenter`s the new shell into the parent's namespaces and working directory. This lets two terminals talk to each other, for example for socket programming.
 4. **Share a REPL.** The owner's browser (the *master*) mirrors terminal output, language changes and file events to Firebase RTDB under `openrepl/<id>`. A viewer who opens `…/#<id>` renders that stream, and their keystrokes are relayed to the master's WebSocket. The viewer never starts a REPL of their own.
-5. **Sign in.** FirebaseUI (email/password or Google, with email verification) signs the user in. The browser then posts the user to `/login`. The server stores the session in `user_sessions.db` and sets the `user-session` cookie. Signed-in users get a stable home directory. Guest directories are deleted 60 minutes after last use.
+5. **Sign in.** FirebaseUI, in a dialog over the home page (Google, GitHub or email, with email verification), signs the user in. The browser then posts the user to `/login`. The server stores the session in `user_sessions.db` and sets the `user-session` cookie. Signed-in users get a stable home directory. Guest directories are deleted 60 minutes after last use.
 6. **Ask Genie or generate a practice question.** The browser calls `/chat/completions` with a per-session access token. The server checks the origin, the token and a cookie-based rate limit, then forwards the request to OpenAI with the server's API key.
 
 ### Deployment view
@@ -376,10 +500,97 @@ flowchart TB
 
 - **Image:** the multi-stage `Dockerfile` builds on Ubuntu 22.04. `install_prerequisite.sh` installs every REPL toolchain, and `make all` builds the binary. CI builds the image on every PR and push to `master`. Pushes to `master` also publish `:<sha>` and `:latest`.
 - **Sandboxing needs cgroup v1.** With `--privileged` and `/sys/fs/cgroup` mounted, each REPL gets its own namespaces and memory cgroup. Without them, REPLs still run but share the container.
-- **Server-side secrets** live in a git-config file, `/opt/gotty/.gitconfig` (falling back to `/etc/.gitconfig`):
-  - `user.email` is the admin account.
-  - `user.OpenaiAPIKey` is the OpenAI key, base64-encoded.
-  - `user.host` is the origin the chat proxy accepts.
+- **Server-side secrets** come from the environment (see [Settings and secrets](#settings-and-secrets)). The older git-config file, `/opt/gotty/.gitconfig`, still works as a fallback.
+
+### Settings and secrets
+
+The server-side settings come from environment variables, and gotty can load them from an env file (`--env-file`, `~/.env` by default). [`.env.example`](.env.example) is a template: copy it, fill it in, and keep it out of git. See [Loading `.env`](#loading-env-and-where-to-keep-it).
+
+| Variable | Meaning | Older file key |
+|---|---|---|
+| `OPENREPL_ADMIN_EMAILS` | Admin accounts, comma-separated. With none set, nobody is an admin. | `user.email` |
+| `OPENREPL_OPENAI_API_KEY` | The OpenAI key, as it is (not base64). | `user.OpenaiAPIKey` (base64) |
+| `OPENREPL_HOST` | The origin the chat proxy accepts. Default `localhost`. | `user.host` |
+| `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Default: the built-in production project. See below. | |
+| `OPENREPL_ENV` | `dev` or `production` (the default). Dev shows the values of these settings in the start-up log; production only says which are set. | |
+
+The environment wins over the file. A variable that is empty counts as not set, so a half-filled `.env` does not switch the file off. The file is looked for in `/opt/gotty/.gitconfig`, then `~/.gitconfig`, then `/etc/.gitconfig`, and only the first one that exists is read.
+
+#### Loading `.env`, and where to keep it
+
+gotty loads an env file when it starts. The flag is `--env-file`, and it defaults to `~/.env`:
+
+```bash
+gotty -w                              # reads ~/.env if there is one
+gotty -w --env-file /etc/openrepl.env # reads that file instead
+```
+
+A file you name with `--env-file` (or `GOTTY_ENV_FILE`) has to exist and has to be readable, or gotty stops and says why. The default `~/.env` may be missing, and then gotty simply goes on.
+
+Rules for what is in the file:
+
+- **One `NAME=value` per line.** `#` starts a comment, `export NAME=value` is accepted, and a value can be unquoted, in `'single quotes'` (taken literally) or in `"double quotes"` (`\n`, `\"`, `\\` and `\$` are understood). There is no `$VAR` expansion, and a value cannot run over more than one line.
+- **Only `OPENREPL_*` and `GOTTY_*` names are used.** Anything else in the file is ignored and named in the log, so a `~/.env` that other tools share cannot change `PATH` or `LD_PRELOAD` for the server. `GOTTY_*` means every gotty flag can be set in the file too: `GOTTY_PORT=8081`, `GOTTY_WORKER_TOKEN=...` and so on.
+- **The real environment wins.** A variable that is already set keeps its value, so `OPENREPL_ENV=production gotty` overrides the file. The order is: the environment, then the env file, then the git-config file.
+- **It is read once.** Edit the file and restart gotty.
+- **Keep it private.** `chmod 600` it. gotty warns in its log if other users can read it. `.env` is in `.gitignore`; keep it out of git.
+- **A bad line stops a named file** and gotty reports the line number (never the text). In the default `~/.env` a bad line is skipped with a warning.
+
+To see what gotty picked up, look at the `config:` line it writes at start-up. It says which settings are set and where each comes from, what the env file did (how many loaded, kept or ignored; never the values), and with `OPENREPL_ENV=dev` it shows the values:
+
+```bash
+grep config: /gottyTraces/gotty.log | tail -1
+```
+
+Where to keep the file depends on how you run gotty:
+
+| How you run gotty | Where to keep the file | How it is loaded |
+|---|---|---|
+| Standalone on your own machine or a server | `~/.env`, the default; or anywhere, with `--env-file` | gotty reads it |
+| The dev container | `.env` in the repo root. Inside the container `~` is `/root`, which is lost when the container stops, but the repo is mounted at `/opt/openrepl`, so the file survives | `../bin/gotty -w -p 8080 --env-file /opt/openrepl/.env` |
+| The Docker image | Outside the image, for example next to the repo | `docker run --env-file .env ...`, which is Docker's own flag and goes before the image name, or mount the file and pass gotty's `--env-file` after the image name |
+| A systemd service | `/etc/openrepl/openrepl.env`, owned by root, `chmod 600` | `EnvironmentFile=/etc/openrepl/openrepl.env` in the unit, or `--env-file` on the `ExecStart` line |
+
+Standalone, step by step:
+
+```bash
+cd ~/Documents/openrepl/openrepl   # on your Mac: the repo root
+cp .env.example ~/.env             # once; edit it afterwards
+chmod 600 ~/.env
+cd src && ../bin/gotty -w -p 8080  # picks up ~/.env
+```
+
+Docker and systemd read an env file themselves, with their own rules: `docker run --env-file` keeps quotes as part of the value and expands nothing, so give the Firebase config as base64 there (see below). systemd accepts quotes, but not `export`. Setting the variables by hand also works: `set -a; . ./.env; set +a` before starting gotty. `set -a` is what exports them; with only `. ./.env` gotty does not inherit them.
+
+#### What the programs users run can see
+
+The REPLs do not get these settings. gotty starts every REPL without its own `OPENREPL_*` and `GOTTY_*` variables (which includes `GOTTY_WORKER_TOKEN` and `GOTTY_CREDENTIAL`), and without any variable whose name contains `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `API_KEY`, `APIKEY`, `ACCESS_KEY` or `PRIVATE_KEY`. So `env` in a user's bash does not show them. The IDE's environment-variables box is expanded against that same filtered environment, so `$OPENREPL_OPENAI_API_KEY` typed in it comes out empty, while `$PATH` and `$HOME` work as before. This only controls what is passed on to the REPLs. How far a REPL is isolated from the server's files and processes is a separate matter; see [LLD 03](docs/lld/03-sandboxing-and-resources.md).
+
+#### Signing in on localhost with your own Firebase project
+
+Sign-in goes through Firebase, so to test it without touching the production project, use a development project of your own:
+
+1. In the [Firebase console](https://console.firebase.google.com), add a project, for example `my-openrepl-dev`.
+2. **Authentication**, then **Sign-in method**: enable *Email/Password* and *Google*, and *GitHub* if you want that button to work. Under **Settings**, then **Authorized domains**, `localhost` is already listed. Add any other host you open the site on. Google sign-in only works on `localhost` or over HTTPS; email and password works on any listed host.
+3. **Realtime Database**: create a database (test mode is fine for development). The app uses it for shared sessions, and its URL is the `databaseURL` below.
+4. **Project settings**, **General**, **Your apps**: add a *Web* app and copy the `firebaseConfig` object it shows you.
+5. Put it in your env file, and make your own address the admin. `OPENREPL_FIREBASE_CONFIG` takes the config in any of three forms:
+
+   - **The snippet exactly as the console shows it** (`const firebaseConfig = { apiKey: "...", ... };`, with or without the first line). Nothing in it is run; only the `key: "value"` pairs are read.
+   - **JSON on one line:** `{"apiKey":"AIza...","authDomain":"my-openrepl-dev.firebaseapp.com","projectId":"my-openrepl-dev","databaseURL":"https://my-openrepl-dev-default-rtdb.firebaseio.com"}`.
+   - **The base64 of either**, which has no quotes in it. The server's own built-in config is kept in this form, base64 of the snippet, so the same text works here. To make it, paste the snippet into a file and run `base64 < firebase-dev.txt | tr -d '\n'`.
+
+   ```bash
+   # ~/.env
+   OPENREPL_ENV=dev
+   OPENREPL_ADMIN_EMAILS=you@example.com
+   OPENREPL_FIREBASE_CONFIG=eyJhcGlLZXkiOiJBSXphLi4uIiwiYXV0aERvbWFpbiI6Ii4uLiIsInByb2plY3RJZCI6Ii4uLiJ9
+   ```
+
+   In an env file that gotty reads, quotes around the value work (`'...'` or `"..."`). With `docker run --env-file` they would become part of the value, so use the base64 form there.
+6. Restart the server and open `http://localhost:8080`. The users are those of the development project, so create your account there (or sign in with Google), and use the same address in `OPENREPL_ADMIN_EMAILS` to be the admin.
+
+Only `apiKey`, `authDomain` and `projectId` are required, and fields that are not part of a Firebase web config are ignored. A wrong value stops the server at start-up and names the field, so a typo cannot quietly send a development machine to the production project. In dev mode the start-up log shows which project is in use.
 
 ### Supported REPLs
 

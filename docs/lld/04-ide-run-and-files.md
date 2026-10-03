@@ -131,3 +131,12 @@ Slaves (shared viewers) and forked tabs reach the owner's workspace by adding `j
 - **Selecting a file.** `LoadSelectedNodeFromFile` loads it (`q=load`) into Ace and sets `editor.env.filename`, which becomes `IdeFileName` on Run. The previously open file is saved first (`SaveSelectedNodeToFile`), and the language is switched by extension (`changelangbyselectednode`).
 - **Live events.** `setEventHandler(eventhandler)` applies `'6'` events and Firebase `filebrowser-event`s to the tree: create_node, delete_node, refresh.
 - **Empty workspace.** `updateFilesEmptyState` shows `#files-empty` ("No files yet. Upload a file, or right-click the folder above to create one.") while the root folder has no children. It runs after jstree's ready, refresh, load, create, delete, move and copy events.
+
+## 4. Files with workspace sync
+
+With `--workspace-sync` on a gateway ([LLD 12](12-workspace-sync.md)) the file browser and upload routes behave as follows:
+
+- **Worker online.** Requests are forwarded to the worker unchanged, so a file is saved and run on the same disk. The worker first waits until the home is in step with the gateway's copy (503 "workspace is synchronizing" if that takes over 10 seconds).
+- **Worker away.** The gateway serves `ws_filebrowser` (tree, load, zip, usage, save, create, delete, rename) and `upload_file` from its own copy of the home, using the same absolute paths. Changes reach the worker when it returns.
+- **Changes made by programs** in a terminal (compilers, redirection, `rm`, `mv`) are seen by one file watcher per node and sent to the other side; they appear in the browser's tree through the existing per-terminal watcher as before.
+- Files over 50 MB, sockets, FIFOs and device files are not synchronized, and names that start with `.wsync-` are reserved.

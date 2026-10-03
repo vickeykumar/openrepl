@@ -46,6 +46,13 @@ func common_cleanup() {
 }
 
 func main() {
+	// Settings in an env file must be in the environment before anything reads
+	// one, the GOTTY_* flags included, so this comes first.
+	if err := loadEnvFile(); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(2)
+	}
+	utils.LogConfig()
 	common_setup()
 	defer common_cleanup()
 
@@ -78,6 +85,7 @@ func main() {
 			Usage:  "Config file path",
 			EnvVar: "GOTTY_CONFIG",
 		},
+		envFileFlag,
 	)
 
 	app.Action = func(c *cli.Context) {
@@ -88,14 +96,18 @@ func main() {
 		}*/ // implementing cling interpreter by default
 
 		configFile := c.String("config")
+		listen := c.IsSet("port") || c.IsSet("address")
 		_, err := os.Stat(homedir.Expand(configFile))
 		if configFile != "~/.gotty" || !os.IsNotExist(err) {
 			if err := utils.ApplyConfigFile(configFile, appOptions, backendOptions); err != nil {
 				exit(err, 2)
 			}
+			keys := utils.ConfigKeys(configFile)
+			listen = listen || keys["port"] || keys["address"]
 		}
 
 		utils.ApplyFlags(cliFlags, flagMappings, c, appOptions, backendOptions)
+		appOptions.LocalListen = listen
 
 		appOptions.EnableBasicAuth = c.IsSet("credential")
 		appOptions.EnableTLSClientAuth = c.IsSet("tls-ca-crt")
@@ -121,6 +133,7 @@ func main() {
 			"hostname": hostname,
 		}
 
+		server.SetBuildInfo(Version, CommitID)
 		srv, err := server.New(factory, appOptions)
 		if err != nil {
 			exit(err, 3)

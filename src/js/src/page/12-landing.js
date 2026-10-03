@@ -6,6 +6,7 @@
 
 window.refreshWorkspaceUsage = refreshWorkspaceUsage;
 window.syncUsageHeading = syncUsageHeading;
+window.focusContactForm = focusContactForm;
 
 // ---------------------------------------------------------------------------
 // Workspace card (T7): guests see that files are deleted after an hour and
@@ -62,7 +63,46 @@ function syncUsageHeading() {
   out.textContent = LANG_LABELS[sel.value] || (opt ? opt.text : sel.value);
 }
 
+// The reCAPTCHA check appears once someone starts a message.
+function showRequestCaptcha() {
+  var c = document.getElementById("request-captcha");
+  if (c) c.hidden = false;
+  loadScriptOnce(RECAPTCHA_JS).catch(function () {}); // renders the .g-recaptcha box when it loads (T16)
+}
+
+// "Contact" in the nav and the footer: bring the form at the bottom into view, put the
+// cursor in it and show the reCAPTCHA check.
+function focusContactForm() {
+  var form = document.getElementById("feedback-form");
+  if (!form) return;
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // a phone's opened menu would stay over the page
+  var menuButton = document.querySelector(".menu.responsive .toggle__button");
+  if (menuButton) menuButton.click();
+  form.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+  setTimeout(function () {
+    var first = document.getElementById("feedback-name");
+    if (first) first.focus({ preventScroll: true });
+    showRequestCaptcha();
+  }, reduce ? 0 : 450);
+}
+
 $(function () {
+  $("[data-contact]").on("click", function (e) {
+    e.preventDefault();
+    focusContactForm();
+    if (window.history && history.replaceState) history.replaceState(null, "", "#request");
+  });
+  // /#request, from the Contact link of another page or a shared link. The terminal
+  // takes the focus when it connects, a moment after the page loads, so focus the
+  // form again then, unless the visitor has put the cursor somewhere else by now.
+  if (location.hash === "#request") {
+    setTimeout(focusContactForm, 300);
+    setTimeout(function () {
+      var a = document.activeElement;
+      if (!a || a === document.body || (a.closest && a.closest("#terminal-div"))) focusContactForm();
+    }, 3000);
+  }
   $("#languages").on("click", ".lang-card[data-lang]", function (e) {
     e.preventDefault();
     pickLanguage(this.getAttribute("data-lang"));
@@ -80,12 +120,7 @@ $(function () {
       notify(text, { type: "info", title: "Copy this command" });
     }
   });
-  // the reCAPTCHA check appears once someone starts a message
-  $("#feedback-form").on("focus", "input, textarea", function () {
-    var c = document.getElementById("request-captcha");
-    if (c) c.hidden = false;
-    loadScriptOnce(RECAPTCHA_JS).catch(function () {}); // renders the .g-recaptcha box when it loads (T16)
-  });
+  $("#feedback-form").on("focus", "input, textarea", showRequestCaptcha);
   // the admin feedback table shows a name for every message
   $("#feedback-form").on("submit", function () {
     var n = document.getElementById("feedback-name");

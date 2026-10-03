@@ -170,3 +170,92 @@ var Color = require('color');
 
 })();
 
+
+// App to show what an admin set at /admin (served by /settings.js): the
+// announcement and maintenance banners, languages that are switched off, and
+// the Genie switch. The texts come from the admin but are still put on the
+// page as text only.
+(function SiteNoticesApp(){
+	var s = window.site_settings;
+	if (!s) return;
+
+	var CSS = '.site-banner{display:flex;align-items:center;gap:12px;padding:9px 16px;font:500 14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#fff;background:#1d3b66}' +
+		'.site-banner--warning{color:#15151C;background:#F5C37A}' +
+		'.site-banner--maintenance{background:#8f2d2d}' +
+		'.site-banner__text{flex:1;text-align:center;overflow-wrap:anywhere}' +
+		'.site-banner__close{flex:none;width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:inherit;font-size:20px;line-height:1;cursor:pointer}' +
+		'.site-banner__close:hover,.site-banner__close:focus-visible{background:rgba(255,255,255,.2)}';
+
+	function key(text) {
+		var h = 0;
+		for (var i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+		return 'announcement-dismissed-' + h;
+	}
+	function dismissed(text) {
+		try { return localStorage.getItem(key(text)) === '1'; } catch (e) { return false; }
+	}
+	function dismiss(text) {
+		try { localStorage.setItem(key(text), '1'); } catch (e) {}
+	}
+
+	function banner(kind, text, canDismiss, onDismiss) {
+		var el = document.createElement('div');
+		el.className = 'site-banner site-banner--' + kind;
+		el.setAttribute('role', kind === 'announcement' ? 'status' : 'alert');
+		var span = document.createElement('span');
+		span.className = 'site-banner__text';
+		span.textContent = text;
+		el.appendChild(span);
+		if (canDismiss) {
+			var b = document.createElement('button');
+			b.type = 'button';
+			b.className = 'site-banner__close';
+			b.setAttribute('aria-label', 'Dismiss this message');
+			b.textContent = '×';
+			b.addEventListener('click', function () { el.remove(); onDismiss(); });
+			el.appendChild(b);
+		}
+		return el;
+	}
+
+	function apply() {
+		var banners = [];
+		var m = s.maintenance;
+		if (m && m.enabled) {
+			banners.push(banner('maintenance', m.message || 'The site is down for maintenance. Please try again soon.', false));
+		}
+		var a = s.announcement;
+		if (a && a.text && !dismissed(a.text)) {
+			banners.push(banner(a.level === 'warning' ? 'warning' : 'info', a.text, true, function () { dismiss(a.text); }));
+		}
+		if (banners.length) {
+			var style = document.createElement('style');
+			style.textContent = CSS;
+			document.head.appendChild(style);
+			banners.reverse().forEach(function (b) { document.body.insertBefore(b, document.body.firstChild); });
+		}
+
+		// Languages that are switched off stay in the picker but cannot be chosen.
+		var off = s.disabledLanguages || [];
+		var list = document.getElementById('optionlist');
+		if (list && off.length) {
+			Array.prototype.forEach.call(list.options, function (o) {
+				if (off.indexOf(o.value) >= 0) {
+					o.disabled = true;
+					o.textContent = o.textContent + ' (off)';
+				}
+			});
+		}
+
+		// Genie is switched off: no button leads to it.
+		if (s.genieDisabled) {
+			Array.prototype.forEach.call(document.querySelectorAll('#genie-button, [data-chat-widget-button]'), function (b) {
+				b.hidden = true;
+				b.style.display = 'none';
+			});
+		}
+	}
+
+	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+	else apply();
+})();

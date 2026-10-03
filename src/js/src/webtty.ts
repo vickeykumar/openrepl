@@ -329,7 +329,23 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 console.log("close event: ",closeEvent['code'],closeEvent['reason'], connection.isClosed());
                 const closeReason: string = closeEvent['reason'] || "";
                 let closeKind = "lost";
-                if (closeEvent['code'] == 1000 && closeReason.match("local command")) {
+                // A gateway whose execution node for this session is away closes the
+                // terminal with "execution node is away: retry in 80s": the session is
+                // placed again when that time is over. The page counts it down.
+                let retryIn = 0;
+                // A terminal the site refuses on purpose (maintenance, a language that is
+                // switched off, an admin ending the session) is closed with
+                // "site notice: <what to tell the visitor>".
+                let noticeText = "";
+                const away = closeReason.match(/execution node is away: retry in (\d+)s/);
+                const notice = closeReason.match(/^site notice: (.*)$/);
+                if (away) {
+                    closeKind = "away";
+                    retryIn = parseInt(away[1], 10);
+                } else if (notice) {
+                    closeKind = "notice";
+                    noticeText = notice[1];
+                } else if (closeEvent['code'] == 1000 && closeReason.match("local command")) {
                     closeKind = closeReason.match("killed") ? "killed" : "exited";
                 } else if (closeReason.match("failed to create backend")) {
                     closeKind = "failed";
@@ -339,14 +355,24 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                     closeKind = "closed";
                 }
                 if (!closedByPage) {
-                    emitState("closed", { kind: closeKind, code: closeEvent['code'], reason: closeReason });
+                    emitState("closed", { kind: closeKind, code: closeEvent['code'], reason: closeReason, retryIn: retryIn, notice: noticeText });
                 }
                 // The home page shows a banner that explains the stop (scribbler.js
                 // showTermBanner), so skip the generic "connection closed" lines there.
                 const bannerShown = !closedByPage && closeKind !== "closed" && !!document.getElementById("term-banner");
                 switch(closeEvent['code']) {
                     case 1000:
-                        if (closeKind == "killed") {
+                        if (closeKind == "away") {
+                            // The home page shows a banner with a countdown. Elsewhere there
+                            // is only the terminal to say so in.
+                            if (!bannerShown) {
+                                TermOutput("\r\n[Your execution node is away. Try reconnecting in " + retryIn + " sec.]");
+                            }
+                        } else if (closeKind == "notice") {
+                            if (!bannerShown) {
+                                TermOutput("\r\n[" + noticeText + "]");
+                            }
+                        } else if (closeKind == "killed") {
                             TermOutput("\r\n[Program stopped: it was killed, most likely by the memory limit] Jobid: "+WebTTY.getjid());
                         } else if (closeReason.match("local command")) {
                             TermOutput("[Program Exited] Jobid: "+WebTTY.getjid());

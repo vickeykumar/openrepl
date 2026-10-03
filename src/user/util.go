@@ -29,6 +29,14 @@ func generateHomeDirectoryID(firstName string, uniqueID string) string {
     return strings.ToLower(id)
 }
 
+// HomeDirID is the name of a signed-in user's home directory under
+// utils.HOME_DIR. A gateway sends it to the worker that runs the user's
+// sessions, because the worker has no user profile to derive it from.
+func HomeDirID(uid string) string {
+	up, _ := FetchUserProfileData(uid)
+	return generateHomeDirectoryID(strings.Split(up.Name, " ")[0], uid)
+}
+
 // get home directory for a user
 func GetHomeDir(uid string) (homedir string) {
     var err error
