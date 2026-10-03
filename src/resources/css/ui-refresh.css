@@ -211,7 +211,7 @@
 }
 @media screen and (max-width: 600px) {
   /* in the opened phone menu the account's entries are listed in place */
-  .site-nav .menu.responsive .user-account { display: block; width: 100%; }
+  .is-signed-in .site-nav .menu.responsive .user-account { display: block; width: 100%; }
   .site-nav .menu.responsive .user-account__button { display: none; }
   .site-nav .menu.responsive .account-dropdown {
     position: static;
@@ -1612,6 +1612,7 @@ body.files-collapsed .files-panel { display: none; }
 .site-footer__top { display: flex; gap: 64px; }
 .site-footer__brand { width: 460px; max-width: 100%; display: flex; flex-direction: column; gap: 14px; }
 .site-footer__brand p { margin: 0; font-size: 15px; color: #B9B7C4; }
+.site-footer__brand .site-footer__title { margin: 0; text-align: left; font-size: 22px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.2; color: var(--paper); }
 .site-footer__brand .site-footer__sub { margin-top: -8px; font-size: 14px; color: var(--muted-2); }
 /* language request + feedback: name and email side by side, then the message */
 .request-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
@@ -1708,6 +1709,12 @@ body.files-collapsed .files-panel { display: none; }
 /* ------------------------------------------------------------------ */
 /* Legal pages (T9): privacy.html and terms.html                       */
 /* ------------------------------------------------------------------ */
+/* scribbler-global.css gives html and body a white background and body a height of one screen.
+   The html background then stops the body's from covering the whole page, so a page longer than
+   the screen went from dark to white after the first screenful. The body of these pages grows
+   with its content instead (and is never shorter than the screen). */
+.legal-page,
+.profile-page { height: auto; min-height: 100%; }
 .legal-page { background: #FAFAF7; }
 .site-nav--simple { justify-content: space-between; }
 .site-nav__back {
@@ -1856,7 +1863,8 @@ body.files-collapsed .files-panel { display: none; }
 .signin__status { display: none; }
 .signin[data-state="loading"] .signin__loading { display: flex; }
 .signin[data-state="error"] .signin__error { display: block; }
-.signin__loading { align-items: center; justify-content: center; gap: 10px; min-height: 150px; font-size: 14px; color: var(--si-mut); }
+.signin__loading { flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; min-height: 150px; font-size: 14px; line-height: 1.5; text-align: center; color: var(--si-mut); }
+.signin__loading .signin__link { flex-basis: 100%; }
 .signin__spinner {
   width: 18px;
   height: 18px;
@@ -1865,6 +1873,10 @@ body.files-collapsed .files-panel { display: none; }
   border-radius: 50%;
   animation: signin-spin 0.8s linear infinite;
 }
+.signin__detail { margin: 12px 0 0; padding: 0; list-style: none; font-size: 12px; line-height: 1.5; text-align: left; color: var(--si-danger); overflow-wrap: anywhere; }
+.signin__detail[hidden] { display: none; }
+.signin__detail li + li { margin-top: 4px; }
+.signin__detail .signin__hint { color: var(--si-mut); }
 .signin__error { padding: 8px 0 14px; text-align: center; }
 .signin__error p { margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: var(--si-mut); }
 

@@ -187,6 +187,7 @@
         <li class="menu__item" id="practice_dsa"><a href="/practice/dsa-questions" class="link link--dark">Practice</a></li>
         <li class="menu__item"><a href="/doc.html" class="link link--dark">Docs</a></li>
         <li class="menu__item"><a href="/blog" class="link link--dark">Blog</a></li>
+        <li class="menu__item"><a href="#request" target="_self" class="link link--dark" data-contact>Contact</a></li>
         <li class="menu__item menu__item--push"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button></li>
         <li class="menu__item"><a href="https://github.com/vickeykumar/openrepl" class="link link--dark nav-star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"></path></svg>Star on GitHub</a></li>
         <li class="menu__item">
@@ -225,7 +226,11 @@
           </ul>
         </div>
         <div id="firebaseui-auth-container" class="firebaseui-auth-container"></div>
-        <div class="signin__status signin__loading" role="status"><span class="signin__spinner" aria-hidden="true"></span><span id="signin-loading-text">Loading sign-in…</span></div>
+        <div class="signin__status signin__loading" role="status">
+          <span class="signin__spinner" aria-hidden="true"></span><span id="signin-loading-text">Loading sign-in…</span>
+          <button type="button" class="signin__link" id="signin-wait-cancel" hidden>Cancel</button>
+        </div>
+        <ul class="signin__detail" id="signin-detail" aria-live="polite" hidden></ul>
         <div class="signin__status signin__error" role="alert">
           <p>Sign-in couldn't load. Check your connection and try again.</p>
           <button type="button" class="signin__btn" id="signin-retry">Try again</button>
@@ -710,8 +715,8 @@ Breakpoint 1, main () at main.c:5
         <div class="site-footer__top">
           <div class="site-footer__brand">
             <a class="brand" href="/" target="_self" aria-label="OpenREPL home"><span class="brand__open">open</span><span class="brand__repl">repl</span></a>
-            <p id="request">Which language should we add next?</p>
-            <p class="site-footer__sub">Or send us feedback, a bug you hit, or an idea. We read every message.</p>
+            <h2 class="site-footer__title" id="request">Contact us</h2>
+            <p class="site-footer__sub">Which language should we add next? Or send us feedback, a bug you hit, or an idea. We read every message.</p>
             <iframe name="resultFrame" id="resultFrame" title="Request result" hidden onload="onLoadFn()"></iframe>
             <div id="feedbackDiv">
               <form id="feedback-form" class="request-form" method="post" action="#" target="resultFrame">
@@ -742,6 +747,7 @@ Breakpoint 1, main () at main.c:5
               <a href="https://github.com/sponsors/vickeykumar">Sponsor</a>
               <a href="/about.html">About</a>
               <a href="/references.html">References</a>
+              <a href="#request" target="_self" data-contact>Contact</a>
             </div>
             <div>
               <p class="site-footer__heading">Legal</p>

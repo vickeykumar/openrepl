@@ -118,3 +118,40 @@ func TestTheBinaryCarriesThePagesAndTheirScripts(t *testing.T) {
 		}
 	}
 }
+
+// ---- contact link -----------------------------------------------------------------
+
+// "Contact" in the nav and the footer scrolls to the feedback form and focuses
+// its first field (focusContactForm in 12-landing.js); the practice page links
+// to /#request. This fails when the markup and the script stop agreeing.
+func TestContactLinksReachTheFeedbackForm(t *testing.T) {
+	index, err := ioutil.ReadFile("../resources/index.html")
+	if err != nil {
+		t.Skip("index.html not available: ", err)
+	}
+	page := string(index)
+	if n := strings.Count(page, "data-contact"); n < 2 {
+		t.Errorf("index.html has %d Contact links (nav and footer), want at least 2", n)
+	}
+	for _, want := range []string{`id="request"`, `id="feedback-form"`, `id="feedback-name"`, `href="#request"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html lacks %s", want)
+		}
+	}
+	script, err := ioutil.ReadFile("../js/src/page/12-landing.js")
+	if err != nil {
+		t.Skip("page script not available: ", err)
+	}
+	for _, want := range []string{"function focusContactForm", "[data-contact]", `location.hash === "#request"`, `getElementById("feedback-form")`, `getElementById("feedback-name")`} {
+		if !strings.Contains(string(script), want) {
+			t.Errorf("12-landing.js lacks %s", want)
+		}
+	}
+	practice, err := ioutil.ReadFile("../resources/practice.html")
+	if err != nil {
+		t.Skip("practice.html not available: ", err)
+	}
+	if !strings.Contains(string(practice), `href="/#request"`) {
+		t.Error("practice.html has no Contact link to /#request")
+	}
+}

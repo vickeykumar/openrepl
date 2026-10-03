@@ -115,6 +115,14 @@ $(function() {
     var ui = null;
     function ensureAuthUI() {
       return Promise.all([loadStyleOnce(FIREBASEUI_CSS), loadScriptOnce(FIREBASEUI_JS)]).then(function () {
+        // FirebaseUI restores the credential it saved (the GitHub sign-in of an address that
+        // already has an account, to link the two) with AuthCredential.fromJSON, which the v9
+        // compat SDK does not have. Without it FirebaseUI throws and draws nothing.
+        if (firebase.auth.AuthCredential && typeof firebase.auth.AuthCredential.fromJSON !== 'function') {
+          firebase.auth.AuthCredential.fromJSON = function (json) {
+            try { return firebase.auth.OAuthProvider.credentialFromJSON(json); } catch (e) { return null; }
+          };
+        }
         if (!ui) ui = new firebaseui.auth.AuthUI(firebase.auth());
         return ui;
       });
@@ -136,13 +144,166 @@ $(function() {
     };
     var loadTimer = null, verifyTimer = null, mode = 'signin';
 
+    // Google and GitHub sign in through a popup. When the browser refuses the
+    // popup, FirebaseUI redirects the whole page to the provider instead, and the
+    // browser returns to this page without a dialog. FirebaseUI can only finish
+    // that sign-in if it is started again, so a sign-in with a provider is
+    // remembered (for this tab) until it ends, and the dialog opens again on
+    // return.
+    var PENDING_KEY = 'openrepl-signin-pending';
+    function setPending(on) {
+      try {
+        if (on) sessionStorage.setItem(PENDING_KEY, mode);
+        else sessionStorage.removeItem(PENDING_KEY);
+      } catch (e) { /* storage may be blocked; the popup flow does not need it */ }
+    }
+    function takePending() {
+      try {
+        var m = sessionStorage.getItem(PENDING_KEY);
+        sessionStorage.removeItem(PENDING_KEY);
+        return m;
+      } catch (e) { return null; }
+    }
+
     function setAttr(name, value) { if (dialog) dialog.setAttribute('data-' + name, value); }
-    function setState(state, text) {
+    // patient: waiting for something the visitor does (a provider's window), or for the
+    // server to answer. Otherwise a dialog that stays loading turns into the error state.
+    var waitCancel = document.getElementById('signin-wait-cancel');
+    var waitTimer = null;
+    function setState(state, text, patient) {
       clearTimeout(loadTimer);
+      clearTimeout(waitTimer);
       if (loadingText) loadingText.textContent = text || 'Loading sign-in…';
+      if (waitCancel) waitCancel.hidden = !(patient === 'provider');
       setAttr('state', state);
       // never leave the dialog loading for ever
-      if (state === 'loading') loadTimer = setTimeout(function () { setAttr('state', 'error'); }, 20000);
+      if (state === 'loading' && !patient) loadTimer = setTimeout(function () { setAttr('state', 'error'); }, 20000);
+    }
+
+    // What Firebase answers when a request fails (a wrong client secret, an unauthorized
+    // domain, ...) is hidden by FirebaseUI behind a generic message. Show it under the
+    // methods, and in the console, so a sign-in that does not work says why.
+    var detail = document.getElementById('signin-detail');
+    function showDetail(lines, hints) {
+      if (!detail) return;
+      detail.textContent = '';
+      lines.concat(hints || []).forEach(function (text, i) {
+        var li = document.createElement('li');
+        if (i >= lines.length) li.className = 'signin__hint';
+        li.textContent = text;
+        detail.appendChild(li);
+      });
+      detail.hidden = detail.children.length === 0;
+    }
+    var authProblems = [];
+    // What happened since the visitor chose a provider, step by step, so that a sign-in
+    // that ends with nothing to show can say how far it got.
+    var trail = [];
+    function note(line) {
+      console.log('sign-in: ' + line);
+      if (trail[trail.length - 1] !== line) trail.push(line);
+    }
+    function noteAuthProblem(url, status, message) {
+      var call = (url.match(/accounts:(\w+)/) || url.match(/\/(v1\/[\w:]+)/) || [])[1] || 'auth';
+      var line = 'Firebase said: ' + (message || 'the request failed') + ' (' + call + ', ' + (status || 'no answer') + ')';
+      console.log(line);
+      if (authProblems.indexOf(line) < 0) authProblems.push(line);
+      showDetail(authProblems.slice(-2));
+    }
+    if (window.fetch && !window.__openreplAuthWatch) {
+      window.__openreplAuthWatch = true;
+      var plainFetch = window.fetch;
+      window.fetch = function (input) {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        var result = plainFetch.apply(this, arguments);
+        if (/identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com/.test(url)) {
+          result.then(function (r) {
+            if (r.ok) return;
+            return r.clone().json().then(function (body) {
+              noteAuthProblem(url, r.status, body && body.error && body.error.message);
+            }, function () { noteAuthProblem(url, r.status, ''); });
+          }, function (err) { noteAuthProblem(url, 0, String(err && err.message || err)); });
+        }
+        return result;
+      };
+    }
+
+    // The dialog waits while the provider's window is open (waitForProvider). Whatever
+    // FirebaseUI draws next, a page that asks something of the visitor (link this
+    // account, an error) or the method list again, ends that wait.
+    function waitingForProvider() {
+      return dialog.getAttribute('data-state') === 'loading' && waitCancel && !waitCancel.hidden;
+    }
+
+    // How the provider's window ended. FirebaseUI answers most endings itself, and
+    // some with nothing at all (the window was closed), which would leave the dialog
+    // waiting. The ones that point at a setup problem are shown under the methods.
+    var BENIGN_ENDINGS = ['auth/popup-closed-by-user', 'auth/cancelled-popup-request', 'auth/account-exists-with-different-credential'];
+    // On the class, not on the page's auth object: FirebaseUI signs in through a copy of the
+    // app of its own. The original is kept on the class; the wrapper only watches.
+    var AuthClass = window.firebase && firebase.auth && firebase.auth.Auth;
+    if (AuthClass && AuthClass.prototype.signInWithPopup && !AuthClass.prototype.__plainSignInWithPopup) {
+      AuthClass.prototype.__plainSignInWithPopup = AuthClass.prototype.signInWithPopup;
+      AuthClass.prototype.signInWithPopup = function () {
+        var result = this.__plainSignInWithPopup.apply(this, arguments);
+        result.then(function (cred) {
+          var user = cred && cred.user;
+          note('The provider\'s window finished' + (user ? ' (email ' + (user.emailVerified ? '' : 'not ') + 'verified)' : ''));
+          // FirebaseUI hands the account over next; if it never does, do not wait for ever
+          setTimeout(function () { if (waitingForProvider()) { setState('ready'); checkBlank(); } }, 8000);
+        }, function (err) {
+          var code = (err && err.code) || String(err);
+          note('The provider\'s window ended: ' + code);
+          if (BENIGN_ENDINGS.indexOf(code) < 0) {
+            authProblems.push('The sign-in window ended with ' + code + '.');
+            showDetail(authProblems.slice(-2));
+          }
+          // closed by the visitor: FirebaseUI leaves the method list as it was
+          if (code === 'auth/popup-closed-by-user' && waitingForProvider()) setState('ready');
+          // anything else: FirebaseUI shows a page next, which the observer lets through;
+          // if it shows nothing, do not leave the visitor waiting
+          else if (code !== 'auth/cancelled-popup-request') {
+            setTimeout(function () { if (waitingForProvider()) setState('ready'); checkBlank(); }, 4000);
+          }
+        });
+        return result;
+      };
+    }
+
+    // Can the browser reach what the provider's window needs? An extension that blocks
+    // Google's script, or a network that blocks Firebase, leaves that window blank.
+    function reachable(url) {
+      return new Promise(function (resolve) {
+        var done = false, ctl = window.AbortController ? new AbortController() : null;
+        var t = setTimeout(function () { if (!done) { done = true; if (ctl) ctl.abort(); resolve(false); } }, 8000);
+        fetch(url, { mode: 'no-cors', cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+          .then(function () { if (!done) { done = true; clearTimeout(t); resolve(true); } },
+                function () { if (!done) { done = true; clearTimeout(t); resolve(false); } });
+      });
+    }
+    function probeSignIn() {
+      var domain = (typeof firebaseconfig !== 'undefined' && firebaseconfig.authDomain) || '';
+      var checks = [['Google\'s sign-in script (apis.google.com)', 'https://apis.google.com/js/api.js']];
+      if (domain) checks.push(['Firebase sign-in pages (' + domain + ')', 'https://' + domain + '/__/auth/iframe']);
+      Promise.all(checks.map(function (c) { return reachable(c[1]); })).then(function (ok) {
+        var blocked = checks.filter(function (c, i) { return !ok[i]; }).map(function (c) { return c[0] + ' cannot be reached from this browser.'; });
+        var hints = blocked.length ? ['An extension or the network is blocking it. Try a private window with extensions off.']
+          : ['If its window stays blank, the browser may block third-party storage or cookies for ' + (domain || 'Firebase') + '. Try a private window with extensions off, or another browser.'];
+        showDetail(authProblems.slice(-2).concat(blocked), hints);
+      });
+    }
+
+    // The visitor chose Google or GitHub: FirebaseUI opens the provider's window and has
+    // nothing to show meanwhile, so say what is going on, and what to do when it stalls.
+    function waitForProvider(name) {
+      var text = 'Signing in with ' + name + '. Finish in the window that opened.';
+      authProblems = [];
+      showDetail([]);
+      setState('loading', text, 'provider');
+      waitTimer = setTimeout(function () {
+        if (loadingText) loadingText.textContent = 'Still waiting for ' + name + '. If its window is blank or closed, cancel and try again.';
+        probeSignIn();
+      }, 30000);
     }
     function setMode(next) {
       mode = MODES[next] ? next : 'signin';
@@ -153,13 +314,14 @@ $(function() {
 
     // Once signed in with Firebase, the site makes its own session from the result.
     function completeLogin(authResult) {
-      setState('loading', 'Signing you in…');
+      setState('loading', 'Signing you in…', true);
       var xhr = new XMLHttpRequest();
       var url = window.location.protocol + "//" + window.location.host + "/login";
       xhr.open("POST", url, true);
       xhr.setRequestHeader("Content-Type", "application/json");
       xhr.onreadystatechange = function () {
           if (xhr.readyState === 4) {
+              note('The site answered the sign-in with ' + xhr.status);
               if (xhr.status === 200) {
                   console.log("login success");
               } else {
@@ -283,7 +445,8 @@ $(function() {
       callbacks: {
         signInSuccessWithAuthResult: function(authResult, redirectUrl) {
           // User successfully signed in; the return value keeps FirebaseUI from redirecting.
-          console.log("authResult: ",JSON.stringify(authResult), JSON.stringify(redirectUrl));
+          setPending(false);
+          note('FirebaseUI handed over the account (email ' + (authResult.user && authResult.user.emailVerified ? '' : 'not ') + 'verified)');
           if (authResult.user && authResult.user.emailVerified) {
             completeLogin(authResult);
           } else {
@@ -320,11 +483,34 @@ $(function() {
     // FirebaseUI replaces what is in the container at every step. The method
     // list and the email steps need different surroundings (the email steps
     // have a title of their own), so watch which one is on show.
+    if (container) {
+      // in the capture phase: FirebaseUI's own handler may stop the event, and the
+      // page can be gone as soon as it has run
+      container.addEventListener('click', function (e) {
+        var b = e.target.closest && e.target.closest('.firebaseui-idp-button');
+        if (b && !b.classList.contains('firebaseui-idp-password')) {
+          trail = [];
+          setPending(true);
+          waitForProvider(b.classList.contains('firebaseui-idp-github') ? 'GitHub' : b.classList.contains('firebaseui-idp-google') ? 'Google' : 'your provider');
+        }
+      }, true);
+    }
     if (container && window.MutationObserver) {
       new MutationObserver(function () {
         if (dialog.getAttribute('data-step') === 'verify') return;
-        if (!container.querySelector('.firebaseui-container')) return;
-        setAttr('step', container.querySelector('.firebaseui-idp-list') ? 'pick' : 'flow');
+        var box = container.querySelector('.firebaseui-container');
+        if (!box) {
+          if (!container.firstElementChild) setTimeout(checkBlank, 1500);
+          return;
+        }
+        var page = (box.className.match(/firebaseui-id-page-([a-z-]+)/) || [])[1] || '';
+        if (trail.length) note('FirebaseUI showed: ' + page);
+        var onList = !!container.querySelector('.firebaseui-idp-list');
+        setAttr('step', onList ? 'pick' : 'flow');
+        // FirebaseUI is done with the provider's window when it shows the list again
+        // (closed or refused) or a page for the visitor (link the accounts, an error);
+        // its own spinner pages are still part of the wait
+        if (waitingForProvider() && !/^(callback|spinner|blank)$/.test(page)) setState('ready');
       }).observe(container, { childList: true, subtree: true });
     }
 
@@ -333,8 +519,21 @@ $(function() {
       try { if (ui) ui.reset(); } catch (e) { console.log("firebaseui reset: ", e); }
     }
 
-    function startUI() {
+    // FirebaseUI drew nothing after a provider (the visitor sees only the logo): say how
+    // far the sign-in got, and show the methods again.
+    function checkBlank() {
+      if (!dialog.open || container.firstElementChild) return;
+      if (dialog.getAttribute('data-step') === 'verify' || dialog.getAttribute('data-state') !== 'ready') return;
+      showDetail(trail.slice(-6), ['That did not finish. Choose a method to try again.']);
+      startUI(true);
+    }
+
+    function startUI(keepDetail) {
       setAttr('step', 'pick');
+      if (keepDetail !== true) {
+        authProblems = [];
+        showDetail([]);
+      }
       setState('loading');
       ensureAuthUI().then(function (authUI) {
         resetUI();
@@ -348,6 +547,7 @@ $(function() {
     // Everything the dialog holds is dropped when it closes, so the next time
     // it opens it starts from the method list.
     function closeSignIn() {
+      setPending(false);
       if (dialog.open) dialog.close();
       clearTimeout(loadTimer);
       clearInterval(verifyTimer);
@@ -377,6 +577,7 @@ $(function() {
       document.getElementById('signin-close').addEventListener('click', closeSignIn);
       document.getElementById('signin-guest').addEventListener('click', closeSignIn);
       document.getElementById('signin-retry').addEventListener('click', startUI);
+      if (waitCancel) waitCancel.addEventListener('click', function () { setPending(false); startUI(); });
       document.getElementById('signin-to-signup').addEventListener('click', function () { setMode('signup'); });
       document.getElementById('signin-to-signin').addEventListener('click', function () { setMode('signin'); });
     }
@@ -431,7 +632,9 @@ $(function() {
             }
 
           } else {
-            openFromUrl();
+            var resumed = takePending();
+            if (resumed) openSignIn(resumed); // back from a provider's page; FirebaseUI finishes the sign-in
+            else openFromUrl();
           }
         }
         catch(e) {
