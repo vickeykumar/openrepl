@@ -295,6 +295,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 
 	var siteMux = http.NewServeMux()
 	siteMux.HandleFunc(pathPrefix, server.handleIndex)
+	siteMux.HandleFunc(pathPrefix+"healthz", handleHealthz)
 	siteMux.HandleFunc(pathPrefix+"practice/dsa-questions", handlePracticeQuestions)
 	siteMux.HandleFunc(pathPrefix+"practice/progress", handlePracticeProgress)
 	siteMux.HandleFunc(pathPrefix+"practice", server.handleIndex)
