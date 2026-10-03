@@ -128,13 +128,30 @@ signature: ret_type filename(args)</Result>
                         <Command>Note:</Command>
                         <Description>runtime extraction of value is not supported in c-mode.</Description>
                 </Usage>
-		<Content>/* Welcome to OpenREPL! */
-
+		<Content>/* Welcome to OpenREPL!
+ * Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+ * or try one line at a time in the REPL on the right.
+ */
 #include &lt;stdio.h&gt;
 
-int main()
+/* Returns the n-th Fibonacci number. */
+long fib(int n)
+{
+    long a = 0, b = 1;
+    for (int i = 0; i &lt; n; i++) {
+        long next = a + b;
+        a = b;
+        b = next;
+    }
+    return a;
+}
+
+int main(void)
 {
     printf("Hello, World!\n");
+    for (int i = 0; i &lt;= 10; i++) {
+        printf("fib(%d) = %ld\n", i, fib(i));
+    }
     return 0;
 }
 		</Content>
@@ -256,14 +273,30 @@ Hi: 9
 			<Command>:help</Command>
 			<Description>please refer docs for more info.</Description>
 		</Usage>
-		<Content>/* Welcome to OpenREPL! */
-
+		<Content>// Welcome to OpenREPL!
+// Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+// or try one line at a time in the REPL on the right.
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+// wordCount returns how many times each word appears in text.
+func wordCount(text string) map[string]int {
+	counts := map[string]int{}
+	for _, w := range strings.Fields(strings.ToLower(text)) {
+		counts[w]++
+	}
+	return counts
+}
 
 func main() {
-    fmt.Println("Hello, World!")
+	fmt.Println("Hello, World!")
+	counts := wordCount("The quick brown fox jumps over the lazy dog. The end")
+	fmt.Println("\"the\" appears", counts["the"], "times")
+	fmt.Println("distinct words:", len(counts))
 }
 		</Content>
 		<Compiler>
@@ -379,14 +412,30 @@ Hi: 9</Result>
 			<Command>:q</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
-		<Content>/* Welcome to OpenREPL! */
-
+		<Content>// Welcome to OpenREPL!
+// Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+// or try one line at a time in the REPL on the right.
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+// wordCount returns how many times each word appears in text.
+func wordCount(text string) map[string]int {
+	counts := map[string]int{}
+	for _, w := range strings.Fields(strings.ToLower(text)) {
+		counts[w]++
+	}
+	return counts
+}
 
 func main() {
-    fmt.Println("Hello, World!")
+	fmt.Println("Hello, World!")
+	counts := wordCount("The quick brown fox jumps over the lazy dog. The end")
+	fmt.Println("\"the\" appears", counts["the"], "times")
+	fmt.Println("distinct words:", len(counts))
 }
 		</Content>
 		<Compiler>
@@ -809,8 +858,22 @@ Hi: 9</Result>
 			<Description>Exits the REPL.</Description>
 		</Usage>
 		<Content># Welcome to OpenREPL!
+# Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+# or try one line at a time in the REPL on the right.
+
+def fib(n):
+    """Return the first n Fibonacci numbers."""
+    a, b = 0, 1
+    out = []
+    for _ in range(n):
+        out.append(a)
+        a, b = b, a + b
+    return out
 
 print("Hello, World!")
+print("First 10 Fibonacci numbers: {}".format(fib(10)))
+words = "the quick brown fox jumps over the lazy dog".split()
+print("Longest word: {}".format(max(words, key=len)))
 		</Content>
 		<Compiler>
 COMPILER=python
@@ -895,8 +958,22 @@ Hi: 9</Result>
 			<Description>Exits the REPL.</Description>
 		</Usage>
 		<Content># Welcome to OpenREPL!
+# Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+# or try one line at a time in the REPL on the right.
+
+def fib(n):
+    """Return the first n Fibonacci numbers."""
+    a, b = 0, 1
+    out = []
+    for _ in range(n):
+        out.append(a)
+        a, b = b, a + b
+    return out
 
 print("Hello, World!")
+print("First 10 Fibonacci numbers: {}".format(fib(10)))
+words = "the quick brown fox jumps over the lazy dog".split()
+print("Longest word: {}".format(max(words, key=len)))
 		</Content>
 		<Compiler>
 COMPILER=python2.7
@@ -981,8 +1058,22 @@ Hi: 9</Result>
 			<Description>Exits the REPL.</Description>
 		</Usage>
 		<Content># Welcome to OpenREPL!
+# Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+# or try one line at a time in the REPL on the right.
+
+def fib(n):
+    """Return the first n Fibonacci numbers."""
+    a, b = 0, 1
+    out = []
+    for _ in range(n):
+        out.append(a)
+        a, b = b, a + b
+    return out
 
 print("Hello, World!")
+print("First 10 Fibonacci numbers: {}".format(fib(10)))
+words = "the quick brown fox jumps over the lazy dog".split()
+print("Longest word: {}".format(max(words, key=len)))
 		</Content>
 		<Compiler>
 COMPILER=python
@@ -1067,8 +1158,22 @@ Hi: 9</Result>
 			<Description>Exits the REPL.</Description>
 		</Usage>
 		<Content># Welcome to OpenREPL!
+# Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+# or try one line at a time in the REPL on the right.
+
+def fib(n):
+    """Return the first n Fibonacci numbers."""
+    a, b = 0, 1
+    out = []
+    for _ in range(n):
+        out.append(a)
+        a, b = b, a + b
+    return out
 
 print("Hello, World!")
+print("First 10 Fibonacci numbers: {}".format(fib(10)))
+words = "the quick brown fox jumps over the lazy dog".split()
+print("Longest word: {}".format(max(words, key=len)))
 		</Content>
 		<Compiler>
 COMPILER=python3
@@ -1157,12 +1262,28 @@ sleep 0.05
 			<Command>/exit</Command>
 			<Description>quit the REPL.</Description>
 		</Usage>
-		<Content>/* Welcome to OpenREPL! */
+		<Content>/* Welcome to OpenREPL!
+ * Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+ * or try one line at a time in JShell on the right.
+ */
 import java.util.*;
 
 public class HelloWorld {
+    static long factorial(int n) {
+        long result = 1;
+        for (int i = 2; i &lt;= n; i++) {
+            result *= i;
+        }
+        return result;
+    }
+
     public static void main(String[] args) {
         System.out.println("Hello, World!");
+        List&lt;String&gt; languages = Arrays.asList("Go", "Java", "Python", "Rust", "Kotlin");
+        for (String lang : languages) {
+            System.out.println(lang + " has " + lang.length() + " letters");
+        }
+        System.out.println("10! = " + factorial(10));
     }
 }
 		</Content>
@@ -1248,8 +1369,18 @@ Welcome 5</Result>
 		</Usage>
 		<Content>#!/bin/bash
 # Welcome to OpenREPL!
+# Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+# or try one command at a time in the shell on the right.
 
-echo "Hello, World!"
+greet() {
+    echo "Hello, $1!"
+}
+
+greet "World"
+for lang in Go Python Rust Ruby; do
+    echo "$lang has ${#lang} letters"
+done
+echo "Today is $(date +%A)."
 		</Content>
 		<Compiler>
 COMPILER=bash
@@ -1338,8 +1469,22 @@ hello 5!
 			<Description>quit the REPL.</Description>
 		</Usage>
 		<Content># Welcome to OpenREPL!
+# Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+# or try one line at a time in irb on the right.
+
+def fib(n)
+  a, b = 0, 1
+  n.times.map do
+    current = a
+    a, b = b, a + b
+    current
+  end
+end
 
 puts "Hello, World!"
+puts "First 10 Fibonacci numbers: #{fib(10).join(', ')}"
+words = %w[the quick brown fox jumps over the lazy dog]
+puts "Longest word: #{words.max_by(&amp;:length)}"
 		</Content>
 		<Compiler>
 COMPILER=ruby
@@ -1499,7 +1644,23 @@ Loaded https://cdnjs.cloudflare.com/ajax/libs/mathjs/6.1.0/math.min.js</Result>
 			<Command>shift+enter</Command>
 			<Description>multiline inputs for block, loops and functions.</Description>
 		</Usage>
-		<Content>/* Welcome to OpenREPL! */</Content>
+		<Content>/* Welcome to OpenREPL!
+ * This is JavaScript in your browser. Type or paste lines into the console
+ * on the right, for example:
+ */
+function fib(n) {
+  const out = [];
+  let [a, b] = [0, 1];
+  for (let i = 0; i &lt; n; i++) {
+    out.push(a);
+    [a, b] = [b, a + b];
+  }
+  return out;
+}
+
+console.log("Hello, World!");
+console.log("First 10 Fibonacci numbers:", fib(10).join(", "));
+		</Content>
 	</Demo>
 
 	<Demo>
@@ -1629,9 +1790,25 @@ assert       async_hooks</Result>
 			<Command>`Tab`</Command>
 			<Description>Syntax Completion</Description>
 		</Usage>
-		<Content>/* Welcome to OpenREPL! */
+		<Content>/* Welcome to OpenREPL!
+ * Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+ * or try one line at a time in the Node REPL on the right.
+ */
+const os = require("os");
+
+function fib(n) {
+  const out = [];
+  let [a, b] = [0, 1];
+  for (let i = 0; i &lt; n; i++) {
+    out.push(a);
+    [a, b] = [b, a + b];
+  }
+  return out;
+}
 
 console.log("Hello, World!");
+console.log("First 10 Fibonacci numbers:", fib(10).join(", "));
+console.log(`Running Node ${process.version} on ${os.platform()}`);
 		</Content>
 		<Compiler>
 COMPILER=node
@@ -1807,8 +1984,24 @@ getgrgid          gethostbyname     getnetbyaddr      getpeername       getprior
 		</Usage>
 		<Content>#!/usr/bin/perl
 # Welcome to OpenREPL!
+# Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+# or try one line at a time in the REPL on the right.
+use strict;
+use warnings;
+
+sub fib {
+    my ($n) = @_;
+    my ($x, $y) = (0, 1);
+    my @out;
+    for (1 .. $n) {
+        push @out, $x;
+        ($x, $y) = ($y, $x + $y);
+    }
+    return @out;
+}
 
 print "Hello, World!\n";
+print "First 10 Fibonacci numbers: ", join(", ", fib(10)), "\n";
 		</Content>
 		<Compiler>
 COMPILER=perl
@@ -1888,8 +2081,24 @@ loop: 9</Result>
 		</Usage>
 		<Content>#!/usr/bin/tclsh
 # Welcome to OpenREPL!
+# Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+# or try one line at a time in tclsh on the right.
+
+proc fib {n} {
+    set a 0
+    set b 1
+    set out {}
+    for {set i 0} {$i &lt; $n} {incr i} {
+        lappend out $a
+        set next [expr {$a + $b}]
+        set a $b
+        set b $next
+    }
+    return $out
+}
 
 puts "Hello, World!"
+puts "First 10 Fibonacci numbers: [join [fib 10] {, }]"
 		</Content>
 		<Compiler>
 COMPILER=tclsh
@@ -1985,20 +2194,28 @@ loop: 9</Result>
 			<Command>:quit</Command>
 			<Description>Quit evaluation and exit</Description>
 		</Usage>
-		<Content>/* Welcome to OpenREPL! */
-fn main() {
-    println!("Hello, World!");
-
-    let a = 5;
-    let b = 10;
-
-    let result = sum(a, b);
-
-    println!("The sum of {} and {} is {}", a, b, result);
+		<Content>/* Welcome to OpenREPL!
+ * Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+ * or try one line at a time in the evcxr REPL on the right.
+ */
+fn fib(n: usize) -&gt; Vec&lt;u64&gt; {
+    let (mut a, mut b) = (0u64, 1u64);
+    let mut out = Vec::with_capacity(n);
+    for _ in 0..n {
+        out.push(a);
+        let next = a + b;
+        a = b;
+        b = next;
+    }
+    out
 }
 
-fn sum(x: i32, y: i32) -> i32 {
-    x + y
+fn main() {
+    println!("Hello, World!");
+    println!("First 10 Fibonacci numbers: {:?}", fib(10));
+    let words = ["the", "quick", "brown", "fox", "jumped"];
+    let longest = words.iter().max_by_key(|w| w.len()).unwrap();
+    println!("Longest word: {}", longest);
 }
 		</Content>
 		<Compiler>
@@ -2227,14 +2444,28 @@ sleep 0.05
             <Command>.quit</Command>
             <Description>Quit evaluation and exit</Description>
         </Usage>
-        <Content>/* Welcome to OpenREPL! */
-
-function greet() {
-    console.log("Hello, World!");
+        <Content>/* Welcome to OpenREPL!
+ * Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
+ * or try one line at a time in the ts-node REPL on the right.
+ */
+interface Language {
+  name: string;
+  year: number;
 }
 
-greet();
-</Content>
+const languages: Language[] = [
+  { name: "C", year: 1972 },
+  { name: "Python", year: 1991 },
+  { name: "Go", year: 2009 },
+];
+
+function describe(lang: Language): string {
+  return `${lang.name} is ${new Date().getFullYear() - lang.year} years old`;
+}
+
+console.log("Hello, World!");
+languages.forEach((lang) =&gt; console.log(describe(lang)));
+		</Content>
         <Compiler>
 COMPILER=ts-node
 FILE=test.ts

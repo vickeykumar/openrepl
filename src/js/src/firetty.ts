@@ -1,5 +1,6 @@
-import * as firebase from 'firebase/app';
-import 'firebase/database';
+// Uses the Firebase compat SDK the page already loads (firebase-app/auth/database-compat 9.x)
+// instead of bundling a second copy (Firebase 3.9) into gotty-bundle.js (T16).
+declare var firebase: any;
 import { Terminal, eventHandler, eventhandlertype, CloserArgs} from "./webtty";
 
 

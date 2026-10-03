@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
 
+	"gateway"
 	"webtty"
 	"filebrowser"
 	"utils"
@@ -38,10 +39,17 @@ func updateparams(params *url.Values, payload map[string]string) {
 	}
 }
 
-func fetchRequestedPayload(w http.ResponseWriter, r *http.Request) (req_payload map[string]string) {
+func (server *Server) fetchRequestedPayload(w http.ResponseWriter, r *http.Request) (req_payload map[string]string) {
 	req_payload = make(map[string]string)
-	uid := cookie.Get_Uid(r)
-	homedir := cookie.GetOrUpdateHomeDir(w, r, uid)
+	if isTrusted(r) {
+		// On a worker the gateway has already decided who the user is.
+		uid, homedir, privilege := server.trustedIdentity(r)
+		req_payload[utils.UidKey] = uid
+		req_payload[utils.HOME_DIR_KEY] = homedir
+		req_payload[utils.USER_PRIVILEGE_KEY] = privilege
+		return
+	}
+	uid, homedir := server.requestIdentity(w, r)
 	req_payload[utils.UidKey] = uid
 	req_payload[utils.HOME_DIR_KEY] = homedir
 	if IsUserAdmin(w, r) {
@@ -67,7 +75,6 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		var command string
 		if len(commands) > 0 {
 			command = commands[0]
-			server.SetNewCommand(command)
 		}
 		if server.options.Once {
 			success := atomic.CompareAndSwapInt64(once, 0, 1)
@@ -101,7 +108,11 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			return
 		}
 
-		req_payload := fetchRequestedPayload(w, r)
+		req_payload := server.fetchRequestedPayload(w, r)
+		if err := server.waitWorkspace(r, req_payload[utils.HOME_DIR_KEY]); err != nil {
+			http.Error(w, "workspace is synchronizing, please try again", http.StatusServiceUnavailable)
+			return
+		}
 		// any cookie needs to be saved before upgrading to websocket
 		conn, err := server.upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -132,13 +143,17 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		)
 
 		log.Println("Connection upgraded successfully: ")
-		err = server.processWSConn(ctx, conn, req_payload)
+		err = server.processWSConn(ctx, conn, r, command, req_payload)
 
 		switch err {
 		case ctx.Err():
 			closeReason = "cancelation"
 		case webtty.ErrSlaveClosed:
 			closeReason = server.factory.Name()
+		case errSlaveKilled:
+			closeReason = server.factory.Name() + ": killed"
+		case errSessionEnded:
+			closeReason = gateway.EndedReason
 		case webtty.ErrMasterClosed:
 			closeReason = "client"
 		default:
@@ -152,8 +167,20 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 // process websocket connection for uid (user)
 // req_payload is initial payload carried by request
 // Note: Any time consuming API in this same routing will lead to performance issue with websocket
-func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, req_payload map[string]string) error {
+func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r *http.Request, command string, req_payload map[string]string) error {
 	conn.SetWriteDeadline(time.Now().Add(utils.DEADLINE_MINUTES * time.Minute)) // only 15 min sessions for services are allowed
+
+	// An admin who ends the session cancels the request (gateway/terminals.go).
+	ctx, endTerminal := context.WithCancel(ctx)
+	defer endTerminal()
+	go func() {
+		select {
+		case <-r.Context().Done():
+			endTerminal()
+		case <-ctx.Done():
+		}
+	}()
+
 	typ, initLine, err := conn.ReadMessage()
 	if err != nil {
 		return errors.Wrapf(err, "failed to authenticate websocket connection")
@@ -167,7 +194,7 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 	if err != nil {
 		return errors.Wrapf(err, "failed to authenticate websocket connection")
 	}
-	if init.AuthToken != server.options.Credential {
+	if init.AuthToken != server.credentialFor(r) {
 		return errors.New("failed to authenticate websocket connection")
 	}
 
@@ -186,16 +213,19 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 	//log.Println("updated params: ", params)
 
 	var slave Slave
-	slave, err = server.factory.New(params)
+	slave, err = server.factory.NewWithCommand(command, params)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create backend")
 	}
 	defer slave.Close()
 
+	// Let a fork link opened from another session find this process.
+	defer server.announce(r).jidOpen(slave.WindowTitleVariables()["pid"])()
+
 	titleVars := server.titleVariables(
 		[]string{"server", "master", "slave"},
 		map[string]map[string]interface{}{
-			"server": server.options.TitleVariables,
+			"server": server.serverTitleVariables(command),
 			"master": map[string]interface{}{
 				"remote_addr": conn.RemoteAddr(),
 			},
@@ -258,9 +288,25 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 
 	log.Println("running webtty: ")
 	err = tty.Run(ctx)
+	if err == context.Canceled && r.Context().Err() != nil {
+		return errSessionEnded
+	}
+	if err == webtty.ErrSlaveClosed {
+		// tell the browser when the program was killed (usually the memory limit)
+		if er, ok := slave.(interface{ ExitReason() string }); ok && er.ExitReason() == "killed" {
+			return errSlaveKilled
+		}
+	}
 
 	return err
 }
+
+// errSlaveKilled means the command ended because it was killed, which is how
+// the container's memory limit stops a program.
+var errSlaveKilled = errors.New("slave killed")
+
+// errSessionEnded means an admin ended the session while this terminal ran.
+var errSessionEnded = errors.New("session ended")
 
 func (server *Server) errorHandler(w http.ResponseWriter, r *http.Request, status int) {
 	w.WriteHeader(status)
@@ -287,15 +333,22 @@ func (server *Server) errorHandler(w http.ResponseWriter, r *http.Request, statu
 }
 
 func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" && r.URL.Path != "/practice"{
+	if _, isLangPage := langPageFor(r.URL.Path); r.URL.Path != "/" && r.URL.Path != "/practice" && !isLangPage {
 		server.errorHandler(w, r, http.StatusNotFound)
 		return
 	}
 	uid := cookie.Get_Uid(r)
-	// we need this here as first API to be hit to generate homedir and save it to cookie
-	homedir := cookie.GetOrUpdateHomeDir(w, r, uid)
+	var homedir string
+	if ownsWorkspace(r) {
+		// we need this here as first API to be hit to generate homedir and save it to cookie
+		_, homedir = server.requestIdentity(w, r)
+	} else {
+		// The session runs on a worker, which creates the workspace itself.
+		// Still refresh the guest session cookie as the call above would.
+		cookie.UpdateGuestSessionCookieAge(w, r, utils.DEADLINE_MINUTES*60)
+	}
 	defer func () {
-                if uid == "" {
+                if uid == "" && homedir != "" {
                                 // reset the job to delete the guests working dir after a certain deadline 
                                 jobname := utils.REMOVE_JOB_KEY+homedir
                                 utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
@@ -324,6 +377,7 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	indexVars := map[string]interface{}{
 		"title": titleBuf.String(),
+		"Page":  indexPageFor(r), // title, meta tags and hero for "/" or a language page (T12)
 	}
 
 	indexBuf := new(bytes.Buffer)
@@ -347,24 +401,14 @@ func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript")
 	w.Write([]byte("var gotty_term = '" + server.options.Term + "';"))
 	
-	fbconfig := "CmNvbnN0IGZpcmViYXNlY29uZmlnID0gewogIGFwaUtleTogIkFJemFTeUFTZ0Fh" +
-	"UnY2eVhVSlFWY0hhQV9sUkZWTXk5QVlaZVJscyIsCiAgYXV0aERvbWFpbjogIm9wZW5yZXBsLWFwc" +
-	"C5maXJlYmFzZWFwcC5jb20iLAogIHByb2plY3RJZDogIm9wZW5yZXBsLWFwcCIsCiAgZGF0YWJhc2" +
-	"VVUkw6ICJodHRwczovL29wZW5yZXBsLWFwcC1kZWZhdWx0LXJ0ZGIuZmlyZWJhc2Vpby5jb20iCn07Cgo="
-
-    decoded, err := base64.StdEncoding.DecodeString(fbconfig)
-    if err==nil {
-    	w.Write(decoded)
-    } else {
-    	log.Println("Error: decoding fbconfig: ", err)
-    }
+	w.Write(firebaseConfigJS())
 
     _, secret := cookie.GetOpenApiAccessToken(r) 
 	// check if already a secret present from prev active session.
 	if string(secret)=="" {
 		secret = encoder.GenerateLargePrime().Bytes()
 	}
-    access_token, err := encoder.Encrypt([]byte(defaultToken), secret)
+    access_token, err := encoder.Encrypt([]byte(openAIToken()), secret)
     if err == nil {
     	err = cookie.SetOpenApiAccessToken(w, r, access_token, secret)
     	if err != nil {
@@ -374,6 +418,41 @@ func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
     } else {
     	log.Println("Error: encrypting access_token: ", err)
     }
+}
+
+// builtinFirebaseConfig is the production Firebase project's web config, used
+// unless OPENREPL_FIREBASE_CONFIG names another one.
+const builtinFirebaseConfig = "CmNvbnN0IGZpcmViYXNlY29uZmlnID0gewogIGFwaUtleTogIkFJemFTeUFTZ0FhUnY2eVhV" +
+	"SlFWY0hhQV9sUkZWTXk5QVlaZVJscyIsCiAgYXV0aERvbWFpbjogIm9wZW5yZXBsLWFwcC5m" +
+	"aXJlYmFzZWFwcC5jb20iLAogIHByb2plY3RJZDogIm9wZW5yZXBsLWFwcCIsCiAgZGF0YWJh" +
+	"c2VVUkw6ICJodHRwczovL29wZW5yZXBsLWFwcC1kZWZhdWx0LXJ0ZGIuZmlyZWJhc2Vpby5j" +
+	"b20iCn07Cgo="
+
+// firebaseConfigJS is the part of config.js that defines `firebaseconfig`.
+func firebaseConfigJS() []byte {
+	if js, ok := utils.FirebaseConfigJS(); ok {
+		return js
+	}
+	decoded, err := base64.StdEncoding.DecodeString(builtinFirebaseConfig)
+	if err != nil {
+		log.Println("Error: decoding the built-in firebase config: ", err)
+		return nil
+	}
+	return decoded
+}
+
+// serverTitleVariables returns the title variables for one connection. The
+// command is per connection, so it is set on a copy rather than on the shared
+// options map.
+func (server *Server) serverTitleVariables(command string) map[string]interface{} {
+	vars := make(map[string]interface{}, len(server.options.TitleVariables)+1)
+	for k, v := range server.options.TitleVariables {
+		vars[k] = v
+	}
+	if command != "" {
+		vars["command"] = command
+	}
+	return vars
 }
 
 // titleVariables merges maps in a specified order.
@@ -408,8 +487,11 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
    	log.Println("body: ", string(bodybuf))
 	req.ParseForm()
 	log.Println("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
-	uid := cookie.Get_Uid(req)
-	homedir := cookie.GetOrUpdateHomeDir(rw, req, uid)
+	uid, homedir := server.requestIdentity(rw, req)
+	if err := server.waitWorkspace(req, homedir); err != nil {
+		http.Error(rw, "workspace is synchronizing, please try again", http.StatusServiceUnavailable)
+		return
+	}
 	//command := req.Form.Get("command")
 	defer func () {
 		if uid == "" {
@@ -466,6 +548,20 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 			zipWriter := zip.NewWriter(rw)
 			defer zipWriter.Close()
 			fb.Writezip(zipWriter)
+		} else if query == "usage" {
+			// workspace size for the Files panel (T7)
+			used := 0.0
+			if fb != nil {
+				used = fb.GetSize()
+			}
+			rw.Header().Set("Content-Type", "application/json")
+			rw.Header().Set("Cache-Control", "no-store")
+			rw.Write(utils.JsonMarshal(map[string]interface{}{
+				"usedMB":             used,
+				"limitMB":            filebrowser.MAXDISKUSAGE_MB,
+				"guest":              uid == "",
+				"deleteAfterMinutes": utils.DEADLINE_MINUTES,
+			}))
 		} else {
 			tree, err := fb.GetJsonTree()
 		    if err != nil {
@@ -511,8 +607,11 @@ func (server *Server) handleFileUpload(w http.ResponseWriter, req *http.Request)
 	// Parse the form data and get the file and its properties
 	req.ParseMultipartForm(5 << 20) // Limit the amount of memory used to parse the form data
 	log.Println("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
-	uid := cookie.Get_Uid(req)
-	homedir := cookie.GetOrUpdateHomeDir(w, req, uid)
+	_, homedir := server.requestIdentity(w, req)
+	if err := server.waitWorkspace(req, homedir); err != nil {
+		http.Error(w, "workspace is synchronizing, please try again", http.StatusServiceUnavailable)
+		return
+	}
 
 	fb, err := filebrowser.New(homedir, nil, false, true)	// without watcher on path directories, deferwatch=true
 	if err != nil {

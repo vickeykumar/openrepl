@@ -1,4 +1,3 @@
-import { Hterm } from "./hterm";
 import { Xterm } from "./xterm";
 import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, IdeFileNameKey, CompilerOptionKey, CompilerFlagsKey, EnvFlagsKey, CloserArgs} from "./webtty";
 import { ConnectionFactory } from "./websocket";
@@ -184,15 +183,27 @@ export class GottyTerminal {
                 return;
         }
         if (this.gotty_term == "hterm") {
-            this.term = new Hterm(this.elem);
+            // hterm (--term hterm) is a separate file, loaded only when used (T19)
+            import(/* webpackChunkName: "hterm" */ "./hterm").then((m) => {
+                this.term = new m.Hterm(this.elem);
+                this.connect(option, eventname);
+            });
         } else {
             this.term = new Xterm(this.elem);
+            this.connect(option, eventname);
         }
-            
+    }
+
+    connect(option: string|null, eventname: string) {
         if (option !== null) {
             if (this.ismaster) {
                 const httpsEnabled = window.location.protocol == "https:";
-                const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + '/ws' + '_' + option;
+                // A fork link (?jid=) names a process on one execution node. The jid
+                // also travels in the init message, but a gateway has to pick the
+                // node before that arrives, so it is put on the URL as well.
+                const forkjid = new URL(window.location.href).searchParams.get('jid');
+                const url = (httpsEnabled ? 'wss://' : 'ws://') + window.location.host + '/ws' + '_' + option
+                    + (forkjid ? '?jid=' + encodeURIComponent(forkjid) : '');
                 let args = window.location.search;
                 let args2 = '';
                 if ( eventname=="optionchange" && option && option2args[option] && option2args[option] !== undefined ) {

@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /feedback
 
-
+Sitemap: https://openrepl.com/sitemap.xml

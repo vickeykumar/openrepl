@@ -1,549 +1,309 @@
+/*
+ * Practice list page, /practice/dsa-questions (T17).
+ * Search, filters, sorting and progress for the questions in PracticeStore
+ * (js/practice-store.js). Plain JavaScript; DataTables and select2 are gone.
+ * A question opens in the editor at /practice?name=<nameHyphenated>.
+ */
+(function () {
+  "use strict";
 
-// other App
-(function otherApp() {
-    $(document).ready(function() {
-      // update the modal topics
-      const $topicSelect = $("#topic");
-      topics.forEach(topic => {
-          $topicSelect.append(`<option value="${topic}">${topic}</option>`);
-      });
+  var LEVEL_ORDER = { Easy: 0, Medium: 1, Hard: 2 };
+  var PREFS_KEY = "practiceFilters";
+  var TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3"></path></svg>';
+  var armed = null, armTimer = null;
 
-      async function SyncRemoteQuestions(userId) {
-        if (!userId) return [];
-        // Load from localStorage
-        const localData = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-        let storedQuestions = new Map(localData.map(q => [q.nameHyphenated, q]));
-        let newIncomingQuestions = [];
-        const commondata = [];
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function levelClass(level) { return "level level--" + String(level || "").toLowerCase().replace(/[^a-z]/g, ""); }
+  function questionUrl(q) { return "/practice?name=" + encodeURIComponent(q.nameHyphenated); }
 
-        try {
-          const questionsRef = firestoredb.collection(`users/${userId}/questions`);
-          const querySnapshot = await questionsRef.get();
+  function relativeTime(ms) {
+    var s = (Date.now() - ms) / 1000;
+    if (!isFinite(s)) return "";
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.floor(s / 60) + " min ago";
+    if (s < 86400) { var h = Math.floor(s / 3600); return h + (h === 1 ? " hour ago" : " hours ago"); }
+    if (s < 7 * 86400) { var d = Math.floor(s / 86400); return d === 1 ? "yesterday" : d + " days ago"; }
+    var date = new Date(ms);
+    var opts = { day: "numeric", month: "short" };
+    if (date.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+    return date.toLocaleDateString(undefined, opts);
+  }
 
-          querySnapshot.forEach((doc) => {
-            const remoteQuestion = doc.data();
-            const localQuestion = storedQuestions.get(remoteQuestion.nameHyphenated);
+  // ---- filters ---------------------------------------------------------------
 
-            if (!localQuestion) {
-              // Take the remote question
-              storedQuestions.set(remoteQuestion.nameHyphenated, remoteQuestion);
-              newIncomingQuestions.push(remoteQuestion);
-            } else if (remoteQuestion.updated > localQuestion.updated) {
-              // Take the remote question if it’s newer
-              if (remoteQuestion.id !== localQuestion.id) {
-                // this should not have happened
-                console.error("id mismatch for : ", remoteQuestion.nameHyphenated);
-                remoteQuestion.id = localQuestion.id; // corrected the id
-              }
-              storedQuestions.set(remoteQuestion.nameHyphenated, remoteQuestion);
-              newIncomingQuestions.push(remoteQuestion);
-            } else if (localQuestion.updated > remoteQuestion.updated) {
-                // Local question is newer — update Firestore
-                updatequestiondb(remoteQuestion.nameHyphenated, localQuestion);
-                console.log(`Updated remote question with local data: ${localQuestion.nameHyphenated}`);
-            } else if (localQuestion.updated === remoteQuestion.updated) {
-                commondata.push(localQuestion);
-            }
-          });
+  function prefs() {
+    return { status: $("f-status").value, topic: $("f-topic").value, level: $("f-level").value, sort: $("f-sort").value };
+  }
+  function savePrefs() {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs())); } catch (e) {}
+  }
+  function loadPrefs() {
+    var p = null;
+    try { p = JSON.parse(localStorage.getItem(PREFS_KEY)); } catch (e) {}
+    if (!p) return;
+    if (p.status != null) $("f-status").value = p.status;
+    if (p.level != null) $("f-level").value = p.level;
+    if (p.sort) $("f-sort").value = p.sort;
+    $("f-topic").setAttribute("data-want", p.topic || "");
+  }
 
-          // Save merged result locally
-          const mergedQuestions = Array.from(storedQuestions.values());
-          localStorage.setItem(QUESTIONS_KEY, JSON.stringify(mergedQuestions));
+  function syncTopicOptions(all) {
+    var sel = $("f-topic");
+    var want = sel.getAttribute("data-want");
+    var current = want != null ? want : sel.value;
+    sel.removeAttribute("data-want");
+    var topics = {};
+    all.forEach(function (q) { if (q.topic) topics[q.topic] = true; });
+    var names = Object.keys(topics).sort(function (a, b) { return a.localeCompare(b); });
+    if (current && !topics[current]) names.unshift(current); // keep a chosen topic until it's cleared
+    sel.innerHTML = '<option value="">All topics</option>' + names.map(function (t) {
+      return '<option value="' + esc(t) + '">' + esc(t) + "</option>";
+    }).join("");
+    sel.value = current || "";
+  }
 
-          // Find the difference (questions in storedQuestions but not in newIncomingQuestions or commondata)
-          const differenceList = mergedQuestions.filter(q => 
-              !newIncomingQuestions.some(newQ => newQ.nameHyphenated === q.nameHyphenated) &&
-              !commondata.some(commonQ => commonQ.nameHyphenated === q.nameHyphenated)
-          );
+  function matches(q, f) {
+    var done = PracticeStore.isDone(q.id);
+    if (f.status === "done" && !done) return false;
+    if (f.status === "todo" && done) return false;
+    if (f.topic && q.topic !== f.topic) return false;
+    if (f.level && q.difficulty !== f.level) return false;
+    if (f.term) {
+      var hay = (q.name + " " + q.topic + " " + q.difficulty).toLowerCase();
+      var words = f.term.split(/\s+/);
+      for (var i = 0; i < words.length; i++) if (hay.indexOf(words[i]) < 0) return false;
+    }
+    return true;
+  }
 
-          // Push missing questions back to Firestore
-          differenceList.forEach(q => {
-            updatequestiondb(q.nameHyphenated, q);
-            console.log(`Restored missing question to Firestore: ${q.nameHyphenated}`);
-          });
+  function sorter(kind) {
+    var newest = function (a, b) { return (+b.added || 0) - (+a.added || 0); };
+    switch (kind) {
+      case "new": return newest;
+      case "old": return function (a, b) { return -newest(a, b); };
+      case "name": return function (a, b) { return String(a.name).localeCompare(String(b.name)); };
+      case "level": return function (a, b) {
+        var la = LEVEL_ORDER[a.difficulty], lb = LEVEL_ORDER[b.difficulty];
+        return (la == null ? 9 : la) - (lb == null ? 9 : lb) || newest(a, b);
+      };
+      default: return function (a, b) { // to do first, newest first within each
+        return (PracticeStore.isDone(a.id) ? 1 : 0) - (PracticeStore.isDone(b.id) ? 1 : 0) || newest(a, b);
+      };
+    }
+  }
 
-          commitFirestoreBatch();
-        } catch (error) {
-          console.error('Failed to load questions:', error);
-        }
+  // ---- rendering -------------------------------------------------------------
 
-        return newIncomingQuestions;
-      }
+  function rowHtml(q) {
+    var done = PracticeStore.isDone(q.id);
+    var added = +q.added || 0;
+    var iso = added ? new Date(added).toISOString() : "";
+    return '<tr class="q-row' + (done ? " is-done" : "") + '" data-id="' + esc(q.id) + '">' +
+      '<td class="q-done"><input type="checkbox" class="q-check" id="done-' + esc(q.id) + '"' + (done ? " checked" : "") +
+        ' aria-label="Done: ' + esc(q.name) + '"></td>' +
+      '<td class="q-name"><a class="q-link" href="' + esc(questionUrl(q)) + '" target="_blank" rel="noopener">' + esc(q.name) +
+        '<span class="visually-hidden"> (opens in a new tab)</span></a></td>' +
+      '<td class="q-topic" data-label="Topic">' + esc(q.topic || "") + "</td>" +
+      '<td class="q-level" data-label="Level"><span class="' + levelClass(q.difficulty) + '">' + esc(q.difficulty || "") + "</span></td>" +
+      '<td class="q-added" data-label="Added">' + (added ? '<time datetime="' + iso + '" title="' + esc(new Date(added).toLocaleString()) + '">' + esc(relativeTime(added)) + "</time>" : "") + "</td>" +
+      '<td class="q-actions"><button type="button" class="q-delete" aria-label="Delete ' + esc(q.name) + '">' + TRASH + '<span class="q-delete__text">Delete?</span></button></td>' +
+      "</tr>";
+  }
 
+  function renderProgress(all) {
+    var done = all.filter(function (q) { return PracticeStore.isDone(q.id); }).length;
+    var pct = all.length ? Math.round((done / all.length) * 100) : 0;
+    $("progress-done").textContent = done;
+    $("progress-total").textContent = all.length;
+    $("progress-fill").style.width = pct + "%";
+    $("progress-bar").setAttribute("aria-valuenow", String(pct));
+    $("progress-bar").setAttribute("aria-valuetext", done + " of " + all.length + " done");
+    ["Easy", "Medium", "Hard"].forEach(function (level) {
+      var inLevel = all.filter(function (q) { return q.difficulty === level; });
+      var d = inLevel.filter(function (q) { return PracticeStore.isDone(q.id); }).length;
+      $("level-" + level.toLowerCase()).textContent = d + " of " + inLevel.length;
+    });
+  }
 
-      // Initialize DataTable. Column 5 (Last updated) is treated as number.
-      let table = $('#questionsTable').DataTable({
-        "scrollX": true, // Enables horizontal scrolling
-        "columnDefs": [
-          { targets: [0, 4, 6], orderable: false },
-        ],
-        "responsive": true, // Enable responsive behavior
-        "autoWidth": false, // Prevent automatic width expansion
-        "language": {
-            "emptyTable": "No coding questions available yet. Please wait or click on 'New Question' to add new questions."
-        }
-      });
+  function renderSync() {
+    var el = $("sync-status");
+    var s = PracticeStore.status();
+    el.classList.toggle("is-synced", s === "synced");
+    if (s === "synced") el.textContent = "Saved to your account.";
+    else if (s === "syncing") el.textContent = "Saving to your account…";
+    else if (s === "offline") el.textContent = "Saved in this browser. Your account couldn't be reached; it will try again.";
+    else el.innerHTML = 'Saved in this browser. <a href="/">Sign in</a> to keep it on every device.';
+  }
 
-      // Update bookmark checkboxes and (in default mode) reorder rows so that pinned rows come first.
-      function updateBookmarks() {
-        let nonBookmarkedRows = [];
-        let bookmarkedRowsList = [];
+  function render() {
+    var all = PracticeStore.all();
+    renderProgress(all);
+    syncTopicOptions(all);
+    var f = prefs();
+    f.term = $("q-search").value.trim().toLowerCase();
+    var rows = all.filter(function (q) { return matches(q, f); }).sort(sorter(f.sort));
+    $("q-body").innerHTML = rows.map(rowHtml).join("");
+    var none = all.length === 0;
+    $("questionsTable").hidden = none || rows.length === 0;
+    $("q-empty").hidden = !none;
+    $("q-nomatch").hidden = none || rows.length > 0;
+    $("result-count").textContent = none ? "" :
+      rows.length === all.length ? (all.length === 1 ? "1 question" : all.length + " questions") :
+      "Showing " + rows.length + " of " + all.length;
+    disarm();
+  }
 
-        $('#questionsTable tbody tr').each(function() {
-            let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-            let rowId = $(this).attr('data-id');
-            let checkbox = $(this).find('.bookmark');
-            let question = storedQuestions.find(q => q.id === rowId);
+  // ---- delete in two steps: the first press asks, the second deletes ------------
 
-            if (question?.bookmarkStatus) {
-                checkbox.prop('checked', true);
-                $(this).addClass('bookmarked-row');
-                bookmarkedRowsList.push($(this)); // Collect bookmarked rows
-            } else {
-                checkbox.prop('checked', false);
-                $(this).removeClass('bookmarked-row');
-                nonBookmarkedRows.push($(this)); // Collect non-bookmarked rows
-            }
-        });
+  function disarm() {
+    clearTimeout(armTimer);
+    if (armed && document.contains(armed)) {
+      armed.classList.remove("is-armed");
+      armed.setAttribute("aria-label", armed.getAttribute("data-label"));
+    }
+    armed = null;
+  }
+  function arm(btn) {
+    disarm();
+    armed = btn;
+    btn.setAttribute("data-label", btn.getAttribute("aria-label"));
+    btn.setAttribute("aria-label", "Press again to delete " + btn.closest("tr").querySelector(".q-link").firstChild.textContent);
+    btn.classList.add("is-armed");
+    armTimer = setTimeout(disarm, 4000);
+  }
 
-        // Sort non-bookmarked rows in descending order of `data-added`
-        nonBookmarkedRows.sort((a, b) => {
-            const addedA = parseInt($(a).attr('data-added'));
-            const addedB = parseInt($(b).attr('data-added'));
+  // ---- new and random question --------------------------------------------------
 
-            if (addedA !== addedB) {
-                return addedB - addedA; // Sort by 'data-added' DESC
-            }
+  function openDialog() { $("modal").classList.add("show-modal"); }
+  function closeDialog() { $("modal").classList.remove("show-modal"); }
 
-            return parseInt($(a).attr('data-id')) - parseInt($(b).attr('data-id')); // Sort by 'index' ASC
-        });
+  function randomQuestion() {
+    var all = PracticeStore.all();
+    if (!all.length) {
+      notify("Generate a question first.", { type: "info", title: "No questions yet" });
+      openDialog();
+      return;
+    }
+    var todo = all.filter(function (q) { return !PracticeStore.isDone(q.id); });
+    var pool = todo.length ? todo : all;
+    var q = pool[Math.floor(Math.random() * pool.length)];
+    window.open(questionUrl(q), "_blank", "noopener");
+  }
 
-        // Append sorted non-bookmarked rows first
-        nonBookmarkedRows.forEach(row => $('#questionsTable tbody').append(row));
-
-        // Append bookmarked rows to the bottom
-        bookmarkedRowsList.forEach(row => $('#questionsTable tbody').append(row));
-      }
-
-      async function fetchAndStoreQuestions() {
-        try {
-          const response = await fetch('/js/dsa.json');
-          const questions = await response.json();
-          let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-          // Map existing questions by nameHyphenated for quick lookup
-          const storedMap = new Map(storedQuestions.map(q => [q.nameHyphenated, q]));
-
-          const newQuestions = questions
-            .filter(({ title }) => {
-              const nameHyphenated = title.replace(/\s+/g, '-').toLowerCase();
-              return !storedMap.has(nameHyphenated); // Keep only new questions
-            })
-            .map(({ title, topic, difficulty, description = null }, index) => {
-              const nameHyphenated = title.replace(/\s+/g, '-').toLowerCase();
-              const addedEpoch = 0; // very old epoch for server questions
-              const idInt = parseInt(addedEpoch) + index+1;
-              const id = `${idInt}-${nameHyphenated}`;
-
-              return {
-                id,
-                name: title,
-                nameHyphenated,
-                topic,
-                difficulty,
-                description,
-                code_templates: {},
-                updated: addedEpoch,
-                bookmarkStatus: false,
-                delimeter: ' Welcome to OpenREPL!! you can start coding here. ',
-              };
-            });
-
-          // Only update if there are new questions
-          if (newQuestions.length > 0) {
-            storedQuestions = [...storedQuestions, ...newQuestions];
-            localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
-            console.log("storedQuestions: ", storedQuestions);
-          }
-          return newQuestions; // Return the list of new questions
-        } catch (error) {
-          console.error('Failed to fetch questions:', error);
-          return []; // Return an empty array in case of error
-        }
-      }
-
-      // Load stored questions and add them to the table.
-      async function loadStoredQuestions() {
-        // fetch sample questions from server if no questions are present
-        try {
-          // Fetch sample questions from server if no questions are present
-          const newQuestions = await fetchAndStoreQuestions();
-          console.log('Adding New Questions');
-          newQuestions.forEach(q => updateQuestionRow(q, true));
-        } catch (error) {
-          console.error('Error fetching new questions:', error);
-        }
-        let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-        storedQuestions.forEach(q => updateQuestionRow(q, true));
-      }
-
-      // Add a question row to the DataTable.
-      function addQuestionRow(q) {
-        // The "Last Updated" cell displays a human-readable date/time (using toLocaleString)
-        // and uses a data-order attribute (with the epoch timestamp) for sorting.
-        let newRow = `<tr data-id="${q.id}" data-difficulty="${q.difficulty}" data-added="${q.updated}"${q.bookmarkStatus ? ' class="bookmarked-row"' : ''}>
-          <td><input type="checkbox" class="bookmark" ${q.bookmarkStatus ? 'checked' : ''}></td>
-          <td><a href="/practice?name=${q.nameHyphenated}" class="question-link" target="_blank">${q.name}</a></td>
-          <td>${q.topic}</td>
-          <td>${q.difficulty}</td>
-          <td>
-            <div class="remarks-display">
-              <span class="remarks-content">${q.remarks || 'Add remarks...'}</span>
-              <i class="fa fa-pencil edit-icon"></i>
-            </div>
-          </td>
-          <td data-order="${q.updated}">${new Date(q.updated).toLocaleString()}</td>
-          <td><button class="delete-btn">🗑 Delete</button></td>
-        </tr>`;
-        table.row.add($(newRow)).draw(false);
-        // Move newly added rows to the top
-        let lastIndex = table.rows().count() - 1;
-        let newRowNode = table.row(lastIndex).node();
-        $(newRowNode).prependTo('#questionsTable tbody');
-
-        // Ensure the topic is added to the filter dropdown if it's new
-        if ($("#topicsFilter option[value='" + q.topic + "']").length === 0) {
-          $("#topicsFilter").append(`<option value="${q.topic}">${q.topic}</option>`);
-        }
-
-        // Ensure the difficulty level is added to the filter dropdown if it's new
-        if ($("#difficultyFilter option[value='" + q.difficulty + "']").length === 0) {
-          $("#difficultyFilter").append(`<option value="${q.difficulty}">${q.difficulty}</option>`);
-        }
-      }
-
-      function updateQuestionRow(q, forceupdate=false) {
-          // Find the row in the DataTable by the question ID
-          let row = table.row(`[data-id="${q.id}"]`);
-
-          if (row.length) {
-              // Update only the data in place, without replacing the entire row
-              row.data([
-                  `<input type="checkbox" class="bookmark" ${q.bookmarkStatus ? 'checked' : ''}>`,
-                  `<a href="/practice?name=${q.nameHyphenated}" class="question-link" target="_blank">${q.name}</a>`,
-                  q.topic,
-                  q.difficulty,
-                  `<div class="remarks-display">
-                      <span class="remarks-content">${q.remarks || 'Add remarks...'}</span>
-                      <i class="fa fa-pencil edit-icon"></i>
-                  </div>`,
-                  `<td data-order="${q.updated}">${new Date(q.updated).toLocaleString()}</td>`,
-                  `<button class="delete-btn">🗑 Delete</button>`
-              ]).draw(false); // Update the data and keep the current table state
-          } else {
-              // create a new row 
-              if (forceupdate) {
-                console.log('Row not found, creating a new row for question ID:', q.id);
-                addQuestionRow(q);
-              } else {
-                console.warn('Row not found for question ID:', q.id);
-              }
-          }
-      }
-
-
-      // Handle bookmark checkbox changes.
-      $('#questionsTable tbody').on('change', '.bookmark', function() {
-        let row = $(this).closest('tr');
-        let rowId = row.attr('data-id');
-        let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-        let question = storedQuestions.find(q => q.id === rowId);
-
-        if (question) {
-          question.bookmarkStatus = $(this).prop('checked');
-          localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
-          updateBookmarks();
-          updatequestiondb(question.nameHyphenated, question);
-          commitFirestoreBatch();
-        }
-      });
-
-      // Click edit (pencil icon) → Convert cell to contenteditable
-      $(document).on('click', '.edit-icon', function () {
-            let cell = $(this).closest('td');
-            let currentContent = cell.find('.remarks-content').html(); // Get current HTML content
-            let rowElement = $(this).parents('tr');
-
-            if (rowElement.hasClass('child')) {
-                console.warn("div inside child row — finding parent...");
-                rowElement = rowElement.prev('tr');
-            }
-
-            let row = table.row(rowElement);
-            // Try to get the ID from the row attribute
-            let rowId = rowElement.attr('data-id');
-
-
-            // Replace display with editable content div
-            cell.html(`
-              <div contenteditable="true" class="remarks-editable">${currentContent}</div>
-            `);
-            let editableDiv = cell.find('.remarks-editable');
-            editableDiv.focus();
-
-            // Handle blur & touchend (for mobile)
-            function saveRemarks() {
-                let newContent = editableDiv.html().trim();
-                console.log("save remarks fired for rowId: ", rowId, newContent);
-
-                let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-                
-                // Persist to localStorage
-                let question = storedQuestions.find(q => q.id === rowId);
-                if (question) {
-                    question.remarks = newContent;
-                    question.updated = Date.now();
-                    localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
-
-                    // Re-initialize the editable cell after update
-                    cell.html(`
-                      <div class="remarks-display">
-                        <span class="remarks-content">${newContent || 'Add remarks...'}</span>
-                        <i class="fa fa-pencil edit-icon"></i>
-                      </div>
-                    `);
-                    // Update the table row
-                    updateQuestionRow(question);
-                    updatequestiondb(question.nameHyphenated, question);
-                    commitFirestoreBatch();
-                    console.log("remarks saved for rowId: ", rowId);
-                }
-            }
-
-            // Handle outside click/tap
-            function handleOutsideClick(event) {
-                if (!editableDiv.is(event.target) && editableDiv.has(event.target).length === 0) {
-                    requestAnimationFrame(() => {
-                        saveRemarks(); // Save remarks directly
-                        $(document).off('click touchend', handleOutsideClick); // Clean up listeners
-                    });
-                }
-            }
-
-            // Listen for outside clicks/taps
-            $(document).on('click touchend', handleOutsideClick);
-        });
-
-      // Handle row deletion.
-      $('#questionsTable tbody').on('click', '.delete-btn', function () {
-          let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-          let rowElement = $(this).parents('tr');
-
-          if (rowElement.hasClass('child')) {
-              console.warn("Button inside child row — finding parent...");
-              rowElement = rowElement.prev('tr');
-          }
-
-          let row = table.row(rowElement);
-          // Try to get the ID from the row attribute
-          let rowId = rowElement.attr('data-id');
-
-          if (rowId) {
-              // Remove from localStorage
-              const question = storedQuestions.find(q => q.id === rowId);
-              storedQuestions = storedQuestions.filter(q => q.id !== rowId);
-              localStorage.setItem(QUESTIONS_KEY, JSON.stringify(storedQuestions));
-
-              // Remove the row and redraw
-              row.remove().draw();
-              updateBookmarks();
-              deletequestiondb(question.nameHyphenated);
-
-              console.log(`Deleted row with ID: ${rowId}`);
-          } else {
-              console.warn('Row ID not found!');
-          }
-      });
-
-      // Handle sort/filter changes.
-      $('#sortBy').on('change', function() {
-        let selectedSort = $(this).val();
-        if (selectedSort === "recent") {
-          // Sort by the epoch timestamp (descending).
-          table.order([5, 'desc']).draw();
-        } else if (selectedSort === "") {
-          // Default case: clear filters and then move bookmarked rows to the top.
-          table.search('').columns().search('').draw();
-          updateBookmarks();
-        } else {
-          // Filter by difficulty level.
-          table.column(3).search(selectedSort).draw();
-        }
-      });
-
-      // Handle random question button.
-      $('#randomQuestionBtn').click(function() {
-        let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-        if (storedQuestions.length === 0) {
-          alert("No questions available!");
+  function submitQuestion(e) {
+    e.preventDefault();
+    var btn = $("qsubmit-btn");
+    if (btn.disabled) return;
+    var topic = $("topic").value.trim();
+    var level = $("difficulty").value.trim();
+    var extra = $("customPrompt").value.trim();
+    if (!level) {
+      $("difficulty").focus();
+      notify("Choose Easy, Medium or Hard.", { type: "error", title: "Pick a level" });
+      return;
+    }
+    var temp = parseFloat($("temperature").value);
+    if (!isNaN(temp)) {
+      globaltemperature = Math.min(1, Math.max(0, temp));
+      try { localStorage.setItem("temperature", globaltemperature); } catch (err) {}
+    }
+    try {
+      localStorage.setItem("topic", topic);
+      localStorage.setItem("difficultyLevel", level);
+    } catch (err) {}
+    // the dialog shows "Generating…" while common.js's loader is up (practice-store.js)
+    generateNewQuestion(topic, level, extra)
+      .then(function (q) {
+        if (!q) return;
+        var result = saveNewQuestions(q);
+        if (result.error) {
+          notify(String(result.error), { type: "error", title: "Couldn't save the new question" });
           return;
         }
-        let randomIndex = Math.floor(Math.random() * storedQuestions.length);
-        let randomQuestion = storedQuestions[randomIndex];
-        window.open(`/practice?name=${randomQuestion.nameHyphenated}`, "_blank");
-      });
-
-      $("#topic").select2({
-          placeholder: "Search or Select a Topic",
-          allowClear: true
-      });
-
-      // Modal
-      const open = document.getElementById("newQuestionBtn");
-      const close = document.getElementById("close");
-      const modal = document.getElementById("modal");
-      const button = document.getElementById("qsubmit-btn");
-      open.addEventListener("click", () => modal.classList.add("show-modal"));
-      button.addEventListener("click", function(event) {
-        event.preventDefault(); // Prevent form submission
-        $("#temperature").val(globaltemperature);
-        
-        // Get values from form inputs
-        let topic = document.getElementById("topic").value.trim();
-        let difficultyLevel = document.getElementById("difficulty").value.trim();
-        let customPrompt = document.getElementById("customPrompt").value.trim();
-        let tempValue = parseFloat($("#temperature").val());
-        if (!isNaN(tempValue)) {
-          globaltemperature = tempValue;
-          localStorage.setItem("temperature", tempValue); // Save to localStorage
-        }
-
-        // Call the function and handle the Promise
-        generateNewQuestion(topic, difficultyLevel, customPrompt)
-            .then(newQuestion => {
-                if (!newQuestion) {
-                    return;
-                }
-
-                // Store and display the new question
-                let result = saveNewQuestions(newQuestion);
-
-                if (result.error === null) {
-                    addQuestionRow(newQuestion);
-                    console.log("New question added:", newQuestion);
-                } else {
-                    alert("Error occurred while saving new question: " + result.error);
-                }
-                modal.classList.remove("show-modal");
-            })
-            .catch(error => {
-                console.error("Error generating a new question:", error);
-                alert("An unexpected error occurred while generating a new question.");
-            });
-      });
-
-      close.addEventListener("click", () => modal.classList.remove("show-modal"));
-      window.addEventListener("click", (e) =>
-        e.target == modal ? modal.classList.remove("show-modal") : false
-      );
-
-      $('.filter-select').select2(); // Enhance dropdowns with search
-
-      // Filtering logic
-      $(".filter-select").on("change", function () {
-          table.draw(); // Refresh table when dropdowns change
-      });
-
-      // Custom filtering for DataTables
-      $.fn.dataTable.ext.search.push(function (settings, rowData) {
-          let topicsFilter = $('#topicsFilter').val().toLowerCase();
-          let difficultyFilter = $('#difficultyFilter').val().toLowerCase();
-
-          let topics = rowData[2].toLowerCase();
-          let difficulty = rowData[3].toLowerCase();
-
-          return (
-              (topicsFilter === "" || topics.includes(topicsFilter)) &&
-              (difficultyFilter === "" || difficulty.includes(difficultyFilter))
-          );
-      });
-
-      firebase.auth().onAuthStateChanged((user) => {
-        if (user) {
-          console.log('User is logged in:', user);
-          firebaseAuth = firebase.auth();
-          currentUserID = user.uid;
-          if (!QUESTIONS_KEY.includes(currentUserID)) {
-            QUESTIONS_KEY = QUESTIONS_KEY+'-'+currentUserID; // Update the key to user's UID
-            console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
-          }
-        } else {
-          console.log('No user logged in');
-          if (currentUserID) {
-              // user was logged in earlier and was thrown out
-              currentUserID=null;
-              alert(`Session expired for the current user. Redirecting to home page...`);
-              commitFirestoreBatch();
-              setTimeout(() => {
-                window.location.href = "/";
-              }, 200); // wait for 200ms before redirecting
-          }
-        }
-      });
-
-      getUserLogin()
-      .then((loginData) => {
-        if (loginData.loggedIn && loginData.uid) {
-            currentUserID = loginData.uid;
-            if (!QUESTIONS_KEY.includes(currentUserID)) {
-              QUESTIONS_KEY = QUESTIONS_KEY+'-'+loginData.uid; // Update the key to user's UID
-              console.log(`QUESTIONS_KEY set to UID: ${QUESTIONS_KEY}`);
-            }
-
-            // Start session timeout handler
-            const timeLeft = loginData.expirationTime - Date.now();
-            if (timeLeft > 0) {
-                setTimeout(() => {
-                    currentUserID=null;
-                    alert("Session expired for the current user. Redirecting to home page...");
-                    commitFirestoreBatch();
-                    setTimeout(() => {
-                      window.location.href = "/";
-                    }, 200); // wait for 200ms before redirecting
-                }, timeLeft+5); // wait for more 5 milisec before refreshing
-                console.log(`Session will expire in ${timeLeft / 1000} seconds`);
-            }
-
-            $(window).on("unload", commitFirestoreBatch);
-
-            const existingHandler = window.onbeforeunload;
-            window.onbeforeunload = function(event) {
-                // Call existing handler first (if any)
-                if (existingHandler) {
-                    return existingHandler(event);
-                }
-                commitFirestoreBatch();
-            };
-        } else {
-            console.warn("User not logged in or UID missing");
-        }
+        closeDialog();
+        render();
+        notify(q.name, { type: "success", title: "New question added" });
+        var row = document.querySelector('.q-row[data-id="' + q.id + '"] .q-link');
+        if (row) row.focus();
       })
-      .catch((error) => {
-          console.error("Error during login check:", error);
-      })
-      .finally(async () => {
-          // Load questions after login check (even if failed)
-          // Initialize by loading stored questions.
-          await loadStoredQuestions();
-          // sync only if logged in
-          SyncRemoteQuestions(currentUserID)
-            .then(newQuestions => {
-                console.log('Adding New Questions from remote db: ', newQuestions);
-                newQuestions.forEach(q => updateQuestionRow(q, true));
-            })
-            .catch((error) => {
-                console.error("Failed to sync questions:", error);
-            });
-          updateBookmarks();
+      .catch(function (err) {
+        console.error("Error generating a new question:", err);
+        notify("Please try again.", { type: "error", title: "Couldn't generate a new question" });
       });
+  }
+
+  // ---- wiring -------------------------------------------------------------------
+
+  function init() {
+    loadPrefs();
+    try {
+      $("topic").value = localStorage.getItem("topic") || "";
+      $("difficulty").value = localStorage.getItem("difficultyLevel") || "";
+    } catch (e) {}
+    $("temperature").value = globaltemperature;
+
+    $("q-search").addEventListener("input", render);
+    ["f-status", "f-topic", "f-level", "f-sort"].forEach(function (id) {
+      $(id).addEventListener("change", function () { savePrefs(); render(); });
     });
+    $("q-clear").addEventListener("click", function () {
+      $("q-search").value = "";
+      $("f-status").value = "";
+      $("f-topic").value = "";
+      $("f-level").value = "";
+      savePrefs();
+      render();
+      $("q-search").focus();
+    });
+
+    var body = $("q-body");
+    body.addEventListener("change", function (e) {
+      if (!e.target.classList.contains("q-check")) return;
+      var id = e.target.closest("tr").getAttribute("data-id");
+      PracticeStore.setDone(id, e.target.checked);
+      var again = $("done-" + id);  // the row may have moved
+      if (again) again.focus();
+    });
+    body.addEventListener("click", function (e) {
+      var btn = e.target.closest && e.target.closest(".q-delete");
+      if (!btn) return;
+      if (btn !== armed) { arm(btn); return; }
+      var row = btn.closest("tr");
+      var id = row.getAttribute("data-id");
+      var name = row.querySelector(".q-link").firstChild.textContent;
+      var next = row.nextElementSibling || row.previousElementSibling;
+      var nextId = next && next.getAttribute("data-id");
+      disarm();
+      PracticeStore.remove(id);
+      notify(name, { type: "info", title: "Question deleted" });
+      var focusTo = nextId && document.querySelector('.q-row[data-id="' + nextId + '"] .q-delete');
+      (focusTo || $("q-search")).focus();
+    });
+    body.addEventListener("focusout", function (e) {
+      if (armed && e.target === armed) disarm();
+    });
+
+    $("newQuestionBtn").addEventListener("click", openDialog);
+    $("q-empty-new").addEventListener("click", openDialog);
+    $("randomQuestionBtn").addEventListener("click", randomQuestion);
+    $("close").addEventListener("click", closeDialog);
+    $("modal").addEventListener("mousedown", function (e) { if (e.target === this) closeDialog(); });
+    $("question-form").addEventListener("submit", submitQuestion);
+
+    PracticeStore.onChange(function (reason) {
+      if (reason === "status") renderSync();
+      else render();
+    });
+    render();
+    renderSync();
+    PracticeStore.init();
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
 })();

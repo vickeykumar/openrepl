@@ -168,9 +168,21 @@ export class WebTTY {
             this.term.output(data);
             this.dboutput("output",data);
         };
+        // Tells the page about the connection (T6): "connecting", "connected"
+        // or "closed" with a kind: exited, killed, timeout, lost, closed or limit.
+        const emitState = (state: string, detail: any = {}) => {
+            try {
+                detail.state = state;
+                detail.compiled = this.iscompiled;
+                this.term.dispatchEvent(new CustomEvent("ttystate", { detail: detail, bubbles: true }));
+            } catch (e) {
+                console.log("ttystate event failed: ", e);
+            }
+        };
         if (!sessionCookieObj.IsSessionCountValid()) {
             TermOutput("Maximum no of connections reached, \
 Please close/disconnect the old Terminals to proceed or try after "+sessionCookieObj.expiration+" Minutes.");
+            emitState("closed", { kind: "limit" });
 
             return () => {
                 console.log("closing connection in webtty")
@@ -180,6 +192,11 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
         let connection = this.connectionFactory.create();
         let pingTimer: number;
         let reconnectTimeout: number;
+        // Set when this page closes the connection itself (Reconnect, language
+        // switch, Run, closing a tab). Its close event arrives a moment later,
+        // after the new connection has taken over the same terminal, so it
+        // must not report a state or schedule a reconnect.
+        let closedByPage = false;
         let firecloser = this.firebaseref.open();
 
         const slaveInputhandler = (e) => {
@@ -191,6 +208,7 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
 
         const setup = () => {
             connection.onOpen(() => {
+                emitState("connected");
                 const termInfo = this.term.info();
 
                 connection.send(JSON.stringify(
@@ -300,7 +318,7 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 clearInterval(pingTimer);
                 this.term.deactivate();
                 this.term.showMessage("Connection Closed", 2000);    // tune message timeout accordingly
-                if (this.reconnect > 0) {
+                if (this.reconnect > 0 && !closedByPage) {
                     reconnectTimeout = setTimeout(() => {
                         connection = this.connectionFactory.create();
                         this.term.reset();
@@ -309,15 +327,62 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 }
                 sessionCookieObj.DecrementSessionCount();
                 console.log("close event: ",closeEvent['code'],closeEvent['reason'], connection.isClosed());
+                const closeReason: string = closeEvent['reason'] || "";
+                let closeKind = "lost";
+                // A gateway whose execution node for this session is away closes the
+                // terminal with "execution node is away: retry in 80s": the session is
+                // placed again when that time is over. The page counts it down.
+                let retryIn = 0;
+                // A terminal the site refuses on purpose (maintenance, a language that is
+                // switched off, an admin ending the session) is closed with
+                // "site notice: <what to tell the visitor>".
+                let noticeText = "";
+                const away = closeReason.match(/execution node is away: retry in (\d+)s/);
+                const notice = closeReason.match(/^site notice: (.*)$/);
+                if (away) {
+                    closeKind = "away";
+                    retryIn = parseInt(away[1], 10);
+                } else if (notice) {
+                    closeKind = "notice";
+                    noticeText = notice[1];
+                } else if (closeEvent['code'] == 1000 && closeReason.match("local command")) {
+                    closeKind = closeReason.match("killed") ? "killed" : "exited";
+                } else if (closeReason.match("failed to create backend")) {
+                    closeKind = "failed";
+                } else if (closeReason.match(/timeout/i)) {
+                    closeKind = "timeout";
+                } else if (closeEvent['code'] == 1000 && closeReason.match("client")) {
+                    closeKind = "closed";
+                }
+                if (!closedByPage) {
+                    emitState("closed", { kind: closeKind, code: closeEvent['code'], reason: closeReason, retryIn: retryIn, notice: noticeText });
+                }
+                // The home page shows a banner that explains the stop (scribbler.js
+                // showTermBanner), so skip the generic "connection closed" lines there.
+                const bannerShown = !closedByPage && closeKind !== "closed" && !!document.getElementById("term-banner");
                 switch(closeEvent['code']) {
                     case 1000:
-                        if (closeEvent['reason'].match("local command")) {
+                        if (closeKind == "away") {
+                            // The home page shows a banner with a countdown. Elsewhere there
+                            // is only the terminal to say so in.
+                            if (!bannerShown) {
+                                TermOutput("\r\n[Your execution node is away. Try reconnecting in " + retryIn + " sec.]");
+                            }
+                        } else if (closeKind == "notice") {
+                            if (!bannerShown) {
+                                TermOutput("\r\n[" + noticeText + "]");
+                            }
+                        } else if (closeKind == "killed") {
+                            TermOutput("\r\n[Program stopped: it was killed, most likely by the memory limit] Jobid: "+WebTTY.getjid());
+                        } else if (closeReason.match("local command")) {
                             TermOutput("[Program Exited] Jobid: "+WebTTY.getjid());
                         } else {
-                            TermOutput("connection closed by remote host "+WebTTY.getjid());
+                            if (!bannerShown) {
+                                TermOutput("connection closed by remote host "+WebTTY.getjid());
+                            }
                             if (!this.firebaseref.isprimary && closeEvent['reason'].match("error.*invalid parent id")) {
                                 // parent terminal disconnected
-                                TermOutput(" [Primary Terminal is disconnected, Please reconnect and try again.]");
+                                TermOutput((bannerShown ? "\r\n" : " ") + "[Primary Terminal is disconnected, Please reconnect and try again.]");
                             }
                         }
                         break;
@@ -327,6 +392,9 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         break;
 
                     default:
+                        if (bannerShown) {
+                            break;
+                        }
                         TermOutput("connection closed by remote host");
                         if (!this.iscompiled) {
                             let jidstr = WebTTY.getjid();
@@ -343,6 +411,7 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 sessionCookieObj.DecrementSessionCount();
             };
 
+            emitState("connecting");
             connection.open();
         }
 
@@ -351,6 +420,7 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
             console.log("closing connection in webtty")
 	        sessionCookieObj.DecrementSessionCount();
             clearTimeout(reconnectTimeout);
+            closedByPage = true;
             connection.close();
             this.term.removeEventListener('slaveinputEvent', slaveInputhandler);
             firecloser(args);

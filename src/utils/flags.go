@@ -101,6 +101,24 @@ func ApplyFlags(
 	}
 }
 
+// ConfigKeys returns the top-level keys a config file sets, so a caller can
+// tell an option the operator wrote from one that only has its default.
+func ConfigKeys(filePath string) map[string]bool {
+	keys := map[string]bool{}
+	data, err := ioutil.ReadFile(homedir.Expand(filePath))
+	if err != nil {
+		return keys
+	}
+	var raw map[string]interface{}
+	if err := hcl.Decode(&raw, string(data)); err != nil {
+		return keys
+	}
+	for k := range raw {
+		keys[k] = true
+	}
+	return keys
+}
+
 func ApplyConfigFile(filePath string, options ...interface{}) error {
 	filePath = homedir.Expand(filePath)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {

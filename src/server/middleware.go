@@ -11,8 +11,22 @@ func (server *Server) wrapLogger(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rw := &logResponseWriter{w, 200}
 		handler.ServeHTTP(rw, r)
+		if server.isAdminPoll(r, rw.status) {
+			return
+		}
 		log.Printf("%s %d %s %s", r.RemoteAddr, rw.status, r.Method, r.URL.Path)
 	})
+}
+
+// isAdminPoll reports whether a request is the dashboard reading its data,
+// which it does every few seconds and which would fill the log. A refused
+// read and every change are still logged.
+func (server *Server) isAdminPoll(r *http.Request, status int) bool {
+	if r.Method != http.MethodGet || status >= 400 {
+		return false
+	}
+	rel := strings.TrimPrefix(r.URL.Path, server.admin.prefix)
+	return strings.HasPrefix(rel, "admin/")
 }
 
 func (server *Server) wrapHeaders(handler http.Handler) http.Handler {
@@ -52,7 +66,7 @@ func (server *Server) wrapBasicAuth(handler http.Handler, credential string) htt
 
 func (server *Server) wrapAdmin(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		if !IsUserAdmin(rw, req) {
+		if !server.isAdmin(rw, req) {
 	        errorHandler(rw, req, "Unauthorized Access!! Please Sign in again as Admin.", http.StatusUnauthorized)
 	        return
 	    }

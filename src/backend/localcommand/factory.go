@@ -39,6 +39,13 @@ func (factory *Factory) Name() string {
 }
 
 func (factory *Factory) New(params map[string][]string) (server.Slave, error) {
+	return factory.NewWithCommand("", params)
+}
+
+func (factory *Factory) NewWithCommand(command string, params map[string][]string) (server.Slave, error) {
+	if command == "" {
+		command = factory.command
+	}
 	var ppid int = -1
 	argv := make([]string, len(factory.argv))
 	copy(argv, factory.argv)
@@ -51,9 +58,5 @@ func (factory *Factory) New(params map[string][]string) (server.Slave, error) {
 		ppid = encoder.DecodeToPID(ppid_str[0])
 	}
 	log.Println("params caught :", params)
-	return New(factory.command, argv, ppid, params, factory.opts...)
-}
-
-func (factory *Factory) SetNewCommand(command string) {
-	factory.command = command
+	return New(command, argv, ppid, params, factory.opts...)
 }

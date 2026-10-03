@@ -1,16 +1,21 @@
 {
+    "private": true,
+    "scripts": {
+        "build": "webpack"
+    },
     "devDependencies": {
-        "license-loader": "^0.5.0",
-        "ts-loader": "^2.0.3",
-        "typescript": "^2.3.2",
-        "uglifyjs-webpack-plugin": "^1.0.0-beta.2",
-        "webpack": "^2.5.1"
+        "terser-webpack-plugin": "^5.6.1",
+        "ts-loader": "^9.5.1",
+        "typescript": "~4.9.5",
+        "webpack": "^5.94.0",
+        "webpack-cli": "^4.10.0"
     },
     "dependencies": {
-        "libapps": "github:yudai/libapps#release-hterm-1.70",
-        "xterm": "^2.7.0",
+        "@xterm/addon-fit": "^0.11.0",
+        "@xterm/addon-web-links": "^0.12.0",
+        "@xterm/xterm": "^6.0.0",
+        "color": "^3.2.1",
         "es-cookie": "^1.2.0",
-        "color": "^3.0.0",
-        "firebase": "^3.6.6"
+        "libapps": "github:yudai/libapps#release-hterm-1.70"
     }
 }

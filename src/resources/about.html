@@ -1,5 +1,5 @@
 <!doctype html>
-<html itemscope itemtype="http://schema.org/CreativeWork">
+<html lang="en" itemscope itemtype="http://schema.org/CreativeWork">
   <head>
     <!-- Google Tag Manager -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -17,9 +17,13 @@
     <base target="_top">
     <title>About OpenREPL - An online REPL/Interpreter Platform | OpenREPL</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./css/scribbler-global.css">
     <link rel="stylesheet" href="./css/scribbler-doc.css">
+    <script src="./js/theme.js"></script>
+    <script src="./settings.js"></script>
     <script src="./js/preprocessing.js"></script>
     <link rel="author" href="humans.txt">
   </head>
@@ -32,7 +36,8 @@
     <nav class="header">
       <h1 class="logo"><span class="go__color">Open</span>REPL<sup> beta</h1>
       <ul class="menu">
-        <div class="menu__item toggle"><span></span></div>
+        <li class="menu__item toggle"><button type="button" class="toggle__button" aria-label="Menu" aria-expanded="false"><span></span></button></li>
+        <li class="menu__item"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button></li>
         <li class="menu__item"><a href="https://github.com/vickeykumar/openrepl" class="link link--dark"><i class="fa fa-github"></i> Github</a></li>
         <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
       </ul>
@@ -41,10 +46,10 @@
       <aside class="doc__nav">
       </aside>
       <br><br><br><br>
-      <article class="doc__content">
+      <article class="doc__content" role="main">
         <section class="js-section">
           <hr/>
-          <h3 class="section__title">About REPL</h3>
+          <h2 class="section__title">About REPL</h2>
           <p><b>REPL</b> stands for <b>Read–Eval–Print Loop</b>, It is an interactive computer programing environment where a user can give only one input at a time, interprets them, prints the result and the same process repeats again.</p>
           <p>It can be very useful in exploratory programming and debugging as one can check the  result before the next read.</p>
           <p>For more information on REPL, please refer the wiki link of <b>REPL</b> :</p>
@@ -52,13 +57,13 @@
           <hr />
         </section>
         <section class="js-section">
-          <h3 class="section__title">About <span class="go__color">Open</span>REPL</h3>
+          <h2 class="section__title">About <span class="go__color">Open</span>REPL</h2>
           <p><span class="go__color">Open</span>REPL is an Online platform for checking codes in REPLs for various languages like C/C++, go, python etc. It can be very useful for exploratory programming and debugging, specially for those who are beginners in learning of any new programming language. it can also be very useful for the developers who want to check small code snippets quickly in REPL before embedding the code in there applications.</p>
           <p>Note: This is a beta version, under development and have some limitations as well. But still, it is very useful and worth trying.</p>
           <hr />
         </section>
         <section class="js-section">
-          <h3 class="section__title">Terms of Use</h3>
+          <h2 class="section__title">Terms of Use</h2>
           <p>THE SOFTWARE/SERVICE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -77,6 +82,8 @@ THE SOFTWARE.</p>
     <footer class="footer">
     <a href="about.html" class="link link--light">About</a> <span class="dot"></span>
     <a href="references.html" class="link link--light">References</a> <span class="dot"></span>
+    <a href="/privacy.html" class="link link--light">Privacy</a> <span class="dot"></span>
+    <a href="/terms.html" class="link link--light">Terms</a> <span class="dot"></span>
     <span id="copyright_year">
         <script>document.getElementById('copyright_year').appendChild(document.createTextNode(new Date().getFullYear()))</script>
     </span>&copy;<span class="go__color">Open</span>REPL 

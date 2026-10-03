@@ -15,6 +15,7 @@ import (
 	"user"
 	"net/url"
 	"strings"
+	"sync"
 )
 
 const (
@@ -32,6 +33,9 @@ type LocalCommand struct {
 	cmd       *exec.Cmd
 	pty       *os.File
 	ptyClosed chan struct{}
+
+	exitMu  sync.Mutex
+	exitErr error // what cmd.Wait() returned, set before ptyClosed is closed
 }
 
 func New(command string, argv []string, ppid int, params url.Values, options ...Option) (*LocalCommand, error) {
@@ -69,7 +73,8 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	if command == "bash" {
 		ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0644)
 	}
-	cmd.Env = os.Environ()
+	// not the server's own environment: its secrets must not reach the user's shell
+	cmd.Env = utils.ChildEnviron(os.Environ())
 	cmd.Env = append(cmd.Env, "TERM=xterm")
 	cmd.Env = append(cmd.Env, "GOPATH=/opt/gotty/")
 	cmd.Env = append(cmd.Env, "GOCACHE=/tmp/go_cache/.cache/go-build/")
@@ -92,8 +97,9 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	for _, envvar := range envvars {
 		// sanitize 
 		if strings.Contains(envvar, "$") {
-	        // Expand nested environment variable references
-	        envvar = os.ExpandEnv(envvar)
+	        // Expand nested environment variable references, in the environment
+	        // the program gets and not in the server's
+	        envvar = utils.ExpandIn(cmd.Env, envvar)
 	    }
 	    if strings.Contains(envvar, "~/") {
 	        // Replace '~' with user's home directory
@@ -152,9 +158,28 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 		if cmderr != nil {
 	        log.Printf("lcmd.cmd.wait : %s", cmderr.Error())
 		}
+		lcmd.exitMu.Lock()
+		lcmd.exitErr = cmderr
+		lcmd.exitMu.Unlock()
 	}()
 
 	return lcmd, nil
+}
+
+// ExitReason reports why the command ended: "killed" when it was stopped by
+// SIGKILL (for example by the container's memory limit), "" otherwise.
+// It waits briefly for the process to be reaped.
+func (lcmd *LocalCommand) ExitReason() string {
+	select {
+	case <-lcmd.ptyClosed:
+	case <-time.After(2 * time.Second):
+	}
+	lcmd.exitMu.Lock()
+	defer lcmd.exitMu.Unlock()
+	if lcmd.exitErr != nil && strings.Contains(lcmd.exitErr.Error(), "signal: killed") {
+		return "killed"
+	}
+	return ""
 }
 
 func (lcmd *LocalCommand) Read(p []byte) (n int, err error) {

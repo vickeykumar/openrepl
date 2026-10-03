@@ -6,3 +6,9 @@ src/tags
 deb/gotty.deb
 deb/gotty/usr/local/bin/gotty
 src/server/asset.go
+bin/gotty
+
+# local settings and secrets (see .env.example)
+.env
+.env.*
+!.env.example
