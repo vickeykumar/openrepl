@@ -3,11 +3,12 @@
   --primary-color: #432E30;
   --primary-color-light: #8E7474;
   --accent-color: #FE6A6B;
-  --rev-accent-color: #4CAF50;
+  --rev-accent-color: #1B1B24;
   --accent-color-light: #FFE4E4;
-  --accent-color-dark: #B94B4C;
-  --rev-accent-color-dark: #45a049;
-  --rev-accent-color-light: #4CBF50;
+  --accent-color-dark: #B8323A;
+  --on-accent-color: #15151C;
+  --rev-accent-color-dark: #2E2E3A;
+  --rev-accent-color-light: #2E2E3A;
   --white-color: #FAFBFC;
   --light-gray-color: #C6CBD1;
   --medium-gray-color: #959DA5;
@@ -27,15 +28,101 @@
   --clear-color: #ebebec;
   --shadow-color: rgba(0, 0, 0, 0.3);
   --overlay-color: rgba(0, 0, 0, 0.6);
+  /* type: one face for UI text, one for code, one display face for big headings */
+  --font-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-code: 'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-display: 'Bricolage Grotesque', var(--font-ui);
+  /* ink scale for the dark app surfaces (nav, hero, IDE) */
+  --ink-950: #0D0D12;
+  /* home page nav, hero and workspace band: a soft graphite for a calmer first view (redesign canvas, 30 Sep) */
+  --hero-bg: #2A2930;
+  --ink-900: #121218;
+  --ink-850: #15151C;
+  --ink-800: #1B1B24;
+  --ink-750: #1D1D26;
+  --ink-700: #24242E;
+  --ink-600: #2E2E3A;
+  --ink-500: #3A3A48;
+  --paper: #F2F0EC;
+  --muted-1: #C9C7D1;
+  --muted-2: #A9A7B4;
+  --muted-3: #8C8A98;
+  --accent-on-dark: #FF9C9D;
+  --ok-color: #4CC38A;
+  --warn-color: #F5C37A;
+  --danger-color: #F07171;
+  /* coral for text and icons on light backgrounds (and lighter on dark) */
+  --accent-text: #B8323A;
 }
+
+/* ------------------------------------------------------------------ */
+/* Dark theme (T11): <html data-theme="dark">, set by js/theme.js      */
+/* ------------------------------------------------------------------ */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --primary-color: #F2F0EC;
+  --primary-color-light: #A9A7B4;
+  --bg-color: #121218;
+  --white-color: #15151C;
+  --light-gray-color: #3A3A48;
+  --medium-gray-color: #8C8A98;
+  --dark-gray-color: #C9C7D1;
+  --code-bg-color: #1B1B24;
+  --code-bg-color-border: #2E2E3A;
+  --clear-color: #24242E;
+  --link-blue-color: #8CC8FF;
+  --shadow-color: rgba(0, 0, 0, 0.6);
+  --accent-text: #FF9C9D;
+}
+[data-theme="dark"] body { background-color: #25242A; color: #E6E4EC; }
+[data-theme="dark"] p { color: #B9B7C4; }
+[data-theme="dark"] sup { color: #C9C7D1; }
+[data-theme="dark"] .footer { background-color: #1F1E24; }
+[data-theme="dark"] .link--light,
+[data-theme="dark"] .go__color { color: var(--accent-color); }
+[data-theme="dark"] table td,
+[data-theme="dark"] table th { border-color: #2E2E3A; }
+[data-theme="dark"] .toggle span,
+[data-theme="dark"] .toggle span:before,
+[data-theme="dark"] .toggle span:after { background: #F2F0EC; }
+[data-theme="dark"] .toggle.open span { background: transparent; }
+
+/* theme switch button in every nav */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.theme-toggle:hover,
+.theme-toggle:focus-visible { background: rgba(127, 127, 127, 0.15); }
+.theme-toggle__sun { display: none; }
+[data-theme="dark"] .theme-toggle__sun { display: block; }
+[data-theme="dark"] .theme-toggle__moon { display: none; }
 
 /* normalized */
 html, body {
   padding: 0;
   margin: 0;
-  font-family: 'Nunito Sans', sans-serif;
+  font-family: var(--font-ui);
   background-color: white;
   height: 100%;
+}
+
+h1, h2 {
+  font-family: var(--font-display);
+}
+
+button, input, select, textarea {
+  font-family: inherit;
 }
 
 sup {
@@ -143,7 +230,7 @@ hr {
 /* code */
 .code {
   border-radius: 3px;
-  font-family: Space Mono, SFMono-Regular, Menlo,Monaco, Consolas, Liberation Mono, Courier New, monospace;
+  font-family: var(--font-code);
   font-size: 14px;
   background: var(--code-bg-color-2);
   border: 1px solid var(--code-bg-color-border);
@@ -180,7 +267,7 @@ hr {
 .button--primary {
   padding: 10px 22px;
   background-color: var(--accent-color);
-  color: white;
+  color: var(--on-accent-color);
   position: relative;
   text-decoration: none;
   border: 0;
@@ -199,8 +286,8 @@ hr {
 }
 
 .button--primary:hover {
-  text-shadow: 0px 1px 1px var(--accent-color-dark);
-  color: white;
+  text-shadow: none;
+  color: var(--on-accent-color);
   transform: translate3D(0, -3px, 0);
 }
 
@@ -266,6 +353,18 @@ nav {
   display: none;
   position: relative;
 }
+/* the menu toggle is a real button holding the three bars (T15); on every page */
+.toggle__button {
+  position: relative;
+  display: block;
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.toggle__button span { top: 9px; }
 
 .toggle span,
 .toggle span:before,
@@ -523,7 +622,7 @@ input[type=text],[type=email], select, textarea, email {
   margin: -75px 0 0 -75px;
   border: 16px solid #f3f3f3;
   border-radius: 50%;
-  border-top: 16px solid #64CEAA;
+  border-top: 16px solid var(--accent-color);
   width: 80px;
   height: 80px;
   -webkit-animation: spin 1s linear infinite;
@@ -540,3 +639,66 @@ input[type=text],[type=email], select, textarea, email {
   100% { transform: rotate(360deg); }
 }
 /* loader ends */
+/* On-page notices (js/notices.js), replacing alert() pop-ups */
+.notices {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(440px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  box-sizing: border-box;
+  padding: 12px 10px 12px 14px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.45;
+  color: #15151C;
+  background: #F2F0EC;
+  border-radius: 12px;
+  box-shadow: 0 16px 32px -12px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  animation: notice-in 0.2s ease-out;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.notice--hide { opacity: 0; transform: translateY(6px); }
+@keyframes notice-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.notice__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.notice--success .notice__icon { color: #1F7A4D; background: #D8F3E4; }
+.notice--info .notice__icon { color: #2456B8; background: #E3EDFF; }
+.notice--error .notice__icon { color: #B42323; background: #FDE2E2; }
+.notice__body { flex: 1; display: flex; flex-direction: column; gap: 2px; padding-top: 3px; word-break: break-word; }
+.notice__title { font-weight: 600; }
+.notice__title + .notice__text { color: #4A4855; }
+.notice__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  padding: 0;
+  color: #5B5866;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.notice__close:hover,
+.notice__close:focus-visible { background: rgba(0, 0, 0, 0.06); }

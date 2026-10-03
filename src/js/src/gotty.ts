@@ -1,4 +1,3 @@
-import { Hterm } from "./hterm";
 import { Xterm } from "./xterm";
 import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, IdeFileNameKey, CompilerOptionKey, CompilerFlagsKey, EnvFlagsKey, CloserArgs} from "./webtty";
 import { ConnectionFactory } from "./websocket";
@@ -184,11 +183,18 @@ export class GottyTerminal {
                 return;
         }
         if (this.gotty_term == "hterm") {
-            this.term = new Hterm(this.elem);
+            // hterm (--term hterm) is a separate file, loaded only when used (T19)
+            import(/* webpackChunkName: "hterm" */ "./hterm").then((m) => {
+                this.term = new m.Hterm(this.elem);
+                this.connect(option, eventname);
+            });
         } else {
             this.term = new Xterm(this.elem);
+            this.connect(option, eventname);
         }
-            
+    }
+
+    connect(option: string|null, eventname: string) {
         if (option !== null) {
             if (this.ismaster) {
                 const httpsEnabled = window.location.protocol == "https:";

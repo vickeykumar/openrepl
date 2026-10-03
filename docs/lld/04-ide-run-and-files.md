@@ -26,6 +26,8 @@ type Demo struct {
 - set the GitHub and docs links,
 - load `Content` into the editor, except on `/practice`.
 
+Every REPL in the catalog has starter code in `Content`: a short program that prints something and shows the language's basics (a function, a loop or collection, string formatting). It must run as-is with **Run**. A shared code link (`?s=<id>`, LLD 06) replaces it once it has loaded.
+
 ## 2. Run and Debug pipeline
 
 ```mermaid
@@ -109,6 +111,7 @@ When a directory is created (for example by unzipping), the watcher walks the ne
 | `GET` | n/a | `TreeNode` JSON of `filepath` (jstree `core.data`). |
 | `GET ?q=load&filepath=F` | n/a | base64 of file F (`text/plain`). |
 | `GET ?q=zip&filepath=D` | n/a | `application/zip` stream of D (`Writezip`). |
+| `GET ?q=usage` | n/a | `{usedMB, limitMB, guest, deleteAfterMinutes}` for the workspace card in the Files panel. |
 | `POST ?q=save&filepath=F` | base64 content | Writes F. |
 | `POST` | JSON `Event` | Performs the operation: `Op&Create` makes a dir or file (with `NewName`, it copies `Name → NewName`); `Op&Remove` deletes; `Op&Rename` renames `Name → NewName`. Creates are refused with 507 when over quota. |
 
@@ -119,10 +122,12 @@ Slaves (shared viewers) and forked tabs reach the owner's workspace by adding `j
 - The form has two fields: `file`, and `checksum` (SHA-256 hex computed in the browser).
 - The server parses the multipart form with 5 MB in memory, rejects the upload with 507 when over quota, and strips a UTF-8 BOM. It writes `homedir/<filename>` with mode 0644.
 - A checksum mismatch is only logged.
-- The browser enforces `MAX_FILESIZE = 20 MB`, although its alert text says 10 MB.
+- The browser enforces `MAX_FILESIZE = 20 MB` and says so in its error notice.
 
 ### Client integration (`scribbler.js`)
 
 - **Tree.** jstree is fed by `GET /ws_filebrowser`, with context-menu operations mapped to the `Event` POSTs. File icons come from `filename2IconClass`.
+- **Context menu.** Built in the jstree `contextmenu` config in `page/07-file-browser.js`. Folder nodes get New (File, Folder), Rename, Cut, Copy, Paste, Save (disabled), Download and Delete; file nodes drop New and enable Save. Items are grouped by separators, Delete is last and carries the class `ctx-danger`, and every item has an icon class (`ctx-i-*`, drawn as a mask in `ui-refresh.css`). Cut, Copy, Paste and Save show their Cmd or Ctrl shortcut. jstree runs the item whose `shortcut` key code is pressed while the menu is open, so a string shortcut (`"off"`) is used on disabled items to show the label without binding the key. Protected nodes (`state.disabled`) have Rename, Cut, Copy and Paste disabled.
 - **Selecting a file.** `LoadSelectedNodeFromFile` loads it (`q=load`) into Ace and sets `editor.env.filename`, which becomes `IdeFileName` on Run. The previously open file is saved first (`SaveSelectedNodeToFile`), and the language is switched by extension (`changelangbyselectednode`).
 - **Live events.** `setEventHandler(eventhandler)` applies `'6'` events and Firebase `filebrowser-event`s to the tree: create_node, delete_node, refresh.
+- **Empty workspace.** `updateFilesEmptyState` shows `#files-empty` ("No files yet. Upload a file, or right-click the folder above to create one.") while the root folder has no children. It runs after jstree's ready, refresh, load, create, delete, move and copy events.

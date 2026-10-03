@@ -1,4 +1,3 @@
-import { computePosition, flip, shift, autoUpdate } from "@floating-ui/dom";
 import { createFocusTrap } from "focus-trap";
 import { marked } from "marked";
 
@@ -86,12 +85,12 @@ renderer.code = (code, infostring, escaped) => {
   console.log("code: ", code, infostring, escaped);
   const parsedcode = coderenderer.call(renderer, code, infostring, escaped);
   
-  // Create and append the button
-  const encodedcode = btoa(code);
-  const insertButton = `<button class="share-btn" onclick="insertcodesnippet('${encodedcode}')">Insert</button>`
-  const replaceButton = `<button class="share-btn" onclick="replacecodesnippet('${encodedcode}')">Replace</button>`
-  
-  return parsedcode+insertButton+replaceButton;
+  // Insert / Replace file buttons under each code block (see the mockup's Genie panel)
+  const encodedcode = btoa(unescape(encodeURIComponent(code)));
+  const insertButton = `<button type="button" class="chat-widget__code-btn chat-widget__code-btn--primary" onclick="insertcodesnippet('${encodedcode}')">Insert</button>`
+  const replaceButton = `<button type="button" class="chat-widget__code-btn" onclick="replacecodesnippet('${encodedcode}')">Replace file</button>`
+
+  return `<div class="chat-widget__code">${parsedcode}<div class="chat-widget__code-actions">${insertButton}${replaceButton}</div></div>`;
 };
 
 marked.setOptions({
@@ -294,63 +293,35 @@ const trap = createFocusTrap(containerElement, {
   allowOutsideClick: true,
 });
 
-function makeResizable(containerElement: HTMLElement, target: HTMLElement) {
-  // Create a resizer div
+// Drag handle in the top-left corner. The panel is docked to the bottom-right
+// corner (widget.css), so dragging up and left makes it bigger.
+function makeResizable(containerElement: HTMLElement) {
   const resizer = document.createElement("div");
+  resizer.className = "chat-widget__resizer";
+  resizer.setAttribute("aria-hidden", "true");
   resizer.innerHTML = `
-    <svg width="20" height="20" viewBox="0 0 20 20">
-      <line x1="4" y1="16" x2="16" y2="4" stroke="gray" stroke-width="2" />
-      <line x1="8" y1="16" x2="16" y2="8" stroke="gray" stroke-width="2" />
+    <svg width="14" height="14" viewBox="0 0 20 20">
+      <line x1="4" y1="16" x2="16" y2="4" stroke="currentColor" stroke-width="2" />
+      <line x1="8" y1="16" x2="16" y2="8" stroke="currentColor" stroke-width="2" />
     </svg>
   `;
-  resizer.style.position = "absolute";
-  resizer.style.left = "5px";
-  resizer.style.top = "5px";
-  resizer.style.cursor = "nwse-resize";
-  resizer.style.opacity = "0.7";
-  resizer.style.transition = "opacity 0.2s";
-  resizer.style.display = "flex";
-  resizer.style.alignItems = "center";
-  resizer.style.justifyContent = "center";
-  resizer.style.width = "15px";
-  resizer.style.height = "15px";
-
-  // Style the container for a modern feel
-  Object.assign(containerElement.style, {
-    position: "absolute",
-    borderRadius: "10px",
-    boxShadow: "0 4px 10px rgba(0, 0, 0, 0.2)",
-    overflow: "hidden",
-    resize: "none", // Disable native resize
-    transition: "width 0.2s ease, height 0.2s ease",
-  });
-
   containerElement.appendChild(resizer);
-
-  let isResizing = false;
 
   resizer.addEventListener("mousedown", (e) => {
     e.preventDefault();
-    isResizing = true;
-
     const startX = e.clientX;
     const startY = e.clientY;
     const startWidth = containerElement.offsetWidth;
     const startHeight = containerElement.offsetHeight;
 
     function resize(e: MouseEvent) {
-      if (!isResizing) return;
-      const newWidth = Math.max(150, startWidth + (startX - e.clientX)); // Min width: 150px
-      const newHeight = Math.max(100, startHeight + (startY - e.clientY)); // Min height: 100px
+      const newWidth = Math.min(window.innerWidth - 32, Math.max(320, startWidth + (startX - e.clientX)));
+      const newHeight = Math.min(window.innerHeight - 48, Math.max(320, startHeight + (startY - e.clientY)));
       containerElement.style.width = `${newWidth}px`;
       containerElement.style.height = `${newHeight}px`;
-
-      // Recompute floating position to keep alignment
-      updatePosition();
     }
 
     function stopResize() {
-      isResizing = false;
       document.removeEventListener("mousemove", resize);
       document.removeEventListener("mouseup", stopResize);
     }
@@ -358,31 +329,43 @@ function makeResizable(containerElement: HTMLElement, target: HTMLElement) {
     document.addEventListener("mousemove", resize);
     document.addEventListener("mouseup", stopResize);
   });
-
-  function updatePosition() {
-    computePosition(target, containerElement, {
-      placement: "top-start",
-      middleware: [flip(), shift({ crossAxis: true, padding: 8 })],
-      strategy: "fixed",
-    }).then(({ x, y }) => {
-      Object.assign(containerElement.style, {
-        left: `${x}px`,
-        top: `${y}px`,
-      });
-    });
-  }
-
-  return updatePosition; // Return the function so it can be used if needed
 }
 
-function open(e: Event) {
+// "Reads main.py": the file Genie sees, from the editor header chip.
+function editorContextLabel(): string {
+  const chip = document.getElementById("editor-filename");
+  const name = chip ? (chip.textContent || "").trim() : "";
+  if (!document.getElementById("editor")) return "";
+  return name && name !== "untitled" ? `Reads ${name}` : "Reads your editor";
+}
+
+function autoGrow(input: HTMLTextAreaElement) {
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight + 2, 140)}px`;
+}
+
+// Listeners that live only while the panel is open.
+let detachPanel = () => {};
+
+function isOpen(): boolean {
+  return containerElement.isConnected;
+}
+
+function open(e?: Event) {
+  if (isOpen()) {
+    // already open: just put the cursor in the box
+    (document.getElementById("chat-widget__input") as HTMLTextAreaElement | null)?.focus();
+    return;
+  }
   if (config.closeOnOutsideClick) {
     document.body.appendChild(optionalBackdrop);
   }
 
   document.body.appendChild(containerElement);
   containerElement.innerHTML = widgetHTML;
-  containerElement.style.display = "block";
+  containerElement.setAttribute("role", "dialog");
+  containerElement.setAttribute("aria-label", config.widgetTitle);
+  document.body.classList.add("genie-open");
 
   const chatbotHeaderTitleText = document.createElement("span");
   chatbotHeaderTitleText.id = "chat-widget__title_text";
@@ -398,22 +381,30 @@ function open(e: Event) {
     createNewMessageEntry(config.greetingMessage, Date.now(), "system", true);
   }
 
-  const target = (e?.target as HTMLElement) || document.body;
-  cleanup = autoUpdate(target, containerElement, () => {
-    computePosition(target, containerElement, {
-      placement: "top-start",
-      middleware: [flip(), shift({ crossAxis: true, padding: 8 })],
-      strategy: "fixed",
-    }).then(({ x, y }) => {
-      Object.assign(containerElement.style, {
-        left: `${x}px`,
-        top: `${y}px`,
-      });
-    });
-  });
+  const context = document.getElementById("chat-widget__context");
+  if (context) context.textContent = editorContextLabel();
 
-  makeResizable(containerElement, target);
-  trap.activate();
+  makeResizable(containerElement);
+  if (config.closeOnOutsideClick) {
+    // modal: keep keyboard focus inside the panel
+    trap.activate();
+  }
+
+  document.getElementById("chat-widget__close")!.addEventListener("click", close);
+  const onKeydown = (ev: KeyboardEvent) => {
+    if (ev.key === "Escape") {
+      ev.stopPropagation();
+      close();
+    }
+  };
+  containerElement.addEventListener("keydown", onKeydown);
+  detachPanel = () => containerElement.removeEventListener("keydown", onKeydown);
+
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement;
+  input.addEventListener("input", () => autoGrow(input));
+  if (!config.closeOnOutsideClick) {
+    input.focus({ preventScroll: true });
+  }
 
   if (config.closeOnOutsideClick) {
     document
@@ -445,14 +436,24 @@ function open(e: Event) {
 }
 
 function close() {
+  if (!isOpen()) return;
   trap.deactivate();
+  detachPanel();
+  detachPanel = () => {};
 
   containerElement.innerHTML = "";
 
   containerElement.remove();
   optionalBackdrop.remove();
-  cleanup();
-  cleanup = () => {};
+  document.body.classList.remove("genie-open");
+}
+
+function toggle(e?: Event) {
+  if (isOpen()) {
+    close();
+  } else {
+    open(e);
+  }
 }
 
 async function createNewMessageEntry(
@@ -479,7 +480,8 @@ async function createNewMessageEntry(
   messageElement.classList.add(`chat-widget__message--${from}`);
   messageElement.id = `chat-widget__message--${from}--${timestamp}`;
 
-  const messageText = document.createElement("p");
+  const messageText = document.createElement("div");
+  messageText.classList.add("chat-widget__message-text");
   const markedtext = await marked(message, { renderer });
   messageText.innerHTML = markedtext;
   messageElement.appendChild(messageText);
@@ -538,7 +540,7 @@ async function streamResponseToMessageEntry(
   );
   if (existingMessageElement) {
     // If the message element already exists, update the text
-    const messageText = existingMessageElement.querySelector("p")!;
+    const messageText = existingMessageElement.querySelector(".chat-widget__message-text")!;
     messageText.innerHTML = await marked(message, { renderer });
     return;
   } else {
@@ -614,6 +616,7 @@ async function submit(e: Event) {
 
   await createNewMessageEntry(msg, Date.now(), myrole);
   target.reset();
+  autoGrow((target.elements as any).message as HTMLTextAreaElement);
   if (peerchatmode) {
     submitElement.removeAttribute("disabled");
     // not much to do in peerchat mode
@@ -649,7 +652,7 @@ async function submit(e: Event) {
   console.log("code insert hit: ", code);
 };
 
-const ChatWidget = { open, close, config, init };
+const ChatWidget = { open, close, toggle, config, init };
 (window as any).ChatWidget = ChatWidget;
 declare global {
   interface Window {

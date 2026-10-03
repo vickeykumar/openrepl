@@ -151,6 +151,9 @@ var Color = require('color');
 				document.documentElement.style.setProperty('--accent-color-dark', accent_color_dark.hex());
 				document.documentElement.style.setProperty('--rev-accent-color-dark', accent_color_rev_dark.hex());
 				document.documentElement.style.setProperty('--rev-accent-color-light', accent_color_rev_light.hex());
+				// Button text on the accent: dark or white, whichever has more contrast today.
+				var on_accent = colorObj.contrast(Color('#15151C')) >= colorObj.contrast(Color('#FFFFFF')) ? '#15151C' : '#FFFFFF';
+				document.documentElement.style.setProperty('--on-accent-color', on_accent);
 			}
 			// statements
 		} catch(e) {
@@ -159,7 +162,11 @@ var Color = require('color');
 		}
 	}
 
-	setupColorThemes();
+	// Colour of the day is off by default. An admin can turn it on at /admin,
+	// which sets site_settings.colorOfTheDay (served by /settings.js).
+	if (window.site_settings && window.site_settings.colorOfTheDay) {
+		setupColorThemes();
+	}
 
 })();
 

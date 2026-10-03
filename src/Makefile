@@ -2,7 +2,7 @@ include Makefile.include
 
 DEBIAN_ROOT = ${ROOT}/deb
 OUTPUT_DIR = ./builds
-GIT_COMMIT = $(shell git rev-parse HEAD | cut -c1-7)
+GIT_COMMIT = $(shell git rev-parse HEAD 2>/dev/null | cut -c1-7)
 VERSION = 1.0.0-beta
 TARGET=gotty
 BUILD_OPTIONS = -ldflags "-X main.Version=$(VERSION) -X main.CommitID=$(GIT_COMMIT)"
@@ -54,9 +54,11 @@ bindata/static/doc.html: bindata/static resources/doc.html bindata/static/docs
 bindata/static/editblog.html: bindata/static resources/editblog.html
 	cp resources/editblog.html bindata/static/editblog.html
 
-bindata/static/about.html: bindata/static resources/about.html resources/references.html
+bindata/static/about.html: bindata/static resources/about.html resources/references.html resources/privacy.html resources/terms.html
 	cp resources/about.html bindata/static/about.html
 	cp resources/references.html bindata/static/references.html
+	cp resources/privacy.html bindata/static/privacy.html
+	cp resources/terms.html bindata/static/terms.html
 
 bindata/static/NewFile.html: bindata/static resources/NewFile.html
 	cp resources/NewFile.html bindata/static/NewFile.html
@@ -73,6 +75,8 @@ bindata/static/js: bindata/static resources/js
 
 bindata/static/js/gotty-bundle.js: bindata/static/js js/dist/gotty-bundle.js js/dist/preprocessing.js
 	cp js/dist/gotty-bundle.js bindata/static/js/gotty-bundle.js
+	cp js/dist/hterm.js bindata/static/js/hterm.js
+	cp js/dist/scribbler.js bindata/static/js/scribbler.js
 	cp js/dist/preprocessing.js bindata/static/js/preprocessing.js
 
 bindata/static/css: bindata/static resources/css/* jsconsole/build/static/css/jsconsole.css
@@ -80,20 +84,19 @@ bindata/static/css: bindata/static resources/css/* jsconsole/build/static/css/js
 	cp -Rv resources/css/* bindata/static/css/
 	cp jsconsole/build/static/css/jsconsole.css bindata/static/css/jsconsole.css
 
-bindata/static/css/xterm.css: bindata/static/css js/node_modules/xterm/dist/xterm.css
-	cp js/node_modules/xterm/dist/xterm.css bindata/static/css/xterm.css
+bindata/static/css/xterm.css: bindata/static/css js/node_modules/webpack
+	cp js/node_modules/@xterm/xterm/css/xterm.css bindata/static/css/xterm.css
 
-js/node_modules/xterm/dist/xterm.css:
+# js/src/page/*.js is the page script, bundled into js/dist/scribbler.js (T20).
+js/dist/gotty-bundle.js: js/src/* js/src/page/* js/webpack.config.js js/tsconfig.json js/node_modules/webpack
 	cd js && \
-	npm install
+	./node_modules/.bin/webpack
 
-js/dist/gotty-bundle.js: js/src/* js/node_modules/webpack
+# Reinstall whenever js/package.json changes (xterm.js 6 and webpack 5, T19).
+js/node_modules/webpack: js/package.json
 	cd js && \
-	`npm bin`/webpack
-
-js/node_modules/webpack:
-	cd js && \
-	npm install
+	npm install && \
+	touch node_modules/webpack
 
 jsconsole/node_modules/webpack:
 	@echo "building jsconsole: "

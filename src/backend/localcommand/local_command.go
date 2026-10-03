@@ -15,6 +15,7 @@ import (
 	"user"
 	"net/url"
 	"strings"
+	"sync"
 )
 
 const (
@@ -32,6 +33,9 @@ type LocalCommand struct {
 	cmd       *exec.Cmd
 	pty       *os.File
 	ptyClosed chan struct{}
+
+	exitMu  sync.Mutex
+	exitErr error // what cmd.Wait() returned, set before ptyClosed is closed
 }
 
 func New(command string, argv []string, ppid int, params url.Values, options ...Option) (*LocalCommand, error) {
@@ -152,9 +156,28 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 		if cmderr != nil {
 	        log.Printf("lcmd.cmd.wait : %s", cmderr.Error())
 		}
+		lcmd.exitMu.Lock()
+		lcmd.exitErr = cmderr
+		lcmd.exitMu.Unlock()
 	}()
 
 	return lcmd, nil
+}
+
+// ExitReason reports why the command ended: "killed" when it was stopped by
+// SIGKILL (for example by the container's memory limit), "" otherwise.
+// It waits briefly for the process to be reaped.
+func (lcmd *LocalCommand) ExitReason() string {
+	select {
+	case <-lcmd.ptyClosed:
+	case <-time.After(2 * time.Second):
+	}
+	lcmd.exitMu.Lock()
+	defer lcmd.exitMu.Unlock()
+	if lcmd.exitErr != nil && strings.Contains(lcmd.exitErr.Error(), "signal: killed") {
+		return "killed"
+	}
+	return ""
 }
 
 func (lcmd *LocalCommand) Read(p []byte) (n int, err error) {

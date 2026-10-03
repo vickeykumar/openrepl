@@ -1,5 +1,5 @@
 <!doctype html>
-<html itemscope itemtype="http://schema.org/CreativeWork">
+<html lang="en">
   <head>
     <!-- Google Tag Manager -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -9,142 +9,199 @@
     })(window,document,'script','dataLayer','GTM-T8XFRGR');</script>
     <!-- End Google Tag Manager -->
     <meta charset="utf-8">
-    <meta name="description" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="keywords" content="Online REPL,Coding Online,Online Program,Share,Interpreter,Interpret,Java Interpreter,Scripting, REPL,Evaluate,Code Snippets,C,C++,Go,Python,Java,learn,code,REPL,compile,container,cloud,computing,service,terminal,bash,programming,online,coding,golang,read,execute,print,loop,check,test,statements,expression, learn coding online,interpreter and compiler,interpreter language,code snippets online,c programming software,compute,learn to code for free, c interpreter,c interpreter online,online c compiler,scripting c,cling,how to learn programming in c,c++ programming online, go playground, interactive go,print go,golang tutorial, go repl, repl shell,repl javascript,javascript,js,compiler vs interpreter,terminal app,bash script,open source software, python online tutorial,python interpreter online,python playground,best python compiler, jshell,java repl"/>
+    <title>Coding interview practice | OpenREPL</title>
+    <meta name="description" content="Generate data structure and algorithm questions on any topic, solve them in an online editor with a live REPL, and track the ones you've finished.">
+    <link rel="canonical" href="https://openrepl.com/practice/dsa-questions">
     <meta name="google-site-verification" content="iejQHkSDbrldGCn37ZJ79J1zoQQcW7-MAlqsHSHwnOI" />
     <meta name="msvalidate.01" content="75003493DFA09CBFBBDC3F0E2AE85DFD" />
-    <base target="_top">
-    <title>About OpenREPL - An online REPL/Interpreter Platform | OpenREPL</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/css/jquery.dataTables.min.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.4.1/css/responsive.dataTables.min.css">
-    <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
+    <link rel="icon" type="image/svg" href="/images/logo.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/scribbler-global.css">
-    <link rel="stylesheet" href="/css/scribbler-doc.css">
-    <link rel="stylesheet" href="/css/scribbler-misc.css">
-    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
-    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/responsive/2.4.1/js/dataTables.responsive.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"></script>
+    <link rel="stylesheet" href="/css/ui-refresh.css">
+    <script src="/js/theme.js"></script>
+    <script src="/js/notices.js"></script>
     <script src="/config.js"></script>
+    <script src="/settings.js"></script>
     <script src="/js/preprocessing.js"></script>
     <link rel="author" href="humans.txt">
   </head>
-  <body>
+  <body class="practice-page">
     <!-- Google Tag Manager (noscript) -->
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-T8XFRGR"
     height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
-    <!--div class="doc__bg"></div-->
-    <nav class="header">
-      <h1 class="logo"><span class="go__color">Open</span>REPL<sup> beta</h1>
+    <a class="skip-link" href="#questions">Skip to the questions</a>
+    <nav id="header-nav" class="site-nav" aria-label="Primary">
+      <a class="brand" href="/" aria-label="OpenREPL home"><span class="brand__open">open</span><span class="brand__repl">repl</span></a>
       <ul class="menu">
-        <div class="menu__item toggle"><span></span></div>
-        <li class="menu__item"><a href="https://github.com/vickeykumar/openrepl" class="link link--dark"><i class="fa fa-github"></i> Github</a></li>
-        <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
+        <li class="menu__item toggle"><button type="button" class="toggle__button" aria-label="Menu" aria-expanded="false"><span></span></button></li>
+        <li class="menu__item"><a href="/#languages" class="link link--dark">Languages</a></li>
+        <li class="menu__item"><a href="/practice/dsa-questions" class="link link--dark" aria-current="page">Practice</a></li>
+        <li class="menu__item"><a href="/doc.html" class="link link--dark">Docs</a></li>
+        <li class="menu__item"><a href="/blog" class="link link--dark">Blog</a></li>
+        <li class="menu__item menu__item--push"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button></li>
+        <li class="menu__item"><a href="https://github.com/vickeykumar/openrepl" class="link link--dark nav-star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"></path></svg>Star on GitHub</a></li>
       </ul>
     </nav>
-    <div class="wrapper">
-      <div class="wrapper-body">
-        <h2>Top Coding Interview Questions</h2>
-      <div class="toolbar">
-        <div>
-          <label for="sortBy">Sort by:</label>
-          <select id="sortBy">
-            <option value="">Default</option>
-            <option value="Easy">Easy</option>
-            <option value="Medium">Medium</option>
-            <option value="Hard">Hard</option>
-            <option value="recent">Last Added</option>
-          </select>
+
+    <header class="practice-hero">
+      <div class="practice-hero__inner">
+        <div class="practice-hero__copy">
+          <p class="hero__eyebrow"><span class="hero__dot" aria-hidden="true"></span>Practice</p>
+          <h1 class="practice-hero__title">Coding interview practice</h1>
+          <p class="practice-hero__blurb">Generate a question on any topic, solve it in the editor next to a live REPL, and tick it off when it passes.</p>
+          <div class="hero__actions">
+            <button type="button" class="hero__cta" id="newQuestionBtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14 M5 12h14"></path></svg>New question</button>
+            <button type="button" class="hero__secondary" id="randomQuestionBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5 M4 20L21 3 M21 16v5h-5 M15 15l6 6 M4 4l5 5"></path></svg>Random question</button>
+          </div>
         </div>
-       <div>
-          <button id="randomQuestionBtn">🎲 Random</button>
-          <button id="newQuestionBtn">+ New Question</button>
+        <section class="progress-card" aria-labelledby="progress-title">
+          <h2 class="progress-card__title" id="progress-title">Your progress</h2>
+          <p class="progress-card__count"><strong id="progress-done">0</strong> of <span id="progress-total">0</span> done</p>
+          <div class="progress-card__bar" id="progress-bar" role="progressbar" aria-labelledby="progress-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="progress-fill"></span></div>
+          <dl class="progress-card__levels">
+            <div><dt><span class="level level--easy">Easy</span></dt><dd id="level-easy">0 of 0</dd></div>
+            <div><dt><span class="level level--medium">Medium</span></dt><dd id="level-medium">0 of 0</dd></div>
+            <div><dt><span class="level level--hard">Hard</span></dt><dd id="level-hard">0 of 0</dd></div>
+          </dl>
+          <p class="progress-card__sync" id="sync-status" role="status">Saved in this browser.</p>
+        </section>
+      </div>
+    </header>
+
+    <main class="practice-main" id="questions" tabindex="-1">
+      <div class="practice-main__inner">
+        <div class="practice-toolbar" role="search" aria-label="Find questions">
+          <div class="practice-search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+            <label class="visually-hidden" for="q-search">Search questions</label>
+            <input type="search" id="q-search" placeholder="Search by name or topic" autocomplete="off">
+          </div>
+          <div class="practice-filter">
+            <label class="visually-hidden" for="f-status">Status</label>
+            <select id="f-status">
+              <option value="">Any status</option>
+              <option value="todo">To do</option>
+              <option value="done">Done</option>
+            </select>
+          </div>
+          <div class="practice-filter">
+            <label class="visually-hidden" for="f-topic">Topic</label>
+            <select id="f-topic">
+              <option value="">All topics</option>
+            </select>
+          </div>
+          <div class="practice-filter">
+            <label class="visually-hidden" for="f-level">Level</label>
+            <select id="f-level">
+              <option value="">All levels</option>
+              <option value="Easy">Easy</option>
+              <option value="Medium">Medium</option>
+              <option value="Hard">Hard</option>
+            </select>
+          </div>
+          <div class="practice-filter practice-filter--sort">
+            <label for="f-sort">Sort</label>
+            <select id="f-sort">
+              <option value="todo">To do first</option>
+              <option value="new">Newest first</option>
+              <option value="old">Oldest first</option>
+              <option value="name">Name, A to Z</option>
+              <option value="level">Easiest first</option>
+            </select>
+          </div>
+        </div>
+        <p class="practice-count" id="result-count" aria-live="polite"></p>
+
+        <table class="q-table" id="questionsTable">
+          <caption class="visually-hidden">Practice questions</caption>
+          <thead>
+            <tr>
+              <th scope="col" class="q-col-done">Done</th>
+              <th scope="col">Question</th>
+              <th scope="col">Topic</th>
+              <th scope="col">Level</th>
+              <th scope="col">Added</th>
+              <th scope="col"><span class="visually-hidden">Delete</span></th>
+            </tr>
+          </thead>
+          <tbody id="q-body"></tbody>
+        </table>
+
+        <div class="q-empty" id="q-empty" hidden>
+          <p class="q-empty__title">No questions yet</p>
+          <p class="q-empty__text">Pick a topic and a level, and AI writes a fresh question with starter code in C, C++, Go and Python.</p>
+          <button type="button" class="q-empty__btn" id="q-empty-new">Generate your first question</button>
+        </div>
+        <div class="q-empty" id="q-nomatch" hidden>
+          <p class="q-empty__title">No questions match</p>
+          <p class="q-empty__text">Try another search or filter.</p>
+          <button type="button" class="q-empty__btn q-empty__btn--quiet" id="q-clear">Clear filters</button>
         </div>
       </div>
+    </main>
 
-      <table id="questionsTable" class="display">
-        <thead>
-          <tr>
-            <th>Mark Completed</th>
-            <th>Name</th>
-            <th>
-              <select id="topicsFilter" class="filter-select">
-                <option value="">Topic</option>
-              </select>
-            </th>
-            <th>
-              <select id="difficultyFilter" class="filter-select">
-                <option value="">Difficulty Level</option>
-              </select>
-            </th>
-            <th class="recent-column">Last Added</th>
-            <th>Delete</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
-
-      <!-- Modal Structure -->
-      <div class="modal-container" id="modal">
-        <div class="modal">
-          <button class="close-btn" id="close">
-            <i class="fa fa-times"></i>
-          </button>
-          <div class="modal-header"><h3>New Question</h3></div>
-          <div class="modal-content">
-            <p>Please provide criteria to generate a new question</p>
-            <form class="modal-form">
-              <!-- Topic Selection with Searchable Dropdown -->
-              <div>
-                <label for="topic">Topic</label>
-                <select name="topic" id="topic" class="form-input">
-                  <option value="">Select a Topic</option>
-                  <option value="Tree">Tree</option>
-                  <option value="Binary Search">Binary Search</option>
-                  <option value="Sorting">Sorting</option>
-                  <option value="Custom">Write Custom</option>
-                </select>
-              </div>
-
-              <!-- Difficulty Selection -->
-              <div class="modal-rows">
-                <label for="difficulty">Difficulty Level</label>
-                <select name="difficulty" id="difficulty" class="form-input">
-                  <option value="">Select Difficulty</option>
+    <!-- New question dialog (shared markup with the editor page) -->
+    <div class="modal-container" id="modal">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-intro">
+        <div class="modal-header">
+          <h2 id="modal-title">New question</h2>
+          <button type="button" class="close-btn" id="close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg></button>
+        </div>
+        <div class="modal-content">
+          <p class="modal-intro" id="modal-intro">Choose a topic and a level. Leave the topic empty for a surprise.</p>
+          <form class="modal-form" id="question-form">
+            <div class="modal-field">
+              <label for="topic">Topic</label>
+              <input type="text" name="topic" id="topic" class="form-input" list="topic-list" placeholder="Any topic, or type your own" autocomplete="off">
+              <datalist id="topic-list"></datalist>
+            </div>
+            <div class="modal-rows">
+              <div class="modal-field">
+                <label for="difficulty">Level</label>
+                <select name="difficulty" id="difficulty" class="form-input" required>
+                  <option value="">Choose a level</option>
                   <option value="Easy">Easy</option>
                   <option value="Medium">Medium</option>
                   <option value="Hard">Hard</option>
                 </select>
-                <label for="temperature">Temperature</label>
-                <input type="number" class="select-input ide-menu-item" style="width:3em" id="temperature" min="0.0" max="1.0" step="0.1" value="0.3" data-gtm-form-interact-field-id="0">
               </div>
-
-              <!-- Custom Prompt Textarea -->
-              <div id="customPromptContainer">
-                  <label for="customPrompt">Custom Prompt</label>
-                  <textarea id="customPrompt" name="customPrompt" class="form-input" placeholder="In case you want to add something more..."></textarea>
+              <div class="modal-field modal-field--narrow">
+                <label for="temperature">Creativity</label>
+                <input type="number" id="temperature" class="form-input" min="0" max="1" step="0.1" value="0.3" aria-describedby="temperature-hint">
               </div>
-
-              <input type="submit" value="Submit" class="submit-btn" id="qsubmit-btn" />
-            </form>
-          </div>
+            </div>
+            <p class="modal-hint" id="temperature-hint">Creativity runs from 0 (predictable) to 1 (surprising).</p>
+            <div class="modal-field" id="customPromptContainer">
+              <label for="customPrompt">Extra instructions <span class="modal-optional">(optional)</span></label>
+              <textarea id="customPrompt" name="customPrompt" class="form-input" rows="3" placeholder="For example: set it in a train timetable"></textarea>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="modal-cancel" id="modal-cancel">Cancel</button>
+              <button type="submit" class="submit-btn" id="qsubmit-btn">Generate question</button>
+            </div>
+          </form>
         </div>
       </div>
-    <footer class="footer">
-    <a href="about.html" class="link link--light">About</a> <span class="dot"></span>
-    <a href="references.html" class="link link--light">References</a> <span class="dot"></span>
-    <span id="copyright_year">
-        <script>document.getElementById('copyright_year').appendChild(document.createTextNode(new Date().getFullYear()))</script>
-    </span>&copy;<span class="go__color">Open</span>REPL 
+    </div>
+
+    <footer class="site-footer site-footer--simple">
+      <div class="site-footer__inner site-footer__bottom">
+        <span>&copy; <span id="copyright_year"></span> OpenREPL · MIT licensed</span>
+        <div class="site-footer__social">
+          <a href="/about.html">About</a>
+          <a href="/references.html">References</a>
+          <a href="/privacy.html">Privacy policy</a>
+          <a href="/terms.html">Terms of use</a>
+        </div>
+      </div>
+      <script>document.getElementById('copyright_year').textContent = new Date().getFullYear();</script>
     </footer>
     <script src="/js/common.js"></script>
+    <script src="/js/practice-store.js"></script>
     <script src="/js/scribbler-misc.js"></script>
   </body>
 </html>

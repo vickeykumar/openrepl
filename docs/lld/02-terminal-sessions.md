@@ -179,9 +179,33 @@ Writes to the WebSocket are serialized by `writeMutex`, which lets the file brow
 
 `GottyTerminal.spawnGotty(option, eventname)` (`gotty.ts`):
 
-1. Chooses `Xterm` or `Hterm`.
+1. Chooses `Xterm` or `Hterm`. Hterm lives in `hterm.js` and is loaded first, so for it the steps below run once that file arrives.
 2. Builds `wss://host/ws_<option>` + `location.search` (+ C-mode args).
 3. Builds the payload through `updatePayload`.
 4. Creates `WebTTY(term, ConnectionFactory, FireTTY, payload, args, gotty_auth_token)` and calls `open()`.
 
 `WebTTY.open()` (`webtty.ts`) sends the init JSON on open, wires resize, input and ping, decodes output, and parses the XML title to learn the `jid` (primary tab only). It forwards `Event` messages to the file browser handler and to Firebase. See LLD 06 for tabs and sharing.
+
+### Close reasons and the `ttystate` event
+
+`generateHandleWS` puts the reason in the WebSocket close frame. When the command ends because it was killed with SIGKILL (which is how the memory cgroup stops it), `processWSConn` asks the slave for `ExitReason()` and returns `errSlaveKilled`, so the reason becomes `local command: killed` instead of `local command`. `LocalCommand` records what `cmd.Wait()` returned before it closes `ptyClosed`.
+
+`webtty.ts` turns each connection change into a bubbling `ttystate` DOM event on the terminal element, which `scribbler.js` uses for the tab dots, footer and banner (LLD 06):
+
+| `detail.state` | `detail.kind` | When |
+|---|---|---|
+| `connecting` | | Before `connection.open()`, including after a reconnect. |
+| `connected` | | In `onOpen`. |
+| `closed` | `exited` | Code 1000, reason `local command`: the program ended. |
+| `closed` | `killed` | Code 1000, reason `local command: killed`: stopped by SIGKILL, usually the memory limit. |
+| `closed` | `failed` | The reason contains `failed to create backend`: the REPL could not start, for example a missing binary or a container that could not be created. |
+| `closed` | `timeout` | The reason mentions a timeout, for example the 60-minute write deadline. |
+| `closed` | `closed` | Code 1000, reason `client`: the server saw the client close it. |
+| `closed` | `limit` | The browser already has the maximum number of connections. |
+| `closed` | `lost` | Anything else, such as a dropped network or a server restart. |
+
+`detail.compiled` is true for Run and Debug sessions.
+
+When the page has a `#term-banner` and the stop gets a banner, `webtty.ts` no longer prints the generic "connection closed by remote host" (and "Resource unavailable") lines under it. The "[Program Exited]" and "[Program stopped: …killed…]" lines and the shared-session "[Primary Terminal is disconnected…]" line are still printed.
+
+When the page closes a connection itself (Reconnect, a language switch, Run, closing a tab), the closer sets `closedByPage` and that connection's close event emits nothing and schedules no reconnect. The browser sends no status code, so the event arrives as code 1005 about 2 s later (the server sleeps before closing the socket), after the new connection on the same terminal element has already reported `connected`. Without the flag it was classified `lost` and showed "Connection lost" on a working REPL.

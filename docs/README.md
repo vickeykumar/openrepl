@@ -2,6 +2,8 @@
 
 These docs describe how OpenREPL is built. The high-level design (HLD) lives in the [project README](../README.md#architecture-high-level-design). The low-level design (LLD) documents below explain each subsystem at code level, naming the files, functions and data formats involved.
 
+To build, run and test OpenREPL on your machine, see [Run locally on macOS (Colima)](../README.md#run-locally-on-macos-colima) in the project README.
+
 ## LLD index
 
 | # | Document | Covers |
@@ -11,7 +13,7 @@ These docs describe how OpenREPL is built. The high-level design (HLD) lives in 
 | 03 | [Sandboxing and resource limits](lld/03-sandboxing-and-resources.md) | Namespaces, cgroup v1 layout, memory weights, fork/`jid`, disk quota, guest cleanup |
 | 04 | [IDE: Run/Debug, demos and files](lld/04-ide-run-and-files.md) | `demos.xml`, Compiler scripts, the Run pipeline, file browser API and events, uploads |
 | 05 | [Auth, sessions and storage](lld/05-auth-sessions-storage.md) | Firebase sign-in, `/login`, session cookie, UnQLite stores, home-directory resolution, data models |
-| 06 | [Frontend](lld/06-frontend.md) | Pages, script load order, `gotty-bundle` modules, tabs, sharing over Firebase, chat widget, Practice |
+| 06 | [Frontend](lld/06-frontend.md) | Pages, script load order, `gotty-bundle` modules, tabs, sharing over Firebase, chat widget, Practice, command palette, Phase 2 additions |
 | 07 | [AI features](lld/07-ai-features.md) | `/chat/completions` proxy, rate limiting, Genie, Practice question generation |
 | 08 | [Build, packaging and deployment](lld/08-build-and-deploy.md) | Makefile and bindata pipeline, Docker, CI, systemd, runtime file layout |
 | 09 | [Adding a new REPL](lld/09-adding-a-repl.md) | Step-by-step checklist that touches every layer |
@@ -33,7 +35,7 @@ Go code uses a GOPATH layout: the repo root is `GOPATH`, packages live under `sr
 | `src/user/`, `src/cookie/`, `src/cachedb/` | Sessions, cookies, cached UnQLite | 05 |
 | `src/utils/`, `src/encoder/` | Constants, flags, job scheduler, demo types, crypto helpers | 01, 03, 05 |
 | `src/resources/` | HTML, CSS, JS, images, `meta/demos.xml`, chat widget source | 04, 06 |
-| `src/js/` | TypeScript terminal client (webpack → `gotty-bundle.js`) | 06 |
+| `src/js/` | TypeScript terminal client (webpack → `gotty-bundle.js`, `hterm.js`) and the page script `src/js/src/page/` (→ `scribbler.js`) | 06 |
 | `src/jsconsole/` | Vendored `@remy/jsconsole` (browser JavaScript REPL) | 06 |
 | `src/services/gotty.service`, `scripts/run_app.sh`, `Dockerfile`, `install_prerequisite.sh` | Runtime and packaging | 08 |
 | `src/github.com/`, `src/golang.org/`, `src/pkg/` | Vendored third-party Go packages | 08 |

@@ -22,6 +22,8 @@ func common_setup() {
 	utils.GottyJobs.LoadJobsFromFile(utils.GOTTY_PATH+"/"+utils.JobFile, nil)
 	server.InitFeedbackDBHandle()
 	server.InitBlogDBHandle()
+	server.InitSnippetDBHandle()
+	server.InitPracticeDBHandle()
 	user.InitSessionDBHandle()
 	containers.InitContainers()
 }
@@ -36,6 +38,8 @@ func common_cleanup() {
 	utils.GottyJobs.SaveJobsToFile(utils.GOTTY_PATH+"/"+utils.JobFile)
 	server.CloseFeedbackDBHandle()
 	server.CloseBlogDBHandle()
+	server.CloseSnippetDBHandle()
+	server.ClosePracticeDBHandle()
 	user.CloseSessionDBHandle()
 	containers.DeleteContainers()
 	cleanup_done = true
