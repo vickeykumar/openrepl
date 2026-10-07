@@ -261,6 +261,12 @@ func TestCredentialsCanBeJSONBase64OrAFile(t *testing.T) {
 			t.Errorf("%s: %+v %v", name, a, err)
 		}
 	}
+	if _, err := parseCredentials("/etc/secrets/missing.json"); err == nil || !strings.Contains(err.Error(), `no readable file at "/etc/secrets/missing.json"`) {
+		t.Errorf("a path that is not there: %v", err)
+	}
+	if _, err := parseCredentials("sk-this-is-secret-0123456789"); err == nil || strings.Contains(err.Error(), "this-is-secret") || !strings.Contains(err.Error(), "28 characters, starting with") {
+		t.Errorf("a value that is nothing: %v", err)
+	}
 	for name, in := range map[string]string{
 		"nonsense": "not credentials", "json without a key": `{"project_id":"p"}`, "bad json": `{`,
 	} {

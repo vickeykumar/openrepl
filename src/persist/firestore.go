@@ -86,8 +86,16 @@ func parseCredentials(raw string) (*serviceAccount, error) {
 			data = b
 		} else if b, err := base64.StdEncoding.DecodeString(raw); err == nil && bytes.HasPrefix(bytes.TrimSpace(b), []byte("{")) {
 			data = b
+		} else if strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "~") || strings.HasPrefix(raw, ".") || strings.HasSuffix(raw, ".json") {
+			// it looks like a path (not a secret): say which one, and that it is not there
+			return nil, fmt.Errorf("there is no readable file at %q (the path is read inside the container or on the machine the server runs on)", raw)
 		} else {
-			return nil, errors.New("the Firestore credentials are neither JSON, base64 of JSON, nor the path of a file")
+			// only the size and the first character, never more of the value
+			first := ""
+			if raw != "" {
+				first = string([]rune(raw)[:1])
+			}
+			return nil, fmt.Errorf("the Firestore credentials (%d characters, starting with %q) are neither JSON, base64 of JSON, nor the path of a file", len(raw), first)
 		}
 	}
 	var a serviceAccount
