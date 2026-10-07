@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"cookie"
-	"github.com/nobonobo/unqlitego"
+	"persist"
 	"user"
 	"utils"
 )
@@ -40,7 +40,7 @@ const (
 )
 
 var (
-	practice_db_handle *unqlitego.Database
+	practice_db_handle persist.Store
 	practiceDBMu       sync.Mutex
 	practiceIDPattern  = regexp.MustCompile(`^[A-Za-z0-9_-]{1,40}$`)
 )
@@ -68,13 +68,13 @@ func newPracticeDoc() practiceDoc {
 
 func InitPracticeDBHandle() {
 	var err error
-	practice_db_handle, err = unqlitego.NewDatabase(PRACTICE_DB)
+	practice_db_handle, err = persist.Open(PRACTICE_DB)
 	if err != nil {
 		log.Println("ERROR: Error while creating practice DB handle : ", err.Error())
 		practice_db_handle = nil // progress stays in the browser, the rest of the site works
 		return
 	}
-	log.Println("Successfully initialized practice handle: ", practice_db_handle)
+	log.Println("Successfully initialized practice handle, stored in", practice_db_handle.Backend())
 }
 
 func ClosePracticeDBHandle() {

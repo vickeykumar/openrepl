@@ -161,6 +161,8 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 			HostKey:      hostKey,
 			CookieSecret: func() []byte { return cookie.SECRET_KEY },
 			AuthToken:    func() string { return server.options.Credential },
+			Secret:       utils.Secret,
+			Config:       server.gatewayWorkerConfig,
 		}
 		router.BindTunnel(&tcfg)
 		if server.options.WorkspaceSync {

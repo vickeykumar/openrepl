@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -39,6 +40,9 @@ type ClientConfig struct {
 	// OnRegistered runs after each successful registration, before any
 	// stream is served.
 	OnRegistered func(RegisterReply)
+	// OnConfig is called with the gateway's WorkerConfig: after registration,
+	// and whenever a heartbeat reply brings a new one.
+	OnConfig func(*WorkerConfig)
 	// OnSyncStream is called, in its own goroutine, with the workspace
 	// synchronization channel the gateway opens after registration. The
 	// handler owns the stream and must close it when done.
@@ -62,6 +66,8 @@ type Client struct {
 	mu     sync.Mutex
 	conn   ssh.Conn
 	routes map[RouteEvent]struct{}
+
+	configRev int64 // atomic: the revision of the WorkerConfig handed to OnConfig last
 }
 
 // NewClient validates cfg and creates a Client. Call Run to connect.
@@ -214,6 +220,7 @@ func (c *Client) session(ctx context.Context) (bool, error) {
 	if err := json.Unmarshal(data, &rep); err != nil {
 		return false, fmt.Errorf("malformed registration reply: %v", err)
 	}
+	c.applyConfig(rep.Config)
 	if c.cfg.OnRegistered != nil {
 		c.cfg.OnRegistered(rep)
 	}
@@ -288,10 +295,16 @@ func (c *Client) heartbeat(conn ssh.Conn, every time.Duration, stop <-chan struc
 			if c.cfg.Load != nil {
 				hb = c.cfg.Load()
 			}
+			hb.ConfigRev = atomic.LoadInt64(&c.configRev)
 			// A gateway that does not answer within three intervals is gone.
-			if !c.sendWithin(conn, ReqHeartbeat, hb, 3*every) {
+			ok, data := c.request(conn, ReqHeartbeat, hb, 3*every)
+			if !ok {
 				conn.Close()
 				return
+			}
+			var hr HeartbeatReply
+			if len(data) > 0 && json.Unmarshal(data, &hr) == nil {
+				c.applyConfig(hr.Config)
 			}
 		case <-stop:
 			return
@@ -304,18 +317,40 @@ func (c *Client) send(conn ssh.Conn, name string, v interface{}) bool {
 }
 
 func (c *Client) sendWithin(conn ssh.Conn, name string, v interface{}, d time.Duration) bool {
+	ok, _ := c.request(conn, name, v, d)
+	return ok
+}
+
+// request sends a global request and returns whether it was accepted, and the
+// payload of the answer.
+func (c *Client) request(conn ssh.Conn, name string, v interface{}, d time.Duration) (bool, []byte) {
 	payload, _ := json.Marshal(v)
-	done := make(chan bool, 1)
+	type result struct {
+		ok   bool
+		data []byte
+	}
+	done := make(chan result, 1)
 	go func() {
-		ok, _, err := conn.SendRequest(name, true, payload)
-		done <- ok && err == nil
+		ok, data, err := conn.SendRequest(name, true, payload)
+		done <- result{ok && err == nil, data}
 	}()
 	select {
-	case ok := <-done:
-		return ok
+	case r := <-done:
+		return r.ok, r.data
 	case <-time.After(d):
-		return false
+		return false, nil
 	}
+}
+
+// applyConfig hands a WorkerConfig to the worker, once per revision.
+func (c *Client) applyConfig(cfg *WorkerConfig) {
+	if cfg == nil || cfg.Revision == atomic.LoadInt64(&c.configRev) {
+		return
+	}
+	if c.cfg.OnConfig != nil {
+		c.cfg.OnConfig(cfg)
+	}
+	atomic.StoreInt64(&c.configRev, cfg.Revision)
 }
 
 // SyncReady tells the gateway that this worker's homes are reconciled, so it

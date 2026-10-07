@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync/atomic"
 	"time"
 	"strings"
@@ -415,6 +416,8 @@ func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
     		log.Println("Error: saving access_token: ", err)
     	}
     	w.Write([]byte("var openai_access_token = '" + string(access_token) + "';"))
+    	// the page offers the OpenRouter models only when the server can call them
+    	w.Write([]byte("\nvar openrouter_enabled = " + strconv.FormatBool(utils.OpenRouterKey() != "") + ";"))
     } else {
     	log.Println("Error: encrypting access_token: ", err)
     }

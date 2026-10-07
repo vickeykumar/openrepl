@@ -144,6 +144,7 @@ Settings (`utils/config.go`). Each is read from the environment first and from t
 |---|---|---|
 | Admin accounts | `OPENREPL_ADMIN_EMAILS`, comma-separated | `user.email` |
 | OpenAI key | `OPENREPL_OPENAI_API_KEY`, as it is | `user.OpenaiAPIKey`, base64 |
+| OpenRouter key (optional, for Gemma) | `OPENREPL_OPENROUTER_API_KEY`, as it is | none |
 | Allowed host | `OPENREPL_HOST` | `user.host` |
 | Firebase web config | `OPENREPL_FIREBASE_CONFIG`: JSON, or base64 of JSON | built in (production project) |
 | Mode | `OPENREPL_ENV`: `dev`, `development` or `local`; anything else is production | |

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nobonobo/unqlitego"
+	"persist"
 	"utils"
 )
 
@@ -34,7 +34,7 @@ const (
 const snippetAlphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no 0/O, 1/l/I
 
 var (
-	snippet_db_handle *unqlitego.Database
+	snippet_db_handle persist.Store
 	snippetDBMu       sync.Mutex
 	snippetIDPattern  = regexp.MustCompile(`^[A-Za-z0-9]{` + "8" + `}$`)
 	snippetLangRegexp = regexp.MustCompile(`^[a-z0-9][a-z0-9.+-]{0,19}$`)
@@ -48,13 +48,13 @@ type snippet struct {
 
 func InitSnippetDBHandle() {
 	var err error
-	snippet_db_handle, err = unqlitego.NewDatabase(SNIPPET_DB)
+	snippet_db_handle, err = persist.Open(SNIPPET_DB)
 	if err != nil {
 		log.Println("ERROR: Error while creating snippet DB handle : ", err.Error())
 		snippet_db_handle = nil // share-code links are off, the rest of the site works
 		return
 	}
-	log.Println("Successfully initialized snippet handle: ", snippet_db_handle)
+	log.Println("Successfully initialized snippet handle, stored in", snippet_db_handle.Backend())
 }
 
 func CloseSnippetDBHandle() {

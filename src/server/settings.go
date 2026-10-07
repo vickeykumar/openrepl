@@ -3,10 +3,8 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -23,7 +21,16 @@ const (
 	noticeMaxChars   = 280 // the announcement and the maintenance message
 	maxDisabledLangs = 40
 	maxGenieRate     = 60.0 // requests per minute
+	maxExtraAdmins   = 50
 )
+
+var emailPattern = regexp.MustCompile(`^[^@\s,;<>"']+@[^@\s,;<>"']+\.[^@\s,;<>"']+$`)
+
+// validEmail is a plain check that s looks like an address: it is what an admin
+// types, and the sign-in provider decides what an account's address is.
+func validEmail(s string) bool {
+	return len(s) <= 254 && emailPattern.MatchString(s)
+}
 
 // SiteSettings are site-wide switches. Every field defaults to off.
 type SiteSettings struct {
@@ -40,6 +47,13 @@ type SiteSettings struct {
 	DisabledLanguages []string `json:"disabledLanguages"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
+	// Admins are the accounts added in the dashboard, lower case, besides the
+	// owners the environment names (OPENREPL_ADMIN_EMAILS). Only owners change
+	// the list, through /admin/admins, and a form cannot.
+	Admins []string `json:"admins"`
+	// Secrets are the API keys an admin saved in the dashboard, encrypted
+	// (settings_keys.go). No API reply carries them and a form cannot set them.
+	Secrets *StoredKeys `json:"secrets,omitempty"`
 }
 
 // Announcement is the banner at the top of every page.
@@ -61,6 +75,39 @@ type GenieSettings struct {
 	// a signed-in user get. 0 means the built-in rate.
 	GuestPerMinute float64 `json:"guestPerMinute"`
 	UserPerMinute  float64 `json:"userPerMinute"`
+	// DisabledModels are the model ids (chatModels) that are switched off: the
+	// picker hides them and the proxy answers 503 model_unavailable. At least
+	// one model stays on.
+	DisabledModels []string `json:"disabledModels"`
+	// What Genie is told about the page, and how much of the conversation it
+	// keeps: the editor's code (characters), the terminal's recent output
+	// (characters and lines) and the number of messages. 0 is the built-in value.
+	// The page reads them from settings.js (the effective values).
+	ContextEditorChars   int `json:"contextEditorChars"`
+	ContextTerminalChars int `json:"contextTerminalChars"`
+	ContextTerminalLines int `json:"contextTerminalLines"`
+	HistoryMessages      int `json:"historyMessages"`
+	// AnswerCaps is the most tokens an answer of a model may have, by model id;
+	// a model that is not in it has the built-in cap.
+	AnswerCaps map[string]int `json:"answerCaps"`
+	// OpenRouterTimeoutSec is how long OpenRouter may take (0: built in, 60).
+	OpenRouterTimeoutSec int `json:"openRouterTimeoutSec"`
+	// OpenRouterHosts are the hosts OpenRouter may use for Gemma, in order, by
+	// slug (openRouterHostNames); empty is the built-in two.
+	OpenRouterHosts []string `json:"openRouterHosts"`
+	// DefaultModel is the model that answers a request naming none, and the one
+	// a visitor starts with. Empty means the built-in choice. It must be on.
+	DefaultModel string `json:"defaultModel"`
+}
+
+// ModelDisabled reports whether an admin switched the model off.
+func (g GenieSettings) ModelDisabled(id string) bool {
+	for _, d := range g.DisabledModels {
+		if d == id {
+			return true
+		}
+	}
+	return false
 }
 
 var languagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.+-]{0,19}$`)
@@ -108,6 +155,57 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 			return s, fmt.Errorf("the %s Genie rate must be between 0 and %d requests per minute", name, int(maxGenieRate))
 		}
 	}
+
+	admins := []string{}
+	seenAdmin := map[string]bool{}
+	for _, a := range s.Admins {
+		a = strings.ToLower(strings.TrimSpace(a))
+		if a == "" || seenAdmin[a] {
+			continue
+		}
+		if !validEmail(a) {
+			return s, fmt.Errorf("%q is not an email address", a)
+		}
+		seenAdmin[a] = true
+		admins = append(admins, a)
+	}
+	if len(admins) > maxExtraAdmins {
+		return s, fmt.Errorf("at most %d admins can be added", maxExtraAdmins)
+	}
+	sort.Strings(admins)
+	s.Admins = admins
+
+	if err := s.Genie.normalizeNumbers(); err != nil {
+		return s, err
+	}
+
+	off := []string{}
+	seenModel := map[string]bool{}
+	for _, id := range s.Genie.DisabledModels {
+		id = strings.TrimSpace(id)
+		if id == "" || seenModel[id] {
+			continue
+		}
+		if _, known := chatModels[id]; !known {
+			return s, fmt.Errorf("%q is not a model", id)
+		}
+		seenModel[id] = true
+		off = append(off, id)
+	}
+	sort.Strings(off)
+	if len(off) >= len(chatModels) {
+		return s, fmt.Errorf("at least one model has to stay switched on")
+	}
+	s.Genie.DisabledModels = off
+	s.Genie.DefaultModel = strings.TrimSpace(s.Genie.DefaultModel)
+	if d := s.Genie.DefaultModel; d != "" {
+		if _, known := chatModels[d]; !known {
+			return s, fmt.Errorf("%q is not a model", d)
+		}
+		if seenModel[d] {
+			return s, fmt.Errorf("the default model %s is switched off", chatModels[d].Name)
+		}
+	}
 	return s, nil
 }
 
@@ -127,14 +225,19 @@ var (
 	settingsLoaded bool
 )
 
-// GetSiteSettings returns the current settings, reading SETTINGS_FILE once.
-// A missing or invalid file means the defaults.
+// GetSiteSettings returns the current settings. With the file store it reads
+// SETTINGS_FILE once (a missing or invalid file means the defaults). With
+// MongoDB (settings_sync.go) it returns the copy the sync loop keeps, the
+// defaults until the first read of the database has worked.
 func GetSiteSettings() SiteSettings {
 	settingsMu.Lock()
 	defer settingsMu.Unlock()
+	if settingsBackend != nil {
+		return siteSettings
+	}
 	if !settingsLoaded {
-		data, err := ioutil.ReadFile(SETTINGS_FILE)
-		if err == nil {
+		data, _, found, err := fileSettingsStore{}.Load()
+		if err == nil && found {
 			var s SiteSettings
 			if err := json.Unmarshal(data, &s); err != nil {
 				log.Println("settings: ignoring invalid ", SETTINGS_FILE, ": ", err)
@@ -146,12 +249,20 @@ func GetSiteSettings() SiteSettings {
 		}
 		settingsLoaded = true
 		utils.SetGenieRates(siteSettings.Genie.GuestPerMinute, siteSettings.Genie.UserPerMinute)
+		keys, admins := siteSettings.Secrets, siteSettings.Admins
+		settingsMu.Unlock()
+		applyKeyOverrides(keys)
+		utils.SetExtraAdmins(admins)
+		settingsMu.Lock()
 	}
 	return siteSettings
 }
 
-// SaveSiteSettings writes the settings to SETTINGS_FILE and makes them current.
-func SaveSiteSettings(s SiteSettings) error {
+// SaveSiteSettings stores the settings (in MongoDB when that is the store, else
+// in SETTINGS_FILE) and makes them current. With MongoDB, version is the
+// version the admin's form was loaded from: a store that moved on since then
+// answers errSettingsConflict. Pass -1 to skip that check.
+func SaveSiteSettings(s SiteSettings, version ...int64) error {
 	s, err := s.normalize()
 	if err != nil {
 		return err
@@ -160,21 +271,33 @@ func SaveSiteSettings(s SiteSettings) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(utils.GOTTY_PATH, 0755); err != nil {
-		return err
-	}
-	tmp := SETTINGS_FILE + ".tmp"
-	if err := ioutil.WriteFile(tmp, data, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, SETTINGS_FILE); err != nil {
-		return err
-	}
 	settingsMu.Lock()
-	siteSettings = s
-	settingsLoaded = true
+	backend, base, synced := settingsBackend, settingsVersion, settingsSynced
 	settingsMu.Unlock()
-	utils.SetGenieRates(s.Genie.GuestPerMinute, s.Genie.UserPerMinute)
+	if backend == nil {
+		if _, err := (fileSettingsStore{}).Save(data, 0); err != nil {
+			return err
+		}
+		applySettings(s, 0, false)
+		return nil
+	}
+	if !synced {
+		return errSettingsUnavailable
+	}
+	if len(version) > 0 && version[0] >= 0 && version[0] != base {
+		go syncSettingsOnce() // catch up, so that the next try sees the new version
+		return errSettingsConflict
+	}
+	newVersion, err := backend.Save(data, base)
+	if err == errSettingsConflict {
+		go syncSettingsOnce()
+		return err
+	}
+	if err != nil {
+		log.Println("settings: saving to ", backend.Name(), " failed: ", err)
+		return errSettingsUnavailable
+	}
+	applySettings(s, newVersion, true)
 	return nil
 }
 
@@ -186,6 +309,99 @@ type publicSettings struct {
 	Maintenance       Maintenance  `json:"maintenance"`
 	DisabledLanguages []string     `json:"disabledLanguages"`
 	GenieDisabled     bool         `json:"genieDisabled"`
+	// the models that are switched off, and the one visitors start with (empty:
+	// the built-in choice); model-choice.js reads them
+	DisabledModels []string `json:"disabledModels"`
+	DefaultModel   string   `json:"defaultModel"`
+	// what Genie reads from the page and keeps (the effective numbers)
+	GenieContext genieContext `json:"genieContext"`
+}
+
+type genieContext struct {
+	EditorChars   int `json:"editorChars"`
+	TerminalChars int `json:"terminalChars"`
+	TerminalLines int `json:"terminalLines"`
+	History       int `json:"history"`
+}
+
+func orDefault(n, def int) int {
+	if n > 0 {
+		return n
+	}
+	return def
+}
+
+func (g GenieSettings) context() genieContext {
+	return genieContext{
+		EditorChars:   orDefault(g.ContextEditorChars, defaultContextEditorChars),
+		TerminalChars: orDefault(g.ContextTerminalChars, defaultContextTerminalChars),
+		TerminalLines: orDefault(g.ContextTerminalLines, defaultContextTerminalLines),
+		History:       orDefault(g.HistoryMessages, defaultHistoryMessages),
+	}
+}
+
+// the limits of the numbers an admin may set
+const (
+	minEditorChars, maxEditorChars     = 1000, 50000
+	minTerminalChars, maxTerminalChars = 200, 20000
+	minTerminalLines, maxTerminalLines = 1, 200
+	minHistory, maxHistory             = 6, 50
+	minAnswerCap, maxAnswerCap         = 500, 16000
+	minORTimeout, maxORTimeout         = 10, 90
+)
+
+// normalizeNumbers checks the numbers and the hosts of the Genie settings.
+func (g *GenieSettings) normalizeNumbers() error {
+	for _, n := range []struct {
+		name     string
+		v        int
+		min, max int
+	}{
+		{"The editor context", g.ContextEditorChars, minEditorChars, maxEditorChars},
+		{"The terminal context (characters)", g.ContextTerminalChars, minTerminalChars, maxTerminalChars},
+		{"The terminal context (lines)", g.ContextTerminalLines, minTerminalLines, maxTerminalLines},
+		{"The conversation length", g.HistoryMessages, minHistory, maxHistory},
+		{"The OpenRouter time limit", g.OpenRouterTimeoutSec, minORTimeout, maxORTimeout},
+	} {
+		if n.v != 0 && (n.v < n.min || n.v > n.max) {
+			return fmt.Errorf("%s must be between %d and %d (or empty for the built-in value)", n.name, n.min, n.max)
+		}
+	}
+	caps := map[string]int{}
+	for id, n := range g.AnswerCaps {
+		if _, known := chatModels[id]; !known {
+			return fmt.Errorf("%q is not a model", id)
+		}
+		if n == 0 {
+			continue // the built-in cap
+		}
+		if n < minAnswerCap || n > maxAnswerCap {
+			return fmt.Errorf("The answer size of %s must be between %d and %d tokens (or empty)", chatModels[id].Name, minAnswerCap, maxAnswerCap)
+		}
+		caps[id] = n
+	}
+	if len(caps) == 0 {
+		caps = nil
+	}
+	g.AnswerCaps = caps
+	hosts := []string{}
+	seen := map[string]bool{}
+	for _, h := range g.OpenRouterHosts {
+		h = strings.TrimSpace(h)
+		if h == "" || seen[h] {
+			continue
+		}
+		if _, ok := openRouterHostNames[h]; !ok {
+			return fmt.Errorf("%q is not a host OpenRouter may use", h)
+		}
+		seen[h] = true
+		hosts = append(hosts, h)
+	}
+	if len(hosts) == 0 {
+		hosts = nil
+	}
+	g.OpenRouterHosts = hosts
+	return nil
 }
 
 func (s SiteSettings) public() publicSettings {
@@ -193,12 +409,19 @@ func (s SiteSettings) public() publicSettings {
 	if langs == nil {
 		langs = []string{}
 	}
+	models := s.Genie.DisabledModels
+	if models == nil {
+		models = []string{}
+	}
 	return publicSettings{
 		ColorOfTheDay:     s.ColorOfTheDay,
 		Announcement:      s.Announcement,
 		Maintenance:       s.Maintenance,
 		DisabledLanguages: langs,
 		GenieDisabled:     s.Genie.Disabled,
+		DisabledModels:    models,
+		DefaultModel:      s.Genie.DefaultModel,
+		GenieContext:      s.Genie.context(),
 	}
 }
 
@@ -252,13 +475,34 @@ func languageChoices() []languageChoice {
 type settingsReply struct {
 	SiteSettings
 	Languages []languageChoice `json:"languages"`
+	// Models are the models the form offers, with whether the server can call
+	// each (its key is set).
+	Models []modelInfo `json:"models"`
+	// Defaults are the built-in values of the numbers, for the form to show
+	// where a field is empty.
+	Defaults genieDefaults `json:"defaults"`
+	// Store is "file" or "mongodb"; Version is the stored version the form was
+	// filled from (MongoDB only). The dashboard sends it back with a save, so
+	// that a form that is out of date is refused instead of overwriting.
+	Store   string `json:"store"`
+	Version int64  `json:"version"`
 }
 
 func reply(s SiteSettings) settingsReply {
 	if s.DisabledLanguages == nil {
 		s.DisabledLanguages = []string{}
 	}
-	return settingsReply{SiteSettings: s, Languages: languageChoices()}
+	settingsMu.Lock()
+	store, version := "file", int64(0)
+	if settingsBackend != nil {
+		store, version = settingsBackend.Name(), settingsVersion
+	}
+	settingsMu.Unlock()
+	if s.Genie.DisabledModels == nil {
+		s.Genie.DisabledModels = []string{}
+	}
+	s.Secrets = nil
+	return settingsReply{SiteSettings: s, Languages: languageChoices(), Models: modelInfos(), Defaults: currentGenieDefaults(), Store: store, Version: version}
 }
 
 // handleAdminSettings reads and saves the settings. It runs behind adminAPI,
@@ -269,15 +513,33 @@ func (server *Server) handleAdminSettings(rw http.ResponseWriter, req *http.Requ
 		adminJSON(rw, http.StatusOK, reply(GetSiteSettings()))
 	case http.MethodPost, http.MethodPut:
 		req.Body = http.MaxBytesReader(rw, req.Body, 64*1024)
-		var s SiteSettings
-		if err := json.NewDecoder(req.Body).Decode(&s); err != nil {
+		var posted struct {
+			SiteSettings
+			Version *int64 `json:"version"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&posted); err != nil {
 			adminError(rw, http.StatusBadRequest, "The settings were not valid JSON.")
 			return
 		}
+		s := posted.SiteSettings
+		base := int64(-1) // a form that does not say where it came from skips the check
+		if posted.Version != nil {
+			base = *posted.Version
+		}
 		before := GetSiteSettings()
-		if err := SaveSiteSettings(s); err != nil {
+		s.Secrets = before.Secrets // the form cannot set keys; /admin/keys does
+		s.Admins = before.Admins   // nor admins; /admin/admins does, for owners
+		if err := SaveSiteSettings(s, base); err != nil {
 			if _, bad := s.normalize(); bad != nil {
 				adminError(rw, http.StatusBadRequest, bad.Error())
+				return
+			}
+			if err == errSettingsConflict {
+				adminError(rw, http.StatusConflict, "Someone else changed the settings since you opened this page. Reload to see their changes, then make yours again.")
+				return
+			}
+			if err == errSettingsUnavailable {
+				adminError(rw, http.StatusServiceUnavailable, "The settings store is not reachable right now, so nothing was saved. Try again in a moment.")
 				return
 			}
 			log.Println("saving site settings failed: ", err)
@@ -326,6 +588,22 @@ func settingsChanges(a, b SiteSettings) []string {
 	if a.Genie.Disabled != b.Genie.Disabled {
 		out = append(out, "Genie "+map[bool]string{true: "switched off", false: "switched on"}[b.Genie.Disabled])
 	}
+	for _, id := range chatModelOrder {
+		if a.Genie.ModelDisabled(id) != b.Genie.ModelDisabled(id) {
+			out = append(out, "model "+chatModels[id].Name+" "+map[bool]string{true: "switched off", false: "switched on"}[b.Genie.ModelDisabled(id)])
+		}
+	}
+	if a.Genie.DefaultModel != b.Genie.DefaultModel {
+		name := "built-in"
+		if m, ok := chatModels[b.Genie.DefaultModel]; ok {
+			name = m.Name
+		}
+		out = append(out, "default model: "+name)
+	}
+	if ga, gb := a.Genie, b.Genie; ga.context() != gb.context() || ga.OpenRouterTimeoutSec != gb.OpenRouterTimeoutSec ||
+		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {
+		out = append(out, "Genie limits changed (context, history, answer sizes, OpenRouter time limit or hosts)")
+	}
 	if a.Genie.GuestPerMinute != b.Genie.GuestPerMinute || a.Genie.UserPerMinute != b.Genie.UserPerMinute {
 		rate := func(v float64) string {
 			if v == 0 {
@@ -336,4 +614,70 @@ func settingsChanges(a, b SiteSettings) []string {
 		out = append(out, "Genie rates: guests "+rate(b.Genie.GuestPerMinute)+", signed-in "+rate(b.Genie.UserPerMinute))
 	}
 	return out
+}
+
+// modelInfo is a model as the dashboard lists it.
+type modelInfo struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	// KeySet is false when the server has no key for the model's provider, so
+	// switching it on has no effect until one is set.
+	KeySet bool `json:"keySet"`
+}
+
+func modelInfos() []modelInfo {
+	out := make([]modelInfo, 0, len(chatModelOrder))
+	for _, id := range chatModelOrder {
+		m := chatModels[id]
+		key := utils.OpenAIKey()
+		if m.Provider == providerOpenRouter {
+			key = utils.OpenRouterKey()
+		}
+		out = append(out, modelInfo{ID: m.ID, Name: m.Name, Provider: m.Provider, KeySet: key != ""})
+	}
+	return out
+}
+
+// genieDefaults are what an empty number means.
+type genieDefaults struct {
+	ContextEditorChars   int               `json:"contextEditorChars"`
+	ContextTerminalChars int               `json:"contextTerminalChars"`
+	ContextTerminalLines int               `json:"contextTerminalLines"`
+	HistoryMessages      int               `json:"historyMessages"`
+	AnswerCaps           map[string]int    `json:"answerCaps"`
+	OpenRouterTimeoutSec int               `json:"openRouterTimeoutSec"`
+	OpenRouterHosts      []hostChoice      `json:"openRouterHosts"` // every host that may be chosen, in the built-in order
+	Limits               map[string][2]int `json:"limits"`          // the allowed range of each number
+}
+
+type hostChoice struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func currentGenieDefaults() genieDefaults {
+	caps := map[string]int{}
+	for _, id := range chatModelOrder {
+		m := chatModels[id]
+		if m.Reasoning {
+			caps[id] = maxCompletionTokensCap
+		} else {
+			caps[id] = m.MaxTokensCap
+		}
+	}
+	hosts := []hostChoice{}
+	for _, h := range openRouterHosts {
+		hosts = append(hosts, hostChoice{ID: h, Name: openRouterHostNames[h]})
+	}
+	return genieDefaults{
+		ContextEditorChars: defaultContextEditorChars, ContextTerminalChars: defaultContextTerminalChars,
+		ContextTerminalLines: defaultContextTerminalLines, HistoryMessages: defaultHistoryMessages,
+		AnswerCaps: caps, OpenRouterTimeoutSec: defaultOpenRouterTimeoutSec, OpenRouterHosts: hosts,
+		Limits: map[string][2]int{
+			"contextEditorChars": {minEditorChars, maxEditorChars}, "contextTerminalChars": {minTerminalChars, maxTerminalChars},
+			"contextTerminalLines": {minTerminalLines, maxTerminalLines}, "historyMessages": {minHistory, maxHistory},
+			"answerCap": {minAnswerCap, maxAnswerCap}, "openRouterTimeoutSec": {minORTimeout, maxORTimeout},
+		},
+	}
 }

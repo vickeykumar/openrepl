@@ -32,6 +32,9 @@ const (
 type adminState struct {
 	// check decides who is an admin. nil means IsUserAdmin; tests set it.
 	check   func(http.ResponseWriter, *http.Request) bool
+	// owner decides who may add and remove admins. nil means the accounts in
+	// OPENREPL_ADMIN_EMAILS; tests set it.
+	owner   func(http.ResponseWriter, *http.Request) bool
 	router  *gateway.Router // gateway mode
 	tunnel  *tunnel.Server  // gateway mode with workers enabled
 	sync    *wsync.Manager  // gateway mode with workspace sync

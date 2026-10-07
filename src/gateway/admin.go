@@ -40,6 +40,10 @@ type WorkerInfo struct {
 	Arch         string   `json:"arch,omitempty"`
 	Version      string   `json:"version,omitempty"`
 	Connected    string   `json:"connected,omitempty"` // since when this connection has been up
+	// ConfigRev is the revision of the gateway's site rules the worker follows
+	// (tunnel.WorkerConfig); ConfigCurrent says it is the gateway's own.
+	ConfigRev     int64 `json:"configRev,omitempty"`
+	ConfigCurrent bool  `json:"configCurrent,omitempty"`
 
 	// Sync is set when workspace sync is on and a conversation with the worker is running.
 	Sync *WorkerSync `json:"sync,omitempty"`
@@ -244,6 +248,8 @@ func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
 				info.OS, info.Arch = reg.OS, reg.Arch
 				info.Version = reg.Version
 				info.Connected = tw.Connected().UTC().Format(time.RFC3339)
+				info.ConfigRev = tw.ConfigRev()
+				info.ConfigCurrent = info.ConfigRev != 0 && info.ConfigRev == ts.ConfigRevision()
 			}
 		}
 		if rt.syncInfo != nil {

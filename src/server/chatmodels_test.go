@@ -2,12 +2,33 @@ package server
 
 import (
 	"encoding/json"
+	"path/filepath"
+	"reflect"
 	"testing"
 )
 
+// isolateSettings gives a test the default settings and a settings file of its
+// own: the real /opt/gotty/settings.json of a machine that runs a server (and
+// has had switches changed in its dashboard) must not decide a test's outcome.
+func isolateSettings(t *testing.T) {
+	t.Helper()
+	old := SETTINGS_FILE
+	SETTINGS_FILE = filepath.Join(t.TempDir(), "settings.json")
+	settingsMu.Lock()
+	siteSettings, settingsLoaded, settingsBackend = SiteSettings{}, false, nil
+	settingsMu.Unlock()
+	t.Cleanup(func() {
+		SETTINGS_FILE = old
+		settingsMu.Lock()
+		siteSettings, settingsLoaded = SiteSettings{}, false
+		settingsMu.Unlock()
+	})
+}
+
 func sanitized(t *testing.T, body string) map[string]interface{} {
 	t.Helper()
-	out, err := sanitizeChatBody([]byte(body))
+	isolateSettings(t)
+	out, _, err := sanitizeChatBody([]byte(body))
 	if err != nil {
 		t.Fatalf("sanitizeChatBody(%s): %v", body, err)
 	}
@@ -132,7 +153,7 @@ func TestChatBodyDropsFieldsTheServiceDoesNotUse(t *testing.T) {
 
 func TestChatBodyKeepsTheMessagesAsSent(t *testing.T) {
 	const messages = `[{"role":"system","content":"code é ☃"},{"role":"user","content":"why?"}]`
-	out, err := sanitizeChatBody([]byte(`{"model":"gpt-4o-mini","messages":` + messages + `}`))
+	out, _, err := sanitizeChatBody([]byte(`{"model":"gpt-4o-mini","messages":` + messages + `}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,8 +175,69 @@ func TestChatBodyKeepsTheMessagesAsSent(t *testing.T) {
 
 func TestChatBodyRefusesWhatIsNotAChatRequest(t *testing.T) {
 	for _, body := range []string{``, `not json`, `[]`, `{"model":"gpt-4o-mini"}`, `{"messages":"hi"}`, `{"messages":{}}`, `null`} {
-		if _, err := sanitizeChatBody([]byte(body)); err == nil {
+		if _, _, err := sanitizeChatBody([]byte(body)); err == nil {
 			t.Errorf("sanitizeChatBody(%q) accepted it", body)
+		}
+	}
+}
+
+func TestChatBodyGemmaGoesToOpenRouterWithTheHostRule(t *testing.T) {
+	const body = `{"model":"google/gemma-4-31b-it","temperature":9,"max_tokens":99999,
+		"reasoning_effort":"high","max_completion_tokens":5000,
+		"response_format":{"type":"json_object"},"messages":[{"role":"user","content":"hi"}]}`
+	out, model, err := sanitizeChatBody([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.ID != modelGemma || model.Provider != providerOpenRouter {
+		t.Fatalf("wrong model: %+v", model)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["max_tokens"] != float64(4000) || got["temperature"] != float64(2) {
+		t.Errorf("Gemma limits not applied: %v", got)
+	}
+	for _, f := range []string{"reasoning_effort", "max_completion_tokens"} {
+		if _, has := got[f]; has {
+			t.Errorf("Gemma must not get %s: %v", f, got)
+		}
+	}
+	if !reflect.DeepEqual(got["response_format"], map[string]interface{}{"type": "json_object"}) {
+		t.Errorf("JSON mode was not passed on: %v", got["response_format"])
+	}
+	want := map[string]interface{}{
+		"order":           []interface{}{"modelrun/fp4", "coreweave/fp4"},
+		"only":            []interface{}{"modelrun/fp4", "coreweave/fp4"},
+		"allow_fallbacks": false,
+	}
+	if !reflect.DeepEqual(got["provider"], want) {
+		t.Errorf("host rule = %v, want %v", got["provider"], want)
+	}
+}
+
+func TestChatBodyHostRuleCannotBeChangedFromTheBrowser(t *testing.T) {
+	got := sanitized(t, `{"model":"google/gemma-4-31b-it","provider":{"order":["deepinfra"],"allow_fallbacks":true},
+		"messages":[{"role":"user","content":"hi"}]}`)
+	provider, _ := got["provider"].(map[string]interface{})
+	if provider["allow_fallbacks"] != false || !reflect.DeepEqual(provider["only"], []interface{}{"modelrun/fp4", "coreweave/fp4"}) {
+		t.Errorf("a host rule from the browser got through: %v", got["provider"])
+	}
+	got = sanitized(t, `{"model":"gpt-4o-mini","provider":{"order":["x"]},"messages":[{"role":"user","content":"hi"}]}`)
+	if _, has := got["provider"]; has {
+		t.Errorf("OpenAI requests must not carry a provider field: %v", got)
+	}
+}
+
+func TestChatBodyReturnsTheModelItIsFor(t *testing.T) {
+	for asked, want := range map[string]string{
+		"gpt-6-luna": modelLuna, "gpt-4o-mini": modelMini, "google/gemma-4-31b-it": modelGemma,
+		"gpt-5-pro": modelMini, "google/gemma-4-26b-a4b-it": modelMini, "": modelMini,
+	} {
+		_, model, err := sanitizeChatBody([]byte(`{"model":"` + asked + `","messages":[{"role":"user","content":"hi"}]}`))
+		if err != nil || model.ID != want {
+			t.Errorf("model %q: got %q (%v), want %q", asked, model.ID, err, want)
 		}
 	}
 }

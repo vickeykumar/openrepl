@@ -1,19 +1,22 @@
 // The model and effort choice, shared by Genie (the chip in its panel, chat
 // widget) and the New question dialog (js/common.js). Loaded before both.
 //
-// Two models are offered, and only these: server/chatmodels.go holds the same
-// lists and sends nothing else to OpenAI (a request for any other model is
-// answered by GPT-4o mini). The choice is kept on this device, and the default
-// is Luna with a Low effort.
+// Three models are offered, and only these: server/chatmodels.go holds the same
+// lists and sends nothing else on (a request for any other model is answered by
+// GPT-4o mini). Two come from OpenAI; Gemma 4 31B comes through OpenRouter and
+// is listed only when the server has an OpenRouter key (config.js sets
+// openrouter_enabled). The choice is kept on this device, and the default is
+// Luna with a Low effort.
 
 (function () {
   "use strict";
 
-  var MODELS = [
+  var ALL = [
     {
       id: "gpt-6-luna",
       name: "GPT-6 Luna",
       short: "Luna",
+      group: "OpenAI",
       tag: "Thinks first",
       desc: "Newer. Thinks before it answers, so it handles tricky bugs better.",
       reasoning: true,
@@ -22,11 +25,35 @@
       id: "gpt-4o-mini",
       name: "GPT-4o mini",
       short: "4o mini",
+      group: "OpenAI",
       tag: "Fast",
       desc: "Answers instantly. Good for quick questions and short snippets.",
       reasoning: false,
     },
   ];
+
+  if (window.openrouter_enabled === true) {
+    ALL.push({
+      id: "google/gemma-4-31b-it",
+      name: "Gemma 4 31B",
+      short: "Gemma 31B",
+      group: "OpenRouter",
+      tag: "",
+      desc: "Google's open model, run through OpenRouter. Answers without a thinking step.",
+      reasoning: false,
+    });
+  }
+
+  // An admin can switch models off and choose the one visitors start with
+  // (settings.js: site_settings.disabledModels, defaultModel). The server refuses
+  // a model that is off, so the page does not offer it. If that would leave
+  // nothing to offer, everything stays listed and the server decides.
+  var site = window.site_settings || {};
+  var off = site.disabledModels || [];
+  var MODELS = ALL.filter(function (m) {
+    return off.indexOf(m.id) < 0;
+  });
+  if (!MODELS.length) MODELS = ALL.slice();
 
   // tokens is the answer budget. Luna's thinking counts against it, so it grows
   // with the effort.
@@ -38,13 +65,31 @@
   ];
 
   var KEY = "genie-model";
-  var DEFAULT = { model: MODELS[0].id, effort: "low" };
-
   function find(list, id) {
     for (var i = 0; i < list.length; i++) {
       if (list[i].id === id) return list[i];
     }
     return null;
+  }
+
+  var DEFAULT = {
+    model: (find(MODELS, site.defaultModel) || MODELS[0]).id,
+    effort: "low",
+  };
+
+  // A model to offer instead of one that is not answering: the first other
+  // OpenAI model that is on, else any other.
+  function fallback(exceptId) {
+    var others = MODELS.filter(function (m) {
+      return m.id !== exceptId;
+    });
+    return (
+      others.filter(function (m) {
+        return m.group === "OpenAI";
+      })[0] ||
+      others[0] ||
+      null
+    );
   }
 
   function load() {
@@ -128,6 +173,7 @@
     get: get,
     set: set,
     fields: fields,
+    fallback: fallback,
     onChange: function (fn) {
       listeners.push(fn);
     },

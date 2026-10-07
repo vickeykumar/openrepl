@@ -122,7 +122,7 @@ interface MessageType {
   content: string;
 }
 
-// The two models and four effort levels, and the saved choice, come from
+// The models and four effort levels, and the saved choice, come from
 // js/model-choice.js, which the page loads before this widget; the New question
 // dialog shares them (js/common.js). The server holds the same lists
 // (server/chatmodels.go) and sends on nothing else.
@@ -130,9 +130,11 @@ type ModelOption = {
   id: string;
   name: string; // in the picker and under a reply
   short: string; // on the chip
-  tag: string;
+  group: string; // who runs it: "OpenAI" or "OpenRouter"; the picker's sections
+  tag: string; // may be empty
+  
   desc: string;
-  reasoning: boolean; // takes an effort level; 4o mini does not
+  reasoning: boolean; // takes an effort level; 4o mini and Gemma do not
 };
 type EffortOption = { id: string; label: string; tokens: number; note: string };
 type FieldOptions = { extraTokens?: number; maxTokens?: number; temperature?: number };
@@ -142,6 +144,7 @@ type SharedChoice = {
   get(): { model: string; effort: string };
   set(model?: string, effort?: string): void;
   fields(opts?: FieldOptions): Record<string, any>;
+  fallback(exceptId: string): ModelOption | null;
   onChange(fn: () => void): void;
 };
 const MC: SharedChoice = (window as any).ModelChoice;
@@ -163,20 +166,28 @@ function chipText(): string {
   const m = chosenModel();
   return m.reasoning ? `${m.short} · ${chosenEffort().label}` : m.short;
 }
-// "GPT-6 Luna · Low", under a reply
+// "GPT-6 Luna · Low" or "Gemma 4 31B · OpenRouter", under a reply
 function captionText(): string {
   const m = chosenModel();
-  return m.reasoning ? `${m.name} · ${chosenEffort().label}` : m.name;
+  if (m.reasoning) return `${m.name} · ${chosenEffort().label}`;
+  return m.group === "OpenAI" ? m.name : `${m.name} · ${m.group}`;
 }
 
 // The request fields for the chosen model: Luna takes an effort and an answer
-// budget, 4o mini a temperature and max_tokens (model-choice.js).
+// budget, 4o mini and Gemma a temperature and max_tokens (model-choice.js).
 function modelFields(): Record<string, any> {
   return MC.fields({ temperature: config.temperature, maxTokens: config.max_tokens });
 }
 
+// What Genie is told about the page, and how many messages it keeps. An admin
+// can change the numbers (settings.js: site_settings.genieContext); these are
+// the built-in ones.
 const NUM_MANDATORY_ENTRIES = 4;
-const MAX_HISTORY_SIZE = 20; 
+function genieLimit(name: "editorChars" | "terminalChars" | "terminalLines" | "history", fallback: number): number {
+  const n = Number((((window as any).site_settings || {}).genieContext || {})[name]);
+  return n > 0 ? n : fallback;
+}
+const maxHistorySize = () => genieLimit("history", 20);
 // older conversation history might not be usefull
 // Initialize the conversationHistory array
 let conversationHistory: MessageType[] = [];
@@ -184,9 +195,9 @@ let conversationHistory: MessageType[] = [];
 // What Genie is told about the page on every request: the editor's code and the
 // most recent output of the active terminal, so "why did this fail?" needs no
 // pasting. Both are cut to a size that leaves room for the conversation.
-const MAX_EDITOR_CHARS = 12000;
-const MAX_TERMINAL_CHARS = 4000;
-const TERMINAL_LINES = 20;
+const maxEditorChars = () => genieLimit("editorChars", 12000);
+const maxTerminalChars = () => genieLimit("terminalChars", 4000);
+const terminalLines = () => genieLimit("terminalLines", 20);
 
 function fetchTerminalOutput(): string {
   try {
@@ -194,7 +205,7 @@ function fetchTerminalOutput(): string {
     const tab = document.querySelector("#terminal-tabs .tab.active") as any;
     const term = tab && tab.gottyterm && tab.gottyterm.term;
     if (term && typeof term.recentText === "function") {
-      return String(term.recentText(TERMINAL_LINES));
+      return String(term.recentText(terminalLines()));
     }
     const rows =
       document.querySelector(".terminal.active .xterm-rows") || document.querySelector(".xterm-rows");
@@ -211,12 +222,12 @@ function getcurrentIDECode(): MessageType {
   const file = fileChip ? (fileChip.textContent || "").trim() : "";
 
   let code = fetchEditorContent();
-  if (code.length > MAX_EDITOR_CHARS) {
-    code = code.slice(0, MAX_EDITOR_CHARS) + "\n... (the editor holds more; the rest is not shown)";
+  if (code.length > maxEditorChars()) {
+    code = code.slice(0, maxEditorChars()) + "\n... (the editor holds more; the rest is not shown)";
   }
   let output = fetchTerminalOutput().replace(/\s+$/, "");
-  if (output.length > MAX_TERMINAL_CHARS) {
-    output = "... " + output.slice(-MAX_TERMINAL_CHARS);
+  if (output.length > maxTerminalChars()) {
+    output = "... " + output.slice(-maxTerminalChars());
   }
 
   const parts = [
@@ -243,7 +254,7 @@ function addMessageToHistory(role: string, content: string, uid: string=UID): vo
   }
 
   conversationHistory.push({ role: role, content: content });
-  if (conversationHistory.length > MAX_HISTORY_SIZE) {
+  if (conversationHistory.length > maxHistorySize()) {
       // Trim the oldest non-mandatory message from the beginning, preserving mandatory entries of docs
       conversationHistory.splice(NUM_MANDATORY_ENTRIES, 1);
   }
@@ -526,7 +537,17 @@ function setupSettings(): () => void {
   const efforts = document.getElementById("chat-widget__efforts");
   if (!chip || !models || !efforts) return () => {};
 
+  let lastGroup = "";
   MODELS.forEach((m) => {
+    if (m.group !== lastGroup) {
+      // "OpenAI", "OpenRouter": a heading for each provider
+      lastGroup = m.group;
+      const heading = document.createElement("div");
+      heading.className = "cw-set__group-label";
+      heading.setAttribute("role", "presentation");
+      heading.textContent = m.group;
+      models.appendChild(heading);
+    }
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "cw-model";
@@ -540,10 +561,12 @@ function setupSettings(): () => void {
     const name = document.createElement("span");
     name.className = "cw-model__name";
     name.textContent = m.name;
-    const tag = document.createElement("span");
-    tag.className = "cw-model__tag";
-    tag.textContent = m.tag;
-    name.appendChild(tag);
+    if (m.tag) {
+      const tag = document.createElement("span");
+      tag.className = "cw-model__tag";
+      tag.textContent = m.tag;
+      name.appendChild(tag);
+    }
     const desc = document.createElement("span");
     desc.className = "cw-model__desc";
     desc.textContent = m.desc;
@@ -754,6 +777,13 @@ async function createNewMessageEntry(
 
 const handleErrorResponse = async (errData: any) => {
     console.error("Chat Widget: Server error: ", errData);
+    if (errData && errData.error && errData.error.type === "model_unavailable") {
+      await showModelUnavailable(
+        String(errData.error.message || "This model isn't available right now"),
+        errData.error.code === "model_disabled"
+      );
+      return;
+    }
     let error_reason : string = " "
     if (errData.error && errData.error.message && errData.error.type) {
       error_reason += "Reason: "+errData.error.type;
@@ -762,6 +792,56 @@ const handleErrorResponse = async (errData: any) => {
       error_reason += "Reason: "+errData;
     }
     await createNewMessageEntry("Unable to process your request Now."+error_reason, Date.now(), "system");
+}
+
+// A model that cannot be reached right now (the proxy answers type
+// "model_unavailable", for Gemma through OpenRouter): a card that says so, with
+// a way to retry and a way to carry on with GPT-6 Luna, which is not down.
+// An admin may also have switched the model off (code "model_disabled"): then
+// there is nothing to retry, only another model to choose.
+async function showModelUnavailable(title: string, switchedOff: boolean = false) {
+  const card = document.createElement("div");
+  card.classList.add("chat-widget__message", "chat-widget__message--system", "chat-widget__unavailable");
+  card.id = `chat-widget__message--system--${Date.now()}`;
+  card.setAttribute("role", "alert");
+
+  const heading = document.createElement("p");
+  heading.className = "chat-widget__unavailable-title";
+  heading.textContent = title;
+  const text = document.createElement("p");
+  text.className = "chat-widget__unavailable-text";
+  text.textContent = switchedOff
+    ? "It has been switched off. Choose another model."
+    : "The service that runs it didn't answer. Try again in a moment, or switch to a model that is on all the time.";
+  const actions = document.createElement("div");
+  actions.className = "chat-widget__unavailable-actions";
+
+  if (!switchedOff) {
+    const again = document.createElement("button");
+    again.type = "button";
+    again.textContent = "Try again";
+    again.addEventListener("click", () => {
+      card.remove();
+      runRequest();
+    });
+    actions.appendChild(again);
+  }
+
+  const fallback = MC.fallback(MC.get().model);
+  if (fallback) {
+    const switchBtn = document.createElement("button");
+    switchBtn.type = "button";
+    switchBtn.className = "is-primary";
+    switchBtn.textContent = `Switch to ${fallback.name}`;
+    switchBtn.addEventListener("click", () => {
+      card.remove();
+      MC.set(fallback.id);
+      runRequest();
+    });
+    actions.appendChild(switchBtn);
+  }
+  card.append(heading, text, actions);
+  messagesHistory.prepend(card);
 }
 
 const handleStandardResponse = async (res: Response, meta: string = "") => {
@@ -848,17 +928,37 @@ async function submit(e: Event) {
   )!;
   submitElement.setAttribute("disabled", "");
 
-  const requestHeaders = new Headers();
-  requestHeaders.append("Content-Type", "application/json");
-  if (config.api_key) {
-    requestHeaders.append('Authorization', 'Bearer ' + config.api_key);
-  }
   let myrole: "system" | "user" = 'user';
   if (peerchatmode && isMaster()) {
     myrole = 'system';
   }
   const msg = (target.elements as any).message.value;
   addMessageToHistory(myrole, msg);
+
+  await createNewMessageEntry(msg, Date.now(), myrole);
+  target.reset();
+  autoGrow((target.elements as any).message as HTMLTextAreaElement);
+  if (peerchatmode) {
+    submitElement.removeAttribute("disabled");
+    // not much to do in peerchat mode
+    return;
+  }
+  await runRequest();
+  return false;
+}
+
+// Sends the conversation so far to the chosen model and shows the answer. Used
+// by submit, and by "Try again" and "Switch to ..." on the unavailable card,
+// which send the same conversation again with whatever model is chosen then.
+async function runRequest() {
+  const submitElement = document.getElementById("chat-widget__submit")!;
+  submitElement.setAttribute("disabled", "");
+
+  const requestHeaders = new Headers();
+  requestHeaders.append("Content-Type", "application/json");
+  if (config.api_key) {
+    requestHeaders.append('Authorization', 'Bearer ' + config.api_key);
+  }
   const data = {
     ...config.user,
     ...modelFields(),
@@ -869,15 +969,6 @@ async function submit(e: Event) {
   const thinking = chosenModel().reasoning && chosenEffort().id !== "none";
   const thinkingLabel = thinkingBubble.querySelector(".chat-widget__thinking-label");
   if (thinkingLabel) thinkingLabel.textContent = thinking ? `${chosenModel().short} is thinking…` : "";
-
-  await createNewMessageEntry(msg, Date.now(), myrole);
-  target.reset();
-  autoGrow((target.elements as any).message as HTMLTextAreaElement);
-  if (peerchatmode) {
-    submitElement.removeAttribute("disabled");
-    // not much to do in peerchat mode
-    return;
-  }
   messagesHistory.prepend(thinkingBubble);
 
   try {
@@ -900,7 +991,6 @@ async function submit(e: Event) {
   }
 
   submitElement.removeAttribute("disabled");
-  return false;
 }
 
 (window as any).insertcodesnippet = function(encodedcode: string) {

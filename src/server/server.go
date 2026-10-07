@@ -173,6 +173,9 @@ func (server *Server) Run(ctx context.Context, options ...RunOption) error {
 		cancel()
 		return errors.Wrapf(err, "failed to setup the handlers")
 	}
+	// the admin settings live in MongoDB when OPENREPL_MONGODB_URI is set
+	// (settings_sync.go); a worker never reads them
+	StartSettingsSync(cctx, server.options.Mode)
 	if server.options.Mode == ModeWorker {
 		defer cancel()
 		// A worker is reached through the gateway. When the operator also
@@ -368,8 +371,9 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 		return server.wrapControls(gw, pathPrefix), nil
 	}
 	if server.options.Mode == ModeWorker {
-		// The gateway applies the switches before it forwards a terminal.
-		return siteHandler, nil
+		// The gateway applies the switches before it forwards a terminal; the
+		// worker applies them, from the gateway's config, to its own visitors.
+		return server.wrapWorkerControls(siteHandler, pathPrefix), nil
 	}
 
 	return server.wrapControls(siteHandler, pathPrefix), nil

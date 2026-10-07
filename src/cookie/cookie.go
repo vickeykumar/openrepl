@@ -78,17 +78,33 @@ func Get_SessionStore() *sessions.CookieStore {
 	return session_store
 }
 
+// The cookie store starts with a random secret. The server's own secret is
+// kept in the session database, which is opened once the mode is known (a
+// worker uses files, a gateway may use MongoDB, package persist), so it is
+// loaded by InitSecret from there and not when the package loads.
 func init() {
-    session_db_handle := user.GetUserDBHandle()
-    if session_db_handle == nil {
-    	panic(errors.New("uninitialized session_db_handle!!"))
-    }
-    secret , err := session_db_handle.Fetch([]byte(user.SESSION_KEY))
-    log.Println("secret fetched: ", err)
-    if err != nil {
-	// failed to fetch secret, generate a temporary secret for this instance
-    	secret = encoder.GenerateLargePrime().Bytes()
-    	log.Println("Failed to fetch secret for session_cookie, generated temporary secret. ", err)
+    Init_SessionStore(SECRET_KEY)
+}
+
+// InitSecret replaces the random secret with the one stored in the session
+// database (user.InitSessionDBHandle creates it the first time). Call it after
+// that database is open.
+func InitSecret() {
+    secret := user.CookieKey()
+    if len(secret) == 0 {
+        // the session database was opened another way: read the saved one
+        session_db_handle := user.GetUserDBHandle()
+        if session_db_handle == nil {
+            panic(errors.New("uninitialized session_db_handle!!"))
+        }
+        var err error
+        secret, err = session_db_handle.Fetch([]byte(user.SESSION_KEY))
+        log.Println("secret fetched: ", err)
+        if err != nil {
+            // failed to fetch secret, generate a temporary secret for this instance
+            secret = encoder.GenerateLargePrime().Bytes()
+            log.Println("Failed to fetch secret for session_cookie, generated temporary secret. ", err)
+        }
     }
     SECRET_KEY = secret
     // init one time session store using SESSION_KEY

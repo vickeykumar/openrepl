@@ -39,7 +39,7 @@ sequenceDiagram
 
 ## 2. The `user-session` cookie
 
-This is a gorilla `sessions.CookieStore`. It is HMAC-signed with `SESSION_KEY`, a random 128-bit prime created once and stored in `user_sessions.db`. It is not encrypted, and its path is `/`.
+This is a gorilla `sessions.CookieStore`. It is HMAC-signed with the cookie key (`user.CookieKey`, set by `user.ensureServerSecret`). When `OPENREPL_SECRET` is set the key is derived from it, `HMAC-SHA256(secret, "openrepl/cookie/v1")`: the same after every restart and on every instance that has the variable, and nothing about it is saved in the database (a copy left there by an earlier version is removed). When it is not set, the key is `SESSION_KEY` in `user_sessions.db`: a random 128-bit prime made and saved once, and used from then on; it is also the secret `utils.Secret()` returns. The dashboard's saved API keys are encrypted under a key derived from `utils.Secret()` with another label (LLD 13 section 3), so the two uses share a secret but not key material. If the key changes, everybody is signed out once; if the secret changes, the dashboard's saved keys have to be entered again. It is not encrypted, and its path is `/`.
 
 | Key | Set by | Meaning |
 |---|---|---|
@@ -77,18 +77,31 @@ A signed-in user's directory name is derived from their profile name and `uid`, 
 
 ## 4. Persistent stores
 
-All server-side stores are embedded **UnQLite** databases (`github.com/nobonobo/unqlitego`) under `utils.GOTTY_PATH = /opt/gotty`.
+All server-side stores are key-value databases behind one small interface, `persist.Store` (`src/persist`: `Store`, `Fetch`, `Delete`, `Commit`, `Rollback`, `Each`, `Close`). By default each is an embedded **UnQLite** file (`github.com/nobonobo/unqlitego`) under `utils.GOTTY_PATH = /opt/gotty`.
+
+**Which store (`persist.Init`).** `gotty` calls `persist.Init` once, in `app.Action`, when the mode is known and before any database is opened. It is the only place where the choice is tested: (1) if `OPENREPL_MONGODB_URI` is set, MongoDB is connected and pinged, up to 3 tries with a second between them (5 seconds each); (2) if that fails, or the URI is not set, and Firestore is configured (`OPENREPL_FIRESTORE_CREDENTIALS`, or the emulator), one read of the project's Firestore, again up to 3 tries; (3) if that fails or Firestore is not configured, the UnQLite files. A worker tests nothing and keeps files. The choice is final for the life of the process and is written to the log (`persist: the databases are stored in MongoDB, database X` / `... Firestore, project X` / `... files under /opt/gotty (unqlite)`), each failed try is logged with its reason (the URI's password removed), and so is what was given up (`persist: MongoDB did not answer after 3 tries (...)`). The health page shows a warning "Database choice" when MongoDB or Firestore was asked for and the test fell back. The settings (LLD 13) follow the same choice. After `Init` the rest of the start-up runs as it always did; a database that stops answering later returns errors from its calls, and the settings keep their last values (LLD 13).
+
+**Firestore** (`persist/firestore.go`). The server talks to Firestore's REST API with the standard library only (the official client would bring gRPC and a long list of modules into this GOPATH build) and signs in as a service account: a JSON key, given as the JSON, its base64, or a file path in `OPENREPL_FIRESTORE_CREDENTIALS`, exchanged for an OAuth token (a signed JWT with the scope `datastore`, renewed a minute before it ends). The web config of a Firebase project cannot be used for this: it carries no secret. `FIRESTORE_EMULATOR_HOST=host:port` talks to the emulator without a key (tests, local runs); `OPENREPL_FIRESTORE_PROJECT` names the project when the key does not. Each database is a collection `kv_<name>` in the default database, one document per key (`v` bytes, `t` time). A key that is not a valid document id (empty, with `/`, `.`/`..`, `__x__`, longer than 700 bytes, not UTF-8, or starting with `~`) is stored as `~` plus its base64. Listing pages with a query that starts after the last id. The first start copies an existing UnQLite file into an empty collection, once, as for MongoDB. A document is at most 1 MiB. **Keep the security rules of these collections closed** (`kv_*` and `settings`: `allow read, write: if false`): the service account bypasses rules, and the browser's Firestore access (the practice page) must not be able to read sessions or the dashboard's encrypted keys.
+
+**MongoDB instead of the files.** With `OPENREPL_MONGODB_URI` set (and `OPENREPL_MONGODB_DB`, default `openrepl`), a gateway or a standalone server keeps every one of the databases below in MongoDB: each file is a collection named after it (`user_sessions.db` is `kv_user_sessions`), with a record `{_id: <key>, v: <value>, t: <time>}` (the key is text, binary only when it is not valid UTF-8). `gotty` decides this in `app.Action`, once the mode is known (`persist.Configure(mode != worker)`), so a worker always keeps files, whatever its environment holds. The cache (`cachedb`) sits on top of either, unchanged. Differences:
+
+- *Commit and Rollback* do nothing in MongoDB: a write is permanent when `Store` returns.
+- *The first start* copies the file's records into a collection that is empty, once (the session secret included, so nobody is signed out); afterwards MongoDB wins and the file is not read again. The file is left where it is.
+- *Reaching MongoDB* is tested once, by `persist.Init` (above), not when a database is opened. Every later call has an 8-second limit and returns its error.
+- *A missing key* gives `persist.ErrNotFound` from `Fetch` and `Delete`.
+- *Several instances* sharing one database each have their own cache; a record written by one is seen by the others when their cached copy is evicted or the key is not cached yet.
+- Tests: `persist/persist_test.go` (the same checks on both backends, the copy, a worker, an unreachable server) run against a real MongoDB when `OPENREPL_TEST_MONGODB_URI` is set.
 
 | File | Wrapper | Key → value | Used by |
 |---|---|---|---|
-| `user_sessions.db` | `cachedb.Database` (UnQLite + 15 MB `freecache`, write-through, read-through) | `SESSION_KEY` → cookie HMAC key; `<uid>` → `UserProfile` JSON; `worker-pin:<uid>` → the execution node that holds the user's workspace (written by a gateway, `user/pin.go`, LLD 11); `blocked:<uid>` → `1` or `0`, set by an admin (`user/admin.go`, LLD 13) | `user`, `cookie` |
-| `feedback.db` | raw UnQLite | `<UnixNano timestamp>` → `{Name, Email, Message, Read}` | `/feedback` |
-| `blog.db` | raw UnQLite | `<blog name>` → `BlogPost` JSON | `/blog` |
-| `snippets.db` | raw UnQLite, guarded by a mutex | `<8-character id>` → `snippet` JSON | `/snippet`, `/s/<id>` (LLD 01) |
-| `practice.db` | raw UnQLite, guarded by a mutex | `u:<uid>` → `practiceDoc` JSON | `/practice/progress` |
+| `user_sessions.db` | `cachedb.Database` (UnQLite, or MongoDB, + 15 MB `freecache`, write-through, read-through) | `SESSION_KEY` → cookie HMAC key; `<uid>` → `UserProfile` JSON; `worker-pin:<uid>` → the execution node that holds the user's workspace (written by a gateway, `user/pin.go`, LLD 11); `blocked:<uid>` → `1` or `0`, set by an admin (`user/admin.go`, LLD 13) | `user`, `cookie` |
+| `feedback.db` | raw UnQLite (or MongoDB) | `<UnixNano timestamp>` → `{Name, Email, Message, Read}` | `/feedback` |
+| `blog.db` | raw UnQLite (or MongoDB) | `<blog name>` → `BlogPost` JSON | `/blog` |
+| `snippets.db` | raw UnQLite (or MongoDB), guarded by a mutex | `<8-character id>` → `snippet` JSON | `/snippet`, `/s/<id>` (LLD 01) |
+| `practice.db` | raw UnQLite (or MongoDB), guarded by a mutex | `u:<uid>` → `practiceDoc` JSON | `/practice/progress` |
 | `jobfile` | `encoding/gob` | `map[name]*Job{Name, ExpirationTime}` | `utils.GottyJobs` (written on shutdown, read and deleted on start) |
 | `.gitconfig` | text (read-only at runtime), the fallback for the `OPENREPL_*` environment variables | admin email, OpenAI key, allowed host | LLD 01, 07 |
-| `settings.json` | JSON (`server/settings.go`), read once and cached, written atomically (tmp file + rename) | `SiteSettings`: colour of the day, announcement, maintenance, switched-off languages, Genie switch and rates (LLD 13); a missing file means every switch is off | `/settings.js`, `/admin` |
+| `settings.json` (or MongoDB when `OPENREPL_MONGODB_URI` is set, LLD 13 section 3) | JSON (`server/settings.go`), read once and cached, written atomically (tmp file + rename) | `SiteSettings`: colour of the day, announcement, maintenance, switched-off languages, Genie switch and rates (LLD 13); a missing file means every switch is off | `/settings.js`, `/admin` |
 | `admin-audit.jsonl` | one JSON object per line, appended, mode 0600; the newest 500 are kept in memory | `{time, admin, action, detail, from}` for every change an admin made | `/admin/audit` (LLD 13) |
 | `admin-stats.json` | JSON, rewritten at most every 30 seconds, mode 0600 | per day: visitors, terminals by language, and for today only the keyed hashes of the visitors seen; 60 days | `/admin/stats` (LLD 13) |
 

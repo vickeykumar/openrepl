@@ -22,6 +22,8 @@ func (server *Server) registerAdmin(mux *http.ServeMux, prefix string) {
 
 	mux.Handle(prefix+"admin", server.wrapAdmin(http.HandlerFunc(server.handleAdminPage)))
 	api("admin/settings", server.handleAdminSettings)
+	api("admin/keys", server.handleAdminKeys)
+	api("admin/admins", server.handleAdminAdmins)
 	api("admin/gateway", server.handleAdminGateway)
 	api("admin/health", server.handleAdminHealth)
 	api("admin/audit", server.handleAdminAudit)
@@ -80,7 +82,8 @@ func (server *Server) terminalLanguage(rel string) (string, bool) {
 // wrapControls applies the switches an admin sets to new terminals and counts
 // them for the dashboard's charts: maintenance mode and languages that are
 // switched off refuse everybody but admins. It sits in front of the gateway,
-// so it covers the terminals of workers as well. A worker does no checking.
+// so it covers the terminals of workers as well. A worker checks only the people
+// who open its own port (wrapWorkerControls, worker_config.go).
 func (server *Server) wrapControls(next http.Handler, prefix string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lang, ok := server.terminalLanguage(strings.TrimPrefix(r.URL.Path, prefix))
@@ -88,17 +91,7 @@ func (server *Server) wrapControls(next http.Handler, prefix string) http.Handle
 			next.ServeHTTP(w, r)
 			return
 		}
-		settings := GetSiteSettings()
-		reason := ""
-		switch {
-		case settings.Maintenance.Enabled:
-			reason = settings.Maintenance.Message
-			if reason == "" {
-				reason = "The site is down for maintenance. Please try again soon."
-			}
-		case settings.LanguageDisabled(lang):
-			reason = "This language is switched off for now. Please pick another one."
-		}
+		reason := siteBlockReason(GetSiteSettings(), lang)
 		if reason != "" && !server.isAdmin(w, r) {
 			server.closeWithNotice(w, r, reason)
 			return

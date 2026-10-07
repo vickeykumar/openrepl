@@ -137,7 +137,7 @@ The widget is TypeScript bundled with microbundle into `dist/index.umd.js` and s
 - `submitOnKeydown` on desktop, and `openOnLoad` only on `/practice`. Elsewhere Genie opens from the app bar, the floating button or the error note (LLD 07).
 - `closeOnOutsideClick = false`: the Genie panel is docked and non-modal (LLD 07).
 
-The system message includes the current editor content, so the assistant can answer "debug my code". Code blocks in replies get **Insert** and **Replace** buttons that call `window.insertcodesnippet` and `window.replacecodesnippet`, which edit the Ace buffer. The model and effort are chosen with a chip in the composer and come from `js/model-choice.js` (default Luna, Low); the context sent is the editor code and the terminal's recent output (LLD 07).
+The system message includes the current editor content, so the assistant can answer "debug my code". Code blocks in replies get **Insert** and **Replace** buttons that call `window.insertcodesnippet` and `window.replacecodesnippet`, which edit the Ace buffer. The model and effort are chosen with a chip in the composer and come from `js/model-choice.js` (default Luna, Low; Gemma 4 31B through OpenRouter when the server has a key, and an unavailable card with Try again and Switch to GPT-6 Luna when it cannot answer); the context sent is the editor code and the terminal's recent output (LLD 07).
 
 ## 6. Practice mode
 

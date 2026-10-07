@@ -38,9 +38,14 @@ type ServerConfig struct {
 	Token string
 	// HostKey identifies the gateway to workers. Required.
 	HostKey ssh.Signer
-	// CookieSecret and AuthToken are handed to a worker when it registers.
+	// CookieSecret, AuthToken and Secret (OPENREPL_SECRET) are handed to a
+	// worker when it registers.
 	CookieSecret func() []byte
 	AuthToken    func() string
+	Secret       func() string
+	// Config is the settings the gateway wants workers to follow. It is called
+	// at every registration and heartbeat, so it should be cheap. nil: none.
+	Config func() *WorkerConfig
 	// HeartbeatInterval is how often workers report; Timeout is how long a
 	// silent worker stays ONLINE. Defaults: 10s and 30s.
 	HeartbeatInterval time.Duration
@@ -126,14 +131,15 @@ type Worker struct {
 	conn   ssh.Conn
 	since  time.Time // when this connection registered
 
-	used     int64 // atomic
-	active   int64 // atomic
-	lastSeen int64 // atomic, unix nanoseconds
-	draining int32 // atomic
-	offline  int32 // atomic
-	syncing  int32 // atomic: registered but its homes are not reconciled yet
-	syncFrom int64 // atomic, unix nanoseconds: when syncing began
-	replaced bool  // guarded by Server.mu
+	used      int64 // atomic
+	active    int64 // atomic
+	configRev int64 // atomic: the WorkerConfig revision the worker says it follows
+	lastSeen  int64 // atomic, unix nanoseconds
+	draining  int32 // atomic
+	offline   int32 // atomic
+	syncing   int32 // atomic: registered but its homes are not reconciled yet
+	syncFrom  int64 // atomic, unix nanoseconds: when syncing began
+	replaced  bool  // guarded by Server.mu
 }
 
 func (w *Worker) ID() string            { return w.id }
@@ -142,7 +148,11 @@ func (w *Worker) Info() RegisterRequest { return w.info }
 func (w *Worker) Used() int64           { return atomic.LoadInt64(&w.used) }
 func (w *Worker) Active() int64         { return atomic.LoadInt64(&w.active) }
 func (w *Worker) Online() bool          { return atomic.LoadInt32(&w.offline) == 0 }
-func (w *Worker) Draining() bool        { return atomic.LoadInt32(&w.draining) == 1 }
+
+// ConfigRev is the revision of the WorkerConfig the worker follows, as it last
+// reported.
+func (w *Worker) ConfigRev() int64 { return atomic.LoadInt64(&w.configRev) }
+func (w *Worker) Draining() bool   { return atomic.LoadInt32(&w.draining) == 1 }
 
 // Syncing reports whether the worker is still reconciling its homes with the
 // gateway. A syncing worker takes no new sessions.
@@ -416,8 +426,16 @@ func (s *Server) ServeConn(c net.Conn) {
 			if json.Unmarshal(req.Payload, &hb) == nil {
 				atomic.StoreInt64(&worker.used, hb.Used)
 				atomic.StoreInt64(&worker.active, int64(hb.Active))
+				atomic.StoreInt64(&worker.configRev, hb.ConfigRev)
 			}
-			reply(req, true, "")
+			var hr HeartbeatReply
+			if s.cfg.Config != nil {
+				if cur := s.cfg.Config(); cur != nil && cur.Revision != atomic.LoadInt64(&worker.configRev) {
+					hr.Config = cur
+				}
+			}
+			data, _ := json.Marshal(hr)
+			req.Reply(true, data)
 		case ReqSyncReady:
 			if worker == nil {
 				reply(req, false, "not registered")
@@ -528,6 +546,14 @@ func (s *Server) register(conn ssh.Conn, payload []byte) (*Worker, RegisterReply
 	if s.cfg.AuthToken != nil {
 		rep.AuthToken = s.cfg.AuthToken()
 	}
+	if s.cfg.Secret != nil {
+		rep.Secret = s.cfg.Secret()
+	}
+	if s.cfg.Config != nil {
+		if rep.Config = s.cfg.Config(); rep.Config != nil {
+			atomic.StoreInt64(&w.configRev, rep.Config.Revision)
+		}
+	}
 	return w, rep, nil
 }
 
@@ -572,4 +598,16 @@ func (s *Server) watch(w *Worker) {
 			return
 		}
 	}
+}
+
+// ConfigRevision is the revision of the WorkerConfig workers should follow now
+// (0 when there is none).
+func (s *Server) ConfigRevision() int64 {
+	if s.cfg.Config == nil {
+		return 0
+	}
+	if cur := s.cfg.Config(); cur != nil {
+		return cur.Revision
+	}
+	return 0
 }
