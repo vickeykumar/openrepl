@@ -275,9 +275,13 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 		// syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWUSER
 		nsenterArgs := []string{"/usr/bin/nsenter", "-t" + strconv.Itoa(ppid)}
 		if HasCAPSysAdmin {
-			// Request the parent namespaces only when the process has the
-			// capability required to enter them.
-			nsenterArgs = append(nsenterArgs, ns_flags...)
+			// Request the parent's namespaces only when the process has the
+			// capability required to enter them, and only those that are not
+			// ours already: a REPL that was started without namespaces (no
+			// cgroups or user namespaces on this host) lives in the same ones
+			// as this process, and nsenter fails to "enter" a user namespace
+			// one is in.
+			nsenterArgs = append(nsenterArgs, differingNamespaceFlags(ppid)...)
 		}
 		commandArgs = append(commandArgs, nsenterArgs...)
 		commandArgs = append(commandArgs, commandlist...)
@@ -343,4 +347,22 @@ func GetHomeDirFromEnv(pid int) (string, error) {
 	}
 
 	return homeDir, nil
+}
+
+// differingNamespaceFlags returns the nsenter flags of the namespaces of pid
+// that are not the ones of this process. When they cannot be compared (a
+// process that is gone, /proc not readable) it returns all of them, as before.
+func differingNamespaceFlags(pid int) []string {
+	pairs := []struct{ flag, ns string }{
+		{CLONE_NEWUTS, "uts"}, {CLONE_NEWPID, "pid"}, {CLONE_NEWNET, "net"}, {CLONE_NEWUSER, "user"},
+	}
+	var flags []string
+	for _, p := range pairs {
+		theirs, err1 := os.Readlink("/proc/" + strconv.Itoa(pid) + "/ns/" + p.ns)
+		ours, err2 := os.Readlink("/proc/self/ns/" + p.ns)
+		if err1 != nil || err2 != nil || theirs != ours {
+			flags = append(flags, p.flag)
+		}
+	}
+	return flags
 }

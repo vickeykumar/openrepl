@@ -97,6 +97,15 @@
   .site-nav .menu.responsive .menu__item.toggle { align-self: flex-end; }
   .site-nav .menu.responsive .menu__item:not(:first-child) { padding: 0; }
   .site-nav .menu__item--push { margin-left: 0; }
+  /* The theme button stays in the bar next to the menu button instead of
+     hiding inside the closed menu, where it was easy to miss. */
+  .site-nav .menu:not(.responsive) .menu__item--push {
+    display: flex;
+    align-items: center;
+    order: -1;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 /* ------------------------------------------------------------------ */
