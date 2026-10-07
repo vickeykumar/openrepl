@@ -113,6 +113,7 @@ func DeleteContainers() {
 }
 
 func AddProcesstoNewSubCgroup(name string, pid int, iscompiled bool) {
+	TrackProcess(pid)
 	containerobj, ok := Containers[name]
 	if !ok {
 		log.Println("AddProcesstoNewSubCgroup: ERROR: couldn't find container for : " + name)
@@ -122,6 +123,7 @@ func AddProcesstoNewSubCgroup(name string, pid int, iscompiled bool) {
 }
 
 func DeleteProcessFromSubCgroup(name string, pid int) {
+	UntrackProcess(pid)
 	containerobj, ok := Containers[name]
 	if !ok {
 		log.Println("DeleteProcessFromSubCgroup: ERROR: couldn't find container for : " + name)
@@ -130,7 +132,41 @@ func DeleteProcessFromSubCgroup(name string, pid int) {
 	containerobj.DeleteProcessFromSubCgroup(pid)
 }
 
+// The REPLs this server started and that have not ended, by pid. A forked tab
+// may only join one of these. It does not depend on cgroups: on a host where
+// the memory cgroups cannot be made (cgroup v2, a container without the
+// capability) the cgroup bookkeeping below is empty, and a fork was refused as
+// "invalid parent id" even though the parent terminal was running.
+var (
+	liveMu sync.Mutex
+	live   = map[int]struct{}{}
+)
+
+// TrackProcess records a REPL that has started.
+func TrackProcess(pid int) {
+	liveMu.Lock()
+	live[pid] = struct{}{}
+	liveMu.Unlock()
+}
+
+// UntrackProcess forgets a REPL that has ended.
+func UntrackProcess(pid int) {
+	liveMu.Lock()
+	delete(live, pid)
+	liveMu.Unlock()
+}
+
+func isTracked(pid int) bool {
+	liveMu.Lock()
+	defer liveMu.Unlock()
+	_, ok := live[pid]
+	return ok
+}
+
 func IsProcess(pid int) bool {
+	if isTracked(pid) {
+		return true
+	}
 	for _, containerObj := range Containers {
 		if containerObj.IsProcess(pid) {
 			return true
