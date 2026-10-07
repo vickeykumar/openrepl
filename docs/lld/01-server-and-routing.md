@@ -103,9 +103,9 @@ All paths are relative to `pathPrefix`: `/`, or `/<random>/` with `--random-url`
 | `/login` | GET, POST | `handleLoginSession` | public | GET: current session status as JSON. POST: create a session from the Firebase sign-in result (LLD 05). |
 | `/logout` | POST | `handleLogoutSession` | session | Deletes the session and cookie. |
 | `/profile` | GET | `handleUserProfile` | session | HTML profile (`static/profile.html` template), or JSON with `?q=json`, which also carries `isAdmin` so the account menu can offer a link to `/admin`. |
-| `/feedback` | POST, GET | `handleFeedback` | POST public, `?q=delete` admin; GET admin | Stores the footer form ("Which language should we add next?" plus general feedback): `name` (optional, sent as "Anonymous" when empty), `email` and `message` (free text). GET renders a DataTables admin view. |
-| `/blog` | GET, POST | `handleBlog` | GET public; POST admin | GET: list, `?name=` post, `?q=list` keys, `?q=json`. POST: upsert or `?q=delete`. |
-| `/editblog.html` | GET | static behind `wrapAdmin` | admin | Blog editor UI. |
+| `/feedback` | POST | `handleFeedback` (`feedback.go`) | public | Stores the contact form of the home page: `name` (optional; the page sends "Anonymous" when empty), `email` (optional, checked when given) and `message` (required). Form-encoded or a JSON body; a client that sends `Accept: application/json` gets `{ok, message}` and 201, anything else the old plain text and 200. Limits: body 16 KB, name 100, email 254, message 4,000 characters; 3 messages per 10 minutes per visitor address and 60 per hour for the whole site (429 with `Retry-After`); a hidden field named `website` that only a bot fills in makes the message be thanked and dropped. The log says that a message came, not what it says. GET redirects to `/admin#feedback`, where the messages are read and deleted (LLD 13); the old `?q=delete` answers 410. |
+| `/blog` | GET, POST | `handleBlog` (`blog_db.go`) | GET public; POST admin, from the editor | GET: the list (newest first, with the date and reading time), `?name=` a post, `?q=index` JSON of the posts with title, description, date and reading time, `?q=list` the names, `?q=json&name=` one post. POST: save, or `q=delete`; it needs an admin session and the dashboard's `X-Requested-With: openrepl-admin` header, takes at most 2 MB, checks the name (200), title (200) and description (500 characters) and that the post has content, and answers JSON with proper codes when asked (`Accept: application/json`). |
+| `/editblog.html` | GET | static behind `wrapAdmin` | admin | Blog editor UI (`editblog.html`, `js/editblog.js`, `css/editblog.css`, `js/genie_plugin.js`; LLD 06). |
 | `/demo?q=<command>` | GET | `handleDemo` | public | `utils.DemoResp` JSON for a REPL (LLD 04). |
 | `/chat/completions` | POST | `handleChatProxy` | origin-checked, token, rate limit | OpenAI proxy (LLD 07). |
 | `/ws_filebrowser` | GET, POST | `Server.handleFileBrowser` | cookie homedir | File tree, load, save, zip, workspace usage (`?q=usage`) and file ops (LLD 04). Despite the name, this is plain HTTP. |
@@ -123,7 +123,6 @@ All paths are relative to `pathPrefix`: `/`, or `/<random>/` with `--random-url`
 `server/utils.go` holds inline templates:
 
 - `CommonTemplate`: the shared page shell, used by `commonHandler` (blog, feedback) and `errorHandler` (error pages).
-- `FeedbackTemplate`: the admin table with a delete button (POST `/feedback?q=delete&key=`).
 - `BlogList_Template`, `Blog_Template`: the blog list and a single post (`htmlify` renders stored HTML).
 
 `profile.html` and `practice.html` are parsed as templates at request time. `index.html` is parsed once at start-up and executed per request with `.Page` from `indexPageFor(r)` (`server/langpages.go`): `URL`, `Title`, `Description`, `Eyebrow`, `Heading`, `HeadingColor`, `Blurb`, and `Client`, a JSON object written to `window.OPENREPL_PAGE` (`{repl, slug, pages[]}`) so the page knows its language and can move between language pages without a reload (LLD 06).

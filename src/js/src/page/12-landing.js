@@ -121,10 +121,35 @@ $(function () {
     }
   });
   $("#feedback-form").on("focus", "input, textarea", showRequestCaptcha);
-  // the admin feedback table shows a name for every message
-  $("#feedback-form").on("submit", function () {
+  // The message goes to /feedback with fetch, which answers in JSON, so the result
+  // shows here instead of in a hidden frame. The server limits size and how often
+  // a visitor may write; a refusal is shown as it says it.
+  $("#feedback-form").on("submit", function (e) {
+    e.preventDefault();
+    var form = this;
+    var button = document.getElementById("feedback-submit");
+    // the dashboard shows a name for every message
     var n = document.getElementById("feedback-name");
     if (n && !n.value.trim()) n.value = "Anonymous";
+    if (button) button.disabled = true;
+    var failed = function (text) {
+      notify(text || "Couldn't send your message. Please try again in a moment.", { type: "error" });
+      if (button) button.disabled = false;
+    };
+    fetch("/feedback", {
+      method: "POST",
+      headers: { "Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(new FormData(form)).toString()
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (res.ok) {
+          var done = document.getElementById("feedbackDiv");
+          if (done) done.innerHTML = '<p class="request-form__done">Thanks! Your message was sent.</p>';
+        } else {
+          failed(body.message);
+        }
+      });
+    }, function () { failed(); });
   });
   $("#optionlist").on("change", syncUsageHeading);
   syncUsageHeading();

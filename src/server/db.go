@@ -2,13 +2,11 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"persist"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 	"io/ioutil"
 	"utils"
@@ -56,7 +54,6 @@ func StoreFeedbackData(fb *feedback) error {
 		log.Println("ERROR: Error while marshalling feedback data. Error: ", err.Error())
 		return err
 	}
-	log.Println("got feedback data: ", fb)
 	timestamp := strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 	err = feedback_db_handle.Store([]byte(timestamp), data)
 	if err != nil {
@@ -100,67 +97,6 @@ func FetchFeedbackDataMap() (fblistmap map[int64]feedback) {
 	}
 	return
 }
-
-func handleFeedback(rw http.ResponseWriter, req *http.Request) {
-	log.Println("method:", req.Method)
-	req.ParseForm()
-        log.Println("Data recieved in Form: ", req.Form)
-	if req.Method == "POST" {
-		query := req.Form.Get("q")
-		if query == "delete" {
-			if IsUserAdmin(rw, req) == false {
-				http.Error(rw, "Unauthorized Access!! Please Sign in again as Admin.", http.StatusUnauthorized)
-				return
-			}
-			key := req.Form.Get("key")
-			err := deleteFeedbackData(key)
-			if err != nil {
-				log.Println("feedbackdata delete failed for key: ", key, err.Error()) // must be valid
-				http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
-                        	return
-                	}
-			// return after deleting key
-			return 
-		}
-		var fb feedback
-		fb.Name = strings.Join(req.Form["name"], "")
-		fb.Email = strings.Join(req.Form["email"], "")
-		fb.Message = strings.Join(req.Form["message"], "")
-
-		err := StoreFeedbackData(&fb)
-		if err == nil {
-			fmt.Fprintf(rw, "Thanks for your Feedback !!")
-		} else {
-			http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
-		}
-		return
-	} else if req.Method == "GET" {
-		// only Admin can see the feedback data, currently a basic gitconfig validation against logged in user email id
-		if IsUserAdmin(rw, req) == false {
-			errorHandler(rw, req, "Unauthorized Access!! Please Sign in again as Admin.", http.StatusUnauthorized)
-			return
-		}
-
-		fbdatamap := FetchFeedbackDataMap()
-
-		// render table template
-		feedbacktmpl, err := template.New("index").Parse(FeedbackTemplate)
-		if err != nil {
-			log.Println("feedbackdata template parse failed", err.Error()) // must be valid
-			errorHandler(rw, req, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		fbBuf := new(bytes.Buffer)
-		err = feedbacktmpl.Execute(fbBuf, fbdatamap)
-		if err != nil {
-			log.Println("feedbackdata template Execute failed", err.Error()) // must be valid
-			errorHandler(rw, req, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		commonHandler(rw, req, "Feedback Data", fbBuf.String(), http.StatusOK)
-	}
-}
-
 
 func handleLoginSession(rw http.ResponseWriter, req *http.Request) {
 	log.Println("method:", req.Method)

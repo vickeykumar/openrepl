@@ -1663,6 +1663,8 @@ body.files-collapsed .files-panel { display: none; }
   cursor: pointer;
 }
 .request-form input[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; }
+/* a field only a bot fills in; the server throws such a message away */
+.request-form .request-form__trap { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .request-form__captcha { grid-column: 1 / -1; }
 .request-form__captcha[hidden] { display: none; }
 .request-form__done { color: var(--paper) !important; font-weight: 600; }
