@@ -1,209 +1,101 @@
 <!doctype html>
-<html lang="en" itemscope itemtype="http://schema.org/CreativeWork">
+<html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="description" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>profile edit data OpenREPL</title>
-    <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.0/dist/js/bootstrap.bundle.min.js"></script>
+    <meta name="robots" content="noindex">
+    <title>Blog editor · OpenREPL</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./css/scribbler-global.css">
     <link rel="stylesheet" href="./css/scribbler-doc.css">
+    <link rel="stylesheet" href="./css/editblog.css">
     <script src="./config.js"></script>
     <script src="./js/theme.js"></script>
     <script src="./settings.js"></script>
     <script src="./js/preprocessing.js"></script>
+    <script src="./js/notices.js"></script>
+    <!-- TinyMCE, the free (GPL) build: no account, no API key, and none of the paid plugins -->
+    <script src="https://cdn.jsdelivr.net/npm/tinymce@7/tinymce.min.js" referrerpolicy="origin"></script>
     <link rel="author" href="humans.txt">
-    <!-- utility functions -->
-    <script type="text/javascript">
-        function logout () {
-          xhr = new XMLHttpRequest();
-          var url = window.location.origin + "/logout";
-          xhr.open("POST", url, true);
-          xhr.setRequestHeader("Content-Type", "application/json");
-          xhr.onreadystatechange = function () {
-          if (xhr.readyState === 4 && xhr.status === 200) {
-            console.log("logout success");
-          }
-          console.log("logout status: ",xhr.status);
-          // logout anyway
-          location.assign("/")
-          };
-          xhr.send();
-        }
-        // Function to fetch JSON data for a selected name and populate the form fields
-        function populateForm(name, elem) {
-            fetch('/blog?q=json&name=' + encodeURIComponent(name))
-                .then(response => response.json())
-                .then(data => {
-                    // Update the form fields with the JSON data
-                    document.getElementById('blogname').value = data.name;
-                    document.getElementById('blogtitle').value = data.title;
-                    document.getElementById('blogdesc').value = data.desc;
-                    tinymce.activeEditor.setContent(data.content);
-                    document.querySelectorAll('.doc__nav ul li').forEach(item => {
-                        item.classList.remove('selected');
-                    });
-                    elem.classList.add('selected');
-                })
-                .catch(error => {
-                    alert('Error fetching JSON data');
-                    console.error(error);   
-                });
-        }
-
-        function updateAsideBar() {
-            fetch('/blog?q=list')
-                .then(response => response.json())
-                .then(data => {
-                    // Get the aside element
-                    var asideElement = document.querySelector('.doc__nav ul');
-                    
-                    // Clear the existing list items
-                    asideElement.innerHTML = '';
-
-                    // Iterate over the list of names and create list items
-                    data.forEach(name => {
-                        var listItem = document.createElement('li');
-                        listItem.textContent = name;
-                        listItem.classList.add('js-btn');
-                        asideElement.appendChild(listItem);
-                        listItem.addEventListener('click', function() {
-                            // Call the populateForm function with the selected name
-                            populateForm(name, listItem);
-                        });
-                    });
-                })
-                .catch(error => console.error('Error fetching list of names:', error));
-        }
-
-        function submitForm(action) {
-            // Modify the form action based on the action value
-            if (action === 'delete') {
-                document.getElementById('editor-form').action = '/blog?q=delete';
-            } else {
-                document.getElementById('editor-form').action = '/blog';
-            }
-            document.getElementById('editor-form').submit(); // Submit the form
-        }
-        function onLoadFn(){
-          try {
-            var frame = document.getElementById('resultFrame');
-            var target = document.getElementById("resonsediv");
-            if(!target){
-              return
-            }
-            if(frame && frame.contentWindow.document){
-              if(frame.contentWindow.document.body.innerHTML.trim()==='') return;
-              target.innerHTML = '<h3 class="link link--light-rev">'+(frame.contentWindow.document.body.innerHTML)+'</h3><br>';
-              updateAsideBar();
-            } else {
-              alert("Unable to reach server now");
-            }
-          }
-          catch(error) {
-            alert("Unable to reach server now");
-            console.log(error);
-          }
-        }
-
-    </script>
-    <script src="https://cdn.tiny.cloud/1/e9qy3omh8w79g1g08zzhq1lgkc4c89ppnhute6gvqcp4tst5/tinymce/7/tinymce.min.js" referrerpolicy="origin"></script>
   </head>
   <body>
     <nav class="header">
       <h1 class="logo"><span class="go__color"><br>Open</span>REPL</h1>
       <ul class="menu">
         <li class="menu__item toggle"><button type="button" class="toggle__button" aria-label="Menu" aria-expanded="false"><span></span></button></li>
-        <li class="menu__item"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button></li>
-        <li class="menu__item"><a id="sign-in-button" class="link link--dark" onclick="logout()"><i id = "auth-icon" class="fa fa-sign-out"></i> Logout</a></li>
-        <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
+        <li class="menu__item menu__item--theme"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button></li>
+        <li class="menu__item"><a href="/blog" class="link link--dark"><i class="fa fa-newspaper-o"></i> View blog</a></li>
+        <li class="menu__item"><a id="sign-in-button" class="link link--dark" href="/" data-logout><i id="auth-icon" class="fa fa-sign-out"></i> Logout</a></li>
+        <li class="menu__item"><a href="/" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
       </ul>
     </nav>
-    <br>
-    <div class="wrapper">
-        <aside class="doc__nav">
-        <ul>
-          <li class="js-btn selected">Cling for C/C++</li>
-          <li class="js-btn">Golang</li>
-        </ul>
-      </aside>
-      <div class="container">
-            <form id="editor-form" method="post" action="/blog" target="resultFrame">
-                <table>
-                
-                <tr>
-                    <td><input type="text" name="name" id="blogname" placeholder="Name" required="required"/></td>
-                    <td><input type="text" name="title" id="blogtitle" placeholder="Title"/></td>
-                    <td><input type="text" name="desc" id="blogdesc" placeholder="Description"/></td>
-                </tr>
-                
-                <tr style="height: 100%;">
-                    <td colspan="3"><textarea name="content" id="blog-editor" placeholder="Welcome to TinyMCE!" ></textarea></td>
-                </tr>
-                
-                <tr>
-                    <td colspan="3" align="center">
-                        <input id="blogeditor-submit" type="submit" value="Save" onclick="submitForm('save')"/>
-                        <input id="blogeditor-delete" type="submit" value="Delete" onclick="submitForm('delete')"/>
-                    </td>
-                </tr>
-                
-                </table>
-            </form>
-            <div id="resonsediv"></div>
-            <iframe name="resultFrame" id="resultFrame" width="100%" style="border:none;display:none" onload="onLoadFn()"></iframe>
+
+    <main class="eb">
+      <header class="eb-bar">
+        <h1>Blog editor</h1>
+        <span id="eb-state" class="eb-pill" data-state="saved" hidden></span>
+        <span class="eb-spacer"></span>
+        <button type="button" id="eb-preview" class="eb-btn"><i class="fa fa-eye" aria-hidden="true"></i> Preview</button>
+        <button type="button" id="eb-delete" class="eb-btn eb-btn--danger" disabled><i class="fa fa-trash-o" aria-hidden="true"></i> Delete</button>
+        <button type="button" id="eb-save" class="eb-btn eb-btn--primary">Save</button>
+      </header>
+
+      <div class="eb-layout">
+        <aside class="eb-side" aria-label="Posts">
+          <input type="search" id="eb-search" placeholder="Search posts" aria-label="Search posts">
+          <button type="button" id="eb-new" class="eb-btn"><i class="fa fa-plus" aria-hidden="true"></i> New post</button>
+          <ul id="eb-list"></ul>
+        </aside>
+
+        <section class="eb-main">
+          <div id="eb-draft" class="eb-draft" hidden>
+            <span id="eb-draft-text"></span>
+            <button type="button" class="eb-btn" id="eb-draft-restore">Restore it</button>
+            <button type="button" class="eb-btn" id="eb-draft-discard">Discard it</button>
+          </div>
+          <form id="editor-form" autocomplete="off" novalidate>
+            <div class="eb-main">
+              <label class="eb-field eb-field--title">Title
+                <input type="text" id="blogtitle" name="title" maxlength="200" placeholder="A title that says what the post is about">
+              </label>
+              <div class="eb-row">
+                <label class="eb-field">Address
+                  <input type="text" id="blogname" name="name" maxlength="200" placeholder="debugging-with-genie">
+                  <span class="eb-hint" id="eb-name-hint"><span>Shown as <code>/blog?name=&hellip;</code></span></span>
+                </label>
+                <label class="eb-field">Short description
+                  <input type="text" id="blogdesc" name="desc" maxlength="500" placeholder="One or two sentences for the list of posts">
+                  <span class="eb-hint"><span>Shown under the title in the list</span><span id="eb-count">0 / 500</span></span>
+                </label>
+              </div>
+              <textarea id="blog-editor" name="content"></textarea>
+            </div>
+          </form>
+        </section>
       </div>
-    </div>
+    </main>
+
+    <dialog id="eb-dialog" class="eb-dialog" aria-labelledby="eb-dialog-title">
+      <h2 id="eb-dialog-title"></h2>
+      <p id="eb-dialog-body"></p>
+      <div class="eb-dialog__buttons">
+        <button type="button" class="eb-btn" id="eb-dialog-cancel">Cancel</button>
+        <button type="button" class="eb-btn eb-btn--primary" id="eb-dialog-ok">OK</button>
+      </div>
+    </dialog>
+    <dialog id="eb-preview-dialog" class="eb-dialog eb-preview" aria-label="Preview of the post">
+      <header><strong>Preview</strong><button type="button" class="eb-btn" id="eb-preview-close">Close</button></header>
+      <iframe id="eb-preview-frame" title="Preview of the post"></iframe>
+    </dialog>
+
     <footer class="footer">
-    <a href="./about.html" class="link link--light">About</a> <span class="dot"></span>
-    <a href="" class="link link--light">References</a> <span class="dot"></span>
-    <span id="copyright_year">
-        <script>document.getElementById('copyright_year').appendChild(document.createTextNode(new Date().getFullYear()))</script>
-    </span>&copy;<span class="go__color">Open</span>REPL 
+      <a href="./about.html" class="link link--light">About</a> <span class="dot"></span>
+      <span id="copyright_year"></span>&copy;<span class="go__color">Open</span>REPL
     </footer>
     <script src="./js/common.js"></script>
-    <!-- Place the following <script> and <textarea> tags your HTML's <body> -->
-    <script>
-      tinymce.init({
-        selector: '#blog-editor',
-        license_key: 'gpl',
-        // 1. Add the plugin to the list of external plugins
-        external_plugins: {
-            chatgpt:
-              "/js/chatgpt_plugin.js",
-        },
-        plugins: 'anchor autolink charmap codesample emoticons image link lists media searchreplace table visualblocks wordcount checklist mediaembed casechange export formatpainter pageembed linkchecker a11ychecker tinymcespellchecker permanentpen powerpaste advtable advcode editimage advtemplate mentions tableofcontents footnotes mergetags autocorrect typography inlinecss markdown fullscreen save preview',
-        toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline strikethrough | link image media table mergetags | addcomment showcomments | spellcheckdialog a11ycheck typography | align lineheight | checklist numlist bullist indent outdent | emoticons charmap | removeformat | fullscreen | save | preview | code | codesample | chatgpt',
-        custom_ui_selector: '#blogeditor-submit #blogname #blogtitle #blogdesc',
-        save_onsavecallback: () => {
-            document.getElementById('editor-form').submit();
-            console.log('Saved');
-          },
-
-      // 2. Configure the ChatGPT plugin
-      openai: {
-        api_key: openai_access_token, // Your OpenAI API key
-        model: "gpt-3.5-turbo",
-        temperature: 0.5,
-        max_tokens: 800,
-        prompts: [
-          "Translate from English to Italian",
-          "Summarize",
-          "Proofread",
-          "Write a blog post about",
-        ],
-        // Optional: Add your custom LLM
-        baseUri: "/chat/completions",
-      },
-
-      });
-      updateAsideBar();
-    </script>
+    <script src="./js/editblog.js"></script>
   </body>
 </html>

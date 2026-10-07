@@ -66,6 +66,7 @@ initFirebaseHandles();
   }
 
   function commitFirestoreBatch() {
+    if (!batch) return; // no Firestore on this page
     batch.commit()
     .then(() => {
       console.log("Sync complete!");

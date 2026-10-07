@@ -77,90 +77,28 @@ func handleDemo(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-var FeedbackTemplate =`
-<table id="feedback_table">
-    <thead>
-        <tr>
-	    <th>ID</th>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Message</th>
-            <th>Date And Time</th>
-	    <th>Delete</th>
-        </tr>
-    </thead>
-    <tbody>
-    	{{range $key, $value := .}}
-        <tr>
-	    <td>{{$key}}</td>
-            <td>{{$value.Name}}</td>
-            <td>
-            <a href="https://mail.google.com/mail/?view=cm&fs=1&tf=1&to={{$value.Email}}&su=Greetings%20from%20OpenREPL" target="_blank" > {{$value.Email}} </a>
-            </td>
-            <td>{{$value.Message}}</td>
-            <td></td>
-	    <td></td>
-        </tr>
-      {{end}}
-    </tbody>
-</table>
-<script>
-    $(document).ready(function () {
-        var table = $('#feedback_table').DataTable({
-	    "columnDefs": [
-	      {
-		"targets": 4, // Fifth column
-		"render": function(data, type, row) {
-		  // Assumes timestamp is in first column and nanosec
-		  return new Date(parseInt(row[0])/1000000);
-		}
-	      },
-	      {
-                "targets": -1, // the last column
-		"data": null, // render data from the whole row
-                "render": function(data, type, row) {
-                  // 1st col is id/key , that is timestamp
-                  return "<button data-key='" + row[0] + "'>Delete</button>";
-               }
-              }
-	    ]
-	});
+var BlogList_Template = `<section class="doc__content blog-page">
+        <header class="blog-head">
+          <h1>Blog</h1>
+          <p class="blog-sub">News, tips and notes from OpenREPL</p>
+        </header>
+        <div class="blog-list">
+        {{range .}}
+          <article class="blog-card">
+            <h2><a href="/blog?name={{.Name}}">{{.Title}}</a></h2>
+            <p class="post-meta">{{if not .Lastupdated.IsZero}}{{formatDate .Lastupdated}} · {{end}}{{.Minutes}} min read</p>
+            <p class="blog-desc">{{.Desc}}</p>
+            <a href="/blog?name={{.Name}}" class="read-more">Read more <span aria-hidden="true">&rarr;</span></a>
+          </article>
+        {{end}}
+        </div>
+      </section>`
 
-	$('#feedback_table tbody').on('click', 'button', function() {
-	    var row = $(this).parents('tr');
-	    var data = table.row(row).data();
-	    $.ajax({
-		url: '/feedback?q=delete&key='+data[0],
-		method: 'POST',
-		success: function(response) {
-		    // delete the row data and redraw the table
-		    table.row(row).remove().draw();
-		},
-		error: function(xhr, status, error) {
-		    alert('Error deleting row: ' + error);
-		}
-	    });
-	});
-    });
-</script>
-`
-
-var BlogList_Template = `<article class="doc__content">
-			{{range $key, $value := .}}
-        <section class="blog-post">
-              <h2>{{$value.Title}}</h2>
-              <p class="post-meta">Last updated on {{formatDate $value.Lastupdated}}</p>
-              <p>{{$value.Desc}}</p>
-              <a href="/blog?name={{$key}}" class="read-more">Read More</a>
-              <hr />
-        </section>
-      {{end}}
-      </article>`
-
-var Blog_Template = `<article class="doc__content">
-        <h2>{{.Title}}</h2>
-        <p class="post-meta">Last updated on {{formatDate .Lastupdated}}</p>
-        {{htmlify .Content}}
+var Blog_Template = `<article class="doc__content blog-page blog-article">
+        <p class="blog-back"><a href="/blog"><span aria-hidden="true">&larr;</span> All posts</a></p>
+        <h1>{{.Title}}</h1>
+        <p class="post-meta">{{if not .Lastupdated.IsZero}}{{formatDate .Lastupdated}} · {{end}}{{.Minutes}} min read</p>
+        <div class="blog-body">{{htmlify .Content}}</div>
       </article>`
 
 var CommonTemplate = `<!doctype html>
@@ -189,8 +127,8 @@ var CommonTemplate = `<!doctype html>
     <nav class="header">
       <h1 class="logo"><span class="go__color">Open</span>REPL</h1>
       <ul class="menu">
-        <div class="menu__item toggle"><span></span></div>
-        <li class="menu__item"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button></li>
+        <li class="menu__item toggle"><button type="button" class="toggle__button" aria-label="Menu" aria-expanded="false"><span></span></button></li>
+        <li class="menu__item menu__item--theme"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button></li>
         <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
       </ul>
     </nav>

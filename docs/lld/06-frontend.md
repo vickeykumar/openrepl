@@ -14,7 +14,7 @@ Scope: `src/resources/*.html`, `src/resources/js/*`, `src/resources/css/*`, `src
 | `/about.html`, `/references.html` | static | static | |
 | `/privacy.html`, `/terms.html` | `resources/privacy.html`, `resources/terms.html` | static | Privacy policy and terms of use, linked from every footer (including the older About, docs and References pages) and, through FirebaseUI's own line, from the sign-in dialog. The privacy policy has to list each kind of data the server keeps: workspaces, session and account data, practice progress, code links (`snippets.db`, no expiry), feedback, server logs (rotated, up to 30 days, `utils.InitLogging`), the daily usage totals (60 days, `admin_stats.go`), the cookies and third-party services. When a new store, log or cookie is added, update it and its "Last updated" date. |
 | `/blog`, `/feedback`, error pages | `server/utils.go` templates | `CommonTemplate` | LLD 01. |
-| `/editblog.html` | `resources/editblog.html` | static, admin only | |
+| `/editblog.html` | `resources/editblog.html`, `js/editblog.js`, `css/editblog.css`, `js/genie_plugin.js` | static, admin only | The blog editor (below). |
 | `/jsconsole.html` | built from `src/jsconsole` | static | JavaScript REPL iframe. |
 
 `?<lang>` (for example `/?python`), `?repl=<value>` or a language page (`window.OPENREPL_PAGE.repl`) preselects the language (`LoadOptionFromUrl`). `console.log` is silenced by default. A bare `?debug` (no value) keeps it on (`preprocessing.js`). `?debug=1` does **not**, because any non-empty value is treated like no flag.
@@ -193,3 +193,18 @@ Up to 800 px wide (`applyMobileLayout`), the split is removed and one pane shows
 | Page load | `index.html`, `scribbler.js` | Section 2. About 580 KB less JavaScript on first view than before Phase 2. |
 | Starter snippets | `meta/demos.xml` | LLD 04. |
 | Practice page | `practice.html`, `scribbler-misc.js`, `practice-store.js`, `server/practice.go` | Section 6, LLD 05. |
+
+## 10. The blog and its editor
+
+**The public pages** (`/blog`, `/blog?name=`) are rendered by `handleBlog` with `BlogList_Template` and `Blog_Template` inside `CommonTemplate`. The list shows the newest post first as cards (title, date, reading time at 200 words a minute, description, "Read more"); a post is a single readable column with a "All posts" link, code blocks in the code font, and images and tables that fit the screen (`css/scribbler-doc.css`, classes `blog-*`). The page shell's menu button is a real button, and on a phone the theme button stays in the bar next to it (`css/scribbler-global.css`, `.menu__item--theme`).
+
+**The editor** (`/editblog.html`, admin only) has a list of the posts on the left (search, "New post", newest first) and the post on the right: title, address (made from the title for a new post, and editable; a new address saves a new post), a short description with a counter, and the editor. Its parts:
+
+- *TinyMCE* is the free GPL build from jsDelivr (`tinymce@7`, `license_key: 'gpl'`): no account or API key and none of the paid plugins, which used to put a "premium plugin is not enabled" notice on the page for each. The plugins are `anchor autolink charmap code codesample emoticons fullscreen image link lists media searchreplace table visualblocks wordcount`; the toolbar is undo, blocks, bold, italic, underline, strikethrough, link, image, media, table, code sample, lists, quote, clear formatting, source code, Ask Genie and fullscreen. Its skin follows the site theme and the editor starts again, with the content kept, when the theme button is pressed.
+- *Ask Genie* (`js/genie_plugin.js`) sends the selected text, or what is typed, with a task (proofread, shorter, clearer, summarize, continue, write about this) to the site's `/chat/completions` with the page's access token, which is never shown, and offers the answer to insert or to replace the selection. The server chooses the model (LLD 07).
+- *Saving* is `POST /blog` with `fetch` and the `X-Requested-With: openrepl-admin` header (the form is no longer sent through a hidden frame); the answer is JSON and is shown as a message of the site (`notify`), not `alert()`. Ctrl or Cmd with S saves. A new address that already exists asks before replacing.
+- *Drafts*: while there are unsaved changes a draft is kept in `localStorage` (`blog-draft:<address or new>`, every 1.5 s after a change); opening the post again offers to restore or discard it, and a successful save removes it. Leaving the page, or opening another post, with unsaved changes asks first.
+- *Delete* asks in a dialog and says what happens; it is disabled for a post that is not saved.
+- *Preview* shows the post in a dialog with the site's blog styles and the current theme.
+- `?name=<address>` opens that post.
+

@@ -580,6 +580,19 @@ input[type=text],[type=email], select, textarea, email {
     display: block;
     padding: 0 0 0.5rem 0;
   }
+
+  /* the theme button stays in the bar, in a row with the menu button */
+  .menu:not(.responsive) {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 4px;
+  }
+  .menu:not(.responsive) .menu__item--theme {
+    display: inline-flex;
+    align-items: center;
+    order: -1;
+  }
 }
 
 @keyframes fadeUp {
