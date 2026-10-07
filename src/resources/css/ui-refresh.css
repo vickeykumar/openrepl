@@ -3143,6 +3143,8 @@ body.modal-open { overflow: hidden; }
 }
 .modal-container .modal-rows > div { margin: 0; }
 .modal-hint { margin: 0 0 16px; font-size: 13px; color: var(--dlg-text-2); }
+.modal-container .form-input:disabled { opacity: 0.5; cursor: not-allowed; }
+.modal-container #qmodel-hint { margin-top: -4px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin: 22px 0 0 !important; }
 .modal-cancel,
 .modal-container .submit-btn {

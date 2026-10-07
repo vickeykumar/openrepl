@@ -62,7 +62,6 @@ export type WidgetConfig = {
   greetingMessage: string | null;
   closeOnOutsideClick: boolean;
   openOnLoad: boolean;
-  model: string;
   temperature: number;
   max_tokens: number;
   api_key: string;
@@ -108,7 +107,6 @@ const config: WidgetConfig = {
   greetingMessage: null,
   closeOnOutsideClick: true,
   openOnLoad: false,
-  model: "gpt-3.5-turbo",
   temperature: 0.5,
   max_tokens: 800,
   api_key: "",
@@ -124,20 +122,113 @@ interface MessageType {
   content: string;
 }
 
+// The two models and four effort levels, and the saved choice, come from
+// js/model-choice.js, which the page loads before this widget; the New question
+// dialog shares them (js/common.js). The server holds the same lists
+// (server/chatmodels.go) and sends on nothing else.
+type ModelOption = {
+  id: string;
+  name: string; // in the picker and under a reply
+  short: string; // on the chip
+  tag: string;
+  desc: string;
+  reasoning: boolean; // takes an effort level; 4o mini does not
+};
+type EffortOption = { id: string; label: string; tokens: number; note: string };
+type FieldOptions = { extraTokens?: number; maxTokens?: number; temperature?: number };
+type SharedChoice = {
+  models: ModelOption[];
+  efforts: EffortOption[];
+  get(): { model: string; effort: string };
+  set(model?: string, effort?: string): void;
+  fields(opts?: FieldOptions): Record<string, any>;
+  onChange(fn: () => void): void;
+};
+const MC: SharedChoice = (window as any).ModelChoice;
+if (!MC) {
+  console.error("Chat widget: js/model-choice.js has to load before the widget.");
+}
+const MODELS = MC.models;
+const EFFORTS = MC.efforts;
+
+function chosenModel(): ModelOption {
+  const id = MC.get().model;
+  return MODELS.filter((m) => m.id === id)[0] || MODELS[0];
+}
+function chosenEffort(): EffortOption {
+  const id = MC.get().effort;
+  return EFFORTS.filter((e) => e.id === id)[0] || EFFORTS[1];
+}
+function chipText(): string {
+  const m = chosenModel();
+  return m.reasoning ? `${m.short} · ${chosenEffort().label}` : m.short;
+}
+// "GPT-6 Luna · Low", under a reply
+function captionText(): string {
+  const m = chosenModel();
+  return m.reasoning ? `${m.name} · ${chosenEffort().label}` : m.name;
+}
+
+// The request fields for the chosen model: Luna takes an effort and an answer
+// budget, 4o mini a temperature and max_tokens (model-choice.js).
+function modelFields(): Record<string, any> {
+  return MC.fields({ temperature: config.temperature, maxTokens: config.max_tokens });
+}
+
 const NUM_MANDATORY_ENTRIES = 4;
 const MAX_HISTORY_SIZE = 20; 
 // older conversation history might not be usefull
 // Initialize the conversationHistory array
 let conversationHistory: MessageType[] = [];
 
+// What Genie is told about the page on every request: the editor's code and the
+// most recent output of the active terminal, so "why did this fail?" needs no
+// pasting. Both are cut to a size that leaves room for the conversation.
+const MAX_EDITOR_CHARS = 12000;
+const MAX_TERMINAL_CHARS = 4000;
+const TERMINAL_LINES = 20;
+
+function fetchTerminalOutput(): string {
+  try {
+    // the xterm adapter keeps its buffer; older builds only have the rows in the DOM
+    const tab = document.querySelector("#terminal-tabs .tab.active") as any;
+    const term = tab && tab.gottyterm && tab.gottyterm.term;
+    if (term && typeof term.recentText === "function") {
+      return String(term.recentText(TERMINAL_LINES));
+    }
+    const rows =
+      document.querySelector(".terminal.active .xterm-rows") || document.querySelector(".xterm-rows");
+    return rows ? (rows as HTMLElement).innerText : "";
+  } catch (e) {
+    return "";
+  }
+}
+
 function getcurrentIDECode(): MessageType {
-  let idecodemsg =  { 
-        role: "system", 
-        content: `Openrepl IDE/Editor real-time Code Content user is working on, 
-        (refer this code whenever user ask to debug editor/ide 
-        code without providing any code in message): `+ fetchEditorContent(),
-      }
-  return idecodemsg; 
+  const picker = document.getElementById("optionlist") as HTMLSelectElement | null;
+  const language = picker && picker.selectedIndex >= 0 ? picker.options[picker.selectedIndex].text : "";
+  const fileChip = document.getElementById("editor-filename");
+  const file = fileChip ? (fileChip.textContent || "").trim() : "";
+
+  let code = fetchEditorContent();
+  if (code.length > MAX_EDITOR_CHARS) {
+    code = code.slice(0, MAX_EDITOR_CHARS) + "\n... (the editor holds more; the rest is not shown)";
+  }
+  let output = fetchTerminalOutput().replace(/\s+$/, "");
+  if (output.length > MAX_TERMINAL_CHARS) {
+    output = "... " + output.slice(-MAX_TERMINAL_CHARS);
+  }
+
+  const parts = [
+    "Openrepl IDE real-time context of what the user is working on. Use it whenever the user asks to debug, explain or fix their code, or an error, without pasting anything.",
+    language ? `Language: ${language}` : "",
+    file && file !== "untitled" ? `File: ${file}` : "",
+    "--- Editor code ---",
+    code || "(the editor is empty)",
+    "--- Terminal output (the most recent lines of the active terminal) ---",
+    output || "(nothing in the terminal yet)",
+  ].filter(Boolean);
+  return { role: "system", content: parts.join("\n") };
 }
 
 // Function to add a message to the conversation history
@@ -184,6 +275,7 @@ let peerchatSwitchlistener = (e: Event) => {
       console.log('PeerChat switch is OFF');
       peerchatmode=false;
     }
+    refreshChip();
     if (chatfirebasedbref) {
       // push event to firebase db
       chatfirebasedbref.push ({
@@ -220,6 +312,7 @@ const setupFBListener = () => {
         console.log("received an peerchatmode event: ", d);
         // its a event message
         peerchatmode=d.val;
+        refreshChip();
         const peerchatSwitchElem = document.getElementById("peerchat-switch") as HTMLInputElement;
         if (peerchatSwitchElem) {
           peerchatSwitchElem.checked=peerchatmode;
@@ -286,6 +379,7 @@ thinkingBubble.innerHTML = `
     <span class="circle"></span>
     <span class="circle"></span>
     <span class="circle"></span>
+    <span class="chat-widget__thinking-label"></span>
   `;
 
 const trap = createFocusTrap(containerElement, {
@@ -336,12 +430,159 @@ function editorContextLabel(): string {
   const chip = document.getElementById("editor-filename");
   const name = chip ? (chip.textContent || "").trim() : "";
   if (!document.getElementById("editor")) return "";
-  return name && name !== "untitled" ? `Reads ${name}` : "Reads your editor";
+  return name && name !== "untitled" ? `Reads ${name} + terminal` : "Reads editor + terminal";
 }
 
 function autoGrow(input: HTMLTextAreaElement) {
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight + 2, 140)}px`;
+}
+
+// ---- Model and effort ---------------------------------------------------
+
+function settingsEl(): HTMLElement | null {
+  return document.getElementById("chat-widget__settings");
+}
+function chipEl(): HTMLButtonElement | null {
+  return document.getElementById("chat-widget__model-btn") as HTMLButtonElement | null;
+}
+function settingsOpen(): boolean {
+  const el = settingsEl();
+  return !!el && !el.hidden;
+}
+function setSettingsOpen(open: boolean, focusChip: boolean = false) {
+  const el = settingsEl();
+  const chip = chipEl();
+  if (!el || !chip) return;
+  el.hidden = !open;
+  chip.setAttribute("aria-expanded", open ? "true" : "false");
+  if (!open && focusChip) chip.focus();
+}
+
+// Peer chat messages go to the people in the session, not to a model, so the
+// chip is not shown while it is on.
+function refreshChip() {
+  const chip = chipEl();
+  if (!chip) return;
+  chip.hidden = peerchatmode;
+  if (peerchatmode) setSettingsOpen(false);
+}
+
+// Brings the chip, the cards and the effort control in line with `choice`.
+function renderChoice() {
+  const m = chosenModel();
+  const e = chosenEffort();
+  const chip = chipEl();
+  if (chip) {
+    const label = document.getElementById("chat-widget__model-label");
+    if (label) label.textContent = chipText();
+    chip.setAttribute("aria-label", `Model and effort: ${chipText()}`);
+  }
+  document.querySelectorAll<HTMLElement>("#chat-widget__models .cw-model").forEach((btn) => {
+    btn.setAttribute("aria-checked", btn.dataset.id === m.id ? "true" : "false");
+  });
+  const group = document.getElementById("chat-widget__efforts");
+  const effortLabel = document.getElementById("cw-effort-label");
+  if (group) group.classList.toggle("is-off", !m.reasoning);
+  if (effortLabel) effortLabel.classList.toggle("is-off", !m.reasoning);
+  document.querySelectorAll<HTMLButtonElement>("#chat-widget__efforts button").forEach((btn) => {
+    btn.setAttribute("aria-pressed", m.reasoning && btn.dataset.id === e.id ? "true" : "false");
+    btn.disabled = !m.reasoning;
+  });
+  const note = document.getElementById("chat-widget__effort-note");
+  if (note) {
+    note.textContent = m.reasoning
+      ? e.note
+      : `${m.short} doesn't think before answering, so effort doesn't apply.`;
+  }
+}
+
+// the dialog or another tab may change it while the panel is open
+MC.onChange(renderChoice);
+
+// Arrow keys move through a group of buttons and choose as they go.
+function arrowKeys(group: HTMLElement) {
+  group.addEventListener("keydown", (ev: KeyboardEvent) => {
+    const keys = ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"];
+    if (keys.indexOf(ev.key) < 0) return;
+    const buttons = Array.prototype.slice
+      .call(group.querySelectorAll("button"))
+      .filter((b: HTMLButtonElement) => !b.disabled) as HTMLButtonElement[];
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0 || buttons.length < 2) return;
+    ev.preventDefault();
+    const step = ev.key === "ArrowRight" || ev.key === "ArrowDown" ? 1 : -1;
+    const next = buttons[(at + step + buttons.length) % buttons.length];
+    next.focus();
+    next.click();
+  });
+}
+
+// Builds the cards and the effort control and wires them. Returns what removes
+// the listeners that outlive the panel's own elements.
+function setupSettings(): () => void {
+  const chip = chipEl();
+  const models = document.getElementById("chat-widget__models");
+  const efforts = document.getElementById("chat-widget__efforts");
+  if (!chip || !models || !efforts) return () => {};
+
+  MODELS.forEach((m) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cw-model";
+    btn.setAttribute("role", "radio");
+    btn.dataset.id = m.id;
+    const dot = document.createElement("span");
+    dot.className = "cw-model__dot";
+    dot.setAttribute("aria-hidden", "true");
+    const text = document.createElement("span");
+    text.className = "cw-model__text";
+    const name = document.createElement("span");
+    name.className = "cw-model__name";
+    name.textContent = m.name;
+    const tag = document.createElement("span");
+    tag.className = "cw-model__tag";
+    tag.textContent = m.tag;
+    name.appendChild(tag);
+    const desc = document.createElement("span");
+    desc.className = "cw-model__desc";
+    desc.textContent = m.desc;
+    text.append(name, desc);
+    btn.append(dot, text);
+    btn.addEventListener("click", () => MC.set(m.id));
+    models.appendChild(btn);
+  });
+  EFFORTS.forEach((e) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.id = e.id;
+    btn.textContent = e.label;
+    btn.addEventListener("click", () => MC.set(undefined, e.id));
+    efforts.appendChild(btn);
+  });
+  arrowKeys(models);
+  arrowKeys(efforts);
+
+  chip.addEventListener("click", () => setSettingsOpen(!settingsOpen()));
+  // Esc closes the settings first, and leaves the panel open
+  const form = document.getElementById("chat-widget__form")!;
+  form.addEventListener("keydown", (ev: KeyboardEvent) => {
+    if (ev.key === "Escape" && settingsOpen()) {
+      ev.stopPropagation();
+      setSettingsOpen(false, true);
+    }
+  });
+  const onDocClick = (ev: MouseEvent) => {
+    const el = settingsEl();
+    if (!el || el.hidden) return;
+    const target = ev.target as Node;
+    if (!el.contains(target) && !chip.contains(target)) setSettingsOpen(false);
+  };
+  document.addEventListener("click", onDocClick);
+
+  renderChoice();
+  refreshChip();
+  return () => document.removeEventListener("click", onDocClick);
 }
 
 // Listeners that live only while the panel is open.
@@ -398,7 +639,11 @@ function open(e?: Event) {
     }
   };
   containerElement.addEventListener("keydown", onKeydown);
-  detachPanel = () => containerElement.removeEventListener("keydown", onKeydown);
+  const detachSettings = setupSettings();
+  detachPanel = () => {
+    containerElement.removeEventListener("keydown", onKeydown);
+    detachSettings();
+  };
 
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement;
   input.addEventListener("input", () => autoGrow(input));
@@ -460,7 +705,8 @@ async function createNewMessageEntry(
   message: string,
   timestamp: number,
   from: "system" | "user",
-  skipdbpush: boolean = false
+  skipdbpush: boolean = false,
+  meta: string = ""
 ) {
   message = message.trim();
   //console.log("message: ", message)
@@ -487,6 +733,14 @@ async function createNewMessageEntry(
   messageElement.appendChild(messageText);
   //console.log("marked: ", markedtext);
 
+  if (meta) {
+    // which model answered, for a reply from Genie
+    const messageMeta = document.createElement("p");
+    messageMeta.classList.add("chat-widget__message-meta");
+    messageMeta.textContent = meta;
+    messageElement.appendChild(messageMeta);
+  }
+
   const messageTimestamp = document.createElement("p");
   messageTimestamp.classList.add("chat-widget__message-timestamp");
   messageTimestamp.textContent =
@@ -510,13 +764,13 @@ const handleErrorResponse = async (errData: any) => {
     await createNewMessageEntry("Unable to process your request Now."+error_reason, Date.now(), "system");
 }
 
-const handleStandardResponse = async (res: Response) => {
+const handleStandardResponse = async (res: Response, meta: string = "") => {
   if (res.ok) {
     const responseData : any = await res.json();
     if (responseData.choices && responseData.choices.length > 0) {
         const responseMessage : MessageType = responseData.choices[0].message;
         addMessageToHistory(responseMessage.role, responseMessage.content);
-        await createNewMessageEntry(responseMessage.content, Date.now(), "system");
+        await createNewMessageEntry(responseMessage.content, Date.now(), "system", false, meta);
     } else {
         handleErrorResponse(responseData);
     }
@@ -607,12 +861,14 @@ async function submit(e: Event) {
   addMessageToHistory(myrole, msg);
   const data = {
     ...config.user,
-    model: config.model,
+    ...modelFields(),
     messages: [...conversationHistory, getcurrentIDECode()],
-    temperature: config.temperature,
-    max_tokens: config.max_tokens,
     stream: config.responseIsAStream,
   };
+  const usedCaption = captionText();
+  const thinking = chosenModel().reasoning && chosenEffort().id !== "none";
+  const thinkingLabel = thinkingBubble.querySelector(".chat-widget__thinking-label");
+  if (thinkingLabel) thinkingLabel.textContent = thinking ? `${chosenModel().short} is thinking…` : "";
 
   await createNewMessageEntry(msg, Date.now(), myrole);
   target.reset();
@@ -635,7 +891,7 @@ async function submit(e: Event) {
     if (config.responseIsAStream) {
       await handleStreamedResponse(response);
     } else {
-      await handleStandardResponse(response);
+      await handleStandardResponse(response, usedCaption);
     }
   } catch (e: any) {
     thinkingBubble.remove();

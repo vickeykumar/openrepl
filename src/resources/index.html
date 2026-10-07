@@ -785,6 +785,7 @@ Breakpoint 1, main () at main.c:5
       LoadOptionFromUrl();
       // The intro tour starts only from "Getting started" (T3).
     </script>
+    <script src="./js/model-choice.js"></script>
     <script src="./js/common.js"></script>
     <script src="./js/practice-store.js"></script>
     <script src="./js/palette.js"></script>
@@ -801,7 +802,7 @@ Breakpoint 1, main () at main.c:5
         /* chatwidget */
         window.ChatWidget.config.widgetTitle = "Genie";
         window.ChatWidget.config.greetingMessage =
-          "Hi, I'm Genie. I can see the code in your editor.\nAsk me why something fails, how a REPL command works, or for a snippet to insert.";
+          "Hi, I'm Genie. I can see the code in your editor and the output in your terminal.\nAsk me why something fails, how a REPL command works, or for a snippet to insert.";
         // Docked panel: stays open while you work in the editor; close with × or Esc.
         window.ChatWidget.config.closeOnOutsideClick = false;
         window.ChatWidget.config.url = "/chat/completions";
@@ -893,6 +894,17 @@ Breakpoint 1, main () at main.c:5
                 </div>
               </div>
               <p class="modal-hint" id="temperature-hint">Creativity runs from 0 (predictable) to 1 (surprising).</p>
+              <div class="modal-rows">
+                <div class="modal-field">
+                  <label for="qmodel">Model</label>
+                  <select id="qmodel" class="form-input"></select>
+                </div>
+                <div class="modal-field modal-field--narrow">
+                  <label for="qeffort">Effort</label>
+                  <select id="qeffort" class="form-input"></select>
+                </div>
+              </div>
+              <p class="modal-hint" id="qmodel-hint"></p>
               <div class="modal-field" id="customPromptContainer">
                 <label for="customPrompt">Extra instructions <span class="modal-optional">(optional)</span></label>
                 <textarea id="customPrompt" name="customPrompt" class="form-input" rows="3" placeholder="For example: set it in a train timetable"></textarea>
