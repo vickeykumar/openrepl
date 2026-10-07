@@ -31,7 +31,7 @@ flowchart TB
         H1["GTM"] --> H3["fontawesome kit (defer)"] --> H3c["inline: is-practice class"] --> H3a["js/theme.js<br/>data-theme"] --> H3d["inline: window.OPENREPL_PAGE"] --> H3b["js/notices.js<br/>window.notify"] --> H4["/auth_token.js<br/>gotty_auth_token"] --> H5["/config.js<br/>gotty_term, firebaseconfig,<br/>openai_access_token"] --> H5b["/settings.js<br/>site_settings"] --> H6["js/preprocessing.js<br/>log toggle, colour of the day<br/>(only if an admin enabled it)"]
     end
     subgraph body["end of <body>"]
-        B1["split.js 1.6.5,<br/>firebase 9 compat (app, auth, database),<br/>jQuery 3.1, Ace 1.9, filesaver, jstree"] --> B2["js/scribbler.js<br/>UI controller (built from src/js/src/page)"] --> B3["inline: ToggleEditor(), LoadOptionFromUrl()"] --> B4["js/common.js<br/>practice + OpenAI helpers"] --> B4a["js/practice-store.js<br/>window.PracticeStore"] --> B4b["js/palette.js<br/>commands and shortcuts"] --> B5["js/gotty-bundle.js<br/>window.gotty"] --> B7["js/chat-widget.js (defer)<br/>window.ChatWidget"]
+        B1["split.js 1.6.5,<br/>firebase 9 compat (app, auth, database),<br/>jQuery 3.1, Ace 1.9, filesaver, jstree"] --> B2["js/scribbler.js<br/>UI controller (built from src/js/src/page)"] --> B3["inline: ToggleEditor(), LoadOptionFromUrl()"] --> B3a["js/model-choice.js<br/>window.ModelChoice"] --> B4["js/common.js<br/>practice + OpenAI helpers"] --> B4a["js/practice-store.js<br/>window.PracticeStore"] --> B4b["js/palette.js<br/>commands and shortcuts"] --> B5["js/gotty-bundle.js<br/>window.gotty"] --> B7["js/chat-widget.js (defer)<br/>window.ChatWidget"]
     end
     head --> body
 ```
@@ -137,7 +137,7 @@ The widget is TypeScript bundled with microbundle into `dist/index.umd.js` and s
 - `submitOnKeydown` on desktop, and `openOnLoad` only on `/practice`. Elsewhere Genie opens from the app bar, the floating button or the error note (LLD 07).
 - `closeOnOutsideClick = false`: the Genie panel is docked and non-modal (LLD 07).
 
-The system message includes the current editor content, so the assistant can answer "debug my code". Code blocks in replies get **Insert** and **Replace** buttons that call `window.insertcodesnippet` and `window.replacecodesnippet`, which edit the Ace buffer. The widget's default model is `gpt-3.5-turbo`.
+The system message includes the current editor content, so the assistant can answer "debug my code". Code blocks in replies get **Insert** and **Replace** buttons that call `window.insertcodesnippet` and `window.replacecodesnippet`, which edit the Ace buffer. The model and effort are chosen with a chip in the composer and come from `js/model-choice.js` (default Luna, Low); the context sent is the editor code and the terminal's recent output (LLD 07).
 
 ## 6. Practice mode
 

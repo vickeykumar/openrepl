@@ -125,9 +125,11 @@ function sanitizeJSONString(text) {
  * @param {string} prompt - The prompt to send to OpenAI
  * @param {object} options - Optional parameters
  * @param {string} [options.baseUri='https://api.openai.com/v1/chat/completions'] - The OpenAI API endpoint
- * @param {string} [options.model='gpt-3.5-turbo'] - The model to use
+ * @param {string} [options.model='gpt-4o-mini'] - The model to use
  * @param {number} [options.temperature=0.5] - Sampling temperature
  * @param {number} [options.max_tokens=800] - Maximum number of tokens
+ * @param {object} [options.fields] - Model, effort and token settings to send as they are (replaces model, temperature and max_tokens)
+ * @param {object} [options.response_format] - For example {type: "json_object"}
  * @returns {Promise<Response>} - The API response as a Promise
  */
 async function getResponseFromOpenAI(api_key, prompt, options = {}) {
@@ -139,15 +141,18 @@ async function getResponseFromOpenAI(api_key, prompt, options = {}) {
         baseUri = 'https://api.openai.com/v1/chat/completions',
         model = 'gpt-4o-mini',
         temperature = globaltemperature,
-        max_tokens = 800
+        max_tokens = 800,
+        fields = null,          // the model and its own settings, from questionRequestFields()
+        response_format = null  // {type: "json_object"} asks for a reply that is valid JSON
     } = options;
 
-    const requestBody = {
-        model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature,
-        max_tokens
-    };
+    const messages = [{ role: 'user', content: prompt }];
+    const requestBody = fields
+        ? { ...fields, messages }
+        : { model, messages, temperature, max_tokens };
+    if (response_format) {
+        requestBody.response_format = response_format;
+    }
 
     return fetch(baseUri, {
         method: 'POST',
@@ -158,6 +163,79 @@ async function getResponseFromOpenAI(api_key, prompt, options = {}) {
         body: JSON.stringify(requestBody)
     });
 }
+
+// The model and effort a generated question is made with: the same choice as
+// Genie's (the chip in its panel), kept by js/model-choice.js. A question is
+// long (a description and a template per language), so it gets more room than a
+// chat answer.
+function questionRequestFields() {
+    const choice = window.ModelChoice;
+    if (choice) {
+        return choice.fields({ extraTokens: 3000, maxTokens: 3000, temperature: globaltemperature });
+    }
+    return { model: 'gpt-4o-mini', temperature: globaltemperature, max_tokens: 3000 };
+}
+
+// Asks for a JSON reply. JSON mode keeps a quote or a newline inside the text
+// from breaking the reply; if the API refuses it (400), the same request is
+// sent once more without it and sanitizeJSONString tidies what comes back.
+async function requestJSONFromOpenAI(prompt) {
+    const fields = questionRequestFields();
+    let response = await getResponseFromOpenAI(openai_access_token, prompt, {
+        baseUri: "/chat/completions", fields, response_format: { type: "json_object" }
+    });
+    if (response.status === 400) {
+        response = await getResponseFromOpenAI(openai_access_token, prompt, { baseUri: "/chat/completions", fields });
+    }
+    return response;
+}
+
+// The Model and Effort fields of the New question dialog, on the home page and
+// on the practice page: filled from js/model-choice.js's two models and four
+// efforts, and kept in step with Genie's choice. Safe to call more than once.
+function initQuestionModelFields() {
+    const modelSel = document.getElementById("qmodel");
+    const effortSel = document.getElementById("qeffort");
+    const choice = window.ModelChoice;
+    if (!modelSel || !effortSel || !choice || modelSel.dataset.ready) return;
+    modelSel.dataset.ready = "true";
+
+    const temperature = document.getElementById("temperature");
+    const temperatureHint = document.getElementById("temperature-hint");
+    const hint = document.getElementById("qmodel-hint");
+    const creativityText = temperatureHint ? temperatureHint.textContent : "";
+
+    choice.models.forEach(m => modelSel.add(new Option(m.name, m.id)));
+    choice.efforts.forEach(e => effortSel.add(new Option(e.label, e.id)));
+
+    function show() {
+        const now = choice.get();
+        const model = choice.models.find(m => m.id === now.model) || choice.models[0];
+        modelSel.value = model.id;
+        effortSel.value = now.effort;
+        effortSel.disabled = !model.reasoning;
+        // creativity is a temperature, which Luna does not take
+        if (temperature) temperature.disabled = model.reasoning;
+        if (temperatureHint) {
+            temperatureHint.textContent = model.reasoning
+                ? "Creativity applies to " + choice.models.filter(m => !m.reasoning)[0].name + " only."
+                : creativityText;
+        }
+        if (hint) {
+            const effort = choice.efforts.find(e => e.id === now.effort);
+            hint.textContent = model.reasoning
+                ? model.name + " thinks before it writes. " + (effort ? effort.note : "")
+                : model.name + " writes right away, so effort doesn't apply.";
+        }
+    }
+    modelSel.addEventListener("change", () => { choice.set(modelSel.value, undefined); show(); });
+    effortSel.addEventListener("change", () => { choice.set(undefined, effortSel.value); show(); });
+    // Genie's chip changed it (or another tab did)
+    choice.onChange(show);
+    show();
+}
+document.addEventListener("DOMContentLoaded", initQuestionModelFields);
+window.addEventListener("load", initQuestionModelFields);
 
 // Save questions, ensuring a maximum of 100 entries.
 function saveNewQuestions(newQuestion) {
@@ -250,7 +328,7 @@ ${customPrompt ? customPrompt : ""}
 {
   "title": "Title of the problem",
   "description": "Detailed problem description with sample test cases...",
-  "code_templates": { // generate template for each language in ${language}
+  "code_templates": {
     "language name": {
       "template": "Provide a function signature and a main function to verify the solution.",
       "multiline_comment_start": "String for multiline comment start.",
@@ -259,7 +337,7 @@ ${customPrompt ? customPrompt : ""}
   }
 }
 \`\`\`
-**Ensure that the output strictly follows the JSON format above**
+**Ensure that the output strictly follows the JSON format above.** It must be one valid JSON object with no comments, every quote and newline inside a string escaped, and one entry in "code_templates" for each of these languages: ${language}.
 `;
 
 	// Create a loader element and add it to the page
@@ -270,7 +348,7 @@ ${customPrompt ? customPrompt : ""}
 	modal?.appendChild(loader); // Appends only if modal exists
 
 	try {
-      const response = await getResponseFromOpenAI(openai_access_token, prompt, {baseUri: "/chat/completions"});
+      const response = await requestJSONFromOpenAI(prompt);
 
       if (!response.ok) {
           throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
@@ -363,7 +441,7 @@ Ensure that:
 5. The response must be in **valid JSON format**.
 ${question.description ? '' : descriptionprompt}
 
-### **Output Format**: // generate only json part only
+### **Output Format**: (the JSON object only, with no comments)
 \`\`\`json
 {
   ${question.description ? '' : '"description": "Detailed problem description with sample test cases ...",'}
@@ -378,7 +456,7 @@ ${question.description ? '' : descriptionprompt}
 `;
 
     try {
-        const response = await getResponseFromOpenAI(openai_access_token, prompt, {baseUri: "/chat/completions"});
+        const response = await requestJSONFromOpenAI(prompt);
 
         if (!response.ok) {
             throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);

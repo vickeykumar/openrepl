@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"log"
 	"net/http"
 	"net/url"
@@ -169,6 +170,33 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
     	return
     }
 
+    // Read the body and send on only what the Genie panel offers: a model from
+    // the short list, its own settings and capped answer sizes (chatmodels.go).
+    rawBody, err := io.ReadAll(http.MaxBytesReader(rw, req.Body, maxChatBodyBytes))
+    if err != nil {
+    	handleChatProxyError(rw, req, http.StatusRequestEntityTooLarge,
+        	NewErrorResponse(
+        		"This conversation is too long to send. Start a new one.",
+        		"invalid_request_error",
+        		"request_too_large",
+        		"",
+        	),
+        )
+    	return
+    }
+    chatBody, err := sanitizeChatBody(rawBody)
+    if err != nil {
+    	handleChatProxyError(rw, req, http.StatusBadRequest,
+        	NewErrorResponse(
+        		err.Error(),
+        		"invalid_request_error",
+        		"invalid_request",
+        		"",
+        	),
+        )
+    	return
+    }
+
     var num_req_rem float64
     if !IsUserAdmin(rw, req) {
 	    //recharge,  no restriction for admin
@@ -193,7 +221,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 
 	// Send request to OpenAI
     var customTransport = http.DefaultTransport
-    proxyReq, err := http.NewRequest(req.Method, openaiEndpoint, req.Body)
+    proxyReq, err := http.NewRequest(req.Method, openaiEndpoint, bytes.NewReader(chatBody))
 	if err != nil {
 		log.Println("Error: making request: ", err)
 		handleChatProxyError(rw, req, http.StatusInternalServerError, 
