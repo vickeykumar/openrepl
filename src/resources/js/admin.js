@@ -689,6 +689,7 @@
         w.connectionId ? ['Connection', mono(w.connectionId)] : null,
         w.connected ? ['Connected', h('span', null, when(w.connected), ' ', h('span', { class: 'sub', text: '(' + localTime(w.connected) + ')' }))] : null,
         w.lastSeen ? ['Last heard from', when(w.lastSeen)] : null,
+        w.id !== 'local' && w.connectionId ? ['Site rules', w.configCurrent ? pill('up to date', 'ok') : pill(w.configRev ? 'out of date (revision ' + w.configRev + ')' : 'not received yet', 'warn')] : null,
         ['Languages', w.languages && w.languages.length ? h('span', { class: 'actions' }, w.languages.map(function (l) { return pill(l, 'plain'); })) : (w.id === 'local' ? 'all' : 'all it was started with')]
       ]));
       d.appendChild(h('h3', { text: 'Load' }));
@@ -838,7 +839,7 @@
 
   function viewSite() {
     var root = h('div'), body = h('div');
-    var saved = null, form = null, languages = [], saving = false;
+    var saved = null, form = null, languages = [], models = [], saving = false, keysState = null, adminsState = null;
     root.appendChild(pageHead('Site settings', 'Switches that change what every visitor sees. Changes apply to the next page a visitor loads.'));
     root.appendChild(body);
 
@@ -848,19 +849,43 @@
         announcement: { text: form.ann.value.trim(), level: form.level.value },
         maintenance: { enabled: form.maint.checked, message: form.maintMsg.value.trim() },
         disabledLanguages: languages.filter(function (l) { return !form.langs[l.value].checked; }).map(function (l) { return l.value; }).sort(),
-        genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value) }
+        genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
+          disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
+          defaultModel: form.defModel.value,
+          contextEditorChars: int(form.ctxEditor.value), contextTerminalChars: int(form.ctxTermChars.value),
+          contextTerminalLines: int(form.ctxTermLines.value), historyMessages: int(form.history.value),
+          openRouterTimeoutSec: int(form.orTimeout.value),
+          answerCaps: capsOf(models.map(function (m) { return [m.id, int(form.caps[m.id].value)]; })),
+          openRouterHosts: hostsOf(form.host1.value, form.host2.value) }
       };
+    }
+    function int(v) { v = parseInt(v, 10); return isNaN(v) ? 0 : v; }
+    // the caps that are set, as an object in the order of the models
+    function capsOf(pairs) {
+      var o = {};
+      pairs.forEach(function (p) { if (p[1] > 0) o[p[0]] = p[1]; });
+      return o;
+    }
+    function hostsOf(first, second) {
+      if (!first) return [];
+      return second && second !== first ? [first, second] : [first];
     }
     function num(v) { v = parseFloat(v); return isNaN(v) ? 0 : v; }
     function clean(s) {
       return { colorOfTheDay: !!s.colorOfTheDay, announcement: { text: s.announcement.text, level: s.announcement.level || 'info' },
         maintenance: { enabled: !!s.maintenance.enabled, message: s.maintenance.message || '' },
         disabledLanguages: (s.disabledLanguages || []).slice().sort(),
-        genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0 } };
+        genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
+          disabledModels: (s.genie.disabledModels || []).slice().sort(), defaultModel: s.genie.defaultModel || '',
+          contextEditorChars: s.genie.contextEditorChars || 0, contextTerminalChars: s.genie.contextTerminalChars || 0,
+          contextTerminalLines: s.genie.contextTerminalLines || 0, historyMessages: s.genie.historyMessages || 0,
+          openRouterTimeoutSec: s.genie.openRouterTimeoutSec || 0,
+          answerCaps: capsOf(models.map(function (m) { return [m.id, (s.genie.answerCaps || {})[m.id] || 0]; })),
+          openRouterHosts: (s.genie.openRouterHosts || []).slice() } };
     }
     function isDirty() { return !!form && !!form.ready && JSON.stringify(snapshot()) !== JSON.stringify(clean(saved)); }
 
-    function build(settings) {
+    function build(settings, keysInfo, adminsInfo) {
       function toggle(id, checked, label) {
         var input = h('input', { type: 'checkbox', id: id, checked: checked, 'aria-label': label, onchange: update });
         return { input: input, node: h('label', { class: 'switch' }, input, h('i')) };
@@ -868,7 +893,9 @@
 
       saved = settings;
       languages = settings.languages || [];
-      form = { langs: {} };
+      models = settings.models || [];
+      form = { langs: {}, models: {}, caps: {} };
+      var defaults = settings.defaults || {};
       var colour = toggle('f-colour', settings.colorOfTheDay, 'Colour of the day');
       var maint = toggle('f-maint', settings.maintenance.enabled, 'Maintenance mode');
       var genie = toggle('f-genie', !settings.genie.disabled, 'Genie available');
@@ -891,6 +918,52 @@
       user.value = settings.genie.userPerMinute || '';
       Object.assign(form, { ann: ann, level: level, maintMsg: maintMsg, guest: guest, user: user });
 
+      // one switch for each model, and the model a visitor starts with
+      var modelToggles = models.map(function (m) {
+        var on = toggle('f-model-' + m.id.replace(/[^a-z0-9]/gi, '-'), (settings.genie.disabledModels || []).indexOf(m.id) < 0, m.name + ' available');
+        form.models[m.id] = on.input;
+        return { model: m, node: on.node };
+      });
+      var defModel = h('select', { class: 'field', id: 'f-defmodel', 'aria-label': 'Default model', onchange: update },
+        h('option', { value: '', text: 'Built in (Luna for visitors)' }));
+      models.forEach(function (m) { defModel.appendChild(h('option', { value: m.id, text: m.name })); });
+      defModel.value = settings.genie.defaultModel || '';
+      form.defModel = defModel;
+
+      // the numbers: empty means the built-in value, shown as the placeholder
+      function numberField(id, key, label, builtIn, range) {
+        var input = h('input', { type: 'number', class: 'field', id: id, min: String(range[0]), max: String(range[1]), step: '1',
+          placeholder: builtIn + ' (built in)', 'aria-label': label, oninput: update });
+        input.value = settings.genie[key] || '';
+        input.style.maxWidth = '9rem';
+        return input;
+      }
+      var limits = defaults.limits || {};
+      form.ctxEditor = numberField('f-ctx-editor', 'contextEditorChars', 'Characters of editor code', defaults.contextEditorChars, limits.contextEditorChars || [1000, 50000]);
+      form.ctxTermChars = numberField('f-ctx-term-chars', 'contextTerminalChars', 'Characters of terminal output', defaults.contextTerminalChars, limits.contextTerminalChars || [200, 20000]);
+      form.ctxTermLines = numberField('f-ctx-term-lines', 'contextTerminalLines', 'Lines of terminal output', defaults.contextTerminalLines, limits.contextTerminalLines || [1, 200]);
+      form.history = numberField('f-history', 'historyMessages', 'Messages kept', defaults.historyMessages, limits.historyMessages || [6, 50]);
+      form.orTimeout = numberField('f-or-timeout', 'openRouterTimeoutSec', 'OpenRouter time limit in seconds', defaults.openRouterTimeoutSec, limits.openRouterTimeoutSec || [10, 90]);
+      var capRows = models.map(function (m) {
+        var range = limits.answerCap || [500, 16000];
+        var input = h('input', { type: 'number', class: 'field', id: 'f-cap-' + m.id.replace(/[^a-z0-9]/gi, '-'), min: String(range[0]), max: String(range[1]), step: '100',
+          placeholder: ((defaults.answerCaps || {})[m.id] || '') + ' (built in)', 'aria-label': 'Answer size of ' + m.name, oninput: update });
+        input.value = ((settings.genie.answerCaps || {})[m.id]) || '';
+        input.style.maxWidth = '9rem';
+        form.caps[m.id] = input;
+        return { model: m, input: input };
+      });
+      var hostList = (defaults.openRouterHosts || []);
+      var chosenHosts = settings.genie.openRouterHosts || [];
+      function hostSelect(id, label, none, value) {
+        var sel = h('select', { class: 'field', id: id, 'aria-label': label, onchange: update }, h('option', { value: '', text: none }));
+        hostList.forEach(function (hc) { sel.appendChild(h('option', { value: hc.id, text: hc.name })); });
+        sel.value = value || '';
+        return sel;
+      }
+      form.host1 = hostSelect('f-host1', 'First OpenRouter host', 'Built in order', chosenHosts[0]);
+      form.host2 = hostSelect('f-host2', 'Second OpenRouter host', 'None', chosenHosts[1]);
+
       var langGrid = h('div', { class: 'lang-grid' });
       languages.forEach(function (l) {
         var cb = h('input', { type: 'checkbox', checked: settings.disabledLanguages.indexOf(l.value) < 0, onchange: update, 'aria-label': l.name + ' available' });
@@ -900,7 +973,7 @@
 
       var bar = h('div', { class: 'save-bar' });
       var status = h('span', { class: 'grow' });
-      var revert = h('button', { class: 'btn', type: 'button', text: 'Revert', onclick: function () { body.textContent = ''; body.appendChild(build(saved)); } });
+      var revert = h('button', { class: 'btn', type: 'button', text: 'Revert', onclick: function () { body.textContent = ''; body.appendChild(build(saved, keysState, adminsState)); } });
       var save = h('button', { class: 'btn primary', type: 'button', text: 'Save settings', onclick: doSave });
       bar.appendChild(status); bar.appendChild(revert); bar.appendChild(save);
 
@@ -912,6 +985,13 @@
         preview.style.opacity = ann.value.trim() ? '1' : '0.5';
         maintMsg.disabled = !maint.input.checked;
         guest.disabled = user.disabled = !genie.input.checked;
+        // the second host only matters when a first one is chosen, and is another one
+        form.host2.disabled = !form.host1.value;
+        Array.prototype.forEach.call(form.host2.options, function (o) { o.disabled = !!o.value && o.value === form.host1.value; });
+        if (form.host2.value === form.host1.value) form.host2.value = '';
+        // a model that is off cannot be the default
+        Array.prototype.forEach.call(defModel.options, function (o) { o.disabled = !!o.value && !form.models[o.value].checked; });
+        if (defModel.value && !form.models[defModel.value].checked) defModel.value = '';
         Array.prototype.forEach.call(langGrid.children, function (lab) {
           lab.className = form.langs[lab.getAttribute('data-lang')].checked ? '' : 'off';
         });
@@ -923,12 +1003,23 @@
 
       function doSave() {
         var s = snapshot();
+        s.version = saved.version || 0; // the stored version this form was filled from (MongoDB refuses a stale one)
         if (s.genie.guestPerMinute < 0 || s.genie.guestPerMinute > 60 || s.genie.userPerMinute < 0 || s.genie.userPerMinute > 60) {
           toast('The Genie rates must be between 0 and 60 requests per minute.', 'error'); return;
         }
+        if (models.length && s.genie.disabledModels.length >= models.length) {
+          toast('At least one model has to stay on.', 'error'); return;
+        }
         var go = Promise.resolve(true);
+        var newlyOff = models.filter(function (m) {
+          return s.genie.disabledModels.indexOf(m.id) >= 0 && (saved.genie.disabledModels || []).indexOf(m.id) < 0;
+        });
+        if (newlyOff.length) {
+          go = ask({ title: 'Switch off ' + newlyOff.map(function (m) { return m.name; }).join(' and ') + '?',
+            body: 'Visitors who use it are asked to pick another model. A visitor with a page already open sees that on their next request.', confirm: 'Switch off', danger: true });
+        }
         if (s.maintenance.enabled && !saved.maintenance.enabled) {
-          go = ask({ title: 'Turn on maintenance mode?', body: 'Visitors will not be able to start terminals until you turn it off. Admins are not affected.', confirm: 'Turn on', danger: true });
+          go = go.then(function (ok) { return ok ? ask({ title: 'Turn on maintenance mode?', body: 'Visitors will not be able to start terminals until you turn it off. Admins are not affected.', confirm: 'Turn on', danger: true }) : false; });
         }
         go.then(function (yes) {
           if (!yes) return;
@@ -936,7 +1027,7 @@
           return api.post('admin/settings', s).then(function (r) {
             saving = false;
             toast('Settings saved. Visitors see the change on their next page load.');
-            body.textContent = ''; body.appendChild(build(r));
+            body.textContent = ''; body.appendChild(build(r, keysState, adminsState));
           }, function (e) { saving = false; update(); fail(e); });
         });
       }
@@ -948,7 +1039,108 @@
         return h('div', { class: 'form-row' }, h('div', { class: 'what' }, h('b', { text: title }), what ? h('span', { text: what }) : null), control ? h('div', null, control) : null, full ? h('div', { class: 'full' }, full) : null);
       };
 
+      var where = settings.store === 'mongodb'
+        ? 'Stored in MongoDB (version ' + (settings.version || 0) + '). A change made on another instance appears here within about 10 seconds.'
+        : 'Stored in the file settings.json on this server. Set OPENREPL_MONGODB_URI to keep the settings in MongoDB instead.';
+      // API keys: saved at once, not with the form's Save button, and never shown
+      var keysBox = h('div');
+      function drawKeys(info) {
+        keysState = info;
+        keysBox.textContent = '';
+        var rows = (info.keys || []).map(function (k) {
+          var what;
+          if (k.problem) what = k.problem + ' The server\'s own key is in use' + (k.set ? '.' : ', and there is none.');
+          else if (k.source === 'dashboard') what = 'In use: saved here.';
+          else if (k.source === 'env') what = 'In use: the server\'s environment key.';
+          else if (k.source === 'file') what = 'In use: the server\'s settings file.';
+          else what = 'Not set.';
+          var buttons = h('span', { class: 'actions' },
+            h('button', { class: 'btn', type: 'button', text: k.source === 'dashboard' ? 'Replace…' : 'Set…', disabled: !info.canStore, onclick: function () { setKey(k); } }),
+            k.stored ? h('button', { class: 'btn', type: 'button', text: 'Remove', disabled: !info.canStore, onclick: function () { removeKey(k); } }) : null);
+          return row(k.name + ' key', what, buttons);
+        });
+        keysBox.appendChild(card('API keys',
+          'A key saved here is kept encrypted on the server and is never shown again. It is used instead of the key in the server\'s environment, and applies at once.' +
+            (info.canStore ? '' : ' Set OPENREPL_SECRET on the server (and restart it) to keep keys here.'), rows));
+      }
+      function setKey(k) {
+        var input = h('input', { type: 'password', class: 'field', autocomplete: 'off', spellcheck: 'false', placeholder: 'Paste the new key', 'aria-label': k.name + ' key' });
+        input.style.width = '100%';
+        ask({ title: (k.stored ? 'Replace the ' : 'Set the ') + k.name + ' key?',
+          body: 'The server checks it with ' + k.name + ' first, then keeps it encrypted. It is not shown again. A visitor who has a page open may need to reload it once.',
+          content: input, confirm: 'Save key',
+          validate: function () { return input.value.trim() ? '' : 'Paste a key first.'; } }).then(function (yes) {
+          var key = input.value.trim();
+          input.value = '';
+          if (!yes) return;
+          return api.post('admin/keys', { provider: k.provider, key: key }).then(function (r) {
+            toast(k.name + ' key saved.' + (r.warning ? ' ' + r.warning : ''));
+            drawKeys(r);
+          }, fail);
+        });
+      }
+      function removeKey(k) {
+        ask({ title: 'Remove the ' + k.name + ' key saved here?',
+          body: 'The key in the server\'s environment, if there is one, is used again.', confirm: 'Remove', danger: true }).then(function (yes) {
+          if (!yes) return;
+          return api.post('admin/keys', { provider: k.provider, key: '' }).then(function (r) {
+            toast(k.name + ' key removed.');
+            drawKeys(r);
+          }, fail);
+        });
+      }
+      drawKeys(keysInfo || { canStore: false, keys: [] });
+
+      // Admin accounts: owners come from the server's environment; an owner can
+      // add and remove the others. Saved at once, not with the form's button.
+      var adminsBox = h('div');
+      function drawAdmins(info) {
+        adminsState = info;
+        adminsBox.textContent = '';
+        var rows = [];
+        (info.owners || []).forEach(function (e) {
+          rows.push(row(e, 'Owner. Set in the server\'s environment (OPENREPL_ADMIN_EMAILS); cannot be removed here.', h('span', { class: 'pill', text: 'Owner' })));
+        });
+        (info.admins || []).forEach(function (e) {
+          rows.push(row(e, 'Added in the dashboard. Can use everything here except this list.',
+            info.canManage ? h('button', { class: 'btn', type: 'button', text: 'Remove', onclick: function () { removeAdmin(e); } }) : null));
+        });
+        var add = null;
+        if (info.canManage) {
+          var email = h('input', { type: 'email', class: 'field', id: 'f-admin-email', autocomplete: 'off', spellcheck: 'false', placeholder: 'name@example.com', 'aria-label': 'Email of the new admin' });
+          email.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); addAdmin(email); } });
+          add = row('Add an admin', 'The account that signs in with this address. It gets in the next time it opens the dashboard.',
+            h('span', { class: 'actions' }, email, h('button', { class: 'btn primary', type: 'button', text: 'Add…', onclick: function () { addAdmin(email); } })));
+        }
+        adminsBox.appendChild(card('Admin accounts',
+          info.canManage ? 'Admins can use the whole dashboard. Only owners add or remove them.'
+            : 'Admins can use the whole dashboard. Only an owner can add or remove them.', [rows, add]));
+      }
+      function addAdmin(input) {
+        var email = input.value.trim().toLowerCase();
+        if (!email) { toast('Type the email address first.', 'error'); return; }
+        ask({ title: 'Make ' + email + ' an admin?', body: 'They will be able to change settings, read feedback and logs, and sign people out. They cannot add or remove admins.',
+          confirm: 'Make admin', danger: true }).then(function (yes) {
+          if (!yes) return;
+          return api.post('admin/admins', { action: 'add', email: email }).then(function (r) {
+            toast(email + ' is an admin now.');
+            drawAdmins(r);
+          }, fail);
+        });
+      }
+      function removeAdmin(email) {
+        ask({ title: 'Remove ' + email + ' as an admin?', body: 'They lose access to the dashboard at once. Their account stays.', confirm: 'Remove', danger: true }).then(function (yes) {
+          if (!yes) return;
+          return api.post('admin/admins', { action: 'remove', email: email }).then(function (r) {
+            toast(email + ' is not an admin any more.');
+            drawAdmins(r);
+          }, fail);
+        });
+      }
+      drawAdmins(adminsInfo || { owners: [], admins: [], canManage: false });
+
       var out = h('div', { class: 'stack' },
+        h('p', { class: 'sub', id: 'settings-store', text: where }),
         card('Look', null, row('Colour of the day', 'A different accent colour each day. Off keeps the brand coral.', h('span', { class: 'actions' }, swatch, colour.node),
           h('span', { class: 'sub', text: 'Today\'s colour is the swatch above; each visitor sees a slightly lighter or darker shade of it.' }))),
         card('Announcement', 'A banner on top of every page, for news or a planned stop. Visitors can dismiss it.', [
@@ -959,8 +1151,25 @@
         card('Languages', 'Untick a language that is broken. The picker greys it out and its terminals refuse to start with a message; terminals that are already open keep running. Admins can still start it, to test a fix.', langGrid),
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),
+          modelToggles.map(function (t) {
+            var what = t.model.provider === 'openrouter' ? 'Through OpenRouter.' : 'Through OpenAI.';
+            if (!t.model.keySet) what += ' No key is set on the server, so it cannot answer yet.';
+            return row(t.model.name, what, t.node);
+          }),
+          row('Default model', 'The model visitors start with, and the one that answers a request that names none. Built in is Luna for visitors and GPT-4o mini for older callers.', defModel),
           row('Guests', 'Requests per minute (0 or empty uses the built-in rate).', guest),
           row('Signed-in users', 'Requests per minute (0 or empty uses the built-in rate).', user) ]),
+        card('Genie limits', 'What Genie is told about the page and how long its answers may be. An empty box means the built-in value. Changes reach a page the next time it loads.', [
+          row('Editor code', 'Characters of the editor\'s code sent with each question.', form.ctxEditor),
+          row('Terminal output, characters', 'The most recent characters of the active terminal.', form.ctxTermChars),
+          row('Terminal output, lines', 'How many recent lines are read from the terminal first.', form.ctxTermLines),
+          row('Conversation length', 'Messages Genie remembers (the oldest go first).', form.history),
+          capRows.map(function (c) { return row('Answer size: ' + c.model.name, 'The most tokens an answer may have. A visitor asks for less by choosing a lower effort.', c.input); }),
+          row('OpenRouter time limit', 'Seconds before Gemma\'s answer is given up on. Keep it under 90: the site\'s proxy gives up at about 100.', form.orTimeout),
+          row('OpenRouter first host', 'Gemma is run by this host first.', form.host1),
+          row('OpenRouter second host', 'Used only when the first cannot answer. No other host is ever used.', form.host2) ]),
+        keysBox,
+        adminsBox,
         bar);
       form.ready = true;
       update();
@@ -969,7 +1178,7 @@
 
     function refresh() {
       if (form) return Promise.resolve(); // never redraw a form the admin may be editing
-      return api.get('admin/settings').then(function (s) { body.textContent = ''; body.appendChild(build(s)); });
+      return Promise.all([api.get('admin/settings'), api.get('admin/keys'), api.get('admin/admins')]).then(function (r) { body.textContent = ''; body.appendChild(build(r[0], r[1], r[2])); });
     }
     return { root: root, refresh: refresh, poll: false, dirty: isDirty };
   }

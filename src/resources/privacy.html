@@ -56,8 +56,8 @@
       <p>When you choose Share, then Create code link, a copy of the code in your editor (up to 64 KB) is stored on our server and you get a short link. <strong>Anyone who has the link can read that code.</strong> Code links are kept until we remove them, so don't create one for code that contains secrets. To prevent abuse we count how many links each IP address creates in a short time.</p>
 
       <h3>Genie, the AI helper</h3>
-      <p>When you use Genie, your messages, the code in your editor and the most recent output of your terminal are sent through our server to OpenAI to generate replies. You can choose which OpenAI model answers (GPT-6 Luna or GPT-4o mini). Genie is optional; if you don't open it and don't ask for a practice question, nothing is sent to OpenAI.</p>
-      <p>The practice page's New question uses OpenAI in the same way: the topic, level and extra instructions you enter, the language, and the titles of your earlier questions on that topic are sent to OpenAI to write the question.</p>
+      <p>When you use Genie, your messages, the code in your editor and the most recent output of your terminal are sent through our server to OpenAI to generate replies. You can choose which model answers: GPT-6 Luna or GPT-4o mini (both run by OpenAI), or Gemma 4 31B, which runs through OpenRouter on servers operated by ModelRun and, if that is unavailable, CoreWeave. If you choose Gemma, your messages go to OpenRouter and to whichever of those two answers, not to OpenAI. Genie is optional; if you don't open it and don't ask for a practice question, nothing is sent to OpenAI or OpenRouter.</p>
+      <p>The practice page's New question uses OpenAI in the same way: the topic, level and extra instructions you enter, the language, and the titles of your earlier questions on that topic are sent to the model you chose (OpenAI, or OpenRouter for Gemma) to write the question.</p>
 
       <h3>Language requests and feedback</h3>
       <p>If you send a request or feedback, we store the name, email and message you enter so we can read and reply to it. Google reCAPTCHA checks the form for spam.</p>
@@ -72,7 +72,8 @@
       <h2>Services we rely on</h2>
       <ul>
         <li>Google (Firebase Authentication and Realtime Database, Tag Manager and Analytics, reCAPTCHA, Fonts): <a href="https://policies.google.com/privacy">Google Privacy Policy</a></li>
-        <li>OpenAI (Genie replies): <a href="https://openai.com/policies/privacy-policy">OpenAI Privacy Policy</a></li>
+        <li>OpenAI (Genie replies and practice questions): <a href="https://openai.com/policies/privacy-policy">OpenAI Privacy Policy</a></li>
+        <li>OpenRouter, and the hosts it uses for Gemma (ModelRun, CoreWeave): <a href="https://openrouter.ai/privacy">OpenRouter Privacy Policy</a></li>
         <li>GitHub (if you sign in with GitHub): <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a></li>
       </ul>
       <p>We do not sell your personal information.</p>
@@ -89,7 +90,7 @@
       <h2>Your choices</h2>
       <ul>
         <li>Use OpenREPL as a guest without an account.</li>
-        <li>Don't open Genie if you don't want your code sent to OpenAI.</li>
+        <li>Don't open Genie if you don't want your code sent to OpenAI or OpenRouter.</li>
         <li>Block or clear cookies and site data in your browser. Signing in needs the session cookie.</li>
         <li>Ask us to delete your account data or workspace (see Contact).</li>
       </ul>

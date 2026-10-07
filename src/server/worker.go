@@ -65,6 +65,7 @@ func (server *Server) runWorker(ctx context.Context, handlers http.Handler, coun
 			return tunnel.Heartbeat{Used: int64(counter.weight()), Active: counter.count()}
 		},
 		OnSyncStream: func(c net.Conn) { server.serveWorkerSync(ctx, client)(c) },
+		OnConfig: applyWorkerConfig,
 		OnRegistered: func(rep tunnel.RegisterReply) {
 			if rep.WorkspaceSync {
 				atomic.StoreInt32(&server.workerSync.enabled, 1)
@@ -78,6 +79,8 @@ func (server *Server) runWorker(ctx context.Context, handlers http.Handler, coun
 				cookie.Init_SessionStore(rep.CookieSecret)
 			}
 			server.setCredential(rep.AuthToken)
+			// the gateway's OPENREPL_SECRET, in memory only, like the cookie secret
+			utils.SetSecretFromGateway(rep.Secret)
 		},
 	})
 	if err != nil {

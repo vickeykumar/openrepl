@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/nobonobo/unqlitego"
+	"persist"
 
 	"cookie"
 	"user"
@@ -44,6 +44,11 @@ func adminTestServer(t *testing.T) (*Server, http.Handler) {
 		siteSettings, settingsLoaded = SiteSettings{}, false
 		settingsMu.Unlock()
 		utils.SetGenieRates(0, 0)
+		utils.SetKeyOverrides("", "")
+		utils.SetExtraAdmins(nil)
+		settingsMu.Lock()
+		keysProblem = ""
+		settingsMu.Unlock()
 	})
 
 	if err := user.OpenSessionDB(filepath.Join(dir, "users.db")); err != nil {
@@ -544,7 +549,7 @@ func TestLogViewer(t *testing.T) {
 
 func withFeedbackDB(t *testing.T, records map[string]feedback) {
 	t.Helper()
-	db, err := unqlitego.NewDatabase(filepath.Join(t.TempDir(), "feedback.db"))
+	db, err := persist.Open(filepath.Join(t.TempDir(), "feedback.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -643,7 +648,7 @@ func TestFeedbackInbox(t *testing.T) {
 
 func TestSnippetModeration(t *testing.T) {
 	_, h := adminTestServer(t)
-	db, err := unqlitego.NewDatabase(filepath.Join(t.TempDir(), "snippets.db"))
+	db, err := persist.Open(filepath.Join(t.TempDir(), "snippets.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

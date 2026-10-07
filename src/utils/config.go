@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Server-side settings. They are read from the environment first, which is
@@ -24,15 +25,30 @@ import (
 //	OPENREPL_ENV             dev or production (the default); see IsDev
 //	OPENREPL_ADMIN_EMAILS    comma-separated admin accounts; file: user.email
 //	OPENREPL_OPENAI_API_KEY  the OpenAI key as it is; file: user.OpenaiAPIKey, base64
+//	OPENREPL_OPENROUTER_API_KEY  the OpenRouter key as it is (env only); without it the
+//	                         OpenRouter models are not offered
+//	OPENREPL_MONGODB_URI     optional; keeps the admin settings in MongoDB (Atlas, a
+//	                         mongodb+srv:// URI) instead of settings.json; a secret
+//	OPENREPL_MONGODB_DB      the database for it, default openrepl
+//	OPENREPL_SECRET optional; encrypts the API keys an admin saves in the dashboard
 //	OPENREPL_HOST            the origin the chat proxy accepts; file: user.host
 //	OPENREPL_FIREBASE_CONFIG the Firebase web app config the page signs in
 //	                         with, as JSON or base64 of JSON; see FirebaseConfigFromEnv
 const (
-	EnvMode           = "OPENREPL_ENV"
-	EnvAdminEmails    = "OPENREPL_ADMIN_EMAILS"
-	EnvOpenAIKey      = "OPENREPL_OPENAI_API_KEY"
-	EnvHost           = "OPENREPL_HOST"
-	EnvFirebaseConfig = "OPENREPL_FIREBASE_CONFIG"
+	EnvMode          = "OPENREPL_ENV"
+	EnvAdminEmails   = "OPENREPL_ADMIN_EMAILS"
+	EnvOpenAIKey     = "OPENREPL_OPENAI_API_KEY"
+	EnvOpenRouterKey = "OPENREPL_OPENROUTER_API_KEY"
+	EnvHost          = "OPENREPL_HOST"
+	EnvMongoURI      = "OPENREPL_MONGODB_URI"
+	EnvMongoDB       = "OPENREPL_MONGODB_DB"
+	EnvSecret        = "OPENREPL_SECRET"
+	// a Google service account key (JSON, base64 of it, or a file path) that
+	// lets the server use the Firebase project's Firestore as its database
+	EnvFirestoreCredentials = "OPENREPL_FIRESTORE_CREDENTIALS"
+	// the project, when it is not the one the key belongs to (the emulator)
+	EnvFirestoreProject = "OPENREPL_FIRESTORE_PROJECT"
+	EnvFirebaseConfig   = "OPENREPL_FIREBASE_CONFIG"
 )
 
 // IsDev reports whether the server runs in development mode, that is
@@ -149,10 +165,10 @@ func AdminEmails() []string {
 	return nil
 }
 
-// IsAdminEmail reports whether email belongs to an admin. The comparison
-// ignores case. No configured admin means no admin, and an empty email is
-// never one.
-func IsAdminEmail(email string) bool {
+// IsOwnerEmail reports whether email is one of the accounts configured in the
+// environment (AdminEmails). Only owners can add or remove other admins in the
+// dashboard. The comparison ignores case, and an empty email is never one.
+func IsOwnerEmail(email string) bool {
 	email = strings.TrimSpace(email)
 	if email == "" {
 		return false
@@ -165,10 +181,91 @@ func IsAdminEmail(email string) bool {
 	return false
 }
 
-// OpenAIKey returns the OpenAI API key: OPENREPL_OPENAI_API_KEY as it is, or
-// else the file's user.OpenaiAPIKey, which is base64-encoded. It is empty when
-// there is none, or the file's is not valid base64.
+var (
+	adminMu     sync.RWMutex
+	extraAdmins []string
+)
+
+// SetExtraAdmins sets the admins added in the dashboard (settings.go). Owners
+// are not among them: those come from the environment.
+func SetExtraAdmins(emails []string) {
+	adminMu.Lock()
+	extraAdmins = append([]string(nil), emails...)
+	adminMu.Unlock()
+}
+
+// ExtraAdmins returns the admins added in the dashboard.
+func ExtraAdmins() []string {
+	adminMu.RLock()
+	defer adminMu.RUnlock()
+	return append([]string(nil), extraAdmins...)
+}
+
+// IsAdminEmail reports whether email belongs to an admin: an owner, or an admin
+// added in the dashboard. The comparison ignores case. No admin at all means
+// no admin, and an empty email is never one.
+func IsAdminEmail(email string) bool {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return false
+	}
+	if IsOwnerEmail(email) {
+		return true
+	}
+	for _, admin := range ExtraAdmins() {
+		if strings.EqualFold(admin, email) {
+			return true
+		}
+	}
+	return false
+}
+
+// Keys an admin saved in the dashboard. They come from the settings store
+// (server/settings_keys.go), decrypted in memory, and win over the
+// environment's.
+var (
+	keyMu             sync.RWMutex
+	openAIOverride    string
+	openRouterOverr   string
+	secretFromGateway string
+	generatedSecret   string
+)
+
+// SetKeyOverrides sets the keys saved in the dashboard; "" means none.
+func SetKeyOverrides(openai, openrouter string) {
+	keyMu.Lock()
+	openAIOverride, openRouterOverr = strings.TrimSpace(openai), strings.TrimSpace(openrouter)
+	keyMu.Unlock()
+}
+
+// KeySource says where the key in use comes from: "dashboard", "env", "file",
+// or "" when there is none. provider is "openai" or "openrouter".
+func KeySource(provider string) string {
+	keyMu.RLock()
+	over := map[string]string{"openai": openAIOverride, "openrouter": openRouterOverr}[provider]
+	keyMu.RUnlock()
+	switch {
+	case over != "":
+		return "dashboard"
+	case provider == "openai":
+		return source(EnvOpenAIKey, "user.OpenaiAPIKey")
+	case provider == "openrouter":
+		return source(EnvOpenRouterKey, "")
+	}
+	return ""
+}
+
+// OpenAIKey returns the OpenAI API key: the one saved in the dashboard, else
+// OPENREPL_OPENAI_API_KEY as it is, or else the file's user.OpenaiAPIKey, which
+// is base64-encoded. It is empty when there is none, or the file's is not valid
+// base64.
 func OpenAIKey() string {
+	keyMu.RLock()
+	over := openAIOverride
+	keyMu.RUnlock()
+	if over != "" {
+		return over
+	}
 	if v := strings.TrimSpace(os.Getenv(EnvOpenAIKey)); v != "" {
 		return v
 	}
@@ -177,6 +274,83 @@ func OpenAIKey() string {
 		return ""
 	}
 	return strings.TrimSpace(string(decoded))
+}
+
+// OpenRouterKey returns the OpenRouter API key: the one saved in the dashboard,
+// else OPENREPL_OPENROUTER_API_KEY as it is, or "" when neither is set. There
+// is no file fallback: the setting is newer than the git-config style file.
+// Without it the OpenRouter models (Gemma 4 31B) are not offered.
+func OpenRouterKey() string {
+	keyMu.RLock()
+	over := openRouterOverr
+	keyMu.RUnlock()
+	if over != "" {
+		return over
+	}
+	return strings.TrimSpace(os.Getenv(EnvOpenRouterKey))
+}
+
+// FirestoreConfigured reports whether Firestore was asked for: a service
+// account key, or the emulator, is set.
+func FirestoreConfigured() bool {
+	return strings.TrimSpace(os.Getenv(EnvFirestoreCredentials)) != "" || strings.TrimSpace(os.Getenv("FIRESTORE_EMULATOR_HOST")) != ""
+}
+
+// MongoURI is OPENREPL_MONGODB_URI, as it is. When set, the gateway or the
+// standalone server keeps the admin settings in that database and not in
+// settings.json. It holds a password, so it is only ever reported as set or
+// not set.
+func MongoURI() string {
+	return strings.TrimSpace(os.Getenv(EnvMongoURI))
+}
+
+// MongoDBName is the database the settings live in: OPENREPL_MONGODB_DB or
+// "openrepl".
+func MongoDBName() string {
+	if v := strings.TrimSpace(os.Getenv(EnvMongoDB)); v != "" {
+		return v
+	}
+	return "openrepl"
+}
+
+// Secret is the server's secret, for its own use (long and random, never shown
+// anywhere). Today it encrypts the API keys an admin saves in the dashboard.
+// In order: the gateway's, on a worker that has connected (SetSecretFromGateway);
+// OPENREPL_SECRET from the environment; the one the server made and saved in
+// its database when the environment has none (SetGeneratedSecret).
+func Secret() string {
+	keyMu.RLock()
+	over, gen := secretFromGateway, generatedSecret
+	keyMu.RUnlock()
+	if over != "" {
+		return over
+	}
+	if v := EnvSecretValue(); v != "" {
+		return v
+	}
+	return gen
+}
+
+// EnvSecretValue is OPENREPL_SECRET as the environment has it, "" when it is
+// not set.
+func EnvSecretValue() string {
+	return os.Getenv(EnvSecret)
+}
+
+// SetGeneratedSecret records the secret the server made and saved in its
+// database because OPENREPL_SECRET is not set.
+func SetGeneratedSecret(secret string) {
+	keyMu.Lock()
+	generatedSecret = secret
+	keyMu.Unlock()
+}
+
+// SetSecretFromGateway sets the secret a worker received from its gateway;
+// "" (the gateway has none) leaves the worker's own in use.
+func SetSecretFromGateway(secret string) {
+	keyMu.Lock()
+	secretFromGateway = secret
+	keyMu.Unlock()
 }
 
 // Host returns the origin the chat proxy accepts: OPENREPL_HOST, or else the
@@ -377,7 +551,22 @@ func configSummary(dev bool) string {
 	admins := AdminEmails()
 	item("admin emails", EnvAdminEmails, "user.email", strings.Join(admins, ","), len(admins))
 	item("openai key", EnvOpenAIKey, "user.OpenaiAPIKey", OpenAIKey(), 0)
+	item("openrouter key", EnvOpenRouterKey, "", OpenRouterKey(), 0)
 	item("host", EnvHost, "user.host", Host(), 0)
+	// the URI holds a password: never its value, not even in dev
+	switch {
+	case MongoURI() != "":
+		fmt.Fprintf(&b, "; data store: mongodb, database %s (from env), else firestore if configured, else file", MongoDBName())
+	case FirestoreConfigured():
+		b.WriteString("; data store: firestore if its project answers, else file")
+	default:
+		b.WriteString("; data store: file")
+	}
+	if Secret() == "" {
+		b.WriteString("; secret: not set in the environment (one is generated and saved in the database)")
+	} else {
+		b.WriteString("; secret: set")
+	}
 	switch fb, set, err := FirebaseConfigFromEnv(); {
 	case err != nil:
 		fmt.Fprintf(&b, "; firebase: INVALID (%s)", err.Error())

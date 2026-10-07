@@ -1,6 +1,11 @@
 package user
 
 import (
+    "bytes"
+    "crypto/hmac"
+    "crypto/sha256"
+    "sync"
+    "encoding/base64"
     "encoding/json"
     "log"
     "os"
@@ -176,22 +181,80 @@ func InitSessionDBHandle() {
         os.Exit(3)
     }
 
-    secret , err := session_db_handle.Fetch([]byte(SESSION_KEY))
-    log.Println("secret fetched: ", err)
-    if err != nil {
-        // no session key created in past, create and store
-        secret = encoder.GenerateLargePrime().Bytes()
-        err := session_db_handle.Store([]byte(SESSION_KEY), secret)
-        if err != nil {
-            log.Println("ERROR: storing SESSION_KEY in SESSION_DB: "+err.Error())
-            secret = []byte(SESSION_KEY)
-        }
-    }
+    ensureServerSecret(session_db_handle)
 
     log.Println("Successfully initialized session handle.")
 }
 
+// ensureServerSecret settles the server's secret and the key that signs the
+// session cookies (CookieKey, which cookie.InitSecret uses):
+//
+//   - OPENREPL_SECRET set: the cookie key is derived from it,
+//     HMAC-SHA256(secret, "openrepl/cookie/v1"), so it is the same after every
+//     restart and on every instance that has the variable, and nothing about it
+//     is saved in the database (a copy of the database holds no key);
+//   - not set: the one saved in the database as SESSION_KEY is the cookie key
+//     and the secret, and when there is none a random one is made and saved,
+//     once.
+//
+// A key that changes signs everybody out once, and a secret that changes makes
+// the dashboard's saved API keys unreadable until they are entered again.
+func ensureServerSecret(db *cachedb.Database) []byte {
+    key := []byte(SESSION_KEY)
+    stored, err := db.Fetch(key)
+    if env := utils.EnvSecretValue(); env != "" {
+        utils.SetGeneratedSecret("")
+        // an earlier version saved the secret itself under this name: take it out
+        if err == nil && bytes.Equal(stored, []byte(env)) {
+            if derr := db.Delete(key); derr == nil {
+                db.Commit()
+                log.Println("server secret: removed a copy of OPENREPL_SECRET from the database")
+            }
+        }
+        mac := hmac.New(sha256.New, []byte(env))
+        mac.Write([]byte("openrepl/cookie/v1"))
+        return setCookieKey(mac.Sum(nil))
+    }
+    if err == nil && len(stored) > 0 {
+        utils.SetGeneratedSecret(base64.RawURLEncoding.EncodeToString(stored))
+        return setCookieKey(stored)
+    }
+    // none yet: create one and save it
+    secret := encoder.GenerateLargePrime().Bytes()
+    if serr := db.Store(key, secret); serr != nil {
+        log.Println("ERROR: storing the server secret in SESSION_DB: " + serr.Error())
+    } else {
+        log.Println("server secret: generated and saved in the database")
+    }
+    db.Commit()
+    utils.SetGeneratedSecret(base64.RawURLEncoding.EncodeToString(secret))
+    return setCookieKey(secret)
+}
+
+var (
+    cookieKeyMu sync.RWMutex
+    cookieKey   []byte
+)
+
+func setCookieKey(k []byte) []byte {
+    cookieKeyMu.Lock()
+    cookieKey = k
+    cookieKeyMu.Unlock()
+    return k
+}
+
+// CookieKey is the key that signs the session cookies, once the session
+// database is initialized; nil before.
+func CookieKey() []byte {
+    cookieKeyMu.RLock()
+    defer cookieKeyMu.RUnlock()
+    return cookieKey
+}
+
 func CloseSessionDBHandle() {
+    if session_db_handle == nil {
+        return
+    }
     err := session_db_handle.Close()
     if err != nil {
         log.Println("ERROR: Error while closing Session DB handle : ", err.Error())

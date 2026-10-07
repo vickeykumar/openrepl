@@ -51,21 +51,53 @@ type RegisterRequest struct {
 
 // RegisterReply is the gateway's answer. It carries what the worker needs to
 // act for the gateway: the cookie secret (so it can read session cookies) and
-// the WebSocket auth token. Both are kept in memory only.
+// the WebSocket auth token, and OPENREPL_SECRET when the gateway has one. They
+// are kept in memory only.
 type RegisterReply struct {
 	ConnectionID    string `json:"connection_id"`
 	HeartbeatMillis int    `json:"heartbeat_ms"`
 	CookieSecret    []byte `json:"cookie_secret"`
 	AuthToken       string `json:"auth_token"`
+	// Secret is the gateway's OPENREPL_SECRET, for the worker's own use. It
+	// replaces the worker's own for as long as the connection lasts.
+	Secret string `json:"secret,omitempty"`
 	// WorkspaceSync says the gateway keeps a copy of the worker's homes. The
 	// worker then stays out of rotation (SYNCING) until it sends ReqSyncReady.
 	WorkspaceSync bool `json:"workspace_sync,omitempty"`
+	// Config is what the gateway wants the worker to follow right now; later
+	// changes arrive in heartbeat replies.
+	Config *WorkerConfig `json:"config,omitempty"`
+}
+
+// WorkerConfig is the part of the gateway's settings a worker follows: the site
+// rules (maintenance, languages that are switched off, the announcement, the
+// colour) that the gateway already applies to everybody it forwards, and that a
+// worker applies to people who open the worker's own port. Nothing secret is in
+// it. Revision identifies the content: a worker that has the revision the
+// gateway has is up to date.
+type WorkerConfig struct {
+	Revision           int64    `json:"revision"`
+	ColorOfTheDay      bool     `json:"color_of_the_day,omitempty"`
+	AnnouncementText   string   `json:"announcement_text,omitempty"`
+	AnnouncementLevel  string   `json:"announcement_level,omitempty"`
+	Maintenance        bool     `json:"maintenance,omitempty"`
+	MaintenanceMessage string   `json:"maintenance_message,omitempty"`
+	DisabledLanguages  []string `json:"disabled_languages,omitempty"`
+}
+
+// HeartbeatReply is the payload of the answer to a heartbeat. Config is set
+// when the revision the worker reported is not the gateway's.
+type HeartbeatReply struct {
+	Config *WorkerConfig `json:"config,omitempty"`
 }
 
 // Heartbeat reports the worker's load.
 type Heartbeat struct {
 	Used   int64 `json:"used"`   // memory-weight units in use
 	Active int   `json:"active"` // open terminal sessions
+	// ConfigRev is the revision of the WorkerConfig the worker follows now (0:
+	// none yet).
+	ConfigRev int64 `json:"config_rev,omitempty"`
 }
 
 // RouteEvent announces or withdraws a key the worker owns.

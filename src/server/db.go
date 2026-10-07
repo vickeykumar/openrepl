@@ -3,7 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/nobonobo/unqlitego"
+	"persist"
 	"log"
 	"net/http"
 	"os"
@@ -20,7 +20,7 @@ import (
 
 const FEEDBACK_DB = utils.GOTTY_PATH + "/feedback.db"
 
-var feedback_db_handle *unqlitego.Database
+var feedback_db_handle persist.Store
 
 type feedback struct {
 	Name    string
@@ -31,15 +31,18 @@ type feedback struct {
 
 func InitFeedbackDBHandle() {
 	var err error
-	feedback_db_handle, err = unqlitego.NewDatabase(FEEDBACK_DB)
+	feedback_db_handle, err = persist.Open(FEEDBACK_DB)
 	if err != nil {
 		log.Println("ERROR: Error while creating feedback DB handle : ", err.Error())
 		os.Exit(3)
 	}
-	log.Println("Successfully initialized fb handle: ", feedback_db_handle)
+	log.Println("Successfully initialized fb handle, stored in", feedback_db_handle.Backend())
 }
 
 func CloseFeedbackDBHandle() {
+	if feedback_db_handle == nil {
+		return
+	}
 	err := feedback_db_handle.Close()
 	if err != nil {
 		log.Println("ERROR: Error while closing feedback DB handle : ", err.Error())
@@ -78,54 +81,22 @@ func deleteFeedbackData(key string) error {
 
 func FetchFeedbackDataMap() (fblistmap map[int64]feedback) {
 	fblistmap = make(map[int64]feedback)
-	cursor, err := feedback_db_handle.NewCursor()
+	err := feedback_db_handle.Each(func(key, value []byte) bool {
+		timestamp, err := strconv.ParseInt(string(key), 10, 64)
+		if err != nil {
+			log.Println("Failed parsing for key: ", string(key), err.Error())
+			return true
+		}
+		fb := feedback{} // a field missing from the record must not keep the last one's value
+		if err := json.Unmarshal(value, &fb); err != nil {
+			log.Println("ERROR: while unMarshalling for key: ", timestamp, value, " Error: ", err)
+			return true
+		}
+		fblistmap[timestamp] = fb
+		return true
+	})
 	if err != nil {
-		log.Println("Error creating cursor: ",err.Error())
-		return
-	}
-	defer cursor.Close()
-
-	err = cursor.First()
-	if err != nil {
-		log.Println("Error Fetching cursor: ",err.Error())
-		return
-	}
-	var timestamp int64
-	var fb feedback
-	for cursor.IsValid() {
-		func (cursor *unqlitego.Cursor) {
-			key, err := cursor.Key()
-			if err != nil {
-				log.Println("Error Fetching cursor key: ",err.Error())
-				return
-			}
-			value, err := cursor.Value()
-			if err != nil {
-				log.Println("Error Fetching cursor value for key: ", key, err.Error())
-				return
-			}
-			timestamp, err = strconv.ParseInt(string(key), 10, 64)
-			if err != nil {
-				// handle error
-				log.Println("Failed parsing for key: ", key, err.Error())
-				return
-			}
-			fb = feedback{} // a field missing from the record must not keep the last one's value
-			err = json.Unmarshal(value, &fb)
-			if err != nil {
-				log.Println("ERROR: while unMarshalling for key: ", timestamp, value, " Error: ", err)
-				return
-			}
-			fblistmap[timestamp] = fb
-			defer func(cursor *unqlitego.Cursor) {
-				err := cursor.Next()
-				if err != nil {
-					// handle error
-					log.Println("Failed finding next cursor for key: ", key, timestamp, err.Error())
-					return
-				}
-			}(cursor)
-		}(cursor)
+		log.Println("Error reading the feedback records: ", err.Error())
 	}
 	return
 }

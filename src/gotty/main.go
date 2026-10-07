@@ -4,12 +4,14 @@ import (
 	"utils"
 	"backend/localcommand"
 	"containers"
+	"cookie"
 	"context"
 	"fmt"
 	"github.com/codegangsta/cli"
 	"log"
 	"os"
 	"os/signal"
+	"persist"
 	"pkg/homedir"
 	"server"
 	"strings"
@@ -25,12 +27,14 @@ func common_setup() {
 	server.InitSnippetDBHandle()
 	server.InitPracticeDBHandle()
 	user.InitSessionDBHandle()
+	cookie.InitSecret()
 	containers.InitContainers()
 }
 
+var setup_done bool = false
 var cleanup_done bool = false
 func common_cleanup() {
-	if cleanup_done {
+	if cleanup_done || !setup_done {
 		// cleanup already done
 		return
 	}
@@ -53,7 +57,9 @@ func main() {
 		os.Exit(2)
 	}
 	utils.LogConfig()
-	common_setup()
+	// The databases are opened once the mode is known (in app.Action): a
+	// worker keeps its data in files, a gateway or a standalone server may keep
+	// it in MongoDB.
 	defer common_cleanup()
 
 	app := cli.NewApp()
@@ -116,6 +122,12 @@ func main() {
 		if err != nil {
 			exit(err, 6)
 		}
+
+		persist.Configure(appOptions.Mode != server.ModeWorker)
+		// the one test of where the databases live; its choice is logged and stays
+		persist.Init()
+		common_setup()
+		setup_done = true
 
 		args := c.Args()
 		if len(args) == 0 {

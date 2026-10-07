@@ -3,7 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/nobonobo/unqlitego"
+	"persist"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +16,7 @@ import (
 
 const BLOG_DB = utils.GOTTY_PATH + "/blog.db"
 
-var blog_db_handle *unqlitego.Database
+var blog_db_handle persist.Store
 
 type BlogPost struct {
 	Name        string    	`json:"name"`
@@ -38,7 +38,7 @@ func NewBlogPost(name, title, desc, content string) *BlogPost {
 
 func InitBlogDBHandle() {
 	var err error
-	blog_db_handle, err = unqlitego.NewDatabase(BLOG_DB)
+	blog_db_handle, err = persist.Open(BLOG_DB)
 	if err != nil {
 		log.Println("ERROR: Error while creating blog DB handle : ", err.Error())
 		os.Exit(3)
@@ -47,6 +47,9 @@ func InitBlogDBHandle() {
 }
 
 func CloseBlogDBHandle() {
+	if blog_db_handle == nil {
+		return
+	}
 	err := blog_db_handle.Close()
 	if err != nil {
 		log.Println("ERROR: Error while closing blog DB handle : ", err.Error())
@@ -87,47 +90,17 @@ func deleteBlogData(blogname string) error {
 
 func FetchBlogDataMap() (bloglistmap map[string]BlogPost) {
 	bloglistmap = make(map[string]BlogPost)
-	cursor, err := blog_db_handle.NewCursor()
+	err := blog_db_handle.Each(func(key, value []byte) bool {
+		var blog BlogPost // a field missing from the record must not keep the last one's value
+		if err := json.Unmarshal(value, &blog); err != nil {
+			log.Println("ERROR: while unMarshalling for key: ", string(key), value, " Error: ", err)
+			return true
+		}
+		bloglistmap[string(key)] = blog
+		return true
+	})
 	if err != nil {
-		log.Println("Error creating cursor: ",err.Error())
-		return
-	}
-	defer cursor.Close()
-
-	err = cursor.First()
-	if err != nil {
-		log.Println("Error Fetching cursor: ",err.Error())
-		return
-	}
-	var timestamp int64
-	var blog BlogPost
-	for cursor.IsValid() {
-		func (cursor *unqlitego.Cursor) {
-			key, err := cursor.Key()
-			if err != nil {
-				log.Println("Error Fetching cursor key: ",err.Error())
-				return
-			}
-			value, err := cursor.Value()
-			if err != nil {
-				log.Println("Error Fetching cursor value for key: ", key, err.Error())
-				return
-			}
-			err = json.Unmarshal(value, &blog)
-			if err != nil {
-				log.Println("ERROR: while unMarshalling for key: ", string(key), value, " Error: ", err)
-				return
-			}
-			bloglistmap[string(key)] = blog
-			defer func(cursor *unqlitego.Cursor) {
-				err := cursor.Next()
-				if err != nil {
-					// handle error
-					log.Println("Failed finding next cursor for key: ", key, timestamp, err.Error())
-					return
-				}
-			}(cursor)
-		}(cursor)
+		log.Println("Error reading the blog records: ", err.Error())
 	}
 	return
 }

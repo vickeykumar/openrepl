@@ -14,14 +14,33 @@ globaltemperature = isNaN(parseFloat(globaltemperature)) ? 0.3 : parseFloat(glob
 
 var QUESTIONS_KEY = 'questions';
 
-// Initialize Firebase App
-  if (firebase.apps.length === 0) {
-    firebase.initializeApp(firebaseconfig);
+// The New question dialog's Model and Effort fields (initQuestionModelFields,
+// below). Registered here, ahead of the Firebase setup, because the home page
+// does not load Firestore and this script stops at firebase.firestore() there.
+document.addEventListener("DOMContentLoaded", initQuestionModelFields);
+window.addEventListener("load", initQuestionModelFields);
+
+// Firebase handles. The home page loads Firebase without Firestore (practice
+// sync is on the practice pages), and firebase.firestore() then throws; that
+// must not stop the rest of this script, which also runs the menu button, so
+// the setup is guarded and the handles stay null where there is no Firestore.
+var firestoredb = null;
+var firebaseAuth = null;
+var currentUserID = null;
+var batch = null;
+function initFirebaseHandles() {
+  try {
+    if (firebase.apps.length === 0) {
+      firebase.initializeApp(firebaseconfig);
+    }
+    firestoredb = firebase.firestore(); // Initialize Firestore
+    firebaseAuth = firebase.auth(); // Initialize Firebase Auth
+    batch = firestoredb.batch();        // Create a Firestore batch
+  } catch (e) {
+    console.warn("Firestore is not available on this page, so practice questions are not synced here:", e.message);
   }
-  var firestoredb = firebase.firestore(); // Initialize Firestore
-  var firebaseAuth = firebase.auth(); // Initialize Firebase Auth
-  var currentUserID = null;
-  var batch = firestoredb.batch();        // Create a Firestore batch
+}
+initFirebaseHandles();
 
   function getQuestionDocRef(docName) {
     if (!currentUserID) {
@@ -190,9 +209,26 @@ async function requestJSONFromOpenAI(prompt) {
     return response;
 }
 
+// The error for a reply that is not ok. When the chosen model is not reachable
+// (the proxy answers type "model_unavailable", for Gemma through OpenRouter) it
+// says so and what to do, instead of a status code.
+async function apiFailure(response) {
+    try {
+        const body = await response.clone().json();
+        if (body && body.error && body.error.type === "model_unavailable") {
+            return new Error(body.error.message + (body.error.code === "model_disabled"
+                ? ". Choose another model."
+                : ". Try again in a moment, or choose another model."));
+        }
+    } catch (e) {
+        // not JSON: the status line below
+    }
+    return new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+}
+
 // The Model and Effort fields of the New question dialog, on the home page and
-// on the practice page: filled from js/model-choice.js's two models and four
-// efforts, and kept in step with Genie's choice. Safe to call more than once.
+// on the practice page: filled from js/model-choice.js's models (in a group
+// for each provider) and four efforts, and kept in step with Genie's choice. Safe to call more than once.
 function initQuestionModelFields() {
     const modelSel = document.getElementById("qmodel");
     const effortSel = document.getElementById("qeffort");
@@ -205,7 +241,16 @@ function initQuestionModelFields() {
     const hint = document.getElementById("qmodel-hint");
     const creativityText = temperatureHint ? temperatureHint.textContent : "";
 
-    choice.models.forEach(m => modelSel.add(new Option(m.name, m.id)));
+    // one group for each provider: "OpenAI", "OpenRouter"
+    const groups = {};
+    choice.models.forEach(m => {
+        if (!groups[m.group]) {
+            groups[m.group] = document.createElement("optgroup");
+            groups[m.group].label = m.group;
+            modelSel.appendChild(groups[m.group]);
+        }
+        groups[m.group].appendChild(new Option(m.name, m.id));
+    });
     choice.efforts.forEach(e => effortSel.add(new Option(e.label, e.id)));
 
     function show() {
@@ -218,7 +263,7 @@ function initQuestionModelFields() {
         if (temperature) temperature.disabled = model.reasoning;
         if (temperatureHint) {
             temperatureHint.textContent = model.reasoning
-                ? "Creativity applies to " + choice.models.filter(m => !m.reasoning)[0].name + " only."
+                ? "Creativity doesn't apply to " + model.name + "."
                 : creativityText;
         }
         if (hint) {
@@ -234,8 +279,6 @@ function initQuestionModelFields() {
     choice.onChange(show);
     show();
 }
-document.addEventListener("DOMContentLoaded", initQuestionModelFields);
-window.addEventListener("load", initQuestionModelFields);
 
 // Save questions, ensuring a maximum of 100 entries.
 function saveNewQuestions(newQuestion) {
@@ -351,7 +394,7 @@ ${customPrompt ? customPrompt : ""}
       const response = await requestJSONFromOpenAI(prompt);
 
       if (!response.ok) {
-          throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+          throw await apiFailure(response);
       }
 
       const data = await response.json();
@@ -459,7 +502,7 @@ ${question.description ? '' : descriptionprompt}
         const response = await requestJSONFromOpenAI(prompt);
 
         if (!response.ok) {
-            throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+            throw await apiFailure(response);
         }
 
         const data = await response.json();
@@ -553,11 +596,5 @@ function getUserLogin() {
 	    
 	});
 
-    // Initialize Firebase App
-      if (firebase.apps.length === 0) {
-        firebase.initializeApp(firebaseconfig);
-      }
-      firestoredb = firebase.firestore(); // Initialize Firestore
-      firebaseAuth = firebase.auth(); // Initialize Firebase Auth
-      batch = firestoredb.batch();        // Create a Firestore batch
+    initFirebaseHandles();
 })();

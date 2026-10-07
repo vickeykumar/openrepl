@@ -10,6 +10,7 @@ import (
 
 	"containers"
 	"gateway"
+	"persist"
 	"utils"
 )
 
@@ -95,7 +96,16 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	case snippet_db_handle == nil:
 		add("Databases", healthWarn, "the snippet database is not open: share links are off")
 	default:
-		add("Databases", healthOK, "feedback, blog and snippet databases are open")
+		where := "files in " + utils.GOTTY_PATH
+		if b := feedback_db_handle.Backend(); b != "unqlite" {
+			where = storeTitle(b)
+		}
+		add("Databases", healthOK, "feedback, blog and snippet databases are open ("+where+")")
+	}
+	// MongoDB or Firestore was asked for, and the start-up test sent the
+	// databases somewhere else
+	if backend, notes := persist.Chosen(); notes != "" && (utils.MongoURI() != "" || utils.FirestoreConfigured()) && backend != persistWanted() {
+		add("Database choice", healthWarn, "the start-up test fell back to "+backend+": "+notes)
 	}
 
 	if ready, total := containers.Status(); total == 0 {
@@ -107,7 +117,9 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	}
 
 	if n := len(utils.AdminEmails()); n == 0 {
-		add("Admin accounts", healthFail, "nobody is configured as an admin (OPENREPL_ADMIN_EMAILS)")
+		add("Admin accounts", healthFail, "nobody is configured as an owner (OPENREPL_ADMIN_EMAILS), so nobody can add admins")
+	} else if extra := len(utils.ExtraAdmins()); extra > 0 {
+		add("Admin accounts", healthOK, fmt.Sprintf("%d owners and %d added in the dashboard", n, extra))
 	} else {
 		add("Admin accounts", healthOK, fmt.Sprintf("%d configured", n))
 	}
@@ -118,10 +130,38 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	} else {
 		add("Firebase", healthOK, "signing in with the built-in project "+project)
 	}
+	switch st := currentSettingsStoreStatus(); {
+	case st.Healthy:
+		add("Settings store", healthOK, st.Detail)
+	case st.Degraded:
+		add("Settings store", healthWarn, st.Detail)
+	case st.Name != "file":
+		add("Settings store", healthFail, st.Detail)
+	default:
+		add("Settings store", healthOK, st.Detail)
+	}
 	if utils.OpenAIKey() == "" {
 		add("OpenAI key", healthWarn, "not set: Genie and the practice question generator do not work")
 	} else {
-		add("OpenAI key", healthOK, "set")
+		add("OpenAI key", healthOK, "set (from the "+keySourceName(utils.KeySource("openai"))+")")
+	}
+	if utils.OpenRouterKey() == "" {
+		add("OpenRouter key", healthOK, "not set (optional): Gemma 4 31B is not offered")
+	} else {
+		add("OpenRouter key", healthOK, "set (from the "+keySourceName(utils.KeySource("openrouter"))+"): Gemma 4 31B is offered")
+	}
+	settingsMu.Lock()
+	problem := keysProblem
+	settingsMu.Unlock()
+	switch {
+	case problem != "":
+		add("Dashboard keys", healthWarn, problem+"; the environment's keys are in use. Enter them again, or restore OPENREPL_SECRET")
+	case utils.Secret() == "":
+		add("Dashboard keys", healthWarn, "off: the server has no secret yet, so keys cannot be kept in the dashboard")
+	case utils.EnvSecretValue() == "":
+		add("Dashboard keys", healthOK, "on, encrypted with a secret the server generated and saved in its database (a copy of the whole database includes it)")
+	default:
+		add("Dashboard keys", healthOK, "on, encrypted with OPENREPL_SECRET, which is not saved in the database")
 	}
 	if utils.IsDev() {
 		add("Mode", healthWarn, "dev: the start-up log shows the values of the settings. Do not use dev on a public server")
@@ -172,4 +212,25 @@ func (server *Server) health() (status string, checks []healthCheck) {
 func (server *Server) handleAdminHealth(w http.ResponseWriter, r *http.Request) {
 	status, checks := server.health()
 	adminJSON(w, http.StatusOK, map[string]interface{}{"status": status, "checks": checks})
+}
+
+// keySourceName is how the health page names where a key comes from.
+func keySourceName(source string) string {
+	switch source {
+	case "dashboard":
+		return "dashboard"
+	case "env":
+		return "environment"
+	case "file":
+		return "settings file"
+	}
+	return "server"
+}
+
+// persistWanted is the backend the settings ask for first.
+func persistWanted() string {
+	if utils.MongoURI() != "" {
+		return "mongodb"
+	}
+	return "firestore"
 }

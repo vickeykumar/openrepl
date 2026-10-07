@@ -118,3 +118,65 @@ func TestSignOutEverywhereEndsEverySession(t *testing.T) {
 		t.Error("signed out an account that does not exist")
 	}
 }
+
+func TestTheCookieKeyIsDerivedFromTheEnvironmentOrGeneratedOnceAndSaved(t *testing.T) {
+	open(t)
+	db := GetUserDBHandle()
+	defer utils.SetGeneratedSecret("")
+	key := []byte(SESSION_KEY)
+
+	// nothing set, nothing stored: one is made and saved, and it stays
+	t.Setenv("OPENREPL_SECRET", "")
+	first := ensureServerSecret(db)
+	if len(first) == 0 {
+		t.Fatal("no key was made")
+	}
+	if stored, err := db.Fetch(key); err != nil || string(stored) != string(first) {
+		t.Fatalf("saved %q (%v), made %q", stored, err, first)
+	}
+	if utils.Secret() == "" || string(CookieKey()) != string(first) {
+		t.Fatal("the generated secret and the cookie key are not in use")
+	}
+	if again := ensureServerSecret(db); string(again) != string(first) {
+		t.Fatal("a second start made another key")
+	}
+
+	// the environment sets one: the cookie key comes from it, and nothing is saved
+	t.Setenv("OPENREPL_SECRET", "from-the-environment-0123456789")
+	fromEnv := ensureServerSecret(db)
+	if len(fromEnv) != 32 || string(fromEnv) == string(first) || string(fromEnv) == "from-the-environment-0123456789" {
+		t.Fatalf("the derived key: %x", fromEnv)
+	}
+	if utils.Secret() != "from-the-environment-0123456789" || string(CookieKey()) != string(fromEnv) {
+		t.Fatalf("in use: secret %q key %x", utils.Secret(), CookieKey())
+	}
+	if stored, _ := db.Fetch(key); string(stored) != string(first) {
+		t.Fatalf("the database was changed by the environment's secret: %q", stored)
+	}
+	// the same secret gives the same key after a restart, another secret another key
+	if again := ensureServerSecret(db); string(again) != string(fromEnv) {
+		t.Fatal("the same secret gave another key")
+	}
+	t.Setenv("OPENREPL_SECRET", "another-one-0123456789")
+	if other := ensureServerSecret(db); string(other) == string(fromEnv) {
+		t.Fatal("another secret gave the same key")
+	}
+
+	// without it again, the saved one is back in use
+	t.Setenv("OPENREPL_SECRET", "")
+	if back := ensureServerSecret(db); string(back) != string(first) {
+		t.Fatalf("the saved key was not used again: %x", back)
+	}
+}
+
+func TestACopyOfTheSecretSavedByAnEarlierVersionIsRemoved(t *testing.T) {
+	open(t)
+	db := GetUserDBHandle()
+	defer utils.SetGeneratedSecret("")
+	t.Setenv("OPENREPL_SECRET", "from-the-environment-0123456789")
+	db.Store([]byte(SESSION_KEY), []byte("from-the-environment-0123456789"))
+	ensureServerSecret(db)
+	if v, err := db.Fetch([]byte(SESSION_KEY)); err == nil && len(v) > 0 {
+		t.Fatalf("the secret is still in the database: %q", v)
+	}
+}

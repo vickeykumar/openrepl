@@ -508,8 +508,14 @@ The server-side settings come from environment variables, and gotty can load the
 
 | Variable | Meaning | Older file key |
 |---|---|---|
-| `OPENREPL_ADMIN_EMAILS` | Admin accounts, comma-separated. With none set, nobody is an admin. | `user.email` |
+| `OPENREPL_ADMIN_EMAILS` | Owner accounts, comma-separated. Owners are admins and the only ones who can add or remove other admins in the dashboard. With none set, nobody is an admin. | `user.email` |
 | `OPENREPL_OPENAI_API_KEY` | The OpenAI key, as it is (not base64). | `user.OpenaiAPIKey` (base64) |
+| `OPENREPL_MONGODB_URI` | Optional. Keeps the admin settings and every database (sessions, feedback, blog, snippets, practice) in MongoDB (for example an Atlas `mongodb+srv://` URI) instead of files under `/opt/gotty`, so they survive deploys that wipe the disk. The first start copies the existing files in, once. A secret. Gateway and standalone only; a worker keeps files. | |
+| `OPENREPL_FIRESTORE_CREDENTIALS` | Optional. A Google service account key (the JSON, its base64, or a file path) for the Firebase project's Firestore. Used when `OPENREPL_MONGODB_URI` is not set and Firestore answers; otherwise the server uses files. Keep the security rules of `kv_*` and `settings` closed. | |
+| `OPENREPL_FIRESTORE_PROJECT` | The project, when the key does not name it (the emulator). | |
+| `OPENREPL_MONGODB_DB` | The MongoDB database for it. Default `openrepl`. | |
+| `OPENREPL_SECRET` | Optional. A long random secret for the server's own use: it signs the session cookies and encrypts the API keys an admin saves in the dashboard (a key saved there wins over the two above). When set, it is not saved anywhere (the cookie key is derived from it); when not set, the server makes one and saves it in its database. A worker takes its gateway's. If it changes, everybody is signed out once and saved keys must be entered again. | |
+| `OPENREPL_OPENROUTER_API_KEY` | Optional. The OpenRouter key, as it is. Without it the Gemma 4 31B choice is not offered. | |
 | `OPENREPL_HOST` | The origin the chat proxy accepts. Default `localhost`. | `user.host` |
 | `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Default: the built-in production project. See below. | |
 | `OPENREPL_ENV` | `dev` or `production` (the default). Dev shows the values of these settings in the start-up log; production only says which are set. | |

@@ -1,7 +1,7 @@
 package cachedb
 
 import (
-	"github.com/nobonobo/unqlitego"
+	"persist"
 	"github.com/coocood/freecache"
 	"log"
 	"runtime/debug"
@@ -17,7 +17,7 @@ var IGNORE_CACHE_ERRORS bool = true	// ignore cache read/write errors, we can st
 // write in db first before caching
 // Read from cache before cache lookup
 type Database struct {
-	handle 		*unqlitego.Database
+	handle 		persist.Store
 	cachehandle *freecache.Cache
 	expireSec	int
 }
@@ -29,7 +29,7 @@ func init() {
 // NewDatabase ...
 func NewDatabase(filename string) (db *Database, err error) {
 	db = &Database{}
-	db.handle, err = unqlitego.NewDatabase(filename)
+	db.handle, err = persist.Open(filename)
 	if err != nil {
 		return
 	}
@@ -41,7 +41,7 @@ func NewDatabase(filename string) (db *Database, err error) {
 // NewDatabase with custom size...
 func NewDatabaseSize(filename string, cacheSize int) (db *Database, err error) {
 	db = &Database{}
-	db.handle, err = unqlitego.NewDatabase(filename)
+	db.handle, err = persist.Open(filename)
 	if err != nil {
 		return
 	}
@@ -155,29 +155,5 @@ func (db *Database) Rollback() (err error) {
 // Each calls fn with every key and value in the database until fn returns
 // false. It reads the database itself, not the cache.
 func (db *Database) Each(fn func(key, value []byte) bool) error {
-	cursor, err := db.handle.NewCursor()
-	if err != nil {
-		return err
-	}
-	defer cursor.Close()
-	if err := cursor.First(); err != nil {
-		return nil // an empty database has nothing to visit
-	}
-	for cursor.IsValid() {
-		key, err := cursor.Key()
-		if err != nil {
-			return err
-		}
-		value, err := cursor.Value()
-		if err != nil {
-			return err
-		}
-		if !fn(key, value) {
-			return nil
-		}
-		if err := cursor.Next(); err != nil {
-			return nil
-		}
-	}
-	return nil
+	return db.handle.Each(fn)
 }

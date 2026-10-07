@@ -176,20 +176,13 @@ func listSnippets() ([]snippetRow, error) {
 	if snippet_db_handle == nil {
 		return rows, errSnippetsOff
 	}
-	cursor, err := snippet_db_handle.NewCursor()
-	if err != nil {
-		return rows, err
-	}
-	defer cursor.Close()
-	for err = cursor.First(); err == nil && cursor.IsValid(); err = cursor.Next() {
-		key, kerr := cursor.Key()
-		value, verr := cursor.Value()
-		if kerr != nil || verr != nil || !snippetIDPattern.MatchString(string(key)) {
-			continue
+	err := snippet_db_handle.Each(func(key, value []byte) bool {
+		if !snippetIDPattern.MatchString(string(key)) {
+			return true
 		}
 		var s snippet
 		if json.Unmarshal(value, &s) != nil {
-			continue
+			return true
 		}
 		rows = append(rows, snippetRow{
 			ID:      string(key),
@@ -198,6 +191,10 @@ func listSnippets() ([]snippetRow, error) {
 			Bytes:   len(s.Code),
 			Preview: preview(s.Code),
 		})
+		return true
+	})
+	if err != nil {
+		return rows, err
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Created > rows[j].Created })
 	if len(rows) > snippetListMax {

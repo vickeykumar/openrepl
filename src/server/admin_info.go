@@ -149,7 +149,7 @@ func (server *Server) params() paramsReply {
 	}
 	c.GitConfigFile = utils.GitConfigPath
 	c.Firebase.ProjectID, c.Firebase.Custom = firebaseProject()
-	c.Admins = len(utils.AdminEmails())
+	c.Admins = len(utils.AdminEmails()) + len(utils.ExtraAdmins())
 	c.OpenAIKeySet = utils.OpenAIKey() != ""
 	c.Host = chatHost()
 

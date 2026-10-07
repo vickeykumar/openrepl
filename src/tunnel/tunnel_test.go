@@ -80,6 +80,7 @@ func newGateway(t *testing.T, mod func(*ServerConfig)) *gateway {
 		Token:             testToken,
 		HostKey:           key,
 		CookieSecret:      func() []byte { return []byte("cookie-secret") },
+		Secret:            func() string { return "server-secret" },
 		AuthToken:         func() string { return "auth-token" },
 		HeartbeatInterval: 50 * time.Millisecond,
 		Timeout:           time.Second,
@@ -170,7 +171,7 @@ func TestRegisterDeliversSecretsAndProxiesHTTP(t *testing.T) {
 	wk := newWorker(t, gw.url, "worker-1", handler, nil)
 
 	rep := <-wk.reply
-	if string(rep.CookieSecret) != "cookie-secret" || rep.AuthToken != "auth-token" || rep.ConnectionID == "" {
+	if string(rep.CookieSecret) != "cookie-secret" || rep.AuthToken != "auth-token" || rep.Secret != "server-secret" || rep.ConnectionID == "" {
 		t.Fatalf("unexpected reply: %+v", rep)
 	}
 	waitFor(t, "registration", func() bool { return gw.srv.Worker("worker-1") != nil })
@@ -672,4 +673,81 @@ func TestWorkerThatNeverFinishesSyncingIsDropped(t *testing.T) {
 		w := gw.srv.Worker("worker-1")
 		return w != nil && w.ConnectionID() != first.ConnectionID()
 	})
+}
+
+// ---- the config a worker follows --------------------------------------------------
+
+func TestAWorkerFollowsTheGatewaysConfig(t *testing.T) {
+	var mu sync.Mutex
+	current := &WorkerConfig{Revision: 11, Maintenance: true, MaintenanceMessage: "back soon", DisabledLanguages: []string{"python"}}
+	gw := newGateway(t, func(c *ServerConfig) {
+		c.Config = func() *WorkerConfig { mu.Lock(); defer mu.Unlock(); cp := *current; return &cp }
+	})
+	var got []WorkerConfig
+	var gmu sync.Mutex
+	wk := newWorker(t, gw.url, "worker-1", nil, func(c *ClientConfig) {
+		c.OnConfig = func(cfg *WorkerConfig) { gmu.Lock(); got = append(got, *cfg); gmu.Unlock() }
+	})
+	rep := <-wk.reply
+	if rep.Config == nil || rep.Config.Revision != 11 {
+		t.Fatalf("the register reply: %+v", rep.Config)
+	}
+	waitFor(t, "the first config", func() bool { gmu.Lock(); defer gmu.Unlock(); return len(got) == 1 })
+	if got[0].MaintenanceMessage != "back soon" || len(got[0].DisabledLanguages) != 1 {
+		t.Fatalf("config: %+v", got[0])
+	}
+	waitFor(t, "registration", func() bool { return gw.srv.Worker("worker-1") != nil })
+	if gw.srv.Worker("worker-1").ConfigRev() != 11 || gw.srv.ConfigRevision() != 11 {
+		t.Fatalf("revisions: worker %d gateway %d", gw.srv.Worker("worker-1").ConfigRev(), gw.srv.ConfigRevision())
+	}
+
+	// the gateway's settings change: the next heartbeat brings the new config, once
+	mu.Lock()
+	current = &WorkerConfig{Revision: 12, Maintenance: false, DisabledLanguages: []string{"python", "cpp"}}
+	mu.Unlock()
+	waitFor(t, "the changed config", func() bool { gmu.Lock(); defer gmu.Unlock(); return len(got) == 2 })
+	if got[1].Revision != 12 || len(got[1].DisabledLanguages) != 2 || got[1].Maintenance {
+		t.Fatalf("second config: %+v", got[1])
+	}
+	waitFor(t, "the worker to report it", func() bool { return gw.srv.Worker("worker-1").ConfigRev() == 12 })
+	time.Sleep(200 * time.Millisecond) // several heartbeats with nothing new
+	gmu.Lock()
+	n := len(got)
+	gmu.Unlock()
+	if n != 2 {
+		t.Fatalf("the same config was handed over again: %d times", n)
+	}
+}
+
+func TestAGatewayWithoutConfigSendsNone(t *testing.T) {
+	gw := newGateway(t, nil)
+	called := 0
+	wk := newWorker(t, gw.url, "worker-1", nil, func(c *ClientConfig) { c.OnConfig = func(*WorkerConfig) { called++ } })
+	if rep := <-wk.reply; rep.Config != nil {
+		t.Fatalf("config: %+v", rep.Config)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if called != 0 || gw.srv.ConfigRevision() != 0 {
+		t.Fatalf("called %d times, revision %d", called, gw.srv.ConfigRevision())
+	}
+}
+
+func TestAReconnectingWorkerGetsTheConfigAgainOnlyIfItChanged(t *testing.T) {
+	cfg := &WorkerConfig{Revision: 5}
+	gw := newGateway(t, func(c *ServerConfig) { c.Config = func() *WorkerConfig { return cfg } })
+	calls := 0
+	var mu sync.Mutex
+	wk := newWorker(t, gw.url, "worker-1", nil, func(c *ClientConfig) {
+		c.OnConfig = func(*WorkerConfig) { mu.Lock(); calls++; mu.Unlock() }
+	})
+	<-wk.reply
+	waitFor(t, "registration", func() bool { return gw.srv.Worker("worker-1") != nil })
+	gw.srv.Worker("worker-1").conn.Close() // the connection drops; the worker reconnects
+	<-wk.reply
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("OnConfig was called %d times for one revision", calls)
+	}
 }

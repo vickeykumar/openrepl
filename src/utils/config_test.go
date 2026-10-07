@@ -16,7 +16,7 @@ func settings(t *testing.T, env map[string]string, file map[string]string) {
 	t.Helper()
 	savedFile, savedPath := GitConfig, GitConfigPath
 	saved := map[string]*string{}
-	for _, name := range []string{EnvMode, EnvAdminEmails, EnvOpenAIKey, EnvHost, EnvFirebaseConfig} {
+	for _, name := range []string{EnvMode, EnvAdminEmails, EnvOpenAIKey, EnvOpenRouterKey, EnvHost, EnvFirebaseConfig, EnvMongoURI, EnvMongoDB, EnvSecret} {
 		if v, ok := os.LookupEnv(name); ok {
 			v := v
 			saved[name] = &v
@@ -269,6 +269,70 @@ func TestDevLogsShowTheValues(t *testing.T) {
 	for _, want := range []string{"mode=dev", "alice@example.com (from env)", "sk-dev-key (from env)", "localhost (from file)", "file=none"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the dev summary lacks %q: %s", want, got)
+		}
+	}
+}
+
+func TestOpenRouterKeyIsReadFromTheEnvironmentOnly(t *testing.T) {
+	settings(t, nil, nil)
+	if OpenRouterKey() != "" {
+		t.Fatalf("key without a setting: %q", OpenRouterKey())
+	}
+	if got := configSummary(false); !strings.Contains(got, "openrouter key: not set") {
+		t.Errorf("the summary lacks the unset key: %s", got)
+	}
+	settings(t, map[string]string{EnvOpenRouterKey: " sk-or-test\n"}, nil)
+	if OpenRouterKey() != "sk-or-test" {
+		t.Fatalf("key = %q", OpenRouterKey())
+	}
+	got := configSummary(false)
+	if !strings.Contains(got, "openrouter key: set (from env)") || strings.Contains(got, "sk-or-test") {
+		t.Errorf("production summary: %s", got)
+	}
+}
+
+func TestAWorkerUsesTheGatewaysSecret(t *testing.T) {
+	settings(t, map[string]string{EnvSecret: "worker-own"}, nil)
+	defer SetSecretFromGateway("")
+	if Secret() != "worker-own" {
+		t.Fatalf("own: %q", Secret())
+	}
+	SetSecretFromGateway("from-gateway")
+	if Secret() != "from-gateway" {
+		t.Fatalf("the gateway's secret was not taken: %q", Secret())
+	}
+	SetSecretFromGateway("") // a gateway without one, or a reconnect to it
+	if Secret() != "worker-own" {
+		t.Fatalf("back to own: %q", Secret())
+	}
+}
+
+func TestSettingsStoreSettingsNeverShowTheMongoURI(t *testing.T) {
+	settings(t, nil, nil)
+	if MongoURI() != "" || MongoDBName() != "openrepl" || Secret() != "" {
+		t.Fatalf("defaults: %q %q %q", MongoURI(), MongoDBName(), Secret())
+	}
+	got := configSummary(true)
+	for _, want := range []string{"data store: file", "secret: not set in the environment"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the summary lacks %q: %s", want, got)
+		}
+	}
+	settings(t, map[string]string{
+		EnvMongoURI: " mongodb+srv://user:hunter2@cluster.example.net/ ", EnvMongoDB: "orepl", EnvSecret: "s3cret",
+	}, nil)
+	if MongoURI() != "mongodb+srv://user:hunter2@cluster.example.net/" || MongoDBName() != "orepl" {
+		t.Fatalf("read: %q %q", MongoURI(), MongoDBName())
+	}
+	for _, dev := range []bool{false, true} {
+		got = configSummary(dev)
+		if strings.Contains(got, "hunter2") || strings.Contains(got, "s3cret") {
+			t.Fatalf("the summary (dev=%v) shows a secret: %s", dev, got)
+		}
+		for _, want := range []string{"data store: mongodb, database orepl", "secret: set"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("the summary lacks %q: %s", want, got)
+			}
 		}
 	}
 }

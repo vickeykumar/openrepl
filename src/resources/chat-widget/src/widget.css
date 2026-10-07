@@ -355,6 +355,53 @@
   font-size: 11.5px;
   color: var(--cw-muted);
 }
+/* a model that could not be reached: says so, and offers a retry or Luna */
+.chat-widget__unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  color: var(--cw-text);
+  background: var(--cw-chip-bg);
+  border: 1px solid var(--cw-pop-border);
+  border-radius: 12px;
+}
+.chat-widget__unavailable-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cw-strong);
+}
+.chat-widget__unavailable-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--cw-icon);
+}
+.chat-widget__unavailable-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.chat-widget__unavailable-actions button {
+  padding: 6px 12px;
+  font: 600 12.5px var(--font-ui, "IBM Plex Sans", system-ui, sans-serif);
+  color: var(--cw-text);
+  background: transparent;
+  border: 1px solid var(--cw-field-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.chat-widget__unavailable-actions button:hover {
+  border-color: var(--cw-icon);
+}
+.chat-widget__unavailable-actions button.is-primary {
+  color: var(--cw-on-accent);
+  background: var(--cw-accent);
+  border-color: var(--cw-accent);
+}
+
 .chat-widget__message-timestamp {
   margin: 0;
   font-size: 11px;
@@ -536,6 +583,15 @@ body #chat-widget__container #chat-widget__input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.cw-set__group-label {
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--cw-icon);
+}
+.cw-set__group-label:first-child {
+  margin-top: 0;
 }
 .cw-model {
   display: flex;

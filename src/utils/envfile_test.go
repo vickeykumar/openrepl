@@ -205,7 +205,7 @@ func TestLoadEnvFileExpandsTheHomeDirectory(t *testing.T) {
 }
 
 func TestTheSummarySaysWhatTheEnvFileDidWithoutValues(t *testing.T) {
-	clearEnv(t, "OPENREPL_SUM_A", "OPENREPL_SUM_B", EnvAdminEmails, EnvOpenAIKey, EnvHost, EnvMode, EnvFirebaseConfig)
+	clearEnv(t, "OPENREPL_SUM_A", "OPENREPL_SUM_B", EnvAdminEmails, EnvOpenAIKey, EnvOpenRouterKey, EnvMongoURI, EnvMongoDB, EnvSecret, EnvHost, EnvMode, EnvFirebaseConfig)
 	os.Setenv("OPENREPL_SUM_B", "x")
 	p := writeEnvFile(t, "OPENREPL_SUM_A=hush-value\nOPENREPL_SUM_B=hush-value\nPATH=/x\nOPENREPL_OPENAI_API_KEY=sk-hush\n", 0600)
 	if _, err := LoadEnvFile(p, true); err != nil {
@@ -223,5 +223,25 @@ func TestTheSummarySaysWhatTheEnvFileDidWithoutValues(t *testing.T) {
 	LastEnvFile = EnvFileResult{}
 	if got := configSummary(false); !strings.Contains(got, "env file=none") {
 		t.Errorf("no env file: %s", got)
+	}
+}
+
+// A service account key as one line of JSON survives the env file: in single
+// quotes, or unquoted, but not in double quotes, which would turn the \n inside
+// the private key into line breaks.
+func TestAServiceAccountKeyInAnEnvFile(t *testing.T) {
+	json := `{"type":"service_account","project_id":"p","private_key":"-----BEGIN PRIVATE KEY-----\nAAA\n-----END PRIVATE KEY-----\n","client_email":"a@p.iam"}`
+	for name, line := range map[string]string{
+		"single quotes": "OPENREPL_FIRESTORE_CREDENTIALS='" + json + "'",
+		"unquoted":      "OPENREPL_FIRESTORE_CREDENTIALS=" + json,
+	} {
+		pairs, problems := ParseEnvFile([]byte(line + "\n"))
+		if len(problems) != 0 || len(pairs) != 1 || pairs[0].Value != json {
+			t.Errorf("%s: %+v %+v", name, pairs, problems)
+		}
+	}
+	pairs, _ := ParseEnvFile([]byte(`OPENREPL_FIRESTORE_CREDENTIALS="` + strings.ReplaceAll(json, `"`, `\"`) + `"` + "\n"))
+	if len(pairs) == 1 && pairs[0].Value == json {
+		t.Error("double quotes keep the \\n of the private key as two characters; the test's premise is wrong")
 	}
 }

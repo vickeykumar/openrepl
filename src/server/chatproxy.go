@@ -2,10 +2,12 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 	"utils"
 	"io"
 	"cookie"
@@ -14,9 +16,53 @@ import (
 )
 
 var (
-	openaiEndpoint = "https://api.openai.com/v1/chat/completions"
-	authHeader    = "Authorization"
+	openaiEndpoint     = "https://api.openai.com/v1/chat/completions"
+	openrouterEndpoint = "https://openrouter.ai/api/v1/chat/completions"
+	authHeader         = "Authorization"
 )
+
+// How long a model may take. Cloudflare in front of the site gives up on a
+// reply at about 100 seconds, so both stay below that; a request that runs out
+// of time is answered with "isn't available right now". OpenRouter's Gemma
+// answers in 5 to 10 seconds, so a minute is generous. An admin can change the
+// OpenRouter one (settings, genie.openRouterTimeoutSec); openRouterTimeout, when
+// not zero, overrides it, for tests.
+var (
+	openAITimeout     = 90 * time.Second
+	openRouterTimeout time.Duration
+)
+
+// modelSwitchedOff answers a request for a model an admin switched off. The
+// type is the same as for an unreachable model; the code tells the page apart,
+// so that it offers no "Try again".
+func modelSwitchedOff(rw http.ResponseWriter, req *http.Request, model chatModel) {
+	rw.Header().Set("Content-Type", "application/json")
+	handleChatProxyError(rw, req, http.StatusServiceUnavailable,
+		NewErrorResponse(
+			model.Name+" is switched off right now",
+			"model_unavailable",
+			"model_disabled",
+			"",
+		),
+	)
+}
+
+// modelUnavailable answers a request for a model that cannot be reached, in
+// the shape of an OpenAI error. The Genie panel and the New question dialog
+// look for the type "model_unavailable" to offer another model or a retry. The
+// reason (a missing key, a refusal from OpenRouter, a timeout) goes to the log,
+// not to the visitor.
+func modelUnavailable(rw http.ResponseWriter, req *http.Request, model chatModel) {
+	rw.Header().Set("Content-Type", "application/json")
+	handleChatProxyError(rw, req, http.StatusServiceUnavailable,
+		NewErrorResponse(
+			model.Name+" isn't available right now",
+			"model_unavailable",
+			"model_unavailable",
+			"",
+		),
+	)
+}
 
 // openAIToken and chatHost are looked up when they are needed, not at start-up:
 // main loads the env file after package initialisation, and a setting that
@@ -184,7 +230,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         )
     	return
     }
-    chatBody, err := sanitizeChatBody(rawBody)
+    chatBody, model, err := sanitizeChatBody(rawBody)
     if err != nil {
     	handleChatProxyError(rw, req, http.StatusBadRequest,
         	NewErrorResponse(
@@ -195,6 +241,28 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         	),
         )
     	return
+    }
+
+    // A model an admin switched off is refused before anything is charged or
+    // sent on (admins are not an exception: the picker hides it for them too).
+    if GetSiteSettings().Genie.ModelDisabled(model.ID) {
+        modelSwitchedOff(rw, req, model)
+        return
+    }
+
+    // Where the request goes: OpenAI, or OpenRouter for the open model. Without
+    // the OpenRouter key the open model is not available, and nobody is charged.
+    upstreamURL, upstreamKey, timeout := openaiEndpoint, openAIToken(), openAITimeout
+    if model.Provider == providerOpenRouter {
+        upstreamURL, upstreamKey, timeout = openrouterEndpoint, utils.OpenRouterKey(), openRouterTimeoutSetting()
+        if openRouterTimeout > 0 {
+            timeout = openRouterTimeout
+        }
+        if upstreamKey == "" {
+            log.Println("Error: ", model.ID, "was asked for, but", utils.EnvOpenRouterKey, "is not set")
+            modelUnavailable(rw, req, model)
+            return
+        }
     }
 
     var num_req_rem float64
@@ -219,9 +287,11 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 	    }
 	}
 
-	// Send request to OpenAI
+	// Send the request on
     var customTransport = http.DefaultTransport
-    proxyReq, err := http.NewRequest(req.Method, openaiEndpoint, bytes.NewReader(chatBody))
+    ctx, cancel := context.WithTimeout(req.Context(), timeout)
+    defer cancel()
+    proxyReq, err := http.NewRequestWithContext(ctx, req.Method, upstreamURL, bytes.NewReader(chatBody))
 	if err != nil {
 		log.Println("Error: making request: ", err)
 		handleChatProxyError(rw, req, http.StatusInternalServerError, 
@@ -235,13 +305,20 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	proxyReq.Header.Set("Content-Type", "application/json")
-	proxyReq.Header.Set(authHeader, req.Header.Get(authHeader))
+	proxyReq.Header.Set(authHeader, "Bearer "+upstreamKey)
+	if model.Provider == providerOpenRouter {
+		proxyReq.Header.Set("X-Title", "OpenREPL")
+	}
 
 
 	// Send the proxy request using the custom transport
 	resp, err := customTransport.RoundTrip(proxyReq)
 	if err != nil {
 		log.Println("Error: making request: ", err)
+		if model.Provider == providerOpenRouter {
+			modelUnavailable(rw, req, model)
+			return
+		}
 		handleChatProxyError(rw, req, http.StatusInternalServerError, 
         	NewErrorResponse(
         		"StatusInternalServerError: "+err.Error(),
@@ -253,12 +330,22 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	defer resp.Body.Close()
+
+	if model.Provider == providerOpenRouter && resp.StatusCode >= 400 {
+		// no host could answer (404), no credit (402), a limit (429) or a host
+		// error: the visitor is told the model is not available, not charged
+		// a request, and the reason is logged
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		log.Println("Error: OpenRouter answered", resp.StatusCode, "for", model.ID, ":", string(detail))
+		modelUnavailable(rw, req, model)
+		return
+	}
+
 	if !IsUserAdmin(rw, req) {
 		// roundtrip was success, decrease the request count by 1
 		cookie.SetOpenApiRequestCount(rw, req, num_req_rem-1)
 	}
-
-	defer resp.Body.Close()
 
     // Copy the response status and headers to the response writer
     for key, values := range resp.Header {
@@ -266,6 +353,8 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
             rw.Header().Add(key, value)
         }
     }
+    // the upstream status as well, so that a refusal is not shown as a success
+    rw.WriteHeader(resp.StatusCode)
     // Copy the response body to the response writer
     _, err = io.Copy(rw, resp.Body)
     if err != nil {
