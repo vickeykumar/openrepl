@@ -7,8 +7,16 @@
   var KEY = "theme";
   var mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
+  // What was chosen on this page, for a browser that does not let the page keep
+  // anything (a private window, blocked site data): without it the button would
+  // set the choice, fail to remember it, and read the system's back at once.
+  var memory = null;
   function saved() {
-    try { return localStorage.getItem(KEY); } catch (e) { return null; }
+    try {
+      var s = localStorage.getItem(KEY);
+      if (s === "dark" || s === "light") return s;
+    } catch (e) {}
+    return memory;
   }
   function resolve() {
     var s = saved();
@@ -32,8 +40,15 @@
 
   window.toggleTheme = function () {
     var next = resolve() === "dark" ? "light" : "dark";
+    memory = next;
     try { localStorage.setItem(KEY, next); } catch (e) {}
     apply();
+    // On a phone the first screen (the header and the workspace) is dark in
+    // both themes, so nothing there seems to change: say what happened.
+    if (window.notify && window.matchMedia && window.matchMedia("(max-width: 600px)").matches) {
+      window.notify((next === "dark" ? "Dark" : "Light") + " theme on", { type: "info", timeout: 1800 });
+    }
+    return next;
   };
 
   apply();
