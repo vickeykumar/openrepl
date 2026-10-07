@@ -82,7 +82,8 @@ func (rt *Router) EndSession(key string) (int, error) {
 // MoveSession places a session on another node: its terminals are closed, and
 // its next request goes to the node, which is first sent the gateway's copy of
 // the home. The old node's copy is dropped. It needs workspace sync, which is
-// what keeps that copy.
+// what keeps that copy; a session whose files the gateway cannot bring in
+// step with the old node is not moved.
 func (rt *Router) MoveSession(key, to string) (int, error) {
 	if rt.homeOf == nil {
 		return 0, errors.New("moving a session needs workspace sync")
@@ -103,6 +104,11 @@ func (rt *Router) MoveSession(key, to string) (int, error) {
 	}
 	if b.State() != Online {
 		return 0, fmt.Errorf("node %q is %s and takes no sessions", to, strings.ToLower(b.State().String()))
+	}
+	// The node the session leaves is told to delete its copy of the home, and
+	// the new node is sent the gateway's.
+	if err := rt.secure(ec.Home, ec.BackendID); err != nil {
+		return 0, fmt.Errorf("the session stays on %s: the gateway's copy of its files is not in step with that node (%v)", ec.BackendID, err)
 	}
 	n := rt.endTerminals(key)
 	rt.registry.Release(key)

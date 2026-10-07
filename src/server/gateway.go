@@ -118,14 +118,34 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 			}
 			return m.EnsureHome(ctx, backendID, home)
 		}
-		// A user placed on another worker: the old worker's copy is dropped.
-		// The gateway's copy stays; it is what the new worker receives.
+		// Before a session leaves a worker, the gateway's copy of its home
+		// must be able to stand in for the worker's: it is what the next node
+		// receives, and the worker is told to delete its own. A gateway that
+		// started on an empty disk has no such copy until the worker has sent
+		// its files again.
+		cfg.SecureHome = func(home, backendID string) error {
+			m := syncMgr
+			if m == nil {
+				return nil
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), secureHomeWait)
+			defer cancel()
+			return m.SecureCopy(ctx, backendID, home)
+		}
+		// A session placed on another node: the old node's copy is dropped.
+		// The gateway's copy stays; it is what the new node receives, and what
+		// a session on the gateway itself works in, so there is nothing to
+		// drop when the gateway was the old node.
 		cfg.OnMoved = func(home, from, to string) {
-			log.Printf("Workspace sync: home %s moves from worker %s to %s", home, from, to)
-			if m := syncMgr; m != nil {
-				if err := m.Drop(from, home); err != nil {
-					log.Printf("Workspace sync: dropping %s on %s: %v", home, from, err)
-				}
+			log.Printf("Workspace sync: home %s moves from %s to %s", home, from, to)
+			m := syncMgr
+			if m == nil || from == gateway.LocalID {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), secureHomeWait)
+			defer cancel()
+			if err := m.DropMoved(ctx, from, home); err != nil {
+				log.Printf("Workspace sync: the copy of %s on %s is kept: %v", home, from, err)
 			}
 		}
 	}

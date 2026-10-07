@@ -97,7 +97,20 @@ func newSyncCluster(t *testing.T) *syncCluster {
 			}
 			return gwMgr.EnsureHome(ctx, backend, home)
 		},
-		OnMoved: func(home, from, to string) { gwMgr.Drop(from, home) },
+		// As the server wires them (server/gateway.go).
+		SecureHome: func(home, backend string) error {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			return gwMgr.SecureCopy(ctx, backend, home)
+		},
+		OnMoved: func(home, from, to string) {
+			if from == LocalID {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			gwMgr.DropMoved(ctx, from, home)
+		},
 	})
 	c.router = rt
 
@@ -502,5 +515,126 @@ func TestUserMovedToAnotherWorkerFindsTheirFiles(t *testing.T) {
 			}
 		}
 		return true
+	})
+}
+
+// userGet makes a request as a signed-in user.
+func (c *syncCluster) userGet(uid, path string) (int, string) {
+	c.t.Helper()
+	req, _ := http.NewRequest("GET", c.http.URL+path, nil)
+	req.Header.Set("X-Test-Uid", uid)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := ioutil.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}
+
+// workerHoldingAUsersFiles returns the disk of a worker that held the files
+// of user 42 in step with a gateway. That gateway is not used again: the
+// tests continue with a new one, which starts on an empty disk, as a gateway
+// does on a host that keeps no files between deploys.
+func workerHoldingAUsersFiles(t *testing.T) (base, state string) {
+	t.Helper()
+	old := newSyncCluster(t)
+	base, state = t.TempDir(), t.TempDir()
+	w := old.startWorker("worker-1", base, state, nil)
+	old.waitState("worker-1", Online)
+	if code, body := old.userGet("42", "/ws_filebrowser"); code != http.StatusOK || !strings.HasPrefix(body, "worker-1|") {
+		t.Fatalf("first placement -> %d %q", code, body)
+	}
+	os.MkdirAll(filepath.Join(base, "home-42", "project"), 0755)
+	os.WriteFile(filepath.Join(base, "home-42", "project", "main.py"), []byte("print('my work')"), 0644)
+	waitUntil(t, "the worker's record of the file", func() bool {
+		b, err := ioutil.ReadFile(filepath.Join(state, "gateway", "home-42.json"))
+		return err == nil && strings.Contains(string(b), "main.py")
+	})
+	w.stop()
+	return base, state
+}
+
+func TestUserFindsTheirFilesAfterTheGatewayLostItsDisk(t *testing.T) {
+	wkBase, wkState := workerHoldingAUsersFiles(t)
+	const home = "home-42"
+
+	// The new gateway knows where the user belongs (the pins are kept in the
+	// user database) and nothing else. The worker reconnects and offers the
+	// home, which no session uses yet.
+	c := newSyncCluster(t)
+	c.pins.Set("42", "worker-1")
+	c.startWorker("worker-1", wkBase, wkState, nil)
+	c.waitState("worker-1", Online)
+	if _, err := os.Stat(filepath.Join(c.gwBase, home)); err == nil {
+		t.Fatal("the gateway took a home that had no session")
+	}
+
+	// The user returns. Their worker has the files and serves them.
+	if code, body := c.userGet("42", "/ws_filebrowser"); code != http.StatusOK || body != "worker-1|"+home {
+		t.Fatalf("the user's first request after the gateway restarted -> %d %q", code, body)
+	}
+	waitUntil(t, "the user's files on the new gateway", func() bool {
+		b, err := ioutil.ReadFile(filepath.Join(c.gwBase, home, "project", "main.py"))
+		return err == nil && string(b) == "print('my work')"
+	})
+	if b, _ := ioutil.ReadFile(filepath.Join(wkBase, home, "project", "main.py")); string(b) != "print('my work')" {
+		t.Fatalf("the worker's file = %q", b)
+	}
+
+	// With the gateway's copy in step, an admin can move the session to the
+	// gateway: the worker gives up its copy and the files are still there.
+	if _, err := c.router.MoveSession("u:42", LocalID); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the worker's record of the moved home to go", func() bool {
+		_, err := os.Stat(filepath.Join(wkState, "gateway", home+".json"))
+		return os.IsNotExist(err)
+	})
+	if b, _ := ioutil.ReadFile(filepath.Join(c.gwBase, home, "project", "main.py")); string(b) != "print('my work')" {
+		t.Fatalf("the gateway's file after the move = %q", b)
+	}
+}
+
+func TestUserIsNotStartedElsewhereWhileOnlyTheirWorkerHasTheirFiles(t *testing.T) {
+	wkBase, wkState := workerHoldingAUsersFiles(t)
+	const home = "home-42"
+
+	// The new gateway comes up, and the user's worker stays away for longer
+	// than the grace period. Another worker is there.
+	c := newSyncCluster(t)
+	c.pins.Set("42", "worker-1")
+	w2Base := t.TempDir()
+	c.startWorker("worker-2", w2Base, t.TempDir(), nil)
+	c.waitState("worker-2", Online)
+	time.Sleep(250 * time.Millisecond)
+
+	for i := 0; i < 3; i++ {
+		if code, body := c.userGet("42", "/ws_filebrowser"); code != http.StatusServiceUnavailable || !strings.Contains(body, "workspace node unavailable") {
+			t.Fatalf("with the files only on a worker that is away -> %d %q", code, body)
+		}
+	}
+	if got, _ := c.pins.Get("42"); got != "worker-1" {
+		t.Fatalf("pin = %q, want worker-1", got)
+	}
+	if _, err := os.Stat(filepath.Join(w2Base, home)); err == nil {
+		t.Fatal("the user was given an empty home on another worker")
+	}
+	if _, err := os.Stat(filepath.Join(c.gwState, "worker-1", home+".drop")); err == nil {
+		t.Fatal("the worker that has the only copy was ordered to drop it")
+	}
+
+	// Their worker returns: they are back on it, with their files.
+	c.startWorker("worker-1", wkBase, wkState, nil)
+	c.waitState("worker-1", Online)
+	if code, body := c.userGet("42", "/ws_filebrowser"); code != http.StatusOK || body != "worker-1|"+home {
+		t.Fatalf("after the worker returned -> %d %q", code, body)
+	}
+	if b, _ := ioutil.ReadFile(filepath.Join(wkBase, home, "project", "main.py")); string(b) != "print('my work')" {
+		t.Fatalf("the worker's file = %q", b)
+	}
+	waitUntil(t, "the user's files on the gateway", func() bool {
+		_, err := os.Stat(filepath.Join(c.gwBase, home, "project", "main.py"))
+		return err == nil
 	})
 }

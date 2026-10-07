@@ -244,12 +244,14 @@ func (m *Manager) Serve(ctx context.Context, peer string, conn io.ReadWriteClose
 		conn.Close()
 		return err
 	}
-	l := NewLink(Config{
+	var l *Link
+	l = NewLink(Config{
 		Node: m.cfg.Node, Peer: peer, IsGateway: m.cfg.IsGateway,
 		BaseDir: m.cfg.BaseDir, Records: m.records, MaxFileSize: m.cfg.MaxFileSize,
 		Accept:         func(home string) error { return m.accept(peer, home) },
 		OnAttach:       func(home string) { m.homeAttached(peer, home) },
 		OnDrop:         func(home string) { m.handleDrop(peer, home) },
+		OnRefused:      func(home string) { m.homeRefused(peer, l, home) },
 		Debounce:       m.cfg.Debounce,
 		MaxDelay:       m.cfg.MaxDelay,
 		Window:         m.cfg.Window,
@@ -322,10 +324,10 @@ func (m *Manager) reconcileOwned(ctx context.Context, peer string, l *Link, onRe
 			}
 			var refused *RefusedError
 			if errors.As(err, &refused) {
-				// The gateway no longer holds this home (it was dropped while
-				// this worker was away). That is not a reason to stay out of
-				// rotation; the gateway will tell the worker to drop it.
-				m.cfg.Logf("wsync: the gateway refused %s: %s", home, refused.Reason)
+				// The gateway does not take this home now: it was dropped
+				// while this worker was away, or the gateway has no session
+				// for it yet. That is not a reason to stay out of rotation.
+				// The home is asked for again when a request needs it.
 				continue
 			}
 			m.cfg.Logf("wsync: reconciling %s with %s failed: %v", home, peer, err)
@@ -338,9 +340,10 @@ func (m *Manager) reconcileOwned(ctx context.Context, peer string, l *Link, onRe
 	}
 }
 
-// droppedMeanwhile reports whether a wait for a home ended because the gateway
-// dropped the home, which it does for a home that expired or moved to another
-// node. The gateway sends its pending drop orders as soon as a worker
+// droppedMeanwhile reports whether a wait for a home ended because the
+// conversation no longer holds it: the gateway dropped it, which it does for a
+// home that expired or moved to another node, or refused it before the wait
+// began. The gateway sends its pending drop orders as soon as a worker
 // connects, so one can arrive while the worker is still reconciling the home.
 func droppedMeanwhile(err error) bool {
 	return errors.Is(err, errDetached) || errors.Is(err, errNotAttached)
@@ -361,9 +364,23 @@ func (m *Manager) homeAttached(peer, home string) {
 	}
 }
 
+// homeRefused runs when the peer would not synchronize a home. Nothing will be
+// exchanged for it, so there is nothing to watch, unless a request has
+// attached the home again meanwhile: that one keeps its watch.
+func (m *Manager) homeRefused(peer string, l *Link, home string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if l.home(home) != nil || m.homeLink[home] != peer {
+		return
+	}
+	delete(m.homeLink, home)
+	m.watcher.RemoveHome(home)
+}
+
 // EnsureHome makes sure a home is synchronized with a peer and waits until
 // it is. On a worker, call it before the first request for a home runs; on a
 // gateway, to send a home to a worker that is about to run a session for it.
+// A peer that refuses the home is asked again by the next call.
 func (m *Manager) EnsureHome(ctx context.Context, peer, home string) error {
 	l := m.link(peer)
 	if l == nil {
@@ -378,17 +395,7 @@ func (m *Manager) EnsureHome(ctx context.Context, peer, home string) error {
 	if err := l.Attach(home); err != nil {
 		return err
 	}
-	err := l.WaitSynced(ctx, home)
-	var refused *RefusedError
-	if errors.As(err, &refused) {
-		// The peer does not hold this home: nothing will be exchanged, so
-		// there is nothing to watch.
-		m.watcher.RemoveHome(home)
-		m.mu.Lock()
-		delete(m.homeLink, home)
-		m.mu.Unlock()
-	}
-	return err
+	return l.WaitSynced(ctx, home)
 }
 
 // Synced reports whether a home is in step with a peer.
@@ -400,9 +407,58 @@ func (m *Manager) Synced(peer, home string) bool {
 // Connected reports whether there is a conversation with a peer.
 func (m *Manager) Connected(peer string) bool { return m.link(peer) != nil }
 
+// ErrNoCopy means this node's copy of a home cannot stand in for a peer's:
+// the two were never brought in step.
+var ErrNoCopy = errors.New("wsync: this node holds no complete copy of the home")
+
+// SecureCopy makes sure that this node's copy of a home can stand in for a
+// peer's, which must hold before the peer's copy is given up. With a
+// connected peer the two copies are brought in step now, if they were not
+// yet. For a peer that is away, a complete reconcile with it must be on
+// record and the files must still be here; what the peer changed after it
+// was last seen is not in the copy.
+func (m *Manager) SecureCopy(ctx context.Context, peer, home string) error {
+	if err := ValidHomeName(home); err != nil {
+		return err
+	}
+	if err := ValidHomeName(peer); err != nil {
+		return err
+	}
+	if m.link(peer) != nil {
+		return m.EnsureHome(ctx, peer, home)
+	}
+	if !m.hasRecord(peer, home) {
+		return ErrNoCopy
+	}
+	rec, err := m.records.Load(peer, home)
+	if err != nil {
+		return err
+	}
+	if rec.Partial {
+		return ErrNoCopy
+	}
+	if fi, err := os.Stat(filepath.Join(m.cfg.BaseDir, home)); err != nil || !fi.IsDir() {
+		return ErrNoCopy
+	}
+	return nil
+}
+
+// DropMoved is Drop for a home whose sessions now run on another node: the
+// peer is told to delete its copy only once SecureCopy says that the copy
+// here can stand in for it. Otherwise nothing changes on either side and the
+// error says why, because the peer's copy may be the only complete one.
+func (m *Manager) DropMoved(ctx context.Context, peer, home string) error {
+	if err := m.SecureCopy(ctx, peer, home); err != nil {
+		return err
+	}
+	return m.Drop(peer, home)
+}
+
 // Drop tells a peer to delete its copy of a home, and forgets the home on
 // this side: its record, its watch and its place in the conversation. If the
 // peer is not connected the order is kept and delivered when it connects.
+// It does not check that another copy exists: use it for a home that is to be
+// deleted everywhere, and DropMoved for one that moved.
 func (m *Manager) Drop(peer, home string) error {
 	if err := ValidHomeName(home); err != nil {
 		return err

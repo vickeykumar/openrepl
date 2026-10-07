@@ -14,8 +14,32 @@ import (
 type calls struct {
 	mu       sync.Mutex
 	prepared []string // "home@backend"
+	secured  []string // "home@backend"
 	moved    []string // "home:from->to"
 	failNext int
+	noCopy   bool // the gateway's copy of a home cannot stand in for a worker's
+}
+
+func (c *calls) secure(home, backend string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.secured = append(c.secured, home+"@"+backend)
+	if c.noCopy {
+		return errors.New("the gateway holds no complete copy of the home")
+	}
+	return nil
+}
+
+func (c *calls) setNoCopy(v bool) {
+	c.mu.Lock()
+	c.noCopy = v
+	c.mu.Unlock()
+}
+
+func (c *calls) securedHomes() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.secured...)
 }
 
 func (c *calls) prepare(ctx context.Context, home, backend string) error {
@@ -52,6 +76,7 @@ func relocRouter(pins PinStore, c *calls, after time.Duration, picker Picker) *R
 		Picker:        picker,
 		HomeOf:        func(id Identity) string { return "home-" + id.UID + id.GuestID },
 		PrepareHome:   c.prepare,
+		SecureHome:    c.secure,
 		OnMoved:       c.onMoved,
 		RelocateAfter: after,
 	})
@@ -154,6 +179,74 @@ func TestDrainingWorkerGivesUpItsPinnedUsersAtOnce(t *testing.T) {
 		t.Fatalf("pin = %q", got)
 	}
 	if _, moved := c.snapshot(); len(moved) != 1 {
+		t.Fatalf("moved = %v", moved)
+	}
+}
+
+// A gateway that started on an empty disk has the pins (they are in the user
+// database) but none of the files. A user whose worker stays away must not be
+// started on another node with an empty workspace, and their worker must not
+// be told to delete the only copy.
+func TestPinnedUserStaysWithTheirWorkerWhileTheGatewayHoldsNoCopy(t *testing.T) {
+	pins := &memPins{m: map[string]string{"u1": "worker-a"}}
+	c := &calls{noCopy: true}
+	b := &named{id: "worker-b", weight: 10}
+	rt := relocRouter(pins, c, 30*time.Millisecond, &countingPicker{id: "worker-b"})
+	rt.AddBackend(b)
+	time.Sleep(60 * time.Millisecond) // worker-a has been away for the grace period
+
+	rec := do(rt, "GET", "/ws_filebrowser", asUser("u1"))
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "workspace node unavailable") {
+		t.Fatalf("with no copy on the gateway -> %d %q", rec.Code, rec.Body.String())
+	}
+	if b.hits != 0 {
+		t.Fatal("the user was started on another node without their files")
+	}
+	if got, _ := pins.Get("u1"); got != "worker-a" {
+		t.Fatalf("pin = %q, want worker-a", got)
+	}
+	if _, moved := c.snapshot(); len(moved) != 0 {
+		t.Fatalf("the old node was told to drop the home: %v", moved)
+	}
+	if got := c.securedHomes(); len(got) == 0 || got[0] != "home-u1@worker-a" {
+		t.Fatalf("secured = %v", got)
+	}
+
+	// Their worker returns: they go back to it.
+	a := &named{id: "worker-a", weight: 10}
+	rt.AddBackend(a)
+	if code := do(rt, "GET", "/ws_filebrowser", asUser("u1")).Code; code != http.StatusOK || a.hits != 1 {
+		t.Fatalf("after the worker returned -> %d, a=%d", code, a.hits)
+	}
+
+	// Once the gateway has its copy, a worker that stays away gives up the user.
+	c.setNoCopy(false)
+	rt.RemoveBackend(a)
+	resetContext(rt)
+	time.Sleep(60 * time.Millisecond)
+	if code := do(rt, "GET", "/ws_filebrowser", asUser("u1")).Code; code != http.StatusOK || b.hits != 1 {
+		t.Fatalf("with a copy on the gateway -> %d, b=%d", code, b.hits)
+	}
+	if _, moved := c.snapshot(); len(moved) != 1 || moved[0] != "home-u1:worker-a->worker-b" {
+		t.Fatalf("moved = %v", moved)
+	}
+}
+
+func TestDrainingWorkerKeepsAUserWhoseFilesTheGatewayCannotTake(t *testing.T) {
+	pins := &memPins{m: map[string]string{"u1": "worker-a"}}
+	c := &calls{noCopy: true}
+	a := &named{id: "worker-a", weight: 10, state: Draining}
+	b := &named{id: "worker-b", weight: 10}
+	rt := relocRouter(pins, c, time.Hour, &countingPicker{id: "worker-b"})
+	rt.AddBackend(a)
+	rt.AddBackend(b)
+	if code := do(rt, "GET", "/ws_filebrowser", asUser("u1")).Code; code != http.StatusServiceUnavailable || b.hits != 0 {
+		t.Fatalf("-> %d, b=%d", code, b.hits)
+	}
+	if got, _ := pins.Get("u1"); got != "worker-a" {
+		t.Fatalf("pin = %q", got)
+	}
+	if _, moved := c.snapshot(); len(moved) != 0 {
 		t.Fatalf("moved = %v", moved)
 	}
 }
