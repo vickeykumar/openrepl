@@ -63,6 +63,7 @@ func actionRouter(c *calls, pins PinStore, picker Picker) *Router {
 			return "python", 10, strings.HasPrefix(rel, "ws_") && rel != "ws_filebrowser"
 		},
 		PrepareHome: c.prepare,
+		SecureHome:  c.secure,
 		OnMoved:     c.onMoved,
 		UserLabel:   func(uid string) string { return uid + "@example.com" },
 	})
@@ -242,6 +243,68 @@ func TestMovingASessionNeedsSyncAndAReadyNode(t *testing.T) {
 	do(plain, "GET", "/ws_filebrowser", nil)
 	if _, err := plain.MoveSession("u:u1", "worker-b"); err == nil || !strings.Contains(err.Error(), "workspace sync") {
 		t.Errorf("a move without sync: %v", err)
+	}
+}
+
+// Moving a session tells the node it leaves to delete its copy of the home.
+// If the gateway cannot bring its own copy in step with that node first, the
+// node's copy may be the only one, so the session is not moved.
+func TestASessionIsNotMovedOffANodeThatHoldsTheOnlyCopy(t *testing.T) {
+	c := &calls{noCopy: true}
+	pins := &memPins{}
+	rt := actionRouter(c, pins, &countingPicker{id: "worker-a"})
+	a := newTerminalBackend("worker-a")
+	rt.AddBackend(a)
+	rt.AddBackend(newTerminalBackend("worker-b"))
+	term := openTerminal(rt, a, "u1")
+
+	for _, to := range []string{"worker-b", LocalID} {
+		rec := adminPost(rt, "/admin/sessions/u:u1/move", `{"to":"`+to+`"}`)
+		if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "stays on worker-a") {
+			t.Fatalf("move to %s -> %d %q", to, rec.Code, rec.Body.String())
+		}
+	}
+	if a.openTerminals() != 1 {
+		t.Fatal("a refused move closed the terminal")
+	}
+	if ec, ok := rt.Registry().Resolve("u:u1"); !ok || ec.BackendID != "worker-a" {
+		t.Fatalf("context after the refused move = %+v %v", ec, ok)
+	}
+	if got, _ := pins.Get("u1"); got != "worker-a" {
+		t.Fatalf("pin = %q", got)
+	}
+	if _, moved := c.snapshot(); len(moved) != 0 {
+		t.Fatalf("the node was told to drop the home: %v", moved)
+	}
+
+	// With the copy in step, the same move goes through.
+	c.setNoCopy(false)
+	if rec := adminPost(rt, "/admin/sessions/u:u1/move", `{"to":"worker-b"}`); rec.Code != http.StatusOK {
+		t.Fatalf("move -> %d %s", rec.Code, rec.Body.String())
+	}
+	waitClosed(t, term, "the terminal on the old node")
+}
+
+// A session on the gateway itself works in the gateway's copy of its home, so
+// there is no other copy to check before it moves to a worker.
+func TestMovingASessionOffTheGatewayNeedsNoCopyCheck(t *testing.T) {
+	c := &calls{noCopy: true}
+	rt := actionRouter(c, &memPins{}, &countingPicker{id: LocalID})
+	rt.AddBackend(newTerminalBackend("worker-a"))
+	if code := do(rt, "GET", "/ws_filebrowser", asUser("u1")).Code; code != http.StatusOK {
+		t.Fatalf("first request -> %d", code)
+	}
+	if ec, _ := rt.Registry().Resolve("u:u1"); ec.BackendID != LocalID {
+		t.Fatalf("the session is on %q, want the gateway", ec.BackendID)
+	}
+	if rec := adminPost(rt, "/admin/sessions/u:u1/move", `{"to":"worker-a"}`); rec.Code != http.StatusOK {
+		t.Fatalf("move -> %d %s", rec.Code, rec.Body.String())
+	}
+	if got := c.securedHomes(); len(got) != 0 {
+		t.Fatalf("the gateway's own copy was checked against itself: %v", got)
+	}
+	if _, moved := c.snapshot(); len(moved) != 1 || moved[0] != "home-u1:local->worker-a" {
+		t.Fatalf("moved = %v", moved)
 	}
 }
 

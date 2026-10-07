@@ -76,8 +76,16 @@ type Config struct {
 	// first request is forwarded: it makes the worker's copy of the home match
 	// the gateway's, so a user moved to another worker finds their files.
 	PrepareHome func(ctx context.Context, home, backendID string) error
-	// OnMoved is called when a signed-in user is placed on another worker than
-	// the one that held their files, so the old copy can be dropped.
+	// SecureHome is called before the files of a home are given up on a
+	// backend: when a signed-in user is to be placed on another backend than
+	// the one that holds their files, and when an admin moves a session. It
+	// makes sure the gateway's copy of the home can stand in for the
+	// backend's, and returns an error if it cannot; the session then stays
+	// where it is. It may take a moment: with a connected backend the two
+	// copies are first brought in step. Nil means the copy is always good.
+	SecureHome func(home, backendID string) error
+	// OnMoved is called when a session is placed on another backend than the
+	// one that held its files, so the old copy can be dropped.
 	OnMoved func(home, from, to string)
 	// RelocateAfter is how long a worker may be gone before the signed-in
 	// users pinned to it are placed elsewhere. Default 2 minutes. A worker
@@ -139,6 +147,7 @@ type Router struct {
 	termSeq uint64
 
 	prepare       func(ctx context.Context, home, backendID string) error
+	secureHome    func(home, backendID string) error
 	onMoved       func(home, from, to string)
 	relocateAfter time.Duration
 	started       time.Time
@@ -201,6 +210,7 @@ func NewRouter(cfg Config) *Router {
 		terms:     make(map[string]map[uint64]context.CancelFunc),
 
 		prepare:       cfg.PrepareHome,
+		secureHome:    cfg.SecureHome,
 		onMoved:       cfg.OnMoved,
 		relocateAfter: cfg.RelocateAfter,
 		started:       time.Now(),
@@ -586,7 +596,7 @@ func (rt *Router) place(id Identity) (backendID, from string, err error) {
 					// Syncing: the worker is catching up with the gateway and
 					// serves this user's home as soon as that home is in step.
 					return pinned, "", nil
-				case rt.canRelocate(pinned, found, b):
+				case rt.canRelocate(pinned, found, b) && rt.holdsHome(id.Home, pinned):
 					// Their files are on the gateway as well, so they can be
 					// placed on another worker, which is sent a copy first.
 					from = pinned
@@ -620,6 +630,8 @@ func (rt *Router) place(id Identity) (backendID, from string, err error) {
 // canRelocate reports whether the users pinned to a backend may be placed
 // elsewhere: only with workspace sync (the gateway holds their files), and
 // only when the backend is draining or has been gone for the grace period.
+// Whether the gateway really holds a user's files is asked per home
+// (holdsHome).
 func (rt *Router) canRelocate(pinned string, found bool, b Backend) bool {
 	if rt.homeOf == nil || pinned == LocalID {
 		return false
@@ -628,6 +640,27 @@ func (rt *Router) canRelocate(pinned string, found bool, b Backend) bool {
 		return b.State() == Draining
 	}
 	return rt.goneLongEnough(pinned)
+}
+
+// secure makes sure the gateway's copy of a home can stand in for the copy on
+// a backend (Config.SecureHome). The gateway's own backend works in that copy.
+func (rt *Router) secure(home, backendID string) error {
+	if rt.secureHome == nil || home == "" || backendID == LocalID {
+		return nil
+	}
+	return rt.secureHome(home, backendID)
+}
+
+// holdsHome reports whether a home's sessions may run on another backend than
+// the one that holds its files. Without a copy that can stand in for those
+// files the user would start on an empty workspace, and the files would be
+// left behind.
+func (rt *Router) holdsHome(home, backendID string) bool {
+	if err := rt.secure(home, backendID); err != nil {
+		log.Printf("gateway: home %s stays on %s: %v", home, backendID, err)
+		return false
+	}
+	return true
 }
 
 func (rt *Router) identify(w http.ResponseWriter, r *http.Request) (Identity, error) {

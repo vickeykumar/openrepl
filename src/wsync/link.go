@@ -35,6 +35,9 @@ type Config struct {
 	OnSynced func(home string)
 	// OnDrop is called when the peer says a home expired or moved away.
 	OnDrop func(home string)
+	// OnRefused is called when the peer would not synchronize a home, after
+	// the home has been forgotten here.
+	OnRefused func(home string)
 	// MaxFileSize is the largest file synchronized. Zero means the default.
 	MaxFileSize int64
 	// Debounce is how long a home must be quiet before local changes are
@@ -402,8 +405,15 @@ func (l *Link) handle(m Message, body *bodyReader) error {
 			l.cfg.OnDrop(m.Home)
 		}
 	case MsgRefuse:
-		if hs := l.home(m.Home); hs != nil {
-			hs.finish(&RefusedError{Home: m.Home, Reason: m.Reason})
+		// The peer will not synchronize the home now. That can change: a
+		// gateway refuses a home that has no session yet, and has one for it
+		// a moment later. So the home is forgotten here, and whoever attaches
+		// it next asks the peer again.
+		if l.forget(m.Home, &RefusedError{Home: m.Home, Reason: m.Reason}) {
+			l.cfg.Logf("wsync: %s refused home %q: %s", l.cfg.Peer, m.Home, m.Reason)
+			if l.cfg.OnRefused != nil {
+				l.cfg.OnRefused(m.Home)
+			}
 		}
 	case MsgFatal:
 		return fmt.Errorf("wsync: peer ended the conversation: %s", m.Reason)
@@ -672,6 +682,11 @@ func (l *Link) homeFor(name string, incoming bool) (*homeSync, error) {
 		l.cfg.Logf("wsync: %v; reconciling %s from scratch", err, name)
 		rec = NewRecord(name, l.cfg.Peer)
 	}
+	if !rec.Valid {
+		// Nothing was agreed with this peer before. Until the first reconcile
+		// is complete the record lists only what has arrived so far.
+		rec.Partial = true
+	}
 	hctx, hcancel := context.WithCancel(l.ctx)
 	hs := &homeSync{
 		name:       name,
@@ -766,13 +781,18 @@ func (l *Link) NotifyAll() {
 
 // Detach stops synchronizing a home and forgets it, without touching its
 // files or its record. Changes the peer sends for it are refused.
-func (l *Link) Detach(home string) {
+func (l *Link) Detach(home string) { l.forget(home, errDetached) }
+
+// forget takes a home out of the conversation, without touching its files or
+// its record, and ends the wait of whoever waits for it with err. It reports
+// whether the conversation held the home. The home can be attached again.
+func (l *Link) forget(home string, err error) bool {
 	l.mu.Lock()
 	hs := l.homes[home]
 	delete(l.homes, home)
 	l.mu.Unlock()
 	if hs == nil {
-		return
+		return false
 	}
 	hs.cancel()
 	hs.mu.Lock()
@@ -780,10 +800,11 @@ func (l *Link) Detach(home string) {
 		hs.saveTimer.Stop()
 		hs.saveTimer = nil
 	}
-	hs.recDirty = false // a record that is being dropped must not be written back
+	hs.recDirty = false // the record on disk must stay as it is, or go with a drop
 	hs.detached = true
 	hs.mu.Unlock()
-	hs.finish(errDetached)
+	hs.finish(err)
+	return true
 }
 
 var errDetached = errors.New("wsync: home was detached")
@@ -1052,6 +1073,7 @@ func (l *Link) round(hs *homeSync, peer *Message) error {
 	first := !hs.synced
 	hs.synced = true
 	hs.retries = 0
+	hs.rec.Partial = false
 	hs.recDirty = true
 	l.saveLocked(hs)
 	hs.mu.Unlock()

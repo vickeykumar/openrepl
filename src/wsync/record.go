@@ -25,7 +25,12 @@ type Record struct {
 	Peer string `json:"peer"`
 	// Valid is false when no record was found. A reconcile with no record is
 	// a union of both sides and deletes nothing.
-	Valid   bool             `json:"-"`
+	Valid bool `json:"-"`
+	// Partial is set from the first contact with a peer until the first
+	// reconcile with it is complete. While it is set, the copy on this side
+	// may hold only part of what the peer has, so it cannot stand in for the
+	// peer's. A record written before this field existed counts as complete.
+	Partial bool             `json:"partial,omitempty"`
 	Entries map[string]Entry `json:"entries"`
 }
 

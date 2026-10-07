@@ -22,6 +22,10 @@ import (
 // before it gets "workspace is synchronizing".
 const workspaceWait = 10 * time.Second
 
+// secureHomeWait is how long the gateway takes to bring its copy of a home in
+// step with a worker before the home's session leaves that worker.
+const secureHomeWait = 30 * time.Second
+
 // defaultSyncStateDir is where the base records of workspace sync are kept.
 const defaultSyncStateDir = utils.GOTTY_PATH + "/wsync"
 
