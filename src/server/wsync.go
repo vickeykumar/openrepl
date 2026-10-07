@@ -122,6 +122,15 @@ func (server *Server) keepHome(dir string) bool {
 // from the gateway: a visitor of the worker's own port has a home of their
 // own, which is not synchronized.
 func (server *Server) waitWorkspace(r *http.Request, homedir string) error {
+	err := server.waitWorkspaceHome(r, homedir)
+	if err != nil {
+		// the visitor is only told that the workspace is synchronizing: the reason is here
+		log.Printf("workspace sync: the home %q is not ready for %s: %v", homeNameOf(homedir), r.URL.Path, err)
+	}
+	return err
+}
+
+func (server *Server) waitWorkspaceHome(r *http.Request, homedir string) error {
 	s := &server.workerSync
 	if !s.on() || !isTrusted(r) {
 		return nil
