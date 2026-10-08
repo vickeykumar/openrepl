@@ -6,7 +6,8 @@
 // GPT-4o mini). Two come from OpenAI; Gemma 4 31B comes through OpenRouter and
 // is listed only when the server has an OpenRouter key (config.js sets
 // openrouter_enabled). The choice is kept on this device, and the default is
-// Luna with a Low effort.
+// Luna with a Low effort. A page that wants a choice of its own (the blog
+// editor) sets window.MODEL_CHOICE_KEY before loading this file.
 
 (function () {
   "use strict";
@@ -64,7 +65,7 @@
     { id: "high", label: "High", tokens: 4000, note: "Thinks the longest. For hard problems; the slowest to answer." },
   ];
 
-  var KEY = "genie-model";
+  var KEY = window.MODEL_CHOICE_KEY || "genie-model";
   function find(list, id) {
     for (var i = 0; i < list.length; i++) {
       if (list[i].id === id) return list[i];

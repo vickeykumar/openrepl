@@ -3,7 +3,9 @@
  * Ask Genie: a button of the blog editor that sends the selected text (or what
  * is typed in the box) with a task to the site's own /chat/completions, and
  * inserts the answer. The site's access token is used, so nothing is entered
- * here, and the server decides which model answers.
+ * here. The model and, for a model that thinks, the effort are chosen in the
+ * dialog (js/model-choice.js, kept apart from the chat widget's choice by
+ * window.MODEL_CHOICE_KEY); without it the server's default answers.
  *
  * Options (tinymce.init): openai: { api_key: <the page's access token>,
  * baseUri: "/chat/completions" }.
@@ -31,14 +33,18 @@ tinymce.PluginManager.add('genie', function (editor) {
     }).join('');
   }
 
+  var CHOICE = window.ModelChoice || null;
+
+  function modelOf(id) {
+    return CHOICE && CHOICE.models.filter(function (m) { return m.id === id; })[0] || null;
+  }
+
   function ask(task, input) {
     var prompt = task + ' Answer with the text only, no introduction.\n\n' + input;
-    return getResponseFromOpenAI(OPENAI.api_key, prompt, {
-      baseUri: OPENAI.baseUri || '/chat/completions',
-      model: 'gpt-4o-mini',
-      temperature: 0.5,
-      max_tokens: 1200
-    }).then(function (res) {
+    var options = { baseUri: OPENAI.baseUri || '/chat/completions', model: 'gpt-4o-mini', temperature: 0.5, max_tokens: 1200 };
+    // a thinking model counts its thinking against the answer, so it gets room for both
+    if (CHOICE) options.fields = CHOICE.fields({ temperature: 0.5, maxTokens: 1200, extraTokens: 1200 });
+    return getResponseFromOpenAI(OPENAI.api_key, prompt, options).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (!res.ok) {
           var why = data && data.error && data.error.message ? data.error.message : 'Genie could not answer (' + res.status + ').';
@@ -53,22 +59,37 @@ tinymce.PluginManager.add('genie', function (editor) {
 
   function openDialog() {
     var selected = editor.selection.getContent({ format: 'text' }).trim();
-    return editor.windowManager.open({
+    var items = [{ type: 'selectbox', name: 'task', label: 'What should Genie do?', items: TASKS.map(function (t) { return { text: t.text, value: t.value }; }) }];
+    var initial = { task: TASKS[0].value, input: selected };
+    if (CHOICE) {
+      var now = CHOICE.get();
+      items.push({ type: 'selectbox', name: 'model', label: 'Model', items: CHOICE.models.map(function (m) { return { text: m.name + (m.tag ? ' (' + m.tag.toLowerCase() + ')' : ''), value: m.id }; }) });
+      items.push({ type: 'selectbox', name: 'effort', label: 'Effort (for models that think)', items: CHOICE.efforts.map(function (e) { return { text: e.label, value: e.id }; }) });
+      initial.model = modelOf(now.model) ? now.model : CHOICE.models[0].id;
+      initial.effort = now.effort;
+    }
+    items.push({ type: 'textarea', name: 'input', label: selected ? 'The selected text' : 'The text or topic' });
+    // the effort applies to a model that thinks only
+    function syncEffort(api) {
+      if (!CHOICE) return;
+      var m = modelOf(api.getData().model);
+      api.setEnabled('effort', !!(m && m.reasoning));
+    }
+    var dialog = editor.windowManager.open({
       title: 'Ask Genie',
       body: {
         type: 'panel',
-        items: [
-          { type: 'selectbox', name: 'task', label: 'What should Genie do?', items: TASKS.map(function (t) { return { text: t.text, value: t.value }; }) },
-          { type: 'textarea', name: 'input', label: selected ? 'The selected text' : 'The text or topic' }
-        ]
+        items: items
       },
       buttons: [
         { type: 'cancel', text: 'Close' },
         { type: 'submit', text: 'Ask Genie', primary: true }
       ],
-      initialData: { task: TASKS[0].value, input: selected },
+      initialData: initial,
+      onChange: syncEffort,
       onSubmit: function (api) {
         var data = api.getData();
+        if (CHOICE) CHOICE.set(data.model, data.effort);
         if (!data.input.trim()) {
           editor.notificationManager.open({ text: 'Select some text in the post, or type it here first.', type: 'warning', timeout: 3000 });
           return;
@@ -96,6 +117,8 @@ tinymce.PluginManager.add('genie', function (editor) {
         });
       }
     });
+    syncEffort(dialog);
+    return dialog;
   }
 
   editor.ui.registry.addIcon('genie', '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>');
