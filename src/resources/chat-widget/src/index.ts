@@ -526,7 +526,7 @@ function refreshCoach() {
 }
 
 async function coachAsk(kind: CoachKind) {
-  if (coachBusy || !config.url) return;
+  if (genieBusy() || agentRunner.running || !config.url) return;
   const used = hintsUsed(readHints(), coachQuestion());
   if (kind === "hint" && used >= MAX_HINTS) {
     await createNewMessageEntry(NO_HINTS_LEFT, Date.now(), "system", false, "Coach");
@@ -536,6 +536,8 @@ async function coachAsk(kind: CoachKind) {
   const asked = askedText(kind, level);
   coachBusy = true;
   refreshCoach();
+  const sendBtn = document.getElementById("chat-widget__submit");
+  if (sendBtn) sendBtn.setAttribute("disabled", "");
   addMessageToHistory("user", asked);
   await createNewMessageEntry(asked, Date.now(), "user");
   const label = thinkingBubble.querySelector(".chat-widget__thinking-label");
@@ -587,6 +589,7 @@ async function coachAsk(kind: CoachKind) {
     await createNewMessageEntry("Unable to reach the coach now. Try again.", Date.now(), "system", false, "Coach");
   } finally {
     coachBusy = false;
+    if (sendBtn) sendBtn.removeAttribute("disabled");
     refreshCoach();
   }
 }
@@ -686,7 +689,24 @@ const agentRunner = new AgentRunner(
       g.addTab();
       return document.querySelectorAll("#terminal-tabs .tab").length > before;
     },
-    tab: (n: number) => (document.querySelectorAll("#terminal-tabs .tab")[n - 1] as object | undefined) || null,
+    files: {
+      // the page's Files panel (js/src/page/07-file-browser.js); without it nothing is ready
+      ready: () => !!(window as any).FileBrowser && (window as any).FileBrowser.ready(),
+      reveal: () => (window as any).FileBrowser.reveal(),
+      info: (path: string) => (window as any).FileBrowser.info(path),
+      current: () => (window as any).FileBrowser.current(),
+      buffer: () => (window as any).FileBrowser.buffer(),
+      list: (path: string) => (window as any).FileBrowser.list(path),
+      open: (path: string) => (window as any).FileBrowser.open(path),
+      create: (path: string, kind: "file" | "folder") => (window as any).FileBrowser.create(path, kind),
+      save: () => (window as any).FileBrowser.save(),
+      rename: (path: string, name: string) => (window as any).FileBrowser.rename(path, name),
+      cut: (path: string) => (window as any).FileBrowser.cut(path),
+      copy: (path: string) => (window as any).FileBrowser.copy(path),
+      paste: (to: string) => (window as any).FileBrowser.paste(to),
+      move: (path: string, to: string) => (window as any).FileBrowser.move(path, to),
+      remove: (path: string) => (window as any).FileBrowser.remove(path),
+    },
     closeTab: (n: number) => {
       const tab = document.querySelectorAll("#terminal-tabs .tab")[n - 1];
       const x = tab && (tab.querySelector(".close-tab") as HTMLElement | null);
@@ -714,9 +734,16 @@ const agentRunner = new AgentRunner(
       addMessageToHistory("user", text);
       await createNewMessageEntry(text, Date.now(), "user");
     },
-    genieSaid: async (text: string) => {
+    genieSaid: async (text: string, context?: string | null) => {
       addMessageToHistory("assistant", text);
-      await createNewMessageEntry(text, Date.now(), "system", false, "Agent · " + captionText());
+      // the notes of the site that the step was answered from, as in the chat; a
+      // step that used none says nothing (most steps of a task are about code)
+      const used = parseContextHeader(context || null);
+      await createNewMessageEntry(text, Date.now(), "system", false, "Agent · " + captionText(), used && used.length ? used : null);
+    },
+    note: async (text: string) => {
+      // shown, not remembered: the model must not read an error as its own words
+      await createNewMessageEntry(text, Date.now(), "system", false, "Agent");
     },
     messages: () => messagesHistory,
     maxSteps: () => Number((((window as any).site_settings || {}) as any).agentMaxSteps) || 8,
@@ -765,8 +792,12 @@ function refreshMode() {
   box.hidden = a === "off";
   const agentBtn = box.querySelector('button[data-mode="agent"]') as HTMLButtonElement | null;
   if (agentBtn) {
-    agentBtn.disabled = a === "signin";
-    agentBtn.title = a === "signin" ? "Sign in to use agent mode" : "Genie carries out a task in your editor, step by step, with your permission";
+    // For a guest it is not disabled (a disabled button swallows the click and
+    // says nothing): it looks locked, and a click says why, with a way to sign in.
+    agentBtn.disabled = false;
+    agentBtn.classList.toggle("is-locked", a === "signin");
+    agentBtn.setAttribute("aria-disabled", a === "signin" ? "true" : "false");
+    agentBtn.title = a === "signin" ? "Sign in to access agent mode" : "Genie carries out a task in your editor, step by step, with your permission";
   }
   if (a !== "ready") {
     // not available now (peer chat, signed out): chat, but the choice is kept
@@ -774,6 +805,19 @@ function refreshMode() {
   } else if (!agentMode && !agentRunner.running && rememberedMode() === "agent") {
     setMode(true);
   }
+}
+
+// A guest pressed Agent: a notice says that agent mode needs an account, with a
+// button that opens the page's sign-in dialog.
+function askToSignIn() {
+  const w = window as any;
+  const text = "Sign in to access agent mode.";
+  if (typeof w.notify !== "function") {
+    window.alert(text);
+    return;
+  }
+  const signIn = typeof w.openSignIn === "function" ? { label: "Sign in", onClick: () => w.openSignIn() } : undefined;
+  w.notify(text, { type: "info", timeout: 8000, action: signIn });
 }
 
 // Returns what undoes it. The mode follows the user signing in or out while
@@ -784,7 +828,12 @@ function wireMode(): () => void {
   box.querySelectorAll("button").forEach((b) =>
     b.addEventListener("click", () => {
       if (agentRunner.running) return;
-      const agent = b.getAttribute("data-mode") === "agent" && agentAvailability() === "ready";
+      const wantsAgent = b.getAttribute("data-mode") === "agent";
+      if (wantsAgent && agentAvailability() === "signin") {
+        askToSignIn(); // a guest: say why, and leave the mode and what is remembered as they are
+        return;
+      }
+      const agent = wantsAgent && agentAvailability() === "ready";
       setMode(agent);
       rememberMode(agent ? "agent" : "chat");
     })
@@ -1376,20 +1425,21 @@ const handleStreamedResponse = async (res: Response) => {
   let responseMessage = "";
   let ts = Date.now();
 
-  while (true) {
+  // no `break` in a loop that awaits (see agent.ts: the build tool gets it wrong)
+  let more = true;
+  while (more) {
     const { value, done } = await reader.read();
-    if (done || !value) {
-      break;
-    }
-
-    const chunk = decoder.decode(value, { stream: true });
-    try {
-      const json = JSON.parse(chunk);
-      const deltaContent = json.choices[0]?.delta?.content || "";
-      responseMessage += deltaContent;
-      await streamResponseToMessageEntry(deltaContent, ts, "system");
-    } catch (error) {
-      console.error("Error parsing chunk: ", chunk, error);
+    more = !(done || !value);
+    if (more && value) {
+      const chunk = decoder.decode(value, { stream: true });
+      try {
+        const json = JSON.parse(chunk);
+        const deltaContent = json.choices[0]?.delta?.content || "";
+        responseMessage += deltaContent;
+        await streamResponseToMessageEntry(deltaContent, ts, "system");
+      } catch (error) {
+        console.error("Error parsing chunk: ", chunk, error);
+      }
     }
   }
   const used = parseContextHeader(res.headers.get(CONTEXT_HEADER));
@@ -1509,6 +1559,13 @@ if (typeof (window as any).insertcodesnippet !== "function") {
 
 // Asks Genie a question for the page (the right-click action Explain): opens the panel, switches to Chat and sends the text as the user's
 // message. False if it cannot, with a notice that says why.
+// Genie is answering a message (the send button is off for that long), or the
+// coach is: a second request would cross with the first.
+function genieBusy(): boolean {
+  const b = document.getElementById("chat-widget__submit");
+  return coachBusy || (!!b && b.hasAttribute("disabled"));
+}
+
 async function ask(text: string): Promise<boolean> {
   const say = (message: string) => {
     const n = (window as any).notify;
@@ -1522,6 +1579,10 @@ async function ask(text: string): Promise<boolean> {
     say("Turn off peer chat to ask Genie.");
     return false;
   }
+  if (genieBusy()) {
+    say("Genie is still answering. Ask again in a moment.");
+    return false;
+  }
   open();
   if (agentMode) setMode(false); // a question, not a task; the remembered mode stays as it was
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
@@ -1533,7 +1594,13 @@ async function ask(text: string): Promise<boolean> {
   return true;
 }
 
-const ChatWidget = { open, close, toggle, config, init, ask };
+// Genie is in the middle of something (a task, an answer, the coach): the page's
+// right-click actions wait, because they use the same diff panel as a task does.
+function busy(): boolean {
+  return agentRunner.running || genieBusy();
+}
+
+const ChatWidget = { open, close, toggle, config, init, ask, busy };
 (window as any).ChatWidget = ChatWidget;
 declare global {
   interface Window {

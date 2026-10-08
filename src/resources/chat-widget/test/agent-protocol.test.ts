@@ -7,6 +7,10 @@ import {
   MAX_OUTPUT,
   MAX_SAY,
   PAGE_ONLY_LANGUAGES,
+  cleanName,
+  cleanPath,
+  filesAskReason,
+  splitPath,
   describe,
   endedAtTail,
   extractJSON,
@@ -106,6 +110,16 @@ test("the list of actions is the one in the server's prompt", () => {
     "terminal_new_tab",
     "terminal_select_tab",
     "terminal_close_tab",
+    "files_list",
+    "files_open",
+    "files_new",
+    "files_save",
+    "files_rename",
+    "files_cut",
+    "files_copy",
+    "files_paste",
+    "files_move",
+    "files_delete",
     "read_output",
     "finish",
   ]);
@@ -278,12 +292,19 @@ test("risky lines are found; everyday ones are not", () => {
     "ls /dev/", "cd ~/.ssh", "cat ../secret", "DROP TABLE users;", "delete from users", "drop database x", "os.remove('a')", "os.system('ls')", "import shutil", "shutil.rmtree('d')",
     "subprocess.run(['ls'])", "__import__('os')", "eval('1+1')", "exec(code)", "open('f','w')", "open('f', \"a\")", "fs.rmSync('x')", "File.delete('x')", "FileUtils.rm_rf('x')",
     "require('child_process')", "exec.Command(\"ls\")", "os.Remove(\"x\")", "system('ls')", "RM -RF x",
+    // what overwrites, edits in place or writes a file
+    "mv a.py b.py", "cp a.py b.py", "ln -sf a b", "sed -i s/a/b/ main.c", "perl -pi -e s/a/b/ f", "ls | tee out.txt", "echo hi > out.txt", "python a.py >> run.log", "cat a > ./b", ":> notes.md",
+    // text that is run, and secrets on the screen
+    "python3 -c 'print(1)'", "node -e 1", "env", "printenv PATH", "git checkout .", "git stash drop", "git rm a.py",
   ];
   for (const line of risky) assert.notEqual(riskOf(line), "", "should be risky: " + line);
   const fine = [
     "ls", "ls -la", "pwd", "cd src", "cat main.c", "echo hello", "python3 main.py", "gcc main.c -o main && ./main", "make", "./a.out", "go run main.go", "node app.js",
     "print(1 + 1)", "2 + 2", "import math", "math.sqrt(2)", "x = [1, 2, 3]", "len(x)", "def f(a): return a * 2", "SELECT * FROM users;", ".tables", "head -n 5 data.csv", "grep -n foo main.c",
-    "wc -l main.c", "git status", "git log --oneline", "git diff", "printf '%d\\n' 5", "y", "42", "Alice", "env", "which python3", "man ls", "tree",
+    "wc -l main.c", "git status", "git log --oneline", "git diff", "printf '%d\\n' 5", "y", "42", "Alice", "which python3", "man ls", "tree",
+    // a ">" that is not a redirect into a file
+    "x > 0.5", "a > b", "if x >= 10: print(x)", "const f = x => x.length", "def f() -> int: return 1", "ls 2>/dev/null", "make 2>&1", "echo hi > /dev/null", "a >> 2", "List<String> xs",
+    "git stash", "git checkout main", "environment = 1", "cpu = 4", "mvn test", "sedan = 1",
   ];
   for (const line of fine) assert.equal(riskOf(line), "", "should not be risky: " + line + " -> " + riskOf(line));
   // the reasons are given, at most three
@@ -366,6 +387,93 @@ test("closing a tab: which one, asked about, said in words", () => {
   assert.equal(describe({ type: "terminal_close_tab", tab: 2 }), "Closing terminal tab 2");
   const detail = scopeDetail("terminal", { type: "terminal_close_tab", tab: 2 });
   assert.match(detail, /tab 2/);
-  assert.match(detail, /that Genie opened/);
+  assert.match(detail, /main terminal, is never closed/);
   assert.match(detail, /stopped/);
+});
+
+test("a path is relative to the home directory and stays inside it", () => {
+  for (const [raw, want] of [["src/main.py", "src/main.py"], [" src/main.py ", "src/main.py"], ["./src/main.py", "src/main.py"], ["src/", "src"], ["src//", "src"], ["a b/c d.txt", "a b/c d.txt"]] as const) {
+    assert.equal(cleanPath(raw, false), want, raw);
+  }
+  // the home directory itself only where it makes sense
+  for (const raw of ["", ".", "./", "  "]) {
+    assert.equal(cleanPath(raw, true), "", JSON.stringify(raw));
+    assert.equal(cleanPath(raw, false), null, JSON.stringify(raw));
+  }
+  // what leaves it, or hides something
+  for (const raw of ["/etc/passwd", "/", "//x", "../x", "a/../b", "a/./b", "a//b", "~/x", ".env", ".git/config", "src/.secret", ".ssh/id_rsa", "a/.b/c", "a\\b", "a\nb", "a\u0000b", "a\u001b[2Jb", "a\u009bb", "x".repeat(401), "a/" + "x".repeat(101), 5, null, undefined, {}, ["a"]]) {
+    const v = cleanPath(raw as any, true);
+    assert.ok(v === null || raw === "" , "should be refused: " + JSON.stringify(raw) + " -> " + v);
+  }
+  assert.equal(cleanName("notes.txt"), "notes.txt");
+  assert.equal(cleanName("a/b"), null);
+  assert.equal(cleanName(".."), null);
+  assert.equal(cleanName(""), null);
+  assert.deepEqual(splitPath("src/util/a.py"), { parent: "src/util", name: "a.py" });
+  assert.deepEqual(splitPath("a.py"), { parent: "", name: "a.py" });
+});
+
+test("file actions: every field is checked", () => {
+  const types = (json: string) => ok(json).actions;
+  assert.deepEqual(types('{"actions":[{"type":"files_list"},{"type":"files_list","path":"src"},{"type":"files_save"}]}'), [{ type: "files_list", path: "" }, { type: "files_list", path: "src" }, { type: "files_save" }]);
+  assert.deepEqual(types('{"actions":[{"type":"files_open","path":"./a.py"},{"type":"files_new","path":"src/b.py"},{"type":"files_new","path":"docs","kind":"folder"}]}'), [
+    { type: "files_open", path: "a.py" },
+    { type: "files_new", path: "src/b.py", kind: "file" },
+    { type: "files_new", path: "docs", kind: "folder" },
+  ]);
+  assert.deepEqual(types('{"actions":[{"type":"files_rename","path":"a.py","name":"b.py"},{"type":"files_move","path":"b.py","to":"src"},{"type":"files_paste","to":"src"}]}'), [
+    { type: "files_rename", path: "a.py", name: "b.py" },
+    { type: "files_move", path: "b.py", to: "src" },
+    { type: "files_paste", to: "src" },
+  ]);
+  assert.deepEqual(types('{"actions":[{"type":"files_cut","path":"a.py"},{"type":"files_copy","path":"b.py"},{"type":"files_delete","path":"c.py"}]}'), [
+    { type: "files_cut", path: "a.py" },
+    { type: "files_copy", path: "b.py" },
+    { type: "files_delete", path: "c.py" },
+  ]);
+  // the moves into home, by leaving "to" out
+  assert.deepEqual(types('{"actions":[{"type":"files_move","path":"src/a.py"}]}'), [{ type: "files_move", path: "src/a.py", to: "" }]);
+  // each of these is dropped, once, with its reason
+  for (const bad of [
+    '{"type":"files_open"}', '{"type":"files_open","path":"/etc/passwd"}', '{"type":"files_open","path":"../x"}', '{"type":"files_delete","path":""}', '{"type":"files_delete","path":"."}',
+    '{"type":"files_new","path":"a","kind":"socket"}', '{"type":"files_new"}', '{"type":"files_rename","path":"a"}', '{"type":"files_rename","path":"a","name":"b/c"}', '{"type":"files_rename","name":"b"}',
+    '{"type":"files_move","path":"a","to":"/tmp"}', '{"type":"files_move","to":"x"}', '{"type":"files_paste","to":"../.."}', '{"type":"files_list","path":"a/../.."}', '{"type":"files_cut","path":5}',
+  ]) {
+    const r = ok('{"actions":[' + bad + ']}');
+    assert.equal(r.actions.length, 0, bad);
+    assert.equal(r.dropped.length, 1, bad);
+  }
+});
+
+test("the file actions that change things for good are asked about every time", () => {
+  const a = (type: string) => ({ type } as any);
+  assert.match(filesAskReason(a("files_delete"), null), /for good/);
+  assert.match(filesAskReason(a("files_rename"), null), /name/);
+  assert.match(filesAskReason(a("files_move"), null), /moves/);
+  assert.match(filesAskReason(a("files_paste"), "cut"), /moves/);
+  for (const t of ["files_list", "files_open", "files_new", "files_save", "files_cut", "files_copy"]) assert.equal(filesAskReason(a(t), "cut"), "", t);
+  assert.equal(filesAskReason(a("files_paste"), "copy"), "");
+  assert.equal(filesAskReason(a("files_paste"), null), "");
+  assert.equal(scopeOf(a("files_delete")), "files");
+  assert.equal(scopeOf(a("files_list")), "files");
+});
+
+test("a change of language says what it does to the editor, which depends on whether a file is open", () => {
+  const plain = scopeDetail("language", { type: "set_language", language: "Go" });
+  assert.match(plain, /starter code in place of what it holds now/);
+  const withFile = scopeDetail("language", { type: "set_language", language: "Go" }, "src/main.py");
+  assert.match(withFile, /keeps src\/main\.py, the file that is open/);
+  assert.doesNotMatch(withFile, /starter code/);
+  assert.match(scopeDetail("language", { type: "terminal_new_tab", language: "Go" }, "a.py"), /keeps a\.py/);
+});
+
+test("what a file permission card says is what the action does", () => {
+  assert.match(scopeDetail("files", { type: "files_open", path: "a.py" }), /save the file that is open/);
+  assert.match(scopeDetail("files", { type: "files_open", path: "a.py" }), /not in a file is replaced/);
+  assert.match(scopeDetail("files", { type: "files_delete", path: "src" }), /for good, and everything in it/);
+  assert.match(scopeDetail("files", { type: "files_move", path: "a.py", to: "" }), /the home folder/);
+  assert.match(scopeDetail("files", { type: "files_list" }), /sent to the model/);
+  assert.equal(describe({ type: "files_rename", path: "a.py", name: "b.py" }), "Renaming a.py to b.py");
+  assert.equal(describe({ type: "files_paste", to: "" }), "Pasting into the home folder");
+  assert.match(scopeQuestion("files"), /files/);
 });

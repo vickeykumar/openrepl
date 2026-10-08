@@ -43,7 +43,8 @@ Built as `terminal_type` (one line of plain text; waits for the output to settle
 
 ## Added after step 3 (2026-10-08)
 
-- Agent: reconnect the terminal, open a new tab (in a language), switch tabs and close the tabs it opened, always with permission (built).
+- Agent: reconnect the terminal, open a new tab (in a language), switch tabs and close any tab but the main one, always with permission (built).
+- Agent: the Files panel (list, open, new, save, rename, cut, copy, paste, move, delete), rename, move and delete always asked (built).
 - Right-click actions on selected code: Explain, Fix problems, Add comments, Write tests (built; Convert was dropped on the owner's request; LLD 07 section 3a).
 - Practice coach: three hints, a solution review and a complexity check (built; hints are counted in the browser only).
 - Skipped by the owner: inline completions, formatting and linting, a stdin box.

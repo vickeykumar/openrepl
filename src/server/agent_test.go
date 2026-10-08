@@ -574,3 +574,67 @@ func TestThePagesActionsAreTheServers(t *testing.T) {
 		}
 	}
 }
+
+// A question about the site, asked in agent mode, is answered from the same notes
+// as in the chat; the task is the question at every step; a coding task is left alone.
+func TestAnAgentStepGetsTheSiteNotesForItsTask(t *testing.T) {
+	c, lastBody := agentSetup(t, GenieSettings{})
+	setKnowledge(testKB(t, nil))
+	t.Cleanup(func() { setKnowledge(nil) })
+	question := `{"model":"gpt-4o-mini","context":"agent","agent_task":"","messages":[{"role":"user","content":"[user-ab12] does openrepl have a file explorer sidebar?"},{"role":"system","content":"Openrepl IDE real-time context"}]}`
+	w := agentCall(t, question, c, "")
+	if w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(*lastBody, "Facts about OpenREPL") || !strings.Contains(*lastBody, "file explorer") || !strings.Contains(*lastBody, "answer it in \\\"say\\\"") {
+		t.Errorf("the model got no notes for the question: %s", *lastBody)
+	}
+	// the agent's own instructions stay first, the notes follow them
+	var sent struct {
+		Messages []struct{ Role, Content string }
+	}
+	json.Unmarshal([]byte(*lastBody), &sent)
+	if len(sent.Messages) < 3 || !strings.Contains(sent.Messages[0].Content, "AGENT MODE") || !strings.Contains(sent.Messages[1].Content, "Facts about OpenREPL") {
+		t.Errorf("order of the messages: %+v", sent.Messages)
+	}
+	if h := w.Header().Get(contextHeader); h == "" || h == "none" || !strings.Contains(w.Header().Get("Access-Control-Expose-Headers"), contextHeader) {
+		t.Errorf("the answer does not say which notes were used: %q, exposed %q", h, w.Header().Get("Access-Control-Expose-Headers"))
+	}
+
+	// the next step of the task carries the model's answer and the results of its
+	// actions: the question is still the first message
+	token := w.Header().Get(agentTaskHeader)
+	later := `{"model":"gpt-4o-mini","context":"agent","agent_task":"` + token + `","messages":[{"role":"user","content":"[user-ab12] does openrepl have a file explorer sidebar?"},` +
+		`{"role":"assistant","content":"{\"say\":\"checking\",\"actions\":[],\"done\":false}"},{"role":"user","content":"{\"step_results\":[{\"type\":\"files_list\",\"status\":\"done\"}]}"}]}`
+	w = agentCall(t, later, c, "")
+	if w.Code != 200 || !strings.Contains(*lastBody, "Facts about OpenREPL") {
+		t.Errorf("a later step lost the notes: %d %s", w.Code, *lastBody)
+	}
+
+	// a coding task matches no note
+	task := `{"model":"gpt-4o-mini","context":"agent","agent_task":"","messages":[{"role":"user","content":"[user-ab12] write a function that reverses a string and run it"}]}`
+	w = agentCall(t, task, c, "")
+	if w.Code != 200 || strings.Contains(*lastBody, "Facts about OpenREPL") || w.Header().Get(contextHeader) != "none" {
+		t.Errorf("a coding task got notes: %d header %q body %s", w.Code, w.Header().Get(contextHeader), *lastBody)
+	}
+}
+
+func TestTheFirstQuestionOfAnAgentTaskIsFoundWhateverComesAfter(t *testing.T) {
+	msgs := func(parts ...string) []json.RawMessage {
+		var out []json.RawMessage
+		for _, p := range parts {
+			out = append(out, json.RawMessage(p))
+		}
+		return out
+	}
+	m := msgs(`{"role":"system","content":"x"}`, `{"role":"user","content":"[user-k3J9x] how do I share a session?"}`, `{"role":"assistant","content":"{}"}`, `{"role":"user","content":"{\"step_results\":[]}"}`)
+	if got := firstUserText(m); got != "how do I share a session?" {
+		t.Errorf("firstUserText = %q", got)
+	}
+	if got := lastUserText(m); got != `{"step_results":[]}` {
+		t.Errorf("lastUserText (the chat's) changed: %q", got)
+	}
+	if firstUserText(msgs(`{"role":"system","content":"x"}`)) != "" || firstUserText(nil) != "" {
+		t.Error("no user message must give no question")
+	}
+}

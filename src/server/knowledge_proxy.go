@@ -16,12 +16,16 @@ import (
 // answer says which ones were used. The page asks with two body fields that
 // never reach the model:
 //
-//	"context": "chat" | "blog"     the Genie panel, or the blog editor
+//	"context": "chat" | "blog" | "agent"
+//	                               the Genie panel, the blog editor, or a step of
+//	                               agent mode (agent.go: its question is the task)
 //	"context_hint": "<text>"       more words to search with (the post's title)
 //
 // The Genie panel only wants the notes when one matches strongly, so ordinary
 // coding questions are left as they are. The blog editor always wants the best
-// ones. The practice page does not ask.
+// ones. The practice page does not ask. In agent mode a question about the site
+// ("does OpenREPL have a file explorer?") is answered from the same notes, in the
+// "say" of the step, so that the two modes do not give different answers.
 
 const (
 	contextChat = "chat"
@@ -140,6 +144,22 @@ func lastUserText(messages []json.RawMessage) string {
 	return speakerTag.ReplaceAllString(lastUserMessage(messages), "")
 }
 
+// firstUserText is the text of the first message the user wrote, without the
+// tag. In agent mode that is the task: the messages after it are the model's
+// own steps and the results sent back to it, which say nothing about the site.
+func firstUserText(messages []json.RawMessage) string {
+	for i := range messages {
+		var m struct {
+			Role string `json:"role"`
+		}
+		if json.Unmarshal(messages[i], &m) != nil || m.Role != "user" {
+			continue
+		}
+		return speakerTag.ReplaceAllString(lastUserMessage(messages[i:i+1]), "")
+	}
+	return ""
+}
+
 func lastUserMessage(messages []json.RawMessage) string {
 	for i := len(messages) - 1; i >= 0; i-- {
 		var m struct {
@@ -178,7 +198,7 @@ func addKnowledge(body []byte, kb *knowledgeBase) ([]byte, contextResult) {
 		return body, contextResult{}
 	}
 	var mode string
-	if raw, ok := in["context"]; !ok || json.Unmarshal(raw, &mode) != nil || (mode != contextChat && mode != contextBlog) {
+	if raw, ok := in["context"]; !ok || json.Unmarshal(raw, &mode) != nil || (mode != contextChat && mode != contextBlog && mode != contextAgent) {
 		return body, contextResult{}
 	}
 	var messages []json.RawMessage
@@ -187,6 +207,9 @@ func addKnowledge(body []byte, kb *knowledgeBase) ([]byte, contextResult) {
 	}
 	res := contextResult{Asked: true}
 	query := lastUserText(messages)
+	if mode == contextAgent {
+		query = firstUserText(messages) // the task, at every step of it
+	}
 	// A hint is what the page wants to search with: the blog editor sends the
 	// title of the post and the text it works on, because its prompt is mostly
 	// instructions ("write a short blog post section...") that would match the
@@ -208,8 +231,14 @@ func addKnowledge(body []byte, kb *knowledgeBase) ([]byte, contextResult) {
 	if len(res.Hits) == 0 {
 		return body, res
 	}
-	system, _ := json.Marshal(map[string]string{"role": "system", "content": contextPrompt(res.Hits)})
-	in["messages"], _ = json.Marshal(append([]json.RawMessage{system}, messages...))
+	system, _ := json.Marshal(map[string]string{"role": "system", "content": contextPrompt(res.Hits, mode == contextAgent)})
+	if mode == contextAgent && len(messages) > 1 {
+		// after the agent's own instructions (agent.go), which stay first
+		rest := append([]json.RawMessage{messages[0], system}, messages[1:]...)
+		in["messages"], _ = json.Marshal(rest)
+	} else {
+		in["messages"], _ = json.Marshal(append([]json.RawMessage{system}, messages...))
+	}
 	out, err := json.Marshal(in)
 	if err != nil {
 		return body, contextResult{Asked: true}
@@ -218,12 +247,15 @@ func addKnowledge(body []byte, kb *knowledgeBase) ([]byte, contextResult) {
 }
 
 // contextPrompt is the system message that carries the passages.
-func contextPrompt(hits []Hit) string {
+func contextPrompt(hits []Hit, agent bool) string {
 	var b strings.Builder
 	b.WriteString("Facts about OpenREPL, the website this conversation runs on, taken from its own notes. " +
 		"Use them to answer questions about OpenREPL. Do not invent features, limits, prices or steps they do not mention, " +
 		"and if they do not cover what is asked, say that you are not sure. " +
 		"A passage marked [blog post] comes from an article on the site's blog: use it only if it answers the question, and say that it comes from a post.\n")
+	if agent {
+		b.WriteString("This is a question about the site, not a task for the editor or the terminal: answer it in \"say\" (the answer is still the one JSON object), with \"actions\": [] and \"done\": true.\n")
+	}
 	for _, h := range hits {
 		kind := "note"
 		if h.P.Kind == kindPost {

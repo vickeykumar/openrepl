@@ -227,6 +227,11 @@ async function codeAction(id, sel) {
     say("Genie is still working on the last action.");
     return;
   }
+  // a task of agent mode shows its changes in the same panel: one at a time
+  if (typeof window.ChatWidget.busy === "function" && window.ChatWidget.busy()) {
+    say("Genie is busy with a task or an answer. Try again when it is done.");
+    return;
+  }
   const cfg = window.ChatWidget.config || {};
   if (!cfg.url) {
     say("Genie is not available right now.", "error");

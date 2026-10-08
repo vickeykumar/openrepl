@@ -61,7 +61,7 @@ const (
 // agentActions are the actions a model may ask for. The page carries out the
 // ones it knows and drops the rest (resources/chat-widget/src/agent.ts keeps
 // the same list; a test compares them).
-var agentActions = []string{"editor_write", "editor_insert", "set_language", "run", "debug", "terminal_type", "terminal_interrupt", "terminal_reconnect", "terminal_new_tab", "terminal_select_tab", "terminal_close_tab", "read_output", "finish"}
+var agentActions = []string{"editor_write", "editor_insert", "set_language", "run", "debug", "terminal_type", "terminal_interrupt", "terminal_reconnect", "terminal_new_tab", "terminal_select_tab", "terminal_close_tab", "files_list", "files_open", "files_new", "files_save", "files_rename", "files_cut", "files_copy", "files_paste", "files_move", "files_delete", "read_output", "finish"}
 
 func (g GenieSettings) agentTasksPerHour() int {
 	return orDefault(g.AgentTasksPerHour, defaultAgentTasksPerHour)
@@ -365,7 +365,13 @@ Each action is an object with a "type". The types you may use:
 - {"type":"terminal_reconnect"}  Restarts the terminal in the language in use: use it when the terminal is closed, stuck or disconnected. A program that is running in it is stopped.
 - {"type":"terminal_new_tab","language":"<optional, as in the picker>"}  Opens a new terminal tab (at most 5 are open), in that language if you name one. Naming a language replaces the editor with that language's starter code, as set_language does, so write your code after it. The new tab is the one shown, and terminal_type and read_output work on it.
 - {"type":"terminal_select_tab","tab":2}  Shows terminal tab 2 (1 to 5). All tabs share the editor and the language picker: Run uses the language in the picker, whichever tab is shown.
-- {"type":"terminal_close_tab","tab":2}  Closes terminal tab 2, only if you opened it yourself with terminal_new_tab: the user's own tabs are never yours to close, and a task that opened tabs should close them when it is done with them. The user is asked every time. A program running in the tab stops.
+- {"type":"terminal_close_tab","tab":2}  Closes terminal tab 2, whoever opened it, when the user says yes (the user is asked every time). Tab 1, the main terminal, is never closed: use terminal_reconnect to restart it. A task that opened tabs should close them when it is done with them. A program running in the tab stops.
+- {"type":"files_list","path":"src"}  Lists the files and folders under a folder of the Files panel. A "path" is relative to the home folder (leave it out for the home folder itself), never starts with a slash and never has "..". Only what files_list shows exists: list before you name a file you have not seen.
+- {"type":"files_open","path":"src/main.py"}  Shows that file in the editor; the file that was open is saved first, and code in the editor that is not in a file is replaced. Opening a file also sets the language picker by its extension.
+- {"type":"files_new","path":"src/util.py","kind":"file"}  Creates an empty file ("kind":"folder" a folder). It is not opened: files_open opens it, editor_write fills it, files_save saves it.
+- {"type":"files_save"}  Saves the editor into the file that is open.
+- {"type":"files_rename","path":"a.py","name":"b.py"}, {"type":"files_cut","path":"a.py"}, {"type":"files_copy","path":"a.py"}, {"type":"files_paste","to":"src"}, {"type":"files_move","path":"a.py","to":"src"}  Rename; cut or copy and then paste into a folder; move into a folder ("to" left out is the home folder).
+- {"type":"files_delete","path":"old.py"}  Deletes a file, or a folder with everything in it, for good. The user is asked every time about rename, move, pasting a cut and delete. Hidden files (names that start with a dot) are not yours to touch.
 - {"type":"read_output","wait_seconds":5}  Waits up to that many seconds (1 to 20) for the program to finish, then returns what the terminal shows. If its "detail" says the program had not finished, it is still running or waiting for input: do not just read again and again.
 - {"type":"finish"}  Ends the task.
 
@@ -373,6 +379,7 @@ The next message you get holds the results of your actions as {"step_results":[.
 
 Rules:
 - At most 3 actions per step, and only the types above; anything else is ignored.
+- If the user asks a question about OpenREPL itself (how something works, what it can do, where a button is) rather than giving you a task, answer it in "say" with "actions": [] and "done": true, from the site notes when they are given to you, and say that you are not sure when they do not cover it. Do not invent features. Never guess that OpenREPL lacks something because you have not seen it.
 - Do one thing at a time that you can check: write the code, run it, read the output, then fix it. A task has a small number of steps, so do not waste them.
 - Set "done": true, with no more actions, when the task is finished, when you cannot go on, or when you need an answer from the user (ask it in "say"). A step without actions ends the task.
 - A program that reads input cannot be given any by you: write programs that need none, or tell the user to type the input in the terminal.

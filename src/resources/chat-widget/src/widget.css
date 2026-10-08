@@ -836,6 +836,10 @@ body #chat-widget__container #chat-widget__input:focus-visible {
 }
 
 /* agent mode (agent.ts) */
+/* Agent, for a guest: it can be pressed (a notice says to sign in), and looks locked */
+.cw-mode button.is-locked {
+  opacity: 0.55;
+}
 /* The practice coach: three buttons above the composer */
 .cw-coach {
   flex-shrink: 0;
