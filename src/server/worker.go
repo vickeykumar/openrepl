@@ -60,6 +60,7 @@ func (server *Server) runWorker(ctx context.Context, handlers http.Handler, coun
 			Languages: languages,
 			Capacity:  capacity,
 			Weight:    server.options.WorkerWeight,
+			Ptrace:    probeHost("worker"),
 		},
 		Load: func() tunnel.Heartbeat {
 			return tunnel.Heartbeat{Used: int64(counter.weight()), Active: counter.count()}

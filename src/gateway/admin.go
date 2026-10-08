@@ -33,6 +33,7 @@ type WorkerInfo struct {
 
 	Terminals    int64    `json:"terminals,omitempty"`
 	Languages    []string `json:"languages,omitempty"`
+	Ptrace       string   `json:"ptrace,omitempty"` // what its host says about tracing programs: "ok", "ok-aslr", or why not
 	RemoteAddr   string   `json:"remoteAddr,omitempty"`
 	LastSeen     string   `json:"lastSeen,omitempty"`
 	ConnectionID string   `json:"connectionId,omitempty"`
@@ -242,6 +243,7 @@ func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
 				reg := tw.Info()
 				info.Terminals = tw.Active()
 				info.Languages = reg.Languages
+				info.Ptrace = reg.Ptrace
 				info.RemoteAddr = tw.RemoteAddr()
 				info.LastSeen = tw.LastSeen().UTC().Format(time.RFC3339)
 				info.ConnectionID = tw.ConnectionID()
@@ -249,8 +251,11 @@ func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
 				info.Version = reg.Version
 				info.Connected = tw.Connected().UTC().Format(time.RFC3339)
 				info.ConfigRev = tw.ConfigRev()
-				info.ConfigCurrent = info.ConfigRev != 0 && info.ConfigRev == ts.ConfigRevision()
+				info.ConfigCurrent = info.ConfigRev != 0 && info.ConfigRev == ts.ConfigRevisionFor(tw)
 			}
+		}
+		if b.ID() == LocalID {
+			info.Ptrace = rt.localPtrace
 		}
 		if rt.syncInfo != nil {
 			if si, ok := rt.syncInfo(b.ID()); ok && si.Connected {

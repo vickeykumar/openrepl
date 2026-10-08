@@ -36,6 +36,7 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 	// The sync manager is created below, once the router exists; the router's
 	// hooks reach it through this variable.
 	var syncMgr *wsync.Manager
+	localPtrace = probeHost("gateway") // asked once: the dashboard shows it, and tells which languages cannot work
 	cfg := gateway.Config{
 		Site:       site,
 		PathPrefix: pathPrefix,
@@ -57,6 +58,7 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 		Secret:   cookie.SECRET_KEY,
 		GuestTTL: utils.DEADLINE_MINUTES * time.Minute,
 		Local: gateway.LocalConfig{
+			Ptrace: localPtrace,
 			Weight: server.options.LocalWeight,
 			Capacity: func() (int64, int64) {
 				return int64(counter.weight()), int64(server.options.MaxConnection)
@@ -84,6 +86,8 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 	}
 
 	cfg.TerminalNotice = server.terminalNotice
+	cfg.NodeLanguage = server.nodeLanguageRule
+	cfg.RefuseTerminal = server.refuseTerminal
 	cfg.UserLabel = func(uid string) string {
 		if up, err := user.FetchUserProfileData(uid); err == nil {
 			return up.Email
@@ -160,6 +164,7 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 	}
 
 	router := gateway.NewRouter(cfg)
+	server.bindNodeLanguages(router)
 	server.admin.router = router
 	server.routes = newRouteTracker(localRoutes{router.Routes()})
 	if server.options.LocalWeight <= 0 {
@@ -183,6 +188,7 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 			AuthToken:    func() string { return server.options.Credential },
 			Secret:       utils.Secret,
 			Config:       server.gatewayWorkerConfig,
+			WorkerConfig: server.gatewayWorkerConfigFor,
 		}
 		router.BindTunnel(&tcfg)
 		if server.options.WorkspaceSync {
@@ -365,6 +371,13 @@ func (userPins) Set(uid, node string) {
 func (server *Server) handleGatewayAdmin(w http.ResponseWriter, r *http.Request) {
 	if server.gatewayAdmin == nil {
 		http.NotFound(w, r)
+		return
+	}
+	// The languages of a node are saved with the site settings, which the
+	// gateway package does not know: /admin/workers/<id>/languages is served here.
+	rel := strings.Trim(strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, server.admin.prefix), "admin/"), "/")
+	if parts := strings.Split(rel, "/"); len(parts) == 3 && parts[0] == "workers" && parts[2] == "languages" {
+		server.handleNodeLanguages(w, r, parts[1])
 		return
 	}
 	server.gatewayAdmin.ServeHTTP(w, r)

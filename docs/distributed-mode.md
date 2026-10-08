@@ -189,6 +189,10 @@ worker_token     = "<the token from step 1>"  // or GOTTY_WORKER_TOKEN
 
 A worker reconnects by itself, with a delay that grows from 1 to 30 seconds, when the gateway restarts or the network drops.
 
+### Workers that cannot trace programs (Raspberry Pi)
+
+An arm64 worker runs the amd64 image under `qemu-user`, which has no `ptrace`. Debug (gdb) still works there: the image's `openrepl-gdb` notices the emulator and lets it serve gdb (`QEMU_GDB`), so the program starts paused and you type `c` to start it. Programs that use the 32-bit `int 0x80` system call do not run under qemu-user at all. The assembly REPL (`rappel`) needs real `ptrace` and prints a short message instead of starting; the dashboard shows "no ptrace" for such a worker, and you can switch `rappel` off for it there (next section). See LLD 04 §2.
+
 ### The worker's own port
 
 A worker opens no port by default. Give it `--port` (or `--address`) and it also serves that address, like a standalone server, so people on the same network can use the worker directly at `http://<worker-address>:<port>/`:
@@ -282,6 +286,15 @@ Things to do:
 
 Limits: files over 50 MB are not synchronized; sockets, pipes and device files are skipped; names that start with `.wsync-` are reserved; ownership and set-user-id bits are not copied; Linux only.
 
+## Languages per worker
+
+`--worker-languages` says what a worker has when it starts. In the dashboard (*Workers*, then a node) the Languages card lets you change that without restarting anything, for each language: **Default** (what the worker declared), **Off** (refuse new terminals of it on this node), or **On** (take it although the worker did not declare it, for a language you installed on the worker afterwards). It works the same for the gateway's own node. Visitors on that node no longer see a refused language in the language picker, and open terminals keep running. The card also says whether the node's host can trace programs, which the assembly REPL needs.
+
+| Route | What it does |
+|---|---|
+| `GET /admin/workers/<id>/languages` | The languages with what the node declares and what you decided. `<id>` is a worker id, or `local`. |
+| `POST /admin/workers/<id>/languages` | Body `{"language": "rappel", "rule": "default"}` (or `"off"`, `"on"`). Saved with the site settings. |
+
 ## Operating a fleet
 
 The easiest way is the dashboard at `/admin` (admin sign-in): *Workers* lists the nodes with their load, state and how many sessions each has been given, opens a node's details (address, version, languages, sync state, clock difference) and drains, undrains or reconnects it. *Sessions* lists who is on which node, and can end a session or move it to another node. *Add a worker* shows the command line for a new one, with the gateway's tunnel host key fingerprint. The same things are available as routes on the gateway. They need the same admin sign-in; to change something from `curl`, pass the browser's session cookie and the header `X-Requested-With: openrepl-admin` (the dashboard sends it; without it a change is refused):
@@ -353,7 +366,8 @@ A few things to know when reading it:
 | Browser: `execution node unavailable` (503) | The worker that holds this session is offline. It works again when the worker reconnects. |
 | Browser: `workspace node unavailable` (503) | A signed-in user's worker is offline or draining. |
 | Browser: `no execution node available` (503) | No online node has a weight: no worker is connected and the gateway runs with `--local-weight 0`. |
-| Browser: `this language is not available on your execution node` | The session's worker was started with `--worker-languages` and lacks that REPL. |
+| Browser: `this language is not available on your execution node` | The session's worker was started with `--worker-languages` and lacks that REPL. Install it and switch the language **On** for that node (Languages card), or restart the worker with the list. |
+| Browser: `This language is switched off on your execution node` | An admin switched it off for that node in the Languages card. Set it back to Default. |
 | Terminal: `exceeding max number of connections` | That node's memory budget is used up. |
 
 All messages go to `/gottyTraces/gotty.log` on the machine concerned.

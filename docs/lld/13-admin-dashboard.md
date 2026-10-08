@@ -43,6 +43,7 @@ All of them run on the gateway or the standalone server, never on a worker. The 
 | `/admin/users/<uid>/signout`, `/block`, `/unblock` | POST | See section 4. |
 | `/admin/workers` | GET | Gateway: every node (LLD 11 section 11). |
 | `/admin/workers/<id>/drain`, `/undrain`, `/reconnect` | POST | Gateway: stop or resume new sessions; drop the connection of a worker, which connects again by itself. |
+| `/admin/workers/<id>/languages` | GET, POST | Gateway: the Languages card of a node (`<id>` is a worker id, or `local` for the gateway). GET lists the languages with what the node declares and what an admin decided; POST `{"language": "rappel", "rule": "default" \| "off" \| "on"}` sets one. Saved in `SiteSettings.NodeLanguages`, audited. See below. |
 | `/admin/sessions` | GET | Gateway: the execution contexts with user, node, terminals, home, last activity and expiry. |
 | `/admin/sessions/<key>/end` | POST | Gateway: close the session's terminals and forget its placement. |
 | `/admin/sessions/<key>/move` | POST | Gateway: body `{"to": "<node>"}`. See section 4. |
@@ -126,6 +127,21 @@ The dashboard's own reads (GET under `/admin/` that succeed) are left out of the
 ## 6. Usage numbers
 
 `statsStore` counts, where `wrapControls` lets a terminal through, one terminal per language per day, and the visitors of the day. A visitor is a keyed hash of the account or, for a guest, the address, different on each day, so one visitor who opens several terminals counts once. Only today keeps these hashes (to count across a restart); older days keep numbers only, 60 days in all. The file is `admin-stats.json`, saved at most every 30 seconds. A gateway counts the terminals of its workers; a worker's own port is not counted.
+
+### Languages per node
+
+The site-wide switch turns a language off for everybody. The Languages card in a node's drawer (*Workers*, then the node) decides per node, for every language that has a terminal (JavaScript runs in the browser and is not listed): **Default** follows what the node declares (`--worker-languages`; a node that did not list its languages runs everything), **Off** refuses new terminals of it although the node can run it, **On** takes it although the node did not declare it, for a language installed after the worker started. Open terminals keep running. The choices are saved with the site settings (`SiteSettings.NodeLanguages`, node id to `{off, on}`), by `/admin/workers/<id>/languages` only: the Settings page does not send them and keeps what is stored. They are audited ("worker pi-1: rappel switched off").
+
+How a choice takes effect (`server/node_languages.go`, `admin_node_languages.go`):
+
+- *New terminals:* the gateway's router asks `Config.NodeLanguage` for the rule of the language on the session's node (`gateway/router.go`). Off closes the terminal's WebSocket with a notice the page shows ("This language is switched off on your execution node for now"), as the site-wide switch does; an admin is let through. On skips the check against the node's declared languages. Otherwise the declared list decides, as before (the same text, "this language is not available on your execution node", now as a notice).
+- *The picker:* `/settings.js` is served by the gateway, so it asks `Router.NodeOf` (a lookup of the visitor's session, nothing is created) which node the visitor is on, and lists as off what that node refuses: the site-wide languages, the node's Off, and what it did not declare unless On. A visitor whose node is not known yet gets the site's list.
+- *The worker itself:* its `WorkerConfig` carries the same list (`tunnel.ServerConfig.WorkerConfig`, per worker, with its own revision), for the people who open the worker's own port.
+- *The gateway's own node* (`local`) has the same card.
+
+The card also shows what the node's host says about tracing programs. Each node asks once, when it starts, with `openrepl-ptrace-probe` (LLD 04 section 2); a worker reports it in its registration (`RegisterRequest.Ptrace`), the gateway for itself. A host that cannot trace shows a "no ptrace" pill in the table and in the drawer, a warning in the card, and "needs ptrace" next to the assembly REPL (`rappel`), which cannot work there. It is only information: an admin decides whether to switch the language off.
+
+The drawer is redrawn on every refresh; the Languages card is created once per opened drawer and not redrawn with it, so an open menu is not closed.
 
 ## 7. Front end
 

@@ -198,7 +198,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 fi
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE.o" ]; then
 	if $debug; then
-		gdb "$WORKDIR/$FILE".o $@;
+		openrepl-gdb "$WORKDIR/$FILE".o $@;
 	else
 		#second quoate with escape, as -c option takes a string argument.
     	$SHELL -c "\"$WORKDIR/$FILE\".o $@";
@@ -325,7 +325,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
 		go build -gcflags=all="-N -l" -o "$FILE".o "$FILE" $@;
 		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
-		gdb "$FILE".o -d $GOROOT $@;
+		openrepl-gdb "$FILE".o -d $GOROOT $@;
 	else
     	$COMPILER run "$WORKDIR/$FILE" $@;
     fi
@@ -464,7 +464,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
 		go build -gcflags=all="-N -l" -o "$FILE".o $FILE $@;
 		echo "add-auto-load-safe-path $GOROOT/src/runtime/runtime-gdb.py" > $HOME/.gdbinit
-		gdb "$FILE".o -d "$GOROOT" $@;
+		openrepl-gdb "$FILE".o -d "$GOROOT" $@;
 	else
     	$COMPILER run $FILE $@;
     fi
@@ -2242,7 +2242,7 @@ cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
 		$COMPILER -g -o "$FILE".o $FILE $@;
-		rust-gdb "$FILE".o $@;
+		openrepl-gdb --gdb rust-gdb "$FILE".o $@;
 	else
     	$COMPILER $FILE -o "$FILE".o;
         "$WORKDIR/$FILE".o $@;
@@ -2592,16 +2592,16 @@ section .text
 
 _start:
     ; write Hello, World! to stdout
-    mov eax, 4         ; sys_write
-    mov ebx, 1         ; file descriptor 1 (stdout)
-    mov ecx, hello     ; message to write
-    mov edx, 13        ; message length
-    int 0x80           ; call kernel
+    mov rax, 1         ; sys_write
+    mov rdi, 1         ; file descriptor 1 (stdout)
+    mov rsi, hello     ; message to write
+    mov rdx, 13        ; message length
+    syscall            ; call kernel
 
     ; exit the program
-    mov eax, 1         ; sys_exit
-    xor ebx, ebx       ; exit code 0
-    int 0x80           ; call kernel
+    mov rax, 60        ; sys_exit
+    xor rdi, rdi       ; exit code 0
+    syscall            ; call kernel
 </Content>
         <Compiler>
 COMPILER=nasm
@@ -2627,7 +2627,7 @@ fi
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE.o" ]; then
 	ld -o "$WORKDIR/$FILE".out "$WORKDIR/$FILE".o 
 	if $debug; then
-		gdb "$WORKDIR/$FILE".out $@;
+		openrepl-gdb "$WORKDIR/$FILE".out $@;
 	else
 		#second quoate with escape, as -c option takes a string argument.
     	$SHELL -c "\"$WORKDIR/$FILE\".out $@";

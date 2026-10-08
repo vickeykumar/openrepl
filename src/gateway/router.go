@@ -100,6 +100,15 @@ type Config struct {
 	// placed again, and reports whether it handled the response. The page
 	// shows a countdown. Optional: without it the answer is a plain 503.
 	TerminalNotice func(w http.ResponseWriter, r *http.Request, retryIn time.Duration) bool
+	// NodeLanguage returns the rule an admin set for the language of the
+	// terminal route rel (without the prefix) on a node. It may return
+	// LanguageDefault for the requester, for example an admin, who is let
+	// through a switched off language. Optional: no rules.
+	NodeLanguage func(w http.ResponseWriter, r *http.Request, node, rel string) LanguageRule
+	// RefuseTerminal answers a terminal's WebSocket request by closing it with a
+	// reason the page shows. It reports whether it handled the response.
+	// Optional: without it the answer is a plain 503.
+	RefuseTerminal func(w http.ResponseWriter, r *http.Request, reason string) bool
 	// UserLabel names a signed-in user in the admin API, e.g. by email
 	// address. Optional: without it only the user id is shown.
 	UserLabel func(uid string) string
@@ -136,6 +145,10 @@ type Router struct {
 	identity func(http.ResponseWriter, *http.Request, ExecutionContext) trusted.Identity
 	homeOf   func(Identity) string
 	notice   func(http.ResponseWriter, *http.Request, time.Duration) bool
+
+	nodeLanguage func(http.ResponseWriter, *http.Request, string, string) LanguageRule
+	refuseTerm   func(http.ResponseWriter, *http.Request, string) bool
+	localPtrace  string
 
 	userLabel func(uid string) string
 	syncInfo  func(backendID string) (SyncInfo, bool)
@@ -204,6 +217,10 @@ func NewRouter(cfg Config) *Router {
 		identity: cfg.Identity,
 		homeOf:   cfg.HomeOf,
 		notice:   cfg.TerminalNotice,
+
+		nodeLanguage: cfg.NodeLanguage,
+		refuseTerm:   cfg.RefuseTerminal,
+		localPtrace:  cfg.Local.Ptrace,
 
 		userLabel: cfg.UserLabel,
 		syncInfo:  cfg.SyncInfo,
@@ -433,12 +450,22 @@ func (rt *Router) execute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rt.terminal != nil {
-		if command, weight, ok := rt.terminal(rt.rel(r.URL.Path)); ok {
-			if !b.HasLanguage(command) {
-				http.Error(w, "this language is not available on your execution node", http.StatusServiceUnavailable)
-				return
+		if rel := rt.rel(r.URL.Path); true {
+			if command, weight, ok := rt.terminal(rel); ok {
+				rule := LanguageDefault
+				if rt.nodeLanguage != nil {
+					rule = rt.nodeLanguage(w, r, b.ID(), rel)
+				}
+				switch {
+				case rule == LanguageOff:
+					rt.refuseTerminal(w, r, "This language is switched off on your execution node for now. Please pick another one.")
+					return
+				case rule != LanguageOn && !b.HasLanguage(command):
+					rt.refuseTerminal(w, r, "this language is not available on your execution node")
+					return
+				}
+				r = withSessionWeight(r, weight)
 			}
-			r = withSessionWeight(r, weight)
 		}
 	}
 	if b.ID() != LocalID {
@@ -481,6 +508,26 @@ const unassigned = "-"
 func BackendOf(r *http.Request) string {
 	b, _ := r.Context().Value(backendKey{}).(string)
 	return b
+}
+
+// NodeOf returns the backend the requester's session is assigned to, or "" when
+// it has none yet. It only looks: no session is created or touched. The page's
+// settings script uses it to hide the languages that are off on the visitor's
+// node.
+func (rt *Router) NodeOf(r *http.Request) string {
+	key := ""
+	if uid := rt.uid(r); uid != "" {
+		key = "u:" + uid
+	} else if guest := rt.affinity.GuestID(r); guest != "" {
+		key = "g:" + guest
+	}
+	if key == "" {
+		return ""
+	}
+	if ec, found := rt.registry.Resolve(key); found {
+		return ec.BackendID
+	}
+	return ""
 }
 
 // routed returns the backend that owns the jid or homedir a request names.

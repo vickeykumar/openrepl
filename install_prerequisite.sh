@@ -153,6 +153,17 @@ else
     chmod 755 /usr/local/bin/rappel
     cd ..
 fi
+# rappel traces its child with ptrace: on a host without it the wrapper says so, and
+# starts the real rappel (OPENREPL_RAPPEL_BIN) everywhere else
+if [ -x "$GOTTY_DIR/rappel/bin/rappel" ]; then
+    if [ -f "$SCRIPT_DIR/scripts/openrepl-rappel" ]; then
+        rm -f /usr/local/bin/rappel
+        install -m 755 "$SCRIPT_DIR/scripts/openrepl-rappel" /usr/local/bin/rappel
+    else
+        echo "ERROR: $SCRIPT_DIR/scripts/openrepl-rappel is missing"
+        retVal=1
+    fi
+fi
 
 #install gointerpreter
 git clone https://github.com/vickeykumar/Go-interpreter.git
@@ -208,6 +219,23 @@ mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd 2>&1 || true
 #apt-get install -y --no-install-recommends gdb
 cp $SCRIPT_DIR/bin/gdb /usr/local/bin/ || true
 chmod 755 /usr/local/bin/gdb || true
+
+# Debug (gdb) needs ptrace, and some hosts do not have it: the Raspberry Pi workers
+# (an amd64 image under qemu-user), x86 code under Rosetta, sandboxes. There gdb
+# talks to qemu instead, which runs the program and serves gdb on a port:
+#   openrepl-ptrace-probe   asks the host whether ptrace works (built once, here)
+#   openrepl-gdb            what the Debug button starts: gdb, or gdb + qemu
+apt-get install -y --no-install-recommends qemu-user
+# qemu describes its registers to gdb in XML, so that route needs a gdb built with XML
+# support; the bundled gdb 8.1.1 (above, first on the PATH) is not. Ubuntu's is.
+apt-get install -y --no-install-recommends gdb
+if [ -f "$SCRIPT_DIR/scripts/ptrace-probe.c" ] && [ -f "$SCRIPT_DIR/scripts/openrepl-gdb" ]; then
+    gcc -O1 -o /usr/local/bin/openrepl-ptrace-probe "$SCRIPT_DIR/scripts/ptrace-probe.c" || retVal=1
+    install -m 755 "$SCRIPT_DIR/scripts/openrepl-gdb" /usr/local/bin/openrepl-gdb || retVal=1
+else
+    echo "ERROR: $SCRIPT_DIR/scripts/ptrace-probe.c or openrepl-gdb is missing"
+    retVal=1
+fi
 chmod -R 777 /tmp/home || true
 
 #cleanup
@@ -252,20 +280,58 @@ if [ $run_tests -eq 1 ]; then
 		"sqlite3 --version"
 		"tsc --version"
 		"ts-node --version"
-    "echo "nop" | rappel"
 	)
 
 
-	# Loop through the array and execute each command
-	for cmd in "${test_commands[@]}"; do
-	  $cmd
-	  if [ $? -eq 0 ]; then
+	# Loop through the array and execute each command, through bash so that a pipe is one
+	while IFS= read -r cmd; do
+	  bash -c "$cmd"
+	  status=$?
+	  if [ $status -eq 0 ]; then
 	    echo "test [$cmd] => PASSED"
 	  else
-	    echo "test [$cmd] => FAILED with status code $?"
+	    echo "test [$cmd] => FAILED with status code $status"
 	    retVal=1
 	  fi
+	done < <(printf '%s\n' "${test_commands[@]}")
+
+	# Debugging. What the host allows is the host's choice (a builder may have no ptrace),
+	# so only the route through qemu has to work; the others are reported.
+	echo "test [ptrace on this host] => $(openrepl-ptrace-probe 2>&1)"
+	debug_dir=$(mktemp -d)
+	cat > "$debug_dir/t.c" <<'EOF'
+#include <stdio.h>
+int sq(int x) { return x * x; }
+int main(void) { printf("%d\n", sq(3)); return 0; }
+EOF
+	gcc -ggdb -g -static -o "$debug_dir/t.o" "$debug_dir/t.c"
+	openrepl-ptrace-probe > /dev/null 2>&1
+	has_ptrace=$?
+	for route in qemu ptrace; do
+	  if [ $route = ptrace ] && [ $has_ptrace -eq 1 ]; then
+	    echo "test [debug a program with $route] => SKIPPED (no ptrace here)"
+	    continue
+	  fi
+	  out=$(cd "$debug_dir" && OPENREPL_GDB_ROUTE=$route timeout 120 openrepl-gdb ./t.o -batch -ex 'break sq' -ex run -ex bt -ex delete -ex continue 2>&1)
+	  if echo "$out" | grep -q 'Breakpoint 1, sq (x=3)'; then
+	    echo "test [debug a program with $route] => PASSED"
+	  elif [ $route = qemu ]; then
+	    echo "test [debug a program with $route] => FAILED"
+	    echo "$out"
+	    retVal=1
+	  else
+	    echo "test [debug a program with $route] => FAILED (not fatal: ptrace is the host's)"
+	    echo "$out"
+	  fi
 	done
+	rm -rf "$debug_dir"
+	if [ $has_ptrace -eq 1 ]; then
+	  echo "test [echo nop | rappel] => SKIPPED (no ptrace here)"
+	elif echo 'nop' | timeout 60 rappel > /dev/null 2>&1; then
+	  echo "test [echo nop | rappel] => PASSED"
+	else
+	  echo "test [echo nop | rappel] => FAILED (not fatal)"
+	fi
 fi
 
 exit $retVal

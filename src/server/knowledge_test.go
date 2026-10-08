@@ -129,6 +129,8 @@ func TestSearchFindsTheRightNoteForQuestionsAboutTheSite(t *testing.T) {
 		{"which languages are supported", "languages"},
 		{"is there a rust repl", "languages"},
 		{"how do I debug c code with gdb", "run-and-debug"},
+		{"why does debug start paused and say qemu", "run-and-debug"},
+		{"can I debug go or assembly with gdb", "run-and-debug"},
 		{"how do I upload a file", "files-and-workspace"},
 		{"what happens to my files after an hour", "files-and-workspace"},
 		{"do I need an account", "sign-in-and-accounts"},

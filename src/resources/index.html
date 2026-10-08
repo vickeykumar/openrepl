@@ -575,7 +575,7 @@
           <div class="bento">
             <div class="bento-card bento-card--wide">
               <h3>Run and debug in one place</h3>
-              <p>Press Run to compile and execute your file. Choose Debug from the Run menu to step through C, C++ and Rust with gdb.</p>
+              <p>Press Run to compile and execute your file. Choose Debug from the Run menu to step through C, C++, Go, Rust and assembly with gdb.</p>
               <pre class="code-sample code-sample--card"><span class="dim">(gdb)</span> break main.c:5
 Breakpoint 1 at main.c, line 5.
 <span class="dim">(gdb)</span> run
@@ -670,6 +670,7 @@ Breakpoint 1, main () at main.c:5
           <div class="faq-item"><h3>Can Genie explain or fix just part of my code?</h3><p>Yes. Select the code in the editor and right-click it: Explain, Fix problems, Add comments or Write tests. Changes show as a diff you accept or reject.</p></div>
           <div class="faq-item"><h3>Can Genie help me practise without giving the answer?</h3><p>Yes. On the Practice page the coach gives up to three hints per question, reviews your solution and states its complexity, and never writes the code for you.</p></div>
           <div class="faq-item"><h3>Can Genie manage my files?</h3><p>Yes, in Agent mode. It can open a file in the editor, create, copy, move, rename and delete files and folders in your Files panel. Renaming, moving and deleting are asked about every time.</p></div>
+          <div class="faq-item"><h3>Why does Debug start paused?</h3><p>On some servers programs cannot be traced the usual way, so Debug runs yours under QEMU and gdb connects to it. It waits at the first instruction: set your breakpoints, then type c or run. Ctrl+C stops it again.</p></div>
           <div class="faq-item"><h3>Can I run it myself?</h3><p>Yes. Pull the Docker image and run it on your own machine or server. The README on GitHub has the steps.</p></div>
           </div>
         </div>

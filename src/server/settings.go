@@ -45,6 +45,12 @@ type SiteSettings struct {
 	// DisabledLanguages are the values of the language picker (python, cpp, ...)
 	// that are switched off: the page hides them and their terminals refuse.
 	DisabledLanguages []string `json:"disabledLanguages"`
+	// NodeLanguages are an admin's choices for single nodes (the gateway itself,
+	// "local", and each worker by id): languages switched off on one node only,
+	// and languages switched on that the node did not declare. See
+	// node_languages.go. The Settings page does not send them; /admin/workers
+	// changes them.
+	NodeLanguages map[string]NodeLanguages `json:"nodeLanguages,omitempty"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
 	// Admins are the accounts added in the dashboard, lower case, besides the
@@ -160,6 +166,12 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	}
 	sort.Strings(langs)
 	s.DisabledLanguages = langs
+
+	nodes, err := normalizeNodeLanguages(s.NodeLanguages)
+	if err != nil {
+		return s, err
+	}
+	s.NodeLanguages = nodes
 
 	for name, v := range map[string]float64{"guest": s.Genie.GuestPerMinute, "signed-in": s.Genie.UserPerMinute} {
 		if v < 0 || v > maxGenieRate {
@@ -451,7 +463,15 @@ func (s SiteSettings) public() publicSettings {
 // handleSettingsJS serves the public settings as a script that defines
 // window.site_settings. Pages load it before js/preprocessing.js.
 func handleSettingsJS(rw http.ResponseWriter, req *http.Request) {
-	data, err := json.Marshal(GetSiteSettings().public())
+	pub := GetSiteSettings().public()
+	if f := nodeDisabledForRequest; f != nil {
+		// On a gateway the languages that are off depend on the node that
+		// serves the visitor's session.
+		if langs := f(req); langs != nil {
+			pub.DisabledLanguages = langs
+		}
+	}
+	data, err := json.Marshal(pub)
 	if err != nil {
 		data = []byte("{}")
 	}
@@ -550,8 +570,9 @@ func (server *Server) handleAdminSettings(rw http.ResponseWriter, req *http.Requ
 			base = *posted.Version
 		}
 		before := GetSiteSettings()
-		s.Secrets = before.Secrets // the form cannot set keys; /admin/keys does
-		s.Admins = before.Admins   // nor admins; /admin/admins does, for owners
+		s.Secrets = before.Secrets             // the form cannot set keys; /admin/keys does
+		s.Admins = before.Admins               // nor admins; /admin/admins does, for owners
+		s.NodeLanguages = before.NodeLanguages // nor the languages of single nodes; /admin/workers does
 		if err := SaveSiteSettings(s, base); err != nil {
 			if _, bad := s.normalize(); bad != nil {
 				adminError(rw, http.StatusBadRequest, bad.Error())
@@ -608,6 +629,7 @@ func settingsChanges(a, b SiteSettings) []string {
 	if strings.Join(a.DisabledLanguages, ",") != strings.Join(b.DisabledLanguages, ",") {
 		out = append(out, "languages switched off: "+strings.Join(b.DisabledLanguages, ", "))
 	}
+	out = append(out, nodeLanguageChanges(a, b)...)
 	if a.Genie.Disabled != b.Genie.Disabled {
 		out = append(out, "Genie "+map[bool]string{true: "switched off", false: "switched on"}[b.Genie.Disabled])
 	}

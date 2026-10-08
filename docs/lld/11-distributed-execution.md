@@ -189,6 +189,7 @@ The gateway applies the site rules (maintenance mode, languages that are switche
 - *Use:* `applyWorkerConfig` (`server/worker_config.go`) makes the config the worker's `SiteSettings`, in memory only; the worker reads no `settings.json` or database for them. `/settings.js` of the worker then shows the gateway's banner, and `wrapWorkerControls` closes a terminal of a visitor of the worker's own port with `site notice: ...` for maintenance and for a switched-off language. A request the gateway forwarded (trusted) is not checked again: the gateway knows who is an admin and the worker does not. On the worker's own port nobody is exempt, admins included; an admin who needs a terminal during maintenance uses the gateway.
 - *Before the first config* (or if the gateway never sends one, an older gateway) the worker has the default settings: no rules.
 - *Dashboard:* the worker's drawer shows "Site rules: up to date" or the revision it follows (`WorkerInfo.ConfigRev`, `ConfigCurrent`).
+- *Per worker:* the list of languages that are off is the worker's own (`ServerConfig.WorkerConfig`, `server.gatewayWorkerConfigFor`): the site's, the ones an admin switched off on that worker, and the ones it did not declare (`--worker-languages`) unless an admin switched them on (LLD 13, "Languages per node"). The revision therefore differs from worker to worker; `ConfigRevisionFor` gives the one a worker should follow.
 - *Not sent on purpose:* the MongoDB or Firestore settings (a worker keeps files, LLD 05), keys, the admin list, and limits such as capacity, which are the worker's own flags. Together with the secret (section 6.1a), this is everything a worker takes from the gateway.
 
 A failure to listen ends `Run` before the worker connects to the gateway. A listener that stops later cancels the worker's context, like a standalone server. On shutdown `runWorker` closes both servers, then waits for the live WebSockets.
@@ -232,7 +233,7 @@ Randomized weighted selection, the method of `ServerPool.Select` in `sish-lb/lb.
 
 Differences from sish-lb: the candidate list is rebuilt on every pick because eligibility changes with state and load; there are no global flags; the pool has its own `*rand.Rand` under a mutex instead of calling `rand.Seed` on the shared generator; the key is the session, not a hostname.
 
-Placement happens once per session, on the first page load, before the language is known. So the language is not part of selection: a worker that lacks the requested REPL (`--worker-languages`) answers that terminal with 503 "this language is not available on your execution node". With no `--worker-languages` a worker is taken to have every REPL.
+Placement happens once per session, on the first page load, before the language is known. So the language is not part of selection: a worker that lacks the requested REPL (`--worker-languages`) has that terminal refused with "this language is not available on your execution node" (a notice the page shows; a plain 503 for a request that is not a WebSocket). With no `--worker-languages` a worker is taken to have every REPL. An admin can override this per node and language (LLD 13, "Languages per node"): Off refuses a language the node can run, On takes one it did not declare. The picker hides what the visitor's node refuses (`Router.NodeOf`).
 
 ## 9. Tunnel (`src/tunnel`)
 

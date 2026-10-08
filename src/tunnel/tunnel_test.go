@@ -751,3 +751,59 @@ func TestAReconnectingWorkerGetsTheConfigAgainOnlyIfItChanged(t *testing.T) {
 		t.Fatalf("OnConfig was called %d times for one revision", calls)
 	}
 }
+
+// ---- settings that differ from worker to worker ------------------------------------
+
+func TestEachWorkerGetsItsOwnConfigWhenTheGatewayHasPerWorkerSettings(t *testing.T) {
+	var mu sync.Mutex
+	off := map[string][]string{"worker-1": {"rappel"}, "worker-2": {"cpp"}}
+	gw := newGateway(t, func(c *ServerConfig) {
+		c.WorkerConfig = func(w *Worker) *WorkerConfig {
+			mu.Lock()
+			defer mu.Unlock()
+			return &WorkerConfig{Revision: int64(w.ID()[len(w.ID())-1])*1000 + int64(len(off[w.ID()])), DisabledLanguages: off[w.ID()]}
+		}
+		// the global Config is ignored when WorkerConfig is set
+		c.Config = func() *WorkerConfig { return &WorkerConfig{Revision: 1, DisabledLanguages: []string{"wrong"}} }
+	})
+	var got1, got2 []WorkerConfig
+	var gmu sync.Mutex
+	w1 := newWorker(t, gw.url, "worker-1", nil, func(c *ClientConfig) {
+		c.OnConfig = func(cfg *WorkerConfig) { gmu.Lock(); got1 = append(got1, *cfg); gmu.Unlock() }
+	})
+	w2 := newWorker(t, gw.url, "worker-2", nil, func(c *ClientConfig) {
+		c.OnConfig = func(cfg *WorkerConfig) { gmu.Lock(); got2 = append(got2, *cfg); gmu.Unlock() }
+	})
+	<-w1.reply
+	<-w2.reply
+	waitFor(t, "both configs", func() bool { gmu.Lock(); defer gmu.Unlock(); return len(got1) == 1 && len(got2) == 1 })
+	if len(got1[0].DisabledLanguages) != 1 || got1[0].DisabledLanguages[0] != "rappel" || got2[0].DisabledLanguages[0] != "cpp" {
+		t.Fatalf("worker-1 %+v, worker-2 %+v", got1[0], got2[0])
+	}
+	waitFor(t, "registration", func() bool { return gw.srv.Worker("worker-1") != nil && gw.srv.Worker("worker-2") != nil })
+	if r1, r2 := gw.srv.ConfigRevisionFor(gw.srv.Worker("worker-1")), gw.srv.ConfigRevisionFor(gw.srv.Worker("worker-2")); r1 == r2 || r1 == 0 {
+		t.Fatalf("revisions %d and %d", r1, r2)
+	}
+
+	// an admin changes one worker's languages: only that worker is handed a new config
+	mu.Lock()
+	off["worker-1"] = []string{"rappel", "go"}
+	mu.Unlock()
+	waitFor(t, "worker-1 follows the change", func() bool { gmu.Lock(); defer gmu.Unlock(); return len(got1) == 2 })
+	time.Sleep(150 * time.Millisecond)
+	gmu.Lock()
+	defer gmu.Unlock()
+	if len(got1[1].DisabledLanguages) != 2 || len(got2) != 1 {
+		t.Fatalf("worker-1 %+v; worker-2 was handed %d configs", got1[1], len(got2))
+	}
+}
+
+func TestAWorkerSaysWhetherItsHostCanTracePrograms(t *testing.T) {
+	gw := newGateway(t, nil)
+	wk := newWorker(t, gw.url, "pi-1", nil, func(c *ClientConfig) { c.Register.Ptrace = "traceme: not implemented" })
+	<-wk.reply
+	waitFor(t, "registration", func() bool { return gw.srv.Worker("pi-1") != nil })
+	if got := gw.srv.Worker("pi-1").Info().Ptrace; got != "traceme: not implemented" {
+		t.Fatalf("ptrace = %q", got)
+	}
+}

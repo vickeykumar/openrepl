@@ -1,0 +1,189 @@
+#!/bin/bash
+# openrepl-gdb [--gdb COMMAND] PROGRAM [GDB ARGUMENTS...]
+#
+# What the Debug button starts instead of a bare gdb (C, C++, Go, Rust, assembly).
+# gdb traces the program with ptrace, and not every host has it, so this looks at
+# the host first (openrepl-ptrace-probe) and takes one of these routes:
+#
+#   ptrace    the host allows it: gdb as usual
+#   emulator  the container itself runs under qemu-user (an amd64 image on a
+#             Raspberry Pi worker). Emulated programs cannot be traced, but the
+#             emulator can serve gdb: QEMU_GDB=<port> in the environment of the
+#             program makes the emulator that runs it wait for gdb on that port.
+#   qemu      no ptrace and no emulator around us (x86 code under Rosetta, a
+#             sandbox without ptrace): the image's own qemu-x86_64 runs the
+#             program the same way
+#   none      nothing works: say so and stop
+#
+# On the last two routes the program starts paused at its first instruction, and
+# `run` (or `r`) is made to mean `continue`, because a remote target cannot "run".
+#
+# --gdb picks another gdb front end (rust-gdb). OPENREPL_GDB_ROUTE=ptrace|emulator|qemu
+# forces a route; the install script's test and the docs use it.
+
+gdbcmd=gdb
+if [ "$1" = "--gdb" ]; then
+	gdbcmd=$2
+	shift 2
+fi
+prog=$1
+if [ -z "$prog" ]; then
+	echo "usage: openrepl-gdb [--gdb COMMAND] PROGRAM [GDB ARGUMENTS...]" >&2
+	exit 2
+fi
+shift
+# env and qemu need a path, gdb takes either
+case "$prog" in
+*/*) ;;
+*) prog=./$prog ;;
+esac
+
+route=${OPENREPL_GDB_ROUTE:-auto}
+why=
+noaslr=
+if [ "$route" = auto ]; then
+	if command -v openrepl-ptrace-probe >/dev/null 2>&1; then
+		why=$(openrepl-ptrace-probe 2>/dev/null)
+		case $? in
+		0) route=ptrace ;;
+		2) route=ptrace noaslr=1 ;;
+		*)
+			if QEMU_VERSION=1 /bin/true 2>/dev/null | grep -q '^qemu-'; then
+				route=emulator
+			elif [ "$(uname -m)" = x86_64 ] && command -v qemu-x86_64 >/dev/null 2>&1; then
+				route=qemu
+			else
+				route=none
+			fi
+			;;
+		esac
+	else
+		route=ptrace # an image from before the probe: as it always was
+	fi
+fi
+
+case $route in
+ptrace)
+	args=()
+	# the host refuses to switch address randomization off: do not let gdb warn about it
+	[ -n "$noaslr" ] && args=(-iex "set disable-randomization off")
+	exec "$gdbcmd" "${args[@]}" "$prog" "$@"
+	;;
+emulator | qemu) ;;
+*)
+	echo "Debugging is not available on this server: it does not allow ptrace${why:+ ($why)} and has no QEMU to debug through." >&2
+	echo "Run still works." >&2
+	exit 1
+	;;
+esac
+
+# --- remote routes: the program runs under qemu and gdb connects to its port ---
+
+# qemu describes its registers to gdb in XML, so gdb must be built with XML support
+# (expat). The gdb 8.1.1 the repo bundles (bin/gdb) is not, and on a host where it
+# comes first on the PATH it fails with "Remote 'g' packet reply is too long" and the
+# program runs away on its own. Take the first gdb on the PATH that has it.
+gdb_with_xml() {
+	local candidate
+	for candidate in $(type -aP "$1" 2>/dev/null); do
+		if "$candidate" --configuration 2>/dev/null | grep -q -- '--with-expat'; then
+			echo "$candidate"
+			return 0
+		fi
+	done
+	return 1
+}
+case $gdbcmd in
+rust-gdb)
+	# rust-gdb starts the gdb named by RUST_GDB
+	if RUST_GDB=$(gdb_with_xml gdb); then export RUST_GDB; else RUST_GDB=; fi
+	have_gdb=${RUST_GDB:+yes}
+	;;
+gdb)
+	if gdbcmd=$(gdb_with_xml gdb); then have_gdb=yes; else gdbcmd=gdb; have_gdb=; fi
+	;;
+*) have_gdb=yes ;; # some other gdb the caller chose
+esac
+if [ -z "$have_gdb" ]; then
+	echo "Debugging through QEMU needs a gdb with XML support, and this server has none (the bundled gdb 8.1.1 has not)." >&2
+	echo "Install one (apt install gdb). Run still works." >&2
+	exit 1
+fi
+
+port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])' 2>/dev/null)
+port=${port:-$((20000 + RANDOM % 30000))}
+
+if [ "$route" = emulator ]; then
+	launch=(env "QEMU_GDB=$port" "$prog")
+else
+	launch=(env "QEMU_GDB=$port" QEMU_LD_PREFIX=/ qemu-x86_64 "$prog")
+fi
+
+init=$(mktemp)
+qpid=
+wpid=
+cleanup() {
+	[ -n "$wpid" ] && kill "$wpid" 2>/dev/null
+	[ -n "$qpid" ] && kill "$qpid" 2>/dev/null
+	rm -f "$init"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 143' TERM
+trap : INT # Ctrl-C is gdb's (it stops the program), not this script's
+
+cat >"$init" <<'EOF'
+set confirm off
+define run
+  continue
+end
+define r
+  continue
+end
+set confirm on
+EOF
+
+# The program keeps the terminal for its input, as under a plain gdb. The shell
+# ignores Ctrl-C for it (it is a background job), so Ctrl-C reaches only gdb.
+have_tty=
+if { : </dev/tty; } 2>/dev/null; then
+	have_tty=1
+	"${launch[@]}" </dev/tty &
+else
+	"${launch[@]}" </dev/null &
+fi
+qpid=$!
+
+# When the terminal goes away (the browser tab closes) a gdb that is waiting for a
+# running remote program does not act on the hangup, and the program would run on
+# for ever. So watch for it, and stop what this script started.
+if [ -n "$have_tty" ]; then
+	(
+		trap '' HUP # the hangup is what it waits for: it must outlive the signal
+		while kill -0 $$ 2>/dev/null && sleep 1; do
+			{ : </dev/tty; } 2>/dev/null && continue
+			for child in $(pgrep -P $$); do
+				[ "$child" != "$BASHPID" ] && kill -KILL "$child" 2>/dev/null
+			done
+			exit
+		done
+	) &
+	wpid=$!
+fi
+
+listening() {
+	grep -Eqi ":$(printf '%04X' "$port") [0-9A-F]+:[0-9A-F]+ 0A " /proc/net/tcp /proc/net/tcp6 2>/dev/null
+}
+tries=0
+until listening || ! kill -0 "$qpid" 2>/dev/null || [ $tries -ge 150 ]; do
+	sleep 0.1
+	tries=$((tries + 1))
+done
+if ! listening; then
+	echo "The program could not be started under QEMU for debugging." >&2
+	exit 1
+fi
+
+echo "This server cannot trace programs (ptrace), so the program runs under QEMU and gdb connects to it."
+echo "It starts paused: set your breakpoints, then type c (or run) to start it."
+"$gdbcmd" -q -iex "set sysroot /" -ex "target remote 127.0.0.1:$port" -x "$init" "$prog" "$@"
