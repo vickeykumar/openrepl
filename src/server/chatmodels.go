@@ -44,6 +44,17 @@ type chatModel struct {
 	Provider     string
 	Reasoning    bool
 	MaxTokensCap int
+	// The rest is for models an admin added (custom_models.go).
+	Custom bool
+	// Free: on a provider's free tier.
+	Free bool
+	// Hosts are the only OpenRouter providers that may answer; empty means
+	// OpenRouter chooses (a custom model) or Gemma's hosts (Gemma).
+	Hosts []string
+	// ThinkingRoom is added to the answer budget of a model that thinks first.
+	ThinkingRoom int
+	// NoJSONMode: the model's host takes no response_format.
+	NoJSONMode bool
 }
 
 // the order the models are listed in, in the dashboard and as a last resort
@@ -64,7 +75,7 @@ func defaultModelID() string {
 	if g.DefaultModel != "" && !g.ModelDisabled(g.DefaultModel) {
 		return g.DefaultModel
 	}
-	for _, id := range append([]string{defaultChatModel}, chatModelOrder...) {
+	for _, id := range append([]string{defaultChatModel}, g.allModelIDs()...) {
 		if !g.ModelDisabled(id) {
 			return id
 		}
@@ -91,8 +102,17 @@ func activeOpenRouterHosts() []string {
 	return openRouterHosts
 }
 
-func openRouterRouting() map[string]interface{} {
+// openRouterRouting is the host rule of a request: the hosts the model names, the
+// admin's choice for Gemma, or none for a model an admin added without hosts
+// (nil: OpenRouter chooses).
+func openRouterRouting(model chatModel) map[string]interface{} {
 	hosts := activeOpenRouterHosts()
+	switch {
+	case len(model.Hosts) > 0:
+		hosts = model.Hosts
+	case model.Custom:
+		return nil
+	}
 	return map[string]interface{}{
 		"order":           hosts,
 		"only":            hosts,
@@ -174,9 +194,22 @@ func sanitizeChatBody(body []byte) ([]byte, chatModel, error) {
 		}
 	}
 
+	model, _ := modelByID(defaultModelID())
+	if raw, ok := in["model"]; ok {
+		var asked string
+		if json.Unmarshal(raw, &asked) == nil {
+			if known, ok := modelByID(asked); ok {
+				model = known
+			}
+		}
+	}
+	out["model"] = model.ID
+
 	// The question generator asks for JSON so that a quote or a newline inside
-	// the text cannot make the reply unparseable. No other format is passed on.
-	if raw, ok := in["response_format"]; ok {
+	// the text cannot make the reply unparseable. No other format is passed on,
+	// and none to a model whose host does not take it (the agent reads the answer
+	// as JSON all the same, and asks again when it cannot).
+	if raw, ok := in["response_format"]; ok && !model.NoJSONMode {
 		var format struct {
 			Type string `json:"type"`
 		}
@@ -184,17 +217,6 @@ func sanitizeChatBody(body []byte) ([]byte, chatModel, error) {
 			out["response_format"] = map[string]string{"type": "json_object"}
 		}
 	}
-
-	model := chatModels[defaultModelID()]
-	if raw, ok := in["model"]; ok {
-		var asked string
-		if json.Unmarshal(raw, &asked) == nil {
-			if known, ok := chatModels[asked]; ok {
-				model = known
-			}
-		}
-	}
-	out["model"] = model.ID
 
 	if model.Reasoning {
 		effort := defaultEffort
@@ -209,7 +231,7 @@ func sanitizeChatBody(body []byte) ([]byte, chatModel, error) {
 		out["reasoning_effort"] = effort
 		out["max_completion_tokens"] = clampTokens(in["max_completion_tokens"], effortTokens[effort], minCompletionTokens, answerCap(model))
 	} else {
-		out["max_tokens"] = clampTokens(in["max_tokens"], defaultMaxTokens, minCompletionTokens, answerCap(model))
+		out["max_tokens"] = clampTokens(in["max_tokens"], defaultMaxTokens, minCompletionTokens, answerCap(model)) + model.ThinkingRoom
 		if raw, ok := in["temperature"]; ok {
 			var t float64
 			if json.Unmarshal(raw, &t) == nil && !math.IsNaN(t) {
@@ -218,7 +240,9 @@ func sanitizeChatBody(body []byte) ([]byte, chatModel, error) {
 		}
 	}
 	if model.Provider == providerOpenRouter {
-		out["provider"] = openRouterRouting()
+		if rule := openRouterRouting(model); rule != nil {
+			out["provider"] = rule
+		}
 	}
 	sanitized, err := json.Marshal(out)
 	return sanitized, model, err

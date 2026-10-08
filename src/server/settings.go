@@ -85,6 +85,10 @@ type GenieSettings struct {
 	// picker hides them and the proxy answers 503 model_unavailable. At least
 	// one model stays on.
 	DisabledModels []string `json:"disabledModels"`
+	// CustomModels are the OpenRouter models an admin added, each with its own
+	// switch (custom_models.go). nil means none was ever saved: the defaults are
+	// listed, off. The three built-in models are not in it and cannot be removed.
+	CustomModels []CustomModel `json:"customModels"`
 	// What Genie is told about the page, and how much of the conversation it
 	// keeps: the editor's code (characters), the terminal's recent output
 	// (characters and lines) and the number of messages. 0 is the built-in value.
@@ -117,8 +121,17 @@ type GenieSettings struct {
 	AgentMaxSteps     int  `json:"agentMaxSteps"`
 }
 
-// ModelDisabled reports whether an admin switched the model off.
+// ModelDisabled reports whether an admin switched the model off (a model an admin
+// added is off until its switch is on).
 func (g GenieSettings) ModelDisabled(id string) bool {
+	if _, builtin := chatModels[id]; !builtin {
+		for _, c := range g.customList() {
+			if c.ID == id {
+				return !c.Enabled
+			}
+		}
+		return false
+	}
 	for _, d := range g.DisabledModels {
 		if d == id {
 			return true
@@ -216,17 +229,29 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 		off = append(off, id)
 	}
 	sort.Strings(off)
-	if len(off) >= len(chatModels) {
+	s.Genie.DisabledModels = off
+	custom, err := normalizeCustomModels(s.Genie.CustomModels)
+	if err != nil {
+		return s, err
+	}
+	s.Genie.CustomModels = custom
+	anyOn := false
+	for _, id := range s.Genie.allModelIDs() {
+		if !s.Genie.ModelDisabled(id) {
+			anyOn = true
+		}
+	}
+	if !anyOn {
 		return s, fmt.Errorf("at least one model has to stay switched on")
 	}
-	s.Genie.DisabledModels = off
 	s.Genie.DefaultModel = strings.TrimSpace(s.Genie.DefaultModel)
 	if d := s.Genie.DefaultModel; d != "" {
-		if _, known := chatModels[d]; !known {
+		m, known := s.Genie.modelByID(d)
+		if !known {
 			return s, fmt.Errorf("%q is not a model", d)
 		}
-		if seenModel[d] {
-			return s, fmt.Errorf("the default model %s is switched off", chatModels[d].Name)
+		if s.Genie.ModelDisabled(d) {
+			return s, fmt.Errorf("the default model %s is switched off", m.Name)
 		}
 	}
 	return s, nil
@@ -335,7 +360,9 @@ type publicSettings struct {
 	// the models that are switched off, and the one visitors start with (empty:
 	// the built-in choice); model-choice.js reads them
 	DisabledModels []string `json:"disabledModels"`
-	DefaultModel   string   `json:"defaultModel"`
+	// the models an admin added that are on, for the picker
+	CustomModels []publicCustomModel `json:"customModels"`
+	DefaultModel string              `json:"defaultModel"`
 	// what Genie reads from the page and keeps (the effective numbers)
 	GenieContext genieContext `json:"genieContext"`
 	// agent mode: whether the panel offers it (to signed-in users; the server
@@ -452,6 +479,7 @@ func (s SiteSettings) public() publicSettings {
 		DisabledLanguages: langs,
 		GenieDisabled:     s.Genie.Disabled,
 		DisabledModels:    models,
+		CustomModels:      s.Genie.publicCustomModels(),
 		DefaultModel:      s.Genie.DefaultModel,
 		GenieContext:      s.Genie.context(),
 		AgentEnabled:      !s.Genie.AgentDisabled && !s.Genie.Disabled,
@@ -544,6 +572,7 @@ func reply(s SiteSettings) settingsReply {
 	if s.Genie.DisabledModels == nil {
 		s.Genie.DisabledModels = []string{}
 	}
+	s.Genie.CustomModels = append([]CustomModel{}, s.Genie.customList()...) // the list in effect, never null
 	s.Secrets = nil
 	return settingsReply{SiteSettings: s, Languages: languageChoices(), Models: modelInfos(), Defaults: currentGenieDefaults(), Store: store, Version: version}
 }
@@ -570,8 +599,11 @@ func (server *Server) handleAdminSettings(rw http.ResponseWriter, req *http.Requ
 			base = *posted.Version
 		}
 		before := GetSiteSettings()
-		s.Secrets = before.Secrets             // the form cannot set keys; /admin/keys does
-		s.Admins = before.Admins               // nor admins; /admin/admins does, for owners
+		s.Secrets = before.Secrets // the form cannot set keys; /admin/keys does
+		s.Admins = before.Admins   // nor admins; /admin/admins does, for owners
+		if s.Genie.CustomModels == nil {
+			s.Genie.CustomModels = before.Genie.CustomModels // a page from before the list existed does not send it
+		}
 		s.NodeLanguages = before.NodeLanguages // nor the languages of single nodes; /admin/workers does
 		if err := SaveSiteSettings(s, base); err != nil {
 			if _, bad := s.normalize(); bad != nil {
@@ -638,6 +670,7 @@ func settingsChanges(a, b SiteSettings) []string {
 			out = append(out, "model "+chatModels[id].Name+" "+map[bool]string{true: "switched off", false: "switched on"}[b.Genie.ModelDisabled(id)])
 		}
 	}
+	out = append(out, customModelChanges(a.Genie, b.Genie)...)
 	if a.Genie.DefaultModel != b.Genie.DefaultModel {
 		name := "built-in"
 		if m, ok := chatModels[b.Genie.DefaultModel]; ok {

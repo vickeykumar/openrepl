@@ -912,6 +912,24 @@
     root.appendChild(pageHead('Site settings', 'Switches that change what every visitor sees. Changes apply to the next page a visitor loads.'));
     root.appendChild(body);
 
+    // ---- the OpenRouter models an admin adds (the three built-in ones stay as they are)
+    var CUSTOM_ID = /^[a-z0-9][a-z0-9._-]{0,63}\/[a-z0-9][a-z0-9._:+-]{0,95}$/;
+    function hostsFrom(text) {
+      var seen = {}, out = [];
+      String(text || '').toLowerCase().split(/[\s,]+/).forEach(function (x) { if (x && !seen[x]) { seen[x] = 1; out.push(x); } });
+      return out;
+    }
+    // one shape for a model from the server and from a row of the form, so that they compare
+    function cleanCustom(c) {
+      var id = String(c.id || '').trim().toLowerCase();
+      return { id: id, name: String(c.name || '').trim() || id, enabled: !!c.enabled, free: !!c.free || /:free$/.test(id),
+        answerTokens: int(c.answerTokens), thinkingRoom: int(c.thinkingRoom), jsonMode: !!c.jsonMode, hosts: (c.hosts || []).slice() };
+    }
+    function readCustom(r) {
+      return cleanCustom({ id: r.id, name: r.name.value, enabled: r.on.checked, free: r.free.checked, answerTokens: r.answer.value,
+        thinkingRoom: r.room.value, jsonMode: r.json.checked, hosts: hostsFrom(r.hosts.value) });
+    }
+
     function snapshot() {
       return {
         colorOfTheDay: form.colour.checked,
@@ -920,6 +938,7 @@
         disabledLanguages: languages.filter(function (l) { return !form.langs[l.value].checked; }).map(function (l) { return l.value; }).sort(),
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
+          customModels: (form.custom || []).map(readCustom),
           defaultModel: form.defModel.value,
           contextEditorChars: int(form.ctxEditor.value), contextTerminalChars: int(form.ctxTermChars.value),
           contextTerminalLines: int(form.ctxTermLines.value), historyMessages: int(form.history.value),
@@ -947,7 +966,8 @@
         maintenance: { enabled: !!s.maintenance.enabled, message: s.maintenance.message || '' },
         disabledLanguages: (s.disabledLanguages || []).slice().sort(),
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
-          disabledModels: (s.genie.disabledModels || []).slice().sort(), defaultModel: s.genie.defaultModel || '',
+          disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
+          defaultModel: s.genie.defaultModel || '',
           contextEditorChars: s.genie.contextEditorChars || 0, contextTerminalChars: s.genie.contextTerminalChars || 0,
           contextTerminalLines: s.genie.contextTerminalLines || 0, historyMessages: s.genie.historyMessages || 0,
           openRouterTimeoutSec: s.genie.openRouterTimeoutSec || 0,
@@ -1006,6 +1026,78 @@
       models.forEach(function (m) { defModel.appendChild(h('option', { value: m.id, text: m.name })); });
       defModel.value = settings.genie.defaultModel || '';
       form.defModel = defModel;
+      var wantedDefault = settings.genie.defaultModel || '';
+
+      // the models an admin added: one block each, with its own switch
+      form.custom = [];
+      var builtInIds = models.map(function (m) { return m.id; });
+      var openRouterKeySet = models.some(function (m) { return m.provider === 'openrouter' && m.keySet; });
+      var customList = h('div', { class: 'custom-models' });
+      function addCustomRow(c) {
+        var r = { id: c.id };
+        var on = toggle('f-cm-' + form.custom.length + '-' + Date.now(), !!c.enabled, (c.name || c.id) + ' available');
+        r.on = on.input;
+        r.name = h('input', { type: 'text', class: 'field', maxlength: '40', 'aria-label': 'Name of ' + c.id, oninput: update });
+        r.name.value = c.name && c.name !== c.id ? c.name : (c.name || '');
+        r.free = h('input', { type: 'checkbox', checked: !!c.free || /:free$/.test(c.id), onchange: update, 'aria-label': c.id + ' is on a free tier' });
+        r.json = h('input', { type: 'checkbox', checked: !!c.jsonMode, onchange: update, 'aria-label': c.id + ' takes JSON mode' });
+        r.answer = h('input', { type: 'number', class: 'field', min: '500', max: '16000', step: '100', placeholder: '4000', 'aria-label': 'Answer size of ' + c.id, oninput: update });
+        r.answer.value = c.answerTokens || '';
+        r.room = h('input', { type: 'number', class: 'field', min: '0', max: '16000', step: '100', placeholder: '0', 'aria-label': 'Room for thinking of ' + c.id, oninput: update });
+        r.room.value = c.thinkingRoom || '';
+        r.hosts = h('input', { type: 'text', class: 'field', placeholder: 'OpenRouter chooses', 'aria-label': 'Providers allowed for ' + c.id, oninput: update });
+        r.hosts.value = (c.hosts || []).join(', ');
+        var remove = h('button', { class: 'btn small', type: 'button', text: 'Remove', 'aria-label': 'Remove ' + c.id, onclick: function () {
+          form.custom = form.custom.filter(function (x) { return x !== r; });
+          if (r.node.parentNode) r.node.parentNode.removeChild(r.node);
+          update();
+        } });
+        var field = function (label, input, hint) { return h('label', { class: 'cm-field' }, h('span', { text: label }), input, hint ? h('small', { text: hint }) : null); };
+        var check = function (input, label) { return h('label', { class: 'cm-check' }, input, h('span', { text: label })); };
+        r.node = h('div', { class: 'custom-model' },
+          h('div', { class: 'cm-head' }, on.node, h('div', { class: 'cm-title' }, r.name, h('span', { class: 'mono', text: c.id })), remove),
+          h('div', { class: 'cm-grid' },
+            field('Answer tokens', r.answer, 'Most tokens of an answer. Empty: 4000.'),
+            field('Room for thinking', r.room, 'Extra tokens for a model that thinks first.'),
+            field('Providers', r.hosts, 'Only these may answer (OpenRouter names, comma separated).')),
+          h('div', { class: 'cm-checks' }, check(r.free, 'Free tier (visitors are told)'), check(r.json, 'Its host takes JSON mode (Agent mode)')));
+        form.custom.push(r);
+        customList.appendChild(r.node);
+        return r;
+      }
+      (settings.genie.customModels || []).forEach(addCustomRow);
+      var addId = h('input', { type: 'text', class: 'field', id: 'f-cm-new-id', placeholder: 'author/model-name:free', 'aria-label': 'OpenRouter model id', autocomplete: 'off' });
+      var addName = h('input', { type: 'text', class: 'field', id: 'f-cm-new-name', maxlength: '40', placeholder: 'Name visitors see (optional)', 'aria-label': 'Name of the new model', autocomplete: 'off' });
+      var addBtn = h('button', { class: 'btn', type: 'button', text: 'Add model', onclick: function () {
+        var id = addId.value.trim().toLowerCase();
+        if (!CUSTOM_ID.test(id)) { toast('An OpenRouter id looks like author/model-name, for example nvidia/nemotron-3-super-120b-a12b:free.', 'error'); return; }
+        if (builtInIds.indexOf(id) >= 0 || form.custom.some(function (r) { return r.id === id; })) { toast(id + ' is in the list already.', 'error'); return; }
+        if (form.custom.length >= 20) { toast('At most 20 models can be added. Remove one first.', 'error'); return; }
+        var free = /:free$/.test(id);
+        addCustomRow({ id: id, name: addName.value.trim(), enabled: false, free: free, jsonMode: false, thinkingRoom: free ? 3000 : 0, hosts: [] });
+        addId.value = ''; addName.value = '';
+        update();
+      } });
+      addId.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addBtn.click(); } });
+
+      // the default model can be any model that is on, built in or added
+      function isModelOn(id) {
+        if (form.models[id]) return form.models[id].checked;
+        return form.custom.some(function (r) { return r.id === id && r.on.checked; });
+      }
+      function syncDefaultModels() {
+        var keep = defModel.value || wantedDefault;
+        wantedDefault = '';
+        Array.prototype.slice.call(defModel.options).forEach(function (o) { if (o.getAttribute('data-custom')) defModel.removeChild(o); });
+        form.custom.forEach(function (r) {
+          var o = h('option', { value: r.id, text: r.name.value.trim() || r.id });
+          o.setAttribute('data-custom', '1');
+          defModel.appendChild(o);
+        });
+        Array.prototype.forEach.call(defModel.options, function (o) { o.disabled = !!o.value && !isModelOn(o.value); });
+        defModel.value = keep;
+        if (defModel.value !== keep || (keep && !isModelOn(keep))) defModel.value = '';
+      }
 
       // the numbers: empty means the built-in value, shown as the placeholder
       function numberField(id, key, label, builtIn, range) {
@@ -1071,8 +1163,7 @@
         Array.prototype.forEach.call(form.host2.options, function (o) { o.disabled = !!o.value && o.value === form.host1.value; });
         if (form.host2.value === form.host1.value) form.host2.value = '';
         // a model that is off cannot be the default
-        Array.prototype.forEach.call(defModel.options, function (o) { o.disabled = !!o.value && !form.models[o.value].checked; });
-        if (defModel.value && !form.models[defModel.value].checked) defModel.value = '';
+        syncDefaultModels();
         Array.prototype.forEach.call(langGrid.children, function (lab) {
           lab.className = form.langs[lab.getAttribute('data-lang')].checked ? '' : 'off';
         });
@@ -1088,16 +1179,24 @@
         if (s.genie.guestPerMinute < 0 || s.genie.guestPerMinute > 60 || s.genie.userPerMinute < 0 || s.genie.userPerMinute > 60) {
           toast('The Genie rates must be between 0 and 60 requests per minute.', 'error'); return;
         }
-        if (models.length && s.genie.disabledModels.length >= models.length) {
+        var customOn = s.genie.customModels.some(function (c) { return c.enabled; });
+        if (models.length && s.genie.disabledModels.length >= models.length && !customOn) {
           toast('At least one model has to stay on.', 'error'); return;
         }
         var go = Promise.resolve(true);
+        var removed = (saved.genie.customModels || []).filter(function (c) {
+          return !s.genie.customModels.some(function (n) { return n.id === c.id; });
+        });
+        if (removed.length) {
+          go = ask({ title: 'Remove ' + removed.map(function (c) { return c.name || c.id; }).join(' and ') + '?',
+            body: 'It is taken out of the list. Visitors who chose it are asked to pick another model. You can add it again by its id.', confirm: 'Remove', danger: true });
+        }
         var newlyOff = models.filter(function (m) {
           return s.genie.disabledModels.indexOf(m.id) >= 0 && (saved.genie.disabledModels || []).indexOf(m.id) < 0;
         });
         if (newlyOff.length) {
-          go = ask({ title: 'Switch off ' + newlyOff.map(function (m) { return m.name; }).join(' and ') + '?',
-            body: 'Visitors who use it are asked to pick another model. A visitor with a page already open sees that on their next request.', confirm: 'Switch off', danger: true });
+          go = go.then(function (ok) { return ok ? ask({ title: 'Switch off ' + newlyOff.map(function (m) { return m.name; }).join(' and ') + '?',
+            body: 'Visitors who use it are asked to pick another model. A visitor with a page already open sees that on their next request.', confirm: 'Switch off', danger: true }) : false; });
         }
         if (s.maintenance.enabled && !saved.maintenance.enabled) {
           go = go.then(function (ok) { return ok ? ask({ title: 'Turn on maintenance mode?', body: 'Visitors will not be able to start terminals until you turn it off. Admins are not affected.', confirm: 'Turn on', danger: true }) : false; });
@@ -1240,6 +1339,11 @@
           row('Default model', 'The model visitors start with, and the one that answers a request that names none. Built in is Luna for visitors and GPT-4o mini for older callers.', defModel),
           row('Guests', 'Requests per minute (0 or empty uses the built-in rate).', guest),
           row('Signed-in users', 'Requests per minute (0 or empty uses the built-in rate).', user) ]),
+        card('OpenRouter models', 'The three models above are built in and stay. Add any other model of OpenRouter by its id (find them at openrouter.ai/models), switch it on when you want visitors to have it, and remove it when you do not. A model that is off is not offered, and the server refuses it. Save to apply.', [
+          openRouterKeySet ? null : h('p', { class: 'callout', text: 'No OpenRouter key is set on the server, so these models cannot answer yet. Add one under API keys below.' }),
+          h('p', { class: 'callout info', text: 'A model whose id ends in :free costs nothing, but its provider may keep and use what visitors send (their code and terminal output) and its limits are shared by everyone, so it can be busy. Visitors see it labelled free. Any other model is paid for from your OpenRouter credit. Name the providers that may answer if you want to know where the code goes; empty lets OpenRouter choose. The privacy page names only the hosts of Gemma and says other models are chosen by the site owner.' }),
+          customList,
+          h('div', { class: 'cm-add' }, addId, addName, addBtn) ]),
         card('Genie limits', 'What Genie is told about the page and how long its answers may be. An empty box means the built-in value. Changes reach a page the next time it loads.', [
           row('Editor code', 'Characters of the editor\'s code sent with each question.', form.ctxEditor),
           row('Terminal output, characters', 'The most recent characters of the active terminal.', form.ctxTermChars),

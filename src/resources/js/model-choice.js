@@ -1,9 +1,9 @@
 // The model and effort choice, shared by Genie (the chip in its panel, chat
 // widget) and the New question dialog (js/common.js). Loaded before both.
 //
-// Three models are offered, and only these: server/chatmodels.go holds the same
-// lists and sends nothing else on (a request for any other model is answered by
-// GPT-4o mini). Two come from OpenAI; Gemma 4 31B comes through OpenRouter and
+// The built-in models and the ones an admin added and switched on are offered, and
+// only these: server/chatmodels.go and custom_models.go hold the same lists and
+// send nothing else on (a request for any other model is answered by the default). Two come from OpenAI; Gemma 4 31B comes through OpenRouter and
 // is listed only when the server has an OpenRouter key (config.js sets
 // openrouter_enabled). The choice is kept on this device, and the default is
 // Luna with a Low effort. A page that wants a choice of its own (the blog
@@ -42,6 +42,25 @@
       tag: "",
       desc: "Google's open model, run through OpenRouter. Answers without a thinking step.",
       reasoning: false,
+    });
+  }
+
+  // Models an admin added in the dashboard and switched on come with the page
+  // (settings.js: site_settings.customModels, the ones that are on). They all run
+  // through OpenRouter, and a free one says so.
+  if (window.openrouter_enabled === true) {
+    ((window.site_settings || {}).customModels || []).forEach(function (c) {
+      ALL.push({
+        id: c.id,
+        name: c.name,
+        short: c.name.length > 16 ? c.name.slice(0, 15) + "…" : c.name,
+        group: "OpenRouter",
+        tag: c.free ? "Free" : "",
+        desc: c.free
+          ? "A free model, run through OpenRouter. Its provider may keep what you send, and it can be busy."
+          : "Run through OpenRouter.",
+        reasoning: false,
+      });
     });
   }
 
