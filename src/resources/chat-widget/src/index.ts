@@ -181,7 +181,11 @@ function modelFields(): Record<string, any> {
 // What Genie is told about the page, and how many messages it keeps. An admin
 // can change the numbers (settings.js: site_settings.genieContext); these are
 // the built-in ones.
-const NUM_MANDATORY_ENTRIES = 4;
+// The messages at the start of the history that are never trimmed: what Genie
+// is told about itself, and the last of them is the editor snapshot that every
+// user message refreshes. Set in init() once they are in; it was a fixed 4
+// while two of them were the page text and the documentation list.
+let NUM_MANDATORY_ENTRIES = 4;
 function genieLimit(name: "editorChars" | "terminalChars" | "terminalLines" | "history", fallback: number): number {
   const n = Number((((window as any).site_settings || {}).genieContext || {})[name]);
   return n > 0 ? n : fallback;
@@ -359,7 +363,7 @@ async function init() {
   }
 
   let welcomeprompt = "welcome to openrepl.com!! you are Genie. An OpenRepl AI";
-  // only four permanent prompts
+  // the permanent prompts: who Genie is, (practice: the interviewer prompt), and the editor snapshot
   if (window.location.pathname.includes("practice")) {
     addMessageToHistory("system", welcomeprompt+" Interviewer.");
     addMessageToHistory("system", interviewPrompt);
@@ -367,6 +371,7 @@ async function init() {
     addMessageToHistory("system", welcomeprompt+" Assistant.");
   }
   addMessageToHistory("system", "Openrepl IDE/EditorCodeContent: "+ fetchEditorContent());
+  NUM_MANDATORY_ENTRIES = conversationHistory.length; // the editor snapshot is the last of them
   setupFBListener();
 }
 window.addEventListener("load", init);

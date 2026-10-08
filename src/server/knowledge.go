@@ -70,7 +70,8 @@ func init() {
 		into is it its itself just me more most my myself no nor not now of off on once only or other our ours out over own same she should so some such
 		than that the their theirs them then there these they this those through to too under until up very was we were what when where which while who
 		whom why will with would you your yours yourself also get got make made need want like please tell show use used using way
-		someone anyone everyone somebody anybody everybody happen happens happened`) {
+		someone anyone everyone somebody anybody everybody happen happens happened
+		mean means meant know thing things sure ok okay yes yeah hi hello hey thanks thank`) {
 		stopwords[w] = true
 	}
 }
@@ -203,6 +204,10 @@ const (
 	postDiscount = 0.85
 	// a hit must score at least this share of the best one
 	relativeCut = 0.5
+	// a word that no passage has counts for this share of its weight in the
+	// coverage: it says the question wanders off the site, but people also pad
+	// questions with words of their own ("I mean ...")
+	unknownWeight = 0.4
 )
 
 // Search returns up to limit passages whose score reaches min and whose
@@ -227,7 +232,11 @@ func (ix *Index) Search(query string, limit int, min, minCoverage float64) []Hit
 	idfs := make([]float64, len(q))
 	for i, t := range q {
 		idfs[i] = logIDF(n, float64(ix.df[t]))
-		all += idfs[i]
+		if ix.df[t] == 0 {
+			all += idfs[i] * unknownWeight
+		} else {
+			all += idfs[i]
+		}
 	}
 	var hits []Hit
 	for _, p := range ix.passages {

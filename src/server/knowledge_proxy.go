@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -130,8 +131,16 @@ func (c contextResult) header() string {
 	return base64.RawURLEncoding.EncodeToString(data)
 }
 
-// lastUserText is the text of the last message the user wrote.
+// speakerTag is what the chat panel puts in front of a message so that several
+// people in one shared session can be told apart: "[user-k3J9x] ".
+var speakerTag = regexp.MustCompile(`^\s*\[(?:user|system)-[A-Za-z0-9_-]{1,32}\]\s*`)
+
+// lastUserText is the text of the last message the user wrote, without the tag.
 func lastUserText(messages []json.RawMessage) string {
+	return speakerTag.ReplaceAllString(lastUserMessage(messages), "")
+}
+
+func lastUserMessage(messages []json.RawMessage) string {
 	for i := len(messages) - 1; i >= 0; i-- {
 		var m struct {
 			Role    string          `json:"role"`
