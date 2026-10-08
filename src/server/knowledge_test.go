@@ -504,3 +504,122 @@ func TestAnUnopenedBlogStoreGivesNoPostsInsteadOfPanicking(t *testing.T) {
 		t.Error("the notes are missing without a blog store")
 	}
 }
+
+// The chat panel puts a tag in front of what a user writes ("[user-k3J9x] "), so
+// that people in a shared session can be told apart. The tag is not part of
+// the question: its random id is a word no note has, and used to push the
+// coverage of every question under the threshold.
+func TestTheSpeakerTagIsNotPartOfTheQuestion(t *testing.T) {
+	kb := testKB(t, nil)
+	for _, q := range []string{
+		"how do i use genie",
+		"how to fork",
+		"i mean how to fork the openrepl terminal",
+		"how can i share my terminal",
+		"give me the cling documentation",
+		"how do I upload a file",
+	} {
+		msgs := []map[string]string{
+			{"role": "system", "content": "you are Genie"},
+			{"role": "user", "content": "[user-Xk3j9Qa2] " + q},
+		}
+		_, res := addKnowledge(chatBody(t, map[string]interface{}{"context": "chat", "messages": msgs}), kb)
+		if len(res.Hits) == 0 {
+			t.Errorf("%q: nothing matched with the tag in front", q)
+		}
+	}
+	if got := lastUserText([]json.RawMessage{json.RawMessage(`{"role":"user","content":"[user-ab_c-1]   share it"}`)}); got != "share it" {
+		t.Errorf("tag not removed: %q", got)
+	}
+	if got := lastUserText([]json.RawMessage{json.RawMessage(`{"role":"user","content":"a [user-x] b"}`)}); got != "a [user-x] b" {
+		t.Errorf("a tag in the middle must stay: %q", got)
+	}
+}
+
+func TestPaddingWordsDoNotHideAQuestionAboutTheSite(t *testing.T) {
+	ix := testKB(t, nil).Index()
+	for q, want := range map[string]string{
+		"i mean how to fork the openrepl terminal": "fork-a-repl",
+		"hey, how do I share my session?":          "sharing-a-session",
+		"hey, what can genie do for me":            "genie",
+	} {
+		hits := ix.Search(q, chatContextLimit, chatContextMin, chatContextCoverage)
+		if len(hits) == 0 || hits[0].P.ID != want {
+			t.Errorf("%q -> %v, want %s", q, hits, want)
+		}
+	}
+	for _, q := range []string{"thanks that worked", "ok", "how do I sort a list", "what is my mean value in python"} {
+		if hits := ix.Search(q, chatContextLimit, chatContextMin, chatContextCoverage); len(hits) != 0 {
+			t.Errorf("%q matched %s", q, hits[0].P.ID)
+		}
+	}
+}
+
+// The request the chat panel really sends: its fixed messages, the tagged
+// question in the middle of the history, and the editor snapshot, a system
+// message, last. Every question of the bug report goes through the proxy.
+func TestTheRealWidgetRequestGetsItsNotesThroughTheProxy(t *testing.T) {
+	isolateSettings(t)
+	t.Setenv("OPENREPL_OPENAI_API_KEY", "sk-test-openai")
+	setKnowledge(testKB(t, nil))
+	t.Cleanup(func() { setKnowledge(nil) })
+	url, _, lastBody := fakeUpstream(t, 200, `{"choices":[{"message":{"content":"ok"}}]}`)
+	old := openaiEndpoint
+	openaiEndpoint = url
+	t.Cleanup(func() { openaiEndpoint = old })
+
+	widget := func(question string, earlier ...map[string]string) string {
+		msgs := []map[string]string{
+			{"role": "system", "content": "welcome to openrepl.com!! you are Genie. An OpenRepl AI Assistant."},
+			{"role": "system", "content": "Openrepl IDE real-time context of what the user is working on.\nLanguage: C and C++\n--- Editor code ---\nint main(){}\n--- Terminal output ---\ncling"},
+		}
+		msgs = append(msgs, earlier...)
+		msgs = append(msgs,
+			map[string]string{"role": "user", "content": "[user-a2592] " + question},
+			map[string]string{"role": "system", "content": "Openrepl IDE real-time context of what the user is working on.\nLanguage: C and C++\n--- Editor code ---\nint main(){}\n--- Terminal output ---\ncling"})
+		return string(chatBody(t, map[string]interface{}{
+			"model": "gpt-6-luna", "reasoning_effort": "low", "max_completion_tokens": 2000,
+			"messages": msgs, "stream": false, "context": "chat",
+		}))
+	}
+	earlier := []map[string]string{
+		{"role": "user", "content": "[user-a2592] hello"},
+		{"role": "assistant", "content": "Hi, how can I help?"},
+	}
+	for question, want := range map[string]string{
+		"how do i use genie": "genie",
+		"how to fork":        "fork-a-repl",
+		"i mean how to fork the openrepl terminal": "fork-a-repl",
+		"share":                           "sharing-a-session",
+		"how can i share my terminal":     "sharing-a-session",
+		"give me the cling documentation": "languages",
+	} {
+		for _, history := range [][]map[string]string{nil, earlier} {
+			w := proxyCall(t, widget(question, history...))
+			if w.Code != 200 {
+				t.Fatalf("%q: %d %s", question, w.Code, w.Body.String())
+			}
+			header := w.Header().Get(contextHeader)
+			if header == "" || header == "none" {
+				t.Errorf("%q (history %d): header %q, the notes were not found", question, len(history), header)
+				continue
+			}
+			ids := decodeContextHeader(t, header)
+			found := false
+			for _, n := range ids {
+				found = found || n["id"] == want
+			}
+			if !found {
+				t.Errorf("%q: used %v, want %s among them", question, ids, want)
+			}
+			if !strings.Contains(*lastBody, "Facts about OpenREPL") || strings.Contains(*lastBody, `"context"`) {
+				t.Errorf("%q: the model's request: %s", question, *lastBody)
+			}
+		}
+	}
+	// and a coding question still gets nothing
+	w := proxyCall(t, widget("why does my while loop never end"))
+	if w.Header().Get(contextHeader) != "none" || strings.Contains(*lastBody, "Facts about OpenREPL") {
+		t.Errorf("a coding question: header %q", w.Header().Get(contextHeader))
+	}
+}
