@@ -55,6 +55,8 @@ export TZ=Etc/UTC
 
 apt-get update -y
 apt-get install -y --no-install-recommends make gcc g++ default-jdk git
+# the Java REPL is jshell (utils/interactive.go): part of the JDK since 9, but fail early if it is missing
+command -v jshell >/dev/null || { echo "jshell was not installed with default-jdk"; exit 1; }
 
 #install ipython2.7
 apt-get install -y --no-install-recommends python2.7
@@ -240,6 +242,7 @@ if [ $run_tests -eq 1 ]; then
 		"perl --version"
 		"perli --version"
 		"java --version"
+		"jshell --version"
 		"gdb --version"
 		"jq --version"
 		"echo 'puts [info patchlevel]' | tclsh"

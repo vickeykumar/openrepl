@@ -162,7 +162,7 @@ It uses no jQuery, DataTables, select2 or Font Awesome.
 ## 7. JavaScript and Java REPLs
 
 - **JavaScript:** `jsconsole.html` is a vendored build of `@remy/jsconsole`, a React app that evaluates code in the browser. No server process is involved. It is built with its own webpack config (LLD 08).
-- **Java:** the interactive REPL is an iframe to `https://tryjshell.org`. Only **Run** uses the server (`/ws_java`).
+- **Java:** a normal backend terminal (`/ws_java`) running a tuned `jshell`, about 150 MB at most per session (LLD 09 "Java"); **Run** uses the same route with the compile script. Only `javascript` is left in `unhandledLanguages` (`gotty.ts`).
 
 ## 8. Home page structure (UI refresh, Phase 1)
 

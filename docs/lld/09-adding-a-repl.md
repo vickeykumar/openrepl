@@ -78,3 +78,19 @@ Checklist:
 - [ ] On a cgroup v1 host, `/sys/fs/cgroup/memory/lua5.4_container/<pid>/memory.limit_in_bytes` exists for a live session.
 - [ ] **Fork REPL** and an extra terminal tab both work (nsenter into the same namespaces).
 - [ ] The Docker image builds (`docker build .`), and CI passes.
+
+## 6. When the REPL is another program than the language: Java
+
+A language can have a Run button (the compiler script of its `<Demo>`) and a REPL that is a different program. `java` is the example. Its route, memory limit, weight and demo are `java`'s (`/ws_java`, `Commands2memLimitMap["java"]`); `utils.InteractiveCommand("java")` says that the interactive terminal runs `jshell` with fixed arguments, and `containers.GetCommandArgs` uses it for every terminal that is not a Run request (a Run request is `bash -c <script>` as before). If the program is not installed, the language's own command runs, as before, and the log says so.
+
+The jshell flags (`utils/interactive.go`) are chosen for memory: `--execution local` runs the snippets in the tool's own JVM instead of a second one; `-J-Xmx48m -J-Xms8m` bound the heap; `-J-XX:TieredStopAtLevel=1`, `-J-XX:+UseSerialGC`, `-J-XX:CICompilerCount=1`, `-J-XX:ReservedCodeCacheSize=16m`, `-J-XX:MaxMetaspaceSize=64m` and `-J-Xss512k` keep the JVM's own areas small, and `-J-Djava.util.logging.config.file=/dev/null` keeps the JDK's INFO lines (the preferences folder being created) out of the terminal. Setting only `-R` flags barely helps: they size the second JVM, and the tool's JVM (the compiler and line editor) is the larger one. Measured with OpenJDK 11 on a simple session:
+
+| jshell | peak memory | start-up | four at once |
+|---|---|---|---|
+| default | 375 MB | 4.8 s | about 240 MB each |
+| two JVMs, tuned | 221 MB | 3.3 s | not measured |
+| one JVM, tuned (used) | about 150 MB | 1.9 s | about 115 MB each |
+
+The weight of `java` is 192 MB: the REPL peaks near 150, and the same weight covers Run (`javac` and `java`). The price of one JVM is that the snippets share the 48 MB heap with the compiler: a large allocation ends in an `OutOfMemoryError` message, and `System.exit` or a loop that never ends affects that session only. Lower the heap or the weight only after watching a real server; the numbers above are from one JDK and a simple session.
+
+The JDK comes from `default-jdk` in `install_prerequisite.sh`, which includes `jshell`; the script's test list runs `jshell --version`.

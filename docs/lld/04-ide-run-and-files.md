@@ -70,7 +70,7 @@ Scripts usually write `test.<ext>` into `$HOME` when there is no file, compile i
 
 `handleTerminalOptions` (`gotty.ts`):
 
-- **`java`:** on `optionchange`, an iframe to `https://tryjshell.org`. On `optionrun`, the normal backend path (`/ws_java`).
+- **`java`:** the normal backend path (`/ws_java`) for both. The interactive terminal runs a tuned `jshell` (`utils.InteractiveCommand`, used by `containers.GetCommandArgs`; LLD 09 "Java"); Run compiles and runs the file with the compiler script of `demos.xml`. Share and Fork work as for any REPL. (It used to be an iframe to tryjshell.org because of the memory of a JVM.)
 - **`javascript`:** always an iframe to `./jsconsole.html`, which evaluates in the browser. The share button is disabled.
 - **Everything else:** a WebSocket to `/ws_<option>`. `c`, `cpp` and `go` map server-side to `cling`, `cling` and `gointerpreter`.
 

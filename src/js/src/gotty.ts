@@ -7,8 +7,10 @@ const option2args = {
             "c":"arg=-xc&arg=-noruntime",
           };
 
-// list of languages can't be handled in backend, java because of jvm
-const unhandledLanguages: string[] = ['java', 'javascript'];
+// languages that are not handled in the backend: javascript runs in the browser
+// (java used to be here, because of the memory of a jvm; its REPL is now a small
+// jshell, see utils/interactive.go)
+const unhandledLanguages: string[] = ['javascript'];
 
 // Define your custom interface extending HTMLElement
 export interface CustomHTMLElement extends HTMLElement {
@@ -34,20 +36,6 @@ function handleTerminalOptions(elem, option, event="optionchange") {
             elem.removeChild(javaframe);
         }
         switch (option) {
-                case "java":
-                    // code...
-                    if (event==="optionrun") {
-                        break;
-                    }
-                    var iframe = document.createElement("IFRAME");
-                    iframe.setAttribute("class","javaframe");
-                    iframe.setAttribute("src","https://tryjshell.org");
-                    iframe.setAttribute("style","width: inherit; height: inherit; border: 0px;");
-                    elem.appendChild(iframe);
-                    DisableShareBtn(option);
-                    flag=false;
-                    break;
-
                 case "javascript":
                     // code...
                     var iframe = document.createElement("IFRAME");
