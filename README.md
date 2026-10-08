@@ -195,6 +195,58 @@ Then do a quick manual check at `localhost:8080`:
 
 One public server, the **gateway**, serves the site and hands REPL sessions to **workers**. A worker needs no public port: it connects out to the gateway. Same binary, same URLs for the browser.
 
+The picture below is a small fleet: one gateway and two workers.
+
+```mermaid
+flowchart TB
+    B["Browser<br/>openrepl.example.com"]
+
+    subgraph GW["Gateway (the only public server)"]
+        direction TB
+        SITE["Site<br/>pages, sign-in, blog, admin,<br/>Genie proxy"]
+        RT["Router<br/>picks a node by weight,<br/>keeps a visitor on it"]
+        TS["Tunnel server<br/>/api/tunnel"]
+        LR["Own REPLs<br/>(weight 10, or 0 to only route)"]
+        GD[("Databases and settings<br/>files, MongoDB or Firestore")]
+        GH[("Copy of every home<br/>with --workspace-sync")]
+    end
+
+    subgraph W1["worker-01 (no public port)"]
+        direction TB
+        T1["Tunnel client"]
+        R1["REPL sandboxes<br/>namespaces + cgroup"]
+        H1[("/tmp/home<br/>users' files")]
+    end
+
+    subgraph W2["worker-02 (no public port)"]
+        direction TB
+        T2["Tunnel client"]
+        R2["REPL sandboxes<br/>namespaces + cgroup"]
+        H2[("/tmp/home<br/>users' files")]
+    end
+
+    EXT["Firebase, OpenAI, OpenRouter"]
+
+    B -- "HTTPS and WSS" --> SITE
+    SITE --> RT
+    SITE --> GD
+    SITE -- "API keys stay here" --> EXT
+    RT --> LR
+    RT --> TS
+    T1 -- "connects out: wss or ssh,<br/>shared token" --> TS
+    T2 -- "connects out: wss or ssh,<br/>shared token" --> TS
+    T1 --> R1 --> H1
+    T2 --> R2 --> H2
+    H1 <-. "workspace sync" .-> GH
+    H2 <-. "workspace sync" .-> GH
+```
+
+- **The browser talks to the gateway only.** Pages, sign-in, Genie and the admin dashboard are served there. A terminal or a file request is passed through the tunnel to the node that holds the visitor's session.
+- **Workers connect out** to `/api/tunnel` with the shared token, so they can sit behind NAT or a home router. Each tells the gateway its name, weight and languages; the gateway sends back the site's rules (maintenance, switched-off languages).
+- **The router** places a new visitor on a node at random, in proportion to the weights, and keeps them there. With two workers of weight 10 and a gateway of weight 10, each takes about a third.
+- **Data:** accounts, settings and the other databases live on the gateway (see [Data and storage](#data-and-storage)). Users' files live on the node that runs their session, and on the gateway too with `--workspace-sync`.
+- **If a worker stops**, its visitors see a countdown; with `--workspace-sync` their session moves to another node with its files.
+
 **1. Create a shared token**
 
 ```bash
@@ -425,10 +477,11 @@ OpenREPL is one Go binary (`bin/gotty`, a fork of GoTTY). The same binary does t
 2. **Starts a REPL for each browser terminal.** Each REPL runs as a child process on a pseudo-terminal (PTY), inside a lightweight container made of Linux namespaces and a cgroup v1 memory limit.
 3. **Streams the terminal over a WebSocket.** It relays PTY output to the browser (xterm.js) and keystrokes back to the REPL.
 
-Two external services sit around the core:
+These services sit around the core:
 
 - **Firebase:** Authentication (sign-in) and the Realtime Database (live sharing of a REPL, and Genie chat history).
-- **OpenAI:** reached only through a server-side proxy, for the *Genie* assistant and *Practice* question generation.
+- **OpenAI and OpenRouter:** reached only through a server-side proxy, for the *Genie* assistant and *Practice* question generation.
+- **A database, optional:** the server keeps its own data (accounts and sessions, feedback, blog, shared code, practice progress, admin settings) in files on its disk by default, or in MongoDB or Firestore when one is configured. See [Data and storage](#data-and-storage).
 
 ### System context
 
@@ -452,12 +505,14 @@ flowchart LR
         CG["containers<br/>namespaces + cgroup v1"]
         REPL["REPL processes<br/>cling, python, node, ..."]
         FS[("/tmp/home/*<br/>user workspaces")]
-        DB[("/opt/gotty/*.db<br/>UnQLite: sessions,<br/>feedback, blogs")]
+        PS["persist<br/>one key-value interface"]
+        DB[("/opt/gotty/*.db<br/>UnQLite files (default)")]
     end
 
+    RDB[("MongoDB or Firestore<br/>(optional, instead of the files)")]
     FAUTH["Firebase Auth"]
     FRTDB["Firebase Realtime DB"]
-    OAI["OpenAI API"]
+    OAI["OpenAI / OpenRouter API"]
 
     UI -- "HTTPS" --> HTTP
     TERM -- "WSS (webtty protocol)" --> WS
@@ -465,7 +520,9 @@ flowchart LR
     LC -. "cwd / HOME" .-> FS
     FB -. "watch" .-> FS
     FB -- "file events" --> WT
-    HTTP --> DB
+    HTTP --> PS
+    PS --> DB
+    PS -. "when configured" .-> RDB
     CHAT -- "HTTPS" --> CP -- "API key added server-side" --> OAI
     UI -- "sign-in" --> FAUTH
     TERM -- "share / mirror" --> FRTDB
@@ -482,7 +539,8 @@ flowchart LR
 | Local command backend | `src/backend/localcommand/`, `src/github.com/kr/pty/` (patched) | Builds the REPL command line and environment, starts it on a PTY, handles resize and close. |
 | Containers | `src/containers/` | One parent cgroup per REPL type and one child cgroup per process with a memory limit. Also sets up the namespaces (UTS, PID, mount, net, user) and joins forked sessions through `nsenter`. |
 | File browser | `src/filebrowser/` | Workspace tree, a 50 MB quota, and fsnotify events pushed to the browser. |
-| Users and sessions | `src/user/`, `src/cookie/`, `src/cachedb/` | Firebase-backed login sessions and the signed session cookie. Maps each user to a home directory. Storage is UnQLite with a freecache read cache. |
+| Users and sessions | `src/user/`, `src/cookie/` | Firebase-backed login sessions and the signed session cookie. Maps each user to a home directory. Accounts can be blocked by an admin. |
+| Persistence | `src/persist/`, `src/cachedb/` | One key-value interface (`persist.Store`) under every database of the site, with three backends: UnQLite files, MongoDB and Firestore. `cachedb` adds an in-memory read cache for the user database. See [Data and storage](#data-and-storage). |
 | Utilities | `src/utils/`, `src/encoder/` | Constants, the job scheduler (removes guest workspaces), `demos.xml` types, AES-GCM helpers, and the process-id encoding used for fork links. |
 | REPL catalog | `src/resources/meta/demos.xml` | One `<Demo>` per REPL: the demo animation, usage, docs link, starter code, and the `<Compiler>` script used by **Run**. |
 | Web frontend | `src/resources/`, `src/js/` | Landing page and IDE (`index.html`, and `scribbler.js` built from `js/src/page/`), terminal engine (`js/src/*.ts` → `gotty-bundle.js`), Genie chat widget, Practice pages, and the JavaScript console (`jsconsole`). |
@@ -493,8 +551,63 @@ flowchart LR
 2. **Run or debug editor code.** **Run** reconnects the terminal with the editor content in the init payload (`IdeLang`, `IdeContent`, `IdeFileName`, flags). The server writes the content to the selected file, then runs `/bin/bash -c <Compiler script from demos.xml>` in the same sandbox, with 3× the memory limit.
 3. **Fork a REPL and add terminal tabs.** The window title carries a `jid`, an encoded PID. **Fork REPL** and every extra tab open `?jid=<id>`, and the server `nsenter`s the new shell into the parent's namespaces and working directory. This lets two terminals talk to each other, for example for socket programming.
 4. **Share a REPL.** The owner's browser (the *master*) mirrors terminal output, language changes and file events to Firebase RTDB under `openrepl/<id>`. A viewer who opens `…/#<id>` renders that stream, and their keystrokes are relayed to the master's WebSocket. The viewer never starts a REPL of their own.
-5. **Sign in.** FirebaseUI, in a dialog over the home page (Google, GitHub or email, with email verification), signs the user in. The browser then posts the user to `/login`. The server stores the session in `user_sessions.db` and sets the `user-session` cookie. Signed-in users get a stable home directory. Guest directories are deleted 60 minutes after last use.
-6. **Ask Genie or generate a practice question.** The browser calls `/chat/completions` with a per-session access token. The server checks the origin, the token and a cookie-based rate limit, then forwards the request to OpenAI with the server's API key.
+5. **Sign in.** FirebaseUI, in a dialog over the home page (Google, GitHub or email, with email verification), signs the user in. The browser then posts the user to `/login`. The server stores the session in the user database (`user_sessions`) and sets the `user-session` cookie. Signed-in users get a stable home directory. Guest directories are deleted 60 minutes after last use.
+6. **Ask Genie or generate a practice question.** The browser calls `/chat/completions` with a per-session access token. The server checks the origin, the token and a cookie-based rate limit, then forwards the request to OpenAI or OpenRouter with the server's API key.
+
+### Data and storage
+
+The server's own data goes through one small interface, `persist.Store` (`Store`, `Fetch`, `Delete`, `Each`, `Commit`, `Rollback`, `Close`). Every database of the site is a key-value store behind it, so the rest of the code does not know where the data lives.
+
+```mermaid
+flowchart TB
+    subgraph APP["gotty (gateway or standalone server)"]
+        U["user, cookie<br/>accounts, sessions"]
+        H["server<br/>feedback, blog, shared code,<br/>practice progress"]
+        ST["server<br/>admin settings"]
+        C["cachedb<br/>15 MB read cache"]
+        P["persist.Store<br/>chosen once at start-up"]
+        SS["settings store<br/>one versioned document"]
+    end
+    U --> C --> P
+    H --> P
+    ST --> SS
+    P --> F[("MongoDB, first choice<br/>collections kv_*")]
+    P --> G[("Firestore, second choice<br/>collections kv_*")]
+    P --> L[("UnQLite files, the default<br/>/opt/gotty/*.db")]
+    SS --> F
+    SS --> G
+    SS --> J[("settings.json")]
+```
+
+**Which backend.** `persist.Init` chooses once, when the server starts, and the choice holds until it stops:
+
+1. **MongoDB**, if `OPENREPL_MONGODB_URI` is set and answers (for example an Atlas cluster; the database is `OPENREPL_MONGODB_DB`, default `openrepl`).
+2. Otherwise **Firestore**, if `OPENREPL_FIRESTORE_CREDENTIALS` holds a service account key (or the emulator is set) and the project's Firestore answers. The server uses Firestore's REST API directly, with no client library.
+3. Otherwise **UnQLite files** under `/opt/gotty`, as the server has always done.
+
+Each backend is tried three times. A database that was asked for and did not answer is written to the log with the reason, the server goes on with the next choice, and the admin Health page shows a "Database choice" warning. Use MongoDB or Firestore on a host whose disk is wiped on every deploy (Render, for example): with files only, accounts, blog posts and settings are lost on each deploy.
+
+**The databases.** With files, each is a file; with MongoDB or Firestore, each is a collection named after the file (`user_sessions.db` becomes `kv_user_sessions`).
+
+| Database | Key → value | Used by |
+|---|---|---|
+| `user_sessions` | `<uid>` → the user's profile and login sessions (JSON); `SESSION_KEY` → the secret that signs the session cookie, when `OPENREPL_SECRET` is not set; `blocked:<uid>` → set by an admin; `worker-pin:<uid>` → the execution node that holds the user's workspace (distributed mode) | sign-in, the session cookie, admin accounts page |
+| `feedback` | `<timestamp>` → `{Name, Email, Message, Read}` | `/feedback`, the admin inbox |
+| `blog` | `<post name>` → the post (JSON) | `/blog`, and Genie's knowledge of the site |
+| `snippets` | `<8-character id>` → the shared code (JSON) | `/snippet`, `/s/<id>` |
+| `practice` | `u:<uid>` → the user's practice progress (JSON) | `/practice/progress` |
+
+A record is `{_id: <key>, v: <value bytes>, t: <time>}` in MongoDB, and a document with the fields `v` and `t` in Firestore. The first start with a remote database copies an existing file into its empty collection, once (the cookie secret included, so nobody is signed out). After that the remote database wins and the file is not read again.
+
+**The admin settings** are one JSON document, not a key-value database: the colour of the day, the announcement, maintenance, switched-off languages (for the site and per node), Genie's switches, rates and model list, added admins, and the API keys an admin saved (encrypted with AES-256-GCM under the server's secret). It follows the same choice: the file `settings.json`, or the document `site` of the collection `settings` in MongoDB or Firestore. The document has a version, and a save succeeds only if the version has not moved, so two admins or two instances cannot overwrite each other. With MongoDB or Firestore every instance checks the version every 10 seconds and applies a change without a restart.
+
+**What always stays in files** on the server's own disk: the admin audit log (`admin-audit.jsonl`), usage numbers (`admin-stats.json`), the job file that remembers which guest workspaces to delete, the logs, and the workspaces themselves (`/tmp/home`). The agent task counts and the Genie request balance are not stored at all: the first is in memory, the second in the visitor's signed cookie.
+
+**In distributed mode** the gateway owns the databases and the settings. A worker never connects to MongoDB or Firestore, whatever its environment holds: it keeps only workspaces and takes its rules from the gateway (see [Distributed mode](#distributed-mode-gateway-and-workers)).
+
+**What the browser keeps in Firebase**, without the server in between: shared sessions and Genie chat history in the Realtime Database, and practice questions in the project's Firestore on the practice pages. If the server's databases are in the same Firestore, keep the security rules of `kv_*` and `settings` closed (`allow read, write: if false`): the server's service account bypasses rules, and a browser must not be able to read sessions or the encrypted keys.
+
+Details: [LLD 05, section 4](docs/lld/05-auth-sessions-storage.md) (stores, backends, data models) and [LLD 13](docs/lld/13-admin-dashboard.md) (settings, saved keys, Health).
 
 ### Deployment view
 
@@ -506,7 +619,8 @@ flowchart TB
         D["Docker container<br/>--privileged, /sys/fs/cgroup mounted<br/>run_app.sh → gotty -w ..."]
         S["or: systemd gotty.service<br/>(deb package, user gottyuser)"]
     end
-    D --> V1[("/opt/gotty<br/>DBs, jobfile, .gitconfig")]
+    D --> V1[("/opt/gotty<br/>DB files, settings, audit log,<br/>jobfile, .gitconfig")]
+    D -. "optional" .-> M[("MongoDB or Firestore<br/>the databases and the settings")]
     D --> V2[("/tmp/home<br/>workspaces")]
     D --> V3[("/gottyTraces<br/>logs")]
 ```
