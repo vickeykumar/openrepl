@@ -114,7 +114,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // of the server, {hang: true} for a model that never answers, {cut: "..."} for an
 // answer that was cut off at the length limit.
 function setup(script, opts = {}) {
-  const log = { requests: [], said: [], notes: [], states: [], typed: [] };
+  const log = { requests: [], said: [], notes: [], states: [], typed: [], events: [] };
   const messages = new El("div");
   const term = { text: opts.terminal || "$ ", object: {} };
   globalThis.fetch = (url, init) => {
@@ -187,6 +187,11 @@ function setup(script, opts = {}) {
     messages: () => messages,
     maxSteps: () => opts.max || 8,
     uid: () => "u1",
+    repl: () => opts.repl || "",
+    // what the panel's button is told while the panel may be closed
+    attention: (on) => log.events.push(on ? "needs you" : "free"),
+    progress: (n, max) => log.events.push("step " + n + "/" + max),
+    ended: (outcome) => log.events.push("ended " + outcome),
   };
   const runner = new AgentRunner(host, (s) => log.states.push(s));
   // answers the permission cards as they come: (title, buttons) => the label to press
@@ -413,4 +418,65 @@ test("built: a restarted terminal is waited for, and its first lines come back",
   assert.deepEqual(r.map((x) => x.type + ":" + x.status), ["terminal_reconnect:done", "read_output:done"]);
   assert.equal(r[0].output, "fresh $");
   assert.equal(r[1].output, "fresh $");
+});
+
+// ---- a task goes on behind a closed panel: what the panel's button is told ---------
+
+test("built: the panel is told each step, and that the task is done", async () => {
+  const t = setup([
+    { say: "Looking.", actions: [{ type: "files_list" }], done: false },
+    { say: "Done.", actions: [{ type: "finish" }], done: false },
+  ], { answer: () => "Allow once" });
+  await t.done(t.runner.start("look"));
+  // (the header is set twice a step: when it begins, and with the server's count)
+  const seen = t.log.events.filter((e) => /^(step|ended)/.test(e)).filter((e, i, all) => e !== all[i - 1]);
+  assert.deepEqual(seen, ["step 1/8", "step 2/8", "ended done"]);
+  // the end comes after the task stopped running, and before the box is given back
+  assert.deepEqual(t.log.states, ["running", "idle"]);
+});
+
+test("built: a question to the user is announced while it is open and withdrawn when answered", async () => {
+  const t = setup([
+    { say: "", actions: [{ type: "files_list" }], done: false },
+    { say: "ok", actions: [], done: true },
+  ], { answer: () => "Allow once" });
+  await t.done(t.runner.start("list"));
+  const i = t.log.events.indexOf("needs you");
+  assert.ok(i >= 0, "the panel was not told Genie was waiting: " + t.log.events.join(", "));
+  assert.equal(t.log.events[i + 1], "free");
+  assert.equal(t.log.events.filter((e) => e === "needs you").length, t.log.events.filter((e) => e === "free").length);
+});
+
+test("built: a question left open and then stopped is withdrawn once", async () => {
+  const t = setup([{ say: "", actions: [{ type: "files_delete", path: "a.py" }], done: false }]);
+  const running = t.runner.start("delete it");
+  while (!t.messages.querySelector(".cw-agent__ask")) await sleep(5);
+  t.runner.stop();
+  await t.done(running);
+  assert.equal(t.log.events.filter((e) => e === "needs you").length, 1);
+  assert.equal(t.log.events.filter((e) => e === "free").length, 1);
+  assert.equal(t.log.events[t.log.events.length - 1], "ended stopped");
+});
+
+test("built: a task that fails is reported as failed, and Stop as stopped", async () => {
+  const failed = setup([{ http: 500, error: "down" }]);
+  await failed.done(failed.runner.start("anything"));
+  assert.equal(failed.log.events[failed.log.events.length - 1], "ended failed");
+
+  const unreadable = setup(["nope", "still nope"]);
+  await unreadable.done(unreadable.runner.start("anything"));
+  assert.equal(unreadable.log.events[unreadable.log.events.length - 1], "ended failed");
+
+  const stopped = setup([{ hang: true }]);
+  const running = stopped.runner.start("wait");
+  await sleep(50);
+  stopped.runner.stop();
+  await stopped.done(running);
+  assert.equal(stopped.log.events[stopped.log.events.length - 1], "ended stopped");
+});
+
+test("built: every step names the REPL in use, so that the server can say how it is typed into", async () => {
+  const t = setup([{ say: "", actions: [{ type: "shell" }], done: false }, { say: "ok", actions: [], done: true }], { repl: "gointerpreter" });
+  await t.done(t.runner.start("try a loop"));
+  assert.deepEqual(t.log.requests.map((r) => r.repl), ["gointerpreter", "gointerpreter"]);
 });

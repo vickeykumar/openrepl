@@ -2439,6 +2439,37 @@ body.files-collapsed .files-panel { display: none; }
 }
 .genie-fab svg { color: #B8323A; }
 body.genie-open .genie-fab { display: none; }
+
+/* What Genie is doing while the panel is closed (chat-widget/src/index.ts,
+   renderActivity sets data-genie-state on the floating button and on the app
+   bar's): the star turns while it works, a dot says a result or a question is
+   waiting. */
+.genie-fab[data-genie-state="working"] svg,
+#genie-button[data-genie-state="working"] svg { animation: genie-turn 2.4s linear infinite; }
+@keyframes genie-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .genie-fab[data-genie-state] svg,
+  #genie-button[data-genie-state] svg { animation: none; }
+}
+.genie-fab[data-genie-state="needs"]::after,
+.genie-fab[data-genie-state="done"]::after,
+.genie-fab[data-genie-state="failed"]::after,
+#genie-button[data-genie-state="needs"]::after,
+#genie-button[data-genie-state="done"]::after,
+#genie-button[data-genie-state="failed"]::after {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.genie-fab[data-genie-state="needs"]::after,
+#genie-button[data-genie-state="needs"]::after { background: #C7861A; }
+.genie-fab[data-genie-state="done"]::after,
+#genie-button[data-genie-state="done"]::after { background: #2E8B57; }
+.genie-fab[data-genie-state="failed"]::after,
+#genie-button[data-genie-state="failed"]::after { background: #C9363E; }
+.genie-fab[data-genie-state="needs"] { box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(199, 134, 26, 0.55); }
 .app-bar #genie-button[aria-pressed="true"] {
   color: #F2F0EC;
   background: rgba(254, 106, 107, 0.16);

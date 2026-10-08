@@ -489,6 +489,7 @@ function setSettingsOpen(open: boolean, focusChip: boolean = false) {
 function refreshChip() {
   refreshMode(); // peer chat and agent mode do not go together
   refreshCoach();
+  renderUsage(); // peer chat messages use nothing: the line is hidden
   const chip = chipEl();
   if (!chip) return;
   chip.hidden = peerchatmode;
@@ -649,6 +650,7 @@ function requestHeaders(): Headers {
   return h;
 }
 
+let lastAgentState: AgentState = "idle";
 const agentRunner = new AgentRunner(
   {
     url: () => config.url,
@@ -748,9 +750,275 @@ const agentRunner = new AgentRunner(
     messages: () => messagesHistory,
     maxSteps: () => Number((((window as any).site_settings || {}) as any).agentMaxSteps) || 8,
     uid: () => UID,
+    repl: () => {
+      // the same name the page asks /demo for (01-session.js: getSelectValue)
+      const get = (window as any).getSelectValue;
+      const picker = document.getElementById("optionlist") as HTMLSelectElement | null;
+      return String((typeof get === "function" ? get() : picker && picker.value) || "");
+    },
+    usage: (raw: string | null) => {
+      if (raw) takeUsage(raw);
+      else fetchUsage();
+    },
+    attention: (on: boolean) => {
+      needsYou = Math.max(0, needsYou + (on ? 1 : -1));
+      renderActivity();
+    },
+    progress: (n: number, max: number) => {
+      stepNow = n;
+      stepMax = max;
+      renderActivity();
+    },
+    ended: (outcome: "done" | "failed" | "stopped") => {
+      stepNow = stepMax = needsYou = 0;
+      // somebody has to be told only when the panel is not there to show it
+      if (outcome !== "stopped" && !isOpen()) {
+        unread = outcome === "done" ? { kind: "done", label: "Task done" } : { kind: "failed", label: "Task stopped" };
+      }
+      renderActivity();
+    },
   },
-  (state: AgentState) => showAgentState(state)
+  (state: AgentState) => {
+    lastAgentState = state;
+    showAgentState(state);
+    renderActivity();
+  }
 );
+
+// ---- Genie's button while the panel is closed ----------------------------------
+// Closing the panel hides it and stops nothing: a task or an answer goes on, and
+// the Ask Genie buttons (the floating one, the app bar's on phones) say what
+// Genie is doing, and the tab title says when it is done or needs the user. What
+// they show is worked out from these facts each time, so it cannot go stale.
+
+let chatInFlight = false; // a chat message has been sent and not answered
+let chatFailed = false; // the last chat message got an error, not an answer
+let needsYou = 0; // questions and changes waiting for the user
+let stepNow = 0;
+let stepMax = 0;
+// a result that came while the panel was closed, until the panel is opened
+let unread: { kind: "done" | "failed"; label: string } | null = null;
+let titleShown: { base: string; shown: string } | null = null;
+
+type Activity = { state: "idle" | "working" | "needs" | "done" | "failed"; label: string };
+
+function genieActivity(): Activity {
+  if (needsYou > 0) return { state: "needs", label: "Genie needs you" };
+  if (agentRunner.running) return { state: "working", label: stepMax > 0 ? `Genie is working… ${stepNow}/${stepMax}` : "Genie is working…" };
+  if (chatInFlight) return { state: "working", label: "Genie is thinking…" };
+  if (unread) return { state: unread.kind, label: unread.label };
+  return { state: "idle", label: "Ask Genie" };
+}
+
+function setTabTitle(text: string | null) {
+  // the page may have changed the title meanwhile (a language page does): then
+  // what it set is the title to go back to
+  if (titleShown && document.title === titleShown.shown) document.title = titleShown.base;
+  titleShown = null;
+  if (text) {
+    const base = document.title;
+    const shown = `${text} · ${base}`;
+    document.title = shown;
+    titleShown = { base, shown };
+  }
+}
+
+function renderActivity() {
+  const a = genieActivity();
+  const fab = document.querySelector("[data-chat-widget-button]") as HTMLElement | null;
+  const bar = document.getElementById("genie-button");
+  [fab, bar].forEach((b) => {
+    if (!b) return;
+    if (a.state === "idle") b.removeAttribute("data-genie-state");
+    else b.setAttribute("data-genie-state", a.state);
+    b.setAttribute("aria-label", a.state === "idle" ? "Ask Genie, the AI helper" : a.label);
+  });
+  const text = fab && fab.querySelector("span");
+  if (text) text.textContent = a.label;
+  // the tab and the screen reader hear it only when the panel is not open to show it
+  const away = !isOpen() && a.state !== "idle";
+  setTabTitle(!away ? null : a.state === "working" ? a.label.replace(/ \d+\/\d+$/, "") : "(1) " + a.label);
+  let live = document.getElementById("genie-status");
+  if (!live) {
+    live = document.createElement("div");
+    live.id = "genie-status";
+    live.setAttribute("role", "status");
+    live.setAttribute("aria-live", "polite");
+    live.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap";
+    document.body.appendChild(live);
+  }
+  const say = away && a.state !== "working" ? a.label : "";
+  if (live.textContent !== say) live.textContent = say;
+}
+
+// ---- what is left of Genie ------------------------------------------------------
+// A line under the composer: the requests left (in Agent mode, the tasks left
+// this hour), with the details behind a click. The numbers come from the server
+// (GET <chat>/usage when the panel opens, and the X-OpenREPL-Usage header of
+// every answer); between answers the recharge is counted here.
+
+type Usage = {
+  left: number;
+  cap: number;
+  perMinute: number;
+  unlimited?: boolean;
+  signedIn?: boolean;
+  agent?: { used: number; perHour: number; nextFreeSeconds: number; maxSteps: number };
+};
+let usage: Usage | null = null;
+let usageAt = 0; // when it was told
+let usageTimer: any = null;
+let usageDetails = false;
+
+function takeUsage(raw: string | null) {
+  if (!raw) return;
+  try {
+    const u = JSON.parse(raw);
+    if (!u || typeof u.left !== "number" || typeof u.cap !== "number" || typeof u.perMinute !== "number") return;
+    usage = u as Usage;
+    usageAt = Date.now();
+    renderUsage();
+  } catch (e) {
+    // not shown
+  }
+}
+
+async function fetchUsage() {
+  if (!config.url) return;
+  try {
+    const res = await fetch(config.url.replace(/completions\/?$/, "usage"), { credentials: "same-origin" });
+    if (res.ok) takeUsage(await res.text());
+  } catch (e) {
+    // the line stays as it was
+  }
+}
+
+// The usage as it is now: the balance with the recharge since it was told.
+function usageNow() {
+  const u = usage!;
+  const minutes = (Date.now() - usageAt) / 60000;
+  const left = Math.min(u.cap, u.left + minutes * u.perMinute);
+  // the next request is taken while the balance is above 0
+  const wait = left > 0 || u.perMinute <= 0 ? 0 : Math.ceil((-left / u.perMinute) * 60) + 1;
+  let tasksLeft = -1; // no limit, or no agent mode
+  let taskWait = 0;
+  if (u.agent && u.agent.perHour > 0) {
+    const freed = u.agent.used > 0 && minutes * 60 >= u.agent.nextFreeSeconds ? 1 : 0;
+    tasksLeft = Math.max(0, u.agent.perHour - u.agent.used + freed);
+    taskWait = Math.max(0, Math.ceil(u.agent.nextFreeSeconds - minutes * 60));
+  }
+  return { left, count: Math.max(0, Math.ceil(left)), cap: Math.round(u.cap), wait, tasksLeft, taskWait };
+}
+
+function span(seconds: number): string {
+  if (seconds < 90) return Math.max(1, seconds) + " s";
+  return Math.ceil(seconds / 60) + " min";
+}
+
+// Nothing can be sent now: a request would be refused.
+function noneLeft(): boolean {
+  if (!usage || usage.unlimited || peerchatmode) return false;
+  const n = usageNow();
+  return n.left <= 0 || (agentMode && n.tasksLeft === 0);
+}
+
+function renderUsage() {
+  const box = document.getElementById("chat-widget__usage");
+  const text = document.getElementById("chat-widget__usage-text");
+  const fill = document.getElementById("chat-widget__usage-fill");
+  const more = document.getElementById("chat-widget__usage-more");
+  const line = document.getElementById("chat-widget__usage-line");
+  if (!box || !text || !fill || !more || !line) return; // the panel is closed
+  box.hidden = !usage || peerchatmode;
+  if (!usage || peerchatmode) return;
+  const n = usageNow();
+  const u = usage;
+  const agentLine = agentMode && !!u.agent && n.left > 0;
+  const rate = u.perMinute >= 1 ? `${Math.round(u.perMinute)} a minute` : u.perMinute > 0 ? `1 every ${Math.round(1 / u.perMinute)} minutes` : "none";
+  let label = "";
+  let part = 1;
+  let state = "ok";
+  if (u.unlimited) {
+    label = "No limit (admin)";
+    state = "free";
+  } else if (n.left <= 0) {
+    label = `No requests left · next in ${span(n.wait)}`;
+    part = 0;
+    state = "empty";
+  } else if (agentLine && n.tasksLeft >= 0) {
+    part = n.tasksLeft / u.agent!.perHour;
+    if (n.tasksLeft === 0) {
+      label = `No tasks left this hour · next in ${span(n.taskWait)}`;
+      state = "empty";
+    } else {
+      label = `${n.tasksLeft} of ${u.agent!.perHour} tasks left this hour`;
+      state = n.tasksLeft <= 2 ? "low" : "ok";
+    }
+  } else {
+    label = `${n.count} of ${n.cap} requests left`;
+    part = n.cap > 0 ? n.count / n.cap : 0;
+    state = n.count <= Math.max(2, Math.round(n.cap * 0.1)) ? "low" : "ok";
+  }
+  if (text.textContent !== label) text.textContent = label;
+  fill.style.width = Math.round(Math.min(1, Math.max(0, part)) * 100) + "%";
+  ["ok", "low", "empty", "free"].forEach((s) => box.classList.toggle("cw-usage--" + s, s === state));
+
+  // the details
+  const rows: [string, string][] = [];
+  if (u.unlimited) {
+    rows.push(["Requests", "Not limited for admins"]);
+    if (u.agent) rows.push(["Agent tasks", "Not limited for admins"], ["Steps in a task", "up to " + u.agent.maxSteps]);
+  } else {
+    rows.push(["Requests left", `${n.count} of ${n.cap}`]);
+    if (n.left <= 0) rows.push(["Next request in", span(n.wait)]);
+    rows.push(["Refill", rate]);
+    if (n.left > 0 && n.left < u.cap && u.perMinute > 0) rows.push(["Full again in", span(Math.ceil(((u.cap - n.left) / u.perMinute) * 60))]);
+    if (u.agent && n.tasksLeft >= 0) {
+      rows.push(["Agent tasks this hour", `${u.agent.perHour - n.tasksLeft} of ${u.agent.perHour} used`]);
+      if (n.tasksLeft === 0) rows.push(["Next task in", span(n.taskWait)]);
+      rows.push(["Steps in a task", "up to " + u.agent.maxSteps + " (a task uses 1 request)"]);
+    }
+  }
+  const sig = JSON.stringify(rows) + (u.signedIn ? "" : "guest");
+  if (more.getAttribute("data-sig") !== sig) {
+    more.setAttribute("data-sig", sig);
+    more.textContent = "";
+    rows.forEach(([k, v]) => {
+      const row = document.createElement("div");
+      const dt = document.createElement("dt");
+      dt.textContent = k;
+      const dd = document.createElement("dd");
+      dd.textContent = v;
+      row.append(dt, dd);
+      more.appendChild(row);
+    });
+    if (!u.signedIn && !u.unlimited) {
+      const p = document.createElement("p");
+      p.textContent = "Sign in for more requests and Agent mode.";
+      more.appendChild(p);
+    }
+  }
+  more.hidden = !usageDetails;
+  line.setAttribute("aria-expanded", String(usageDetails));
+
+  // with nothing left the send button looks it, and the box says when to come back
+  const empty = noneLeft();
+  const submitBtn = document.getElementById("chat-widget__submit");
+  if (submitBtn) submitBtn.classList.toggle("is-empty", empty);
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  if (input && !agentRunner.running) {
+    input.placeholder = empty ? `You can send again in ${span(n.left <= 0 ? n.wait : n.taskWait)}` : modePlaceholder();
+  }
+}
+
+// Called by submit when nothing is left: the line says why nothing was sent.
+function flashUsage() {
+  const box = document.getElementById("chat-widget__usage");
+  if (!box) return;
+  box.classList.remove("cw-usage--flash");
+  void box.offsetWidth; // so that the animation runs again
+  box.classList.add("cw-usage--flash");
+}
 
 // While a task runs, the send button is a stop button (the two icons are both
 // in widget.html; .is-stop shows the square). While the task winds down after
@@ -783,6 +1051,7 @@ function setMode(agent: boolean) {
   }
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
   if (input && !agentRunner.running) input.placeholder = modePlaceholder();
+  renderUsage(); // the line counts tasks in Agent mode
 }
 
 function refreshMode() {
@@ -840,8 +1109,7 @@ function wireMode(): () => void {
   );
   setMode(false);
   refreshMode();
-  // a panel opened while a task is still winding down (closing it stopped it)
-  if (agentRunner.running) showAgentState("stopping");
+  // (a panel opened while a task is under way gets its buttons from open())
   const watch = new MutationObserver(refreshMode);
   watch.observe(document.body, { attributes: true, attributeFilter: ["class"] });
   return () => watch.disconnect();
@@ -995,6 +1263,7 @@ function open(e?: Event) {
 
   document.body.appendChild(containerElement);
   containerElement.innerHTML = widgetHTML;
+  unread = null; // opening is how the result is seen
   containerElement.setAttribute("role", "dialog");
   containerElement.setAttribute("aria-label", config.widgetTitle);
   document.body.classList.add("genie-open");
@@ -1082,11 +1351,27 @@ function open(e?: Event) {
     peerchatSwitchElem.checked = peerchatmode;
     peerchatSwitchElem.addEventListener("change", peerchatSwitchlistener);
   }
+
+  document.getElementById("chat-widget__usage-line")?.addEventListener("click", () => {
+    usageDetails = !usageDetails;
+    renderUsage();
+  });
+  renderUsage();
+  fetchUsage();
+  clearInterval(usageTimer);
+  usageTimer = setInterval(renderUsage, 1000); // the recharge, and the wait when nothing is left
+  // The panel is built again each time it opens, but a task or an answer may be
+  // under way from before it was closed: its buttons must say so.
+  showAgentState(lastAgentState);
+  if (chatInFlight) document.getElementById("chat-widget__submit")?.setAttribute("disabled", "");
+  renderActivity();
 }
 
 function close() {
   if (!isOpen()) return;
-  agentRunner.stop(); // a task does not go on behind a closed panel
+  clearInterval(usageTimer);
+  // A task or an answer in flight is not stopped: the panel is hidden, and the
+  // Ask Genie button shows how it goes (renderActivity). Stop is the panel's button.
   trap.deactivate();
   detachPanel();
   detachPanel = () => {};
@@ -1096,6 +1381,7 @@ function close() {
   containerElement.remove();
   optionalBackdrop.remove();
   document.body.classList.remove("genie-open");
+  renderActivity();
 }
 
 function toggle(e?: Event) {
@@ -1305,6 +1591,7 @@ async function createNewMessageEntry(
 }
 
 const handleErrorResponse = async (errData: any) => {
+    chatFailed = true;
     console.error("Chat Widget: Server error: ", errData);
     if (errData && errData.error && errData.error.type === "model_unavailable") {
       await showModelUnavailable(
@@ -1467,6 +1754,11 @@ async function submit(e: Event) {
   const msg = (target.elements as any).message.value;
   // nothing to send: an empty task would still cost a request
   if (!String(msg || "").trim()) return;
+  // nothing left: the server would refuse it, so the line says when to come back
+  if (noneLeft()) {
+    flashUsage();
+    return;
+  }
 
   const submitElement = document.getElementById(
     "chat-widget__submit"
@@ -1503,8 +1795,12 @@ async function submit(e: Event) {
 // by submit, and by "Try again" and "Switch to ..." on the unavailable card,
 // which send the same conversation again with whatever model is chosen then.
 async function runRequest() {
-  const submitElement = document.getElementById("chat-widget__submit")!;
-  submitElement.setAttribute("disabled", "");
+  // the button is looked up again at the end: the panel may have been closed and
+  // opened meanwhile, and then it is another button
+  document.getElementById("chat-widget__submit")?.setAttribute("disabled", "");
+  chatInFlight = true;
+  chatFailed = false;
+  renderActivity();
 
   const requestHeaders = new Headers();
   requestHeaders.append("Content-Type", "application/json");
@@ -1533,6 +1829,9 @@ async function runRequest() {
       body: JSON.stringify(data),
     });
     thinkingBubble.remove();
+    const told = response.headers.get("X-OpenREPL-Usage");
+    if (told) takeUsage(told);
+    else fetchUsage(); // a refusal carries none
 
     if (config.responseIsAStream) {
       await handleStreamedResponse(response);
@@ -1541,11 +1840,15 @@ async function runRequest() {
     }
   } catch (e: any) {
     thinkingBubble.remove();
+    chatFailed = true;
     console.error("Chat Widget:", e);
     await createNewMessageEntry("Unable to process your request Now.", Date.now(), "system");
   }
 
-  submitElement.removeAttribute("disabled");
+  chatInFlight = false;
+  document.getElementById("chat-widget__submit")?.removeAttribute("disabled");
+  if (!isOpen()) unread = chatFailed ? { kind: "failed", label: "Genie couldn't answer" } : { kind: "done", label: "Answer ready" };
+  renderActivity();
 }
 
 // placeholder for a page that does not define its own (index.html does: the page
@@ -1563,7 +1866,7 @@ if (typeof (window as any).insertcodesnippet !== "function") {
 // coach is: a second request would cross with the first.
 function genieBusy(): boolean {
   const b = document.getElementById("chat-widget__submit");
-  return coachBusy || (!!b && b.hasAttribute("disabled"));
+  return coachBusy || chatInFlight || (!!b && b.hasAttribute("disabled"));
 }
 
 async function ask(text: string): Promise<boolean> {

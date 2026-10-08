@@ -953,3 +953,49 @@ body #chat-widget__container #chat-widget__input:focus-visible {
   cursor: pointer;
 }
 .cw-agent__ask-buttons button.is-primary { background: var(--cw-accent); color: var(--cw-on-accent); border-color: var(--cw-accent); font-weight: 500; }
+
+/* What is left of Genie: one quiet line under the composer, with the details
+   behind a click (index.ts: renderUsage). */
+.cw-usage { margin-top: 6px; }
+.cw-usage__line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 2px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--cw-muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.cw-usage__line:focus-visible { outline: 2px solid var(--cw-accent); outline-offset: 2px; border-radius: 4px; }
+#chat-widget__usage-text { white-space: nowrap; }
+.cw-usage__track { flex: 1; min-width: 24px; height: 3px; border-radius: 2px; background: var(--cw-field-border); overflow: hidden; }
+#chat-widget__usage-fill { display: block; height: 100%; width: 0; border-radius: 2px; background: #3FA36B; transition: width 0.4s; }
+.cw-usage__chev { flex: none; transition: transform 0.15s; }
+.cw-usage__line[aria-expanded="true"] .cw-usage__chev { transform: rotate(180deg); }
+.cw-usage--low .cw-usage__line { color: #E0A64A; }
+.cw-usage--low #chat-widget__usage-fill { background: #E0A64A; }
+.cw-usage--empty .cw-usage__line { color: #F08A8B; }
+.cw-usage--empty #chat-widget__usage-fill { background: #F08A8B; }
+.cw-usage--free #chat-widget__usage-fill { background: var(--cw-field-border); }
+.cw-usage--flash .cw-usage__line { animation: cw-usage-flash 0.5s 2; }
+@keyframes cw-usage-flash { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .cw-usage--flash .cw-usage__line { animation: none; } }
+.cw-usage__more {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--cw-muted);
+  background: var(--cw-chip-bg);
+  border: 1px solid var(--cw-border);
+  border-radius: 8px;
+}
+.cw-usage__more div { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.cw-usage__more dt { margin: 0; }
+.cw-usage__more dd { margin: 0; color: var(--cw-text); text-align: right; }
+.cw-usage__more p { margin: 6px 0 0; color: var(--cw-link); }
+#chat-widget__submit.is-empty:not(.is-stop) { opacity: 0.45; }
