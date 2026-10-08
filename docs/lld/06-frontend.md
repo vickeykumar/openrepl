@@ -55,6 +55,7 @@ Since T20 the page script is split into feature files under `src/js/src/page/`, 
 | `06-editor.js` | Ace set-up, themes, fonts, modes, Ctrl+S, editor sharing over Firebase |
 | `07-file-browser.js` | The Files panel (jstree), context menu and live file events |
 | `08-genie-nudge.js` to `17-share-code.js` | One file per Phase 1 and 2 feature: Genie nudge, hero chips, workspace controls, terminal state, landing, phone layout, accessibility, empty Files note, language pages, share-code links |
+| `18-genie-review.js`, `lib-diff.mjs` | Review of what Genie wants to put in the editor (below). `lib-diff.mjs` is the pure diff code; node tests in `src/js/test` (`npm test`) |
 
 What the parts do, together:
 
@@ -127,6 +128,16 @@ The event records are `{eventT, Data, uid, last?}`:
 - `last` is a timestamp that settles races when either side changes the language.
 
 When a viewer opens a link whose `Master` node does not exist, it shows "Master Terminal is unavailable". Every output chunk is written to Firebase while the master is active. This is simple, but costs bandwidth (LLD 10).
+
+### Reviewing Genie's changes to the editor (`18-genie-review.js`)
+
+What Genie writes into the editor is shown as a diff over the editor first, and applied only when accepted. Genie's Insert and Replace file buttons (`window.insertcodesnippet`, `window.replacecodesnippet`, defined in this file; the chat widget keeps a placeholder only for a page that has none) and, later, the agent mode (`docs/agent-mode-design.md`) all go through `window.GenieReview.propose(newText, {title})`.
+
+- **Diff.** `makeHunks` (`lib-diff.mjs`) splits the change into hunks: a line diff of the editor's text and the new text, with the common start and end cut off and a longest-common-subsequence table for the middle (at most 4 million cells; a bigger change is one hunk). Each hunk has the old lines it removes (`del`), the lines it adds (`add`), and the old lines before and after it.
+- **The panel** (`.genie-review`, over `.editor-body`; styles in `ui-refresh.css`): a title ("Genie wants to insert 2 changes (1 left)"), Accept all, Reject all, a close button and one card per change with its lines (removed in red, added in green, two lines of context, long hunks cut with "… more lines …") and Accept and Reject. All text is set as text, never as HTML. Enter accepts all and Esc rejects all (the key is not passed on to the page).
+- **Applying.** An accepted hunk goes through Ace's document API (`removeFullLines`, `insertFullLines`), so it is an ordinary edit: Ctrl+Z works, and Accept all is one step for it. Rows of later hunks are moved by the accepted ones before them. Before each accept the hunk is looked for in the editor (`locate`: the expected row, or the nearest row within 200 where the lines it removes and the lines around it are still as they were), so typing above it does not matter; if it cannot be found it is stale ("The code changed meanwhile") and can only be rejected.
+- **Undo.** After the first accepted change the text before it is kept. "Undo what Genie did" restores it in one step, if the editor still holds exactly what the last accepted change left. If the user typed between two accepted changes the button is replaced by "undo with Ctrl+Z", so that their typing is never thrown away.
+- **Insert** puts the code where the cursor or selection is; at the start of a line that has text it goes in front of the line (a newline is added), not into its first words. **Replace file** proposes the whole text and stays blocked in practice mode. A suggestion equal to the editor says so and shows no panel.
 
 ## 5. Genie chat widget (`resources/chat-widget`)
 

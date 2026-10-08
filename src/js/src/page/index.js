@@ -18,3 +18,4 @@ import "./14-accessibility";
 import "./15-files-empty";
 import "./16-language-pages";
 import "./17-share-code";
+import "./18-genie-review";

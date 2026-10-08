@@ -1152,10 +1152,14 @@ async function runRequest() {
   submitElement.removeAttribute("disabled");
 }
 
-(window as any).insertcodesnippet = function(encodedcode: string) {
-  const code = atob(encodedcode);
-  console.log("code insert hit: ", code);
-};
+// placeholder for a page that does not define its own (index.html does: the page
+// script shows the change as a diff to accept, js/src/page/18-genie-review.js)
+if (typeof (window as any).insertcodesnippet !== "function") {
+  (window as any).insertcodesnippet = function(encodedcode: string) {
+    const code = atob(encodedcode);
+    console.log("code insert hit: ", code);
+  };
+}
 
 const ChatWidget = { open, close, toggle, config, init };
 (window as any).ChatWidget = ChatWidget;

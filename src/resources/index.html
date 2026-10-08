@@ -798,43 +798,9 @@ Breakpoint 1, main () at main.c:5
           }
         }
         setupGenieErrorNudge();
-        // Genie encodes code blocks as UTF-8 base64 (chat-widget renderer.code)
-        const decodeGenieCode = (encodedcode) => decodeURIComponent(escape(atob(encodedcode)));
-        window.insertcodesnippet = (encodedcode) => {
-          const code = decodeGenieCode(encodedcode);
-          console.log("code insert hit: ", code);
-          try {
-            let editor = window["editor"];
-            if( editor.env && editor.env.editor) {
-              editor = editor.env.editor;
-              let selectionRange = editor.getSelectionRange();
-              editor.getSession().replace(selectionRange, code);
-            }
-          }
-          catch(error) {
-            notify("Couldn't insert the code into the editor.", { type: "error" });
-            console.error(error);
-          }
-        };
-        window.replacecodesnippet = (encodedcode) => {
-          const code = decodeGenieCode(encodedcode);
-          console.log("code replace hit: ", code);
-          try {
-            if (window.location.pathname.includes("practice")) {
-              notify("In practice mode, Genie can insert code but not replace the whole file.", { type: "info" });
-              return;
-            }
-            let editor = window["editor"];
-            if( editor.env && editor.env.editor) {
-              editor = editor.env.editor;
-              editor.setValue(code);
-            }
-          }
-          catch(error) {
-            notify("Couldn't replace the editor code.", { type: "error" });
-            console.error(error);
-          }
-        };
+        // Genie's Insert and Replace buttons (window.insertcodesnippet and
+        // replacecodesnippet) are defined in js/src/page/18-genie-review.js: what
+        // Genie writes is shown as a diff to accept or reject, not applied at once.
       });
     </script>
     <button type="button" data-chat-widget-button class="genie-fab" aria-label="Ask Genie, the AI helper">
