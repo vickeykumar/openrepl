@@ -1,8 +1,6 @@
 package server
 
 import (
-	"encoding/json"
-	"hash/fnv"
 	"log"
 	"net/http"
 	"strings"
@@ -21,26 +19,10 @@ import (
 
 // gatewayWorkerConfig is what the gateway hands to workers: the site rules of
 // its settings, with a revision made from their content, so that the same
-// rules have the same revision on every gateway and after a restart.
+// rules have the same revision on every gateway and after a restart. A worker
+// gets its own languages on top of that (gatewayWorkerConfigFor).
 func (server *Server) gatewayWorkerConfig() *tunnel.WorkerConfig {
-	s := GetSiteSettings()
-	level := s.Announcement.Level
-	if level == "" {
-		level = "info" // what normalize makes of an empty level; the revision must not tell them apart
-	}
-	cfg := &tunnel.WorkerConfig{
-		ColorOfTheDay:      s.ColorOfTheDay,
-		AnnouncementText:   s.Announcement.Text,
-		AnnouncementLevel:  level,
-		Maintenance:        s.Maintenance.Enabled,
-		MaintenanceMessage: s.Maintenance.Message,
-		DisabledLanguages:  append([]string(nil), s.DisabledLanguages...),
-	}
-	data, _ := json.Marshal(cfg)
-	h := fnv.New64a()
-	h.Write(data)
-	cfg.Revision = int64(h.Sum64()&0x7fffffffffffffff) | 1 // never 0, which means "none yet"
-	return cfg
+	return server.workerConfigWith(GetSiteSettings().DisabledLanguages)
 }
 
 // applyWorkerConfig makes the gateway's site rules the worker's settings. The

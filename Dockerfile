@@ -12,6 +12,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 COPY ./install_prerequisite.sh /opt/openrepl/
 COPY ./bin/gdb /usr/bin/
+# the debug helpers (ptrace probe, openrepl-gdb, the rappel wrapper), installed by the script
+COPY ./scripts/ptrace-probe.c ./scripts/openrepl-gdb ./scripts/openrepl-rappel /opt/openrepl/scripts/
 RUN ./install_prerequisite.sh --cleanup-tools --run-tests
 
 FROM builder as build-image

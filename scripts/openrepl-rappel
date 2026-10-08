@@ -1,0 +1,24 @@
+#!/bin/bash
+# Installed as /usr/local/bin/rappel, in front of the real rappel (the assembly REPL).
+#
+# rappel runs each instruction you type in a child process that it traces with
+# ptrace. On a host without ptrace (the Raspberry Pi workers: an amd64 image under
+# qemu-user) it can only print two lines about a failed ptrace call and sit at a
+# dead prompt. So check first, and say what is wrong. Where ptrace works this does
+# nothing but start rappel.
+#
+# OPENREPL_RAPPEL_BIN names the real rappel (the install script puts it in /opt/gotty).
+
+real=${OPENREPL_RAPPEL_BIN:-/opt/gotty/rappel/bin/rappel}
+
+if command -v openrepl-ptrace-probe >/dev/null 2>&1; then
+	why=$(openrepl-ptrace-probe 2>/dev/null)
+	if [ $? -eq 1 ]; then
+		echo "The assembly REPL (rappel) runs your instructions in a traced process, which needs ptrace."
+		echo "This server does not allow ptrace${why:+ ($why)}, so the REPL cannot start here."
+		echo "Write your assembly in the editor and press Run or Debug instead."
+		exit 1
+	fi
+fi
+
+exec "$real" "$@"

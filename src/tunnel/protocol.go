@@ -47,6 +47,10 @@ type RegisterRequest struct {
 	Languages       []string `json:"languages,omitempty"`
 	Capacity        int64    `json:"capacity"` // memory-weight units it can run
 	Weight          int      `json:"weight"`
+	// Ptrace is what the worker's host answered when asked whether programs can
+	// be traced (openrepl-ptrace-probe): "ok", "ok-aslr", or why not. Empty means
+	// the worker did not find out. The dashboard shows it; it decides nothing.
+	Ptrace string `json:"ptrace,omitempty"`
 }
 
 // RegisterReply is the gateway's answer. It carries what the worker needs to

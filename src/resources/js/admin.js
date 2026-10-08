@@ -622,9 +622,74 @@
     });
   }
 
+  // ptraceNote says what a node's host answered about tracing programs: it is
+  // what Debug and the assembly REPL (rappel) need. "" means it is not known.
+  function ptraceBad(answer) { return !!answer && answer.indexOf('ok') !== 0; }
+
+  // languagesCard is the Languages card of a node's drawer: for each language what
+  // the node says, what an admin decided, and a choice. It keeps itself (the
+  // drawer around it is redrawn every few seconds, which would close a menu).
+  function languagesCard(node) {
+    var box = h('div'), where = node === 'local' ? 'the gateway' : node;
+    var intro = h('p', { class: 'sub', text: 'Default is what the worker declares. Off refuses new terminals of a language the worker can run; On takes one it did not declare, for example one you installed after starting it. Open terminals keep running.' });
+    var note = h('div'), list = h('div', { class: 'node-langs' });
+    box.appendChild(intro); box.appendChild(note); box.appendChild(list);
+
+    function status(r, ptrace) {
+      var pills = [];
+      if (r.siteOff) pills.push(pill('off for the whole site', 'info'));
+      else if (r.takes) pills.push(pill('takes terminals', 'ok'));
+      else if (r.rule === 'off') pills.push(pill('switched off here', 'fail'));
+      else if (!r.declared) pills.push(pill('not installed here', 'plain'));
+      else pills.push(pill('node offline', 'plain'));
+      if (r.rule === 'on' && !r.declared) pills.push(pill('on, not declared by the worker', 'info'));
+      if (r.needsPtrace && ptraceBad(ptrace)) pills.push(pill('needs ptrace', 'warn'));
+      return h('div', { class: 'actions status' }, pills);
+    }
+
+    function draw(reply) {
+      note.textContent = '';
+      if (ptraceBad(reply.ptrace)) {
+        note.appendChild(h('p', { class: 'callout', text: 'This node\'s host cannot trace programs (' + reply.ptrace + '). The assembly REPL (rappel) cannot work here. Debug still works: it runs the program under QEMU and starts paused.' }));
+      } else if (reply.ptrace) {
+        note.appendChild(h('p', { class: 'sub' }, pill('ptrace works', 'ok')));
+      }
+      if (!reply.online) note.appendChild(h('p', { class: 'sub', text: 'This node is offline, so its own list of languages is not known. Your choices are kept.' }));
+      list.textContent = '';
+      reply.languages.forEach(function (r) {
+        var sel = h('select', { class: 'field', 'aria-label': r.name + ' on ' + where,
+          onchange: function () { set(r, sel); } },
+          h('option', { value: 'default', text: 'Default (' + (r.declared ? 'on' : 'not installed') + ')' }),
+          h('option', { value: 'off', text: 'Off' }),
+          h('option', { value: 'on', text: 'On' }));
+        sel.value = r.rule;
+        list.appendChild(h('div', { class: 'node-lang' },
+          h('div', { class: 'what' }, h('b', { text: r.name }), h('span', { class: 'sub', text: r.command || '' })),
+          sel, status(r, reply.ptrace)));
+      });
+    }
+
+    function load() {
+      return api.get('admin/workers/' + encodeURIComponent(node) + '/languages').then(draw, fail);
+    }
+
+    function set(r, sel) {
+      var rule = sel.value;
+      sel.disabled = true;
+      return api.post('admin/workers/' + encodeURIComponent(node) + '/languages', { language: r.value, rule: rule }).then(function (reply) {
+        toast(r.name + (rule === 'off' ? ' is switched off on ' : rule === 'on' ? ' is switched on for ' : ' follows the list of ') + where + '.');
+        draw(reply);
+      }, function (err) { fail(err); return load(); });
+    }
+
+    load();
+    return { el: box, load: load };
+  }
+
   function viewWorkers() {
     var root = h('div'), box = h('div'), addBox = h('div');
     var data = null, sort = { key: 'id', dir: 'asc' }, openId = null;
+    var topBox = null; // the part of the open drawer that is redrawn; the Languages card below it is not
     root.appendChild(pageHead('Workers', 'The gateway and the workers connected to it. New sessions are shared out in proportion to the weights.'));
     root.appendChild(box);
     root.appendChild(addBox);
@@ -632,7 +697,8 @@
     var cols = [
       { key: 'id', label: 'Node', sort: function (w) { return w.id; }, cell: function (w) {
         return h('div', null, h('b', { text: w.id === 'local' ? 'gateway (local)' : w.id }),
-          h('div', { class: 'sub', text: w.id === 'local' ? 'runs sessions itself' : (w.version || '') })); } },
+          h('div', { class: 'sub', text: w.id === 'local' ? 'runs sessions itself' : (w.version || '') }),
+          ptraceBad(w.ptrace) ? pill('no ptrace', 'warn') : null); } },
       { key: 'state', label: 'State', sort: function (w) { return w.state; }, cell: function (w) { return pill(w.state.toLowerCase(), stateTone(w.state)); } },
       { key: 'weight', label: 'Weight', num: true, sort: function (w) { return w.weight; }, cell: function (w) { return String(w.weight); } },
       { key: 'mem', label: 'Memory', sort: function (w) { return w.usedMB; }, cell: function (w) { return usageBar(w.usedMB, w.maxMB); } },
@@ -667,13 +733,15 @@
     function openWorker(id) {
       var w = data.workers.filter(function (x) { return x.id === id; })[0];
       if (!w) return;
-      openDrawer(id, id === 'local' ? 'gateway (local)' : id, h('div'), function () { openId = null; });
+      topBox = h('div');
+      var langs = h('div', null, h('h3', { text: 'Languages on this node' }), languagesCard(id).el);
+      openDrawer(id, id === 'local' ? 'gateway (local)' : id, h('div', null, topBox, langs), function () { openId = null; topBox = null; });
       openId = id; // after openDrawer: it closes the previous drawer, whose onclose clears this
       fillDrawer(w);
     }
 
     function fillDrawer(w) {
-      var d = drawer.content;
+      var d = topBox;
       d.textContent = '';
       var offset = w.sync ? w.sync.clockOffsetMs : null;
       d.appendChild(h('div', { class: 'actions' }, pill(w.state.toLowerCase(), stateTone(w.state)),
@@ -690,7 +758,8 @@
         w.connected ? ['Connected', h('span', null, when(w.connected), ' ', h('span', { class: 'sub', text: '(' + localTime(w.connected) + ')' }))] : null,
         w.lastSeen ? ['Last heard from', when(w.lastSeen)] : null,
         w.id !== 'local' && w.connectionId ? ['Site rules', w.configCurrent ? pill('up to date', 'ok') : pill(w.configRev ? 'out of date (revision ' + w.configRev + ')' : 'not received yet', 'warn')] : null,
-        ['Languages', w.languages && w.languages.length ? h('span', { class: 'actions' }, w.languages.map(function (l) { return pill(l, 'plain'); })) : (w.id === 'local' ? 'all' : 'all it was started with')]
+        ['Languages it declares', w.languages && w.languages.length ? h('span', { class: 'actions' }, w.languages.map(function (l) { return pill(l, 'plain'); })) : (w.id === 'local' ? 'all' : 'all it was started with')],
+        w.ptrace ? ['Tracing programs', ptraceBad(w.ptrace) ? pill('no: ' + w.ptrace, 'warn') : pill('works', 'ok')] : null
       ]));
       d.appendChild(h('h3', { text: 'Load' }));
       d.appendChild(kv([

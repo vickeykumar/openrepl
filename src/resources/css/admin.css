@@ -509,3 +509,12 @@ dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top
 .signed-out p { color: var(--muted); margin: 0 0 16px; }
 .loading { padding: 40px; text-align: center; color: var(--muted); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* the Languages card of a node: the name and the choice on one line, what it means below */
+.node-langs { display: grid; gap: 6px; }
+.node-lang { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, 48%); gap: 6px 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.node-lang .what { min-width: 0; }
+.node-lang .what b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.node-lang .what .sub { margin: 0; overflow-wrap: anywhere; }
+.node-lang select.field { width: 100%; }
+.node-lang .status { grid-column: 1 / -1; }

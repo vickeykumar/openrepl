@@ -49,7 +49,7 @@ printf "\n";
 </Demo>
 ```
 
-See LLD 04 §2 for the Compiler script contract (`$0`, `$1`, `$IdeLang`, `$CompilerOption`). Escape `<`, `>` and `&` in XML. `<Prefix>` can wrap the REPL (for example with `rlwrap`) in interactive mode only.
+See LLD 04 §2 for the Compiler script contract (`$0`, `$1`, `$IdeLang`, `$CompilerOption`). A script that starts gdb for `debug` should call `openrepl-gdb PROGRAM` (or `openrepl-gdb --gdb rust-gdb PROGRAM`) rather than `gdb`, so Debug also works on hosts without ptrace. Escape `<`, `>` and `&` in XML. `<Prefix>` can wrap the REPL (for example with `rlwrap`) in interactive mode only.
 
 ## 4. Expose it in the UI (`src/resources/index.html`)
 

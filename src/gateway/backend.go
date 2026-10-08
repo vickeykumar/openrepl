@@ -57,7 +57,24 @@ type LocalConfig struct {
 	Weight int
 	// Capacity reports the gateway's own load. Optional.
 	Capacity func() (used, max int64)
+	// Ptrace is what the gateway's host answers about tracing programs (see
+	// tunnel.RegisterRequest.Ptrace), for the admin API. Optional.
+	Ptrace string
 }
+
+// LanguageRule is what an admin decided for one language on one node.
+type LanguageRule int
+
+const (
+	// LanguageDefault follows what the node says it can run (--worker-languages).
+	LanguageDefault LanguageRule = iota
+	// LanguageOff refuses new terminals of the language on the node, even if it
+	// can run them.
+	LanguageOff
+	// LanguageOn lets the node take the language although it did not declare it:
+	// an admin installed it since the worker started.
+	LanguageOn
+)
 
 // LocalBackend runs the request with the existing OpenREPL handlers, with
 // no proxy hop in between.

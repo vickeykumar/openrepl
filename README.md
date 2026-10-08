@@ -185,6 +185,7 @@ Then do a quick manual check at `localhost:8080`:
 ### Notes
 
 - **No per-REPL sandboxing locally.** Colima's VM uses cgroup v2, so the log shows `Unable to create Container` and REPLs run without their own namespaces or memory limits. Test sandboxing on a cgroup v1 host.
+- **Debug runs under QEMU locally.** Rosetta cannot trace programs, so plain gdb fails with `Couldn't get registers`. Debug detects it and runs your program under QEMU, which gdb connects to (see [LLD 04](docs/lld/04-ide-run-and-files.md)). The program starts paused: set breakpoints, then type `c`. The assembly REPL (rappel) needs real ptrace and does not start here.
 - **Don't commit `bin/gotty`.** The dev container rebuilds this tracked file. Restore it before committing with `git checkout -- bin/gotty`, and don't commit `node_modules` or `dist` folders.
 - **Genie and Practice question generation need an OpenAI key.** Set `OPENREPL_OPENAI_API_KEY` (see [Settings and secrets](#settings-and-secrets)), then restart the server.
 - **Stopping and restarting the VM:** `colima stop openrepl` and `colima start openrepl`. `colima delete openrepl` removes the VM and its images.

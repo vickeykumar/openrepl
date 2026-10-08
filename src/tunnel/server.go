@@ -46,6 +46,10 @@ type ServerConfig struct {
 	// Config is the settings the gateway wants workers to follow. It is called
 	// at every registration and heartbeat, so it should be cheap. nil: none.
 	Config func() *WorkerConfig
+	// WorkerConfig is Config for settings that differ from worker to worker (the
+	// languages an admin switched off on one node). When it is set it is used
+	// instead of Config.
+	WorkerConfig func(w *Worker) *WorkerConfig
 	// HeartbeatInterval is how often workers report; Timeout is how long a
 	// silent worker stays ONLINE. Defaults: 10s and 30s.
 	HeartbeatInterval time.Duration
@@ -429,10 +433,8 @@ func (s *Server) ServeConn(c net.Conn) {
 				atomic.StoreInt64(&worker.configRev, hb.ConfigRev)
 			}
 			var hr HeartbeatReply
-			if s.cfg.Config != nil {
-				if cur := s.cfg.Config(); cur != nil && cur.Revision != atomic.LoadInt64(&worker.configRev) {
-					hr.Config = cur
-				}
+			if cur := s.configFor(worker); cur != nil && cur.Revision != atomic.LoadInt64(&worker.configRev) {
+				hr.Config = cur
 			}
 			data, _ := json.Marshal(hr)
 			req.Reply(true, data)
@@ -549,10 +551,8 @@ func (s *Server) register(conn ssh.Conn, payload []byte) (*Worker, RegisterReply
 	if s.cfg.Secret != nil {
 		rep.Secret = s.cfg.Secret()
 	}
-	if s.cfg.Config != nil {
-		if rep.Config = s.cfg.Config(); rep.Config != nil {
-			atomic.StoreInt64(&w.configRev, rep.Config.Revision)
-		}
+	if rep.Config = s.configFor(w); rep.Config != nil {
+		atomic.StoreInt64(&w.configRev, rep.Config.Revision)
 	}
 	return w, rep, nil
 }
@@ -600,13 +600,34 @@ func (s *Server) watch(w *Worker) {
 	}
 }
 
+// configFor is the WorkerConfig the worker should follow now (nil: none).
+func (s *Server) configFor(w *Worker) *WorkerConfig {
+	switch {
+	case s.cfg.WorkerConfig != nil:
+		return s.cfg.WorkerConfig(w)
+	case s.cfg.Config != nil:
+		return s.cfg.Config()
+	}
+	return nil
+}
+
 // ConfigRevision is the revision of the WorkerConfig workers should follow now
-// (0 when there is none).
+// (0 when there is none). With per-worker settings (ServerConfig.WorkerConfig)
+// use ConfigRevisionFor.
 func (s *Server) ConfigRevision() int64 {
 	if s.cfg.Config == nil {
 		return 0
 	}
 	if cur := s.cfg.Config(); cur != nil {
+		return cur.Revision
+	}
+	return 0
+}
+
+// ConfigRevisionFor is the revision of the WorkerConfig the worker should follow
+// now (0 when there is none).
+func (s *Server) ConfigRevisionFor(w *Worker) int64 {
+	if cur := s.configFor(w); cur != nil {
 		return cur.Revision
 	}
 	return 0

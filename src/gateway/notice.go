@@ -75,6 +75,15 @@ func (rt *Router) refuse(w http.ResponseWriter, r *http.Request, msg string, ret
 	http.Error(w, msg, http.StatusServiceUnavailable)
 }
 
+// refuseTerminal refuses a terminal for a reason the user is told: a WebSocket
+// is closed with it (Config.RefuseTerminal), anything else gets a 503.
+func (rt *Router) refuseTerminal(w http.ResponseWriter, r *http.Request, reason string) {
+	if rt.refuseTerm != nil && isWebSocketRequest(r) && rt.refuseTerm(w, r, reason) {
+		return
+	}
+	http.Error(w, reason, http.StatusServiceUnavailable)
+}
+
 // refuseError is refuse for an error from placing a session.
 func (rt *Router) refuseError(w http.ResponseWriter, r *http.Request, err error, code int) {
 	var re *retryError

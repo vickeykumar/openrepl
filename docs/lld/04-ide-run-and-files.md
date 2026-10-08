@@ -60,11 +60,26 @@ A Run request executes `/bin/bash -c "$SCRIPT" "$ARG0" "$FLAGS"` (the `Prefix` i
 | `$0` | Path of the saved editor file (`IdeFileName`), or the base64 editor content when no file is selected. Scripts decode it with `echo $0 \| base64 --decode`. |
 | `$1` | The *Compiler/Repl Args* text box, passed as one string. |
 | `$IdeLang` | The UI option value (`c`, `cpp`, `go`, `python`, …), so one backend (for example `cling`) can pick `gcc` or `g++`. |
-| `$CompilerOption` | `debug` when **debug** was pressed. Scripts then add `-g` and launch `gdb`, `rust-gdb` and similar. |
+| `$CompilerOption` | `debug` when **debug** was pressed. Scripts then add `-g` and launch `openrepl-gdb` (below) instead of a bare `gdb`. |
 | `$IdeFileName`, `$HOME` | The same file path, and the workspace directory. |
 | client `EnvFlags` | Extra variables from the *Env Vars/Paths* box. |
 
 Scripts usually write `test.<ext>` into `$HOME` when there is no file, compile it, run it, and `printf "\n"` at the end.
+
+### Debug on a host without ptrace (`openrepl-gdb`)
+
+gdb traces the program with `ptrace`, and not every host has it: a Raspberry Pi worker runs the amd64 image under `qemu-user` (`ptrace` answers "Function not implemented"), and x86 code under Rosetta can start a traced child but not read its registers (`Couldn't get registers: Input/output error`). Scripts therefore start `openrepl-gdb [--gdb rust-gdb] PROGRAM [gdb arguments]` (`scripts/openrepl-gdb`, installed to `/usr/local/bin`), which asks `openrepl-ptrace-probe` (`scripts/ptrace-probe.c`, built once by the install script) and takes one route:
+
+| Route | When | What it does |
+|---|---|---|
+| `ptrace` | The probe passes (it forks a child, traces it and reads its registers). | `exec gdb` as before. If only the address randomization cannot be switched off (the probe's exit 2), gdb gets `set disable-randomization off`, so it does not warn. |
+| `emulator` | The probe fails and `QEMU_VERSION=1 /bin/true` prints a `qemu-` version: the container itself runs under qemu-user (the Pi workers). | Starts the program with `QEMU_GDB=<port>` in its environment, which makes the emulator that runs it wait for gdb on that port. No second emulator, no extra slowdown. |
+| `qemu` | The probe fails, there is no emulator around, and the host is x86-64 (Rosetta, a sandbox). | Runs the program as `QEMU_GDB=<port> QEMU_LD_PREFIX=/ qemu-x86_64 PROGRAM` (`qemu-user` from apt). |
+| none | Neither. | Prints "Debugging is not available on this server" and "Run still works", exit 1. |
+
+On the last three routes gdb is started with `set sysroot /` and `target remote 127.0.0.1:<port>`, on a free port chosen per session. It only connects: the user sets breakpoints and continues. qemu describes its registers to gdb in XML, so these routes need a gdb built with XML support (`gdb --configuration` shows `--with-expat`). The helper takes the first `gdb` on the `PATH` that has it (for `rust-gdb`, it sets `RUST_GDB`). The gdb 8.1.1 the repo bundles as `bin/gdb` has none and, when it is first on the `PATH`, fails with `Remote 'g' packet reply is too long` and lets the program run away; Ubuntu's gdb (installed by the install script) is used instead, and if there is none the helper says so before it starts the program. The program starts paused at its first instruction, because a remote target cannot "run": `run` and `r` are redefined to `continue`, and the helper prints a two line banner saying so. The program keeps the terminal for its input, and Ctrl-C reaches gdb only (the shell ignores it for the background job), which interrupts the program. When gdb ends, or the terminal closes (a small watcher notices that `/dev/tty` is gone, because a gdb that waits for a running remote program ignores the hangup), the helper stops the program.
+
+`OPENREPL_GDB_ROUTE=ptrace|emulator|qemu` forces a route; the install script's test uses `qemu`. Known limits of the QEMU routes: x86-64 only, slower than native, and a program that uses the 32-bit `int 0x80` system call gate does not work under qemu-user (the assembly sample uses `syscall`, which does). The assembly REPL (rappel) cannot work without `ptrace` at all: `/usr/local/bin/rappel` is a wrapper (`scripts/openrepl-rappel`) that runs the probe first and, if `ptrace` is missing, tells the user to use the editor's Run or Debug; otherwise it starts the real rappel (`OPENREPL_RAPPEL_BIN`, default `/opt/gotty/rappel/bin/rappel`).
 
 ### Language routing on the client
 
