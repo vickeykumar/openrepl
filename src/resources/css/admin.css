@@ -518,3 +518,19 @@ dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top
 .node-lang .what .sub { margin: 0; overflow-wrap: anywhere; }
 .node-lang select.field { width: 100%; }
 .node-lang .status { grid-column: 1 / -1; }
+
+/* the OpenRouter models an admin adds (Site settings, Genie) */
+.custom-models { display: grid; gap: 10px; margin-bottom: 12px; }
+.custom-model { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.cm-head { display: flex; align-items: center; gap: 10px; }
+.cm-title { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.cm-title .mono { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.cm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 10px 0 6px; }
+.cm-field { display: grid; gap: 3px; }
+.cm-field > span { color: var(--muted); font-size: 12.5px; }
+.cm-field small { color: var(--faint); font-size: 11.5px; }
+.cm-checks { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.cm-check { display: inline-flex; align-items: center; gap: 7px; }
+.cm-add { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+@media (max-width: 640px) { .cm-add { grid-template-columns: 1fr; } }
+

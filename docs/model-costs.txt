@@ -1,0 +1,96 @@
+OPENREPL: MODELS AND TOKEN COSTS
+Generated 2026-10-08 from OpenRouter's public catalog (https://openrouter.ai/api/v1/models). Prices change; check the catalog before relying on them.
+Prices are US dollars per 1,000,000 tokens (in = prompt, out = completion). ctx = context window, maxout = most tokens of one answer.
+json = the host takes response_format json_object (Agent mode); tools = takes tool calls.
+
+====================================================================================================
+1. WHAT OPENREPL USES TODAY
+====================================================================================================
+openai/gpt-6-luna                                    ctx 1050000  maxout 128000  in 0.1       out 0.5       json=Y tools=Y
+openai/gpt-4o-mini                                   ctx 128000   maxout 16384   in 0.15      out 0.6       json=Y tools=Y
+google/gemma-4-31b-it                                ctx 262144   maxout 16384   in 0.09      out 0.34      json=Y tools=Y
+(GPT-6 Luna and GPT-4o mini are billed by OpenAI directly with the OpenAI key; Gemma is billed through OpenRouter credit.)
+Example: an answer of 2,000 tokens on a model that costs 0.60 per 1M output tokens costs 2000 / 1,000,000 * 0.60 = $0.0012.
+
+====================================================================================================
+2. OPENROUTER FREE MODELS (20)
+====================================================================================================
+Cost: 0 per token. Limits on the account, shared by every visitor: 20 requests a minute, 50 a day (1,000 a day once $10 of credit
+has been bought at any time). A negative credit balance can still give 402. Free providers may keep and use what is sent.
+Models that think first spend tokens before the answer: leave 3,000 or more tokens of room.
+
+apodex/apodex-1.1-mini:free                          ctx 262144   maxout 235929  in 0 (free)  out 0 (free)  json=Y tools=Y
+cohere/north-mini-code:free                          ctx 256000   maxout 64000   in 0 (free)  out 0 (free)  json=- tools=Y
+dots-studio/dots-3-note-preview:free                 ctx 512000   maxout 460800  in 0 (free)  out 0 (free)  json=Y tools=Y  expires 2026-12-31
+google/gemma-4-26b-a4b-it:free                       ctx 262144   maxout 32768   in 0 (free)  out 0 (free)  json=Y tools=Y
+google/gemma-4-31b-it:free                           ctx 262144   maxout 32768   in 0 (free)  out 0 (free)  json=Y tools=Y
+google/lyria-3-clip-preview                          ctx 1048576  maxout 65536   in 0 (free)  out 0 (free)  json=Y tools=-
+google/lyria-3-pro-preview                           ctx 1048576  maxout 65536   in 0 (free)  out 0 (free)  json=Y tools=-
+inclusionai/ling-3.0-flash-sante:free                ctx 262144   maxout 32768   in 0 (free)  out 0 (free)  json=- tools=Y
+inclusionai/ling-3.1-flash                           ctx 262144   maxout 32768   in 0 (free)  out 0 (free)  json=- tools=Y
+liquid/lfm-2.5-2.6b:free                             ctx 65536    maxout 8192    in 0 (free)  out 0 (free)  json=Y tools=Y
+nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free   ctx 256000   maxout 65536   in 0 (free)  out 0 (free)  json=- tools=Y
+nvidia/nemotron-3-super-120b-a12b:free               ctx 262144   maxout 235929  in 0 (free)  out 0 (free)  json=Y tools=Y
+nvidia/nemotron-3-ultra-550b-a55b:free               ctx 1000000  maxout 65536   in 0 (free)  out 0 (free)  json=- tools=Y
+nvidia/nemotron-3.5-content-safety:free              ctx 128000   maxout 8192    in 0 (free)  out 0 (free)  json=- tools=-
+nvidia/nemotron-3.5-lightning:free                   ctx 1000000  maxout 65536   in 0 (free)  out 0 (free)  json=- tools=Y
+openrouter/free                                      ctx 200000   maxout -       in 0 (free)  out 0 (free)  json=Y tools=Y
+poolside/laguna-s-2.1:free                           ctx 262144   maxout 32768   in 0 (free)  out 0 (free)  json=- tools=Y  expires 2026-10-31
+poolside/laguna-xs-2.1:free                          ctx 262144   maxout 32768   in 0 (free)  out 0 (free)  json=- tools=Y  expires 2026-10-31
+thinkingmachines/inkling-small:free                  ctx 1048576  maxout 262144  in 0 (free)  out 0 (free)  json=- tools=Y
+thinkingmachines/inkling:free                        ctx 1048576  maxout 262144  in 0 (free)  out 0 (free)  json=- tools=Y
+
+Tried through OpenRouter with the owner's key on 2026-10-08:
+  works  nvidia/nemotron-3-super-120b-a12b:free (thinks first, takes JSON mode)
+  works  cohere/north-mini-code:free (thinks first, no JSON mode)
+  weak   apodex/apodex-1.1-mini:free (used all 300 tokens thinking, empty answer)
+  429    google/gemma-4-31b-it:free and google/gemma-4-26b-a4b-it:free (Google AI Studio shared pool exhausted)
+  not tried: everything else in this section
+
+====================================================================================================
+3. OPENAI MODELS (NOT FREE)
+====================================================================================================
+OpenAI has no free API models. These are OpenAI's own models as OpenRouter lists them, cheapest input price first;
+OpenAI's direct prices are normally the same. Free credit, when OpenAI gives it, is a promotion, not a model.
+
+openai/gpt-oss-20b                                   ctx 131072   maxout 32768   in 0.018     out 0.09      json=Y tools=Y
+openai/gpt-oss-20b:batch                             ctx 131072   maxout 117964  in 0.024     out 0.112     json=Y tools=Y
+openai/gpt-5-nano:batch                              ctx 400000   maxout 128000  in 0.025     out 0.2       json=Y tools=Y
+openai/gpt-oss-120b:batch                            ctx 131072   maxout 117964  in 0.0296    out 0.136     json=Y tools=Y
+openai/gpt-oss-120b                                  ctx 131072   maxout 117964  in 0.037     out 0.17      json=Y tools=Y
+openai/gpt-6-luna-pro:batch                          ctx 1050000  maxout 128000  in 0.05      out 0.25      json=Y tools=Y
+openai/gpt-6-luna:batch                              ctx 1050000  maxout 128000  in 0.05      out 0.25      json=Y tools=Y
+openai/gpt-5-nano                                    ctx 400000   maxout 128000  in 0.05      out 0.4       json=Y tools=Y
+openai/gpt-4.1-nano:batch                            ctx 1047576  maxout 32768   in 0.05      out 0.2       json=Y tools=Y
+openai/gpt-oss-safeguard-20b                         ctx 131072   maxout 65536   in 0.075     out 0.3       json=Y tools=Y
+openai/gpt-4o-mini:batch                             ctx 128000   maxout 16384   in 0.075     out 0.3       json=Y tools=Y
+openai/gpt-6-luna-pro                                ctx 1050000  maxout 128000  in 0.1       out 0.5       json=Y tools=Y
+openai/gpt-6-luna                                    ctx 1050000  maxout 128000  in 0.1       out 0.5       json=Y tools=Y
+openai/gpt-5.6-luna-pro:batch                        ctx 1050000  maxout 128000  in 0.1       out 0.6       json=Y tools=Y
+openai/gpt-5.6-luna:batch                            ctx 1050000  maxout 128000  in 0.1       out 0.6       json=Y tools=Y
+openai/gpt-5.4-nano:batch                            ctx 400000   maxout 128000  in 0.1       out 0.625     json=Y tools=Y
+openai/gpt-4.1-nano                                  ctx 1047576  maxout 32768   in 0.1       out 0.4       json=Y tools=Y
+openai/gpt-5-mini:batch                              ctx 400000   maxout 128000  in 0.125     out 1         json=Y tools=Y
+openai/gpt-4o-mini                                   ctx 128000   maxout 16384   in 0.15      out 0.6       json=Y tools=Y
+openai/gpt-4o-mini-2024-07-18                        ctx 128000   maxout 16384   in 0.15      out 0.6       json=Y tools=Y
+openai/gpt-5.6-luna-pro                              ctx 1050000  maxout 128000  in 0.2       out 1.2       json=Y tools=Y
+openai/gpt-5.6-luna                                  ctx 1050000  maxout 128000  in 0.2       out 1.2       json=Y tools=Y
+openai/gpt-5.4-nano                                  ctx 400000   maxout 128000  in 0.2       out 1.25      json=Y tools=Y
+openai/gpt-4.1-mini:batch                            ctx 1047576  maxout 32768   in 0.2       out 0.8       json=Y tools=Y
+openai/gpt-5.1-codex-mini                            ctx 400000   maxout 128000  in 0.25      out 2         json=Y tools=Y
+openai/gpt-5-mini                                    ctx 400000   maxout 128000  in 0.25      out 2         json=Y tools=Y
+openai/gpt-3.5-turbo:batch                           ctx 16385    maxout 4096    in 0.25      out 0.75      json=Y tools=Y
+openai/gpt-5.4-mini:batch                            ctx 400000   maxout 128000  in 0.375     out 2.25      json=Y tools=Y
+openai/gpt-4.1-mini                                  ctx 1047576  maxout 32768   in 0.4       out 1.6       json=Y tools=Y
+openai/gpt-3.5-turbo                                 ctx 16385    maxout 4096    in 0.5       out 1.5       json=Y tools=Y
+openai/o4-mini:batch                                 ctx 200000   maxout 100000  in 0.55      out 2.2       json=Y tools=Y
+openai/o3-mini:batch                                 ctx 200000   maxout 100000  in 0.55      out 2.2       json=Y tools=Y
+openai/gpt-audio-mini                                ctx 128000   maxout 16384   in 0.6       out 2.4       json=Y tools=Y
+openai/gpt-5.1:batch                                 ctx 400000   maxout 128000  in 0.625     out 5         json=Y tools=Y
+openai/gpt-5:batch                                   ctx 400000   maxout 128000  in 0.625     out 5         json=Y tools=Y
+openai/gpt-5.4-mini                                  ctx 400000   maxout 128000  in 0.75      out 4.5       json=Y tools=Y
+openai/gpt-5.2:batch                                 ctx 400000   maxout 128000  in 0.875     out 7         json=Y tools=Y
+openai/gpt-6-sol-pro:batch                           ctx 1050000  maxout 128000  in 1         out 5         json=Y tools=Y
+openai/gpt-6-sol:batch                               ctx 1050000  maxout 128000  in 1         out 5         json=Y tools=Y
+openai/gpt-5.6-terra-pro:batch                       ctx 1050000  maxout 128000  in 1         out 6         json=Y tools=Y
+... 62 more openai/* models in the catalog
