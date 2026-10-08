@@ -73,8 +73,8 @@ type indexPage struct {
 	Client       map[string]interface{} // window.OPENREPL_PAGE for scribbler.js
 }
 
-const homeTitle = "Learn Programming languages like C/C++, Go with Online REPL/Interpreter"
-const homeDescription = "OpenREPL is an Online platform for checking code snippets in REPLs for various languages like C/C++, go, python and more."
+const homeTitle = "OpenREPL: Online Code Editor and REPL for C++, Go, Python and more"
+const homeDescription = "Write, run and debug code in your browser. A free, open-source REPL and editor for C, C++, Go, Python, Rust and many more, with an AI assistant. No install needed."
 
 func langPageData(p LangPage) indexPage {
 	return indexPage{
