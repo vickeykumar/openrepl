@@ -3,6 +3,7 @@
  * page. Usage:
  *   notify("Saved main.py", { type: "success" });
  *   notify("words.csv is over 20 MB.", { type: "error", title: "Upload failed" });
+ *   notify("Applied 2 changes.", { type: "success", action: { label: "Undo", onClick: undo } });
  * type: "info" (default), "success" or "error". Errors stay until dismissed
  * or for 10 seconds; the others go after 4 seconds.
  */
@@ -55,6 +56,17 @@
     body.appendChild(m);
     n.appendChild(body);
 
+    // opts.action = { label, onClick }: one button next to the message, for
+    // something the person may want to do about it (Undo)
+    var action = null;
+    if (opts.action && typeof opts.action.onClick === "function") {
+      action = document.createElement("button");
+      action.type = "button";
+      action.className = "notice__action";
+      text(action, opts.action.label || "Undo");
+      n.appendChild(action);
+    }
+
     var close = document.createElement("button");
     close.type = "button";
     close.className = "notice__close";
@@ -73,6 +85,12 @@
       setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, 250);
     }
     close.addEventListener("click", dismiss);
+    if (action) {
+      action.addEventListener("click", function () {
+        dismiss();
+        opts.action.onClick();
+      });
+    }
     var ms = opts.timeout != null ? opts.timeout : (type === "error" ? 10000 : 4000);
     if (ms > 0) timer = setTimeout(dismiss, ms);
     return dismiss;

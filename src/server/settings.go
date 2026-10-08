@@ -98,6 +98,17 @@ type GenieSettings struct {
 	// DefaultModel is the model that answers a request naming none, and the one
 	// a visitor starts with. Empty means the built-in choice. It must be on.
 	DefaultModel string `json:"defaultModel"`
+
+	// Agent mode (agent.go): Genie works on a task in steps, in the editor, once
+	// the user allowed each kind of action. Signed-in users have it, unless an
+	// admin sets AgentDisabled; it is off on the practice page unless
+	// AgentOnPractice is set. A user may start AgentTasksPerHour tasks an hour
+	// (0: the built-in 20), and a task has AgentMaxSteps steps (0: the built-in
+	// 8, at most 8).
+	AgentDisabled     bool `json:"agentDisabled"`
+	AgentOnPractice   bool `json:"agentOnPractice"`
+	AgentTasksPerHour int  `json:"agentTasksPerHour"`
+	AgentMaxSteps     int  `json:"agentMaxSteps"`
 }
 
 // ModelDisabled reports whether an admin switched the model off.
@@ -315,6 +326,11 @@ type publicSettings struct {
 	DefaultModel   string   `json:"defaultModel"`
 	// what Genie reads from the page and keeps (the effective numbers)
 	GenieContext genieContext `json:"genieContext"`
+	// agent mode: whether the panel offers it (to signed-in users; the server
+	// decides), whether on the practice page, and the steps of a task
+	AgentEnabled    bool `json:"agentEnabled"`
+	AgentOnPractice bool `json:"agentOnPractice"`
+	AgentMaxSteps   int  `json:"agentMaxSteps"`
 }
 
 type genieContext struct {
@@ -348,6 +364,8 @@ const (
 	minHistory, maxHistory             = 6, 50
 	minAnswerCap, maxAnswerCap         = 500, 16000
 	minORTimeout, maxORTimeout         = 10, 90
+	minAgentTasks, maxAgentTasks       = 1, maxAgentTasksPerHour
+	minAgentSteps, maxAgentStepsSet    = 1, maxAgentSteps
 )
 
 // normalizeNumbers checks the numbers and the hosts of the Genie settings.
@@ -362,6 +380,8 @@ func (g *GenieSettings) normalizeNumbers() error {
 		{"The terminal context (lines)", g.ContextTerminalLines, minTerminalLines, maxTerminalLines},
 		{"The conversation length", g.HistoryMessages, minHistory, maxHistory},
 		{"The OpenRouter time limit", g.OpenRouterTimeoutSec, minORTimeout, maxORTimeout},
+		{"The agent tasks per hour", g.AgentTasksPerHour, minAgentTasks, maxAgentTasks},
+		{"The agent steps per task", g.AgentMaxSteps, minAgentSteps, maxAgentStepsSet},
 	} {
 		if n.v != 0 && (n.v < n.min || n.v > n.max) {
 			return fmt.Errorf("%s must be between %d and %d (or empty for the built-in value)", n.name, n.min, n.max)
@@ -422,6 +442,9 @@ func (s SiteSettings) public() publicSettings {
 		DisabledModels:    models,
 		DefaultModel:      s.Genie.DefaultModel,
 		GenieContext:      s.Genie.context(),
+		AgentEnabled:      !s.Genie.AgentDisabled && !s.Genie.Disabled,
+		AgentOnPractice:   s.Genie.AgentOnPractice,
+		AgentMaxSteps:     s.Genie.agentMaxSteps(),
 	}
 }
 
@@ -604,6 +627,15 @@ func settingsChanges(a, b SiteSettings) []string {
 		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {
 		out = append(out, "Genie limits changed (context, history, answer sizes, OpenRouter time limit or hosts)")
 	}
+	if a.Genie.AgentDisabled != b.Genie.AgentDisabled {
+		out = append(out, "agent mode "+onoff(!b.Genie.AgentDisabled))
+	}
+	if a.Genie.AgentOnPractice != b.Genie.AgentOnPractice {
+		out = append(out, "agent mode on the practice page "+onoff(b.Genie.AgentOnPractice))
+	}
+	if a.Genie.AgentTasksPerHour != b.Genie.AgentTasksPerHour || a.Genie.AgentMaxSteps != b.Genie.AgentMaxSteps {
+		out = append(out, fmt.Sprintf("agent limits: %d tasks an hour, %d steps a task", b.Genie.agentTasksPerHour(), b.Genie.agentMaxSteps()))
+	}
 	if a.Genie.GuestPerMinute != b.Genie.GuestPerMinute || a.Genie.UserPerMinute != b.Genie.UserPerMinute {
 		rate := func(v float64) string {
 			if v == 0 {
@@ -647,6 +679,8 @@ type genieDefaults struct {
 	HistoryMessages      int               `json:"historyMessages"`
 	AnswerCaps           map[string]int    `json:"answerCaps"`
 	OpenRouterTimeoutSec int               `json:"openRouterTimeoutSec"`
+	AgentTasksPerHour    int               `json:"agentTasksPerHour"`
+	AgentMaxSteps        int               `json:"agentMaxSteps"`
 	OpenRouterHosts      []hostChoice      `json:"openRouterHosts"` // every host that may be chosen, in the built-in order
 	Limits               map[string][2]int `json:"limits"`          // the allowed range of each number
 }
@@ -674,10 +708,12 @@ func currentGenieDefaults() genieDefaults {
 		ContextEditorChars: defaultContextEditorChars, ContextTerminalChars: defaultContextTerminalChars,
 		ContextTerminalLines: defaultContextTerminalLines, HistoryMessages: defaultHistoryMessages,
 		AnswerCaps: caps, OpenRouterTimeoutSec: defaultOpenRouterTimeoutSec, OpenRouterHosts: hosts,
+		AgentTasksPerHour: defaultAgentTasksPerHour, AgentMaxSteps: defaultAgentMaxSteps,
 		Limits: map[string][2]int{
 			"contextEditorChars": {minEditorChars, maxEditorChars}, "contextTerminalChars": {minTerminalChars, maxTerminalChars},
 			"contextTerminalLines": {minTerminalLines, maxTerminalLines}, "historyMessages": {minHistory, maxHistory},
 			"answerCap": {minAnswerCap, maxAnswerCap}, "openRouterTimeoutSec": {minORTimeout, maxORTimeout},
+			"agentTasksPerHour": {minAgentTasks, maxAgentTasks}, "agentMaxSteps": {minAgentSteps, maxAgentStepsSet},
 		},
 	}
 }

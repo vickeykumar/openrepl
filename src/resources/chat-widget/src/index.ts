@@ -2,6 +2,7 @@ import { createFocusTrap } from "focus-trap";
 import { marked } from "marked";
 
 import { widgetHTML } from "./widgetHtmlString";
+import { AgentRunner, AgentState } from "./agent";
 import css from "./widget.css";
 
 const WIDGET_BACKDROP_ID = "chat-widget__backdrop";
@@ -202,13 +203,23 @@ const maxEditorChars = () => genieLimit("editorChars", 12000);
 const maxTerminalChars = () => genieLimit("terminalChars", 4000);
 const terminalLines = () => genieLimit("terminalLines", 20);
 
-function fetchTerminalOutput(): string {
+// The terminal of the active tab (js/src/gotty.ts keeps it on the tab), or null.
+// Every Run and every change of language replaces it with a new one.
+function activeTerminal(): any {
+  try {
+    const tab = document.querySelector("#terminal-tabs .tab.active") as any;
+    return (tab && tab.gottyterm && tab.gottyterm.term) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function fetchTerminalOutput(lines: number = terminalLines()): string {
   try {
     // the xterm adapter keeps its buffer; older builds only have the rows in the DOM
-    const tab = document.querySelector("#terminal-tabs .tab.active") as any;
-    const term = tab && tab.gottyterm && tab.gottyterm.term;
+    const term = activeTerminal();
     if (term && typeof term.recentText === "function") {
-      return String(term.recentText(terminalLines()));
+      return String(term.recentText(lines));
     }
     const rows =
       document.querySelector(".terminal.active .xterm-rows") || document.querySelector(".xterm-rows");
@@ -475,10 +486,171 @@ function setSettingsOpen(open: boolean, focusChip: boolean = false) {
 // Peer chat messages go to the people in the session, not to a model, so the
 // chip is not shown while it is on.
 function refreshChip() {
+  refreshMode(); // peer chat and agent mode do not go together
   const chip = chipEl();
   if (!chip) return;
   chip.hidden = peerchatmode;
   if (peerchatmode) setSettingsOpen(false);
+}
+
+// ---- Agent mode ----------------------------------------------------------
+// Genie works on a task in steps and carries them out in the editor, after the
+// user allowed each kind of action (agent.ts). Only the owner of a session has
+// it, not in peer chat, only for signed-in users (the server refuses a guest),
+// and not where an admin switched it off (settings.js: agentEnabled,
+// agentOnPractice). Chat is the mode a visitor starts in; the mode chosen last
+// is kept for the next time the panel opens.
+
+let agentMode = false;
+
+const MODE_KEY = "genie-mode";
+
+function rememberedMode(): "chat" | "agent" {
+  try {
+    return localStorage.getItem(MODE_KEY) === "agent" ? "agent" : "chat";
+  } catch (e) {
+    return "chat"; // storage can be blocked; the panel then starts in chat
+  }
+}
+
+function rememberMode(mode: "chat" | "agent") {
+  try {
+    localStorage.setItem(MODE_KEY, mode);
+  } catch (e) {
+    // not remembered
+  }
+}
+
+function agentAvailability(): "off" | "signin" | "ready" {
+  const s = ((window as any).site_settings || {}) as any;
+  if (!s.agentEnabled) return "off";
+  if (onPracticePage() && !s.agentOnPractice) return "off";
+  if (!isMaster() || peerchatmode) return "off";
+  if (!document.body.classList.contains("is-signed-in")) return "signin";
+  return "ready";
+}
+
+function requestHeaders(): Headers {
+  const h = new Headers();
+  h.append("Content-Type", "application/json");
+  if (config.api_key) h.append("Authorization", "Bearer " + config.api_key);
+  return h;
+}
+
+const agentRunner = new AgentRunner(
+  {
+    url: () => config.url,
+    headers: requestHeaders,
+    // a whole file may be in an answer: more room than a chat answer needs
+    modelFields: () => MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }),
+    ideContext: () => getcurrentIDECode(),
+    terminalText: () => fetchTerminalOutput(120),
+    terminal: () => activeTerminal(),
+    terminalType: (data: string) => {
+      const term = activeTerminal();
+      if (!term || typeof term.typeInput !== "function") return false;
+      try {
+        return term.typeInput(data) === true;
+      } catch (e) {
+        return false;
+      }
+    },
+    thinking: (on: boolean) => {
+      if (!on) {
+        thinkingBubble.remove();
+        return;
+      }
+      // the dots of the chat, while Genie works on a step
+      const label = thinkingBubble.querySelector(".chat-widget__thinking-label");
+      if (label) label.textContent = chosenModel().reasoning && chosenEffort().id !== "none" ? `${chosenModel().short} is thinking…` : "";
+      messagesHistory.prepend(thinkingBubble);
+    },
+    userSaid: async (text: string) => {
+      addMessageToHistory("user", text);
+      await createNewMessageEntry(text, Date.now(), "user");
+    },
+    genieSaid: async (text: string) => {
+      addMessageToHistory("assistant", text);
+      await createNewMessageEntry(text, Date.now(), "system", false, "Agent · " + captionText());
+    },
+    messages: () => messagesHistory,
+    maxSteps: () => Number((((window as any).site_settings || {}) as any).agentMaxSteps) || 8,
+    uid: () => UID,
+  },
+  (state: AgentState) => showAgentState(state)
+);
+
+// While a task runs, the send button is a stop button (the two icons are both
+// in widget.html; .is-stop shows the square). While the task winds down after
+// Stop it waits, and then it is the send button again.
+function showAgentState(state: AgentState) {
+  const submitBtn = document.getElementById("chat-widget__submit");
+  if (submitBtn) {
+    submitBtn.classList.toggle("is-stop", state !== "idle");
+    submitBtn.setAttribute("aria-label", state === "idle" ? "Send" : "Stop the task");
+    if (state === "idle") submitBtn.removeAttribute("title");
+    else submitBtn.setAttribute("title", "Stop the task");
+    if (state === "stopping") submitBtn.setAttribute("disabled", "");
+    else submitBtn.removeAttribute("disabled");
+  }
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  if (input) {
+    input.placeholder = state === "running" ? "Genie is working on your task…" : state === "stopping" ? "Stopping…" : modePlaceholder();
+  }
+}
+
+function modePlaceholder(): string {
+  return agentMode ? "Describe a task for Genie to carry out" : "Ask about your code";
+}
+
+function setMode(agent: boolean) {
+  agentMode = agent;
+  const box = document.getElementById("chat-widget__mode");
+  if (box) {
+    box.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String((b.getAttribute("data-mode") === "agent") === agent)));
+  }
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  if (input && !agentRunner.running) input.placeholder = modePlaceholder();
+}
+
+function refreshMode() {
+  const box = document.getElementById("chat-widget__mode");
+  if (!box) return;
+  const a = agentAvailability();
+  box.hidden = a === "off";
+  const agentBtn = box.querySelector('button[data-mode="agent"]') as HTMLButtonElement | null;
+  if (agentBtn) {
+    agentBtn.disabled = a === "signin";
+    agentBtn.title = a === "signin" ? "Sign in to use agent mode" : "Genie carries out a task in your editor, step by step, with your permission";
+  }
+  if (a !== "ready") {
+    // not available now (peer chat, signed out): chat, but the choice is kept
+    if (agentMode) setMode(false);
+  } else if (!agentMode && !agentRunner.running && rememberedMode() === "agent") {
+    setMode(true);
+  }
+}
+
+// Returns what undoes it. The mode follows the user signing in or out while
+// the panel is open (the page puts is-signed-in on the body).
+function wireMode(): () => void {
+  const box = document.getElementById("chat-widget__mode");
+  if (!box) return () => {};
+  box.querySelectorAll("button").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (agentRunner.running) return;
+      const agent = b.getAttribute("data-mode") === "agent" && agentAvailability() === "ready";
+      setMode(agent);
+      rememberMode(agent ? "agent" : "chat");
+    })
+  );
+  setMode(false);
+  refreshMode();
+  // a panel opened while a task is still winding down (closing it stopped it)
+  if (agentRunner.running) showAgentState("stopping");
+  const watch = new MutationObserver(refreshMode);
+  watch.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  return () => watch.disconnect();
 }
 
 // Brings the chip, the cards and the effort control in line with `choice`.
@@ -665,9 +837,11 @@ function open(e?: Event) {
   };
   containerElement.addEventListener("keydown", onKeydown);
   const detachSettings = setupSettings();
+  const detachMode = wireMode();
   detachPanel = () => {
     containerElement.removeEventListener("keydown", onKeydown);
     detachSettings();
+    detachMode();
   };
 
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement;
@@ -685,6 +859,14 @@ function open(e?: Event) {
   document
     .getElementById("chat-widget__form")!
     .addEventListener("submit", submit);
+  // While a task runs the button stops it. This is on the click, not on the
+  // form's submit: the box is empty then, and it is a required field, so the
+  // browser would not submit the form at all.
+  document.getElementById("chat-widget__submit")!.addEventListener("click", (e: Event) => {
+    if (!agentRunner.running) return;
+    e.preventDefault();
+    agentRunner.stop();
+  });
 
   if (config.submitOnKeydown) {
     document
@@ -692,6 +874,8 @@ function open(e?: Event) {
       .addEventListener("keydown", (e: KeyboardEvent)=> {
         if (e.which === 13 && !e.shiftKey) {
           e.preventDefault();
+          // while a task runs the button is Stop: Enter must not stop it
+          if (agentRunner.running) return;
           const submitBtn = document.getElementById("chat-widget__submit") as HTMLButtonElement;;
           submitBtn.click();
         }
@@ -707,6 +891,7 @@ function open(e?: Event) {
 
 function close() {
   if (!isOpen()) return;
+  agentRunner.stop(); // a task does not go on behind a closed panel
   trap.deactivate();
   detachPanel();
   detachPanel = () => {};
@@ -1078,6 +1263,15 @@ async function submit(e: Event) {
     return;
   }
 
+  // the button is Stop while a task runs
+  if (agentRunner.running) {
+    agentRunner.stop();
+    return;
+  }
+  const msg = (target.elements as any).message.value;
+  // nothing to send: an empty task would still cost a request
+  if (!String(msg || "").trim()) return;
+
   const submitElement = document.getElementById(
     "chat-widget__submit"
   )!;
@@ -1087,8 +1281,14 @@ async function submit(e: Event) {
   if (peerchatmode && isMaster()) {
     myrole = 'system';
   }
-  const msg = (target.elements as any).message.value;
   messagesHistory.querySelectorAll(".chat-widget__notes").forEach((el) => ((el as HTMLElement).hidden = true));
+  if (agentMode && !peerchatmode && agentAvailability() === "ready") {
+    // a task: the agent shows the message itself, and takes the box until it is done
+    target.reset();
+    autoGrow((target.elements as any).message as HTMLTextAreaElement);
+    await agentRunner.start(msg);
+    return false;
+  }
   addMessageToHistory(myrole, msg);
 
   await createNewMessageEntry(msg, Date.now(), myrole);

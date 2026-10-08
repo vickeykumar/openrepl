@@ -146,9 +146,13 @@ export class Xterm {
         this.term.write(this.decoder.decode(data));
     };
 
-    // Sends keys to the REPL as if typed (the extra-keys row on phones).
-    typeInput(data: string) {
+    // Sends keys to the REPL as if typed (the extra-keys row on phones, and
+    // Genie's agent mode). It says whether anything was listening: a terminal
+    // that is closed or not yet connected takes no input.
+    typeInput(data: string): boolean {
+        if (this.inputCallbacks.length === 0) return false;
         this.inputCallbacks.forEach((callback) => callback(data));
+        return true;
     }
 
     // The last `lines` lines of the screen and scrollback, as plain text.

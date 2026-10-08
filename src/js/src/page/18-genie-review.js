@@ -9,8 +9,10 @@
 // the editor without it.
 //
 // Accepted changes go through Ace's own document API, so Ctrl+Z works as for
-// typing. Undo what Genie did restores the text from before the first accepted
-// change, as long as the editor still holds what the last accepted change left.
+// typing. The panel goes away as soon as every change is accepted or rejected;
+// a notice then says what was applied, with an Undo that restores the text from
+// before the first accepted change, as long as the editor still holds what the
+// last accepted change left.
 
 import { makeHunks, locate, context } from "./lib-diff.mjs";
 
@@ -18,6 +20,7 @@ const CONTEXT_LINES = 2;
 const SHOWN_LINES = 14; // lines of a hunk shown before "... more lines"
 
 let review = null; // the open proposal, if any
+let lastApplied = null; // the latest proposal that changed the editor, for undo()
 
 function aceEditor() {
   const el = window["editor"];
@@ -77,6 +80,10 @@ function propose(newText, opts) {
     root: null,
     focused: false,
     mixed: false, // the user edited between accepted changes
+    onDone: typeof opts.onDone === "function" ? opts.onDone : null, // told once, when every change is decided or the review is closed
+    told: false,
+    offered: false, // the notice about what was applied has been shown
+    undone: false,
   };
   render();
   return made.hunks.length;
@@ -148,7 +155,6 @@ function acceptAll() {
       if (!r.hunks[i].stale) acceptOne(i);
     }
   }
-  announce();
 }
 
 function rejectAll() {
@@ -158,35 +164,83 @@ function rejectAll() {
     if (x.state === "pending") x.state = "rejected";
   });
   render();
-  announce();
 }
 
-function undo() {
-  const r = review;
-  if (!r || r.checkpoint === null) return;
+// Puts the text from before Genie's first accepted change back. It works on a
+// review that is already closed: its panel is gone, its checkpoint is not.
+function undo(r) {
+  r = r || lastApplied;
+  if (!r || r.checkpoint === null || r.undone) return;
   if (r.doc.getValue() !== r.after) {
     notify("The code changed since Genie's changes, so they cannot be undone as one step. Use Ctrl+Z.", { type: "info" });
     return;
   }
   r.doc.setValue(r.checkpoint);
   r.ed.clearSelection();
-  const n = r.applied;
-  closeReview();
-  notify("Undid " + plural(n, "change") + " from Genie.", { type: "info" });
+  r.undone = true;
+  notify("Undid " + plural(r.applied, "change") + " from Genie.", { type: "info" });
+}
+
+// A notice, once the panel is gone, about what was applied.
+function offerUndo(r) {
+  if (!r.applied || r.offered) return;
+  r.offered = true;
+  lastApplied = r;
+  const what = "Applied " + plural(r.applied, "change") + (r.applied < r.hunks.length ? " of " + r.hunks.length : "") + " from Genie.";
+  if (r.mixed) {
+    // one step back to before the first would take the user's own typing away too
+    notify(what + " Undo with Ctrl+Z.", { type: "success" });
+    return;
+  }
+  notify(what, {
+    type: "success",
+    timeout: 10000,
+    action: {
+      label: "Undo",
+      onClick: function () {
+        undo(r);
+      },
+    },
+  });
+}
+
+// tell says what became of the changes, once, to whoever asked to be told (the
+// agent waits for the user's decision).
+function tell(r, closed) {
+  if (!r || r.told || !r.onDone) return;
+  r.told = true;
+  const rejected = r.hunks.filter((x) => x.state !== "accepted").length;
+  try {
+    r.onDone({ total: r.hunks.length, accepted: r.applied, rejected: rejected, closed: !!closed });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// The review is over: every change is decided, or it was closed (what is still
+// pending counts as rejected). The panel goes away; a notice says what was
+// applied.
+function finish(r, closed) {
+  // focus goes back to the editor if it was in the panel or lost with it, not
+  // from the chat box the user may be typing in
+  const ae = document.activeElement;
+  const hadFocus = !ae || ae === document.body || !!(r.root && r.root.contains(ae));
+  if (r.root && r.root.parentNode) r.root.parentNode.removeChild(r.root);
+  r.root = null;
+  if (review === r) review = null;
+  tell(r, closed);
+  offerUndo(r);
+  if (hadFocus) {
+    try {
+      r.ed.focus();
+    } catch (e) {
+      // focus is not essential
+    }
+  }
 }
 
 function closeReview() {
-  if (review && review.root && review.root.parentNode) review.root.parentNode.removeChild(review.root);
-  review = null;
-}
-
-function announce() {
-  const r = review;
-  if (!r || !r.root) return;
-  const live = r.root.querySelector(".genie-review__live");
-  if (!live) return;
-  const done = r.hunks.every((x) => x.state !== "pending");
-  live.textContent = done ? "Applied " + plural(r.applied, "change") + " of " + r.hunks.length + "." : "";
+  if (review) finish(review, true);
 }
 
 // ---- drawing it -------------------------------------------------------------------
@@ -246,57 +300,44 @@ function render() {
   const r = review;
   if (!r) return;
   refreshStale(r);
-  if (r.root && r.root.parentNode) r.root.parentNode.removeChild(r.root);
   const pending = r.hunks.filter((x) => x.state === "pending").length;
+  if (pending === 0) {
+    finish(r, false); // everything is decided: the panel goes away
+    return;
+  }
+  if (r.root && r.root.parentNode) r.root.parentNode.removeChild(r.root);
 
   const root = el("div", "genie-review");
   root.setAttribute("role", "region");
   root.setAttribute("aria-label", "Changes proposed by Genie");
   root.tabIndex = -1;
-  root.appendChild(el("div", "genie-review__live visually-hidden")).setAttribute("aria-live", "polite");
 
   const head = el("div", "genie-review__head");
-  if (pending > 0) {
-    head.appendChild(
-      el("span", "genie-review__title", r.title + " " + plural(r.hunks.length, "change") + (r.applied || pending !== r.hunks.length ? " (" + pending + " left)" : ""))
-    );
-    head.appendChild(button("Accept all", "genie-review__btn--ok", acceptAll));
-    head.appendChild(button("Reject all", "", rejectAll));
-  } else {
-    head.appendChild(
-      el("span", "genie-review__title", r.applied ? "Applied " + plural(r.applied, "change") + " of " + r.hunks.length : "No changes applied")
-    );
-    if (r.applied && !r.mixed) {
-      head.appendChild(button("Undo what Genie did", "genie-review__btn--link", undo));
-    } else if (r.applied) {
-      head.appendChild(el("span", "genie-review__state", "You edited in between: undo with Ctrl+Z"));
-    }
-  }
+  head.appendChild(
+    el("span", "genie-review__title", r.title + " " + plural(r.hunks.length, "change") + (r.applied || pending !== r.hunks.length ? " (" + pending + " left)" : ""))
+  );
+  head.appendChild(button("Accept all", "genie-review__btn--ok", acceptAll));
+  head.appendChild(button("Reject all", "", rejectAll));
   head.appendChild(button("×", "genie-review__close", closeReview, "Close the review"));
   root.appendChild(head);
 
-  if (pending > 0 || r.hunks.length <= 6) {
-    const list = el("div", "genie-review__list");
-    r.hunks.forEach((x, i) => {
-      if (pending > 0 || x.state === "accepted") list.appendChild(hunkView(r, i));
-    });
-    root.appendChild(list);
-  }
+  const list = el("div", "genie-review__list");
+  r.hunks.forEach((x, i) => list.appendChild(hunkView(r, i)));
+  root.appendChild(list);
 
   root.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
       ev.stopPropagation();
       ev.preventDefault();
-      if (review && review.hunks.some((x) => x.state === "pending")) rejectAll();
-      else closeReview();
-    } else if (ev.key === "Enter" && ev.target === root && review && review.hunks.some((x) => x.state === "pending")) {
+      rejectAll();
+    } else if (ev.key === "Enter" && ev.target === root) {
       ev.preventDefault();
       acceptAll();
     }
   });
   r.root = root;
   r.host.appendChild(root);
-  if (pending > 0 && !r.focused) {
+  if (!r.focused) {
     // keyboard users land on the review once: Enter accepts, Esc rejects
     r.focused = true;
     try {
@@ -305,7 +346,20 @@ function render() {
       // focus is not essential
     }
   }
-  announce();
+}
+
+// The text of the editor with code put where the cursor or the selection is.
+// At the start of a line that has text, the code goes in front of the line (a
+// newline is added), not into its first words.
+function textWithInserted(ed, code) {
+  const doc = ed.getSession().getDocument();
+  const text = doc.getValue();
+  const range = ed.getSelectionRange();
+  const from = doc.positionToIndex(range.start);
+  const to = doc.positionToIndex(range.end);
+  const startsLine = from === to && range.start.column === 0 && doc.getLine(range.start.row) !== "";
+  const put = startsLine && code !== "" && !code.endsWith("\n") ? code + "\n" : code;
+  return text.slice(0, from) + put + text.slice(to);
 }
 
 // ---- the chat widget's buttons ---------------------------------------------------
@@ -325,16 +379,7 @@ window.insertcodesnippet = function (encoded) {
     const code = decodeGenieCode(encoded);
     const ed = aceEditor();
     if (!ed) return reportResult(-1, "insert");
-    const doc = ed.getSession().getDocument();
-    const text = doc.getValue();
-    const range = ed.getSelectionRange();
-    const from = doc.positionToIndex(range.start);
-    const to = doc.positionToIndex(range.end);
-    // at the start of a line that has text, the code goes in front of that line
-    // and not into its first words
-    const startsLine = from === to && range.start.column === 0 && doc.getLine(range.start.row) !== "";
-    const put = startsLine && code !== "" && !code.endsWith("\n") ? code + "\n" : code;
-    reportResult(propose(text.slice(0, from) + put + text.slice(to), { title: "Genie wants to insert" }), "insert");
+    reportResult(propose(textWithInserted(ed, code), { title: "Genie wants to insert" }), "insert");
   } catch (error) {
     console.error(error);
     reportResult(-1, "insert");
@@ -354,12 +399,37 @@ window.replacecodesnippet = function (encoded) {
   }
 };
 
+// For the agent mode: the same review, as a promise that is kept when the user
+// has decided on every change, or closed the review. {total: 0} at once if
+// there is nothing to review, and {error} if the editor is not there.
+function proposeAsync(newText, opts) {
+  return new Promise(function (resolve) {
+    const o = Object.assign({}, opts, { onDone: resolve });
+    const n = propose(newText, o);
+    if (n < 0) resolve({ total: 0, accepted: 0, rejected: 0, closed: true, error: "the editor is not available" });
+    else if (n === 0) resolve({ total: 0, accepted: 0, rejected: 0, closed: false });
+  });
+}
+
+function proposeInsertAsync(code, opts) {
+  const ed = aceEditor();
+  if (!ed) return Promise.resolve({ total: 0, accepted: 0, rejected: 0, closed: true, error: "the editor is not available" });
+  return proposeAsync(textWithInserted(ed, code), opts);
+}
+
 // For the agent mode and for tests.
 window.GenieReview = {
+  proposeAsync: proposeAsync,
+  proposeInsertAsync: proposeInsertAsync,
+  isOpen: function () {
+    return !!review;
+  },
   propose: propose,
   acceptAll: acceptAll,
   rejectAll: rejectAll,
-  undo: undo,
+  undo: function () {
+    undo();
+  },
   close: closeReview,
   pending: function () {
     return review ? review.hunks.filter((x) => x.state === "pending").length : 0;

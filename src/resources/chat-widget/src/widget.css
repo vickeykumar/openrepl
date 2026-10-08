@@ -547,6 +547,18 @@ body #chat-widget__container #chat-widget__input:focus-visible {
   filter: none;
   transform: none;
 }
+/* while Genie works on a task in agent mode, it stops the task */
+#chat-widget__submit .cw-submit__stop,
+#chat-widget__submit.is-stop .cw-submit__send {
+  display: none;
+}
+#chat-widget__submit.is-stop .cw-submit__stop {
+  display: block;
+}
+#chat-widget__submit.is-stop {
+  color: #15151C;
+  background: var(--danger-color, #F07171);
+}
 
 /* Model and effort */
 #chat-widget__settings {
@@ -822,3 +834,92 @@ body #chat-widget__container #chat-widget__input:focus-visible {
 .chat-widget__note-body a {
   color: var(--cw-link);
 }
+
+/* agent mode (agent.ts) */
+.cw-mode {
+  display: inline-flex;
+  border: 1px solid var(--cw-field-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-right: 6px;
+}
+.cw-mode[hidden] { display: none; }
+.cw-mode button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  color: var(--cw-chip-text);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.cw-mode button[aria-pressed="true"] { background: var(--cw-seg-on); color: var(--cw-strong); font-weight: 500; }
+.cw-mode button:disabled { opacity: 0.5; cursor: default; }
+.cw-agent {
+  /* The list of messages is a column of fixed height. A box with overflow
+     hidden may shrink to nothing in it (its minimum height is 0 then), which hid
+     the task and its permission question once the conversation was long. */
+  flex-shrink: 0;
+  margin: 4px 0 8px;
+  border: 1px solid var(--cw-pop-border);
+  border-radius: 12px;
+  background: var(--cw-pop-bg);
+  overflow: hidden;
+}
+.cw-agent__head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--cw-border); }
+.cw-agent__title { font-weight: 500; color: var(--cw-strong); flex: 1; }
+.cw-agent__count { font-size: 12px; color: var(--cw-muted); }
+.cw-agent__stop {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  color: var(--danger-color, #F07171);
+  background: transparent;
+  border: 1px solid var(--danger-color, #F07171);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cw-agent__steps { list-style: none; margin: 0; padding: 4px 12px 8px; }
+.cw-agent__step { display: flex; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--cw-text); }
+.cw-agent__mark { flex: 0 0 16px; text-align: center; color: var(--cw-muted); }
+.cw-agent__step--done .cw-agent__mark { color: var(--ok-color, #4CC38A); }
+.cw-agent__step--failed .cw-agent__mark { color: var(--danger-color, #F07171); }
+.cw-agent__step--active .cw-agent__what { font-weight: 500; color: var(--cw-strong); }
+.cw-agent__step--active .cw-agent__mark { color: var(--cw-accent); }
+.cw-agent__step--waiting, .cw-agent__step--stopped { color: var(--cw-muted); }
+.cw-agent--ended { opacity: 0.92; }
+.cw-agent__ask { margin: 4px 12px 10px; padding: 10px 12px; border: 1px solid var(--cw-accent); border-radius: 10px; background: var(--cw-bg); }
+.cw-agent__ask-title { font-weight: 500; color: var(--cw-strong); }
+.cw-agent__ask-text { margin: 4px 0 8px; font-size: 12px; color: var(--cw-muted); line-height: 1.5; }
+/* the exact line Genie will type: plain text, as it will be sent */
+.cw-agent__cmd {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  max-height: 140px;
+  overflow: auto;
+  font-family: var(--font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--cw-strong);
+  background: var(--cw-code-bg);
+  border: 1px solid var(--cw-border);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.cw-agent__ask--risk { border-color: var(--danger-color, #F07171); }
+.cw-agent__ask--risk .cw-agent__ask-title { color: var(--danger-color, #F07171); }
+.cw-agent__ask-warn { margin: 0 0 8px; font-size: 12px; color: var(--danger-color, #F07171); }
+.cw-agent__ask-hint { margin: 8px 0 0; font-size: 11.5px; color: var(--cw-muted); }
+.cw-agent__ask-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.cw-agent__ask-buttons button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  color: var(--cw-text);
+  background: var(--cw-secondary-bg);
+  border: 1px solid var(--cw-field-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cw-agent__ask-buttons button.is-primary { background: var(--cw-accent); color: var(--cw-on-accent); border-color: var(--cw-accent); font-weight: 500; }
