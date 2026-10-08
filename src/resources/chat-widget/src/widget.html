@@ -17,6 +17,13 @@
 </div>
 <div id="chat-widget__body">
   <!-- The messages_history div is placed here. -->
+  <!-- The practice coach, on the practice page only (index.ts: wireCoach). -->
+  <div id="chat-widget__coach" class="cw-coach" role="group" aria-label="Practice coach" hidden>
+    <span id="chat-widget__coach-count" class="cw-coach__count"></span>
+    <button type="button" data-coach="hint">Hint</button>
+    <button type="button" data-coach="review">Review my solution</button>
+    <button type="button" data-coach="complexity">Complexity</button>
+  </div>
   <form id="chat-widget__form">
     <label for="chat-widget__input" class="chat-widget__sr-only">Ask Genie</label>
     <div id="chat-widget__field">

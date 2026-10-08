@@ -17,6 +17,10 @@ export const ACTIONS = [
   "debug",
   "terminal_type",
   "terminal_interrupt",
+  "terminal_reconnect",
+  "terminal_new_tab",
+  "terminal_select_tab",
+  "terminal_close_tab",
   "read_output",
   "finish",
 ] as const;
@@ -27,11 +31,13 @@ export const MAX_TEXT = 200000; // characters of code in one action
 export const MAX_SAY = 600; // characters shown to the user for a step
 export const MAX_OUTPUT = 4000; // characters of terminal output sent back
 export const MAX_TERMINAL_TEXT = 500; // characters of the line Genie types in the terminal
+export const MAX_TABS = 5; // terminal tabs the page allows (js/src/main.ts)
 
 export interface Action {
   type: ActionType;
   text?: string; // editor_write, editor_insert; the line of terminal_type
-  language?: string; // set_language
+  language?: string; // set_language, terminal_new_tab
+  tab?: number; // terminal_select_tab and terminal_close_tab, 1 to MAX_TABS
   waitSeconds?: number; // read_output and terminal_type, 1 to 20
 }
 
@@ -62,6 +68,9 @@ export type Scope = "editor" | "language" | "run" | "terminal";
 
 export function scopeOf(a: Action): Scope | null {
   switch (a.type) {
+    // a new tab in another language changes the language, with what that does to the editor
+    case "terminal_new_tab":
+      return a.language ? "language" : "terminal";
     case "editor_write":
     case "editor_insert":
       return "editor";
@@ -72,6 +81,9 @@ export function scopeOf(a: Action): Scope | null {
       return "run";
     case "terminal_type":
     case "terminal_interrupt":
+    case "terminal_reconnect":
+    case "terminal_select_tab":
+    case "terminal_close_tab":
       return "terminal";
     default:
       return null;
@@ -90,6 +102,13 @@ export function scopeQuestion(scope: Scope): string {
 export function scopeDetail(scope: Scope, a: Action): string {
   if (scope === "editor") return "It will propose changes. You review each one before anything is applied.";
   if (scope === "language") {
+    if (a.type === "terminal_new_tab") {
+      return (
+        "It will open a new terminal tab in " +
+        (a.language || "another language") +
+        ". The editor then shows that language's starter code in place of what it holds now."
+      );
+    }
     return (
       "It will switch to " +
       (a.language || "another language") +
@@ -97,9 +116,16 @@ export function scopeDetail(scope: Scope, a: Action): string {
     );
   }
   if (scope === "terminal") {
-    return a.type === "terminal_interrupt"
-      ? "It will press Ctrl+C in your terminal, which stops the program that is running there."
-      : "It will type this line in your terminal and press Enter. If a program is waiting for input, the program gets it.";
+    if (a.type === "terminal_interrupt") return "It will press Ctrl+C in your terminal, which stops the program that is running there.";
+    if (a.type === "terminal_reconnect") {
+      return "It will restart your terminal in the same language. A program that is running in it is stopped. Your files and your editor stay as they are.";
+    }
+    if (a.type === "terminal_new_tab") return "It will open a new terminal tab, in the language that is chosen now. You can have up to " + MAX_TABS + " tabs.";
+    if (a.type === "terminal_select_tab") return "It will switch to terminal tab " + (a.tab || "?") + ". Nothing is stopped.";
+    if (a.type === "terminal_close_tab") {
+      return "It will close terminal tab " + (a.tab || "?") + ", a tab that Genie opened. A program running in it is stopped. Your editor and your other tabs stay as they are.";
+    }
+    return "It will type this line in your terminal and press Enter. If a program is waiting for input, the program gets it.";
   }
   return "It will press " + (a.type === "debug" ? "Debug" : "Run") + " for the code in your editor.";
 }
@@ -323,6 +349,21 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
         }
         break;
       }
+      case "terminal_new_tab":
+        if (a.language !== undefined && (typeof a.language !== "string" || a.language.length > 40)) {
+          dropped.push("terminal_new_tab left out: language has to be a language name");
+        } else {
+          const lang = typeof a.language === "string" ? a.language.trim() : "";
+          actions.push(lang ? { type, language: lang } : { type });
+        }
+        break;
+      case "terminal_select_tab":
+      case "terminal_close_tab": {
+        const n = typeof a.tab === "number" && Number.isInteger(a.tab) ? a.tab : NaN;
+        if (!(n >= 1 && n <= MAX_TABS)) dropped.push(`${type} left out: "tab" has to be a number from 1 to ${MAX_TABS}`);
+        else actions.push({ type, tab: n });
+        break;
+      }
       case "read_output":
         actions.push({ type, waitSeconds: clampSeconds(a.wait_seconds) });
         break;
@@ -358,6 +399,14 @@ export function describe(a: Action): string {
       return "Typing in the terminal: " + (a.text || "");
     case "terminal_interrupt":
       return "Pressing Ctrl+C in the terminal";
+    case "terminal_reconnect":
+      return "Restarting the terminal";
+    case "terminal_new_tab":
+      return a.language ? "Opening a new terminal tab in " + a.language : "Opening a new terminal tab";
+    case "terminal_select_tab":
+      return "Switching to terminal tab " + a.tab;
+    case "terminal_close_tab":
+      return "Closing terminal tab " + a.tab;
     case "read_output":
       return "Reading the output";
     default:

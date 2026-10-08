@@ -102,6 +102,10 @@ test("the list of actions is the one in the server's prompt", () => {
     "debug",
     "terminal_type",
     "terminal_interrupt",
+    "terminal_reconnect",
+    "terminal_new_tab",
+    "terminal_select_tab",
+    "terminal_close_tab",
     "read_output",
     "finish",
   ]);
@@ -320,4 +324,48 @@ test("where a run is: not started, starting, running, over", () => {
   assert.equal(runPhase({ ...base, term: null, sinceRunMs: 200, text: "old [Program Exited]" }), "starting");
   assert.equal(runPhase({ ...base, term: null, sinceRunMs: 2000, text: "hello" }), "running");
   assert.equal(runPhase({ ...base, term: null, sinceRunMs: 2000, text: "[Program Exited] Jobid: c" }), "ended");
+});
+
+test("terminal tabs: reconnect, a new tab (in a language) and switching", () => {
+  const s = ok('{"actions":[{"type":"terminal_reconnect"},{"type":"terminal_new_tab"},{"type":"terminal_new_tab","language":" Python "},{"type":"terminal_select_tab","tab":2}]}');
+  assert.deepEqual(s.actions, [{ type: "terminal_reconnect" }, { type: "terminal_new_tab" }, { type: "terminal_new_tab", language: "Python" }]);
+  assert.equal(s.dropped.length, 1, "the fourth is over the limit of three");
+  const t = ok('{"actions":[{"type":"terminal_new_tab","language":" Python "},{"type":"terminal_select_tab","tab":2}]}');
+  assert.deepEqual(t.actions, [{ type: "terminal_new_tab", language: "Python" }, { type: "terminal_select_tab", tab: 2 }]);
+  // wrong fields are dropped and said
+  for (const bad of ['{"type":"terminal_select_tab"}', '{"type":"terminal_select_tab","tab":0}', '{"type":"terminal_select_tab","tab":6}', '{"type":"terminal_select_tab","tab":"2"}', '{"type":"terminal_select_tab","tab":1.5}', '{"type":"terminal_new_tab","language":7}', '{"type":"terminal_new_tab","language":"' + "x".repeat(41) + '"}']) {
+    const r = ok('{"actions":[' + bad + ']}');
+    assert.equal(r.actions.length, 0, bad);
+    assert.equal(r.dropped.length, 1, bad);
+  }
+  // an empty language is none
+  assert.deepEqual(ok('{"actions":[{"type":"terminal_new_tab","language":"  "}]}').actions, [{ type: "terminal_new_tab" }]);
+});
+
+test("a new tab in a language is a language change, because the editor is replaced", () => {
+  assert.equal(scopeOf({ type: "terminal_new_tab" }), "terminal");
+  assert.equal(scopeOf({ type: "terminal_new_tab", language: "Go" }), "language");
+  assert.equal(scopeOf({ type: "terminal_reconnect" }), "terminal");
+  assert.equal(scopeOf({ type: "terminal_select_tab", tab: 2 }), "terminal");
+  assert.match(scopeDetail("language", { type: "terminal_new_tab", language: "Go" }), /starter code in place of what it holds now/);
+  assert.match(scopeDetail("terminal", { type: "terminal_reconnect" }), /stopped/);
+  assert.match(scopeDetail("terminal", { type: "terminal_new_tab" }), /up to 5/);
+  assert.equal(describe({ type: "terminal_new_tab", language: "Go" }), "Opening a new terminal tab in Go");
+  assert.equal(describe({ type: "terminal_select_tab", tab: 3 }), "Switching to terminal tab 3");
+  assert.equal(describe({ type: "terminal_reconnect" }), "Restarting the terminal");
+});
+
+test("closing a tab: which one, asked about, said in words", () => {
+  assert.deepEqual(ok('{"actions":[{"type":"terminal_close_tab","tab":3}]}').actions, [{ type: "terminal_close_tab", tab: 3 }]);
+  for (const bad of ['{"type":"terminal_close_tab"}', '{"type":"terminal_close_tab","tab":0}', '{"type":"terminal_close_tab","tab":6}', '{"type":"terminal_close_tab","tab":"2"}']) {
+    const r = ok('{"actions":[' + bad + ']}');
+    assert.equal(r.actions.length, 0, bad);
+    assert.equal(r.dropped.length, 1, bad);
+  }
+  assert.equal(scopeOf({ type: "terminal_close_tab", tab: 2 }), "terminal");
+  assert.equal(describe({ type: "terminal_close_tab", tab: 2 }), "Closing terminal tab 2");
+  const detail = scopeDetail("terminal", { type: "terminal_close_tab", tab: 2 });
+  assert.match(detail, /tab 2/);
+  assert.match(detail, /that Genie opened/);
+  assert.match(detail, /stopped/);
 });

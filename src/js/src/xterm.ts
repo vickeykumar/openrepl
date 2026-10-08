@@ -146,6 +146,11 @@ export class Xterm {
         this.term.write(this.decoder.decode(data));
     };
 
+    // Whether the terminal is connected and takes input.
+    hasInput(): boolean {
+        return this.inputCallbacks.length > 0;
+    }
+
     // Sends keys to the REPL as if typed (the extra-keys row on phones, and
     // Genie's agent mode). It says whether anything was listening: a terminal
     // that is closed or not yet connected takes no input.

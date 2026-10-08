@@ -250,6 +250,28 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
     }
     chargeable := run == nil || run.first
 
+    // A right-click action on selected code (action.go): the server writes the
+    // messages from the fields of the request.
+    if run == nil {
+    	actionBody, isAction, xerr := actionStart(req, rawBody)
+    	if xerr != nil {
+    		handleChatProxyError(rw, req, xerr.Status, xerr.response())
+    		return
+    	}
+    	if isAction {
+    		rawBody = actionBody
+    	}
+    	// the practice coach (coach.go), likewise
+    	coachBody, isCoach, cerr := coachStart(req, rawBody)
+    	if cerr != nil {
+    		handleChatProxyError(rw, req, cerr.Status, cerr.response())
+    		return
+    	}
+    	if isCoach {
+    		rawBody = coachBody
+    	}
+    }
+
     // A request from the Genie panel or the blog editor may ask for what the
     // site knows about itself (knowledge_proxy.go).
     rawBody, ctxResult := addKnowledge(rawBody, theKnowledge())

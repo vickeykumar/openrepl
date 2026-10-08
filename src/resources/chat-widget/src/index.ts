@@ -3,6 +3,7 @@ import { marked } from "marked";
 
 import { widgetHTML } from "./widgetHtmlString";
 import { AgentRunner, AgentState } from "./agent";
+import { CoachKind, MAX_HINTS, NO_CODE_IN_A_HINT, NO_HINTS_LEFT, askedText, carriesCode, hintsUsed, questionKey, withHint } from "./coach";
 import css from "./widget.css";
 
 const WIDGET_BACKDROP_ID = "chat-widget__backdrop";
@@ -487,10 +488,118 @@ function setSettingsOpen(open: boolean, focusChip: boolean = false) {
 // chip is not shown while it is on.
 function refreshChip() {
   refreshMode(); // peer chat and agent mode do not go together
+  refreshCoach();
   const chip = chipEl();
   if (!chip) return;
   chip.hidden = peerchatmode;
   if (peerchatmode) setSettingsOpen(false);
+}
+
+// ---- The practice coach ----------------------------------------------------
+// On the practice page, three buttons above the composer: a hint (three levels,
+// a little more each time, never code), a review of the solution and its
+// complexity. The server writes the instructions (server/coach.go); the page
+// counts the hints, in this browser, per question (coach.ts).
+
+const HINTS_KEY = "practiceHints";
+let coachBusy = false;
+
+function readHints(): unknown {
+  try {
+    return JSON.parse(localStorage.getItem(HINTS_KEY) || "null");
+  } catch (e) {
+    return null;
+  }
+}
+
+function coachQuestion(): string {
+  return questionKey(window.location.search, window.location.pathname);
+}
+
+function refreshCoach() {
+  const bar = document.getElementById("chat-widget__coach");
+  if (!bar) return;
+  bar.hidden = !(onPracticePage() && !peerchatmode);
+  const count = document.getElementById("chat-widget__coach-count");
+  if (count) count.textContent = "Coach · hints used: " + hintsUsed(readHints(), coachQuestion()) + " of " + MAX_HINTS;
+  bar.querySelectorAll("button").forEach((b) => ((b as HTMLButtonElement).disabled = coachBusy));
+}
+
+async function coachAsk(kind: CoachKind) {
+  if (coachBusy || !config.url) return;
+  const used = hintsUsed(readHints(), coachQuestion());
+  if (kind === "hint" && used >= MAX_HINTS) {
+    await createNewMessageEntry(NO_HINTS_LEFT, Date.now(), "system", false, "Coach");
+    return;
+  }
+  const level = used + 1;
+  const asked = askedText(kind, level);
+  coachBusy = true;
+  refreshCoach();
+  addMessageToHistory("user", asked);
+  await createNewMessageEntry(asked, Date.now(), "user");
+  const label = thinkingBubble.querySelector(".chat-widget__thinking-label");
+  if (label) label.textContent = chosenModel().reasoning && chosenEffort().id !== "none" ? `${chosenModel().short} is thinking…` : "";
+  messagesHistory.prepend(thinkingBubble);
+  const picker = document.getElementById("optionlist") as HTMLSelectElement | null;
+  try {
+    const res = await fetch(config.url, {
+      method: "POST",
+      headers: requestHeaders(),
+      body: JSON.stringify({
+        ...MC.fields({ temperature: 0.3, maxTokens: 700, extraTokens: 1500 }),
+        context: "coach",
+        kind,
+        level: kind === "hint" ? level : undefined,
+        language: picker && picker.selectedIndex >= 0 ? picker.options[picker.selectedIndex].text : "",
+        file: fetchEditorContent(),
+        output: fetchTerminalOutput(40),
+      }),
+    });
+    thinkingBubble.remove();
+    if (!res.ok) {
+      await handleErrorResponse(await res.json().catch(() => ({})));
+      return;
+    }
+    const data: any = await res.json();
+    const text: string = (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+    if (!text.trim()) {
+      await createNewMessageEntry("The coach sent no answer. Try again.", Date.now(), "system", false, "Coach");
+      return;
+    }
+    if (kind === "hint" && carriesCode(text)) {
+      // not counted: the user did not get a hint
+      await createNewMessageEntry(NO_CODE_IN_A_HINT, Date.now(), "system", false, "Coach");
+      return;
+    }
+    if (kind === "hint") {
+      try {
+        localStorage.setItem(HINTS_KEY, JSON.stringify(withHint(readHints(), coachQuestion())));
+      } catch (e) {
+        // the count is not kept
+      }
+    }
+    addMessageToHistory("assistant", text);
+    await createNewMessageEntry(text, Date.now(), "system", false, "Coach · " + asked + " · " + captionText());
+  } catch (e) {
+    thinkingBubble.remove();
+    console.error("Chat Widget: coach:", e);
+    await createNewMessageEntry("Unable to reach the coach now. Try again.", Date.now(), "system", false, "Coach");
+  } finally {
+    coachBusy = false;
+    refreshCoach();
+  }
+}
+
+function wireCoach() {
+  const bar = document.getElementById("chat-widget__coach");
+  if (!bar) return;
+  bar.querySelectorAll("button").forEach((b) =>
+    b.addEventListener("click", () => {
+      void coachAsk((b.getAttribute("data-coach") || "hint") as CoachKind);
+    })
+  );
+  refreshCoach();
 }
 
 // ---- Agent mode ----------------------------------------------------------
@@ -554,6 +663,42 @@ const agentRunner = new AgentRunner(
       } catch (e) {
         return false;
       }
+    },
+    tabs: () => {
+      const all = Array.from(document.querySelectorAll("#terminal-tabs .tab"));
+      const at = all.findIndex((t) => t.classList.contains("active"));
+      return { count: all.length, active: at + 1 };
+    },
+    terminalReady: () => {
+      const term = activeTerminal();
+      return !!term && typeof term.hasInput === "function" && term.hasInput();
+    },
+    reconnect: () => {
+      const fn = (window as any).ToggleReconnect;
+      if (typeof fn !== "function") return false;
+      fn();
+      return true;
+    },
+    addTab: () => {
+      const g = (window as any).gotty;
+      if (!g || typeof g.addTab !== "function") return false;
+      const before = document.querySelectorAll("#terminal-tabs .tab").length;
+      g.addTab();
+      return document.querySelectorAll("#terminal-tabs .tab").length > before;
+    },
+    tab: (n: number) => (document.querySelectorAll("#terminal-tabs .tab")[n - 1] as object | undefined) || null,
+    closeTab: (n: number) => {
+      const tab = document.querySelectorAll("#terminal-tabs .tab")[n - 1];
+      const x = tab && (tab.querySelector(".close-tab") as HTMLElement | null);
+      if (!x) return false;
+      x.click(); // the page's own handler (gotty.closeTab) closes it
+      return true;
+    },
+    selectTab: (n: number) => {
+      const tab = document.querySelectorAll("#terminal-tabs .tab")[n - 1] as HTMLElement | undefined;
+      if (!tab) return false;
+      tab.click();
+      return true;
     },
     thinking: (on: boolean) => {
       if (!on) {
@@ -838,6 +983,7 @@ function open(e?: Event) {
   containerElement.addEventListener("keydown", onKeydown);
   const detachSettings = setupSettings();
   const detachMode = wireMode();
+  wireCoach();
   detachPanel = () => {
     containerElement.removeEventListener("keydown", onKeydown);
     detachSettings();
@@ -1361,7 +1507,33 @@ if (typeof (window as any).insertcodesnippet !== "function") {
   };
 }
 
-const ChatWidget = { open, close, toggle, config, init };
+// Asks Genie a question for the page (the right-click action Explain): opens the panel, switches to Chat and sends the text as the user's
+// message. False if it cannot, with a notice that says why.
+async function ask(text: string): Promise<boolean> {
+  const say = (message: string) => {
+    const n = (window as any).notify;
+    if (typeof n === "function") n(message, { type: "info" });
+  };
+  if (agentRunner.running) {
+    say("Genie is busy with a task. Stop it or wait until it is done.");
+    return false;
+  }
+  if (peerchatmode) {
+    say("Turn off peer chat to ask Genie.");
+    return false;
+  }
+  open();
+  if (agentMode) setMode(false); // a question, not a task; the remembered mode stays as it was
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  const form = document.getElementById("chat-widget__form") as HTMLFormElement | null;
+  if (!input || !form) return false;
+  input.value = text;
+  autoGrow(input);
+  form.requestSubmit();
+  return true;
+}
+
+const ChatWidget = { open, close, toggle, config, init, ask };
 (window as any).ChatWidget = ChatWidget;
 declare global {
   interface Window {

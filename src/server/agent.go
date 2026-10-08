@@ -61,7 +61,7 @@ const (
 // agentActions are the actions a model may ask for. The page carries out the
 // ones it knows and drops the rest (resources/chat-widget/src/agent.ts keeps
 // the same list; a test compares them).
-var agentActions = []string{"editor_write", "editor_insert", "set_language", "run", "debug", "terminal_type", "terminal_interrupt", "read_output", "finish"}
+var agentActions = []string{"editor_write", "editor_insert", "set_language", "run", "debug", "terminal_type", "terminal_interrupt", "terminal_reconnect", "terminal_new_tab", "terminal_select_tab", "terminal_close_tab", "read_output", "finish"}
 
 func (g GenieSettings) agentTasksPerHour() int {
 	return orDefault(g.AgentTasksPerHour, defaultAgentTasksPerHour)
@@ -362,6 +362,10 @@ Each action is an object with a "type". The types you may use:
 - {"type":"run"}  Runs the editor code (the user must have allowed it). {"type":"debug"} runs it in the debugger where the language supports that.
 - {"type":"terminal_type","text":"<ONE line>","wait_seconds":3}  Types one line in the terminal and presses Enter, waits for the output to settle (up to that many seconds, 1 to 20) and returns what appeared. The terminal is the REPL of the language in use (a shell for Bash). If a program you started with "run" is waiting for input, this is how you answer it. The user sees the exact line and must allow it; a line that deletes or changes things, installs software or builds a command out of other text is always asked about again, so avoid those unless the task needs them. The line must be plain text on one line.
 - {"type":"terminal_interrupt"}  Presses Ctrl+C in the terminal, to stop a program that is running or waiting.
+- {"type":"terminal_reconnect"}  Restarts the terminal in the language in use: use it when the terminal is closed, stuck or disconnected. A program that is running in it is stopped.
+- {"type":"terminal_new_tab","language":"<optional, as in the picker>"}  Opens a new terminal tab (at most 5 are open), in that language if you name one. Naming a language replaces the editor with that language's starter code, as set_language does, so write your code after it. The new tab is the one shown, and terminal_type and read_output work on it.
+- {"type":"terminal_select_tab","tab":2}  Shows terminal tab 2 (1 to 5). All tabs share the editor and the language picker: Run uses the language in the picker, whichever tab is shown.
+- {"type":"terminal_close_tab","tab":2}  Closes terminal tab 2, only if you opened it yourself with terminal_new_tab: the user's own tabs are never yours to close, and a task that opened tabs should close them when it is done with them. The user is asked every time. A program running in the tab stops.
 - {"type":"read_output","wait_seconds":5}  Waits up to that many seconds (1 to 20) for the program to finish, then returns what the terminal shows. If its "detail" says the program had not finished, it is still running or waiting for input: do not just read again and again.
 - {"type":"finish"}  Ends the task.
 

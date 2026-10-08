@@ -3428,3 +3428,40 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 @media (prefers-reduced-motion: reduce) {
   .genie-agent-target { animation: none; box-shadow: inset 0 0 0 2px var(--accent-color); }
 }
+
+/* The right-click menu on selected code (19-genie-actions.js) */
+.genie-menu {
+  position: fixed;
+  z-index: 1200;
+  width: 232px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--ink-850);
+  border: 1px solid var(--ink-500);
+  border-radius: 10px;
+  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.65);
+  color: #E6E4EC;
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+.genie-menu__head { padding: 6px 8px 4px; font-size: 11.5px; letter-spacing: 0.02em; color: var(--accent-on-dark, #FF9C9D); }
+.genie-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.genie-menu__item:hover,
+.genie-menu__item:focus-visible { background: var(--ink-600); outline: none; }
+.genie-menu__hint { font-size: 11.5px; color: var(--muted-2, #8C8A98); }
+.genie-menu__foot { margin-top: 4px; padding: 6px 8px 2px; border-top: 1px solid var(--ink-500); font-size: 11.5px; color: var(--muted-2, #8C8A98); }

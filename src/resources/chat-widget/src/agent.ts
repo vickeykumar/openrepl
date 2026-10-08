@@ -9,6 +9,7 @@ import {
   Action,
   CUT_OFF,
   MAX_OUTPUT,
+  MAX_TABS,
   PAGE_ONLY_LANGUAGES,
   RunPhase,
   Scope,
@@ -52,6 +53,15 @@ export interface AgentHost {
   terminalType(data: string): boolean;
   // The dots that show Genie is working, as in chat; false removes them.
   thinking(on: boolean): void;
+  // The terminal tabs: how many are open, which one is shown (1 based), and
+  // whether the one shown is connected and takes input.
+  tabs(): { count: number; active: number };
+  terminalReady(): boolean;
+  reconnect(): boolean; // restarts the terminal of the shown tab; false if the page cannot
+  addTab(): boolean; // presses the "+" of the tabs
+  selectTab(n: number): boolean;
+  tab(n: number): object | null; // tab n itself, to tell it from another that gets its name later
+  closeTab(n: number): boolean; // presses the x of tab n
   userSaid(text: string): Promise<void>;
   genieSaid(text: string): Promise<void>;
   messages(): HTMLElement; // where the cards go
@@ -74,6 +84,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 const RUN_START_MS = 1500;
 // how long the starter code of a language may take to arrive
 const LANGUAGE_WAIT_MS = 6000;
+// how long a restarted terminal or a new tab may take to connect
+const NEW_TERMINAL_WAIT_MS = 12000;
 
 // the page elements an action works on, to show where Genie is
 const TARGETS: Record<string, string> = {
@@ -81,6 +93,7 @@ const TARGETS: Record<string, string> = {
   run: ".run-split",
   language: "#optionlist",
   output: "#terminal-div",
+  tabs: "#terminal-tabs",
 };
 
 type Phase = "waiting" | "active" | "done" | "failed" | "stopped";
@@ -112,6 +125,11 @@ export class AgentRunner {
   // pressed (the run's own terminal is another one), and when.
   private ran = false;
   private runTerm: unknown = null;
+  // The tabs this runner opened: the only ones it may close. They are the tab
+  // elements, not their names (terminal-2 is used again once it is closed, and
+  // the new one may be the user's). Kept as long as the page is, so a later task
+  // can close an earlier one's.
+  private ownTabs = new WeakSet<object>();
   private runAt = 0;
   private card: HTMLElement | null = null;
   private list: HTMLElement | null = null;
@@ -304,13 +322,28 @@ export class AgentRunner {
   // ---- one action -------------------------------------------------------------
 
   private async run(a: Action): Promise<StepResult> {
+    // a new tab in the language already chosen changes nothing in the editor
+    if (a.type === "terminal_new_tab" && a.language && this.isCurrentLanguage(a.language)) a = { type: a.type };
     const line = this.addLine(describe(a));
+    // nothing to ask about when it would be refused anyway
+    if (a.type === "terminal_close_tab") {
+      const why = this.closeProblem(a);
+      if (why) {
+        line.set("failed", describe(a) + ": not possible");
+        return { type: a.type, status: "failed", detail: why };
+      }
+    }
     const scope = scopeOf(a);
     // Nothing to ask about: the language is the one in use already, so nothing
     // would change (perform says so to the model)
     const noChange = a.type === "set_language" && this.isCurrentLanguage(a.language || "");
     // a line that can do harm is asked about every time, whatever was allowed
-    const risk = a.type === "terminal_type" ? riskOf(a.text || "") : "";
+    const risk =
+      a.type === "terminal_type"
+        ? riskOf(a.text || "")
+        : a.type === "terminal_close_tab"
+        ? "closes the tab and stops what is running in it"
+        : "";
     if (scope && !noChange) {
       if (risk || !this.grants.has(scope)) line.set("active", "Waiting for your answer: " + describe(a));
       const allowed = await this.permission(scope, a, risk);
@@ -325,7 +358,15 @@ export class AgentRunner {
     }
     line.set("active");
     const target =
-      scope === "language" ? "language" : a.type === "read_output" || scope === "terminal" ? "output" : scope === "run" ? "run" : "editor";
+      a.type === "terminal_new_tab" || a.type === "terminal_select_tab"
+        ? "tabs"
+        : scope === "language"
+        ? "language"
+        : a.type === "read_output" || scope === "terminal"
+        ? "output"
+        : scope === "run"
+        ? "run"
+        : "editor";
     this.highlight(TARGETS[target]);
     let result: StepResult;
     try {
@@ -371,16 +412,7 @@ export class AgentRunner {
         picker.value = value;
         picker.dispatchEvent(new Event("change", { bubbles: true }));
         this.ran = false; // the terminal is a new one, of the language: what ran before is gone
-        // The page now opens the language's terminal and fetches its starter
-        // code, which it puts in the editor a moment after it arrives. Writing
-        // before that would be overwritten, so wait for it (the page says which
-        // language's starter code is in, except on the practice page).
-        const w = window as any;
-        const told = "demoLoadedForLang" in w && !window.location.pathname.includes("practice");
-        const deadline = Date.now() + LANGUAGE_WAIT_MS;
-        await sleep(RUN_START_MS);
-        while (told && !this.stopped && w.demoLoadedForLang !== value && Date.now() < deadline) await sleep(150);
-        if (this.stopped) throw new Error("stopped");
+        await this.waitForStarterCode(value, RUN_START_MS);
         return { type: a.type, status: "done", detail: "the editor now holds the starter code of the language, and the terminal started again" };
       }
       case "run":
@@ -395,6 +427,85 @@ export class AgentRunner {
         this.ran = true;
         fn();
         return { type: a.type, status: "done", detail: "started; read_output returns what it printed" };
+      }
+      case "terminal_reconnect": {
+        const away = (window as any).awayWaitMs;
+        if (typeof away === "function" && away() > 0) return { type: a.type, status: "failed", detail: "the execution node is away; try again in a moment" };
+        const before = this.host.terminal();
+        if (!this.host.reconnect()) return { type: a.type, status: "failed", detail: "the terminal cannot be restarted here" };
+        this.ran = false; // the program that was running is stopped
+        const out = await this.awaitNewTerminal(before);
+        if (!out.ok) return { type: a.type, status: "failed", detail: out.detail };
+        return { type: a.type, status: "done", output: out.text, detail: "the terminal started again" };
+      }
+      case "terminal_new_tab": {
+        const tabs = this.host.tabs();
+        if (tabs.count >= MAX_TABS) {
+          return { type: a.type, status: "failed", detail: "all " + MAX_TABS + " terminal tabs are open; closing one is up to the user" };
+        }
+        const before = this.host.terminal();
+        let value = "";
+        if (a.language) {
+          const picker = this.picker();
+          const opts = picker ? Array.from(picker.options).map((o) => ({ value: o.value, text: o.text })) : [];
+          const found = findLanguage(opts, a.language);
+          if (!picker || !found) return { type: a.type, status: "failed", detail: "no such language; the picker has: " + opts.map((o) => o.text).join(", ") };
+          if (PAGE_ONLY_LANGUAGES.indexOf(found) >= 0) return { type: a.type, status: "failed", detail: this.pageOnly(found) };
+          value = found;
+          // the new tab starts in the language the picker holds, so set it first
+          // and the tab starts once; the change event follows for the editor
+          picker.value = value;
+        }
+        if (!this.host.addTab()) return { type: a.type, status: "failed", detail: "the tab could not be opened" };
+        const opened = this.host.tab(this.host.tabs().active); // the new tab is the one shown
+        if (opened) this.ownTabs.add(opened);
+        this.ran = false;
+        if (value) {
+          const picker = this.picker()!;
+          // silent: the terminal that is shown is the new one and already runs it
+          picker.dispatchEvent(new CustomEvent("change", { bubbles: true, detail: { silent: true } }));
+          await this.waitForStarterCode(value, 0);
+        }
+        const out = await this.awaitNewTerminal(before);
+        if (!out.ok) return { type: a.type, status: "failed", detail: out.detail };
+        const now = this.host.tabs();
+        return {
+          type: a.type,
+          status: "done",
+          output: out.text,
+          detail: "now on tab " + now.active + " of " + now.count + (value ? ", in " + this.pickerLanguage() : "") + "; Run uses the language in the picker (" + this.pickerLanguage() + ")",
+        };
+      }
+      case "terminal_close_tab": {
+        const why = this.closeProblem(a); // asked again: the tabs may have changed while the user decided
+        if (why) return { type: a.type, status: "failed", detail: why };
+        const n = a.tab || 0;
+        const mine = this.host.tab(n)!;
+        if (!this.host.closeTab(n)) return { type: a.type, status: "failed", detail: "the tab could not be closed" };
+        this.ownTabs.delete(mine);
+        this.ran = false; // the program that ran in it is gone with it
+        await sleep(600); // the page makes another tab the one shown a moment after
+        const now = this.host.tabs();
+        return {
+          type: a.type,
+          status: "done",
+          detail: "tab closed; now on tab " + now.active + " of " + now.count + "; Run uses the language in the picker (" + this.pickerLanguage() + ")",
+        };
+      }
+      case "terminal_select_tab": {
+        const tabs = this.host.tabs();
+        const n = a.tab || 0;
+        if (n < 1 || n > tabs.count) return { type: a.type, status: "failed", detail: "there are " + tabs.count + " terminal tab" + (tabs.count === 1 ? "" : "s") + ", not " + n };
+        if (n !== tabs.active && !this.host.selectTab(n)) return { type: a.type, status: "failed", detail: "the tab could not be selected" };
+        await sleep(300);
+        this.ran = false;
+        const text = this.host.terminalText().trim();
+        return {
+          type: a.type,
+          status: "done",
+          output: text.length > MAX_OUTPUT ? "..." + text.slice(-MAX_OUTPUT) : text,
+          detail: "now on tab " + n + " of " + tabs.count + "; Run uses the language in the picker (" + this.pickerLanguage() + ")",
+        };
       }
       case "terminal_type": {
         if (this.pageOnly()) return { type: a.type, status: "failed", detail: this.pageOnly() };
@@ -493,6 +604,74 @@ export class AgentRunner {
     }
   }
 
+  // Why tab a.tab cannot be closed, or "": it has to be there, and one that
+  // this runner opened (the user's own tabs are theirs to close).
+  private closeProblem(a: Action): string {
+    const tabs = this.host.tabs();
+    const n = a.tab || 0;
+    if (n < 1 || n > tabs.count) return "there are " + tabs.count + " terminal tab" + (tabs.count === 1 ? "" : "s") + ", not " + n;
+    const mine = this.host.tab(n);
+    if (!mine || !this.ownTabs.has(mine)) return "tab " + n + " was not opened by Genie, so it is not Genie's to close";
+    return "";
+  }
+
+  private pickerLanguage(): string {
+    const picker = this.picker();
+    return picker && picker.selectedIndex >= 0 ? picker.options[picker.selectedIndex].text : "";
+  }
+
+  // After a language change the page opens the language's terminal and fetches
+  // its starter code, which it puts in the editor a moment after it arrives.
+  // Writing before that would be overwritten, so wait for it (the page says
+  // which language's starter code is in, except on the practice page).
+  private async waitForStarterCode(value: string, first: number): Promise<void> {
+    const w = window as any;
+    const told = "demoLoadedForLang" in w && !window.location.pathname.includes("practice");
+    const deadline = Date.now() + LANGUAGE_WAIT_MS;
+    if (first > 0) await sleep(first);
+    this.host.thinking(true);
+    try {
+      while (told && !this.stopped && w.demoLoadedForLang !== value && Date.now() < deadline) await sleep(150);
+    } finally {
+      this.host.thinking(false);
+    }
+    if (this.stopped) throw new Error("stopped");
+  }
+
+  // Waits for the terminal that replaces `before` (a restart, a new tab) to be
+  // connected, and for its first output to settle.
+  private async awaitNewTerminal(before: unknown): Promise<{ ok: true; text: string } | { ok: false; detail: string }> {
+    const deadline = Date.now() + NEW_TERMINAL_WAIT_MS;
+    this.host.thinking(true);
+    try {
+      // no `break` in here: the build tool (microbundle) turns a break in an
+      // async loop with a try/finally into a reference to a helper it never
+      // declares ("_interrupt4 is not defined")
+      let ready = false;
+      while (!this.stopped && !ready && Date.now() < deadline) {
+        const now = this.host.terminal();
+        ready = now !== null && now !== before && this.host.terminalReady();
+        if (!ready) await sleep(200);
+      }
+      if (this.stopped) throw new Error("stopped");
+      if (this.host.terminal() === before || !this.host.terminalReady()) {
+        return {
+          ok: false,
+          detail:
+            "the terminal did not come up in " +
+            NEW_TERMINAL_WAIT_MS / 1000 +
+            " seconds. The server limits how many terminals one session may have open (about four), so close a tab yourself or try terminal_reconnect",
+        };
+      }
+      await this.settle(Date.now() + 3000, 800, 400);
+    } finally {
+      this.host.thinking(false);
+    }
+    if (this.stopped) throw new Error("stopped");
+    const text = this.host.terminalText().trim();
+    return { ok: true, text: text.length > MAX_OUTPUT ? "..." + text.slice(-MAX_OUTPUT) : text };
+  }
+
   private isCurrentLanguage(name: string): boolean {
     const picker = this.picker();
     if (!picker) return false;
@@ -505,9 +684,9 @@ export class AgentRunner {
   }
 
   // Why Genie cannot run the chosen language, or "" if it can.
-  private pageOnly(): string {
+  private pageOnly(value?: string): string {
     const picker = this.picker();
-    if (!picker || PAGE_ONLY_LANGUAGES.indexOf(picker.value) < 0) return "";
+    if (!picker || PAGE_ONLY_LANGUAGES.indexOf(value || picker.value) < 0) return "";
     return "this language runs in a console inside the page, which Genie can neither run nor read; switch to another one (NodeJS for JavaScript)";
   }
 
@@ -553,7 +732,12 @@ export class AgentRunner {
     return new Promise<boolean>((resolve) => {
       const box = el("div", "cw-agent__ask" + (risk ? " cw-agent__ask--risk" : ""));
       box.setAttribute("role", "group");
-      const title = risk ? "Genie wants to type a risky line in your terminal" : scopeQuestion(scope);
+      const title =
+        a.type === "terminal_close_tab"
+          ? "Genie wants to close a terminal tab"
+          : risk
+          ? "Genie wants to type a risky line in your terminal"
+          : scopeQuestion(scope);
       box.setAttribute("aria-label", title);
       box.appendChild(el("div", "cw-agent__ask-title", title));
       box.appendChild(el("p", "cw-agent__ask-text", scopeDetail(scope, a)));

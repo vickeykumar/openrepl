@@ -836,6 +836,32 @@ body #chat-widget__container #chat-widget__input:focus-visible {
 }
 
 /* agent mode (agent.ts) */
+/* The practice coach: three buttons above the composer */
+.cw-coach {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 0;
+  border-top: 1px solid var(--cw-border);
+}
+.cw-coach[hidden] { display: none; }
+.cw-coach__count { flex: 1 0 100%; font-size: 12px; color: var(--cw-muted); }
+.cw-coach button {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 10px;
+  color: var(--cw-text);
+  background: transparent;
+  border: 1px solid var(--cw-field-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cw-coach button:hover:not(:disabled) { border-color: var(--cw-accent); }
+.cw-coach button:first-of-type { background: var(--cw-accent); color: var(--cw-on-accent); border-color: var(--cw-accent); font-weight: 500; }
+.cw-coach button:disabled { opacity: 0.5; cursor: default; }
+.cw-coach + #chat-widget__form { border-top: 0; }
 .cw-mode {
   display: inline-flex;
   border: 1px solid var(--cw-field-border);
