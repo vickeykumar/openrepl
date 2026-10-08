@@ -18,8 +18,8 @@ tinymce.PluginManager.add('genie', function (editor) {
     { text: 'Make it shorter', value: 'Rewrite this text so it is about half as long and keeps the main points.' },
     { text: 'Make it clearer', value: 'Rewrite this text so it is clearer and easier to read.' },
     { text: 'Summarize', value: 'Summarize this text in two or three sentences.' },
-    { text: 'Continue writing', value: 'Continue this text with the next paragraph, in the same voice.' },
-    { text: 'Write about this', value: 'Write a short blog post section about this topic.' }
+    { text: 'Continue writing', value: 'Continue this text with the next paragraph, in the same voice.', facts: true },
+    { text: 'Write about this', value: 'Write a short blog post section about this topic.', facts: true }
   ];
 
   function escapeHtml(text) {
@@ -39,11 +39,27 @@ tinymce.PluginManager.add('genie', function (editor) {
     return CHOICE && CHOICE.models.filter(function (m) { return m.id === id; })[0] || null;
   }
 
+  // the title of the post being written, to search the site's notes with
+  function postTitle() {
+    var field = document.getElementById('blogtitle');
+    return field ? field.value.trim() : '';
+  }
+
   function ask(task, input) {
     var prompt = task + ' Answer with the text only, no introduction.\n\n' + input;
     var options = { baseUri: OPENAI.baseUri || '/chat/completions', model: 'gpt-4o-mini', temperature: 0.5, max_tokens: 1200 };
     // a thinking model counts its thinking against the answer, so it gets room for both
-    if (CHOICE) options.fields = CHOICE.fields({ temperature: 0.5, maxTokens: 1200, extraTokens: 1200 });
+    var fields = CHOICE ? CHOICE.fields({ temperature: 0.5, maxTokens: 1200, extraTokens: 1200 })
+                        : { model: options.model, temperature: options.temperature, max_tokens: options.max_tokens };
+    // ask the server for what the site knows about itself (its notes and its
+    // posts), searched with the title and the text, not the instructions
+    // (only for tasks that write new text: proofreading or shortening a
+    // paragraph needs no facts about the site)
+    if (TASKS.some(function (t) { return t.value === task && t.facts; })) {
+      fields.context = 'blog';
+      fields.context_hint = (postTitle() + ' ' + input).trim().slice(0, 400);
+    }
+    options.fields = fields;
     return getResponseFromOpenAI(OPENAI.api_key, prompt, options).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (!res.ok) {

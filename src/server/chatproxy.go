@@ -230,6 +230,9 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         )
     	return
     }
+    // A request from the Genie panel or the blog editor may ask for what the
+    // site knows about itself (knowledge_proxy.go).
+    rawBody, ctxResult := addKnowledge(rawBody, theKnowledge())
     chatBody, model, err := sanitizeChatBody(rawBody)
     if err != nil {
     	handleChatProxyError(rw, req, http.StatusBadRequest,
@@ -352,6 +355,11 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         for _, value := range values {
             rw.Header().Add(key, value)
         }
+    }
+    // what the answer was based on, when it was asked for
+    if h := ctxResult.header(); h != "" {
+        rw.Header().Set(contextHeader, h)
+        rw.Header().Set("Access-Control-Expose-Headers", contextHeader)
     }
     // the upstream status as well, so that a refusal is not shown as a success
     rw.WriteHeader(resp.StatusCode)

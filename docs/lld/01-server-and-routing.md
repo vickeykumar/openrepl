@@ -108,6 +108,7 @@ All paths are relative to `pathPrefix`: `/`, or `/<random>/` with `--random-url`
 | `/editblog.html` | GET | static behind `wrapAdmin` | admin | Blog editor UI (`editblog.html`, `js/editblog.js`, `css/editblog.css`, `js/genie_plugin.js`; LLD 06). |
 | `/demo?q=<command>` | GET | `handleDemo` | public | `utils.DemoResp` JSON for a REPL (LLD 04). |
 | `/chat/completions` | POST | `handleChatProxy` | origin-checked, token, rate limit | OpenAI proxy (LLD 07). |
+| `/knowledge/<id>` | GET, HEAD | `handleKnowledgeAt` (`knowledge_proxy.go`) | public | The text of a site note or blog passage that Genie used, for the note card in the chat panel; 404 for any id the index does not hold (LLD 07 section 3a). |
 | `/ws_filebrowser` | GET, POST | `Server.handleFileBrowser` | cookie homedir | File tree, load, save, zip, workspace usage (`?q=usage`) and file ops (LLD 04). Despite the name, this is plain HTTP. |
 | `/upload_file` | POST (multipart) | `Server.handleFileUpload` | cookie homedir | Upload into the homedir (LLD 04). |
 | `/auth_token.js` | GET | `handleAuthToken` | public | `var gotty_auth_token = '<--credential>'`. |

@@ -79,6 +79,7 @@ func StoreBlogData(blog *BlogPost) error {
 	if err != nil {
 		log.Println("ERROR: Failed to commit the blog data to disk, error: ", err.Error())
 	}
+	knowledgeInvalidate()
 	return err
 }
 
@@ -88,6 +89,7 @@ func deleteBlogData(blogname string) error {
 		return err
 	}
 	err = blog_db_handle.Commit()
+	knowledgeInvalidate()
 	return err
 }
 
