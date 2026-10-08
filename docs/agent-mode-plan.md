@@ -1,6 +1,6 @@
 # Genie agent mode: task list
 
-Status: step 1 built 2026-10-08 (diff review and undo, uncommitted until approved); steps 2 and 3 not started. Agreed 2026-10-08. The design (with mockups) is the first piece of work and is reviewed before any code.
+Status: step 1 built and pushed 2026-10-08 (diff review and undo); step 2 built 2026-10-08 (the agent loop for the editor and Run: server limits, admin settings, permission prompts, step list; uncommitted until approved); step 3 (the terminal) built 2026-10-08 (uncommitted until approved). Agreed 2026-10-08. The design (with mockups) is the first piece of work and is reviewed before any code.
 
 ## Decisions
 
@@ -21,17 +21,19 @@ Status: step 1 built 2026-10-08 (diff review and undo, uncommitted until approve
    - One unit is charged per task, the 8-step and per-step token caps are enforced, and tasks are counted per user on the server (for example per hour), so clearing cookies does not reset the limit.
    - Agent requests from guests are refused.
    - The model answers in JSON actions for every model (no native tool calling); the page validates them (`docs/agent-mode-design.md`).
-4. **Chat panel loop:** request, then action, then result back to Genie. A Stop button is always visible.
+4. **Chat panel loop:** request, then action, then result back to Genie. A Stop button is always visible: the composer's send button becomes it while a task runs.
 5. **Permission prompts:** Allow once, Allow for this session, or Deny, per kind of action.
 6. **Visible actions:** a highlight on the control Genie uses, and a live step list in the chat ("Typing in editor", "Pressing Run", "Reading output").
 7. **Fix until it passes:** run, read the error, edit, rerun, within the 8 steps.
 8. **Shared sessions:** only the session owner can start an agent. Peers see the changes as they see typing.
-9. **Admin:** an agent-mode switch in `/admin` next to the model switches (off by default), a switch to allow it on the practice page (off by default), and settings for the tasks per hour (default 20) and the steps per task (default 8, at most 8).
+9. **Admin:** an agent-mode switch in `/admin` next to the model switches (on by default for signed-in users; changed from off on the owner's request after step 2), a switch to allow it on the practice page (off by default), and settings for the tasks per hour (default 20) and the steps per task (default 8, at most 8).
 
 ## Step 3: Terminal
 
 10. Genie types a line into the terminal and can press Ctrl+C. It shows the exact text before running it, and always asks for risky commands such as `rm -rf`.
 11. It reads the terminal output back to continue the task.
+
+Built as `terminal_type` (one line of plain text; waits for the output to settle and returns what appeared) and `terminal_interrupt` (Ctrl+C), under a `terminal` permission. The exact line is shown in the prompt; a risky line (`riskOf` in `agent-protocol.ts`) is asked about every time and cannot be allowed for the session. A line typed while a program started by Run waits for input is how Genie answers it.
 
 ## With each step
 
