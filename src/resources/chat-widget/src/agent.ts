@@ -100,6 +100,18 @@ export interface AgentHost {
   messages(): HTMLElement; // where the cards go
   maxSteps(): number;
   uid(): string; // the tag of the user in the conversation
+  // The REPL of the language in use, as the picker names it ("gointerpreter").
+  repl?(): string;
+  // What the answer of a step says the user has left (the X-OpenREPL-Usage header).
+  usage?(raw: string | null): void;
+  // The three below let the panel show on its button how a task goes while the
+  // panel is closed (a task goes on behind a closed panel). All are optional.
+  // The task waits for the user (a question, a change to accept), or no longer does.
+  attention?(on: boolean): void;
+  // Step n of max has begun.
+  progress?(n: number, max: number): void;
+  // How the task ended; "stopped" is the user's own Stop.
+  ended?(outcome: "done" | "failed" | "stopped"): void;
 }
 
 const PANEL_ID = "chat-widget__container"; // the Genie panel (index.ts)
@@ -151,7 +163,7 @@ class StepLine {
 
 export class AgentRunner {
   running = false; // a task is in flight, until its last line has run; the panel's box waits for it
-  private stopped = false; // Stop was pressed, or the panel closed: the task winds down
+  private stopped = false; // Stop was pressed: the task winds down
   private timedOut = false;
   private ctl: AbortController | null = null;
   private grants = new Set<Scope>(); // allowed for the rest of the session (until the page closes)
@@ -211,6 +223,9 @@ export class AgentRunner {
         }
       }
     } finally {
+      // Stop is the user's own doing; anything else that did not finish (an
+      // error, a timeout, a second unreadable answer) is a failure
+      const outcome = finished ? "done" : this.stopped && !this.timedOut ? "stopped" : "failed";
       try {
         this.host.thinking(false);
         this.endCard(finished);
@@ -221,6 +236,11 @@ export class AgentRunner {
       this.running = false;
       this.stopped = false;
       this.ctl = null;
+      try {
+        if (this.host.ended) this.host.ended(outcome);
+      } catch (e) {
+        console.error("agent:", e);
+      }
       this.onState("idle");
     }
   }
@@ -295,6 +315,8 @@ export class AgentRunner {
       ...this.host.modelFields(),
       context: "agent",
       agent_task: token,
+      // the REPL in use, by name: the server adds what it knows about it
+      repl: this.host.repl ? this.host.repl() : "",
       messages: [...messages, this.host.ideContext()],
     };
     // a model that never answers must not keep the task, and the box, for ever
@@ -336,6 +358,8 @@ export class AgentRunner {
       body: JSON.stringify(body),
       signal: this.ctl ? this.ctl.signal : undefined,
     });
+    // what the user has left after this step (null: the panel asks for it)
+    if (this.host.usage) this.host.usage(res.headers.get("X-OpenREPL-Usage"));
     if (!res.ok) {
       let message = "Genie could not answer (" + res.status + ").";
       let code = "";
@@ -450,8 +474,8 @@ export class AgentRunner {
         if (!review) return { type: a.type, status: "failed", detail: "the editor is not available" };
         const r =
           a.type === "editor_write"
-            ? await review.proposeAsync(a.text, { title: "Genie wants to replace the file:" })
-            : await review.proposeInsertAsync(a.text, { title: "Genie wants to insert" });
+            ? await this.needsYou<any>(review.proposeAsync(a.text, { title: "Genie wants to replace the file:" }))
+            : await this.needsYou<any>(review.proposeInsertAsync(a.text, { title: "Genie wants to insert" }));
         if (r.error) return { type: a.type, status: "failed", detail: r.error };
         if (r.total === 0) return { type: a.type, status: "done", detail: "the editor already had this text" };
         const status: Status = r.accepted === r.total ? "accepted" : r.accepted > 0 ? "partly_accepted" : "rejected";
@@ -955,7 +979,12 @@ export class AgentRunner {
       }
       if (risk) box.appendChild(el("p", "cw-agent__ask-warn", "Asked every time because it " + risk + "."));
       const buttons = el("div", "cw-agent__ask-buttons");
+      let answered = false;
+      if (this.host.attention) this.host.attention(true);
       const done = (answer: "once" | "session" | "deny") => {
+        if (answered) return;
+        answered = true;
+        if (this.host.attention) this.host.attention(false);
         this.pendingAnswer = null;
         box.remove();
         if (answer === "session") this.grants.add(scope);
@@ -1022,6 +1051,18 @@ export class AgentRunner {
 
   private setHeader(step: number, max: number) {
     if (this.header) this.header.textContent = "Step " + step + " of " + max;
+    if (this.host.progress) this.host.progress(step, max);
+  }
+
+  // Runs something the user has to answer (a diff, a question) and tells the
+  // panel meanwhile, so that its button can say Genie is waiting.
+  private async needsYou<T>(work: Promise<T>): Promise<T> {
+    if (this.host.attention) this.host.attention(true);
+    try {
+      return await work;
+    } finally {
+      if (this.host.attention) this.host.attention(false);
+    }
   }
 
   private addLine(label: string): StepLine {

@@ -25,6 +25,9 @@ type Demo struct {
 	Doc    		string
 	Content		string				// initial contents
 	Compiler 	string	`json:"-"`	//ignore in json
+	// what Genie's agent must know about this REPL that the usage and the
+	// examples do not say (server/repl_guide.go); not part of the page's demo
+	Notes		string	`json:"-"`
 }
 
 type DemoResp struct {

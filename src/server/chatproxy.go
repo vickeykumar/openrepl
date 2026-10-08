@@ -394,7 +394,8 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 	// (the deferred undo above), so it is not charged either.
 	if chargeable && !isAdmin && (run == nil || succeeded) {
 		// roundtrip was success, decrease the request count by 1
-		cookie.SetOpenApiRequestCount(rw, req, num_req_rem-1)
+		num_req_rem--
+		cookie.SetOpenApiRequestCount(rw, req, num_req_rem)
 	}
 
     // Copy the response status and headers to the response writer
@@ -415,6 +416,9 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         rw.Header().Set(agentStepHeader, fmt.Sprintf("%d/%d", run.step, run.max))
         exposed = append(exposed, agentTaskHeader, agentStepHeader)
     }
+    // what the visitor has left after this answer, for the panel's usage line
+    rw.Header().Set(usageHeader, usageOf(req, isAdmin, &num_req_rem).header())
+    exposed = append(exposed, usageHeader)
     if len(exposed) > 0 {
         rw.Header().Set("Access-Control-Expose-Headers", strings.Join(exposed, ", "))
     }

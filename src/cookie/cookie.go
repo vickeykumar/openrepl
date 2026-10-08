@@ -250,27 +250,35 @@ func GetOpenApiLastAccessTime(req *http.Request) (lastaccesstime int64) {
 */
 func UpdateOpenApiRequestCountBalance(rw http.ResponseWriter, req *http.Request) (err error) {
 	session_cookie, _ := session_store.Get(req, "user-session")
-	// recharge req_count balance in sec
 	current_time_mili := utils.GetUnixMilli()
-	var req_count_balance_sec float64 = float64(current_time_mili-GetOpenApiLastAccessTime(req))/1000
-
-	var req_count_balance float64 = 0
-	var max_cap float64 = utils.GuestFactor()*utils.DEADLINE_MINUTES // max num of request per minute a user can make
-	if Is_UserLoggedIn(req) {
-		req_count_balance = GetOpenApiRequestCount(req)+(req_count_balance_sec/60)*utils.UserFactor()
-		max_cap = utils.UserFactor()*utils.DEADLINE_MINUTES
-	} else {
-		req_count_balance = GetOpenApiRequestCount(req)+(req_count_balance_sec/60)*utils.GuestFactor()
-		max_cap = utils.GuestFactor()*utils.DEADLINE_MINUTES
-	}
-	if max_cap >= req_count_balance {
-		session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = req_count_balance
-	} else {
-		session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = max_cap
-	}
 	// not exceeding request balance more that maxcap req per user
+	balance, _, _ := openApiRequestBalanceAt(req, current_time_mili)
+	session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = balance
 	session_cookie.Values[utils.OPENAI_REQUEST_LAST_ACCESS] = current_time_mili
 	return session_store.Save(req, rw, session_cookie)
+}
+
+// OpenApiRequestBalance is what a request made now would find: the requests
+// left after the recharge for the time that has passed, the most a visitor can
+// hold, and the recharge per minute. It saves nothing, so asking does not count
+// as a request (the Genie panel shows it).
+func OpenApiRequestBalance(req *http.Request) (left, max_cap, per_minute float64) {
+	return openApiRequestBalanceAt(req, utils.GetUnixMilli())
+}
+
+func openApiRequestBalanceAt(req *http.Request, current_time_mili int64) (left, max_cap, per_minute float64) {
+	// recharge req_count balance in sec
+	var req_count_balance_sec float64 = float64(current_time_mili-GetOpenApiLastAccessTime(req))/1000
+	per_minute = utils.GuestFactor()
+	if Is_UserLoggedIn(req) {
+		per_minute = utils.UserFactor()
+	}
+	max_cap = per_minute*utils.DEADLINE_MINUTES // max num of request per minute a user can make
+	left = GetOpenApiRequestCount(req)+(req_count_balance_sec/60)*per_minute
+	if left > max_cap {
+		left = max_cap
+	}
+	return left, max_cap, per_minute
 }
 
 func GetOpenApiAccessToken(req *http.Request) (acc_token, secret []byte) {

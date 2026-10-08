@@ -12,7 +12,7 @@ To build, run and test OpenREPL on your machine, see [Run locally on macOS (Coli
 | 02 | [Terminal sessions and the WebTTY protocol](lld/02-terminal-sessions.md) | WebSocket handshake, message types, `webtty`, `localcommand`, PTY, timeouts, connection limits |
 | 03 | [Sandboxing and resource limits](lld/03-sandboxing-and-resources.md) | Namespaces, cgroup v1 layout, memory weights, fork/`jid`, disk quota, guest cleanup |
 | 04 | [IDE: Run/Debug, demos and files](lld/04-ide-run-and-files.md) | `demos.xml`, Compiler scripts, the Run pipeline, file browser API and events, uploads |
-| 05 | [Auth, sessions and storage](lld/05-auth-sessions-storage.md) | Firebase sign-in, `/login`, session cookie, UnQLite stores, home-directory resolution, data models |
+| 05 | [Auth, sessions and storage](lld/05-auth-sessions-storage.md) | Firebase sign-in, `/login`, session cookie, the stores and their backends (UnQLite files, MongoDB, Firestore), home-directory resolution, data models |
 | 06 | [Frontend](lld/06-frontend.md) | Pages, script load order, `gotty-bundle` modules, tabs, sharing over Firebase, chat widget, Practice, command palette, Phase 2 additions |
 | 07 | [AI features](lld/07-ai-features.md) | `/chat/completions` proxy, rate limiting, Genie, Practice question generation |
 | 08 | [Build, packaging and deployment](lld/08-build-and-deploy.md) | Makefile and bindata pipeline, Docker, CI, systemd, runtime file layout |
@@ -38,7 +38,8 @@ Go code uses a GOPATH layout: the repo root is `GOPATH`, packages live under `sr
 | `src/wsync/` | Workspace sync: engine (record, scan, safe file operations, three-way comparison), file watcher, conversation between two nodes, per-node manager | 12 |
 | `src/gateway/`, `src/tunnel/`, `src/trusted/` | Distributed execution: session-affinity router and backends, the gateway-worker SSH tunnel (over WebSocket or TCP), trusted identity headers | 11 |
 | `src/golang.org/x/crypto/` | Vendored `x/crypto` v0.14.0, only the packages `ssh` needs (`ssh`, `chacha20`, `curve25519`, `blowfish`, `internal/alias`, `internal/poly1305`), without tests | 11 |
-| `src/user/`, `src/cookie/`, `src/cachedb/` | Sessions, cookies, cached UnQLite; accounts for the admin (`user/admin.go`) | 05, 13 |
+| `src/user/`, `src/cookie/` | Sessions, cookies; accounts for the admin (`user/admin.go`) | 05, 13 |
+| `src/persist/`, `src/cachedb/` | The key-value interface under every database, its three backends (UnQLite files, MongoDB, Firestore) and the read cache | 05 |
 | `src/utils/`, `src/encoder/` | Constants, flags, job scheduler, demo types, crypto helpers | 01, 03, 05 |
 | `src/resources/` | HTML, CSS, JS, images, `meta/demos.xml`, chat widget source, the admin dashboard (`admin.html`, `css/admin.css`, `js/admin.js`) | 04, 06, 13 |
 | `src/js/` | TypeScript terminal client (webpack → `gotty-bundle.js`, `hterm.js`) and the page script `src/js/src/page/` (→ `scribbler.js`) | 06 |

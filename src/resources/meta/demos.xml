@@ -402,16 +402,24 @@ Hi: 9</Result>
 		</Usage>
 		<Usage>
 			<Command>:r, :x</Command>
-			<Description>Run as Go File.</Description>
+			<Description>Run what you typed in this session as a Go program (a loop or an if block runs only then).</Description>
 		</Usage>
 		<Usage>
 			<Command>:c</Command>
-			<Description>Clear the session,and Restart.</Description>
+			<Description>Clear the session and start again.</Description>
 		</Usage>
 		<Usage>
 			<Command>:q</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
+		<Notes>Type Go code at the go&gt;&gt; prompt, one line at a time. Every line is kept in the session, as the body of main; fmt is already imported.
+- An expression (12+31, x*2, a variable name) prints its value at once. A function call prints its value only with a semicolon after it (time.Now();) or inside fmt.Println(...).
+- A declaration, an assignment, an import or a fmt.Println(...) runs at once.
+- A block (for, if, switch) is only kept: type :r after it to run it. Write a block on ONE line, for example: for i := 0; i &lt; 3; i++ { fmt.Println(i) }
+- :r is not a reload and does not run the editor: it runs the lines typed in this session. A block that was run with :r stays in the session and prints again with every later line; type :c to clear the session when that gets in the way.
+- A line with an error stays in the session and makes every later line fail with the same error: type :c, then go on.
+- A named function (func name() {...}) cannot be declared at the prompt. Use a function value: sq := func(n int) int { return n*n }, or write the whole program in the editor and run it with the run action.
+- To run the program in the editor use the run action, never :r.</Notes>
 		<Content>// Welcome to OpenREPL!
 // Run this file with the Run button (Ctrl+Enter, or Cmd+Enter on a Mac),
 // or try one line at a time in the REPL on the right.

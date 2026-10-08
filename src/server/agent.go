@@ -28,6 +28,7 @@ import (
 //
 //	"context": "agent"
 //	"agent_task": "<token>"   empty for the first step of a task
+//	"repl": "<name>"          the REPL of the language in use, for its guide (repl_guide.go)
 //
 // The first step starts a task: it takes one unit from the user's balance, the
 // same unit a chat message takes, and the answer carries a signed task token in
@@ -166,6 +167,20 @@ func (l *agentLedger) prune(now time.Time) {
 			l.starts[uid] = keep
 		}
 	}
+}
+
+// started returns how many tasks a user has started in the last hour, and how
+// long until the oldest of them no longer counts (0 when there is none).
+func (l *agentLedger) started(uid string) (used int, nextFree time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	l.prune(now)
+	list := l.starts[uid]
+	if len(list) == 0 {
+		return 0, 0
+	}
+	return len(list), agentWindow - now.Sub(list[0])
 }
 
 // agentRun is one request of a task, as the proxy needs to know it.
@@ -329,7 +344,18 @@ func agentBody(in map[string]json.RawMessage) ([]byte, error) {
 		return nil, fmt.Errorf("no messages")
 	}
 	system, _ := json.Marshal(map[string]string{"role": "system", "content": agentSystemPrompt()})
-	in["messages"], _ = json.Marshal(append([]json.RawMessage{system}, messages...))
+	front := []json.RawMessage{system}
+	// how the REPL of the language in use is typed into (repl_guide.go). The
+	// page names the REPL; the text is the server's own, from its demo.
+	var repl string
+	if raw, ok := in["repl"]; ok && json.Unmarshal(raw, &repl) == nil {
+		if guide := replGuide(repl); guide != "" {
+			g, _ := json.Marshal(map[string]string{"role": "system", "content": guide})
+			front = append(front, g)
+		}
+	}
+	delete(in, "repl")
+	in["messages"], _ = json.Marshal(append(front, messages...))
 	in["response_format"] = json.RawMessage(`{"type":"json_object"}`)
 	delete(in, "stream")
 	in["max_tokens"] = capNumber(in["max_tokens"], agentMaxTokens)
@@ -360,7 +386,7 @@ Each action is an object with a "type". The types you may use:
 - {"type":"editor_insert","text":"<code>"}  Inserts code at the cursor.
 - {"type":"set_language","language":"<name as in the language picker, for example Python>"}  Only when the task needs another language than the one in use. It REPLACES the editor with that language's starter code and restarts the terminal, so do it before you write code, never after.
 - {"type":"run"}  Runs the editor code (the user must have allowed it). {"type":"debug"} runs it in the debugger where the language supports that.
-- {"type":"terminal_type","text":"<ONE line>","wait_seconds":3}  Types one line in the terminal and presses Enter, waits for the output to settle (up to that many seconds, 1 to 20) and returns what appeared. The terminal is the REPL of the language in use (a shell for Bash). If a program you started with "run" is waiting for input, this is how you answer it. The user sees the exact line and must allow it; a line that deletes or changes things, installs software or builds a command out of other text is always asked about again, so avoid those unless the task needs them. The line must be plain text on one line.
+- {"type":"terminal_type","text":"<ONE line>","wait_seconds":3}  Types one line in the terminal and presses Enter, waits for the output to settle (up to that many seconds, 1 to 20) and returns what appeared. The terminal is the REPL of the language in use (a shell for Bash); when a "REPL guide" message follows these instructions, it says how that REPL is typed into (its prompt, its commands, an example session): follow it. If a program you started with "run" is waiting for input, this is how you answer it. The user sees the exact line and must allow it; a line that deletes or changes things, installs software or builds a command out of other text is always asked about again, so avoid those unless the task needs them. The line must be plain text on one line.
 - {"type":"terminal_interrupt"}  Presses Ctrl+C in the terminal, to stop a program that is running or waiting.
 - {"type":"terminal_reconnect"}  Restarts the terminal in the language in use: use it when the terminal is closed, stuck or disconnected. A program that is running in it is stopped.
 - {"type":"terminal_new_tab","language":"<optional, as in the picker>"}  Opens a new terminal tab (at most 5 are open), in that language if you name one. Naming a language replaces the editor with that language's starter code, as set_language does, so write your code after it. The new tab is the one shown, and terminal_type and read_output work on it.
