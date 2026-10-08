@@ -40,7 +40,7 @@
       <article class="doc__content">
         <section class="js-section">
           <h3 class="section__title">Java Jshell</h3>
-          <p>Jshell is introduced as part of Java 9 JDK. It allows you to execute java code snippets, evaluate java statements and expressions. Java REPL is currently disabled in this website due to some memory Issue and can be enabled in future.</p>
+          <p>Jshell is introduced as part of Java 9 JDK. It allows you to execute java code snippets, evaluate java statements and expressions. On OpenREPL it runs as a small, single-process jshell, so a session uses far less memory than a stock one. A snippet that needs more than a few tens of megabytes of heap stops with an <span class="keybinding__label">OutOfMemoryError</span>; the session carries on.</p>
           <p>For more information on jshell and its usage, you can check the links below :</p>
             <li><a href="http://jakubdziworski.github.io/java/2016/07/31/jshell-getting-started-examples.html" class="link link--blue" >JShell - Java 9 interpreter (REPL) - Getting Started and Examples</a></li>
             <li><a href="https://docs.oracle.com/javase/10/jshell/introduction-jshell.htm" class="link link--blue" >Introduction to JShell</a></li>
@@ -49,7 +49,7 @@
           <hr />
         </section>
         <section class="js-section">
-          <p>Recently I came across an online open source project named <a href="https://github.com/javaterminal/tryjshell" class="link link--blue" >tryjshell.org</a>, it can be helpful as well and can be evaluated over <a href="http://tryjshell.org" class="link link--blue" >this link</a>. Also, it is embedded in <a href="../" class="link link--dark">OpenREPL website</a>. For usage and meta-commands please refer java demo on OpenREPL page or type <span class="keybinding__label">/help</span> in the java-repl terminal.</p>
+          <p>For usage and meta-commands please refer java demo on <a href="../" class="link link--dark">OpenREPL website</a> or type <span class="keybinding__label">/help</span> in the java-repl terminal. The Run button compiles and runs the file in the editor instead.</p>
           <hr />
         </section>
         <div class="callout">

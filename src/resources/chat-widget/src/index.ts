@@ -2,7 +2,6 @@ import { createFocusTrap } from "focus-trap";
 import { marked } from "marked";
 
 import { widgetHTML } from "./widgetHtmlString";
-import { keywords, documentation } from "./openreplkeywords";
 import css from "./widget.css";
 
 const WIDGET_BACKDROP_ID = "chat-widget__backdrop";
@@ -366,9 +365,7 @@ async function init() {
     addMessageToHistory("system", interviewPrompt);
   } else {
     addMessageToHistory("system", welcomeprompt+" Assistant.");
-    addMessageToHistory("system", "documentation: "+documentation);
   }
-  addMessageToHistory("system", "keywords: "+ keywords);
   addMessageToHistory("system", "Openrepl IDE/EditorCodeContent: "+ fetchEditorContent());
   setupFBListener();
 }
@@ -724,12 +721,156 @@ function toggle(e?: Event) {
   }
 }
 
+// ---- what the site's own notes added to a reply ---------------------------------
+// The server lists the notes and blog passages it added to the question in the
+// X-OpenREPL-Context header: "none", or base64url of [{id, title, kind}]. The
+// reply gets a line saying so, and each name opens the text it was based on.
+
+const CONTEXT_HEADER = "X-OpenREPL-Context";
+type ContextNote = { id: string; title: string; kind: string };
+
+function onPracticePage(): boolean {
+  return window.location.pathname.includes("practice");
+}
+
+// null: the request did not ask (no line); []: asked, nothing matched
+function parseContextHeader(value: string | null): ContextNote[] | null {
+  if (!value) return null;
+  if (value === "none") return [];
+  try {
+    const b64 = value.replace(/-/g, "+").replace(/_/g, "/");
+    const bin = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    const list = JSON.parse(new TextDecoder("utf-8").decode(bytes));
+    if (!Array.isArray(list)) return null;
+    return list
+      .filter((n: any) => n && typeof n.id === "string" && typeof n.title === "string")
+      .slice(0, 6)
+      .map((n: any) => ({ id: n.id, title: n.title, kind: String(n.kind || "note") }));
+  } catch (e) {
+    return null;
+  }
+}
+
+function knowledgeUrl(id: string): string {
+  return (config.url || "").replace(/chat\/completions$/, "knowledge/") + encodeURIComponent(id);
+}
+
+// only a path on this site may be linked to
+function safeSiteLink(link: string): string {
+  return typeof link === "string" && /^\/(?!\/)[^\s\\]*$/.test(link) ? link : "";
+}
+
+function appendContextLine(messageElement: HTMLElement, used: ContextNote[]) {
+  const line = document.createElement("p");
+  line.classList.add("chat-widget__message-meta", "chat-widget__context-line");
+  if (used.length === 0) {
+    line.textContent = "Answered without OpenREPL notes";
+    messageElement.appendChild(line);
+    return;
+  }
+  line.append("Used OpenREPL notes: ");
+  const card = document.createElement("div");
+  card.className = "chat-widget__notes";
+  card.hidden = true;
+  const rows: { head: HTMLButtonElement; body: HTMLElement; open: () => void; close: () => void }[] = [];
+
+  const closeCard = () => {
+    card.hidden = true;
+  };
+  card.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      ev.stopPropagation(); // closes the notes, not the whole panel
+      closeCard();
+      (line.querySelector("button") as HTMLElement | null)?.focus();
+    }
+  });
+
+  used.forEach((note, i) => {
+    const row = document.createElement("div");
+    row.className = "chat-widget__note";
+    const head = document.createElement("button");
+    head.type = "button";
+    head.className = "chat-widget__note-head";
+    head.setAttribute("aria-expanded", "false");
+    const title = document.createElement("span");
+    title.textContent = note.title;
+    head.appendChild(title);
+    const body = document.createElement("div");
+    body.className = "chat-widget__note-body";
+    body.hidden = true;
+    let loaded = false;
+
+    const open = () => {
+      rows.forEach((r) => r !== entry && r.close());
+      body.hidden = false;
+      head.setAttribute("aria-expanded", "true");
+      if (!loaded) {
+        loaded = true;
+        body.textContent = "Loading…";
+        fetch(knowledgeUrl(note.id))
+          .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+          .then((d: any) => {
+            body.textContent = "";
+            const text = document.createElement("p");
+            text.className = "chat-widget__note-text";
+            text.textContent = String(d.text || ""); // plain text, never markup
+            body.appendChild(text);
+            const link = safeSiteLink(d.link);
+            if (link) {
+              const a = document.createElement("a");
+              a.href = link;
+              a.target = "_blank";
+              a.rel = "noopener";
+              a.textContent = note.kind === "post" ? "Read the post" : "Read more in the docs";
+              body.appendChild(a);
+            }
+          })
+          .catch(() => {
+            loaded = false;
+            body.textContent = "This note could not be loaded.";
+          });
+      }
+    };
+    const close = () => {
+      body.hidden = true;
+      head.setAttribute("aria-expanded", "false");
+    };
+    const entry = { head, body, open, close };
+    rows.push(entry);
+    head.addEventListener("click", () => (body.hidden ? open() : close()));
+    row.append(head, body);
+    card.appendChild(row);
+
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "chat-widget__context-link";
+    name.textContent = note.title;
+    name.addEventListener("click", () => {
+      card.hidden = false;
+      open();
+    });
+    if (i > 0) line.append(" · ");
+    line.appendChild(name);
+  });
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "chat-widget__notes-close";
+  closeBtn.setAttribute("aria-label", "Close");
+  closeBtn.textContent = "×";
+  closeBtn.addEventListener("click", closeCard);
+  card.prepend(closeBtn);
+  messageElement.append(line, card);
+}
+
 async function createNewMessageEntry(
   message: string,
   timestamp: number,
   from: "system" | "user",
   skipdbpush: boolean = false,
-  meta: string = ""
+  meta: string = "",
+  used: ContextNote[] | null = null
 ) {
   message = message.trim();
   //console.log("message: ", message)
@@ -762,6 +903,9 @@ async function createNewMessageEntry(
     messageMeta.classList.add("chat-widget__message-meta");
     messageMeta.textContent = meta;
     messageElement.appendChild(messageMeta);
+  }
+  if (used !== null) {
+    appendContextLine(messageElement, used);
   }
 
   const messageTimestamp = document.createElement("p");
@@ -846,11 +990,12 @@ async function showModelUnavailable(title: string, switchedOff: boolean = false)
 
 const handleStandardResponse = async (res: Response, meta: string = "") => {
   if (res.ok) {
+    const used = parseContextHeader(res.headers.get(CONTEXT_HEADER));
     const responseData : any = await res.json();
     if (responseData.choices && responseData.choices.length > 0) {
         const responseMessage : MessageType = responseData.choices[0].message;
         addMessageToHistory(responseMessage.role, responseMessage.content);
-        await createNewMessageEntry(responseMessage.content, Date.now(), "system", false, meta);
+        await createNewMessageEntry(responseMessage.content, Date.now(), "system", false, meta, used);
     } else {
         handleErrorResponse(responseData);
     }
@@ -911,6 +1056,11 @@ const handleStreamedResponse = async (res: Response) => {
       console.error("Error parsing chunk: ", chunk, error);
     }
   }
+  const used = parseContextHeader(res.headers.get(CONTEXT_HEADER));
+  const shown = messagesHistory.querySelector(`#chat-widget__message--system--${ts}`);
+  if (used !== null && shown) {
+    appendContextLine(shown as HTMLElement, used);
+  }
 };
 
 async function submit(e: Event) {
@@ -933,6 +1083,7 @@ async function submit(e: Event) {
     myrole = 'system';
   }
   const msg = (target.elements as any).message.value;
+  messagesHistory.querySelectorAll(".chat-widget__notes").forEach((el) => ((el as HTMLElement).hidden = true));
   addMessageToHistory(myrole, msg);
 
   await createNewMessageEntry(msg, Date.now(), myrole);
@@ -964,6 +1115,9 @@ async function runRequest() {
     ...modelFields(),
     messages: [...conversationHistory, getcurrentIDECode()],
     stream: config.responseIsAStream,
+    // ask the server for what the site knows about itself; the practice page
+    // has its own interviewer prompt and does not
+    ...(onPracticePage() ? {} : { context: "chat" }),
   };
   const usedCaption = captionText();
   const thinking = chosenModel().reasoning && chosenEffort().id !== "none";

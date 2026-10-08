@@ -20,7 +20,7 @@ gotty:	asset ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: bindata/static/js/gotty-bundle.js bindata/static/js/chat-widget.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/admin.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta
+asset: bindata/static/js/gotty-bundle.js bindata/static/js/chat-widget.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/admin.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta bindata/knowledge
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	GO111MODULE=off $(GOROOT)/bin/gofmt -w server/asset.go
 
@@ -43,6 +43,10 @@ bindata/static/index.html: bindata/static resources/index.html resources/profile
 bindata/static/docs: bindata/static resources/docs
 	mkdir -p bindata/static/docs
 	cp -Rv resources/docs/* bindata/static/docs/
+
+bindata/knowledge: bindata resources/knowledge/*
+	mkdir -p bindata/knowledge
+	cp -Rv resources/knowledge/* bindata/knowledge/
 
 bindata/static/meta: bindata/static resources/meta/*
 	mkdir -p bindata/static/meta
@@ -115,7 +119,7 @@ jsconsole/build/static/js/jsconsole.js: jsconsole/node_modules/webpack $(JS_FILE
 bindata/static/js/jsconsole.js: jsconsole/build/static/js/jsconsole.js
 	cp jsconsole/build/static/js/jsconsole.js bindata/static/js/jsconsole.js
 
-CHAT_JS_FILES := $(wildcard resources/chat-widget/src/widget.*) $(wildcard resources/chat-widget/*.json) $(wildcard resources/chat-widget/*.js) resources/chat-widget/src/index.ts resources/chat-widget/src/openreplkeywords.ts
+CHAT_JS_FILES := $(wildcard resources/chat-widget/src/widget.*) $(wildcard resources/chat-widget/*.json) $(wildcard resources/chat-widget/*.js) resources/chat-widget/src/index.ts
 
 resources/chat-widget/dist/index.umd.js: $(CHAT_JS_FILES)
 	@echo "building chat-widget: "

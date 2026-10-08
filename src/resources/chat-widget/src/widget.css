@@ -750,3 +750,75 @@ body #chat-widget__container #chat-widget__input:focus-visible {
     animation: none;
   }
 }
+
+/* the note text behind "Used OpenREPL notes" */
+.chat-widget__context-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--cw-link);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.chat-widget__notes {
+  position: relative;
+  margin: 6px 0 2px;
+  padding: 6px 12px;
+  background: var(--cw-pop-bg);
+  border: 1px solid var(--cw-pop-border);
+  border-radius: 12px;
+  color: var(--cw-text);
+}
+.chat-widget__notes[hidden],
+.chat-widget__note-body[hidden] {
+  display: none;
+}
+.chat-widget__notes-close {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  background: none;
+  border: 0;
+  color: var(--cw-icon);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chat-widget__note + .chat-widget__note {
+  border-top: 1px solid var(--cw-border);
+}
+.chat-widget__note-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 22px 8px 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-weight: 500;
+  color: var(--cw-strong);
+  text-align: left;
+  cursor: pointer;
+}
+.chat-widget__note-head::before {
+  content: "▸";
+  color: var(--cw-muted);
+}
+.chat-widget__note-head[aria-expanded="true"]::before {
+  content: "▾";
+}
+.chat-widget__note-body {
+  padding: 0 0 8px 16px;
+  font-size: 13px;
+  color: var(--cw-text);
+}
+.chat-widget__note-text {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+.chat-widget__note-body a {
+  color: var(--cw-link);
+}

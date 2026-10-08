@@ -34,7 +34,7 @@ var Commands2memLimitMap = map[string]int64{
 	"node":          10,
 	"jq-repl":       2,
 	"tclsh":         2,
-	"java":          128, // jvm takes lot of memory
+	"java":          192, // jvm takes lot of memory: jshell, tuned (utils/interactive.go), peaks near 150 MB; Run uses javac and java
 	"evcxr":         50,  // rust REPL
 	"sqlite3":       10,
 	"ts-node":       50,

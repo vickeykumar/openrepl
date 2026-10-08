@@ -1201,7 +1201,7 @@ sleep 0.05
 
 	<Demo>
 		<Name>java</Name>
-		<Github>https://github.com/javaterminal/tryjshell</Github>
+		<Github>https://github.com/openjdk/jdk</Github>
 		<Doc>./docs/java.html</Doc>
 		<Codes>
 			<Code>
@@ -2331,7 +2331,7 @@ INSERT INTO Resources (language, title, documentation, github) VALUES
 ('Go', 'Go Interpreter Documentation', './docs/gointerpreter.html', 'https://github.com/vickeykumar/Go-interpreter'),
 ('jq', 'jq Manual', 'https://stedolan.github.io/jq/manual', 'https://github.com/vickeykumar/jq-repl'),
 ('Python', 'Python Documentation', './docs/python.html', ''),
-('Java', 'Java Documentation', './docs/java.html', 'https://github.com/javaterminal/tryjshell'),
+('Java', 'Java Documentation', './docs/java.html', 'https://github.com/openjdk/jdk'),
 ('Bash', 'Linux Command', 'http://linuxcommand.org/index.php', ''),
 ('Ruby', 'Ruby Quickstart', 'https://www.ruby-lang.org/en/documentation/quickstart/', ''),
 ('JavaScript', 'JavaScript Documentation', 'https://developer.mozilla.org/bm/docs/Web/JavaScript', 'https://github.com/vickeykumar/jsconsole'),

@@ -298,6 +298,21 @@ Sign in with an account listed in `OPENREPL_ADMIN_EMAILS` and open `/admin` (an 
 
 The design and the API behind it are in [LLD 13](docs/lld/13-admin-dashboard.md).
 
+# What Genie knows about the site
+
+Genie in the chat panel, and Ask Genie in the blog editor, can answer from the site's own notes so that they do not invent features. The notes are short Markdown files in [`src/resources/knowledge/`](src/resources/knowledge), one topic each, compiled into the binary; the blog posts are searched too, from the blog store. A note starts with a header:
+
+```
+---
+title: Sharing a live session
+keywords: share, send, link, friend, teammate
+link: /about.html
+---
+The text, 80 to 220 words, public.
+```
+
+The server picks the notes that match a question by words (no extra service or cost) and adds them to the request, and the chat panel shows which ones it used. To fix a missed question, add the word people used to the note's `keywords`, and rebuild. Keep to text that could be on a public page: notes are sent to the model. Details in [LLD 07](docs/lld/07-ai-features.md), section 3a.
+
 # Usage
 
 ```
@@ -409,11 +424,10 @@ OpenREPL is one Go binary (`bin/gotty`, a fork of GoTTY). The same binary does t
 2. **Starts a REPL for each browser terminal.** Each REPL runs as a child process on a pseudo-terminal (PTY), inside a lightweight container made of Linux namespaces and a cgroup v1 memory limit.
 3. **Streams the terminal over a WebSocket.** It relays PTY output to the browser (xterm.js) and keystrokes back to the REPL.
 
-Three external services sit around the core:
+Two external services sit around the core:
 
 - **Firebase:** Authentication (sign-in) and the Realtime Database (live sharing of a REPL, and Genie chat history).
 - **OpenAI:** reached only through a server-side proxy, for the *Genie* assistant and *Practice* question generation.
-- **tryjshell.org:** embedded in an iframe for interactive Java.
 
 ### System context
 
@@ -443,7 +457,6 @@ flowchart LR
     FAUTH["Firebase Auth"]
     FRTDB["Firebase Realtime DB"]
     OAI["OpenAI API"]
-    JSH["tryjshell.org"]
 
     UI -- "HTTPS" --> HTTP
     TERM -- "WSS (webtty protocol)" --> WS
@@ -456,7 +469,6 @@ flowchart LR
     UI -- "sign-in" --> FAUTH
     TERM -- "share / mirror" --> FRTDB
     CHAT -- "chat history" --> FRTDB
-    UI -. "iframe (Java)" .-> JSH
 ```
 
 ### Components
@@ -604,7 +616,7 @@ Only `apiKey`, `authDomain` and `projectId` are required, and fields that are no
 |---|---|---|---|
 | C / C++ | `/ws_c`, `/ws_cpp` | `cling` (C adds `-xc -noruntime`) | 22 |
 | Go / Go-yaegi | `/ws_go`, `/ws_yaegi` | `gointerpreter`, `yaegi` | 45, 10 |
-| Java | iframe to tryjshell.org; **Run** uses `/ws_java` | `java` (Run only) | 128 |
+| Java | `/ws_java`: a tuned single-JVM `jshell`; **Run** compiles the file | `jshell` (REPL), `javac` and `java` (Run) | 192 |
 | JavaScript | iframe to `jsconsole.html` (runs in the browser) | n/a | n/a |
 | TypeScript, NodeJS | `/ws_ts-node`, `/ws_node` | `ts-node`, `node` | 50, 10 |
 | Python, Python2.7, IPython3 | `/ws_python`, `/ws_python2.7`, `/ws_ipython3` | same names | 2, 2, 20 |

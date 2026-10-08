@@ -240,6 +240,7 @@ func EnableNetworking(pid int) {
 func GetCommandArgs(command string, argv []string, ppid int, params map[string][]string) (commandArgs []string) {
 	var commandlist []string
 	var commandpath string
+	var leadArgs []string // arguments that belong to the program itself, before the request's
 	var err error
 	if utils.Iscompiled(params) {
 		commandpath = BASH_PATH
@@ -248,12 +249,23 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 		if err != nil {
 			commandpath = command
 		}
+		// A language whose REPL is another program (java: jshell, with small
+		// memory limits): run that one. If it is not installed the command
+		// itself is run, as before.
+		if alt, ok := utils.InteractiveCommand(command); ok {
+			if p, lerr := exec.LookPath(alt[0]); lerr == nil {
+				commandpath, leadArgs = p, alt[1:]
+			} else {
+				log.Println("ERROR: the REPL program", alt[0], "of", command, "was not found:", lerr)
+			}
+		}
 		prefix := utils.GetPrefix(command)
 		if prefix != "" {
 			commandlist = append(commandlist, prefix) // add prefix before calling the command
 		}
 	}
 	commandlist = append(commandlist, commandpath)
+	commandlist = append(commandlist, leadArgs...)
 	commandlist = append(commandlist, argv...)
 	if utils.Iscompiled(params) {
 		filename := utils.GetIdeFileName(params)
