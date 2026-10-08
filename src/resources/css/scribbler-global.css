@@ -713,3 +713,17 @@ input[type=text],[type=email], select, textarea, email {
 }
 .notice__close:hover,
 .notice__close:focus-visible { background: rgba(0, 0, 0, 0.06); }
+.notice__action {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 5px 10px;
+  font: inherit;
+  font-weight: 600;
+  color: #2456B8;
+  background: transparent;
+  border: 1px solid rgba(36, 86, 184, 0.35);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.notice__action:hover,
+.notice__action:focus-visible { background: #E3EDFF; }

@@ -17,6 +17,13 @@
 </div>
 <div id="chat-widget__body">
   <!-- The messages_history div is placed here. -->
+  <!-- The practice coach, on the practice page only (index.ts: wireCoach). -->
+  <div id="chat-widget__coach" class="cw-coach" role="group" aria-label="Practice coach" hidden>
+    <span id="chat-widget__coach-count" class="cw-coach__count"></span>
+    <button type="button" data-coach="hint">Hint</button>
+    <button type="button" data-coach="review">Review my solution</button>
+    <button type="button" data-coach="complexity">Complexity</button>
+  </div>
   <form id="chat-widget__form">
     <label for="chat-widget__input" class="chat-widget__sr-only">Ask Genie</label>
     <div id="chat-widget__field">
@@ -28,6 +35,10 @@
         placeholder="Ask about your code"
         required></textarea>
       <div id="chat-widget__tools">
+        <div id="chat-widget__mode" class="cw-mode" role="group" aria-label="Mode" hidden>
+          <button type="button" data-mode="chat" aria-pressed="true">Chat</button>
+          <button type="button" data-mode="agent" aria-pressed="false">Agent</button>
+        </div>
         <button type="button" id="chat-widget__model-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="chat-widget__settings" title="Choose the model and how long it thinks">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10 M18 7h2 M4 17h2 M10 17h10 M14 5v4 M6 15v4"></path></svg>
           <span id="chat-widget__model-label"></span>
@@ -35,7 +46,8 @@
         </button>
         <span id="chat-widget__tools-spacer"></span>
         <button id="chat-widget__submit" type="submit" aria-label="Send">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14 M13 6l6 6-6 6"></path></svg>
+          <svg class="cw-submit__send" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14 M13 6l6 6-6 6"></path></svg>
+          <svg class="cw-submit__stop" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2.5"></rect></svg>
         </button>
       </div>
     </div>

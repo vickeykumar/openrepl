@@ -856,7 +856,9 @@
           contextTerminalLines: int(form.ctxTermLines.value), historyMessages: int(form.history.value),
           openRouterTimeoutSec: int(form.orTimeout.value),
           answerCaps: capsOf(models.map(function (m) { return [m.id, int(form.caps[m.id].value)]; })),
-          openRouterHosts: hostsOf(form.host1.value, form.host2.value) }
+          openRouterHosts: hostsOf(form.host1.value, form.host2.value),
+          agentDisabled: !form.agentOn.checked, agentOnPractice: form.agentPractice.checked,
+          agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value) }
       };
     }
     function int(v) { v = parseInt(v, 10); return isNaN(v) ? 0 : v; }
@@ -881,7 +883,9 @@
           contextTerminalLines: s.genie.contextTerminalLines || 0, historyMessages: s.genie.historyMessages || 0,
           openRouterTimeoutSec: s.genie.openRouterTimeoutSec || 0,
           answerCaps: capsOf(models.map(function (m) { return [m.id, (s.genie.answerCaps || {})[m.id] || 0]; })),
-          openRouterHosts: (s.genie.openRouterHosts || []).slice() } };
+          openRouterHosts: (s.genie.openRouterHosts || []).slice(),
+          agentDisabled: !!s.genie.agentDisabled, agentOnPractice: !!s.genie.agentOnPractice,
+          agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0 } };
     }
     function isDirty() { return !!form && !!form.ready && JSON.stringify(snapshot()) !== JSON.stringify(clean(saved)); }
 
@@ -900,6 +904,10 @@
       var maint = toggle('f-maint', settings.maintenance.enabled, 'Maintenance mode');
       var genie = toggle('f-genie', !settings.genie.disabled, 'Genie available');
       form.colour = colour.input; form.maint = maint.input; form.genie = genie.input;
+      // agent mode: on for signed-in users unless switched off here, and off on the practice page unless allowed
+      var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
+      var agentPractice = toggle('f-agent-practice', !!settings.genie.agentOnPractice, 'Agent mode on the practice page');
+      form.agentOn = agentOn.input; form.agentPractice = agentPractice.input;
 
       var swatch = h('span', { class: 'swatch', vars: { '--sw': colourOfTheDay() } });
       var ann = h('textarea', { id: 'f-ann', maxlength: '280', placeholder: 'Shown as a banner on every page. Leave empty for none.', 'aria-label': 'Announcement text', oninput: update });
@@ -943,6 +951,8 @@
       form.ctxTermChars = numberField('f-ctx-term-chars', 'contextTerminalChars', 'Characters of terminal output', defaults.contextTerminalChars, limits.contextTerminalChars || [200, 20000]);
       form.ctxTermLines = numberField('f-ctx-term-lines', 'contextTerminalLines', 'Lines of terminal output', defaults.contextTerminalLines, limits.contextTerminalLines || [1, 200]);
       form.history = numberField('f-history', 'historyMessages', 'Messages kept', defaults.historyMessages, limits.historyMessages || [6, 50]);
+      form.agentTasks = numberField('f-agent-tasks', 'agentTasksPerHour', 'Agent tasks per hour for each signed-in user', defaults.agentTasksPerHour || 20, limits.agentTasksPerHour || [1, 200]);
+      form.agentSteps = numberField('f-agent-steps', 'agentMaxSteps', 'Steps in an agent task', defaults.agentMaxSteps || 8, limits.agentMaxSteps || [1, 8]);
       form.orTimeout = numberField('f-or-timeout', 'openRouterTimeoutSec', 'OpenRouter time limit in seconds', defaults.openRouterTimeoutSec, limits.openRouterTimeoutSec || [10, 90]);
       var capRows = models.map(function (m) {
         var range = limits.answerCap || [500, 16000];
@@ -985,6 +995,8 @@
         preview.style.opacity = ann.value.trim() ? '1' : '0.5';
         maintMsg.disabled = !maint.input.checked;
         guest.disabled = user.disabled = !genie.input.checked;
+        // the agent's options only matter while it is on
+        agentPractice.input.disabled = form.agentTasks.disabled = form.agentSteps.disabled = !agentOn.input.checked;
         // the second host only matters when a first one is chosen, and is another one
         form.host2.disabled = !form.host1.value;
         Array.prototype.forEach.call(form.host2.options, function (o) { o.disabled = !!o.value && o.value === form.host1.value; });
@@ -1168,6 +1180,11 @@
           row('OpenRouter time limit', 'Seconds before Gemma\'s answer is given up on. Keep it under 90: the site\'s proxy gives up at about 100.', form.orTimeout),
           row('OpenRouter first host', 'Gemma is run by this host first.', form.host1),
           row('OpenRouter second host', 'Used only when the first cannot answer. No other host is ever used.', form.host2) ]),
+        card('Agent mode', 'Genie works on a task in steps: it writes in the editor and runs the code, after the user allowed each kind of action and reviewed the changes. Only signed-in users have it, and it is on unless you switch it off here. Each task costs a user one request, like a chat message, however many steps it has.', [
+          row('Agent mode', 'Shows the Chat | Agent switch in the Genie panel for signed-in users. Chat stays the default.', agentOn.node),
+          row('On the practice page', 'Off by default: the practice page is for solving questions with an interviewer.', agentPractice.node),
+          row('Tasks per hour', 'How many tasks a signed-in user may start in an hour (admins have no limit). Counted on this server and reset when it restarts.', form.agentTasks),
+          row('Steps per task', 'How many times Genie may answer in one task, at most 8.', form.agentSteps) ]),
         keysBox,
         adminsBox,
         bar);

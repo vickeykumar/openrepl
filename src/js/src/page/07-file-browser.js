@@ -17,6 +17,17 @@
 
   const disabled_ops = ["move_node"];   // disabled operations for restricted and hidden files
 
+  // the types a folder has in the tree (see "types" below)
+  const FOLDER_TYPES = ["default", "f-open", "f-closed"];
+
+  // The type the server is told for a node: "file", or "folder" for a folder
+  // whatever the tree calls it now. The server takes anything else for a file,
+  // so an opened folder ("f-open") was removed and copied as if it were one,
+  // which fails as soon as it has something in it.
+  function wireType(type) {
+    return type === "file" ? "file" : "folder";
+  }
+
   var lastreciever = "";  // last nodeid that recieved a write event
   var writecounter = 0;  // number of updates recievd by the selected node
   const MIN_WRITES = 10;  // minimum number of write events before we fetch the data again from server
@@ -346,6 +357,10 @@
             $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
           },
         },
+        // A folder is "default" until it is opened or closed in the tree, which
+        // makes it "f-open" or "f-closed" (for the icon). All three are folders:
+        // each may hold the others, or an opened folder could not be moved, and
+        // nothing could be moved into the home folder once it had been opened.
         "types": {
           "#": {
             "max_children": 1,
@@ -354,21 +369,23 @@
           },
           "root": {
             "icon" : "fa fa-folder",
-            "valid_children": ["default", "file"]
+            "valid_children": FOLDER_TYPES.concat(["file"])
           },
           "default": {
             "icon" : "fa fa-folder",
-            "valid_children": ["default", "file"]
+            "valid_children": FOLDER_TYPES.concat(["file"])
           },
           "file": {
             "icon" : "fa fa-file",
             "valid_children": []
           },
           'f-open' : {
-              'icon' : 'fa fa-folder-open'
+              'icon' : 'fa fa-folder-open',
+              "valid_children": FOLDER_TYPES.concat(["file"])
           },
           'f-closed' : {
-              'icon' : 'fa fa-folder'
+              'icon' : 'fa fa-folder',
+              "valid_children": FOLDER_TYPES.concat(["file"])
           },
         },
 
@@ -534,7 +551,7 @@
                           $.ajax({
                             url: preprocessurl("/ws_filebrowser"),
                             method: "POST",
-                            data: JSON.stringify({ Op: eventOp.Remove, Name: nodename, type: nodetype }),
+                            data: JSON.stringify({ Op: eventOp.Remove, Name: nodename, type: wireType(nodetype) }),
                             contentType: "application/json"
                           }).done(function(data) {
                             // Handle successful response
@@ -685,7 +702,7 @@
             $.ajax({
               url: preprocessurl("/ws_filebrowser"),
               method: "POST",
-              data: JSON.stringify({ Op: op, Name: oldnameid, type: data.node.type, NewName: newid }),
+              data: JSON.stringify({ Op: op, Name: oldnameid, type: wireType(data.node.type), NewName: newid }),
               contentType: "application/json"
             }).done(function(data) {
               // Handle successful response
@@ -718,7 +735,18 @@
               });
           }*/
           
-          if (newSelectedNodeId!==undefined && newSelectedNodeId!="") {
+          // The file the editor already holds is not read from the disk again. The
+          // tree is refreshed after a rename or a move (and its selection put back),
+          // and reading the file again then threw away what was typed since the last
+          // save: renaming any file wiped unsaved work in the open one.
+          var alreadyOpen = window["editor"] && window["editor"].env && window["editor"].env.filename &&
+            String(newSelectedNodeId) === String(window["editor"].env.filename);
+          if (newSelectedNodeId!==undefined && newSelectedNodeId!="" && alreadyOpen) {
+            applying_select = true;
+            thisbrowser.update({
+                selected_node: newSelectedNodeId
+            });
+          } else if (newSelectedNodeId!==undefined && newSelectedNodeId!="") {
               LoadSelectedNodeFromFile(newSelectedNodeId, function(){
                 // in case of failure deselect all to avoid confusion and refresh the tree
                 $('#file-browser').jstree(true).deselect_all(true);
@@ -776,6 +804,427 @@
   $(document).bind('context_show.vakata', function (reference, element, position) {
       $('.main-menu').addClass('expanded');
   });
+
+  // ---- FileBrowser: the Files panel as an API for Genie's agent mode --------------------
+  //
+  // The same tree and the same requests as the context menu, with paths relative to
+  // the home directory ("src/main.py"; "" is the home directory). Every call checks
+  // the path against the tree first, so only what the server listed can be named;
+  // and every call answers {ok, ...} instead of drawing a message. The agent mode
+  // (chat-widget/src/agent.ts) is the only caller.
+  (function () {
+    var POST_WAIT_MS = 2500;   // how long to wait for the page's own request after a paste or a move
+    var OPEN_WAIT_MS = 6000;   // how long a file may take to load into the editor
+    var MAX_LISTED = 200;
+
+    function tree() { return $('#file-browser').jstree(true); }
+    function home() { return window.homedir || ""; }
+    function idOf(rel) { return rel ? home() + "/" + rel : home(); }
+    function relOf(id) { return id === home() ? "" : String(id).slice(home().length + 1); }
+    function isFolder(node) { return node.type !== "file"; }
+    function isHidden(node) { return String(node.text || "").startsWith("."); }
+    function isProtected(node) { return !!(node.state && node.state.disabled); }
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function fail(error) { return { ok: false, error: error }; }
+
+    function ready() {
+      var t = tree();
+      return !!t && !!home() && !!t.get_node(home());
+    }
+
+    // post sends one of the page's file requests (the body is the one the context menu sends)
+    function post(body) {
+      return new Promise(function (resolve) {
+        $.ajax({
+          url: preprocessurl("/ws_filebrowser"),
+          method: "POST",
+          data: JSON.stringify(body),
+          contentType: "application/json"
+        }).done(function () {
+          resolve({ ok: true });
+        }).fail(function (xhr, status, error) {
+          resolve(fail(String(xhr.responseText || error || "the server refused it").trim().slice(0, 200)));
+        });
+      });
+    }
+
+    // For the operations the page performs itself in an event handler (paste, move):
+    // collects what the server answered to its requests while they ran.
+    function watchPosts() {
+      var seen = 0;
+      var errors = [];
+      function onDone(e, xhr, settings) {
+        var method = String(settings.type || settings.method || "").toUpperCase();
+        if (method !== "POST" || String(settings.url).indexOf("/ws_filebrowser") < 0) return;
+        seen++;
+        if (xhr.status >= 400) errors.push(String(xhr.responseText || xhr.statusText || "the server refused it").trim().slice(0, 200));
+      }
+      $(document).on("ajaxComplete.genieFiles", onDone);
+      return {
+        finish: function () {
+          return new Promise(function (resolve) {
+            var waited = 0;
+            (function poll() {
+              if (seen > 0 || waited >= POST_WAIT_MS) {
+                setTimeout(function () {
+                  $(document).off("ajaxComplete.genieFiles", onDone);
+                  resolve({ seen: seen, errors: errors });
+                }, 150);
+                return;
+              }
+              waited += 50;
+              setTimeout(poll, 50);
+            })();
+          });
+        }
+      };
+    }
+
+    // a node that an operation may work on: it has to be in the tree, and not the home directory
+    function target(rel, opts) {
+      opts = opts || {};
+      if (!ready()) return fail("the Files panel is not ready yet");
+      var node = tree().get_node(idOf(rel));
+      if (!node || (rel === "" && !opts.allowHome)) return fail((rel || "the home folder") + " is not in the Files panel");
+      if (opts.folder && !isFolder(node)) return fail(rel + " is a file, not a folder");
+      if (opts.file && isFolder(node)) return fail(rel + " is a folder, not a file");
+      if (opts.writable && (isProtected(node) || isHidden(node))) return fail(rel + " is a protected file (hidden or binary): it is not Genie's to change");
+      if (opts.notHidden && isHidden(node)) return fail(rel + " is a hidden file: it is not Genie's to change");
+      return { ok: true, node: node };
+    }
+
+    // ---- the file the editor holds --------------------------------------------------
+    // editor.env.filename is the path Run and Save use. When that file, or a folder
+    // it is in, is renamed or moved, three things have to hold: what was typed is
+    // saved first (the file is about to be found under another name), the editor is
+    // told the new path, and the tree, which is refreshed, shows it selected again.
+
+    function editorFile() {
+      var e = window["editor"];
+      return e && e.env ? String(e.env.filename || "") : "";
+    }
+    function setEditorFile(id) {
+      var e = window["editor"];
+      if (e && e.env) e.env.filename = id;
+    }
+    // id is the editor's file, or a folder that holds it
+    function holdsEditorFile(id) {
+      var f = editorFile();
+      return !!f && (f === id || f.indexOf(id + "/") === 0);
+    }
+    // oldId is now newId: the editor's file follows it
+    function retarget(oldId, newId) {
+      var f = editorFile();
+      if (f === oldId) setEditorFile(newId);
+      else if (f && f.indexOf(oldId + "/") === 0) setEditorFile(newId + f.slice(oldId.length));
+    }
+    async function saveEditorFile() {
+      var f = editorFile();
+      var t = tree();
+      if (!f || !t.get_node(f) || isFolder(t.get_node(f))) return { ok: true };
+      var w = watchPosts();
+      SaveSelectedNodeToFile(f);
+      var done = await w.finish();
+      if (done.errors.length) return fail("the open file could not be saved first: " + done.errors[0]);
+      if (!done.seen) return fail("the open file could not be saved first: the server did not answer");
+      return { ok: true };
+    }
+
+    // Reads the tree from the server again and waits for it: after a folder was
+    // renamed, moved or copied, what is inside it has paths the tree does not know.
+    function refreshTree() {
+      return new Promise(function (resolve) {
+        var over = false;
+        var finish = function () {
+          if (over) return;
+          over = true;
+          $('#file-browser').off("refresh.jstree.genieFiles");
+          resolve();
+        };
+        $('#file-browser').on("refresh.jstree.genieFiles", function () { setTimeout(finish, 60); });
+        setTimeout(finish, 4000);
+        tree().refresh();
+      });
+    }
+
+    // The editor's file is shown as the selected one, without reading it again.
+    function showEditorFile() {
+      var f = editorFile();
+      var t = tree();
+      if (!f || !t.get_node(f) || t.is_selected(f)) return;
+      t.deselect_all(true);
+      t.select_node(f, true);
+    }
+
+    function revealPanel() {
+      // the Files panel starts folded away on a wide page; show it so that the user sees the work
+      var panel = document.getElementById("files-panel");
+      var toggle = document.getElementById("files-toggle");
+      if (panel && toggle && panel.offsetParent === null) toggle.click();
+    }
+
+    function showNode(node) {
+      var t = tree();
+      try {
+        var parents = (node.parents || []).filter(function (p) { return p !== "#"; });
+        t.open_node(parents);
+        var el = t.get_node(node, true);
+        if (el && el.length && el[0].scrollIntoView) el[0].scrollIntoView({ block: "nearest" });
+      } catch (e) {
+        // showing it is not essential
+      }
+    }
+
+    window.FileBrowser = {
+      ready: ready,
+      home: home,
+      reveal: revealPanel,
+
+      // what a path is: {exists, type: "file" | "folder", protected (binary, or hidden), hidden}
+      info: function (rel) {
+        if (!ready()) return { exists: false };
+        var node = tree().get_node(idOf(rel));
+        if (!node) return { exists: false };
+        return { exists: true, type: isFolder(node) ? "folder" : "file", protected: isProtected(node), hidden: isHidden(node) };
+      },
+
+      // the file the editor is working on (its path), or ""
+      current: function () {
+        if (!ready()) return "";
+        var sel = tree().get_selected();
+        if (!sel.length) return "";
+        var node = tree().get_node(sel[0]);
+        return node && !isFolder(node) ? relOf(node.id) : "";
+      },
+
+      // "cut", "copy" or null: what a cut or a copy left in the panel
+      buffer: function () {
+        if (!ready()) return null;
+        var b = tree().get_buffer();
+        if (!b || !b.node || !b.node.length) return null;
+        return b.mode === "move_node" ? "cut" : "copy";
+      },
+
+      list: function (rel) {
+        var r = target(rel, { allowHome: true, folder: true });
+        if (!r.ok) return r;
+        revealPanel();
+        var t = tree();
+        var out = [];
+        var more = false;
+        (r.node.children_d || []).slice().sort().forEach(function (id) {
+          var node = t.get_node(id);
+          if (!node) return;
+          var path = relOf(id);
+          // hidden files and what is in a hidden folder are not listed
+          if (path.split("/").some(function (seg) { return seg.charAt(0) === "."; })) return;
+          if (out.length >= MAX_LISTED) { more = true; return; }
+          out.push(path + (isFolder(node) ? "/" : "") + (isProtected(node) ? "  (not editable)" : ""));
+        });
+        return { ok: true, entries: out, truncated: more };
+      },
+
+      open: async function (rel) {
+        var r = target(rel, { file: true });
+        if (!r.ok) return r;
+        if (isProtected(r.node) || isHidden(r.node)) return fail(rel + " cannot be opened in the editor (hidden or binary)");
+        revealPanel();
+        var t = tree();
+        var editor = window["editor"];
+        var filename = function () { return editor && editor.env ? editor.env.filename : ""; };
+        if (t.is_selected(r.node) && filename() === r.node.id) return { ok: true, detail: "it was open already" };
+        // what the editor holds belongs to the file that is open: save it first, as Run does
+        var cur = t.get_selected();
+        if (cur.length && t.get_node(cur[0]) && !isFolder(t.get_node(cur[0]))) {
+          SaveSelectedNodeToFile(cur[0]);
+          await sleep(400);
+        }
+        t.deselect_all(true);
+        t.select_node(r.node.id);
+        showNode(r.node);
+        var waited = 0;
+        while (filename() !== r.node.id && waited < OPEN_WAIT_MS) {
+          await sleep(100);
+          waited += 100;
+        }
+        if (filename() !== r.node.id) return fail(rel + " did not load into the editor");
+        return { ok: true };
+      },
+
+      create: async function (rel, kind) {
+        if (!ready()) return fail("the Files panel is not ready yet");
+        var at = rel.lastIndexOf("/");
+        var parentRel = at < 0 ? "" : rel.slice(0, at);
+        var name = at < 0 ? rel : rel.slice(at + 1);
+        var p = target(parentRel, { allowHome: true, folder: true });
+        if (!p.ok) return fail("the folder " + (parentRel || "the home folder") + " is not in the Files panel");
+        if (name.charAt(0) === ".") return fail("a name that starts with a dot is a hidden file: it is not Genie's to make");
+        var t = tree();
+        var id = idOf(rel);
+        if (t.get_node(id)) return fail(rel + " exists already");
+        revealPanel();
+        var made = t.create_node(p.node.id, { id: id, text: name, type: kind === "folder" ? "default" : "file" }, "last");
+        if (!made) return fail("the Files panel did not accept " + rel);
+        if (kind !== "folder") t.set_icon(id, filename2IconClass(name));
+        showNode(t.get_node(id));
+        var res = await post({ Op: eventOp.Create, Name: id, type: kind === "folder" ? "folder" : "file" }); // wireType's two words
+        if (!res.ok) {
+          t.refresh();
+          return res;
+        }
+        return { ok: true };
+      },
+
+      save: async function () {
+        var cur = window.FileBrowser.current();
+        if (!cur) return fail("no file is open: open one from the Files panel first");
+        var w = watchPosts();
+        SaveSelectedNodeToFile(idOf(cur));
+        var done = await w.finish();
+        if (done.errors.length) return fail(done.errors[0]);
+        if (!done.seen) return fail("the server did not answer");
+        return { ok: true, detail: "saved " + cur };
+      },
+
+      rename: async function (rel, newName) {
+        var r = target(rel, { writable: true });
+        if (!r.ok) return r;
+        if (newName.charAt(0) === ".") return fail("a name that starts with a dot is a hidden file: it is not Genie's to make");
+        var t = tree();
+        var node = r.node;
+        var oldid = node.id;
+        var newid = node.parent + "/" + newName;
+        var folder = isFolder(node);
+        if (t.get_node(newid)) return fail(newName + " exists already in that folder");
+        var mine = holdsEditorFile(oldid);
+        if (mine) {
+          var saved = await saveEditorFile();
+          if (!saved.ok) return saved;
+        }
+        revealPanel();
+        if (!t.rename_node(node, newName)) return fail("the Files panel did not accept the name " + newName);
+        if (!t.set_id(node.id, newid)) {
+          t.refresh();
+          return fail("the Files panel did not accept the name " + newName);
+        }
+        var res = await post({ Op: eventOp.Rename, Name: oldid, type: wireType(node.type), NewName: newid });
+        if (!res.ok) {
+          await refreshTree();
+          return res;
+        }
+        retarget(oldid, newid);
+        if (folder || mine) {
+          await refreshTree();
+          showEditorFile();
+        }
+        return { ok: true };
+      },
+
+      remove: async function (rel) {
+        var r = target(rel, { notHidden: true });
+        if (!r.ok) return r;
+        var t = tree();
+        var node = r.node;
+        var id = node.id;
+        var type = wireType(node.type);
+        var mine = holdsEditorFile(id);
+        revealPanel();
+        if (!t.delete_node(node)) return fail("the Files panel did not accept it");
+        var res = await post({ Op: eventOp.Remove, Name: id, type: type });
+        if (!res.ok) {
+          await refreshTree();
+          return res;
+        }
+        // the editor must not go on writing to a file that is gone
+        if (mine) setEditorFile("");
+        return { ok: true, detail: mine ? "the file that was open in the editor is gone with it; the editor still shows its text, which is in no file now" : undefined };
+      },
+
+      cut: function (rel) {
+        var r = target(rel, { writable: true });
+        if (!r.ok) return r;
+        revealPanel();
+        tree().cut(r.node);
+        showNode(r.node);
+        return { ok: true };
+      },
+
+      copy: function (rel) {
+        var r = target(rel, { writable: true });
+        if (!r.ok) return r;
+        revealPanel();
+        tree().copy(r.node);
+        showNode(r.node);
+        return { ok: true };
+      },
+
+      paste: async function (toRel) {
+        var dest = target(toRel, { allowHome: true, folder: true });
+        if (!dest.ok) return dest;
+        var t = tree();
+        var buf = t.get_buffer();
+        if (!buf || !buf.node || !buf.node.length) return fail("nothing is cut or copied: use files_cut or files_copy first");
+        var cut = buf.mode === "move_node";
+        var moved = buf.node.map(function (n) { return { from: n.id, to: dest.node.id + "/" + n.text }; });
+        var mine = cut && moved.some(function (m) { return holdsEditorFile(m.from); });
+        if (mine) {
+          var saved = await saveEditorFile();
+          if (!saved.ok) return saved;
+        }
+        revealPanel();
+        var w = watchPosts();
+        t.paste(dest.node);
+        var done = await w.finish();
+        if (done.errors.length) {
+          await refreshTree();
+          return fail(done.errors[0]);
+        }
+        if (!done.seen) return fail("nothing was pasted (the same folder, or a name that is taken there)");
+        if (cut) moved.forEach(function (m) { retarget(m.from, m.to); });
+        // what is inside a folder that was moved or copied has new paths
+        await refreshTree();
+        showEditorFile();
+        var shown = tree().get_node(dest.node.id);
+        if (shown) showNode(shown);
+        return { ok: true };
+      },
+
+      move: async function (rel, toRel) {
+        var r = target(rel, { writable: true });
+        if (!r.ok) return r;
+        var dest = target(toRel, { allowHome: true, folder: true });
+        if (!dest.ok) return dest;
+        if (r.node.parent === dest.node.id) return fail(rel + " is in that folder already");
+        if (dest.node.id === r.node.id || (dest.node.parents || []).indexOf(r.node.id) >= 0) return fail("a folder cannot be moved into itself");
+        if (tree().get_node(dest.node.id + "/" + r.node.text)) return fail("that folder has " + r.node.text + " already");
+        var oldid = r.node.id;
+        var newid = dest.node.id + "/" + r.node.text;
+        var mine = holdsEditorFile(oldid);
+        if (mine) {
+          var saved = await saveEditorFile();
+          if (!saved.ok) return saved;
+        }
+        revealPanel();
+        var w = watchPosts();
+        var ok = tree().move_node(r.node, dest.node);
+        var done = await w.finish();
+        if (!ok || !done.seen) {
+          await refreshTree();
+          return fail("the Files panel did not accept the move");
+        }
+        if (done.errors.length) {
+          await refreshTree();
+          return fail(done.errors[0]);
+        }
+        retarget(oldid, newid);
+        await refreshTree();
+        showEditorFile();
+        var shown = tree().get_node(dest.node.id);
+        if (shown) showNode(shown);
+        return { ok: true };
+      }
+    };
+  })();
 
   $(document).ready(function() {
     $('.main-menu').on('click focusin', function() {

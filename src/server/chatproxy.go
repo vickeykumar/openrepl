@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -230,6 +231,47 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         )
     	return
     }
+    // A request in agent mode (agent.go): signed-in users, within a task's steps
+    // and the hourly count. The first step of a task is the one that is charged.
+    isAdmin := IsUserAdmin(rw, req)
+    run, agentReq, aerr := agentStart(req, rawBody, isAdmin)
+    if aerr != nil {
+    	handleChatProxyError(rw, req, aerr.Status, aerr.response())
+    	return
+    }
+    succeeded := false
+    defer func() {
+    	if run != nil && !succeeded {
+    		agents.undo(run) // the model could not answer: give the step back
+    	}
+    }()
+    if run != nil {
+    	rawBody = agentReq
+    }
+    chargeable := run == nil || run.first
+
+    // A right-click action on selected code (action.go): the server writes the
+    // messages from the fields of the request.
+    if run == nil {
+    	actionBody, isAction, xerr := actionStart(req, rawBody)
+    	if xerr != nil {
+    		handleChatProxyError(rw, req, xerr.Status, xerr.response())
+    		return
+    	}
+    	if isAction {
+    		rawBody = actionBody
+    	}
+    	// the practice coach (coach.go), likewise
+    	coachBody, isCoach, cerr := coachStart(req, rawBody)
+    	if cerr != nil {
+    		handleChatProxyError(rw, req, cerr.Status, cerr.response())
+    		return
+    	}
+    	if isCoach {
+    		rawBody = coachBody
+    	}
+    }
+
     // A request from the Genie panel or the blog editor may ask for what the
     // site knows about itself (knowledge_proxy.go).
     rawBody, ctxResult := addKnowledge(rawBody, theKnowledge())
@@ -269,7 +311,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
     }
 
     var num_req_rem float64
-    if !IsUserAdmin(rw, req) {
+    if !isAdmin {
 	    //recharge,  no restriction for admin
 	    err = cookie.UpdateOpenApiRequestCountBalance(rw, req)
 	    if err!=nil {
@@ -277,7 +319,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 	    }
 	    num_req_rem = cookie.GetOpenApiRequestCount(req)
 	    log.Println("remaining request balance : ", num_req_rem)
-	    if num_req_rem <= 0 {
+	    if chargeable && num_req_rem <= 0 {
 	    	handleChatProxyError(rw, req, http.StatusTooManyRequests, 
 	        	NewErrorResponse(
 	        		"Number of Requests Exceeded for this user, please try again after sometimes. If you are a guest user, please login to get more Requests.",
@@ -345,7 +387,12 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !IsUserAdmin(rw, req) {
+	if resp.StatusCode < 400 {
+		succeeded = true
+	}
+	// A task whose first step the model could not answer is given back
+	// (the deferred undo above), so it is not charged either.
+	if chargeable && !isAdmin && (run == nil || succeeded) {
 		// roundtrip was success, decrease the request count by 1
 		cookie.SetOpenApiRequestCount(rw, req, num_req_rem-1)
 	}
@@ -357,9 +404,19 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         }
     }
     // what the answer was based on, when it was asked for
+    var exposed []string
     if h := ctxResult.header(); h != "" {
         rw.Header().Set(contextHeader, h)
-        rw.Header().Set("Access-Control-Expose-Headers", contextHeader)
+        exposed = append(exposed, contextHeader)
+    }
+    // the task and its step, for a request in agent mode
+    if run != nil {
+        rw.Header().Set(agentTaskHeader, run.token)
+        rw.Header().Set(agentStepHeader, fmt.Sprintf("%d/%d", run.step, run.max))
+        exposed = append(exposed, agentTaskHeader, agentStepHeader)
+    }
+    if len(exposed) > 0 {
+        rw.Header().Set("Access-Control-Expose-Headers", strings.Join(exposed, ", "))
     }
     // the upstream status as well, so that a refusal is not shown as a success
     rw.WriteHeader(resp.StatusCode)
