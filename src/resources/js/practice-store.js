@@ -14,13 +14,24 @@
  * after they happen, so the list follows them to other browsers. Signed out,
  * everything stays in this browser as it always has.
  *
+ * The starter questions (js/dsa.json: title, topic, level) are put in the same
+ * list the first time a page loads, and any added to the file later after that
+ * (seed). Each is an ordinary question with starter: true and the id s-<name>,
+ * so the pages that read the list directly find it. Its description and code
+ * are generated when it is first opened, as for any question. A starter is not
+ * counted in the 100 a visitor keeps, and is not sent to the account until it
+ * has a description or code of its own; only its done mark and a deletion are
+ * (practiceState). A starter that was deleted is not put back.
+ *
  * The bottom of the file handles the "New question" dialog on both pages.
  */
 (function () {
   "use strict";
 
   var QKEY = "questions", SKEY = "practiceState", LEGACY = "bookmarkedRows";
-  var MAX_QUESTIONS = 100;   // kept in the browser, newest first
+  var MAX_QUESTIONS = 100;   // generated questions kept in the browser, newest first (starters are not counted)
+  var CATALOG_URL = "/js/dsa.json";
+  var STARTER_FIRST = 1735689600000; // 1 Jan 2025: starters sort after anything generated, in the order of the file
   var MAX_STATES = 1000;     // done and deleted marks
   var URL = "/practice/progress";
 
@@ -39,6 +50,97 @@
     try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.warn("practice: couldn't save", key, e); }
   }
   function version(q) { return Math.max(+q.updated || 0, +q.added || 0); }
+
+  // ---- starter questions --------------------------------------------------------
+
+  function hasCode(q) {
+    var t = q.code_templates;
+    return !!t && typeof t === "object" && Object.keys(t).length > 0;
+  }
+  // a starter nobody has opened: it is the same on every device, so it is not sent
+  function untouched(q) { return !!q.starter && !q.description && !hasCode(q); }
+
+  // The oldest generated questions beyond MAX_QUESTIONS go, marked deleted so a
+  // sync does not bring them back. Starters stay; qs is oldest first.
+  function trimOwn(qs, st) {
+    var own = qs.filter(function (q) { return !q.starter; });
+    if (own.length <= MAX_QUESTIONS) return qs;
+    var gone = {};
+    own.slice(0, own.length - MAX_QUESTIONS).forEach(function (old) {
+      st[old.id] = { del: true, t: now() };
+      gone[old.id] = true;
+    });
+    return qs.filter(function (q) { return !gone[q.id]; });
+  }
+
+  var SMALL_WORDS = { a: 1, an: 1, and: 1, at: 1, by: 1, for: 1, from: 1, in: 1, of: 1, on: 1, or: 1, the: 1, to: 1, with: 1 };
+  var CAPS_WORDS = { ii: 1, iii: 1, iv: 1, lfu: 1, lru: 1, bst: 1, lis: 1 };
+
+  function hyphenate(title) {
+    return String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+
+  // "best-time-to-buy-and-sell-stock-ii" -> "Best Time to Buy and Sell Stock II"
+  function readable(title) {
+    title = String(title || "").trim();
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(title)) return title; // already written for people
+    return title.split("-").map(function (w, i) {
+      if (CAPS_WORDS[w] || /^[a-z]$/.test(w) || /^\d+d$/.test(w)) return w.toUpperCase();
+      if (i > 0 && SMALL_WORDS[w]) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    }).join(" ");
+  }
+
+  function starterOf(item, index, slug) {
+    return {
+      id: "s-" + slug,
+      name: readable(item.title),
+      nameHyphenated: slug,
+      topic: item.topic || "",
+      difficulty: item.difficulty || "",
+      description: null,
+      code_templates: {},
+      added: STARTER_FIRST - index,
+      starter: true,
+      delimeter: " Welcome to OpenREPL!! you can start coding here. "
+    };
+  }
+
+  var seeding = null;
+
+  // Puts the starters that are not in the list yet into it. Resolves to true
+  // when it added any. Safe to call again: it runs once a page.
+  function seed() {
+    if (seeding) return seeding;
+    if (!window.fetch) return (seeding = Promise.resolve(false));
+    seeding = fetch(CATALOG_URL, { credentials: "same-origin" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (items) {
+        if (!Array.isArray(items)) return false;
+        var st = rawState(), qs = rawQuestions(), have = {}, add = [];
+        qs.forEach(function (q) { have[q.nameHyphenated] = true; });
+        items.forEach(function (item, i) {
+          var slug = item && hyphenate(item.title);
+          if (!slug || have[slug]) return;            // already there, or the file lists it twice
+          have[slug] = true;
+          var gone = st["s-" + slug];
+          if (gone && gone.del) return;               // the visitor deleted it
+          add.push(starterOf(item, i, slug));
+        });
+        if (!add.length) return false;
+        save(qs.concat(add), st);
+        emit("seed");
+        return true;
+      })
+      .catch(function (e) {
+        console.warn("practice: couldn't load the starter questions", e);
+        return false;
+      });
+    return seeding;
+  }
 
   function rawQuestions() {
     var q = read(QKEY, []);
@@ -87,7 +189,7 @@
 
   function localDoc() {
     var questions = {};
-    rawQuestions().forEach(function (q) { questions[q.id] = q; });
+    rawQuestions().forEach(function (q) { if (!untouched(q)) questions[q.id] = q; });
     return { questions: questions, state: rawState() };
   }
 
@@ -108,10 +210,7 @@
     var qs = Object.keys(byId).map(function (id) { return byId[id]; })
       .filter(function (q) { return !(st[q.id] && st[q.id].del); })
       .sort(function (a, b) { return (+a.added || 0) - (+b.added || 0); });
-    if (qs.length > MAX_QUESTIONS) {
-      qs.slice(0, qs.length - MAX_QUESTIONS).forEach(function (q) { st[q.id] = { del: true, t: now() }; });
-      qs = qs.slice(-MAX_QUESTIONS);
-    }
+    qs = trimOwn(qs, st);
     save(qs, st);
     return JSON.stringify([qs, st]) !== before;
   }
@@ -201,6 +300,9 @@
 
   window.PracticeStore = {
     init: init,
+    seed: seed,
+    // resolves once the starter questions are in the list (or could not be loaded)
+    ready: function () { return seed(); },
     sync: push,
     status: function () { return status; },
     onChange: function (fn) { listeners.push(fn); },
@@ -236,11 +338,7 @@
       }
       q.updated = q.updated || q.added || now();
       qs.push(q);
-      if (qs.length > MAX_QUESTIONS) {
-        // the oldest ones go, marked deleted so a sync doesn't bring them back
-        qs.slice(0, qs.length - MAX_QUESTIONS).forEach(function (old) { st[old.id] = { del: true, t: now() }; });
-        qs = qs.slice(-MAX_QUESTIONS);
-      }
+      qs = trimOwn(qs, st); // the oldest generated ones go, marked deleted so a sync doesn't bring them back
       save(qs, st);
       changed("add");
       return { error: null, storedQuestions: qs };
@@ -265,6 +363,8 @@
       changed("remove");
     }
   };
+
+  seed();
 
   // ---- "New question" dialog ----------------------------------------------------
   // Both pages share #modal. Whoever adds or removes .show-modal, this moves

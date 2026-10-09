@@ -166,7 +166,7 @@
       <ul class="menu" id="home_menu">
         <li class="menu__item toggle"><button type="button" class="toggle__button" aria-label="Menu" aria-expanded="false"><span></span></button></li>
         <li class="menu__item"><a href="#languages" target="_self" class="link link--dark">Languages</a></li>
-        <li class="menu__item" id="practice_dsa"><a href="/practice/dsa-questions" class="link link--dark">Practice</a></li>
+        <li class="menu__item" id="practice_dsa"><a href="/practice/dsa-questions" class="link link--dark">Practice DSA</a></li>
         <li class="menu__item"><a href="/doc.html" class="link link--dark">Docs</a></li>
         <li class="menu__item"><a href="/blog" class="link link--dark">Blog</a></li>
         <li class="menu__item"><a href="#request" target="_self" class="link link--dark" data-contact>Contact</a></li>
@@ -614,9 +614,9 @@ Breakpoint 1, main () at main.c:5
               </div>
             </div>
             <div class="bento-card bento-card--half">
-              <h3>Practice for interviews</h3>
-              <p>Generate a DSA problem by topic and difficulty, with starter code in your language.</p>
-              <a class="section-link" href="/practice/dsa-questions">Open practice</a>
+              <h3>Prepare for coding interviews</h3>
+              <p>300+ DSA problems to start with, or generate your own by topic and level. A Genie coach gives hints, reviews your solution and states its complexity, and never just hands you the answer.</p>
+              <a class="section-link" href="/practice/dsa-questions">Start practising</a>
             </div>
             <div class="bento-card bento-card--half">
               <h3>Files that stay with you</h3>
@@ -677,6 +677,7 @@ Breakpoint 1, main () at main.c:5
           <div class="faq-item"><h3>Can I keep Genie open beside my code?</h3><p>Yes. Press the pin in Genie's header and it docks at the right of the workspace, like a side bar, with the editor stacked over the terminal. Drag its left edge to resize it. Press the pin again to let it float. It needs a window at least 1100 pixels wide.</p></div>
           <div class="faq-item"><h3>Does Genie keep working if I close its panel?</h3><p>Yes. An answer or an Agent task carries on while the panel is closed. The Ask Genie button shows that Genie is working, a green dot when the result is ready, and an amber dot when Genie needs your answer. Open the panel to see it, or to press Stop.</p></div>
           <div class="faq-item"><h3>Can Genie explain or fix just part of my code?</h3><p>Yes. Select the code in the editor and right-click it: Explain, Fix problems, Add comments or Write tests. Changes show as a diff you accept or reject.</p></div>
+          <div class="faq-item"><h3>Does OpenREPL have DSA practice questions?</h3><p>Yes. Practice DSA opens with 300+ problems by topic and level. Tick them off as you go, delete the ones you don't want, or press New question to generate more by topic and difficulty. Your progress is saved in your browser, and in your account when you are signed in.</p></div>
           <div class="faq-item"><h3>Can Genie help me practise without giving the answer?</h3><p>Yes. On the Practice page the coach gives up to three hints per question, reviews your solution and states its complexity, and never writes the code for you.</p></div>
           <div class="faq-item"><h3>Can Genie manage my files?</h3><p>Yes, in Agent mode. It can open a file in the editor, create, copy, move, rename and delete files and folders in your Files panel. Renaming, moving and deleting are asked about every time.</p></div>
           <div class="faq-item"><h3>Why does Debug start paused?</h3><p>On some servers programs cannot be traced the usual way, so Debug runs yours under QEMU and gdb connects to it. It waits at the first instruction: set your breakpoints, then type c or run. Ctrl+C stops it again.</p></div>
@@ -782,6 +783,7 @@ Breakpoint 1, main () at main.c:5
     </script>
     <script src="./js/model-choice.js"></script>
     <script src="./js/common.js"></script>
+    <script src="./js/question-loader.js"></script>
     <script src="./js/practice-store.js"></script>
     <script src="./js/palette.js"></script>
     <script src="./js/gotty-bundle.js"></script>
@@ -881,6 +883,19 @@ Breakpoint 1, main () at main.c:5
           $(document).ready(function() {
             // topic suggestions, focus and Esc for the dialog: js/practice-store.js (T17)
 
+            // Writes the question in the editor: its description, and the starter for the language when there is one.
+            // A description that is not there (yet) says so, instead of "null".
+            function showQuestionInEditor(question, selectedLanguage, language_template) {
+              const header = question.name+"\n\nDifficulty Level: "+ question.difficulty+ "\n\nProblem Description:\n"+
+                (question.description || "(The description is not loaded yet. Pick the language again, or reload the page, to try again.)");
+              if (language_template) {
+                updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+header+"\n"+language_template.multiline_comment_end+"\n"+
+                  language_template.multiline_comment_start+"\n"+question.delimeter+"\n"+language_template.multiline_comment_end+"\n"+language_template.template+"\n\n\n\n", true);
+              } else {
+                updateEditorContent(selectedLanguage, "/*\n"+header+"\n*/\n\n\n\n", true);
+              }
+            }
+
             function fetchLanguageTmplAndSetEditorcode(nameHyphenated, selectedLanguage) {
               // Fetch stored questions
               let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
@@ -890,31 +905,34 @@ Breakpoint 1, main () at main.c:5
 
               if (!newQuestion) {
                   console.error("Question not found: ", nameHyphenated);
+                  QuestionLoader.hide();
                   notify("Click New question to create one.", { type: "info", title: "Question not found" })
                   return null;
               }
 
-              // Call getCodeTemplate to fetch the missing template
-              getCodeTemplate(nameHyphenated, selectedLanguage, {temperature: globaltemperature})
-                  .then((language_template) => {
-                      if (!newQuestion.description) {
-                        // see if the description got updated by gen codetmpl function
-                        storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-                        newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenated);
-                      }
-                      if (language_template) {
-                          updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+
-                            newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+
-                            language_template.multiline_comment_start+"\n"+newQuestion.delimeter+"\n"+language_template.multiline_comment_end+"\n"+language_template.template+"\n\n\n\n", true);
-                      } else {
-                          console.error("Failed to fetch code template for:", selectedLanguage);
-                          updateEditorContent(selectedLanguage, "/*\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n*/\n\n\n\n", true);
-                      }
-                  })
-                  .catch((error) => {
-                      console.error("Error fetching code template:", error);
-                      updateEditorContent(selectedLanguage, "/*\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n*/\n\n\n\n", true);
-                  });
+              // the question as it is now: getCodeTemplate saves the description it gets
+              const latest = () => (JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || []).find(q => q.nameHyphenated === nameHyphenated) || newQuestion;
+
+              // already there: nothing to wait for
+              if (newQuestion.description && newQuestion.code_templates && newQuestion.code_templates[selectedLanguage]) {
+                QuestionLoader.hide();
+                showQuestionInEditor(newQuestion, selectedLanguage, newQuestion.code_templates[selectedLanguage]);
+                return;
+              }
+
+              // Genie writes the missing parts. The editor is covered by a card that says so until they are there; if it
+              // fails or takes too long, the card says why and the editor gets the question without the starter code.
+              // the model that writes it is the one chosen in Genie's model menu (js/model-choice.js)
+              const choice = window.ModelChoice ? ModelChoice.get() : null;
+              const model = choice ? (ModelChoice.models.find(m => m.id === choice.model) || {}).name : "";
+              QuestionLoader.load({
+                title: newQuestion.name,
+                language: selectedLanguage,
+                model: model,
+                work: (signal) => getCodeTemplate(nameHyphenated, selectedLanguage, {temperature: globaltemperature, signal: signal}),
+                onReady: (language_template) => showQuestionInEditor(latest(), selectedLanguage, language_template),
+                onGiveUp: () => showQuestionInEditor(latest(), selectedLanguage, null)
+              });
             }
 
             // Get URL query parameters
@@ -1022,7 +1040,17 @@ Breakpoint 1, main () at main.c:5
                     loadnewquestion();
                     lastSelectedLanguage = $("#optionlist option:selected").text();
                 });
-                setTimeout(loadnewquestion, 4000);
+                // The card is up from the start: the question is fetched a few seconds in, when the editor has settled
+                // (the language's demo text is written first and must not replace it). One that is already here, with
+                // its starter for this language, is not waited for.
+                (function () {
+                  const have = (JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || []).find(q => q.nameHyphenated === nameHyphenatedlatest);
+                  const language = $("#optionlist option:selected").text();
+                  const ready = have && have.description && have.code_templates && have.code_templates[language];
+                  if (nameHyphenatedlatest && !ready) QuestionLoader.waiting("Getting your question ready\u2026");
+                })();
+                // the starter questions are put in the list first (js/practice-store.js), so that a link to one finds it
+                setTimeout(function () { PracticeStore.ready().then(loadnewquestion, loadnewquestion); }, 4000);
             }
 
             // Modal

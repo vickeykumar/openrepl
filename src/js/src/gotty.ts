@@ -2,6 +2,7 @@ import { Xterm } from "./xterm";
 import { Terminal, WebTTY, protocols, jidHandler, Icallback, WebTTYFactory, IdeLangKey, IdeContentKey, IdeFileNameKey, CompilerOptionKey, CompilerFlagsKey, EnvFlagsKey, CloserArgs} from "./webtty";
 import { ConnectionFactory } from "./websocket";
 import { FireTTY, DisableShareBtn } from "./firetty";
+import { shareIdFrom } from "./share-id";
 
 const option2args = {
             "c":"arg=-xc&arg=-noruntime",
@@ -19,13 +20,11 @@ export interface CustomHTMLElement extends HTMLElement {
     isprimary: boolean; // if this corressponds to primary terminal tab element
 }
 
+// the share id this page was opened with, read once (share-id.ts): an anchor clicked later is not a new session
+const shareId = shareIdFrom(window.location.hash);
+
 function isMaster() : boolean {
-    var hash = window.location.hash.replace(/#/g, '');
-    if (!hash) {
-        return true;
-    } else {
-        return false;
-    }
+    return shareId === "";
 }
 
 function handleTerminalOptions(elem, option, event="optionchange") {

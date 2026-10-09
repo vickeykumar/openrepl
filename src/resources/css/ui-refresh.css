@@ -925,6 +925,63 @@ body.files-collapsed .files-panel { display: none; }
   min-height: 0;
 }
 .editor-body #loader { border-color: var(--ink-700); border-top-color: var(--accent-color); }
+
+/* The question of the practice editor while Genie writes it, and what went
+   wrong when it could not (js/question-loader.js). It covers the editor. */
+.q-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(11, 11, 15, 0.94);
+}
+.q-loading[hidden] { display: none; }
+.q-loading__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 380px;
+  text-align: center;
+  color: var(--paper);
+}
+.q-loading__ring {
+  width: 34px;
+  height: 34px;
+  box-sizing: border-box;
+  border: 3px solid var(--ink-700);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: q-loading-spin 0.9s linear infinite;
+}
+.q-loading[data-state="failed"] .q-loading__ring { display: none; }
+.q-loading__title { margin: 4px 0 0; font-size: 16px; font-weight: 600; color: var(--paper); }
+.q-loading__text { margin: 0; font-size: 14px; line-height: 1.5; color: #B9B7C4; }
+.q-loading__text:empty { display: none; }
+.q-loading__hint { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted-2, #8C8A98); }
+.q-loading__hint[hidden],
+.q-loading__btn[hidden] { display: none; }
+.q-loading__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
+.q-loading__btn {
+  min-height: 36px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--paper);
+  background: transparent;
+  border: 1px solid var(--ink-500);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.q-loading__btn:hover { background: var(--ink-700); }
+.q-loading__btn:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.q-loading__btn--primary { color: var(--on-accent-color, #15151C); background: var(--accent-color); border-color: var(--accent-color); font-weight: 600; }
+.q-loading__btn--primary:hover { background: var(--accent-color); filter: brightness(1.08); }
+@keyframes q-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .q-loading__ring { animation-duration: 3s; } }
 .editor-status {
   display: flex;
   align-items: center;
@@ -2970,6 +3027,52 @@ body.palette-open { overflow: hidden; }
 }
 .practice-filter--sort { margin-left: auto; }
 .practice-count { margin: 18px 0 10px; font-size: 14px; color: var(--text-2); }
+
+/* One page of the list at a time: rows per page, the range, and the pages. */
+.q-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 14px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.q-pager[hidden] { display: none; }
+.q-pager__size { display: flex; align-items: center; gap: 8px; }
+.practice-page .q-pager__size select {
+  min-width: 0;
+  width: auto;
+  padding-right: 28px;
+}
+.q-pager__range { margin: 0; }
+.q-pager__pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.q-page {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.q-page:hover:not(:disabled) { border-color: var(--text-2); }
+.q-page:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.q-page.is-current { color: var(--on-accent-color, #15151C); background: var(--accent-color); border-color: var(--accent-color); font-weight: 600; }
+.q-page:disabled { opacity: 0.4; cursor: default; }
+.q-page-gap { padding: 0 4px; color: var(--text-2); }
+@media screen and (max-width: 700px) {
+  .q-pager__pages { margin-left: 0; width: 100%; }
+}
 
 .q-table {
   width: 100%;

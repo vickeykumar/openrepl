@@ -51,8 +51,34 @@ function fetchEditorContent(): string {
     return "";
 }
 
+// Who said a message in a peer chat: the name the others see, and whether it is this person.
+type PeerSpeaker = { name: string; mine: boolean };
+
 let chatfirebasedbref: firebase.database.Reference | null = null;
-const UID = generateFiveCharUUID();
+// The id of this person in peer chat (and in the questions they send Genie): five
+// characters, one for each browser: every tab and every visit of it is the same
+// person, so the name the others see does not change. Where storage is blocked
+// it is new on each load.
+function peerId(): string {
+  try {
+    const kept = localStorage.getItem("genie-peer-id");
+    if (kept && /^[0-9a-f]{5}$/.test(kept)) return kept;
+  } catch (e) {
+    // a new one below
+  }
+  const id = generateFiveCharUUID();
+  try {
+    localStorage.setItem("genie-peer-id", id);
+  } catch (e) {
+    // not kept
+  }
+  return id;
+}
+const UID = peerId();
+// This tab. Two tabs of one browser are one person, but each has to be told what the other one said.
+const TAB = generateFiveCharUUID();
+// what the others in a peer chat call this person
+const peerName = (uid: string) => "user-" + uid;
 let peerchatmode: boolean = false;
 
 export type WidgetConfig = {
@@ -275,18 +301,42 @@ function addMessageToHistory(role: string, content: string, uid: string=UID): vo
   }
 }
 
+// A page is a viewer only when it was opened with a share link, /#<Firebase push key>.
+// An anchor of the page (#languages, #workspace) is not one. The same pattern is in
+// js/src/share-id.ts, which has the reasons; test/share-id.test.ts compares the two.
+// Read once: clicking an anchor later changes the hash, not the session.
+const SHARE_ID_PATTERN = /^-[A-Za-z0-9_-]{12,30}$/;
+const sharedSession = SHARE_ID_PATTERN.test(window.location.hash.replace(/^#/, ""));
+
 function isMaster() : boolean {
-    var hash = window.location.hash.replace(/#/g, '');
-    if (!hash) {
-        return true;
-    } else {
-        return false;
-    }
+    return !sharedSession;
 }
+
+// A viewer going away says so. The page may be gone before it is sent, so it is
+// tried on pagehide (which browsers still run) as well as on unload, once; a page
+// that comes back from the back/forward cache joins again (pageshow).
+let toldLeft = false;
+function sayLeft() {
+  if (toldLeft || !sharedSession || !chatfirebasedbref) return;
+  toldLeft = true;
+  try {
+    chatfirebasedbref.push({ eventT: "leave", uid: UID, tab: TAB, name: peerName(UID), timestamp: Date.now() });
+  } catch (e) {
+    // nobody to tell
+  }
+}
+window.addEventListener("pagehide", sayLeft);
+window.addEventListener("pageshow", (e: PageTransitionEvent) => {
+  if (!e.persisted || !toldLeft || !sharedSession || !chatfirebasedbref) return;
+  toldLeft = false;
+  chatfirebasedbref.push({ eventT: "join", uid: UID, tab: TAB, name: peerName(UID), timestamp: Date.now() });
+});
 
 let cleanup = () => {
   if (isMaster() && chatfirebasedbref) {
     chatfirebasedbref.remove();
+  } else {
+    sayLeft();
   }
   console.log("cleanup done.");
 };
@@ -301,6 +351,13 @@ let peerchatSwitchlistener = (e: Event) => {
       console.log('PeerChat switch is OFF');
       peerchatmode=false;
     }
+// A page is a viewer only when it was opened with a share link, /#<Firebase push key>.
+// An anchor of the page (#languages, #workspace) is not one. The same pattern is in
+// js/src/share-id.ts, which has the reasons; test/share-id.test.ts compares the two.
+// Read once: clicking an anchor later changes the hash, not the session.
+const SHARE_ID_PATTERN = /^-[A-Za-z0-9_-]{12,30}$/;
+const sharedSession = SHARE_ID_PATTERN.test(window.location.hash.replace(/^#/, ""));
+
     refreshChip();
     if (chatfirebasedbref) {
       // push event to firebase db
@@ -308,8 +365,11 @@ let peerchatSwitchlistener = (e: Event) => {
            eventT: "peerchatmode",
            val: peerchatmode,
            uid: UID,
+           tab: TAB,
+           name: peerName(UID),
       });
     }
+    if (peerchatmode) peerNote(`Peer chat is on. You are ${peerName(UID)}.`);
   } else {
     console.error("peerchatSwitchlistener: an unexpected error occurred: null element.");
   }
@@ -330,24 +390,42 @@ const setupFBListener = () => {
         return;
       }
       let d = data.val();
-      if (d.uid==UID) {
+      // what this very tab sent is already on its screen (an older page sends no tab: then by person)
+      if (d.tab ? d.tab === TAB : d.uid == UID) {
         console.log("chat event triggered by me only, skipping..");
+        return;
+      }
+      const me = d.uid == UID; // another tab of this browser: the same person
+      if (d.eventT === "join" || d.eventT === "leave") {
+        if (me) return; // not news
+        peerNote(`${d.name || peerName(d.uid)} ${d.eventT === "join" ? "joined" : "left"} the chat`, d.timestamp);
         return;
       }
       if (d.eventT && d.eventT=="peerchatmode") {
         console.log("received an peerchatmode event: ", d);
         // its a event message
         peerchatmode=d.val;
+        if (!me) peerNote(`${d.name || peerName(d.uid)} turned peer chat ${d.val ? "on" : "off"}`, d.timestamp);
         refreshChip();
         const peerchatSwitchElem = document.getElementById("peerchat-switch") as HTMLInputElement;
         if (peerchatSwitchElem) {
           peerchatSwitchElem.checked=peerchatmode;
         }
       } else {
-        createNewMessageEntry(d.message, d.timestamp, d.from, true);
+        // a message typed in a peer chat has the sender's name; the rest (what the owner asked Genie, and its answers) is shown as it was
+        const speaker: PeerSpeaker | null = d.peer ? { name: d.name || peerName(d.uid), mine: me } : null;
+        createNewMessageEntry(d.message, d.timestamp, d.from, true, "", null, speaker);
         addMessageToHistory(d.from, d.message, d.uid); // remote uid needed here as its not my chat
       }
     });
+    // A viewer who opened a share link joins the chat: the others are told, and
+    // the viewer is told who they are. The owner is in it from the start, and
+    // says so with the first message. (Nothing is written for a page that
+    // nobody shares: that would leave an entry behind for every visit.)
+    if (sharedSession) {
+      peerNote(`You joined the chat as ${peerName(UID)}.`);
+      chatfirebasedbref.push({ eventT: "join", uid: UID, tab: TAB, name: peerName(UID), timestamp: Date.now() });
+    }
   } catch(error) {
     console.error("Error setup firebase handle: ", error);
   }
@@ -1749,13 +1827,17 @@ async function createNewMessageEntry(
   from: "system" | "user",
   skipdbpush: boolean = false,
   meta: string = "",
-  used: ContextNote[] | null = null
+  used: ContextNote[] | null = null,
+  peer: PeerSpeaker | null = null
 ) {
   message = message.trim();
   //console.log("message: ", message)
   if (!skipdbpush && chatfirebasedbref) {
     // push to firebase db first
     chatfirebasedbref.push ({
+         // a message typed in a peer chat says so, and who from, so that the others can show the name
+         ...(peer && peer.mine ? { peer: true, name: peerName(UID) } : {}),
+         tab: TAB,
          message: message,
          timestamp: timestamp,
          from: from,
@@ -1764,10 +1846,21 @@ async function createNewMessageEntry(
   }
   
 
+  // In a peer chat what is on screen depends on who is looking, not on who owns
+  // the session: your own messages are the bubble on the right, everybody
+  // else's are on the left under their name.
+  const shown: "system" | "user" = peer ? (peer.mine ? "user" : "system") : from;
   const messageElement = document.createElement("div");
   messageElement.classList.add("chat-widget__message");
-  messageElement.classList.add(`chat-widget__message--${from}`);
-  messageElement.id = `chat-widget__message--${from}--${timestamp}`;
+  messageElement.classList.add(`chat-widget__message--${shown}`);
+  messageElement.id = `chat-widget__message--${shown}--${timestamp}`;
+  if (peer) {
+    messageElement.classList.add("chat-widget__message--peer");
+    const who = document.createElement("p");
+    who.classList.add("chat-widget__peer-name");
+    who.textContent = peer.mine ? `You · ${peer.name}` : peer.name;
+    messageElement.appendChild(who);
+  }
 
   const messageText = document.createElement("div");
   messageText.classList.add("chat-widget__message-text");
@@ -1796,6 +1889,17 @@ async function createNewMessageEntry(
   messageElement.appendChild(messageTimestamp);
 
   messagesHistory.prepend(messageElement);
+}
+
+// A small line in the conversation that is not a message: someone joined or left
+// the peer chat, turned it on or off.
+function peerNote(text: string, timestamp: number = Date.now()) {
+  const note = document.createElement("div");
+  note.classList.add("chat-widget__peer-note");
+  note.setAttribute("role", "status");
+  note.id = `chat-widget__peer-note--${timestamp}-${messagesHistory.children.length}`;
+  note.textContent = text;
+  messagesHistory.prepend(note);
 }
 
 const handleErrorResponse = async (errData: any) => {
@@ -1987,7 +2091,7 @@ async function submit(e: Event) {
   }
   addMessageToHistory(myrole, msg);
 
-  await createNewMessageEntry(msg, Date.now(), myrole);
+  await createNewMessageEntry(msg, Date.now(), myrole, false, "", null, peerchatmode ? { name: peerName(UID), mine: true } : null);
   target.reset();
   autoGrow((target.elements as any).message as HTMLTextAreaElement);
   if (peerchatmode) {

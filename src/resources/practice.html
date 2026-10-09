@@ -39,7 +39,7 @@
       <ul class="menu">
         <li class="menu__item toggle"><button type="button" class="toggle__button" aria-label="Menu" aria-expanded="false"><span></span></button></li>
         <li class="menu__item"><a href="/#languages" class="link link--dark">Languages</a></li>
-        <li class="menu__item"><a href="/practice/dsa-questions" class="link link--dark" aria-current="page">Practice</a></li>
+        <li class="menu__item"><a href="/practice/dsa-questions" class="link link--dark" aria-current="page">Practice DSA</a></li>
         <li class="menu__item"><a href="/doc.html" class="link link--dark">Docs</a></li>
         <li class="menu__item"><a href="/blog" class="link link--dark">Blog</a></li>
         <li class="menu__item"><a href="/#request" class="link link--dark">Contact</a></li>
@@ -53,7 +53,7 @@
         <div class="practice-hero__copy">
           <p class="hero__eyebrow"><span class="hero__dot" aria-hidden="true"></span>Practice</p>
           <h1 class="practice-hero__title">Coding interview practice</h1>
-          <p class="practice-hero__blurb">Generate a question on any topic, solve it in the editor next to a live REPL, and tick it off when it passes.</p>
+          <p class="practice-hero__blurb">Work through 300+ DSA problems, or generate your own on any topic. Solve it in the editor next to a live REPL, and tick it off when it passes.</p>
           <div class="hero__actions">
             <button type="button" class="hero__cta" id="newQuestionBtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14 M5 12h14"></path></svg>New question</button>
             <button type="button" class="hero__secondary" id="randomQuestionBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5 M4 20L21 3 M21 16v5h-5 M15 15l6 6 M4 4l5 5"></path></svg>Random question</button>
@@ -131,10 +131,23 @@
           </thead>
           <tbody id="q-body"></tbody>
         </table>
+        <nav class="q-pager" id="q-pager" aria-label="Pages of questions" hidden>
+          <div class="q-pager__size">
+            <label for="f-size">Rows per page</label>
+            <select id="f-size">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="40">40</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <p class="q-pager__range" id="q-range" aria-live="polite"></p>
+          <div class="q-pager__pages" id="q-pages"></div>
+        </nav>
 
         <div class="q-empty" id="q-empty" hidden>
-          <p class="q-empty__title">No questions yet</p>
-          <p class="q-empty__text">Pick a topic and a level, and AI writes a fresh question with starter code in C, C++, Go and Python.</p>
+          <p class="q-empty__title">No questions here</p>
+          <p class="q-empty__text">The starter questions could not be loaded, or you deleted them all. Pick a topic and a level, and AI writes a fresh question with starter code in C, C++, Go and Python.</p>
           <button type="button" class="q-empty__btn" id="q-empty-new">Generate your first question</button>
         </div>
         <div class="q-empty" id="q-nomatch" hidden>

@@ -51,7 +51,7 @@ Go code uses a GOPATH layout: the repo root is `GOPATH`, packages live under `sr
 
 - **REPL**: an interactive interpreter (Read-Eval-Print Loop), for example `cling` or `python`.
 - **Master / slave (webtty)**: the *master* is the browser WebSocket; the *slave* is the PTY-backed process.
-- **Master / slave (sharing)**: the *master* browser owns the real WebSocket session; a *slave* browser opened `…/#<dbpath>` and mirrors it through Firebase.
+- **Master / slave (sharing)**: the *master* browser owns the real WebSocket session; a *slave* browser opened `…/#<dbpath>` (a Firebase push key; any other `#anchor` is just an anchor) and mirrors it through Firebase.
 - **jid**: an encoded PID of a running REPL (`encoder.EncodePID`). Used by **Fork REPL** and by extra terminal tabs to join that REPL's namespaces.
 - **optionchange / optionrun / optiondebug**: DOM events on a terminal element. They mean, respectively: switch language (start a fresh REPL), run the editor content, and run it in debug mode.
 - **Demo**: an entry in `demos.xml` describing one REPL (animation, usage, docs, starter code, Compiler script).

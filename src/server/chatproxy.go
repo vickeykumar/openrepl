@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"context"
 	"fmt"
 	"log"
@@ -63,6 +64,94 @@ func modelUnavailable(rw http.ResponseWriter, req *http.Request, model chatModel
 			"",
 		),
 	)
+}
+
+// modelAnswerEmpty tells the visitor that the model answered with nothing in
+// it, and why as far as the reply says. It has the type of an unavailable model,
+// so the Genie panel offers a retry and another model, and the code
+// "model_empty" for a page that wants to say more.
+func modelAnswerEmpty(rw http.ResponseWriter, req *http.Request, model chatModel, why string) {
+	rw.Header().Set("Content-Type", "application/json")
+	handleChatProxyError(rw, req, http.StatusBadGateway,
+		NewErrorResponse(
+			model.Name+" sent back an empty answer: "+why,
+			"model_unavailable",
+			"model_empty",
+			"",
+		),
+	)
+}
+
+// the most of a whole (not streamed) answer that is read to look at it
+const maxUpstreamAnswerBytes = 4 << 20
+
+// emptyAnswer says why a chat completion has no answer in it, "" if it has one
+// (or is not something this can read: then it is passed on as it is).
+func emptyAnswer(body []byte) string {
+	var a struct {
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+		Choices []struct {
+			FinishReason string `json:"finish_reason"`
+			Error        *struct {
+				Message string `json:"message"`
+			} `json:"error"`
+			Message struct {
+				Content   json.RawMessage `json:"content"`
+				ToolCalls json.RawMessage `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal(body, &a) != nil {
+		return ""
+	}
+	// (what the host wrote stays in the log: it can name the account or its credit)
+	if a.Error != nil {
+		return "its host reported an error"
+	}
+	if len(a.Choices) == 0 {
+		return "the reply had no message in it"
+	}
+	c := a.Choices[0]
+	if c.Error != nil {
+		return "its host reported an error"
+	}
+	if len(c.Message.ToolCalls) > 0 && string(c.Message.ToolCalls) != "null" && string(c.Message.ToolCalls) != "[]" {
+		return ""
+	}
+	var text string
+	if len(c.Message.Content) > 0 && json.Unmarshal(c.Message.Content, &text) != nil {
+		return "" // content in parts, not a string: something was written
+	}
+	if strings.TrimSpace(text) != "" {
+		return ""
+	}
+	if c.FinishReason == "length" {
+		return "it used its whole answer budget before writing anything (a model that thinks first counts its thinking in it)"
+	}
+	if c.FinishReason != "" && c.FinishReason != "stop" {
+		return "it stopped without writing anything (" + clipText(c.FinishReason, 40) + ")"
+	}
+	return "it wrote nothing"
+}
+
+func clipText(s string, max int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > max {
+		return strings.ToValidUTF8(s[:max], "") + "..."
+	}
+	if s == "" {
+		return "no detail"
+	}
+	return s
+}
+
+func clipBytes(b []byte, max int) []byte {
+	if len(b) > max {
+		return b[:max]
+	}
+	return b
 }
 
 // openAIToken and chatHost are looked up when they are needed, not at start-up:
@@ -385,6 +474,24 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 		log.Println("Error: OpenRouter answered", resp.StatusCode, "for", model.ID, ":", string(detail))
 		modelUnavailable(rw, req, model)
 		return
+	}
+
+	// OpenRouter can answer 200 and still have no answer in it: an error of the
+	// model's host in the body, or a message with nothing written (a free model
+	// that is busy, or one that spent its whole budget thinking). A whole reply
+	// (not a streamed one) is read here so that this is told apart: the visitor
+	// is told what happened and is not charged, and the detail is logged.
+	if model.Provider == providerOpenRouter && resp.StatusCode < 300 && !bytes.Contains(chatBody, []byte(`"stream":true`)) {
+		whole, rerr := io.ReadAll(io.LimitReader(resp.Body, maxUpstreamAnswerBytes))
+		if rerr == nil {
+			if why := emptyAnswer(whole); why != "" {
+				log.Println("Error: OpenRouter answered", resp.StatusCode, "for", model.ID, "without an answer:", why, "; body:", string(clipBytes(whole, 600)))
+				modelAnswerEmpty(rw, req, model, why)
+				return
+			}
+		}
+		// what was read, then whatever is left of a reply longer than that
+		resp.Body = io.NopCloser(io.MultiReader(bytes.NewReader(whole), resp.Body))
 	}
 
 	if resp.StatusCode < 400 {

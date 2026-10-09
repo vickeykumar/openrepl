@@ -4,6 +4,8 @@
 // into js/scribbler.js. Top-level names are page globals (window.*), as they
 // were in the single file: index.html, palette.js and the other parts use them.
 
+import { shareIdFrom } from "../share-id";
+
 window.handleClickOutside = handleClickOutside;
 window.ismob = ismob;
 window.isMaster = isMaster;
@@ -13,15 +15,24 @@ window.preprocessurl = preprocessurl;
 
 window.homedir = ""; // home directory
 
+// The share id of this page, if it was opened as /#<id> (src/share-id.ts). It is
+// read once: an anchor such as #languages that is clicked later changes the
+// hash, not the session. A different share link pasted into the address bar of
+// an open page is a different session, so the page loads again.
+const SHARE_ID = shareIdFrom(window.location.hash);
+window.addEventListener("hashchange", function () {
+  const now = shareIdFrom(window.location.hash);
+  if (now && now !== SHARE_ID) window.location.reload();
+});
+
 window.getExampleRef = () => {
   if(window.dbpath) {
     return window.dbpath;
   }
   var ref = firebase.database().ref("openrepl");
-  var hash = window.location.hash.replace(/#/g, '');
-  if (hash) {
-    window.dbpath = hash;
-    return hash;
+  if (SHARE_ID) {
+    window.dbpath = SHARE_ID;
+    return SHARE_ID;
   }
   ref = ref.push();
   if (ref.key) {
@@ -71,12 +82,7 @@ function ismob() {
 }
 
 function isMaster() {
-  var hash = window.location.hash.replace(/#/g, '');
-  if (!hash) {
-      return true;
-  } else {
-      return false;
-  }
+  return SHARE_ID === "";  // a viewer was given a share link; an anchor is not one
 }
 
 window.option2cmdMap = {

@@ -2,6 +2,7 @@
 // instead of bundling a second copy (Firebase 3.9) into gotty-bundle.js (T16).
 declare var firebase: any;
 import { Terminal, eventHandler, eventhandlertype, CloserArgs} from "./webtty";
+import { shareIdFrom } from "./share-id";
 
 
 var dbpath = "";
@@ -26,10 +27,10 @@ export const getExampleRef = () => {
         return window['dbpath'];
       }
       var ref = getrepl_firebasedbref();
-      var hash = window.location.hash.replace(/#/g, '');
-      if (hash) {
-        window['dbpath'] = hash;
-        return hash;
+      var shared = shareIdFrom(window.location.hash);
+      if (shared) {
+        window['dbpath'] = shared;
+        return shared;
       }
       ref = ref.push();
       if (ref.key) {
