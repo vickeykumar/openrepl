@@ -1218,7 +1218,10 @@ function showAgentState(state: AgentState) {
   if (submitBtn) {
     submitBtn.classList.toggle("is-stop", state !== "idle");
     submitBtn.setAttribute("aria-label", state === "idle" ? "Send" : "Stop the task");
-    if (state === "idle") submitBtn.removeAttribute("title");
+    if (state === "idle") {
+      submitBtn.removeAttribute("title");
+      submitBtn.removeAttribute("data-tip-title"); // the copy the page's tips keep while the mouse is on it (20-tips.js)
+    }
     else submitBtn.setAttribute("title", "Stop the task");
     if (state === "stopping") submitBtn.setAttribute("disabled", "");
     else submitBtn.removeAttribute("disabled");
