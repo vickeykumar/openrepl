@@ -2274,6 +2274,9 @@ body.files-collapsed .files-panel { display: none; }
   .app-bar .share-btn,
   .app-bar .forkbtn { height: 44px; min-width: 44px; }
   .app-bar .ide-btn--icon { width: 44px; }
+  /* row 1 has room for files, language and run only; Maximize stays in the
+     command palette on a phone */
+  .app-bar #togglescreen-button { display: none; }
   .select-wrap--lang { flex: 1; }
   .select-wrap--lang select { width: 100%; min-width: 0; height: 44px; font-size: 16px; }
   .run-split { order: 3; margin-left: 0; }

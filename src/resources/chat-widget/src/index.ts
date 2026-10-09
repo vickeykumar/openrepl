@@ -813,6 +813,7 @@ let pinnedPref = (() => {
 })();
 let pinTold = false; // what the page was last told
 let resizePending = false;
+let dockWidthSet = 0; // the width the dock was last given
 
 function dockEl(): HTMLElement | null {
   return document.getElementById("genie-dock");
@@ -847,6 +848,7 @@ function announcePin() {
 // Puts the panel where it belongs: in the dock when pinned, else on the page.
 function placePanel() {
   const dock = dockEl();
+  const was = document.body.classList.contains("genie-docked");
   if (dock && wantDock()) {
     dock.hidden = false;
     dock.appendChild(containerElement);
@@ -858,7 +860,8 @@ function placePanel() {
     if (dock) dock.hidden = true;
     document.body.appendChild(containerElement);
   }
-  requestResize();
+  // the IDE has more or less room only when the dock came or went
+  if (was !== document.body.classList.contains("genie-docked")) requestResize();
 }
 
 function refreshPin() {
@@ -900,6 +903,13 @@ function setDockWidth(w: number, save: boolean = true): number {
   // (a row that has no width yet, as at start-up, limits nothing)
   const max = total > 0 ? Math.max(DOCK_MIN_W, Math.min(680, Math.floor(total * 0.6))) : 680;
   const width = Math.round(Math.min(max, Math.max(DOCK_MIN_W, w)));
+  // Only a width that changed is news to the page. This runs on every resize of
+  // the window (onViewportChange), and telling the page to resize from here each
+  // time would be a resize that causes the next one, for ever: the editor and the
+  // terminal would refit on every frame, and the right-click menu of the editor,
+  // which closes on a resize, could not stay open.
+  const changed = width !== dockWidthSet;
+  dockWidthSet = width;
   document.documentElement.style.setProperty("--genie-dock-w", width + "px");
   const grip = document.getElementById("genie-dock-grip");
   if (grip) {
@@ -914,7 +924,7 @@ function setDockWidth(w: number, save: boolean = true): number {
       // not remembered
     }
   }
-  requestResize();
+  if (changed) requestResize();
   return width;
 }
 
@@ -1234,7 +1244,13 @@ function setMode(agent: boolean) {
   renderUsage(); // the line counts tasks in Agent mode
 }
 
+let signedSeen: boolean | null = null;
+
 function refreshMode() {
+  // signing in or out changes what is left: ask again (the page marks it on the body)
+  const signed = document.body.classList.contains("is-signed-in");
+  if (signedSeen !== null && signed !== signedSeen) fetchUsage();
+  signedSeen = signed;
   const box = document.getElementById("chat-widget__mode");
   if (!box) return;
   const a = agentAvailability();
@@ -1565,10 +1581,11 @@ function close() {
   document.body.classList.remove("genie-open");
   // a pinned panel that is closed leaves its place empty: the IDE has the room back
   const dock = dockEl();
+  const wasDocked = document.body.classList.contains("genie-docked");
   if (dock) dock.hidden = true;
   containerElement.classList.remove("is-docked");
   document.body.classList.remove("genie-docked");
-  requestResize();
+  if (wasDocked) requestResize();
   renderActivity();
 }
 
