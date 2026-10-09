@@ -6,7 +6,7 @@
     <!-- Widget title text is placed here -->
   </div>
   <span id="chat-widget__context"></span>
-  <label class="chat-widget__peer" title="Peer chat: talk to the people in your shared session instead of Genie">
+  <label class="chat-widget__peer" data-tip-name="Peer chat" data-tip-desc="Talk to the people in your shared session instead of Genie." title="Peer chat: talk to the people in your shared session instead of Genie">
     <input type="checkbox" id="peerchat-switch">
     <span class="chat-widget__peer-label">Peer chat</span>
     <span class="chat-widget__peer-track" aria-hidden="true"></span>
@@ -14,7 +14,7 @@
   <button type="button" id="chat-widget__pin" aria-pressed="false" aria-label="Pin Genie beside the IDE" title="Pin Genie beside the IDE" hidden>
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"></path><path d="M9 15l-4.5 4.5"></path><path d="M14.5 4l5.5 5.5"></path></svg>
   </button>
-  <button type="button" id="chat-widget__close" aria-label="Close Genie" title="Close (Esc)">
+  <button type="button" id="chat-widget__close" data-tip-name="Close" data-tip-keys="Esc" data-tip-desc="Hide Genie. A task or an answer carries on." aria-label="Close Genie" title="Close (Esc)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg>
   </button>
 </div>
@@ -39,16 +39,16 @@
         required></textarea>
       <div id="chat-widget__tools">
         <div id="chat-widget__mode" class="cw-mode" role="group" aria-label="Mode" hidden>
-          <button type="button" data-mode="chat" aria-pressed="true">Chat</button>
+          <button type="button" data-mode="chat" data-tip-desc="Genie answers your questions." aria-pressed="true">Chat</button>
           <button type="button" data-mode="agent" aria-pressed="false">Agent</button>
         </div>
-        <button type="button" id="chat-widget__model-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="chat-widget__settings" title="Choose the model and how long it thinks">
+        <button type="button" id="chat-widget__model-btn" data-tip-name="Model and effort" aria-haspopup="dialog" aria-expanded="false" aria-controls="chat-widget__settings" title="Choose the model and how long it thinks">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10 M18 7h2 M4 17h2 M10 17h10 M14 5v4 M6 15v4"></path></svg>
           <span id="chat-widget__model-label"></span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="chat-widget__chev"><path d="M6 15l6-6 6 6"></path></svg>
         </button>
         <span id="chat-widget__tools-spacer"></span>
-        <button id="chat-widget__submit" type="submit" aria-label="Send">
+        <button id="chat-widget__submit" type="submit" aria-label="Send" data-tip-name="Send">
           <svg class="cw-submit__send" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14 M13 6l6 6-6 6"></path></svg>
           <svg class="cw-submit__stop" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2.5"></rect></svg>
         </button>
@@ -56,7 +56,7 @@
     </div>
     <!-- What the visitor has left of Genie (index.ts: renderUsage). -->
     <div id="chat-widget__usage" class="cw-usage" hidden>
-      <button type="button" id="chat-widget__usage-line" class="cw-usage__line" aria-expanded="false" aria-controls="chat-widget__usage-more" title="How much of Genie you have left">
+      <button type="button" id="chat-widget__usage-line" data-tip-name="Usage" class="cw-usage__line" aria-expanded="false" aria-controls="chat-widget__usage-more" title="How much of Genie you have left">
         <span id="chat-widget__usage-text"></span>
         <span class="cw-usage__track" aria-hidden="true"><span id="chat-widget__usage-fill"></span></span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="cw-usage__chev"><path d="M6 9l6 6 6-6"></path></svg>

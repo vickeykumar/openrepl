@@ -20,3 +20,4 @@ import "./16-language-pages";
 import "./17-share-code";
 import "./18-genie-review";
 import "./19-genie-actions";
+import "./20-tips";
