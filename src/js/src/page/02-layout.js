@@ -11,6 +11,7 @@ window.SaveSelectedNodeToFile = SaveSelectedNodeToFile;
 window.ToggleEditor = ToggleEditor;
 window.syncEditorLayoutUI = syncEditorLayoutUI;
 window.ToggleRotateEditor = ToggleRotateEditor;
+window.SetEditorDirection = SetEditorDirection;
 window.ToggleReconnect = ToggleReconnect;
 
 function ToggleFunction() {
@@ -21,9 +22,12 @@ function ToggleFunction() {
     shell.classList.toggle("is-maximized", on);
     document.body.classList.toggle("ide-maximized", on);
     var btn = get("#togglescreen-button");
-    if (btn) btn.setAttribute("aria-pressed", on ? "true" : "false");
-    var label = get("#togglescreen-label");
-    if (label) label.textContent = on ? "Restore" : "Maximize";
+    if (btn) {
+      // an icon button: the pressed state swaps the icon (CSS), the words are for the tooltip and screen readers
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.setAttribute("aria-label", on ? "Restore the workspace" : "Maximize the workspace");
+      btn.title = on ? "Restore the workspace (Esc)" : "Maximize the workspace (Esc to restore)";
+    }
     window.dispatchEvent(new Event('resize'));
 }
 
@@ -229,6 +233,39 @@ function ToggleRotateEditor() {
   }
   ToggleEditor();
 }
+
+// Puts the editor and the terminal in a direction ('horizontal' side by side,
+// 'vertical' stacked) without toggling what is not asked for: a hidden editor
+// stays hidden (ToggleRotateEditor would show it).
+function SetEditorDirection(dir) {
+  if (direction === null || direction === dir) return false;
+  if (einst === null) {
+    direction = dir;
+    syncEditorLayoutUI();
+  } else {
+    ToggleRotateEditor();
+  }
+  return true;
+}
+
+// Genie pinned beside the IDE (chat-widget/src/index.ts fires "genie-pin" when
+// the pin turns on or off). The IDE is stacked while it is pinned, so that the
+// panel has room, and goes back to what it was when Genie is unpinned, unless
+// the user chose a layout meanwhile.
+var pinLayout = { before: null, set: null };
+window.addEventListener("genie-pin", function (e) {
+  var pinned = !!(e.detail && e.detail.pinned);
+  if (pinned) {
+    if (pinLayout.set === null && direction !== null) {
+      pinLayout.before = direction;
+      if (SetEditorDirection("vertical")) pinLayout.set = "vertical";
+      else pinLayout.set = direction; // it was stacked already: nothing to give back
+    }
+  } else if (pinLayout.set !== null) {
+    if (direction === pinLayout.set && pinLayout.before && pinLayout.before !== direction) SetEditorDirection(pinLayout.before);
+    pinLayout = { before: null, set: null };
+  }
+});
 
 function ToggleReconnect() {
     // The execution node is away and the countdown is running (11-terminal-state.js).

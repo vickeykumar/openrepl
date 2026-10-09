@@ -473,6 +473,55 @@ kbd {
 .ide-shell.is-maximized .terminal__row { height: auto; flex: 1; }
 body.ide-maximized { overflow: hidden; }
 
+/* The maximize button (first in the app bar, before Files): one icon, swapped
+   while the workspace is maximized. */
+#togglescreen-button .ico-min { display: none; }
+#togglescreen-button[aria-pressed="true"] .ico-max { display: none; }
+#togglescreen-button[aria-pressed="true"] .ico-min { display: inline; }
+#togglescreen-button[aria-pressed="true"] { color: var(--accent-color); }
+
+/* Genie pinned beside the IDE, in the workspace row (chat-widget/src/index.ts:
+   pin). The panel is moved in here; the grip on its left edge resizes it. */
+.genie-dock {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: var(--genie-dock-w, 380px);
+  min-width: 0;
+  min-height: 0;
+  background: var(--ink-950);
+  border-left: 1px solid var(--ink-700);
+}
+.genie-dock[hidden] { display: none; }
+body.is-mobile .genie-dock { display: none; }
+.genie-dock__grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  z-index: 3;
+  cursor: col-resize;
+  touch-action: none;
+}
+.genie-dock__grip::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.genie-dock__grip:hover::after,
+.genie-dock__grip:focus-visible::after,
+.genie-dock__grip.is-dragging::after { background: var(--accent-color); }
+.genie-dock__grip:focus-visible { outline: none; }
+body.genie-dock-dragging { cursor: col-resize; user-select: none; }
+body.genie-dock-dragging iframe { pointer-events: none; }
+
 /* buttons used across the workspace */
 .ide-btn,
 .app-bar .share-btn,

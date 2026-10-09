@@ -263,6 +263,7 @@
     <section class="workspace" id="workspace" aria-label="Code workspace">
       <div class="ide-shell" id="ide-shell">
       <div id="optionMenu" class="app-bar">
+        <button type="button" class="ide-btn ide-btn--icon" id="togglescreen-button" onclick="ToggleFunction();" aria-pressed="false" aria-label="Maximize the workspace" title="Maximize the workspace (Esc to restore)"><svg class="ico-max" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5"></path></svg><svg class="ico-min" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4 M15 4v5h5 M9 20v-5H4 M15 20v-5h5"></path></svg></button>
         <button type="button" class="ide-btn ide-btn--icon" id="files-toggle" aria-controls="files-panel" aria-expanded="true" title="Show or hide files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><span class="visually-hidden">Files</span></button>
         <label class="visually-hidden" for="optionlist">Language</label>
         <div class="select-wrap select-wrap--lang">
@@ -369,7 +370,6 @@
             <span class="toolbar-sep" aria-hidden="true"></span>
             <button type="button" class="ide-btn" id="rotate-button" onclick="ToggleRotateEditor();" title="Switch between side by side and stacked"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 12h18"></path></svg><span id="rotate-button-label">Stacked</span></button>
             <button type="button" class="ide-btn" id="editor-button" onclick="ToggleEditor();" title="Hide the editor and show only the terminal"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M12 4v16 M7 10l2 2-2 2"></path></svg><span>Hide editor</span></button>
-            <button type="button" class="ide-btn" id="togglescreen-button" onclick="ToggleFunction();" aria-pressed="false" title="Maximize the workspace (Esc to restore)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5"></path></svg><span id="togglescreen-label">Maximize</span></button>
           </div>
         </div>
         <div class="editor-body">
@@ -487,6 +487,10 @@
         <div class="term-footer" id="term-footer"><span class="term-footer__dot" aria-hidden="true"></span><span id="term-footer-text">Connecting…</span></div>
       </div>
       </div>
+      <!-- Genie, when it is pinned beside the IDE (chat-widget/src/index.ts: pin) -->
+      <aside class="genie-dock" id="genie-dock" aria-label="Genie" hidden>
+        <div class="genie-dock__grip" id="genie-dock-grip" role="separator" aria-orientation="vertical" aria-label="Resize Genie" tabindex="0"></div>
+      </aside>
     </div>
       </div>
     </section>
@@ -670,6 +674,7 @@ Breakpoint 1, main () at main.c:5
           <div class="faq-item"><h3>What can Genie do?</h3><p>Genie is the AI helper. It reads your editor and terminal, so you can ask why something fails. Its code suggestions show as a diff you accept or reject, with Undo. Open it with Ask Genie or Ctrl+K.</p></div>
           <div class="faq-item"><h3>Can Genie do a task for me?</h3><p>Yes, in Agent mode, for signed-in users. Genie writes code, runs it and reads the output step by step. It asks before it changes your editor, runs your program or types in your terminal, and you can press Stop at any time.</p></div>
           <div class="faq-item"><h3>How many Genie requests do I have?</h3><p>The line under Genie's message box shows how many requests you have left; click it for the refill rate and your Agent tasks this hour. Requests refill by themselves over time, and signed-in users get more.</p></div>
+          <div class="faq-item"><h3>Can I keep Genie open beside my code?</h3><p>Yes. Press the pin in Genie's header and it docks at the right of the workspace, like a side bar, with the editor stacked over the terminal. Drag its left edge to resize it. Press the pin again to let it float. It needs a window at least 1100 pixels wide.</p></div>
           <div class="faq-item"><h3>Does Genie keep working if I close its panel?</h3><p>Yes. An answer or an Agent task carries on while the panel is closed. The Ask Genie button shows that Genie is working, a green dot when the result is ready, and an amber dot when Genie needs your answer. Open the panel to see it, or to press Stop.</p></div>
           <div class="faq-item"><h3>Can Genie explain or fix just part of my code?</h3><p>Yes. Select the code in the editor and right-click it: Explain, Fix problems, Add comments or Write tests. Changes show as a diff you accept or reject.</p></div>
           <div class="faq-item"><h3>Can Genie help me practise without giving the answer?</h3><p>Yes. On the Practice page the coach gives up to three hints per question, reviews your solution and states its complexity, and never writes the code for you.</p></div>

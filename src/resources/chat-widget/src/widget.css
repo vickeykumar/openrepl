@@ -135,6 +135,45 @@
   background: var(--cw-secondary-bg);
 }
 
+/* Pin: keeps the panel beside the IDE (index.ts: setPinned). Pressed, the pin
+   is filled and in the accent colour. */
+#chat-widget__pin {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--cw-icon);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#chat-widget__pin:hover { color: var(--cw-strong); background: var(--cw-secondary-bg); }
+#chat-widget__pin[aria-pressed="true"] { color: var(--cw-accent); }
+#chat-widget__pin[aria-pressed="true"] svg { fill: currentColor; fill-opacity: 0.25; }
+#chat-widget__pin[hidden] { display: none; }
+
+/* Pinned: the panel fills the dock of the workspace instead of floating. */
+#chat-widget__container.is-docked {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+}
+/* the header has no room for the "Reads editor + terminal" note beside the pin */
+#chat-widget__container.is-docked #chat-widget__context { display: none; }
+
 /* Peer chat switch: small, next to the title */
 .chat-widget__peer {
   flex-shrink: 0;
