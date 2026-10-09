@@ -397,6 +397,31 @@
   color: var(--cw-on-accent);
   background: var(--cw-accent);
 }
+/* Peer chat: who said it, and the small notes (someone joined, left, turned it on) */
+.chat-widget__peer-name {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--cw-muted);
+}
+.chat-widget__message--peer.chat-widget__message--system .chat-widget__message-text {
+  color: var(--cw-text);
+  background: var(--cw-chip-bg);
+  border-radius: 12px 12px 12px 4px;
+  padding: 8px 12px;
+}
+.chat-widget__peer-note {
+  align-self: center;
+  max-width: 90%;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--cw-muted);
+  background: var(--cw-chip-bg);
+  border-radius: 999px;
+  animation: cw-fade 0.25s ease-out;
+}
 .chat-widget__message-meta {
   margin: 4px 0 0;
   font-size: 11.5px;
