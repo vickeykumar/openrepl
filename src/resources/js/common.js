@@ -163,7 +163,8 @@ async function getResponseFromOpenAI(api_key, prompt, options = {}) {
         temperature = globaltemperature,
         max_tokens = 800,
         fields = null,          // the model and its own settings, from questionRequestFields()
-        response_format = null  // {type: "json_object"} asks for a reply that is valid JSON
+        response_format = null, // {type: "json_object"} asks for a reply that is valid JSON
+        signal = null           // an AbortSignal: the request is dropped when it fires
     } = options;
 
     const messages = [{ role: 'user', content: prompt }];
@@ -180,7 +181,8 @@ async function getResponseFromOpenAI(api_key, prompt, options = {}) {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${api_key}`
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
+        signal: signal || undefined
     });
 }
 
@@ -199,13 +201,13 @@ function questionRequestFields() {
 // Asks for a JSON reply. JSON mode keeps a quote or a newline inside the text
 // from breaking the reply; if the API refuses it (400), the same request is
 // sent once more without it and sanitizeJSONString tidies what comes back.
-async function requestJSONFromOpenAI(prompt) {
+async function requestJSONFromOpenAI(prompt, signal) {
     const fields = questionRequestFields();
     let response = await getResponseFromOpenAI(openai_access_token, prompt, {
-        baseUri: "/chat/completions", fields, response_format: { type: "json_object" }
+        baseUri: "/chat/completions", fields, response_format: { type: "json_object" }, signal
     });
     if (response.status === 400) {
-        response = await getResponseFromOpenAI(openai_access_token, prompt, { baseUri: "/chat/completions", fields });
+        response = await getResponseFromOpenAI(openai_access_token, prompt, { baseUri: "/chat/completions", fields, signal });
     }
     return response;
 }
@@ -213,18 +215,38 @@ async function requestJSONFromOpenAI(prompt) {
 // The error for a reply that is not ok. When the chosen model is not reachable
 // (the proxy answers type "model_unavailable", for Gemma through OpenRouter) it
 // says so and what to do, instead of a status code.
+//
+// The Error also says why, for js/question-loader.js: .kind ("limit" for 429,
+// "auth" for 401 and 403, "off" when Genie or the model is switched off,
+// otherwise "server"), .status and .serverMessage (what the proxy wrote).
 async function apiFailure(response) {
+    let serverMessage = "", type = "", code = "";
     try {
         const body = await response.clone().json();
-        if (body && body.error && body.error.type === "model_unavailable") {
-            return new Error(body.error.message + (body.error.code === "model_disabled"
-                ? ". Choose another model."
-                : ". Try again in a moment, or choose another model."));
+        if (body && body.error) {
+            serverMessage = String(body.error.message || "");
+            type = String(body.error.type || "");
+            code = String(body.error.code || "");
         }
     } catch (e) {
         // not JSON: the status line below
     }
-    return new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+    let err;
+    if (type === "model_unavailable") {
+        err = new Error(serverMessage + (code === "model_disabled"
+            ? ". Choose another model."
+            : ". Try again in a moment, or choose another model."));
+        err.kind = "off";
+    } else {
+        err = new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+        err.kind = response.status === 429 ? "limit"
+            : (response.status === 401 || response.status === 403) ? "auth"
+            : (response.status === 503 && type === "GenieDisabled") ? "off"
+            : "server";
+    }
+    err.status = response.status;
+    err.serverMessage = serverMessage;
+    return err;
 }
 
 // The Model and Effort fields of the New question dialog, on the home page and
@@ -445,7 +467,7 @@ ${customPrompt ? customPrompt : ""}
  * @param {string} language - The programming language.
  * @returns {Object|null} The code template for the given language or null if not found.
  */
-async function getCodeTemplate(nameHyphenated, language) {
+async function getCodeTemplate(nameHyphenated, language, options = {}) {
     // Fetch stored questions
     let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
 
@@ -499,44 +521,61 @@ ${question.description ? '' : descriptionprompt}
 **Ensure that the output strictly follows the JSON format above, with "${language}" as the key.**
 `;
 
+    // Whatever goes wrong is thrown with .kind, so that the caller can say why
+    // (js/question-loader.js); an abort (a cancel, the time limit) passes through.
+    let response;
     try {
-        const response = await requestJSONFromOpenAI(prompt);
+        response = await requestJSONFromOpenAI(prompt, options.signal);
+    } catch (error) {
+        if (error && error.name === "AbortError") throw error;
+        const unreachable = new Error("Couldn't reach the server.");
+        unreachable.kind = "offline";
+        throw unreachable;
+    }
+    if (!response.ok) {
+        throw await apiFailure(response);
+    }
 
-        if (!response.ok) {
-            throw await apiFailure(response);
-        }
-
+    try {
         const data = await response.json();
-        if (data.choices?.length > 0 && data.choices[0].message?.content) {
-        		console.log("unsanitized json: ", data.choices[0].message?.content);
-            const sanitizedJSON = sanitizeJSONString(data.choices[0].message.content);
-
-            if (!sanitizedJSON) {
-                throw new Error("Invalid JSON response from OpenAI.");
-            }
-
-            console.log("sanitized json: ", sanitizedJSON);
-            const generatedTemplate = JSON.parse(sanitizedJSON);
-
-            // Ensure the response contains the expected structure
-            if (!generatedTemplate[language]) {
-                throw new Error(`No template found for language: ${language}`);
-            }
-
-            // Update the stored question with the new template
-            question.code_templates[language] = generatedTemplate[language];
-
-            // Save the updated question back
-            if (window.PracticeStore) PracticeStore.update(question);
-            else localStorage.setItem("questions", JSON.stringify(storedQuestions));
-
-            return generatedTemplate[language];
-        } else {
+        if (!(data.choices?.length > 0 && data.choices[0].message?.content)) {
             throw new Error("No valid content returned from OpenAI API.");
         }
+        console.log("unsanitized json: ", data.choices[0].message?.content);
+        const sanitizedJSON = sanitizeJSONString(data.choices[0].message.content);
+
+        if (!sanitizedJSON) {
+            throw new Error("Invalid JSON response from OpenAI.");
+        }
+
+        console.log("sanitized json: ", sanitizedJSON);
+        const generatedTemplate = JSON.parse(sanitizedJSON);
+
+        // Ensure the response contains the expected structure (the language's key may be written
+        // another way, or sit one level down: js/question-loader.js reads those too)
+        const template = window.QuestionLoader
+            ? QuestionLoader.pickTemplate(generatedTemplate, language)
+            : (generatedTemplate[language] || null);
+        if (!template) {
+            const keys = generatedTemplate && typeof generatedTemplate === "object" ? Object.keys(generatedTemplate).join(", ") : typeof generatedTemplate;
+            throw new Error(`No template found for language: ${language} (the answer had: ${keys || "nothing"})`);
+        }
+
+        // Update the stored question with the new template
+        question.code_templates[language] = template;
+        // the description came with it, for a question that had none yet
+        if (!question.description && generatedTemplate.description) question.description = generatedTemplate.description;
+
+        // Save the updated question back
+        if (window.PracticeStore) PracticeStore.update(question);
+        else localStorage.setItem("questions", JSON.stringify(storedQuestions));
+
+        return template;
     } catch (error) {
-        console.error("Error fetching code template:", error);
-        return null;
+        if (error && error.name === "AbortError") throw error;
+        console.error("Error reading the code template:", error);
+        error.kind = "format";
+        throw error;
     }
 }
 

@@ -783,6 +783,7 @@ Breakpoint 1, main () at main.c:5
     </script>
     <script src="./js/model-choice.js"></script>
     <script src="./js/common.js"></script>
+    <script src="./js/question-loader.js"></script>
     <script src="./js/practice-store.js"></script>
     <script src="./js/palette.js"></script>
     <script src="./js/gotty-bundle.js"></script>
@@ -882,6 +883,19 @@ Breakpoint 1, main () at main.c:5
           $(document).ready(function() {
             // topic suggestions, focus and Esc for the dialog: js/practice-store.js (T17)
 
+            // Writes the question in the editor: its description, and the starter for the language when there is one.
+            // A description that is not there (yet) says so, instead of "null".
+            function showQuestionInEditor(question, selectedLanguage, language_template) {
+              const header = question.name+"\n\nDifficulty Level: "+ question.difficulty+ "\n\nProblem Description:\n"+
+                (question.description || "(The description is not loaded yet. Pick the language again, or reload the page, to try again.)");
+              if (language_template) {
+                updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+header+"\n"+language_template.multiline_comment_end+"\n"+
+                  language_template.multiline_comment_start+"\n"+question.delimeter+"\n"+language_template.multiline_comment_end+"\n"+language_template.template+"\n\n\n\n", true);
+              } else {
+                updateEditorContent(selectedLanguage, "/*\n"+header+"\n*/\n\n\n\n", true);
+              }
+            }
+
             function fetchLanguageTmplAndSetEditorcode(nameHyphenated, selectedLanguage) {
               // Fetch stored questions
               let storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
@@ -891,31 +905,30 @@ Breakpoint 1, main () at main.c:5
 
               if (!newQuestion) {
                   console.error("Question not found: ", nameHyphenated);
+                  QuestionLoader.hide();
                   notify("Click New question to create one.", { type: "info", title: "Question not found" })
                   return null;
               }
 
-              // Call getCodeTemplate to fetch the missing template
-              getCodeTemplate(nameHyphenated, selectedLanguage, {temperature: globaltemperature})
-                  .then((language_template) => {
-                      if (!newQuestion.description) {
-                        // see if the description got updated by gen codetmpl function
-                        storedQuestions = JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || [];
-                        newQuestion = storedQuestions.find(q => q.nameHyphenated === nameHyphenated);
-                      }
-                      if (language_template) {
-                          updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+
-                            newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+
-                            language_template.multiline_comment_start+"\n"+newQuestion.delimeter+"\n"+language_template.multiline_comment_end+"\n"+language_template.template+"\n\n\n\n", true);
-                      } else {
-                          console.error("Failed to fetch code template for:", selectedLanguage);
-                          updateEditorContent(selectedLanguage, "/*\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n*/\n\n\n\n", true);
-                      }
-                  })
-                  .catch((error) => {
-                      console.error("Error fetching code template:", error);
-                      updateEditorContent(selectedLanguage, "/*\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n*/\n\n\n\n", true);
-                  });
+              // the question as it is now: getCodeTemplate saves the description it gets
+              const latest = () => (JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || []).find(q => q.nameHyphenated === nameHyphenated) || newQuestion;
+
+              // already there: nothing to wait for
+              if (newQuestion.description && newQuestion.code_templates && newQuestion.code_templates[selectedLanguage]) {
+                QuestionLoader.hide();
+                showQuestionInEditor(newQuestion, selectedLanguage, newQuestion.code_templates[selectedLanguage]);
+                return;
+              }
+
+              // Genie writes the missing parts. The editor is covered by a card that says so until they are there; if it
+              // fails or takes too long, the card says why and the editor gets the question without the starter code.
+              QuestionLoader.load({
+                title: newQuestion.name,
+                language: selectedLanguage,
+                work: (signal) => getCodeTemplate(nameHyphenated, selectedLanguage, {temperature: globaltemperature, signal: signal}),
+                onReady: (language_template) => showQuestionInEditor(latest(), selectedLanguage, language_template),
+                onGiveUp: () => showQuestionInEditor(latest(), selectedLanguage, null)
+              });
             }
 
             // Get URL query parameters
@@ -1023,7 +1036,17 @@ Breakpoint 1, main () at main.c:5
                     loadnewquestion();
                     lastSelectedLanguage = $("#optionlist option:selected").text();
                 });
-                setTimeout(loadnewquestion, 4000);
+                // The card is up from the start: the question is fetched a few seconds in, when the editor has settled
+                // (the language's demo text is written first and must not replace it). One that is already here, with
+                // its starter for this language, is not waited for.
+                (function () {
+                  const have = (JSON.parse(localStorage.getItem(QUESTIONS_KEY)) || []).find(q => q.nameHyphenated === nameHyphenatedlatest);
+                  const language = $("#optionlist option:selected").text();
+                  const ready = have && have.description && have.code_templates && have.code_templates[language];
+                  if (nameHyphenatedlatest && !ready) QuestionLoader.waiting("Getting your question ready\u2026");
+                })();
+                // the starter questions are put in the list first (js/practice-store.js), so that a link to one finds it
+                setTimeout(function () { PracticeStore.ready().then(loadnewquestion, loadnewquestion); }, 4000);
             }
 
             // Modal
