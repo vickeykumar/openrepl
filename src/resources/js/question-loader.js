@@ -17,8 +17,9 @@
  *   QuestionLoader.describeFailure(error)   what is said, for an Error with .kind
  *
  * An Error that tells why carries .kind: "timeout", "offline", "limit" (429),
- * "auth" (401, 403), "off" (Genie or the model is switched off), "format" (an
- * answer that cannot be used) or "server"; and .status and .serverMessage when
+ * "auth" (401, 403), "off" (Genie or the model is switched off), "empty" (the
+ * model answered with nothing in it), "format" (an answer that cannot be used)
+ * or "server"; and .status and .serverMessage when
  * the server said something. A newer load takes over from an older one (a
  * language was picked meanwhile): the older one is stopped and says nothing.
  */
@@ -81,14 +82,15 @@
 
   // ---- what to tell the visitor ----------------------------------------------------
 
-  function describeFailure(err, timeoutMs) {
+  function describeFailure(err, timeoutMs, model) {
     var kind = (err && err.kind) || "server";
+    var who = "Genie" + (model ? " (" + model + ")" : "");
     var status = err && err.status ? "HTTP " + err.status : "";
     switch (kind) {
       case "timeout":
         return {
           title: "This is taking too long",
-          text: "Genie didn't answer within " + Math.round((timeoutMs || settings.timeoutMs) / 1000) + " seconds, so your question wasn't loaded. The AI service may be busy right now.",
+          text: who + " didn't answer within " + Math.round((timeoutMs || settings.timeoutMs) / 1000) + " seconds, so your question wasn't loaded. The AI service may be busy right now. You can pick another model in Genie's model menu.",
           detail: ""
         };
       case "offline":
@@ -111,6 +113,17 @@
           text: (err && (err.serverMessage || err.message)) || "It has been switched off for now. Try again later.",
           detail: status
         };
+      case "empty": {
+        // "X sent back an empty answer: it used its whole answer budget ..." (the proxy), or only the reason (common.js)
+        var said = (err && err.serverMessage) || "";
+        var why = said.indexOf(": ") >= 0 ? said.slice(said.indexOf(": ") + 2) : said;
+        why = why ? why.charAt(0).toUpperCase() + why.slice(1) + (/[.!?]$/.test(why) ? "" : ".") : "It wrote nothing.";
+        return {
+          title: who + " sent back an empty answer",
+          text: why + " Try again, or pick another model in Genie's model menu.",
+          detail: status
+        };
+      }
       case "format":
         return {
           title: "Genie's answer couldn't be used",
@@ -230,7 +243,9 @@
     var attempt = { dead: false, stop: function () {} };
     current = attempt;
     var what = opts.title ? "“" + opts.title + "”" : "your question";
-    var loadingText = "Genie is writing " + what + (opts.language ? " and a starter for " + opts.language : "") + ". This usually takes 5 to 20 seconds.";
+    // "Genie (GPT-6 Luna) is writing ...": the model that was chosen, so that a slow or failed answer can be put down to it
+    var who = "Genie" + (opts.model ? " (" + opts.model + ")" : "");
+    var loadingText = who + " is writing " + what + (opts.language ? " and a starter for " + opts.language : "") + ". This usually takes 5 to 20 seconds.";
 
     function finish() {
       if (current === attempt) current = null;
@@ -291,7 +306,7 @@
             err.kind = "timeout";
           }
           console.error("question: couldn't load", err);
-          ui.failed(describeFailure(err, timeoutMs), {
+          ui.failed(describeFailure(err, timeoutMs, opts.model), {
             retry: function () { if (!attempt.dead) run(); },
             close: function () {
               finish();

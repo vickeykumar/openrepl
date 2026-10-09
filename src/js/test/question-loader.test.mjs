@@ -41,9 +41,10 @@ test("a question that loads: the card says it is working, then goes, and the val
   const QL = loaderPage();
   const ui = card();
   let got = null;
-  QL.load({ ui, title: "Two Sum", language: "Python", work: async () => "TEMPLATE", onReady: (v) => (got = v) });
+  QL.load({ ui, title: "Two Sum", language: "Python", model: "GPT-6 Luna", work: async () => "TEMPLATE", onReady: (v) => (got = v) });
   assert.equal(ui.last().s, "loading");
   assert.match(ui.last().title, /Getting your question ready/);
+  assert.match(ui.last().text, /^Genie \(GPT-6 Luna\) is writing \u201cTwo Sum\u201d/);
   assert.match(ui.last().text, /Two Sum/);
   assert.match(ui.last().text, /starter for Python/);
   assert.match(ui.last().text, /5 to 20 seconds/);
@@ -196,4 +197,30 @@ test("an answer with no template at all is not one", () => {
   for (const answer of [null, undefined, "text", 5, [], {}, { description: "only a description" }, { C: "not an object" }, { C: { template: 5 } }, { a: { template: "x" }, b: { template: "y" } }]) {
     assert.equal(QL.pickTemplate(answer, "C"), null, JSON.stringify(answer));
   }
+});
+
+test("the card names the model that was chosen, and says plain Genie when there is none", async () => {
+  const QL = loaderPage();
+  const ui = card();
+  QL.load({ ui, title: "Two Sum", language: "C", work: () => new Promise(() => {}) });
+  assert.match(ui.last().text, /^Genie is writing/, "no model, no brackets");
+  QL.load({ ui, title: "Two Sum", language: "C", model: "Gemma 4 31B", work: () => new Promise(() => {}) });
+  assert.match(ui.last().text, /^Genie \(Gemma 4 31B\) is writing/);
+  // and a time-out says which model did not answer
+  assert.match(QL.describeFailure({ kind: "timeout" }, 60000, "GPT-6 Luna").text, /^Genie \(GPT-6 Luna\) didn't answer within 60 seconds/);
+  assert.match(QL.describeFailure({ kind: "timeout" }, 60000).text, /^Genie didn't answer within 60 seconds/);
+  assert.match(QL.describeFailure({ kind: "timeout" }, 60000, "X").text, /another model/);
+});
+
+test("an empty answer says so, which model, and why as far as the reply told", () => {
+  const QL = loaderPage();
+  const fromProxy = QL.describeFailure({ kind: "empty", status: 502, serverMessage: "North mini code (free) sent back an empty answer: it used its whole answer budget before writing anything (a model that thinks first counts its thinking in it)" }, 60000, "North mini code (free)");
+  assert.equal(fromProxy.title, "Genie (North mini code (free)) sent back an empty answer");
+  assert.match(fromProxy.text, /^It used its whole answer budget before writing anything/);
+  assert.match(fromProxy.text, /pick another model in Genie's model menu\.$/);
+  assert.equal(fromProxy.detail, "HTTP 502");
+  const fromPage = QL.describeFailure({ kind: "empty", serverMessage: "it wrote nothing" }, 60000, "GPT-4o mini");
+  assert.match(fromPage.text, /^It wrote nothing\. Try again/);
+  assert.match(QL.describeFailure({ kind: "empty" }, 60000).text, /^It wrote nothing\. Try again/);
+  assert.equal(QL.describeFailure({ kind: "empty" }, 60000).title, "Genie sent back an empty answer");
 });

@@ -134,3 +134,77 @@ func TestOpenAIRequestsStillGoToOpenAIWithTheStatusKept(t *testing.T) {
 		t.Errorf("OpenAI request: %v %s", last.Header, *lastBody)
 	}
 }
+
+// OpenRouter can answer 200 with no answer in it. The visitor is told so (and
+// why, as far as it is ours to say), is offered another model as for one that
+// is not available, and is not charged; a real answer passes untouched.
+func TestAnOpenRouterReplyWithNoAnswerInItIsNotPassedOffAsOne(t *testing.T) {
+	isolateSettings(t)
+	t.Setenv("OPENREPL_OPENAI_API_KEY", "sk-test-openai")
+	t.Setenv("OPENREPL_OPENROUTER_API_KEY", "sk-or-test")
+	call := func(body string) *httptest.ResponseRecorder {
+		url, _, _ := fakeUpstream(t, 200, body)
+		old := openrouterEndpoint
+		openrouterEndpoint = url
+		defer func() { openrouterEndpoint = old }()
+		return proxyCall(t, gemmaRequest)
+	}
+	for body, want := range map[string]string{
+		`{"error":{"message":"Provider returned error: account 123 has no credit","code":429}}`:                   "its host reported an error",
+		`{"choices":[{"finish_reason":"error","error":{"message":"upstream blew up"},"message":{"content":""}}]}`: "its host reported an error",
+		`{"choices":[]}`: "the reply had no message in it",
+		`{"choices":[{"finish_reason":"length","message":{"content":null,"reasoning":"thinking, thinking, thinking"}}]}`: "used its whole answer budget",
+		`{"choices":[{"finish_reason":"stop","message":{"content":"   \n"}}]}`:                                           "it wrote nothing",
+		`{"choices":[{"finish_reason":"content_filter","message":{"content":""}}]}`:                                      "stopped without writing anything (content_filter)",
+	} {
+		w := call(body)
+		var e ErrorResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &e); err != nil {
+			t.Fatalf("%s: not an error body: %d %q", body, w.Code, w.Body.String())
+		}
+		if w.Code != http.StatusBadGateway || e.Error.Type != "model_unavailable" || e.Error.Code != "model_empty" {
+			t.Errorf("%s: %d %+v", body, w.Code, e.Error)
+		}
+		if !strings.Contains(e.Error.Message, "Gemma 4 31B sent back an empty answer") || !strings.Contains(e.Error.Message, want) {
+			t.Errorf("%s: message %q, want %q in it", body, e.Error.Message, want)
+		}
+		// what the host wrote does not reach the visitor
+		if strings.Contains(w.Body.String(), "account 123") || strings.Contains(w.Body.String(), "blew up") || strings.Contains(w.Body.String(), "thinking, thinking") {
+			t.Errorf("%s: the host's words reached the visitor: %s", body, w.Body.String())
+		}
+		// and nothing was charged: no request balance was written
+		for _, c := range w.Result().Cookies() {
+			if c.Name == "user-session" && w.Code != http.StatusBadGateway {
+				t.Errorf("%s: a cookie was written", body)
+			}
+		}
+	}
+	// answers pass as they came, byte for byte
+	for _, body := range []string{
+		`{"id":"x","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"here you are"}}],"usage":{"total_tokens":9}}`,
+		`{"choices":[{"message":{"content":null,"tool_calls":[{"id":"1","type":"function"}]}}]}`,
+		`{"choices":[{"message":{"content":[{"type":"text","text":"in parts"}]}}]}`,
+		`not json at all`,
+	} {
+		w := call(body)
+		if w.Code != 200 || w.Body.String() != body {
+			t.Errorf("an answer was changed: %d %q, sent %q", w.Code, w.Body.String(), body)
+		}
+	}
+}
+
+func TestEmptyAnswerReadsOnlyWhatItCan(t *testing.T) {
+	for body, empty := range map[string]bool{
+		`{"choices":[{"message":{"content":"x"}}]}`:  false,
+		`{"choices":[{"message":{"content":""}}]}`:   true,
+		`{"choices":[{"message":{}}]}`:               true,
+		`{"choices":[{"message":{"content":null}}]}`: true,
+		``:                   false, // not ours to judge
+		`[1,2,3]`:            false,
+		`{"object":"other"}`: true, // a completion without choices has no answer
+	} {
+		if got := emptyAnswer([]byte(body)) != ""; got != empty {
+			t.Errorf("%q: empty=%v, want %v (%q)", body, got, empty, emptyAnswer([]byte(body)))
+		}
+	}
+}

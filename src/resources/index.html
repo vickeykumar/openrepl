@@ -922,9 +922,13 @@ Breakpoint 1, main () at main.c:5
 
               // Genie writes the missing parts. The editor is covered by a card that says so until they are there; if it
               // fails or takes too long, the card says why and the editor gets the question without the starter code.
+              // the model that writes it is the one chosen in Genie's model menu (js/model-choice.js)
+              const choice = window.ModelChoice ? ModelChoice.get() : null;
+              const model = choice ? (ModelChoice.models.find(m => m.id === choice.model) || {}).name : "";
               QuestionLoader.load({
                 title: newQuestion.name,
                 language: selectedLanguage,
+                model: model,
                 work: (signal) => getCodeTemplate(nameHyphenated, selectedLanguage, {temperature: globaltemperature, signal: signal}),
                 onReady: (language_template) => showQuestionInEditor(latest(), selectedLanguage, language_template),
                 onGiveUp: () => showQuestionInEditor(latest(), selectedLanguage, null)

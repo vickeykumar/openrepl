@@ -217,8 +217,9 @@ async function requestJSONFromOpenAI(prompt, signal) {
 // says so and what to do, instead of a status code.
 //
 // The Error also says why, for js/question-loader.js: .kind ("limit" for 429,
-// "auth" for 401 and 403, "off" when Genie or the model is switched off,
-// otherwise "server"), .status and .serverMessage (what the proxy wrote).
+// "auth" for 401 and 403, "off" when Genie or the model is switched off, "empty"
+// when the model answered with nothing in it, otherwise "server"), .status and
+// .serverMessage (what the proxy wrote).
 async function apiFailure(response) {
     let serverMessage = "", type = "", code = "";
     try {
@@ -236,7 +237,8 @@ async function apiFailure(response) {
         err = new Error(serverMessage + (code === "model_disabled"
             ? ". Choose another model."
             : ". Try again in a moment, or choose another model."));
-        err.kind = "off";
+        // an answer with nothing in it (the proxy's code "model_empty") is not the same as a model that is off
+        err.kind = code === "model_empty" ? "empty" : "off";
     } else {
         err = new Error(`API request failed with status ${response.status}: ${response.statusText}`);
         err.kind = response.status === 429 ? "limit"
@@ -539,7 +541,16 @@ ${question.description ? '' : descriptionprompt}
     try {
         const data = await response.json();
         if (!(data.choices?.length > 0 && data.choices[0].message?.content)) {
-            throw new Error("No valid content returned from OpenAI API.");
+            // the model answered, with nothing written: say so, and why when the reply tells
+            // (for OpenRouter models the proxy catches this first and answers 502 "model_empty")
+            const finish = data.choices?.[0]?.finish_reason || "";
+            const empty = new Error("No valid content returned from the model" + (finish ? " (finish_reason: " + finish + ")" : "") + ".");
+            empty.kind = "empty";
+            empty.serverMessage = finish === "length"
+                ? "it used its whole answer budget before writing anything (a model that thinks first counts its thinking in it)"
+                : "it wrote nothing";
+            console.error("the reply without content:", data);
+            throw empty;
         }
         console.log("unsanitized json: ", data.choices[0].message?.content);
         const sanitizedJSON = sanitizeJSONString(data.choices[0].message.content);
@@ -574,7 +585,7 @@ ${question.description ? '' : descriptionprompt}
     } catch (error) {
         if (error && error.name === "AbortError") throw error;
         console.error("Error reading the code template:", error);
-        error.kind = "format";
+        if (!error.kind) error.kind = "format";
         throw error;
     }
 }
