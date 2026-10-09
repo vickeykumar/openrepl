@@ -301,6 +301,13 @@ let peerchatSwitchlistener = (e: Event) => {
       console.log('PeerChat switch is OFF');
       peerchatmode=false;
     }
+// A page is a viewer only when it was opened with a share link, /#<Firebase push key>.
+// An anchor of the page (#languages, #workspace) is not one. The same pattern is in
+// js/src/share-id.ts, which has the reasons; test/share-id.test.ts compares the two.
+// Read once: clicking an anchor later changes the hash, not the session.
+const SHARE_ID_PATTERN = /^-[A-Za-z0-9_-]{12,30}$/;
+const sharedSession = SHARE_ID_PATTERN.test(window.location.hash.replace(/^#/, ""));
+
     refreshChip();
     if (chatfirebasedbref) {
       // push event to firebase db

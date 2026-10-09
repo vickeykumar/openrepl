@@ -101,7 +101,7 @@ flowchart LR
 
 ## 4. Live sharing (`FireTTY`)
 
-A page is the **master** when the URL has no `#hash`. It is a **slave** (viewer) when it was opened as `…/#<dbpath>`. `dbpath` is the page's Firebase push key (`getExampleRef()`), and the *Share REPL* box shows `origin + path + search + "#" + dbpath`.
+A page is the **master** unless it was opened with a share link. It is a **slave** (viewer) when it was opened as `…/#<dbpath>`. `dbpath` is the page's Firebase push key (`getExampleRef()`), and the *Share REPL* box shows `origin + path + search + "#" + dbpath`. Only a hash that has the shape of a push key counts (`js/src/share-id.ts`: `-` then 12 to 30 of `A-Za-z0-9_-`; the SDK's keys are 20 long and start with `-` until 2109). Any other hash is an anchor of the page (`#languages`, `#workspace`, `#request`), and the page stays a master: before this rule every hash made a viewer, so using the home page's own links broke the terminal ("master terminal is not available"). The id is read once, when each script loads (the page script, the terminal client and the Genie widget each have it), so clicking an anchor later changes neither a master nor a viewer; a different share link pasted into the address bar of an open page loads the page again. The widget keeps its own copy of the pattern, because it is built apart; `test/share-id.test.ts` compares the two. Tests: `src/js/test/share-id.test.mjs` (the rule, and the page script run with a pretend page).
 
 ```mermaid
 sequenceDiagram
