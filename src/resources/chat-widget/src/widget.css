@@ -171,6 +171,14 @@
   box-shadow: none;
   animation: none;
 }
+/* A size the floating panel was dragged to (inline, from its corner handle)
+   does not apply in the dock, and the handle is not there: the dock's own grip
+   resizes it. */
+#chat-widget__container.is-docked {
+  width: 100% !important;
+  height: 100% !important;
+}
+#chat-widget__container.is-docked .chat-widget__resizer { display: none; }
 /* the header has no room for the "Reads editor + terminal" note beside the pin */
 #chat-widget__container.is-docked #chat-widget__context { display: none; }
 
