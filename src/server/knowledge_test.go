@@ -163,6 +163,7 @@ func TestSearchFindsTheRightNoteForQuestionsAboutTheSite(t *testing.T) {
 		{"how do I check the complexity of my practice solution", "practice-coach"},
 		{"how many hints do I get", "practice-coach"},
 		{"how do I get interview practice questions", "practice"},
+		{"does openrepl have ready made dsa practice problems", "practice"},
 		{"how do I report a bug", "blog-and-contact"},
 		{"how do I run openrepl with docker on my own server", "run-it-yourself"},
 	}

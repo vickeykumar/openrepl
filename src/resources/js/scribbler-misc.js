@@ -37,7 +37,7 @@
   // ---- filters ---------------------------------------------------------------
 
   function prefs() {
-    return { status: $("f-status").value, topic: $("f-topic").value, level: $("f-level").value, sort: $("f-sort").value };
+    return { status: $("f-status").value, topic: $("f-topic").value, level: $("f-level").value, sort: $("f-sort").value, size: $("f-size").value };
   }
   function savePrefs() {
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs())); } catch (e) {}
@@ -49,6 +49,7 @@
     if (p.status != null) $("f-status").value = p.status;
     if (p.level != null) $("f-level").value = p.level;
     if (p.sort) $("f-sort").value = p.sort;
+    if (p.size && $("f-size").querySelector('option[value="' + p.size + '"]')) $("f-size").value = p.size;
     $("f-topic").setAttribute("data-want", p.topic || "");
   }
 
@@ -110,7 +111,7 @@
         '<span class="visually-hidden"> (opens in a new tab)</span></a></td>' +
       '<td class="q-topic" data-label="Topic">' + esc(q.topic || "") + "</td>" +
       '<td class="q-level" data-label="Level"><span class="' + levelClass(q.difficulty) + '">' + esc(q.difficulty || "") + "</span></td>" +
-      '<td class="q-added" data-label="Added">' + (added ? '<time datetime="' + iso + '" title="' + esc(new Date(added).toLocaleString()) + '">' + esc(relativeTime(added)) + "</time>" : "") + "</td>" +
+      '<td class="q-added" data-label="Added">' + (q.starter ? "Starter" : added ? '<time datetime="' + iso + '" title="' + esc(new Date(added).toLocaleString()) + '">' + esc(relativeTime(added)) + "</time>" : "") + "</td>" +
       '<td class="q-actions"><button type="button" class="q-delete" aria-label="Delete ' + esc(q.name) + '">' + TRASH + '<span class="q-delete__text">Delete?</span></button></td>' +
       "</tr>";
   }
@@ -140,6 +141,59 @@
     else el.innerHTML = 'Saved in this browser. <a href="/">Sign in</a> to keep it on every device.';
   }
 
+  // ---- pages -------------------------------------------------------------------
+  // The list shows one page of rows at a time (10, 20, 40 or 100). The page
+  // goes back to the first when the search, a filter, the sort or the size
+  // changes (resetPage), and is kept when a row changes (a tick, a delete).
+
+  var page = 1;
+  function resetPage() { page = 1; }
+
+  // 1 2 3 … 12 13 14 … 30: the first, the last, and two each side of this one
+  function pageNumbers(current, last) {
+    var out = [];
+    for (var n = 1; n <= last; n++) {
+      if (n === 1 || n === last || Math.abs(n - current) <= 1 || (current <= 3 && n <= 4) || (current >= last - 2 && n >= last - 3)) out.push(n);
+      else if (out[out.length - 1] !== "…") out.push("…");
+    }
+    return out;
+  }
+
+  function pageButton(label, target, opts) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "q-page" + (opts.current ? " is-current" : "");
+    b.textContent = label;
+    if (opts.aria) b.setAttribute("aria-label", opts.aria);
+    if (opts.current) b.setAttribute("aria-current", "page");
+    if (opts.disabled) b.disabled = true;
+    b.setAttribute("data-page", String(target));
+    return b;
+  }
+
+  function renderPager(total, size, last) {
+    var nav = $("q-pager");
+    nav.hidden = total <= 10; // the smallest page: nothing to page
+    if (nav.hidden) return;
+    var from = (page - 1) * size + 1, to = Math.min(total, page * size);
+    $("q-range").textContent = (from === to ? String(from) : from + "\u2013" + to) + " of " + total;
+    var box = $("q-pages");
+    box.textContent = "";
+    box.appendChild(pageButton("\u2039 Prev", page - 1, { aria: "Previous page", disabled: page <= 1 }));
+    pageNumbers(page, last).forEach(function (n) {
+      if (n === "…") {
+        var gap = document.createElement("span");
+        gap.className = "q-page-gap";
+        gap.textContent = "\u2026";
+        gap.setAttribute("aria-hidden", "true");
+        box.appendChild(gap);
+      } else {
+        box.appendChild(pageButton(String(n), n, { aria: "Page " + n, current: n === page }));
+      }
+    });
+    box.appendChild(pageButton("Next \u203a", page + 1, { aria: "Next page", disabled: page >= last }));
+  }
+
   function render() {
     var all = PracticeStore.all();
     renderProgress(all);
@@ -147,7 +201,10 @@
     var f = prefs();
     f.term = $("q-search").value.trim().toLowerCase();
     var rows = all.filter(function (q) { return matches(q, f); }).sort(sorter(f.sort));
-    $("q-body").innerHTML = rows.map(rowHtml).join("");
+    var size = parseInt(f.size, 10) || 20;
+    var last = Math.max(1, Math.ceil(rows.length / size));
+    if (page > last) page = last; // a delete or a filter left fewer pages
+    $("q-body").innerHTML = rows.slice((page - 1) * size, page * size).map(rowHtml).join("");
     var none = all.length === 0;
     $("questionsTable").hidden = none || rows.length === 0;
     $("q-empty").hidden = !none;
@@ -155,6 +212,7 @@
     $("result-count").textContent = none ? "" :
       rows.length === all.length ? (all.length === 1 ? "1 question" : all.length + " questions") :
       "Showing " + rows.length + " of " + all.length;
+    renderPager(rows.length, size, last);
     disarm();
   }
 
@@ -247,15 +305,29 @@
     } catch (e) {}
     $("temperature").value = globaltemperature;
 
-    $("q-search").addEventListener("input", render);
-    ["f-status", "f-topic", "f-level", "f-sort"].forEach(function (id) {
-      $(id).addEventListener("change", function () { savePrefs(); render(); });
+    $("q-search").addEventListener("input", function () { resetPage(); render(); });
+    ["f-status", "f-topic", "f-level", "f-sort", "f-size"].forEach(function (id) {
+      $(id).addEventListener("change", function () { resetPage(); savePrefs(); render(); });
+    });
+    $("q-pages").addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest(".q-page");
+      if (!b || b.disabled) return;
+      page = parseInt(b.getAttribute("data-page"), 10) || 1;
+      var kind = /Prev/.test(b.textContent) ? "prev" : /Next/.test(b.textContent) ? "next" : "number";
+      render();
+      // the buttons were drawn again: keep the keyboard where it was (on Prev or Next while they work), and the top of the list in view
+      var btns = $("q-pages").querySelectorAll(".q-page");
+      var again = kind === "prev" ? btns[0] : kind === "next" ? btns[btns.length - 1] : $("q-pages").querySelector('[aria-current="page"]');
+      if (!again || again.disabled) again = $("q-pages").querySelector('[aria-current="page"]');
+      if (again) again.focus({ preventScroll: true });
+      $("result-count").scrollIntoView({ block: "start", behavior: "smooth" });
     });
     $("q-clear").addEventListener("click", function () {
       $("q-search").value = "";
       $("f-status").value = "";
       $("f-topic").value = "";
       $("f-level").value = "";
+      resetPage();
       savePrefs();
       render();
       $("q-search").focus();
