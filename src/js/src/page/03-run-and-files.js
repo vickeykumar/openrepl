@@ -40,7 +40,7 @@ function StartTour() {
   var steps = [
     { title: 'Welcome to OpenREPL', intro: 'A one-minute tour of the workspace. Press Esc at any time to leave.' },
     { element: q('#lang-chips'), intro: 'Pick a language here, or use the picker in the workspace. A fresh REPL starts in its own sandbox.' },
-    { element: q('#optionlist'), intro: 'All 19 languages are in this picker.' },
+    { element: q('#optionlist-button') || q('#optionlist'), intro: 'All 19 languages are in this picker.' },
     { element: q('#terminal-div'), title: 'The REPL', intro: 'Type a line and press Enter to see the result straight away. Use + to open more terminals.' },
     { element: q('#ide'), title: 'The editor', intro: 'Write longer code here. The status bar has the editor language, theme and font size.' },
     { element: q('.run-split'), title: 'Run', intro: 'Run the editor code with Ctrl+Enter (Cmd+Enter on a Mac). The arrow opens Debug, program arguments and environment variables.' },
