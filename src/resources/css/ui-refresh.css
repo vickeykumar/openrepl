@@ -594,6 +594,129 @@ body.genie-dock-dragging iframe { pointer-events: none; }
   padding: 0 34px 0 12px;
 }
 
+/* The menu of our own for the IDE's dropdowns (js/select-menu.js): the <select>
+   stays in the page, out of sight, and a button and a menu take its place. */
+.select-wrap.has-menu > select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.select-wrap.has-menu > svg:not(.sm-chevron) { display: none; }
+.sm-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  margin: 0;
+  text-align: left;
+  font: 500 14px var(--font-ui);
+  color: var(--paper);
+  background: var(--ink-750);
+  border: 1px solid var(--ink-600);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sm-btn:hover,
+.sm-btn:focus-visible,
+.sm-btn[aria-expanded="true"] { border-color: var(--muted-3); }
+.sm-btn:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.sm-btn:disabled { opacity: 0.5; cursor: default; }
+.sm-value { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.select-wrap--lang .sm-btn { height: 36px; min-width: 170px; padding: 0 34px 0 12px; }
+.select-wrap--status .sm-btn {
+  height: 24px;
+  padding: 0 24px 0 8px;
+  font-size: 12px;
+  color: var(--muted-1);
+  background: transparent;
+  border-color: transparent;
+}
+.select-wrap--status .sm-btn:hover,
+.select-wrap--status .sm-btn[aria-expanded="true"] { color: var(--paper); border-color: var(--ink-600); }
+.sm-swatch { flex: none; width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.28); }
+
+.sm-menu {
+  position: fixed;
+  z-index: 10035; /* over the Genie panel, under the menus and the palette */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 16px);
+  padding: 6px;
+  color: #E6E4EC;
+  font: 13px var(--font-ui);
+  background: var(--ink-850, #1B1B24);
+  border: 1px solid var(--ink-500, #3A3A48);
+  border-radius: 10px;
+  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.7);
+}
+.sm-menu[hidden] { display: none; }
+.sm-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  color: var(--muted-2, #8C8A98);
+  background: var(--ink-950, #0D0D12);
+  border: 1px solid var(--ink-600, #34343F);
+  border-radius: 7px;
+}
+.sm-search:focus-within { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color); }
+/* The field is bare: the box around it is the field. (The page styles every text
+   input with a border, a padding and a focus ring; those are turned off here, or
+   there are two boxes, one in the other.) */
+.sm-menu .sm-search input[type=text],
+.sm-menu .sm-search input[type=text]:focus,
+.sm-menu .sm-search input[type=text]:focus-visible {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  line-height: 1.4;
+  color: var(--paper);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.sm-menu .sm-search input::placeholder { color: var(--muted-2, #8C8A98); opacity: 1; }
+/* the page puts a focus ring on every focused thing, with !important; the ring of
+   this field is the box around it (:focus-within), as in the command palette */
+body .sm-menu .sm-search input:focus,
+body .sm-menu .sm-search input:focus-visible { outline: none !important; box-shadow: none !important; }
+.sm-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; outline: none; scrollbar-width: thin; }
+.sm-group { padding: 8px 8px 3px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted-2, #8C8A98); }
+.sm-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; color: #E6E4EC; }
+.sm-item.is-active { background: var(--ink-600, #2A2A36); }
+.sm-item.is-current { color: #fff; }
+.sm-item.is-disabled { opacity: 0.45; cursor: default; }
+.sm-label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sm-badge { flex: none; min-width: 30px; padding: 1px 6px; font: 11px var(--font-code, monospace); text-align: center; color: var(--muted-2, #8C8A98); background: var(--ink-700, #24242E); border-radius: 4px; }
+.sm-check { flex: none; color: var(--accent-color); visibility: hidden; }
+.sm-item.is-current .sm-check { visibility: visible; }
+.sm-empty { margin: 0; padding: 10px 8px; font-size: 12px; color: var(--muted-2, #8C8A98); }
+.sm-empty[hidden] { display: none; }
+.sm-hint { display: flex; justify-content: space-between; flex: none; margin-top: 6px; padding: 6px 8px 2px; font-size: 11px; color: var(--muted-3, #6f6d7c); border-top: 1px solid var(--ink-700, #24242E); }
+@media (prefers-reduced-motion: no-preference) {
+  .sm-menu.is-open { animation: sm-in 0.1s ease-out; }
+  @keyframes sm-in { from { opacity: 0; transform: translateY(-3px); } }
+  .sm-menu.is-open.is-up { animation-name: sm-in-up; }
+  @keyframes sm-in-up { from { opacity: 0; transform: translateY(3px); } }
+}
+
 /* ---------- app bar ---------- */
 .app-bar {
   display: flex;

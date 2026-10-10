@@ -137,7 +137,7 @@ const NEW_TERMINAL_WAIT_MS = 12000;
 const TARGETS: Record<string, string> = {
   editor: ".editor-body",
   run: ".run-split",
-  language: "#optionlist",
+  language: "#optionlist, #optionlist-button", // the picker is a button and a menu now (js/select-menu.js); the select is out of sight
   output: "#terminal-div",
   tabs: "#terminal-tabs",
   files: "#file-browser",
