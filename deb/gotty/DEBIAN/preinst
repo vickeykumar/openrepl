@@ -29,4 +29,3 @@ mkdir -p /usr/lib/systemd/system
 mkdir -p /opt/gotty
 chown gottyuser /opt/gotty
 export GOPATH=/opt/gotty/
-go install github.com/k0kubun/pp@latest || true	# required for gointerpreter

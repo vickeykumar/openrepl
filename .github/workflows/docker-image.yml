@@ -55,6 +55,22 @@ jobs:
           for c in "node --version" "npm --version" "tsc --version" "ts-node --version" "python3 --version" "go version" "java --version" "irb --version" "jshell --version" "cling --version"; do
             echo "== $c"; bash -c "$c" || { echo "FAILED: $c"; exit 1; }
           done'
+    # why the ts-node REPL stops ("Cannot read property 'fileExists' of undefined"): which compiler it
+    # loads and whether that one has `sys`. Only prints, it does not fail the build.
+    - name: Look at ts-node
+      continue-on-error: true
+      run: |
+        docker exec openrepl env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin bash -c '
+          for d in / /tmp /tmp/home; do
+            echo "== cwd $d"; cd "$d" 2>/dev/null || continue
+            node -e "var t=require(\"typescript\"); console.log(require.resolve(\"typescript\"), t.version, typeof t.sys)" 2>&1 | head -5
+            echo "40 + 2" | timeout 20 ts-node 2>&1 | head -15
+          done
+          G=/root/.nvm/versions/node/v12.22.9/lib/node_modules
+          ls -la $G $G/typescript $G/ts-node/node_modules 2>&1 | head -40
+          node -e "var t=require(\"$G/typescript\"); console.log(\"global typescript\", t.version, typeof t.sys, Object.keys(t).length)" 2>&1 | head -8
+          node -p "require(\"$G/typescript/package.json\").version + \" main=\" + require(\"$G/typescript/package.json\").main"
+          tsc --version; echo "const a: number = 40 + 2; console.log(a)" > /tmp/a.ts; ts-node /tmp/a.ts 2>&1 | head -4; cd /tmp && tsc a.ts && node a.js'
 
     - uses: actions/setup-node@v4
       with:

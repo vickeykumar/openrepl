@@ -9,15 +9,15 @@ import (
 )
 
 func TestTheGuideOfAReplIsBuiltFromItsDemo(t *testing.T) {
-	guide := replGuide("gointerpreter")
+	guide := replGuide("gomacro")
 	for _, want := range []string{
-		`REPL "gointerpreter"`, `prompt is "go>>"`, // the prompt, from the example session
-		":r, :x", ":c", // its commands
-		"go>> 12+31", "43", // the example session, with what it printed
-		"A block (for, if, switch) is only kept", "never :r", // the notes written for Genie
+		`REPL "gomacro"`, `prompt is "gomacro>"`, // the prompt, from the example session
+		":help", ":inspect EXPR", // its commands
+		"gomacro> 12+31", "43", // the example session, with what it printed
+		"Import a package before you use it", "never a command at the prompt", // the notes written for Genie
 	} {
 		if !strings.Contains(guide, want) {
-			t.Errorf("the guide of gointerpreter lacks %q:\n%s", want, guide)
+			t.Errorf("the guide of gomacro lacks %q:\n%s", want, guide)
 		}
 	}
 	if len(guide) > replGuideMaxLength+8 {
@@ -65,7 +65,7 @@ func TestAStepCarriesTheGuideOfTheReplInUse(t *testing.T) {
 		}
 		return got.Messages
 	}
-	m := body("gointerpreter")
+	m := body("gomacro")
 	if len(m) != 3 || m[1]["role"] != "system" || !strings.HasPrefix(m[1]["content"], "REPL guide.") || m[2]["content"] != "do it" {
 		t.Errorf("messages with a REPL: %+v", m)
 	}

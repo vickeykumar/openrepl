@@ -52,7 +52,7 @@ $ sudo dpkg -i ../deb/gotty.deb
 * npm
 * webpack
 * [cling](https://github.com/root-project/cling)
-* [gointerpreter](https://github.com/vickeykumar/Go-interpreter)
+* [gomacro](https://github.com/cosmos72/gomacro)
 * python2.7
 * xterm
 * all requisites can be installed using ./install_prerequisite.sh	
@@ -731,7 +731,7 @@ Only `apiKey`, `authDomain` and `projectId` are required, and fields that are no
 | UI option | WebSocket path | Backend command | Memory limit (MB) |
 |---|---|---|---|
 | C / C++ | `/ws_c`, `/ws_cpp` | `cling` (C adds `-xc -noruntime`) | 22 |
-| Go / Go-yaegi | `/ws_go`, `/ws_yaegi` | `gointerpreter`, `yaegi` | 45, 10 |
+| Go / Go-yaegi | `/ws_go`, `/ws_yaegi` | `gomacro`, `yaegi` | 45, 10 |
 | Java | `/ws_java`: a tuned single-JVM `jshell`; **Run** compiles the file | `jshell` (REPL), `javac` and `java` (Run) | 192 |
 | JavaScript | iframe to `jsconsole.html` (runs in the browser) | n/a | n/a |
 | TypeScript, NodeJS | `/ws_ts-node`, `/ws_node` | `ts-node`, `node` | 50, 10 |

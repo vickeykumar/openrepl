@@ -117,7 +117,7 @@ All paths are relative to `pathPrefix`: `/`, or `/<random>/` with `--random-url`
 | `/admin` | GET | `handleAdminPage` behind `wrapAdmin` | admin | The admin dashboard, a static page (`resources/admin.html`) with a restrictive Content-Security-Policy. |
 | `/admin/...` | GET, POST | `adminAPI` | admin; changes need the `X-Requested-With: openrepl-admin` header | The dashboard's JSON API: settings, parameters, health, usage, audit log, log, feedback, shared code, users and, on a gateway, workers and sessions. Routes and rules in LLD 13. |
 | `/js/`, `/css/`, `/images/`, `/media/`, `/docs/`, `/doc.html`, `/about.html`, `/references.html`, `/privacy.html`, `/terms.html`, `/robots.txt`, `/jsconsole.html` | GET | bindata `AssetFS` | public | Static assets. |
-| `/ws`, `/ws_c`, `/ws_cpp`, `/ws_go`, `/ws_<name>` | GET (Upgrade) | `generateHandleWS` | init `AuthToken` | Terminal sessions. `/ws_c` and `/ws_cpp` map to `cling`, `/ws_go` maps to `gointerpreter`, and each `demos.xml` `<Name>` gets `/ws_<Name>` (LLD 02). |
+| `/ws`, `/ws_c`, `/ws_cpp`, `/ws_go`, `/ws_<name>` | GET (Upgrade) | `generateHandleWS` | init `AuthToken` | Terminal sessions. `/ws_c` and `/ws_cpp` map to `cling`, `/ws_go` maps to `gomacro`, and each `demos.xml` `<Name>` gets `/ws_<Name>` (LLD 02). |
 
 ## 4. Server-rendered pages
 

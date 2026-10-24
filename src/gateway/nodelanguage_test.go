@@ -25,7 +25,7 @@ func nodeRouter(w Backend, rules map[string]map[string]LanguageRule, refused *[]
 		PathPrefix:   "/",
 		Secret:       []byte("secret"),
 		GuestTTL:     time.Hour,
-		Terminal:     terminalFor(map[string]string{"ws_python": "python", "ws_go": "gointerpreter"}),
+		Terminal:     terminalFor(map[string]string{"ws_python": "python", "ws_go": "gomacro"}),
 		NodeLanguage: nodeRules(rules),
 		RefuseTerminal: func(rw http.ResponseWriter, r *http.Request, reason string) bool {
 			*refused = append(*refused, reason)
@@ -38,7 +38,7 @@ func nodeRouter(w Backend, rules map[string]map[string]LanguageRule, refused *[]
 }
 
 func TestALanguageSwitchedOffOnANodeIsRefusedWithAReasonThePageShows(t *testing.T) {
-	w := &named{id: "worker-1", weight: 10, langs: []string{"python", "gointerpreter"}}
+	w := &named{id: "worker-1", weight: 10, langs: []string{"python", "gomacro"}}
 	var refused []string
 	rt := nodeRouter(w, map[string]map[string]LanguageRule{"worker-1": {"ws_go": LanguageOff}}, &refused)
 

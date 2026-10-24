@@ -476,7 +476,7 @@ test("built: a task that fails is reported as failed, and Stop as stopped", asyn
 });
 
 test("built: every step names the REPL in use, so that the server can say how it is typed into", async () => {
-  const t = setup([{ say: "", actions: [{ type: "shell" }], done: false }, { say: "ok", actions: [], done: true }], { repl: "gointerpreter" });
+  const t = setup([{ say: "", actions: [{ type: "shell" }], done: false }, { say: "ok", actions: [], done: true }], { repl: "gomacro" });
   await t.done(t.runner.start("try a loop"));
-  assert.deepEqual(t.log.requests.map((r) => r.repl), ["gointerpreter", "gointerpreter"]);
+  assert.deepEqual(t.log.requests.map((r) => r.repl), ["gomacro", "gomacro"]);
 });
