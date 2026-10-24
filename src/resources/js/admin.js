@@ -938,6 +938,7 @@
         announcement: { text: form.ann.value.trim(), level: form.level.value },
         maintenance: { enabled: form.maint.checked, message: form.maintMsg.value.trim() },
         disabledLanguages: languages.filter(function (l) { return !form.langs[l.value].checked; }).map(function (l) { return l.value; }).sort(),
+        dbCapacityMB: int(form.dbCap.value),
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
           customModels: (form.custom || []).map(readCustom),
@@ -989,6 +990,7 @@
       return { colorOfTheDay: !!s.colorOfTheDay, announcement: { text: s.announcement.text, level: s.announcement.level || 'info' },
         maintenance: { enabled: !!s.maintenance.enabled, message: s.maintenance.message || '' },
         disabledLanguages: (s.disabledLanguages || []).slice().sort(),
+        dbCapacityMB: s.dbCapacityMB || 0,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
           disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
           defaultModel: s.genie.defaultModel || '',
@@ -1018,6 +1020,10 @@
       var colour = toggle('f-colour', settings.colorOfTheDay, 'Colour of the day');
       var maint = toggle('f-maint', settings.maintenance.enabled, 'Maintenance mode');
       var genie = toggle('f-genie', !settings.genie.disabled, 'Genie available');
+      // how much room MongoDB has, for the live map (an Atlas free cluster has 512 MB)
+      form.dbCap = h('input', { type: 'number', class: 'field', id: 'f-db-cap', min: '10', max: '100000000', step: '1', placeholder: 'not set', 'aria-label': 'Database capacity in megabytes', oninput: update });
+      form.dbCap.value = settings.dbCapacityMB || '';
+      form.dbCap.style.maxWidth = '9rem';
       form.colour = colour.input; form.maint = maint.input; form.genie = genie.input;
       // agent mode: on for signed-in users unless switched off here, and off on the practice page unless allowed
       var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
@@ -1374,6 +1380,8 @@
         card('Maintenance mode', 'Visitors can still read pages and use their files, but cannot start terminals. Admins are not affected.', [
           row('Maintenance mode', 'Shows the message below on every page and in a terminal that is refused.', maint.node),
           h('div', { class: 'form-row' }, h('div', { class: 'full' }, maintMsg, maintCount)) ]),
+        card('Database capacity', 'How much room MongoDB has, so that the Live map can show used of total (a free Atlas cluster has 512 MB). Leave it empty to use the disk size MongoDB reports, if it reports one. Firestore needs no number: the map shows its daily operations against the free allowance.', [
+          row('Capacity in MB', 'Used only with MongoDB. Amber from 80% used, red from 95%.', form.dbCap) ]),
         card('Languages', 'Untick a language that is broken. The picker greys it out and its terminals refuse to start with a message; terminals that are already open keep running. Admins can still start it, to test a fix.', langGrid),
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),

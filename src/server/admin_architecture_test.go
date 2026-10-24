@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"meters"
+	"persist"
 )
 
 func TestTheMapShowsEveryPartAndLine(t *testing.T) {
@@ -170,5 +172,75 @@ func TestTheSiteCountsItsRequestsButNotTheDashboardsPolling(t *testing.T) {
 	req1, err1 := count()
 	if req1-req0 != 3 || err1-err0 != 1 {
 		t.Errorf("requests +%d, errors +%d (want +3 and +1: the poll is not counted)", req1-req0, err1-err0)
+	}
+}
+
+func TestMongoDBShowsUsedOfTotalFromTheSettingOrTheDisk(t *testing.T) {
+	mongo := persist.Stats{Backend: "mongodb", DataBytes: 400 << 20, IndexBytes: 12 << 20, StorageBytes: 430 << 20}
+	// the admin says the cluster has 512 MB: 412 of 512, 80%, amber
+	n := externalDBNode(mongo, 512, archOK)
+	if n.Status != archWarn || n.Text != "MongoDB: 412 MB of 512 MB (80%)" {
+		t.Errorf("with a capacity: %s %q", n.Status, n.Text)
+	}
+	// plenty of room is fine, and 95% is red
+	if n := externalDBNode(mongo, 4096, archOK); n.Status != archOK || !strings.Contains(n.Text, "of 4.0 GB (10%)") {
+		t.Errorf("roomy: %s %q", n.Status, n.Text)
+	}
+	if n := externalDBNode(mongo, 420, archOK); n.Status != archFail {
+		t.Errorf("98%% full: %s %q", n.Status, n.Text)
+	}
+	// with no setting the disk MongoDB reports is the total
+	disk := mongo
+	disk.DiskUsed, disk.DiskTotal = 18<<30, 20<<30
+	if n := externalDBNode(disk, 0, archOK); n.Status != archWarn || !strings.Contains(n.Text, "18.0 GB of 20.0 GB (90%)") {
+		t.Errorf("disk: %s %q", n.Status, n.Text)
+	}
+	// with neither, only what is used can be told, and it says what is missing
+	n = externalDBNode(mongo, 0, archOK)
+	if n.Status != archOK || n.Text != "MongoDB: 412 MB used" || !strings.Contains(n.Rows[len(n.Rows)-1].Value, "Site settings") {
+		t.Errorf("no capacity: %s %q %+v", n.Status, n.Text, n.Rows)
+	}
+	// errors in the operations keep the box amber whatever the size
+	if n := externalDBNode(mongo, 4096, archWarn); n.Status != archWarn {
+		t.Errorf("base status lost: %s", n.Status)
+	}
+	// a database that cannot be asked its size says so and is amber
+	bad := persist.Stats{Backend: "mongodb", Err: errors.New("timeout")}
+	if n := externalDBNode(bad, 512, archOK); n.Status != archWarn || !strings.Contains(n.Text, "cannot read its size") {
+		t.Errorf("unreadable: %s %q", n.Status, n.Text)
+	}
+}
+
+func TestFirestoreShowsTodaysOperationsAgainstTheFreeAllowance(t *testing.T) {
+	if n := externalDBNode(persist.Stats{Backend: "firestore"}, 0, archOK); n.Status != archOK || n.Text != "Firestore: no operations today" {
+		t.Errorf("quiet: %s %q", n.Status, n.Text)
+	}
+	busy := persist.Stats{Backend: "firestore", Reads: 1200, Writes: 16000, Deletes: 3}
+	n := externalDBNode(busy, 0, archOK)
+	if n.Status != archWarn || n.Text != "Firestore: writes today 16,000 of 20,000" {
+		t.Errorf("80%% of the writes: %s %q", n.Status, n.Text)
+	}
+	if len(n.Rows) < 4 || n.Rows[0].Value != "1,200 of 50,000 (2%)" || n.Rows[1].Status != archWarn {
+		t.Errorf("rows: %+v", n.Rows)
+	}
+	if n := externalDBNode(persist.Stats{Backend: "firestore", Reads: 49000}, 0, archOK); n.Status != archFail {
+		t.Errorf("98%% of the reads: %s %q", n.Status, n.Text)
+	}
+	if thousands(1234567) != "1,234,567" || thousands(12) != "12" || size(3<<30) != "3.0 GB" {
+		t.Error("number words")
+	}
+}
+
+func TestTheDatabaseCapacityIsChecked(t *testing.T) {
+	for _, mb := range []int{5, -1, 1 << 30} {
+		if _, err := (SiteSettings{DBCapacityMB: mb}).normalize(); err == nil {
+			t.Errorf("%d MB was accepted", mb)
+		}
+	}
+	if s, err := (SiteSettings{DBCapacityMB: 512}).normalize(); err != nil || s.DBCapacityMB != 512 {
+		t.Errorf("512 MB: %+v %v", s.DBCapacityMB, err)
+	}
+	if _, err := (SiteSettings{}).normalize(); err != nil {
+		t.Errorf("not set: %v", err)
 	}
 }

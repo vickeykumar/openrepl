@@ -102,7 +102,53 @@ var (
 	mu     sync.RWMutex
 	series = map[string]*Series{}
 	gauges = map[string]*int64{}
+	days   = map[string]*dayCount{}
 )
+
+// DayZone is where a day starts: Firestore's daily quotas start again at midnight
+// Pacific time.
+var DayZone = pacific()
+
+func pacific() *time.Location {
+	if l, err := time.LoadLocation("America/Los_Angeles"); err == nil {
+		return l
+	}
+	return time.FixedZone("PT", -8*3600)
+}
+
+type dayCount struct {
+	day string
+	n   int64
+}
+
+func today() string { return Now().In(DayZone).Format("2006-01-02") }
+
+// DayAdd counts n more of a name today; the count starts again at midnight (DayZone).
+func DayAdd(name string, n int64) {
+	d := today()
+	mu.Lock()
+	defer mu.Unlock()
+	c := days[name]
+	if c == nil {
+		c = &dayCount{}
+		days[name] = c
+	}
+	if c.day != d {
+		c.day, c.n = d, 0
+	}
+	c.n += n
+}
+
+// DayValue is what a name has counted today.
+func DayValue(name string) int64 {
+	d := today()
+	mu.RLock()
+	defer mu.RUnlock()
+	if c := days[name]; c != nil && c.day == d {
+		return c.n
+	}
+	return 0
+}
 
 // Get returns the series of a name, made the first time.
 func Get(name string) *Series {
@@ -182,4 +228,7 @@ const (
 	FileEvents  = "files.events"  // changes the file browsers reported
 	FileWatches = "files.watches" // gauge: file browsers watching a folder now
 	Repl        = "repl."         // gauge, + the program: terminals running it now
+	FSReads     = "fs.reads"      // Firestore documents read today
+	FSWrites    = "fs.writes"     // written today
+	FSDeletes   = "fs.deletes"    // deleted today
 )

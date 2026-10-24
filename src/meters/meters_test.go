@@ -81,3 +81,25 @@ func TestNamedSeriesAndGauges(t *testing.T) {
 		t.Error("gauge values")
 	}
 }
+
+func TestADayCountStartsAgainAtMidnightPacificTime(t *testing.T) {
+	old := DayZone
+	DayZone = time.FixedZone("PT", -8*3600)
+	t.Cleanup(func() { DayZone = old })
+	// 2026-10-25 07:00 UTC is 23:00 on the 24th in Pacific time (no daylight saving here)
+	at(t, time.Date(2026, 10, 25, 7, 0, 0, 0, time.UTC).Unix())
+	DayAdd("test.day", 5)
+	DayAdd("test.day", 2)
+	if DayValue("test.day") != 7 {
+		t.Fatalf("today: %d", DayValue("test.day"))
+	}
+	// an hour later it is the 25th there: a new day
+	Now = func() time.Time { return time.Date(2026, 10, 25, 8, 0, 0, 0, time.UTC) }
+	if DayValue("test.day") != 0 {
+		t.Errorf("the count was kept into the next day: %d", DayValue("test.day"))
+	}
+	DayAdd("test.day", 1)
+	if DayValue("test.day") != 1 || DayValue("test.other") != 0 {
+		t.Error("a new day starts at the count of its first event")
+	}
+}

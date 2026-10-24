@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"meters"
 	"utils"
 )
 
@@ -343,6 +344,7 @@ func isNotFound(err error) bool {
 
 // Get reads a document. It returns ErrFSNotFound when there is none.
 func (f *Firestore) Get(coll, id string) (*Doc, error) {
+	meters.DayAdd(meters.FSReads, 1)
 	var d Doc
 	err := f.call("GET", f.docs()+"/"+url.PathEscape(coll)+"/"+url.PathEscape(id), nil, nil, &d)
 	if isNotFound(err) {
@@ -366,6 +368,7 @@ type Precondition struct {
 // ErrFSConflict. It is a one-write commit, which takes the precondition in its
 // body (the emulator does not read a timestamp from the PATCH query).
 func (f *Firestore) Put(coll, id string, fields map[string]interface{}, pre Precondition) (*Doc, error) {
+	meters.DayAdd(meters.FSWrites, 1)
 	name := f.docs() + "/" + coll + "/" + id // a resource name is not URL-escaped
 	write := map[string]interface{}{"update": map[string]interface{}{"name": name, "fields": fields}}
 	cur := map[string]interface{}{}
@@ -403,6 +406,7 @@ func (f *Firestore) Put(coll, id string, fields map[string]interface{}, pre Prec
 
 // Delete removes a document; ErrFSNotFound when there was none.
 func (f *Firestore) Delete(coll, id string) error {
+	meters.DayAdd(meters.FSDeletes, 1)
 	q := url.Values{"currentDocument.exists": {"true"}}
 	err := f.call("DELETE", f.docs()+"/"+url.PathEscape(coll)+"/"+url.PathEscape(id), q, nil, nil)
 	if isNotFound(err) || isConflict(err) {
@@ -441,10 +445,14 @@ func (f *Firestore) List(coll string, pageSize int, fn func(*Doc) bool) error {
 				continue
 			}
 			n++
+			meters.DayAdd(meters.FSReads, 1) // each document of a query is a read
 			last = r.Document.ID()
 			if !fn(r.Document) {
 				return nil
 			}
+		}
+		if n == 0 {
+			meters.DayAdd(meters.FSReads, 1) // a query that finds nothing is billed one read
 		}
 		if n < pageSize {
 			return nil
@@ -455,6 +463,7 @@ func (f *Firestore) List(coll string, pageSize int, fn func(*Doc) bool) error {
 // CommitAll writes many documents at once (up to 500 a request), replacing
 // whatever is there.
 func (f *Firestore) CommitAll(coll string, docs map[string]map[string]interface{}) error {
+	meters.DayAdd(meters.FSWrites, int64(len(docs)))
 	writes := []interface{}{}
 	flush := func() error {
 		if len(writes) == 0 {

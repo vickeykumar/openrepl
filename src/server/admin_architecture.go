@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"meters"
+	"persist"
 	"user"
 	"utils"
 )
@@ -372,7 +373,7 @@ func (server *Server) architecture() archReply {
 	}
 	extNode := archNode{ID: "external", Status: archOff, Text: "not set up"}
 	if external {
-		extNode.Status, extNode.Text = dbStatus, backend
+		extNode = externalDBNode(archDBStats(), GetSiteSettings().DBCapacityMB, dbStatus)
 	}
 
 	fire := archOK
@@ -461,4 +462,114 @@ func (server *Server) handleAdminArchitecture(w http.ResponseWriter, r *http.Req
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	adminJSON(w, http.StatusOK, server.architecture())
+}
+
+// ---- MongoDB and Firestore: how much of them is used --------------------------------
+
+var archDB struct {
+	mu    sync.Mutex
+	at    time.Time
+	stats persist.Stats
+}
+
+// archDBStats asks MongoDB for its sizes at most every 30 seconds (the map is polled
+// every few seconds); Firestore's counts are in memory and cost nothing.
+func archDBStats() persist.Stats {
+	archDB.mu.Lock()
+	defer archDB.mu.Unlock()
+	if time.Since(archDB.at) < 30*time.Second && archDB.stats.Backend != "" && archDB.stats.Backend != "firestore" {
+		return archDB.stats
+	}
+	archDB.stats, archDB.at = persist.CurrentStats(), time.Now()
+	return archDB.stats
+}
+
+// size tells bytes the way people read them: 412 MB, 2.4 GB.
+func size(b int64) string {
+	if b >= 1<<30 {
+		return fmt.Sprintf("%.1f GB", float64(b)/(1<<30))
+	}
+	return fmt.Sprintf("%d MB", (b+(1<<20)/2)>>20)
+}
+
+// share is a status for how much of an allowance is used: amber from 80%, red from 95%.
+func share(pct float64) string {
+	switch {
+	case pct >= 95:
+		return archFail
+	case pct >= 80:
+		return archWarn
+	}
+	return archOK
+}
+
+func thousands(n int64) string {
+	s := fmt.Sprintf("%d", n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
+// externalDBNode is the box of the remote database in use. base is the status the
+// operations alone give it (amber on errors). capacityMB is the admin's setting.
+func externalDBNode(st persist.Stats, capacityMB int, base string) archNode {
+	n := archNode{ID: "external", Status: base, View: "health"}
+	if st.Err != nil {
+		n.Status = worse(base, archWarn)
+		n.Text = st.Backend + ": cannot read its size"
+		n.Rows = []archRow{{"Size", "could not be read", archWarn}}
+		return n
+	}
+	switch st.Backend {
+	case "mongodb":
+		used := st.DataBytes + st.IndexBytes
+		if used == 0 {
+			used = st.StorageBytes
+		}
+		var total int64
+		source := "not known: set the capacity in Site settings"
+		switch {
+		case capacityMB > 0:
+			total, source = int64(capacityMB)<<20, "set in Site settings"
+		case st.DiskTotal > 0:
+			used, total, source = st.DiskUsed, st.DiskTotal, "the disk MongoDB reports"
+		}
+		n.Rows = []archRow{
+			{"Data", size(st.DataBytes), ""}, {"Indexes", size(st.IndexBytes), ""}, {"Stored on disk", size(st.StorageBytes), ""},
+		}
+		if total > 0 {
+			p := float64(used) * 100 / float64(total)
+			n.Status = worse(base, share(p))
+			n.Text = fmt.Sprintf("MongoDB: %s of %s (%.0f%%)", size(used), size(total), p)
+			n.Rows = append(n.Rows, archRow{"Capacity", size(total) + ", " + source, share(p)})
+		} else {
+			n.Text = "MongoDB: " + size(used) + " used"
+			n.Rows = append(n.Rows, archRow{"Capacity", source, ""})
+		}
+	case "firestore":
+		quotas := []struct {
+			name        string
+			used, limit int64
+		}{{"Reads today", st.Reads, persist.FirestoreFreeReads}, {"Writes today", st.Writes, persist.FirestoreFreeWrites}, {"Deletes today", st.Deletes, persist.FirestoreFreeDeletes}}
+		worst, worstPct := 0, -1.0
+		for i, q := range quotas {
+			p := float64(q.used) * 100 / float64(q.limit)
+			n.Rows = append(n.Rows, archRow{q.name, fmt.Sprintf("%s of %s (%.0f%%)", thousands(q.used), thousands(q.limit), p), share(p)})
+			if p > worstPct {
+				worst, worstPct = i, p
+			}
+		}
+		n.Rows = append(n.Rows, archRow{"Note", "this server's count against the free daily allowance; it starts again at midnight Pacific time and at a restart. The size of the data is not available to the application.", ""})
+		n.Status = worse(base, share(worstPct))
+		if st.Reads+st.Writes+st.Deletes == 0 {
+			n.Text = "Firestore: no operations today"
+		} else {
+			q := quotas[worst]
+			n.Text = fmt.Sprintf("Firestore: %s %s of %s", strings.ToLower(q.name), thousands(q.used), thousands(q.limit))
+		}
+	default:
+		n.Text = st.Backend
+	}
+	return n
 }
