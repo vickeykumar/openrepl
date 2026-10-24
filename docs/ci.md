@@ -13,7 +13,7 @@ What runs on a pull request to `master`, what each check is for, and how to run 
 | `ci.yml` | **Secret scan** | no (informational) | gitleaks on the commits of the change, with `.gitleaks.toml` allowing the keys that are public by design |
 | `ci.yml` | **CI passed** | **the one to require** | Passes when the four required jobs did |
 | `docker-image.yml` | **build** | yes | Builds the Docker image (as before), starts it, runs `scripts/ci/smoke.sh` (pages and scripts are served, the contact form refuses an empty message and drops spam, the admin API is closed to a visitor) and then the browser tests |
-| `docker-image.yml` | browser tests (a step of **build**) | no (informational) | `e2e/` (Playwright, Chromium): the theme choice and that light means a light page, the dropdowns of the IDE show what the editor uses, the Monokai default, the practice page, a short page's footer, the contact form's server side, and an accessibility scan (axe) that only reports. The report is in the `playwright-report` artifact of the run |
+| `docker-image.yml` | browser tests (a step of **build**) | yes | `e2e/` (Playwright, Chromium): the theme choice and that light means a light page, the dropdowns of the IDE show what the editor uses, the Monokai default, the practice page, a short page's footer, the contact form's server side, and an accessibility scan (axe) that only reports. The report is in the `playwright-report` artifact of the run |
 | `audit.yml` | **npm audit** | no | Every Monday: known problems in the npm packages of `src/js` and the widget |
 | `docker-push.yml` | | | On a push to `master`: pushes the image (unchanged) |
 
@@ -66,7 +66,7 @@ These are set in GitHub (Settings, Branches, a rule for `master`); a workflow fi
 - Require a pull request before merging, with one approval.
 - Require status checks: **CI passed** and **Docker Image CI / build**. Require the branch to be up to date.
 - Do not allow direct pushes to `master`.
-- When the browser tests have a record of passing, take `continue-on-error: true` off the "Browser tests (Playwright)" step of `docker-image.yml` to make them required, and make the axe scan fail on `serious` and `critical` violations (`tests/a11y.spec.js`).
+- The browser tests are required (a failing one fails **build**). The axe scan inside them still only reports: make it fail on `serious` and `critical` violations (`tests/a11y.spec.js`) once its list is short.
 - When the secret scan has a clean first run, take `continue-on-error: true` off the **Secret scan** job.
 - `docker-push.yml` uses the repository variables `DOCKER_REGISTRY`, `DOCKER_USERNAME` and the secret `DOCKER_PASSWORD` (unchanged).
 
