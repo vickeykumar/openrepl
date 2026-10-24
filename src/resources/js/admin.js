@@ -58,6 +58,7 @@
     health: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
     params: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
     logs: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
+    usage: '<path d="M3 20h18M6 16V9M11 16V5M16 16v-4M20 16V8"/>',
     audit: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
     copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     close: '<path d="M18 6L6 18M6 6l12 12"/>',
@@ -946,11 +947,32 @@
           openRouterTimeoutSec: int(form.orTimeout.value),
           answerCaps: capsOf(models.map(function (m) { return [m.id, int(form.caps[m.id].value)]; })),
           openRouterHosts: hostsOf(form.host1.value, form.host2.value),
+          modelPrices: pricesOf(), showCostToUsers: form.showCost.checked,
           agentDisabled: !form.agentOn.checked, agentOnPractice: form.agentPractice.checked,
           agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value) }
       };
     }
     function int(v) { v = parseInt(v, 10); return isNaN(v) ? 0 : v; }
+    // the prices that are set, as {model: {in, out}} (dollars for a million tokens)
+    function pricesOf() {
+      var o = {};
+      models.forEach(function (m) {
+        var p = form.price && form.price[m.id];
+        if (!p) return;
+        var i = parseFloat(p.in.value), u = parseFloat(p.out.value);
+        i = isNaN(i) ? 0 : i; u = isNaN(u) ? 0 : u;
+        if (i > 0 || u > 0) o[m.id] = { in: i, out: u };
+      });
+      return o;
+    }
+    function pricesClean(src) {
+      var o = {};
+      models.forEach(function (m) {
+        var p = (src || {})[m.id];
+        if (p && (p.in > 0 || p.out > 0)) o[m.id] = { in: p.in || 0, out: p.out || 0 };
+      });
+      return o;
+    }
     // the caps that are set, as an object in the order of the models
     function capsOf(pairs) {
       var o = {};
@@ -975,6 +997,7 @@
           openRouterTimeoutSec: s.genie.openRouterTimeoutSec || 0,
           answerCaps: capsOf(models.map(function (m) { return [m.id, (s.genie.answerCaps || {})[m.id] || 0]; })),
           openRouterHosts: (s.genie.openRouterHosts || []).slice(),
+          modelPrices: pricesClean(s.genie.modelPrices), showCostToUsers: !!s.genie.showCostToUsers,
           agentDisabled: !!s.genie.agentDisabled, agentOnPractice: !!s.genie.agentOnPractice,
           agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0 } };
     }
@@ -999,6 +1022,23 @@
       var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
       var agentPractice = toggle('f-agent-practice', !!settings.genie.agentOnPractice, 'Agent mode on the practice page');
       form.agentOn = agentOn.input; form.agentPractice = agentPractice.input;
+      // what the models cost: dollars for a million tokens sent and written, by model
+      var showCost = toggle('f-show-cost', !!settings.genie.showCostToUsers, 'Show the cost to users');
+      form.showCost = showCost.input;
+      form.price = {};
+      var priceInputs = models.map(function (m) {
+        var cur = (settings.genie.modelPrices || {})[m.id] || {};
+        function box(which, label) {
+          var input = h('input', { type: 'number', class: 'field', id: 'f-price-' + which + '-' + m.id.replace(/[^a-z0-9]/gi, '-'), min: '0', max: '10000', step: '0.01',
+            placeholder: 'not set', 'aria-label': label + ' for ' + m.name, oninput: update });
+          input.value = cur[which] || '';
+          input.style.maxWidth = '7rem';
+          return input;
+        }
+        var inBox = box('in', 'Price per million tokens sent'), outBox = box('out', 'Price per million tokens written');
+        form.price[m.id] = { in: inBox, out: outBox };
+        return { model: m, inBox: inBox, outBox: outBox };
+      });
 
       var swatch = h('span', { class: 'swatch', vars: { '--sw': colourOfTheDay() } });
       var ann = h('textarea', { id: 'f-ann', maxlength: '280', placeholder: 'Shown as a banner on every page. Leave empty for none.', 'aria-label': 'Announcement text', oninput: update });
@@ -1361,6 +1401,12 @@
           row('OpenRouter time limit', 'Seconds before Gemma\'s answer is given up on. Keep it under 90: the site\'s proxy gives up at about 100.', form.orTimeout),
           row('OpenRouter first host', 'Gemma is run by this host first.', form.host1),
           row('OpenRouter second host', 'Used only when the first cannot answer. No other host is ever used.', form.host2) ]),
+        card('Genie prices and cost', 'What each model costs, to work out what users spend (Genie usage). Cost is worked out when it is shown, so changing a price changes every total. Nothing is charged by this.', [
+          priceInputs.map(function (p) {
+            return row('Price: ' + p.model.name, 'Dollars for a million tokens, sent then written. A model that reports its own cost (OpenRouter) uses that instead when it does.',
+              h('div', { class: 'toolbar' }, h('span', { class: 'sub', text: 'Sent' }), p.inBox, h('span', { class: 'sub', text: 'Written' }), p.outBox));
+          }),
+          row('Show the cost to users', 'Off by default: users see the tokens they used. On adds their cost to the usage details.', showCost.node) ]),
         card('Agent mode', 'Genie works on a task in steps: it writes in the editor and runs the code, after the user allowed each kind of action and reviewed the changes. Only signed-in users have it, and it is on unless you switch it off here. Each task costs a user one request, like a chat message, however many steps it has.', [
           row('Agent mode', 'Shows the Chat | Agent switch in the Genie panel for signed-in users. Chat stays the default.', agentOn.node),
           row('On the practice page', 'Off by default: the practice page is for solving questions with an interviewer.', agentPractice.node),
@@ -1630,6 +1676,55 @@
     return { root: root, refresh: refresh, poll: true };
   }
 
+  // ---- Genie usage
+
+  function viewGenieUsage() {
+    var root = h('div'), box = h('div');
+    var range = 'month';
+    var csv = h('a', { class: 'btn', href: BASE + 'admin/genie-usage?format=csv&range=month', download: 'openrepl-genie-usage.csv', text: 'Download CSV' });
+    var sel = h('select', { 'aria-label': 'Period', onchange: function () {
+      range = sel.value;
+      csv.setAttribute('href', BASE + 'admin/genie-usage?format=csv&range=' + range);
+      box.__key = null;
+      refresh();
+    } }, h('option', { value: 'month', text: 'This month' }), h('option', { value: 'all', text: 'All time' }));
+    root.appendChild(pageHead('Genie usage', 'The tokens each signed-in user has used, as the models report them, and what they cost.'));
+    root.appendChild(h('div', { class: 'toolbar' }, sel, h('span', { class: 'grow' }), csv));
+    root.appendChild(box);
+
+    function n(x) { return Number(x || 0).toLocaleString('en-US'); }
+    function usd(r) { return r.answers ? '$' + r.cost.toFixed(2) + (r.partial ? ' *' : '') : '\u2013'; }
+    var cols = [
+      { key: 'who', label: 'User', cell: function (r) {
+        return h('div', null, h('div', { text: r.name || r.email || r.uid }), r.email && r.name ? h('div', { class: 'sub', text: r.email }) : null);
+      } },
+      { key: 'answers', label: 'Answers', num: true, cell: function (r) { return n(r.answers); } },
+      { key: 'in', label: 'Sent', num: true, cell: function (r) { return n(r.in); } },
+      { key: 'out', label: 'Written', num: true, cell: function (r) { return n(r.out); } },
+      { key: 'cost', label: 'Cost', num: true, cell: function (r) { return usd(r); } },
+      { key: 'models', label: 'By model (tokens)', cell: function (r) {
+        return h('span', { class: 'sub', text: (r.models || []).map(function (m) { return m.name + ': ' + n(m.in + m.out) + (m.partial ? ' (no price)' : ''); }).join(' \u00b7 ') });
+      } }
+    ];
+
+    function draw(r) {
+      var rows = r.users.slice();
+      var visitors = Object.assign({ name: 'Visitors (counted together)' }, r.visitors);
+      if (visitors.answers) rows.push(visitors);
+      var anyPartial = rows.some(function (x) { return x.partial; });
+      var node = h('div', { class: 'stack' },
+        table(cols, rows, { empty: 'No Genie answers have been counted ' + (range === 'month' ? 'this month' : 'yet') + '.' }),
+        h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('b', { text: 'All users and visitors' }), h('span', { class: 'grow' }),
+          h('span', { text: plural(r.total.answers, 'answer', 'answers') + ' \u00b7 ' + n(r.total.in) + ' sent \u00b7 ' + n(r.total.out) + ' written \u00b7 ' + usd(r.total) }))),
+        anyPartial || !r.pricesSet ? h('p', { class: 'sub', text: (r.pricesSet ? '* A model with no price is not in this cost.' : 'No prices are set yet, so only the cost OpenRouter reports is counted.') + ' Set prices in Site settings, Genie prices and cost.' }) : null,
+        r.truncated ? h('p', { class: 'sub', text: 'Only the first 500 users are listed.' }) : null);
+      render(box, JSON.stringify([r, range]), node);
+    }
+
+    function refresh() { return api.get('admin/genie-usage?range=' + range).then(draw); }
+    return { root: root, refresh: refresh, poll: true };
+  }
+
   // ---- navigation --------------------------------------------------------------
 
   var VIEWS = {
@@ -1640,6 +1735,7 @@
     feedback: { label: 'Feedback', icon: 'feedback', make: viewFeedback, badge: true },
     snippets: { label: 'Shared code', icon: 'snippets', make: viewSnippets },
     users: { label: 'Users', icon: 'users', make: viewUsers },
+    usage: { label: 'Genie usage', icon: 'usage', make: viewGenieUsage },
     health: { label: 'Health', icon: 'health', make: viewHealth },
     params: { label: 'Parameters', icon: 'params', make: viewParams },
     logs: { label: 'Log', icon: 'logs', make: viewLogs },
@@ -1649,7 +1745,7 @@
   var GROUPS = [
     ['', ['overview']],
     ['Fleet', ['workers', 'sessions']],
-    ['Site', ['site', 'feedback', 'snippets', 'users']],
+    ['Site', ['site', 'feedback', 'snippets', 'users', 'usage']],
     ['System', ['health', 'params', 'logs', 'audit']]
   ];
 

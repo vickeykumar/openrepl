@@ -1,6 +1,8 @@
 package cookie
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"github.com/gorilla/sessions"
 	"log"
 	"net/http"
@@ -368,4 +370,36 @@ func GetOrUpdateHomeDir(rw http.ResponseWriter, req *http.Request, Uid string) (
 			log.Println("Error: while updating cookie err: ", err.Error())
 		}
 		return homedir
+}
+
+
+// guestIDKey is where a visitor's anonymous id is kept in the session cookie.
+const guestIDKey = "gid"
+
+// GuestID is the anonymous id of a visitor's session, "" if there is none yet.
+// It saves nothing.
+func GuestID(req *http.Request) string {
+	session_cookie, _ := session_store.Get(req, "user-session")
+	id, _ := session_cookie.Values[guestIDKey].(string)
+	return id
+}
+
+// EnsureGuestID gives the visitor's session an anonymous id if it has none, and
+// says it. It writes the cookie, so it has to be called before the response
+// is begun. The id names a session, not a person: it is gone when the cookie is.
+func EnsureGuestID(rw http.ResponseWriter, req *http.Request) string {
+	session_cookie, _ := session_store.Get(req, "user-session")
+	if id, _ := session_cookie.Values[guestIDKey].(string); id != "" {
+		return id
+	}
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	id := hex.EncodeToString(b)
+	session_cookie.Values[guestIDKey] = id
+	if err := session_store.Save(req, rw, session_cookie); err != nil {
+		log.Println("Error: saving the guest id: ", err)
+	}
+	return id
 }

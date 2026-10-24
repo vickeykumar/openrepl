@@ -41,6 +41,7 @@ All of them run on the gateway or the standalone server, never on a worker. The 
 | `/admin/snippets/<id>` | GET | One snippet with its code. |
 | `/admin/snippets/<id>/delete` | POST | Remove it; its `/s/<id>` link stops working. |
 | `/admin/users` | GET | Accounts: email, name, live sessions, blocked, admin. |
+| `/admin/genie-usage?range=month\|all[&format=csv]` | GET | The tokens each signed-in user has used, by model, with the cost; visitors as one combined line (section 3, "Genie usage"). |
 | `/admin/users/<uid>/signout`, `/block`, `/unblock` | POST | See section 4. |
 | `/admin/workers` | GET | Gateway: every node (LLD 11 section 11). |
 | `/admin/workers/<id>/drain`, `/undrain`, `/reconnect` | POST | Gateway: stop or resume new sessions; drop the connection of a worker, which connects again by itself. |
@@ -86,6 +87,8 @@ Every change that is not just a flag on a message (settings, deleting feedback o
 | `answerCaps` (by model id) | Luna 7,000, 4o mini 3,000, Gemma 4,000 | 500 to 16,000 | The most tokens an answer may have (`answerCap`; a visitor's own request is clamped to it) |
 | `openRouterTimeoutSec` | 60 | 10 to 90 | How long OpenRouter may take before "isn't available right now" (the site's proxy gives up at about 100) |
 | `openRouterHosts` | ModelRun, then CoreWeave | one or two of those two | The hosts Gemma may use, in order, and no others; `provider.only` and `order` are built from it |
+
+**Genie prices and cost** (its own card, and the Genie usage view of the Site group). `modelPrices` is what each built-in model costs, in dollars for a million tokens sent and written (`{model id: {in, out}}`, 0 to 10,000; empty means no price, and an entry with both numbers 0 is dropped). `showCostToUsers` (off) adds the cost to the usage details of the Genie panel. The Genie usage view (`admin_genie_usage.go`, `viewGenieUsage` in `admin.js`) lists every signed-in user's answers, tokens sent and written and cost, for this month or all time, with the models behind each one, a line for the visitors counted together and the total, and a CSV download (`/admin/genie-usage?format=csv`, a row per user and model). Cost is worked out when it is shown (`modelTokens.cost`): the dollars OpenRouter reported when the model reports them, else tokens times the price, else the line is marked as not complete (`*`). The month shown is the current one: the monthly numbers start again when the month changes, the all-time numbers do not. How the tokens are counted: LLD 07 section 3d.
 
 **Agent mode** (the Agent mode card; LLD 07 section 3b). `agentDisabled` (the Agent mode switch is on unless an admin turns it off) and `agentOnPractice` (off) are switches; the numbers: `agentTasksPerHour` (built in 20, 1 to 200: how many tasks a signed-in user may start in an hour, admins none) and `agentMaxSteps` (built in 8, 1 to 8: the steps of a task). The audit log says "agent mode on" or "agent mode off", "agent mode on the practice page on" and "agent limits: N tasks an hour, M steps a task". `settings.js` carries `agentEnabled` (only while Genie itself is on), `agentOnPractice` and `agentMaxSteps`, never the hourly count.
 

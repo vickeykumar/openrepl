@@ -3,6 +3,7 @@ import { marked } from "marked";
 
 import { widgetHTML } from "./widgetHtmlString";
 import { AgentRunner, AgentState } from "./agent";
+import { TokenUsage, answerTokens, tokenRows } from "./tokens";
 import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntry, addItem, gather, hashQuery, itemKey, metaOf, namesLine, problemsLine, rankEntries, removeItem, withAttached, withoutHash } from "./attach";
 import { CoachKind, MAX_HINTS, NO_CODE_IN_A_HINT, NO_HINTS_LEFT, askedText, carriesCode, hintsUsed, questionKey, withHint } from "./coach";
 import css from "./widget.css";
@@ -1136,6 +1137,7 @@ type Usage = {
   unlimited?: boolean;
   signedIn?: boolean;
   agent?: { used: number; perHour: number; nextFreeSeconds: number; maxSteps: number };
+  tokens?: TokenUsage;
 };
 let usage: Usage | null = null;
 let usageAt = 0; // when it was told
@@ -1251,12 +1253,20 @@ function renderUsage() {
       rows.push(["Steps in a task", "up to " + u.agent.maxSteps + " (a task uses 1 request)"]);
     }
   }
-  const sig = JSON.stringify(rows) + (u.signedIn ? "" : "guest");
+  // the tokens used, as the models reported them
+  const spent = tokenRows(u.tokens);
+  rows.push(...spent.rows);
+  const sig = JSON.stringify(rows) + (u.signedIn ? "" : "guest") + spent.note;
   if (more.getAttribute("data-sig") !== sig) {
     more.setAttribute("data-sig", sig);
     more.textContent = "";
     rows.forEach(([k, v]) => {
       const row = document.createElement("div");
+      if (k === "" && v === "") {
+        row.className = "cw-usage__sep";
+        more.appendChild(row);
+        return;
+      }
       const dt = document.createElement("dt");
       dt.textContent = k;
       const dd = document.createElement("dd");
@@ -1264,6 +1274,12 @@ function renderUsage() {
       row.append(dt, dd);
       more.appendChild(row);
     });
+    if (spent.note) {
+      const p = document.createElement("p");
+      p.className = "cw-usage__note";
+      p.textContent = spent.note;
+      more.appendChild(p);
+    }
     if (!u.signedIn && !u.unlimited) {
       const p = document.createElement("p");
       p.textContent = "Sign in for more requests and Agent mode.";
@@ -2321,7 +2337,9 @@ const handleStandardResponse = async (res: Response, meta: string = "") => {
     if (responseData.choices && responseData.choices.length > 0) {
         const responseMessage : MessageType = responseData.choices[0].message;
         addMessageToHistory(responseMessage.role, responseMessage.content);
-        await createNewMessageEntry(responseMessage.content, Date.now(), "system", false, meta, used);
+        // what this answer used, when the model says
+        const spent = answerTokens(responseData.usage);
+        await createNewMessageEntry(responseMessage.content, Date.now(), "system", false, spent ? (meta ? meta + " · " : "") + spent : meta, used);
     } else {
         handleErrorResponse(responseData);
     }
@@ -2431,6 +2449,7 @@ async function submit(e: Event) {
     const task = await takeContext(true);
     sentContext = task.items.length > 0 ? { items: task.items, notes: task.notes } : null;
     await agentRunner.start(msg, task.block);
+    fetchUsage(); // the tokens of the task's steps
     return false;
   }
   // what was added from the file browser and the editor: read now, and told as text
@@ -2498,6 +2517,8 @@ async function runRequest() {
     } else {
       await handleStandardResponse(response, usedCaption);
     }
+    // the answer is counted once it is complete: the header went out before it
+    fetchUsage();
   } catch (e: any) {
     thinkingBubble.remove();
     chatFailed = true;

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"regexp"
 	"sort"
@@ -102,6 +103,12 @@ type GenieSettings struct {
 	ContextAttachItems int `json:"contextAttachItems"`
 	ContextAttachChars int `json:"contextAttachChars"`
 	ContextAttachTotal int `json:"contextAttachTotal"`
+	// ModelPrices is what each model costs, in dollars for a million tokens sent and
+	// written, by model id. A model that is not in it has no price (the cost of
+	// a model whose provider reports it, OpenRouter, is the reported one). It is
+	// used for the cost shown to the admin, and to users when ShowCostToUsers is on.
+	ModelPrices     map[string]modelPrice `json:"modelPrices"`
+	ShowCostToUsers bool                  `json:"showCostToUsers"`
 	// AnswerCaps is the most tokens an answer of a model may have, by model id;
 	// a model that is not in it has the built-in cap.
 	AnswerCaps map[string]int `json:"answerCaps"`
@@ -412,6 +419,7 @@ const (
 	minTerminalChars, maxTerminalChars = 200, 20000
 	minTerminalLines, maxTerminalLines = 1, 200
 	minHistory, maxHistory             = 6, 50
+	maxPricePerMillion                 = 10000
 	minAttachItems, maxAttachItems     = 1, 20
 	minAttachChars, maxAttachChars     = 500, 50000
 	minAttachTotal, maxAttachTotal     = 2000, 100000
@@ -443,6 +451,26 @@ func (g *GenieSettings) normalizeNumbers() error {
 			return fmt.Errorf("%s must be between %d and %d (or empty for the built-in value)", n.name, n.min, n.max)
 		}
 	}
+	prices := map[string]modelPrice{}
+	known := map[string]bool{}
+	for _, id := range g.allModelIDs() {
+		known[id] = true
+	}
+	for id, p := range g.ModelPrices {
+		if !known[id] {
+			return fmt.Errorf("%q is not a model", id)
+		}
+		if p.In < 0 || p.Out < 0 || p.In > maxPricePerMillion || p.Out > maxPricePerMillion || math.IsNaN(p.In) || math.IsNaN(p.Out) {
+			return fmt.Errorf("The price of %s must be between 0 and %d dollars for a million tokens (or empty)", id, maxPricePerMillion)
+		}
+		if p.set() {
+			prices[id] = p
+		}
+	}
+	if len(prices) == 0 {
+		prices = nil
+	}
+	g.ModelPrices = prices
 	caps := map[string]int{}
 	for id, n := range g.AnswerCaps {
 		if _, known := chatModels[id]; !known {
@@ -696,7 +724,7 @@ func settingsChanges(a, b SiteSettings) []string {
 		out = append(out, "default model: "+name)
 	}
 	if ga, gb := a.Genie, b.Genie; ga.context() != gb.context() || ga.OpenRouterTimeoutSec != gb.OpenRouterTimeoutSec ||
-		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {
+		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || fmt.Sprint(ga.ModelPrices) != fmt.Sprint(gb.ModelPrices) || ga.ShowCostToUsers != gb.ShowCostToUsers || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {
 		out = append(out, "Genie limits changed (context, history, answer sizes, OpenRouter time limit or hosts)")
 	}
 	if a.Genie.AgentDisabled != b.Genie.AgentDisabled {

@@ -99,6 +99,7 @@ All server-side stores are key-value databases behind one small interface, `pers
 | `blog.db` | raw UnQLite (or MongoDB) | `<blog name>` → `BlogPost` JSON | `/blog` |
 | `snippets.db` | raw UnQLite (or MongoDB), guarded by a mutex | `<8-character id>` → `snippet` JSON | `/snippet`, `/s/<id>` (LLD 01) |
 | `practice.db` | raw UnQLite (or MongoDB), guarded by a mutex | `u:<uid>` → `practiceDoc` JSON | `/practice/progress` |
+| `genie_usage.db` | raw UnQLite (or MongoDB) | `u:<uid>` and `visitors` → `tokenRecord` JSON (tokens per model, this month and all time) | the chat proxy (`tokens.go`), `/chat/usage`, `/admin/genie-usage` |
 | `jobfile` | `encoding/gob` | `map[name]*Job{Name, ExpirationTime}` | `utils.GottyJobs` (written on shutdown, read and deleted on start) |
 | `.gitconfig` | text (read-only at runtime), the fallback for the `OPENREPL_*` environment variables | admin email, OpenAI key, allowed host | LLD 01, 07 |
 | `settings.json` (or MongoDB when `OPENREPL_MONGODB_URI` is set, LLD 13 section 3) | JSON (`server/settings.go`), read once and cached, written atomically (tmp file + rename) | `SiteSettings`: colour of the day, announcement, maintenance, switched-off languages, Genie switch and rates (LLD 13); a missing file means every switch is off | `/settings.js`, `/admin` |

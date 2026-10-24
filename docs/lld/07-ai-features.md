@@ -104,6 +104,14 @@ Genie can work on a task in steps in the editor. Full design and decisions: `doc
 
 What the user adds with Add to Genie chat is read in the browser and sent as part of the user's own message (LLD 06, "Add to Genie chat"): the server sees ordinary message text and does nothing special with it. A message carries at most 8 chips and 24,000 characters of them by default. Nothing is stored apart from the conversation itself.
 
+## 3d. Tokens used (`tokens.go`, `admin_genie_usage.go`)
+
+What the models report for each answer (the `usage` of an OpenAI or OpenRouter reply: tokens sent and written, thinking included, and OpenRouter's cost) is added up per user and model. `sanitizeChatBody` asks for it: `stream_options.include_usage` on a streamed OpenAI request, `usage.include` on an OpenRouter request. The proxy copies the upstream body to the visitor through a `bodyTap` that keeps a copy of up to 4 MB, and when the copy is over `extractUsage` reads the JSON of a whole answer or the last `data:` line of a stream; a refused request and a model that reports nothing add nothing. Admins are counted too.
+
+The key is the signed-in user (`u:<uid>`) or `visitors`, all visitors together, since they have no account: `tokenRecord` keeps, per model, this month's and all-time tokens sent and written, answers and the dollars the provider reported (`genie_usage.db`, saved after each answer; with no database the totals last until the server restarts). The month part starts again when the month changes. A visitor's panel also shows their own visit: the proxy gives the session cookie an anonymous id (`cookie.EnsureGuestID`, before the response is begun, because a cookie cannot be set after the body starts) and the ledger keeps that visit's totals in memory, forgetting a visit after a day and the oldest when 5,000 are held. Nothing stored holds a question, an answer, a file, an address or a name.
+
+`GET /chat/usage` and the `X-OpenREPL-Usage` header carry `tokens`: `visit` for a visitor, `month` and `all` for a signed-in user, and `cost` only when `showCostToUsers` is on. The header goes out before the body, so it holds the totals before the answer; the widget asks `/chat/usage` once an answer is complete (`fetchUsage` at the end of `runRequest` and of an agent task), and the line under a reply reads the count from the reply itself (`answerTokens`, `chat-widget/src/tokens.ts`). The admin side is in LLD 13.
+
 ## 4. Genie assistant (chat widget)
 
 - **Opening:** on the home page Genie no longer opens on load. It opens from the app bar's Ask Genie button, the floating button, or the note that appears after the first error in a terminal, which fills in that error (`setupGenieErrorNudge` in `scribbler.js`). On `/practice` it still opens on load, because it plays the interviewer.

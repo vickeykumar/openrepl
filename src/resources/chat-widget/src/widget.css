@@ -1291,4 +1291,6 @@ body #chat-widget__container #chat-widget__input:focus-visible {
 .cw-usage__more dt { margin: 0; }
 .cw-usage__more dd { margin: 0; color: var(--cw-text); text-align: right; }
 .cw-usage__more p { margin: 6px 0 0; color: var(--cw-link); }
+.cw-usage__more .cw-usage__sep { display: block; height: 1px; padding: 0; margin: 6px 0; background: var(--cw-border); }
+.cw-usage__more p.cw-usage__note { color: var(--cw-muted); font-size: 12px; line-height: 1.45; }
 #chat-widget__submit.is-empty:not(.is-stop) { opacity: 0.45; }

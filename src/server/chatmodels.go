@@ -208,6 +208,15 @@ func sanitizeChatBody(body []byte) ([]byte, chatModel, error) {
 	}
 	out["model"] = model.ID
 
+	// The count of tokens an answer used (tokens.go): a stream only carries it when
+	// asked, and OpenRouter also says what the answer cost.
+	if out["stream"] == true && model.Provider != providerOpenRouter {
+		out["stream_options"] = map[string]bool{"include_usage": true}
+	}
+	if model.Provider == providerOpenRouter {
+		out["usage"] = map[string]bool{"include": true}
+	}
+
 	// The question generator asks for JSON so that a quote or a newline inside
 	// the text cannot make the reply unparseable. No other format is passed on,
 	// and none to a model whose host does not take it (the agent reads the answer
