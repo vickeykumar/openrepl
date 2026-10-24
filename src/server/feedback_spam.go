@@ -39,37 +39,52 @@ var (
 	recaptchaWarned sync.Once
 )
 
-// verifyRecaptcha asks Google whether the answer the visitor got from the box is
-// good. It returns (true, nil) when it is, (false, nil) when it is not, and an
-// error when Google could not be asked.
-func verifyRecaptcha(secret, token, ip string) (bool, error) {
-	form := url.Values{"secret": {secret}, "response": {token}}
-	if ip != "" {
-		form.Set("remoteip", ip)
+// recaptchaAnswer is what Google says about an answer.
+type recaptchaAnswer struct {
+	OK       bool
+	Codes    []string // Google's error codes, e.g. "timeout-or-duplicate", "invalid-input-response"
+	Hostname string   // the site the box was solved on
+}
+
+func (a recaptchaAnswer) has(code string) bool {
+	for _, c := range a.Codes {
+		if c == code {
+			return true
+		}
 	}
+	return false
+}
+
+// verifyRecaptcha asks Google whether the answer the visitor got from the box is
+// good. It returns an error when Google could not be asked, or when the secret is
+// not accepted. The visitor's address is not sent: it is optional, and behind a
+// proxy it is the proxy's, which says nothing about the visitor.
+func verifyRecaptcha(secret, token string) (recaptchaAnswer, error) {
+	var answer recaptchaAnswer
+	form := url.Values{"secret": {secret}, "response": {token}}
 	resp, err := recaptchaClient.PostForm(recaptchaVerifyURL, form)
 	if err != nil {
-		return false, errRecaptchaUnavailable
+		return answer, errRecaptchaUnavailable
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return false, errRecaptchaUnavailable
+		return answer, errRecaptchaUnavailable
 	}
 	var out struct {
 		Success    bool     `json:"success"`
+		Hostname   string   `json:"hostname"`
 		ErrorCodes []string `json:"error-codes"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(nil, resp.Body, 64*1024)).Decode(&out); err != nil {
-		return false, errRecaptchaUnavailable
+		return answer, errRecaptchaUnavailable
 	}
-	for _, code := range out.ErrorCodes {
-		// a wrong or missing secret is the server's problem, not the visitor's
-		if code == "missing-input-secret" || code == "invalid-input-secret" {
-			log.Println("ERROR: reCAPTCHA says the secret", utils.EnvRecaptchaSecret, "is wrong")
-			return false, errRecaptchaUnavailable
-		}
+	answer = recaptchaAnswer{OK: out.Success, Codes: out.ErrorCodes, Hostname: out.Hostname}
+	// a wrong or missing secret is the server's problem, not the visitor's
+	if answer.has("missing-input-secret") || answer.has("invalid-input-secret") {
+		log.Println("ERROR: reCAPTCHA does not accept the secret", utils.EnvRecaptchaSecret, "(is it the secret of the site key on the page?)")
+		return answer, errRecaptchaUnavailable
 	}
-	return out.Success, nil
+	return answer, nil
 }
 
 // normalizeEmail is the address with what does not change who it is taken out:

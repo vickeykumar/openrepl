@@ -237,12 +237,19 @@ func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 			feedbackReply(rw, req, http.StatusBadRequest, "Please tick \u201cI'm not a robot\u201d first.")
 			return
 		}
-		good, err := verifyRecaptcha(secret, captcha, clientIP(req))
+		answer, err := verifyRecaptcha(secret, captcha)
 		if err != nil {
 			feedbackReply(rw, req, http.StatusServiceUnavailable, "The check could not be made right now. Please try again in a moment.")
 			return
 		}
-		if !good {
+		if !answer.OK {
+			// what Google said is for the operator: a secret that is not the one of this site
+			// key shows here as invalid-input-response, an old or used answer as timeout-or-duplicate
+			log.Printf("reCAPTCHA refused the answer: error-codes=%v hostname=%q", answer.Codes, answer.Hostname)
+			if answer.has("timeout-or-duplicate") {
+				feedbackReply(rw, req, http.StatusBadRequest, "The check ran out of time or was used already. Please tick \u201cI'm not a robot\u201d again.")
+				return
+			}
 			feedbackReply(rw, req, http.StatusBadRequest, "The check did not pass. Please tick \u201cI'm not a robot\u201d again.")
 			return
 		}

@@ -1,5 +1,6 @@
-# Checks that run on every pull request to master (and on pushes to master and
-# development). The jobs are independent and run in parallel. `ci-ok` is the one
+# Checks that run on every pull request to master (and on pushes to master). A branch
+# with an open pull request is checked through it, not twice; any branch can be run by
+# hand from the Actions tab (workflow_dispatch). The jobs are independent and run in parallel. `ci-ok` is the one
 # to require in the branch protection rules: it passes when all the others do.
 # What each job checks, how to run it on your machine, and what is informational
 # only: docs/ci.md.
@@ -7,7 +8,7 @@ name: CI
 
 on:
   push:
-    branches: [master, development]
+    branches: [master]
   pull_request:
     branches: [master]
   workflow_dispatch:
