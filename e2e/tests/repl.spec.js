@@ -1,5 +1,5 @@
 // The REPLs start. A language page connects a terminal to the server, which starts the REPL
-// program (node, ts-node, python3, irb, cling) with its own PATH: this opens each one through
+// program (node, ts-node, python3, irb, cling, the Go interpreter, jshell) with its own PATH: this opens each one through
 // the page, types a small sum and waits for the answer. It is what shows that an image has
 // every REPL's program where the server looks for it (an image without `node` answered
 // "executable file not found in $PATH" and every check on the pages still passed).
@@ -31,6 +31,8 @@ const REPLS = [
   // 'fileExists' of undefined" (it does not load the typescript compiler from the global modules).
   // Take `fixme` off when that is fixed.
   { name: "TypeScript (ts-node)", path: "/typescript", prompt: />/, inputs: ["40 + 2"], answer: /\b42\b/, fixme: "ts-node cannot load typescript in the image" },
+  { name: "Go", path: "/go", prompt: /go>>/, inputs: ["6 * 7"], answer: /\b42\b/ },
+  { name: "Java (jshell)", path: "/java", prompt: /jshell>/, inputs: ["6 * 7"], answer: /==> 42/ },
   { name: "Python", path: "/python", prompt: />>>/, inputs: ["6 * 7"], answer: /\b42\b/ },
   { name: "Ruby (irb)", path: "/ruby", prompt: />/, inputs: ["6 * 7"], answer: /=> 42/ },
   // cling is in C mode here, which does not print the value of an expression: print it
