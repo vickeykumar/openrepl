@@ -30,7 +30,7 @@ const REPLS = [
   // ts-node once stopped with "Cannot read property 'fileExists' of undefined": it loaded its own
   // nested typescript 7 (no JavaScript API) instead of the global 4.9.5
   { name: "TypeScript (ts-node)", path: "/typescript", prompt: />/, inputs: ["40 + 2"], answer: /\b42\b/ },
-  { name: "Go (gomacro)", path: "/go", prompt: /gomacro>/, inputs: ["12 + 31"], answer: /43\s+\/\/ int/ },
+  { name: "Go (gomacro)", path: "/go", prompt: /gomacro>/, inputs: ["x := 6", "x * 7"], answer: /42\s+\/\/ int/ },
   { name: "Java (jshell)", path: "/java", prompt: /jshell>/, inputs: ["6 * 7"], answer: /==> 42/ },
   { name: "Python", path: "/python", prompt: />>>/, inputs: ["6 * 7"], answer: /\b42\b/ },
   { name: "Ruby (irb)", path: "/ruby", prompt: />/, inputs: ["6 * 7"], answer: /=> 42/ },

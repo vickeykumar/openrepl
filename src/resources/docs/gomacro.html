@@ -61,7 +61,7 @@
           <h3 class="section__title">Why to use gomacro</h3>
           <ul>
             <li><p>It helps you learn Go: check how a construct behaves while you are learning it, in a loop of type, read, adjust.</p></li>
-            <li><p>An expression prints its value and its type, for example <code>43 // int</code>.</p></li>
+            <li><p>An expression prints its value and its type, for example <code>42 // int</code>.</p></li>
             <li><p>Packages of the standard library are imported with the usual <code>import "fmt"</code>.</p></li>
           </ul>
           <hr />
@@ -71,7 +71,10 @@
           <p>Type a Go statement at the <b>gomacro&gt;</b> prompt and press Enter. Statements run as soon as they are complete, so a <code>for</code> loop prints its output right away. A statement that is not finished yet (an open brace, bracket or parenthesis) goes on to the next line.</p>
           <h4 class="section__title">Try it</h4>
           <pre class="code code--block"><code>gomacro&gt; 12+31
-43      // int
+{int 43}        // untyped.Lit
+gomacro&gt; x := 6
+gomacro&gt; x * 7
+42      // int
 gomacro&gt; import "fmt"
 gomacro&gt; for i := 0; i &lt; 3; i++ { fmt.Println("Hi:", i) }
 Hi: 0

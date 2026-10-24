@@ -142,7 +142,7 @@ func TestSearchFindsTheRightNoteForQuestionsAboutTheSite(t *testing.T) {
 		{"what does the insert button do in genie", "genie-insert-and-replace"},
 		{"how do I undo what genie put in my editor", "genie-insert-and-replace"},
 		{"what is agent mode", "genie-agent-mode"},
-		{"why does my for loop not run in the go repl", "go-repl"},
+		{"why is fmt undefined in the go repl", "go-repl"},
 		{"what does :help do in gomacro", "go-repl"},
 		{"does genie keep working if i close the panel", "genie"},
 		{"how many genie requests do i have left", "genie"},

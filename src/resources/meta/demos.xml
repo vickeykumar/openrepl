@@ -343,12 +343,12 @@ sleep 0.05
 			<Code>
 				<Prompt>gomacro&gt;</Prompt>
 				<Statement> 12312321</Statement>
-				<Result>12312321   // int</Result>
+				<Result>{int 12312321}   // untyped.Lit</Result>
 			</Code>
 			<Code>
 				<Prompt>gomacro&gt;</Prompt>
 				<Statement> 12+31</Statement>
-				<Result>43   // int</Result>
+				<Result>{int 43}   // untyped.Lit</Result>
 			</Code>
 			<Code>
 				<Prompt>gomacro&gt;</Prompt>
@@ -358,6 +358,15 @@ sleep 0.05
 				<Prompt>gomacro&gt;</Prompt>
 				<Statement> i</Statement>
 				<Result>0   // int</Result>
+			</Code>
+			<Code>
+				<Prompt>gomacro&gt;</Prompt>
+				<Statement> x := 6</Statement>
+			</Code>
+			<Code>
+				<Prompt>gomacro&gt;</Prompt>
+				<Statement> x * 7</Statement>
+				<Result>42   // int</Result>
 			</Code>
 			<Code>
 				<Prompt>gomacro&gt;</Prompt>
@@ -407,7 +416,7 @@ Hi: 2</Result>
 			<Command>:quit</Command>
 			<Description>Exits the REPL.</Description>
 		</Usage>
-		<Notes>Type Go code at the gomacro&gt; prompt, one statement at a time. A statement runs as soon as it is complete, and an expression (12+31, x*2, a variable name, a function call) prints its value and its type, for example 43 // int.
+		<Notes>Type Go code at the gomacro&gt; prompt, one statement at a time. A statement runs as soon as it is complete, and an expression (12+31, x*2, a variable name, a function call) prints its value and its type: a number written in the line alone is shown as {int 43} // untyped.Lit, and a variable or a calculation with one as 42 // int.
 - Import a package before you use it: import "fmt", then fmt.Println(...). A Println prints its text and then the two values it returns, so its output is followed by lines such as 14 // int and &lt;nil&gt; // error: that is normal.
 - A for, if or switch block runs when it is complete, so there is nothing to type to run it. A block on several lines goes on to the next line until its braces close; writing it on ONE line is simplest.
 - A named function can be declared as in Go: func sq(n int) int { return n*n }.
