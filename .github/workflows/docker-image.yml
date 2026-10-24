@@ -66,7 +66,11 @@ jobs:
             node -e "var t=require(\"typescript\"); console.log(require.resolve(\"typescript\"), t.version, typeof t.sys)" 2>&1 | head -5
             echo "40 + 2" | timeout 20 ts-node 2>&1 | head -15
           done
-          ls -la /usr/local/bin/ts-node /usr/local/bin/tsc; ls /node_modules /tmp/home/node_modules 2>&1 | head'
+          G=/root/.nvm/versions/node/v12.22.9/lib/node_modules
+          ls -la $G $G/typescript $G/ts-node/node_modules 2>&1 | head -40
+          node -e "var t=require(\"$G/typescript\"); console.log(\"global typescript\", t.version, typeof t.sys, Object.keys(t).length)" 2>&1 | head -8
+          node -p "require(\"$G/typescript/package.json\").version + \" main=\" + require(\"$G/typescript/package.json\").main"
+          tsc --version; echo "const a: number = 40 + 2; console.log(a)" > /tmp/a.ts; ts-node /tmp/a.ts 2>&1 | head -4; cd /tmp && tsc a.ts && node a.js'
 
     - uses: actions/setup-node@v4
       with:

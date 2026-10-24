@@ -13,9 +13,9 @@ async function terminalText(page) {
 }
 
 // waits until the terminal shows `text` (a string or a regular expression)
-async function waitForTerminal(page, text, message) {
+async function waitForTerminal(page, text, message, timeoutSeconds) {
   await expect
-    .poll(async () => terminalText(page), { message, timeout: 60 * 1000, intervals: [500, 1000, 2000] })
+    .poll(async () => terminalText(page), { message, timeout: (timeoutSeconds || 60) * 1000, intervals: [500, 1000, 2000] })
     .toMatch(text);
 }
 
@@ -31,7 +31,8 @@ const REPLS = [
   // 'fileExists' of undefined" (it does not load the typescript compiler from the global modules).
   // Take `fixme` off when that is fixed.
   { name: "TypeScript (ts-node)", path: "/typescript", prompt: />/, inputs: ["40 + 2"], answer: /\b42\b/, fixme: "ts-node cannot load typescript in the image" },
-  { name: "Go", path: "/go", prompt: /go>>/, inputs: ["6 * 7"], answer: /\b42\b/ },
+  // the Go interpreter compiles each line, so the first answer is slow
+  { name: "Go", path: "/go", prompt: /go>>/, inputs: ["12+31"], answer: /^\s*43\s*$/m, slow: true },
   { name: "Java (jshell)", path: "/java", prompt: /jshell>/, inputs: ["6 * 7"], answer: /==> 42/ },
   { name: "Python", path: "/python", prompt: />>>/, inputs: ["6 * 7"], answer: /\b42\b/ },
   { name: "Ruby (irb)", path: "/ruby", prompt: />/, inputs: ["6 * 7"], answer: /=> 42/ },
@@ -42,12 +43,12 @@ const REPLS = [
 for (const repl of REPLS) {
   const define = repl.fixme ? test.fixme : test;
   define(`the ${repl.name} REPL starts and answers`, async ({ page }) => {
-    test.setTimeout(150 * 1000);
+    test.setTimeout(repl.slow ? 300 * 1000 : 150 * 1000);
     await page.goto(repl.path);
     await waitForTerminal(page, repl.prompt, `${repl.name}: no prompt in the terminal`);
     const shown = await terminalText(page);
     expect(shown, "the server could not start the program").not.toMatch(/executable file not found|failed to create backend|command not found/i);
     for (const line of repl.inputs) await type(page, line);
-    await waitForTerminal(page, repl.answer, `${repl.name}: no answer to ${repl.inputs[repl.inputs.length - 1]}`);
+    await waitForTerminal(page, repl.answer, `${repl.name}: no answer to ${repl.inputs[repl.inputs.length - 1]}`, repl.slow ? 180 : 60);
   });
 }
