@@ -58,6 +58,7 @@
     health: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
     params: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
     logs: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
+    usage: '<path d="M3 20h18M6 16V9M11 16V5M16 16v-4M20 16V8"/>',
     audit: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
     copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     close: '<path d="M18 6L6 18M6 6l12 12"/>',
@@ -942,14 +943,36 @@
           defaultModel: form.defModel.value,
           contextEditorChars: int(form.ctxEditor.value), contextTerminalChars: int(form.ctxTermChars.value),
           contextTerminalLines: int(form.ctxTermLines.value), historyMessages: int(form.history.value),
+          contextAttachItems: int(form.attachItems.value), contextAttachChars: int(form.attachChars.value), contextAttachTotal: int(form.attachTotal.value),
           openRouterTimeoutSec: int(form.orTimeout.value),
           answerCaps: capsOf(models.map(function (m) { return [m.id, int(form.caps[m.id].value)]; })),
           openRouterHosts: hostsOf(form.host1.value, form.host2.value),
+          modelPrices: pricesOf(), showCostToUsers: form.showCost.checked,
           agentDisabled: !form.agentOn.checked, agentOnPractice: form.agentPractice.checked,
           agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value) }
       };
     }
     function int(v) { v = parseInt(v, 10); return isNaN(v) ? 0 : v; }
+    // the prices that are set, as {model: {in, out}} (dollars for a million tokens)
+    function pricesOf() {
+      var o = {};
+      models.forEach(function (m) {
+        var p = form.price && form.price[m.id];
+        if (!p) return;
+        var i = parseFloat(p.in.value), u = parseFloat(p.out.value);
+        i = isNaN(i) ? 0 : i; u = isNaN(u) ? 0 : u;
+        if (i > 0 || u > 0) o[m.id] = { in: i, out: u };
+      });
+      return o;
+    }
+    function pricesClean(src) {
+      var o = {};
+      models.forEach(function (m) {
+        var p = (src || {})[m.id];
+        if (p && (p.in > 0 || p.out > 0)) o[m.id] = { in: p.in || 0, out: p.out || 0 };
+      });
+      return o;
+    }
     // the caps that are set, as an object in the order of the models
     function capsOf(pairs) {
       var o = {};
@@ -970,9 +993,11 @@
           defaultModel: s.genie.defaultModel || '',
           contextEditorChars: s.genie.contextEditorChars || 0, contextTerminalChars: s.genie.contextTerminalChars || 0,
           contextTerminalLines: s.genie.contextTerminalLines || 0, historyMessages: s.genie.historyMessages || 0,
+          contextAttachItems: s.genie.contextAttachItems || 0, contextAttachChars: s.genie.contextAttachChars || 0, contextAttachTotal: s.genie.contextAttachTotal || 0,
           openRouterTimeoutSec: s.genie.openRouterTimeoutSec || 0,
           answerCaps: capsOf(models.map(function (m) { return [m.id, (s.genie.answerCaps || {})[m.id] || 0]; })),
           openRouterHosts: (s.genie.openRouterHosts || []).slice(),
+          modelPrices: pricesClean(s.genie.modelPrices), showCostToUsers: !!s.genie.showCostToUsers,
           agentDisabled: !!s.genie.agentDisabled, agentOnPractice: !!s.genie.agentOnPractice,
           agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0 } };
     }
@@ -997,6 +1022,23 @@
       var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
       var agentPractice = toggle('f-agent-practice', !!settings.genie.agentOnPractice, 'Agent mode on the practice page');
       form.agentOn = agentOn.input; form.agentPractice = agentPractice.input;
+      // what the models cost: dollars for a million tokens sent and written, by model
+      var showCost = toggle('f-show-cost', !!settings.genie.showCostToUsers, 'Show the cost to users');
+      form.showCost = showCost.input;
+      form.price = {};
+      var priceInputs = models.map(function (m) {
+        var cur = (settings.genie.modelPrices || {})[m.id] || {};
+        function box(which, label) {
+          var input = h('input', { type: 'number', class: 'field', id: 'f-price-' + which + '-' + m.id.replace(/[^a-z0-9]/gi, '-'), min: '0', max: '10000', step: '0.01',
+            placeholder: 'not set', 'aria-label': label + ' for ' + m.name, oninput: update });
+          input.value = cur[which] || '';
+          input.style.maxWidth = '7rem';
+          return input;
+        }
+        var inBox = box('in', 'Price per million tokens sent'), outBox = box('out', 'Price per million tokens written');
+        form.price[m.id] = { in: inBox, out: outBox };
+        return { model: m, inBox: inBox, outBox: outBox };
+      });
 
       var swatch = h('span', { class: 'swatch', vars: { '--sw': colourOfTheDay() } });
       var ann = h('textarea', { id: 'f-ann', maxlength: '280', placeholder: 'Shown as a banner on every page. Leave empty for none.', 'aria-label': 'Announcement text', oninput: update });
@@ -1112,6 +1154,9 @@
       form.ctxTermChars = numberField('f-ctx-term-chars', 'contextTerminalChars', 'Characters of terminal output', defaults.contextTerminalChars, limits.contextTerminalChars || [200, 20000]);
       form.ctxTermLines = numberField('f-ctx-term-lines', 'contextTerminalLines', 'Lines of terminal output', defaults.contextTerminalLines, limits.contextTerminalLines || [1, 200]);
       form.history = numberField('f-history', 'historyMessages', 'Messages kept', defaults.historyMessages, limits.historyMessages || [6, 50]);
+      form.attachItems = numberField('f-attach-items', 'contextAttachItems', 'Items added to one message', defaults.contextAttachItems || 8, limits.contextAttachItems || [1, 20]);
+      form.attachChars = numberField('f-attach-chars', 'contextAttachChars', 'Characters of one added item', defaults.contextAttachChars || 8000, limits.contextAttachChars || [500, 50000]);
+      form.attachTotal = numberField('f-attach-total', 'contextAttachTotal', 'Characters of all the added items', defaults.contextAttachTotal || 24000, limits.contextAttachTotal || [2000, 100000]);
       form.agentTasks = numberField('f-agent-tasks', 'agentTasksPerHour', 'Agent tasks per hour for each signed-in user', defaults.agentTasksPerHour || 20, limits.agentTasksPerHour || [1, 200]);
       form.agentSteps = numberField('f-agent-steps', 'agentMaxSteps', 'Steps in an agent task', defaults.agentMaxSteps || 8, limits.agentMaxSteps || [1, 8]);
       form.orTimeout = numberField('f-or-timeout', 'openRouterTimeoutSec', 'OpenRouter time limit in seconds', defaults.openRouterTimeoutSec, limits.openRouterTimeoutSec || [10, 90]);
@@ -1349,10 +1394,19 @@
           row('Terminal output, characters', 'The most recent characters of the active terminal.', form.ctxTermChars),
           row('Terminal output, lines', 'How many recent lines are read from the terminal first.', form.ctxTermLines),
           row('Conversation length', 'Messages Genie remembers (the oldest go first).', form.history),
+          row('Added to a message: items', 'Files, folders and selections a user may add to one message with Add to Genie chat.', form.attachItems),
+          row('Added to a message: one item', 'Characters read of one added file or selection; a longer one is cut.', form.attachChars),
+          row('Added to a message: all items', 'Characters of everything added to one message; what does not fit is left out.', form.attachTotal),
           capRows.map(function (c) { return row('Answer size: ' + c.model.name, 'The most tokens an answer may have. A visitor asks for less by choosing a lower effort.', c.input); }),
           row('OpenRouter time limit', 'Seconds before Gemma\'s answer is given up on. Keep it under 90: the site\'s proxy gives up at about 100.', form.orTimeout),
           row('OpenRouter first host', 'Gemma is run by this host first.', form.host1),
           row('OpenRouter second host', 'Used only when the first cannot answer. No other host is ever used.', form.host2) ]),
+        card('Genie prices and cost', 'What each model costs, to work out what users spend (Genie usage). Cost is worked out when it is shown, so changing a price changes every total. Nothing is charged by this.', [
+          priceInputs.map(function (p) {
+            return row('Price: ' + p.model.name, 'Dollars for a million tokens, sent then written. A model that reports its own cost (OpenRouter) uses that instead when it does.',
+              h('div', { class: 'toolbar' }, h('span', { class: 'sub', text: 'Sent' }), p.inBox, h('span', { class: 'sub', text: 'Written' }), p.outBox));
+          }),
+          row('Show the cost to users', 'Off by default: users see the tokens they used. On adds their cost to the usage details.', showCost.node) ]),
         card('Agent mode', 'Genie works on a task in steps: it writes in the editor and runs the code, after the user allowed each kind of action and reviewed the changes. Only signed-in users have it, and it is on unless you switch it off here. Each task costs a user one request, like a chat message, however many steps it has.', [
           row('Agent mode', 'Shows the Chat | Agent switch in the Genie panel for signed-in users. Chat stays the default.', agentOn.node),
           row('On the practice page', 'Off by default: the practice page is for solving questions with an interviewer.', agentPractice.node),
@@ -1480,10 +1534,25 @@
   function viewUsers() {
     var root = h('div'), box = h('div');
     var data = null, query = '';
+    var sort = { key: 'lastSignIn', dir: 'desc' }, show = 'all';
     var search = h('input', { type: 'search', placeholder: 'Search by name or email', 'aria-label': 'Search accounts',
       oninput: function () { query = search.value.trim().toLowerCase(); box.__key = null; draw(); } });
+    var filter = h('select', { 'aria-label': 'Which accounts to show', onchange: function () { show = filter.value; box.__key = null; draw(); } },
+      h('option', { value: 'all', text: 'All accounts' }), h('option', { value: 'live', text: 'Signed in now' }),
+      h('option', { value: 'week', text: 'Signed in the last 7 days' }), h('option', { value: 'unrecorded', text: 'Sign-in not recorded' }));
     root.appendChild(pageHead('Users', 'Accounts that have signed in. Signing a user out ends their sessions; blocking also stops them signing in again.'));
-    root.appendChild(h('div', { class: 'toolbar' }, search, h('span', { class: 'grow' }), h('span', { class: 'sub', id: 'users-count' })));
+    root.appendChild(h('div', { class: 'toolbar' }, search, filter, h('span', { class: 'grow' }), h('span', { class: 'sub', id: 'users-count' })));
+
+    // a time in milliseconds as the page tells times: "3h 5m ago", the exact time on hover; 0 is "not recorded"
+    function stamp(ms, none) {
+      if (!ms) return h('span', { class: 'sub', text: none || '–' });
+      return when(new Date(ms).toISOString());
+    }
+    function sortBy(key) {
+      sort = sort.key === key ? { key: key, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { key: key, dir: key === 'email' ? 'asc' : 'desc' };
+      box.__key = null;
+      draw();
+    }
     root.appendChild(box);
 
     function act(u, action, title, body, confirm, done, danger) {
@@ -1494,8 +1563,14 @@
     }
 
     var cols = [
-      { key: 'email', label: 'Account', cell: function (u) { return h('div', null, h('b', { text: u.email || '(no email)' }), h('div', { class: 'sub', text: u.name && u.name !== u.email ? u.name : '' })); } },
-      { key: 'sessions', label: 'Signed in', num: true, cell: function (u) { return u.sessions ? plural(u.sessions, 'session', 'sessions') : h('span', { class: 'sub', text: 'no' }); } },
+      { key: 'email', label: 'Account', sort: true, cell: function (u) { return h('div', null, h('b', { text: u.email || '(no email)' }), h('div', { class: 'sub', text: u.name && u.name !== u.email ? u.name : '' })); } },
+      { key: 'lastSignIn', label: 'Last signed in', sort: true, cell: function (u) {
+        var live = u.sessions ? h('span', { title: plural(u.sessions, 'session', 'sessions') }, pill('signed in now', 'ok')) : null;
+        if (!u.lastSignIn) return h('div', null, h('span', { class: 'sub', text: 'Not recorded' }), h('div', { class: 'sub', text: 'signed in before this was kept' }), live);
+        return h('div', null, stamp(u.lastSignIn), h('div', { class: 'sub', text: localTime(new Date(u.lastSignIn).toISOString()) }), live);
+      } },
+      { key: 'firstSignIn', label: 'First signed in', sort: true, cell: function (u) { return u.firstSignIn ? h('span', { title: u.signIns ? plural(u.signIns, 'sign-in', 'sign-ins') + ' since then' : '' }, stamp(u.firstSignIn)) : stamp(0); } },
+      { key: 'lastGenie', label: 'Last Genie use', sort: true, cell: function (u) { return stamp(u.lastGenie, 'never'); } },
       { key: 'status', label: 'Status', cell: function (u) {
         return h('span', { class: 'actions' }, u.admin ? pill('admin', 'info') : null, u.blocked ? pill('blocked', 'danger') : null, !u.admin && !u.blocked ? h('span', { class: 'sub', text: '–' }) : null); } },
       { key: 'actions', label: '', cell: function (u) {
@@ -1509,9 +1584,23 @@
     ];
 
     function draw() {
-      var rows = data.users.filter(function (u) { return !query || (u.email + ' ' + u.name).toLowerCase().indexOf(query) >= 0; });
+      var weekAgo = Date.now() - 7 * 86400000;
+      var rows = data.users.filter(function (u) {
+        if (query && (u.email + ' ' + u.name).toLowerCase().indexOf(query) < 0) return false;
+        return show === 'all' || (show === 'live' && u.sessions > 0) || (show === 'week' && u.lastSignIn >= weekAgo) || (show === 'unrecorded' && !u.lastSignIn);
+      });
+      // an account with no time for the column is last, whichever way it is sorted
+      rows.sort(function (a, b) {
+        var x = a[sort.key], y = b[sort.key], dir = sort.dir === 'asc' ? 1 : -1;
+        if (sort.key !== 'email') {
+          x = x || 0; y = y || 0;
+          if (!x !== !y) return !x ? 1 : -1;
+          return x === y ? (a.email < b.email ? -1 : 1) : (x - y) * dir;
+        }
+        return String(x || '').localeCompare(String(y || '')) * dir;
+      });
       $('users-count').textContent = plural(rows.length, 'account', 'accounts') + (rows.length !== data.users.length ? ' of ' + data.users.length : '');
-      render(box, JSON.stringify(rows), table(cols, rows, { empty: data.users.length ? 'No account matches.' : 'Nobody has signed in yet.' }));
+      render(box, JSON.stringify([rows, sort]), table(cols, rows, { sort: sort, onSort: sortBy, empty: data.users.length ? 'No account matches.' : 'Nobody has signed in yet.' }));
     }
     function refresh() { return api.get('admin/users').then(function (r) { data = r; draw(); }); }
     return { root: root, refresh: refresh, poll: true };
@@ -1622,6 +1711,55 @@
     return { root: root, refresh: refresh, poll: true };
   }
 
+  // ---- Genie usage
+
+  function viewGenieUsage() {
+    var root = h('div'), box = h('div');
+    var range = 'month';
+    var csv = h('a', { class: 'btn', href: BASE + 'admin/genie-usage?format=csv&range=month', download: 'openrepl-genie-usage.csv', text: 'Download CSV' });
+    var sel = h('select', { 'aria-label': 'Period', onchange: function () {
+      range = sel.value;
+      csv.setAttribute('href', BASE + 'admin/genie-usage?format=csv&range=' + range);
+      box.__key = null;
+      refresh();
+    } }, h('option', { value: 'month', text: 'This month' }), h('option', { value: 'all', text: 'All time' }));
+    root.appendChild(pageHead('Genie usage', 'The tokens each signed-in user has used, as the models report them, and what they cost.'));
+    root.appendChild(h('div', { class: 'toolbar' }, sel, h('span', { class: 'grow' }), csv));
+    root.appendChild(box);
+
+    function n(x) { return Number(x || 0).toLocaleString('en-US'); }
+    function usd(r) { return r.answers ? '$' + r.cost.toFixed(2) + (r.partial ? ' *' : '') : '\u2013'; }
+    var cols = [
+      { key: 'who', label: 'User', cell: function (r) {
+        return h('div', null, h('div', { text: r.name || r.email || r.uid }), r.email && r.name ? h('div', { class: 'sub', text: r.email }) : null);
+      } },
+      { key: 'answers', label: 'Answers', num: true, cell: function (r) { return n(r.answers); } },
+      { key: 'in', label: 'Sent', num: true, cell: function (r) { return n(r.in); } },
+      { key: 'out', label: 'Written', num: true, cell: function (r) { return n(r.out); } },
+      { key: 'cost', label: 'Cost', num: true, cell: function (r) { return usd(r); } },
+      { key: 'models', label: 'By model (tokens)', cell: function (r) {
+        return h('span', { class: 'sub', text: (r.models || []).map(function (m) { return m.name + ': ' + n(m.in + m.out) + (m.partial ? ' (no price)' : ''); }).join(' \u00b7 ') });
+      } }
+    ];
+
+    function draw(r) {
+      var rows = r.users.slice();
+      var visitors = Object.assign({ name: 'Visitors (counted together)' }, r.visitors);
+      if (visitors.answers) rows.push(visitors);
+      var anyPartial = rows.some(function (x) { return x.partial; });
+      var node = h('div', { class: 'stack' },
+        table(cols, rows, { empty: 'No Genie answers have been counted ' + (range === 'month' ? 'this month' : 'yet') + '.' }),
+        h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('b', { text: 'All users and visitors' }), h('span', { class: 'grow' }),
+          h('span', { text: plural(r.total.answers, 'answer', 'answers') + ' \u00b7 ' + n(r.total.in) + ' sent \u00b7 ' + n(r.total.out) + ' written \u00b7 ' + usd(r.total) }))),
+        anyPartial || !r.pricesSet ? h('p', { class: 'sub', text: (r.pricesSet ? '* A model with no price is not in this cost.' : 'No prices are set yet, so only the cost OpenRouter reports is counted.') + ' Set prices in Site settings, Genie prices and cost.' }) : null,
+        r.truncated ? h('p', { class: 'sub', text: 'Only the first 500 users are listed.' }) : null);
+      render(box, JSON.stringify([r, range]), node);
+    }
+
+    function refresh() { return api.get('admin/genie-usage?range=' + range).then(draw); }
+    return { root: root, refresh: refresh, poll: true };
+  }
+
   // ---- navigation --------------------------------------------------------------
 
   var VIEWS = {
@@ -1632,6 +1770,7 @@
     feedback: { label: 'Feedback', icon: 'feedback', make: viewFeedback, badge: true },
     snippets: { label: 'Shared code', icon: 'snippets', make: viewSnippets },
     users: { label: 'Users', icon: 'users', make: viewUsers },
+    usage: { label: 'Genie usage', icon: 'usage', make: viewGenieUsage },
     health: { label: 'Health', icon: 'health', make: viewHealth },
     params: { label: 'Parameters', icon: 'params', make: viewParams },
     logs: { label: 'Log', icon: 'logs', make: viewLogs },
@@ -1641,7 +1780,7 @@
   var GROUPS = [
     ['', ['overview']],
     ['Fleet', ['workers', 'sessions']],
-    ['Site', ['site', 'feedback', 'snippets', 'users']],
+    ['Site', ['site', 'feedback', 'snippets', 'users', 'usage']],
     ['System', ['health', 'params', 'logs', 'audit']]
   ];
 

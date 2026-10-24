@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"regexp"
 	"sort"
@@ -97,6 +98,17 @@ type GenieSettings struct {
 	ContextTerminalChars int `json:"contextTerminalChars"`
 	ContextTerminalLines int `json:"contextTerminalLines"`
 	HistoryMessages      int `json:"historyMessages"`
+	// What the user may add to a message with Add to Genie chat: how many chips,
+	// the characters of one of them and of all of them. 0 is the built-in value.
+	ContextAttachItems int `json:"contextAttachItems"`
+	ContextAttachChars int `json:"contextAttachChars"`
+	ContextAttachTotal int `json:"contextAttachTotal"`
+	// ModelPrices is what each model costs, in dollars for a million tokens sent and
+	// written, by model id. A model that is not in it has no price (the cost of
+	// a model whose provider reports it, OpenRouter, is the reported one). It is
+	// used for the cost shown to the admin, and to users when ShowCostToUsers is on.
+	ModelPrices     map[string]modelPrice `json:"modelPrices"`
+	ShowCostToUsers bool                  `json:"showCostToUsers"`
 	// AnswerCaps is the most tokens an answer of a model may have, by model id;
 	// a model that is not in it has the built-in cap.
 	AnswerCaps map[string]int `json:"answerCaps"`
@@ -377,6 +389,9 @@ type genieContext struct {
 	TerminalChars int `json:"terminalChars"`
 	TerminalLines int `json:"terminalLines"`
 	History       int `json:"history"`
+	AttachItems   int `json:"attachItems"`
+	AttachChars   int `json:"attachChars"`
+	AttachTotal   int `json:"attachTotal"`
 }
 
 func orDefault(n, def int) int {
@@ -392,6 +407,9 @@ func (g GenieSettings) context() genieContext {
 		TerminalChars: orDefault(g.ContextTerminalChars, defaultContextTerminalChars),
 		TerminalLines: orDefault(g.ContextTerminalLines, defaultContextTerminalLines),
 		History:       orDefault(g.HistoryMessages, defaultHistoryMessages),
+		AttachItems:   orDefault(g.ContextAttachItems, defaultAttachItems),
+		AttachChars:   orDefault(g.ContextAttachChars, defaultAttachChars),
+		AttachTotal:   orDefault(g.ContextAttachTotal, defaultAttachTotal),
 	}
 }
 
@@ -401,6 +419,10 @@ const (
 	minTerminalChars, maxTerminalChars = 200, 20000
 	minTerminalLines, maxTerminalLines = 1, 200
 	minHistory, maxHistory             = 6, 50
+	maxPricePerMillion                 = 10000
+	minAttachItems, maxAttachItems     = 1, 20
+	minAttachChars, maxAttachChars     = 500, 50000
+	minAttachTotal, maxAttachTotal     = 2000, 100000
 	minAnswerCap, maxAnswerCap         = 500, 16000
 	minORTimeout, maxORTimeout         = 10, 90
 	minAgentTasks, maxAgentTasks       = 1, maxAgentTasksPerHour
@@ -418,6 +440,9 @@ func (g *GenieSettings) normalizeNumbers() error {
 		{"The terminal context (characters)", g.ContextTerminalChars, minTerminalChars, maxTerminalChars},
 		{"The terminal context (lines)", g.ContextTerminalLines, minTerminalLines, maxTerminalLines},
 		{"The conversation length", g.HistoryMessages, minHistory, maxHistory},
+		{"The items added to a message", g.ContextAttachItems, minAttachItems, maxAttachItems},
+		{"The characters of one added item", g.ContextAttachChars, minAttachChars, maxAttachChars},
+		{"The characters of all the items added to a message", g.ContextAttachTotal, minAttachTotal, maxAttachTotal},
 		{"The OpenRouter time limit", g.OpenRouterTimeoutSec, minORTimeout, maxORTimeout},
 		{"The agent tasks per hour", g.AgentTasksPerHour, minAgentTasks, maxAgentTasks},
 		{"The agent steps per task", g.AgentMaxSteps, minAgentSteps, maxAgentStepsSet},
@@ -426,6 +451,26 @@ func (g *GenieSettings) normalizeNumbers() error {
 			return fmt.Errorf("%s must be between %d and %d (or empty for the built-in value)", n.name, n.min, n.max)
 		}
 	}
+	prices := map[string]modelPrice{}
+	known := map[string]bool{}
+	for _, id := range g.allModelIDs() {
+		known[id] = true
+	}
+	for id, p := range g.ModelPrices {
+		if !known[id] {
+			return fmt.Errorf("%q is not a model", id)
+		}
+		if p.In < 0 || p.Out < 0 || p.In > maxPricePerMillion || p.Out > maxPricePerMillion || math.IsNaN(p.In) || math.IsNaN(p.Out) {
+			return fmt.Errorf("The price of %s must be between 0 and %d dollars for a million tokens (or empty)", id, maxPricePerMillion)
+		}
+		if p.set() {
+			prices[id] = p
+		}
+	}
+	if len(prices) == 0 {
+		prices = nil
+	}
+	g.ModelPrices = prices
 	caps := map[string]int{}
 	for id, n := range g.AnswerCaps {
 		if _, known := chatModels[id]; !known {
@@ -679,7 +724,7 @@ func settingsChanges(a, b SiteSettings) []string {
 		out = append(out, "default model: "+name)
 	}
 	if ga, gb := a.Genie, b.Genie; ga.context() != gb.context() || ga.OpenRouterTimeoutSec != gb.OpenRouterTimeoutSec ||
-		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {
+		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || fmt.Sprint(ga.ModelPrices) != fmt.Sprint(gb.ModelPrices) || ga.ShowCostToUsers != gb.ShowCostToUsers || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {
 		out = append(out, "Genie limits changed (context, history, answer sizes, OpenRouter time limit or hosts)")
 	}
 	if a.Genie.AgentDisabled != b.Genie.AgentDisabled {
@@ -732,6 +777,9 @@ type genieDefaults struct {
 	ContextTerminalChars int               `json:"contextTerminalChars"`
 	ContextTerminalLines int               `json:"contextTerminalLines"`
 	HistoryMessages      int               `json:"historyMessages"`
+	ContextAttachItems   int               `json:"contextAttachItems"`
+	ContextAttachChars   int               `json:"contextAttachChars"`
+	ContextAttachTotal   int               `json:"contextAttachTotal"`
 	AnswerCaps           map[string]int    `json:"answerCaps"`
 	OpenRouterTimeoutSec int               `json:"openRouterTimeoutSec"`
 	AgentTasksPerHour    int               `json:"agentTasksPerHour"`
@@ -762,12 +810,15 @@ func currentGenieDefaults() genieDefaults {
 	return genieDefaults{
 		ContextEditorChars: defaultContextEditorChars, ContextTerminalChars: defaultContextTerminalChars,
 		ContextTerminalLines: defaultContextTerminalLines, HistoryMessages: defaultHistoryMessages,
+		ContextAttachItems: defaultAttachItems, ContextAttachChars: defaultAttachChars, ContextAttachTotal: defaultAttachTotal,
 		AnswerCaps: caps, OpenRouterTimeoutSec: defaultOpenRouterTimeoutSec, OpenRouterHosts: hosts,
 		AgentTasksPerHour: defaultAgentTasksPerHour, AgentMaxSteps: defaultAgentMaxSteps,
 		Limits: map[string][2]int{
 			"contextEditorChars": {minEditorChars, maxEditorChars}, "contextTerminalChars": {minTerminalChars, maxTerminalChars},
 			"contextTerminalLines": {minTerminalLines, maxTerminalLines}, "historyMessages": {minHistory, maxHistory},
-			"answerCap": {minAnswerCap, maxAnswerCap}, "openRouterTimeoutSec": {minORTimeout, maxORTimeout},
+			"contextAttachItems": {minAttachItems, maxAttachItems}, "contextAttachChars": {minAttachChars, maxAttachChars},
+			"contextAttachTotal": {minAttachTotal, maxAttachTotal},
+			"answerCap":          {minAnswerCap, maxAnswerCap}, "openRouterTimeoutSec": {minORTimeout, maxORTimeout},
 			"agentTasksPerHour": {minAgentTasks, maxAgentTasks}, "agentMaxSteps": {minAgentSteps, maxAgentStepsSet},
 		},
 	}

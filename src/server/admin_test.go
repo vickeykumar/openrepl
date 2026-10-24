@@ -108,7 +108,7 @@ func TestAdminAPIAnswersOnlyAdmins(t *testing.T) {
 	_, h := adminTestServer(t)
 	for _, path := range []string{
 		"/admin/gateway", "/admin/health", "/admin/audit", "/admin/stats", "/admin/logs",
-		"/admin/settings", "/admin/feedback", "/admin/snippets", "/admin/users",
+		"/admin/settings", "/admin/feedback", "/admin/snippets", "/admin/users", "/admin/genie-usage",
 	} {
 		w := adminCall{method: "GET", path: path}.do(h)
 		if w.Code != http.StatusUnauthorized {
@@ -971,5 +971,39 @@ func TestGenieCanBeSwitchedOff(t *testing.T) {
 	decode(t, w, &e)
 	if w.Code != http.StatusServiceUnavailable || e.Error.Type != "GenieDisabled" || !strings.Contains(e.Error.Message, "switched off") {
 		t.Errorf("a visitor asking a switched-off Genie: %d %+v", w.Code, e)
+	}
+}
+
+func TestTheUsersListTellsWhenAccountsSignedInAndAskedGenie(t *testing.T) {
+	freshTokens(t)
+	_, h := adminTestServer(t)
+	before := utils.GetUnixMilli()
+	signIn(t, "uid-ann", "ann@example.com")
+	signIn(t, "uid-bob", "bob@example.com")
+	tokenTotals.add(tokensUserPrefix+"uid-ann", "", modelMini, usageCount{In: 10, Out: 5})
+
+	var list struct {
+		Users []struct {
+			Uid         string
+			LastSignIn  int64
+			FirstSignIn int64
+			SignIns     int
+			LastGenie   int64
+		}
+	}
+	decode(t, get(h, "/admin/users"), &list)
+	if len(list.Users) != 2 {
+		t.Fatalf("users: %+v", list)
+	}
+	byUID := map[string]int{}
+	for i, u := range list.Users {
+		byUID[u.Uid] = i
+		if u.LastSignIn < before || u.FirstSignIn < before || u.SignIns != 1 {
+			t.Errorf("%s: %+v", u.Uid, u)
+		}
+	}
+	ann, bob := list.Users[byUID["uid-ann"]], list.Users[byUID["uid-bob"]]
+	if ann.LastGenie < before-1000 || bob.LastGenie != 0 { // kept in seconds
+		t.Errorf("the last Genie use: ann %d, bob %d", ann.LastGenie, bob.LastGenie)
 	}
 }

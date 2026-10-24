@@ -28,6 +28,24 @@
     return type === "file" ? "file" : "folder";
   }
 
+  // Add to Genie chat: a chip for each node (the menu item below, and a drop on the chat)
+  function GenieChatAddNodes(ids) {
+    var items = window.FileBrowser && window.FileBrowser.chatItems ? window.FileBrowser.chatItems(ids) : [];
+    if (!items.length || !window.ChatWidget || !window.ChatWidget.addContext) {
+      notify("That cannot be added to the chat: hidden and binary files are left out.", { type: "info" });
+      return;
+    }
+    items.forEach(function (it) { window.ChatWidget.addContext(it); });
+  }
+
+  // files dragged from the Files panel and dropped on the Genie chat are added to it
+  $(document).on("dnd_stop.vakata", function (e, data) {
+    var target = data && data.event && data.event.target;
+    if (!target || !target.closest || !target.closest("#chat-widget__container")) return;
+    var nodes = (data.data && data.data.nodes) || [];
+    if (nodes.length) GenieChatAddNodes(nodes);
+  });
+
   var lastreciever = "";  // last nodeid that recieved a write event
   var writecounter = 0;  // number of updates recievd by the selected node
   const MIN_WRITES = 10;  // minimum number of write events before we fetch the data again from server
@@ -624,6 +642,21 @@
                   }
                 }
             };
+            // Add to Genie chat: the node, or all the selected ones when it is one of them
+            items.genie = {
+              "label": "Add to Genie chat",
+              "icon": "ctx-i ctx-i-genie",
+              "_disabled": protectedNode,
+              "action": function (data) {
+                var ref = $.jstree.reference(data.reference);
+                var sel = ref.get_selected().slice();
+                if (sel.indexOf($globalitemnode.id) < 0) { sel = [$globalitemnode.id]; }
+                GenieChatAddNodes(sel);
+              }
+            };
+            if (!window.ChatWidget || !window.ChatWidget.addContext || (window.site_settings && window.site_settings.genieDisabled)) {
+              delete items.genie;
+            }
             // New only makes sense on a folder, and File is the common one
             if ($globalitemnode.type == 'file') {
               delete items.create;
@@ -632,7 +665,7 @@
               items.create.submenu = { "create_file": created.create_file, "create_folder": created.create_folder };
             }
             var menu = {};
-            ["create", "rename", "cut", "copy", "paste", "save", "download", "delete"].forEach(function (name) {
+            ["create", "rename", "cut", "copy", "paste", "genie", "save", "download", "delete"].forEach(function (name) {
               if (items[name]) { menu[name] = items[name]; }
             });
             return menu;
@@ -979,6 +1012,105 @@
       ready: ready,
       home: home,
       reveal: revealPanel,
+
+      // ---- "Add to Genie chat" (the chips of chat-widget/src/attach.ts) -------------------
+      // The chips for some nodes: a file or a folder, by its path in the tree; the home
+      // folder itself, hidden files and protected (binary) ones are left out.
+      chatItems: function (ids) {
+        if (!ready()) return [];
+        var t = tree();
+        var out = [];
+        (ids || []).forEach(function (id) {
+          var node = t.get_node(id);
+          if (!node || node.id === "#" || isHidden(node) || isProtected(node)) return;
+          var rel = relOf(node.id);
+          if (!rel) return;
+          var folder = isFolder(node);
+          out.push({ kind: folder ? "folder" : "file", path: node.id, name: rel + (folder ? "/" : "") });
+        });
+        return out;
+      },
+
+      // every file and folder of the panel, for the # list of the chat: {path, name (relative, "/" ends a folder), kind}
+      entries: function () {
+        if (!ready()) return [];
+        var t = tree();
+        var home0 = t.get_node(home());
+        var out = [];
+        ((home0 && home0.children_d) || []).forEach(function (id) {
+          var n = t.get_node(id);
+          if (!n || isProtected(n)) return;
+          var rel = relOf(id);
+          if (!rel || rel.split("/").some(function (seg) { return seg.charAt(0) === "."; })) return;
+          out.push({ path: id, name: rel + (isFolder(n) ? "/" : ""), kind: isFolder(n) ? "folder" : "file" });
+        });
+        return out;
+      },
+
+      // every file below a folder (as {path}), without the hidden and the protected ones; null if it is not a folder
+      walk: function (id) {
+        if (!ready()) return null;
+        var t = tree();
+        var node = t.get_node(id);
+        if (!node || !isFolder(node)) return null;
+        var out = [];
+        (node.children_d || []).slice().sort().forEach(function (cid) {
+          var n = t.get_node(cid);
+          if (!n || isFolder(n) || isProtected(n)) return;
+          if (relOf(cid).split("/").some(function (seg) { return seg.charAt(0) === "."; })) return;
+          out.push({ path: cid });
+        });
+        return out;
+      },
+
+      // the text of a file as it is now: what the editor holds if it is the open one (unsaved changes
+      // included), else what the server has; null if it cannot be read
+      read: function (id) {
+        return new Promise(function (resolve) {
+          var editor = window["editor"];
+          if (editor && editor.env && editor.env.filename === id && editor.env.editor && editor.env.editor.getValue) {
+            resolve(editor.env.editor.getValue());
+            return;
+          }
+          $.ajax({ url: preprocessurl("/ws_filebrowser?q=load&filepath=" + encodeURIComponent(id)), method: "GET" })
+            .done(function (data) {
+              try {
+                var bin = atob(data);
+                var bytes = new Uint8Array(bin.length);
+                for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                resolve(new TextDecoder("utf-8").decode(bytes));
+              } catch (e) {
+                resolve(null);
+              }
+            })
+            .fail(function () { resolve(null); });
+        });
+      },
+
+      // shows what a chip stands for: a file or the lines of a selection in the editor, a folder in the tree
+      showChip: async function (item) {
+        if (!ready() || !item) return false;
+        var t = tree();
+        if (item.kind === "folder") {
+          var folderNode = t.get_node(item.path);
+          if (!folderNode) return false;
+          revealPanel();
+          t.open_node(item.path);
+          showNode(folderNode);
+          return true;
+        }
+        if (!item.path || !t.get_node(item.path)) return false;
+        var opened = await window.FileBrowser.open(relOf(item.path));
+        if (!opened || !opened.ok) return false;
+        var ed = window["editor"] && window["editor"].env && window["editor"].env.editor;
+        if (ed && item.kind === "selection" && item.startLine) {
+          ed.gotoLine(item.startLine, 0, true);
+          var end = item.endLine || item.startLine;
+          ed.selection.setRange({ start: { row: item.startLine - 1, column: 0 }, end: { row: end, column: 0 } }, false);
+          ed.focus();
+        }
+        return true;
+      },
 
       // what a path is: {exists, type: "file" | "folder", protected (binary, or hidden), hidden}
       info: function (rel) {

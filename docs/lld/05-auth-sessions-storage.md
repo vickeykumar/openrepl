@@ -99,6 +99,7 @@ All server-side stores are key-value databases behind one small interface, `pers
 | `blog.db` | raw UnQLite (or MongoDB) | `<blog name>` → `BlogPost` JSON | `/blog` |
 | `snippets.db` | raw UnQLite (or MongoDB), guarded by a mutex | `<8-character id>` → `snippet` JSON | `/snippet`, `/s/<id>` (LLD 01) |
 | `practice.db` | raw UnQLite (or MongoDB), guarded by a mutex | `u:<uid>` → `practiceDoc` JSON | `/practice/progress` |
+| `genie_usage.db` | raw UnQLite (or MongoDB) | `u:<uid>` and `visitors` → `tokenRecord` JSON (tokens per model, this month and all time) | the chat proxy (`tokens.go`), `/chat/usage`, `/admin/genie-usage` |
 | `jobfile` | `encoding/gob` | `map[name]*Job{Name, ExpirationTime}` | `utils.GottyJobs` (written on shutdown, read and deleted on start) |
 | `.gitconfig` | text (read-only at runtime), the fallback for the `OPENREPL_*` environment variables | admin email, OpenAI key, allowed host | LLD 01, 07 |
 | `settings.json` (or MongoDB when `OPENREPL_MONGODB_URI` is set, LLD 13 section 3) | JSON (`server/settings.go`), read once and cached, written atomically (tmp file + rename) | `SiteSettings`: colour of the day, announcement, maintenance, switched-off languages, Genie switch and rates (LLD 13); a missing file means every switch is off | `/settings.js`, `/admin` |
@@ -113,7 +114,12 @@ Every write calls `Commit()` right away. Listing uses UnQLite cursors (`FetchFee
 // user/user.go
 type User        struct { Uid, Name(displayName), Email, PhotoURL string; StsTokenManager{AccessToken, RefreshToken string; ExpirationTime int64} }
 type UserSession struct { Uid, SessionID string; ExpirationTime int64; LoggedIn bool; User *User /* only on the wire */ }
-type UserProfile struct { Uid, Name, Email, PhotoURL string; SessionMap map[string]UserSession }
+type UserProfile struct { Uid, Name, Email, PhotoURL string; SessionMap map[string]UserSession; LastSignIn, FirstSignIn int64; SignIns int }
+```
+
+The last three are when the account signed in (milliseconds) and how many times, noted by `UpdateAndStoreSessionData` whenever it adds a session, which only the browser's `POST /login` does once Firebase has signed the person in: opening a page while signed in asks `GET /login` and does not count, and neither does signing out or a sign-in that was refused for a blocked account. They are zero (not recorded) for an account that last signed in before they existed, until its next sign-in. They live on the profile, not on a session, because a session is dropped when its token expires.
+
+```go
 
 // server/db.go, server/blog_db.go
 type feedback struct { Name, Email, Message string }

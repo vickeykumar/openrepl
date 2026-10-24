@@ -289,10 +289,13 @@ func (server *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		type row struct {
 			user.Account
 			Admin bool `json:"admin"`
+			// when the account last asked Genie, in milliseconds; 0 if never
+			LastGenie int64 `json:"lastGenie"`
 		}
+		genie := tokenTotals.every()
 		rows := make([]row, len(accounts))
 		for i, a := range accounts {
-			rows[i] = row{Account: a, Admin: utils.IsAdminEmail(a.Email)}
+			rows[i] = row{Account: a, Admin: utils.IsAdminEmail(a.Email), LastGenie: genie[a.Uid].Updated * 1000}
 		}
 		adminJSON(w, http.StatusOK, map[string]interface{}{"users": rows})
 	case len(parts) == 3 && r.Method == http.MethodPost && uidPattern.MatchString(parts[1]):

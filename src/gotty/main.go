@@ -26,6 +26,7 @@ func common_setup() {
 	server.InitBlogDBHandle()
 	server.InitSnippetDBHandle()
 	server.InitPracticeDBHandle()
+	server.InitTokenDBHandle()
 	user.InitSessionDBHandle()
 	cookie.InitSecret()
 	containers.InitContainers()
@@ -44,6 +45,7 @@ func common_cleanup() {
 	server.CloseBlogDBHandle()
 	server.CloseSnippetDBHandle()
 	server.ClosePracticeDBHandle()
+	server.CloseTokenDBHandle()
 	user.CloseSessionDBHandle()
 	containers.DeleteContainers()
 	cleanup_done = true

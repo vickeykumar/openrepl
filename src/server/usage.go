@@ -28,6 +28,21 @@ type agentUsage struct {
 	MaxSteps        int `json:"maxSteps"`
 }
 
+// tokenUsage is what the visitor has used, as the models reported it (tokens.go): a
+// visitor's own visit, or a signed-in user's month and all time.
+type tokenUsage struct {
+	Visit *totals    `json:"visit,omitempty"`
+	Month *totals    `json:"month,omitempty"`
+	All   *totals    `json:"all,omitempty"`
+	Cost  *tokenCost `json:"cost,omitempty"` // only when an admin turned the cost on for users
+}
+
+type tokenCost struct {
+	Month   float64 `json:"month"`
+	All     float64 `json:"all"`
+	Partial bool    `json:"partial,omitempty"` // a model without a price is not in it
+}
+
 type genieUsage struct {
 	Left      float64 `json:"left"`      // requests left now; the next one is taken while this is above 0
 	Cap       float64 `json:"cap"`       // the most a visitor holds
@@ -36,7 +51,8 @@ type genieUsage struct {
 	Unlimited bool `json:"unlimited,omitempty"`
 	SignedIn  bool `json:"signedIn"`
 	// Agent is there for a signed-in user where agent mode is on.
-	Agent *agentUsage `json:"agent,omitempty"`
+	Agent  *agentUsage `json:"agent,omitempty"`
+	Tokens *tokenUsage `json:"tokens,omitempty"`
 }
 
 // usageOf works out the usage of the visitor behind a request. left is the
@@ -56,6 +72,14 @@ func usageOf(req *http.Request, isAdmin bool, left *float64) genieUsage {
 	g := GetSiteSettings().Genie
 	if uid, ok := agentUser(req); ok {
 		u.SignedIn = true
+		rec := tokenTotals.user(uid)
+		month, all := rec.sum(true), rec.sum(false)
+		u.Tokens = &tokenUsage{Month: &month, All: &all}
+		if g.ShowCostToUsers {
+			m, partialM := rec.cost(true, g.ModelPrices)
+			a, partialA := rec.cost(false, g.ModelPrices)
+			u.Tokens.Cost = &tokenCost{Month: m, All: a, Partial: partialM || partialA}
+		}
 		if !g.AgentDisabled {
 			used, next := agents.started(uid)
 			perHour := g.agentTasksPerHour()
@@ -64,6 +88,10 @@ func usageOf(req *http.Request, isAdmin bool, left *float64) genieUsage {
 			}
 			u.Agent = &agentUsage{Used: used, PerHour: perHour, NextFreeSeconds: int(math.Ceil(next.Seconds())), MaxSteps: g.agentMaxSteps()}
 		}
+	}
+	if !u.SignedIn {
+		v := tokenTotals.visit(cookie.GuestID(req))
+		u.Tokens = &tokenUsage{Visit: &v}
 	}
 	return u
 }

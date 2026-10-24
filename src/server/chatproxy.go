@@ -399,6 +399,11 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         }
     }
 
+    // a visitor gets an anonymous id in the session cookie, to count the visit's tokens under
+    if _, signedIn := agentUser(req); !signedIn {
+        cookie.EnsureGuestID(rw, req)
+    }
+
     var num_req_rem float64
     if !isAdmin {
 	    //recharge,  no restriction for admin
@@ -531,8 +536,16 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
     }
     // the upstream status as well, so that a refusal is not shown as a success
     rw.WriteHeader(resp.StatusCode)
-    // Copy the response body to the response writer
-    _, err = io.Copy(rw, resp.Body)
+    // Copy the response body to the response writer, and look at it on the way for
+    // the count of tokens the answer used (tokens.go)
+    tap := &bodyTap{r: resp.Body, limit: maxUpstreamAnswerBytes}
+    _, err = io.Copy(rw, tap)
+    if err == nil && !tap.over && resp.StatusCode < 300 {
+        if used, ok := extractUsage(tap.buf.Bytes()); ok {
+            key, visit := whoPays(req)
+            tokenTotals.add(key, visit, model.ID, used)
+        }
+    }
     if err != nil {
         log.Println("Error: copying response body", err)
         handleChatProxyError(rw, req, http.StatusInternalServerError, 

@@ -3,6 +3,8 @@ import { marked } from "marked";
 
 import { widgetHTML } from "./widgetHtmlString";
 import { AgentRunner, AgentState } from "./agent";
+import { TokenUsage, answerTokens, tokenRows } from "./tokens";
+import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntry, addItem, gather, hashQuery, itemKey, metaOf, namesLine, problemsLine, rankEntries, removeItem, withAttached, withoutHash } from "./attach";
 import { CoachKind, MAX_HINTS, NO_CODE_IN_A_HINT, NO_HINTS_LEFT, askedText, carriesCode, hintsUsed, questionKey, withHint } from "./coach";
 import css from "./widget.css";
 
@@ -214,7 +216,7 @@ function modelFields(): Record<string, any> {
 // user message refreshes. Set in init() once they are in; it was a fixed 4
 // while two of them were the page text and the documentation list.
 let NUM_MANDATORY_ENTRIES = 4;
-function genieLimit(name: "editorChars" | "terminalChars" | "terminalLines" | "history", fallback: number): number {
+function genieLimit(name: "editorChars" | "terminalChars" | "terminalLines" | "history" | "attachItems" | "attachChars" | "attachTotal", fallback: number): number {
   const n = Number((((window as any).site_settings || {}).genieContext || {})[name]);
   return n > 0 ? n : fallback;
 }
@@ -276,7 +278,7 @@ function getcurrentIDECode(): MessageType {
     language ? `Language: ${language}` : "",
     file && file !== "untitled" ? `File: ${file}` : "",
     "--- Editor code ---",
-    code || "(the editor is empty)",
+    readEditor ? code || "(the editor is empty)" : "(the user turned off sharing the editor with Genie; what they add to a message is all the code you have)",
     "--- Terminal output (the most recent lines of the active terminal) ---",
     output || "(nothing in the terminal yet)",
   ].filter(Boolean);
@@ -537,6 +539,7 @@ function editorContextLabel(): string {
   const chip = document.getElementById("editor-filename");
   const name = chip ? (chip.textContent || "").trim() : "";
   if (!document.getElementById("editor")) return "";
+  if (!readEditor) return "Reads the terminal only";
   return name && name !== "untitled" ? `Reads ${name} + terminal` : "Reads editor + terminal";
 }
 
@@ -816,7 +819,9 @@ const agentRunner = new AgentRunner(
     },
     userSaid: async (text: string) => {
       addMessageToHistory("user", text);
-      await createNewMessageEntry(text, Date.now(), "user");
+      const chips = sentContext;
+      sentContext = null;
+      await createNewMessageEntry(text, Date.now(), "user", false, "", null, null, chips ? chips.items : null, chips ? chips.notes : []);
     },
     genieSaid: async (text: string, context?: string | null) => {
       addMessageToHistory("assistant", text);
@@ -1132,6 +1137,7 @@ type Usage = {
   unlimited?: boolean;
   signedIn?: boolean;
   agent?: { used: number; perHour: number; nextFreeSeconds: number; maxSteps: number };
+  tokens?: TokenUsage;
 };
 let usage: Usage | null = null;
 let usageAt = 0; // when it was told
@@ -1247,12 +1253,20 @@ function renderUsage() {
       rows.push(["Steps in a task", "up to " + u.agent.maxSteps + " (a task uses 1 request)"]);
     }
   }
-  const sig = JSON.stringify(rows) + (u.signedIn ? "" : "guest");
+  // the tokens used, as the models reported them
+  const spent = tokenRows(u.tokens);
+  rows.push(...spent.rows);
+  const sig = JSON.stringify(rows) + (u.signedIn ? "" : "guest") + spent.note;
   if (more.getAttribute("data-sig") !== sig) {
     more.setAttribute("data-sig", sig);
     more.textContent = "";
     rows.forEach(([k, v]) => {
       const row = document.createElement("div");
+      if (k === "" && v === "") {
+        row.className = "cw-usage__sep";
+        more.appendChild(row);
+        return;
+      }
       const dt = document.createElement("dt");
       dt.textContent = k;
       const dd = document.createElement("dd");
@@ -1260,6 +1274,12 @@ function renderUsage() {
       row.append(dt, dd);
       more.appendChild(row);
     });
+    if (spent.note) {
+      const p = document.createElement("p");
+      p.className = "cw-usage__note";
+      p.textContent = spent.note;
+      more.appendChild(p);
+    }
     if (!u.signedIn && !u.unlimited) {
       const p = document.createElement("p");
       p.textContent = "Sign in for more requests and Agent mode.";
@@ -1540,6 +1560,8 @@ function open(e?: Event) {
 
   placePanel();
   containerElement.innerHTML = widgetHTML;
+  renderTray();
+  watchEditorFile();
   unread = null; // opening is how the result is seen
   containerElement.setAttribute("role", "dialog");
   containerElement.setAttribute("aria-label", config.widgetTitle);
@@ -1586,7 +1608,24 @@ function open(e?: Event) {
   };
 
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement;
-  input.addEventListener("input", () => autoGrow(input));
+  input.addEventListener("input", () => {
+    autoGrow(input);
+    updatePicker(input);
+  });
+  input.addEventListener("click", () => updatePicker(input));
+  input.addEventListener("blur", () => setTimeout(closePicker, 120));
+  // before the box's own keys (Enter sends, Escape closes the panel): the open list takes them
+  input.addEventListener(
+    "keydown",
+    (ev: KeyboardEvent) => {
+      if (pickerKey(ev)) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        ev.stopPropagation();
+      }
+    },
+    true
+  );
   if (!config.closeOnOutsideClick) {
     input.focus({ preventScroll: true });
   }
@@ -1825,6 +1864,309 @@ function appendContextLine(messageElement: HTMLElement, used: ContextNote[]) {
   messageElement.append(line, card);
 }
 
+// ---- What the user adds from the file browser and the editor ("Add to Genie chat") ----------
+//
+// The page scripts call ChatWidget.addContext() with the file, the folder or the selected
+// text. The chips wait above the box, and go with the next message: the files are read
+// then, so Genie gets what is there now (attach.ts). A task of agent mode takes them too.
+
+let pendingContext: ContextItem[] = [];
+// the chips of the message that is being sent, for the bubble the agent draws
+let sentContext: { items: ContextItem[]; notes: Note[] } | null = null;
+
+const attachLimits = (): AttachLimits => ({
+  items: genieLimit("attachItems", DEFAULT_LIMITS.items),
+  perItem: genieLimit("attachChars", DEFAULT_LIMITS.perItem),
+  total: genieLimit("attachTotal", DEFAULT_LIMITS.total),
+});
+
+// What the page's Files panel (js/src/page/07-file-browser.js) lets the widget read; null without it.
+function pageFiles(): FileSource | null {
+  const fb = (window as any).FileBrowser;
+  if (!fb || typeof fb.read !== "function" || typeof fb.walk !== "function") return null;
+  return {
+    readFile: (path: string) => fb.read(path),
+    listFolder: async (path: string) => fb.walk(path),
+  };
+}
+
+const CHIP_ICONS: Record<string, string> = {
+  file: "M6 3h8l4 4v14H6z",
+  folder: "M3 7h6l2 2h10v10H3z",
+  selection: "M9 8l-5 4 5 4M15 8l5 4-5 4",
+  terminal: "M4 5h16v12H4zM8 21h8M12 17v4",
+};
+
+function chipElement(it: ContextItem, removable: boolean, note?: Note): HTMLElement {
+  const chip = document.createElement("span");
+  chip.className = "cw-chip cw-chip--" + it.kind + (removable ? "" : " cw-chip--sent") + (note && note.status !== "ok" ? " cw-chip--warn" : "");
+  const meta = metaOf(it);
+  const what = it.kind === "selection" ? it.name + (meta ? ", lines " + meta : "") : it.kind === "terminal" ? "the terminal text" : it.name;
+  if (note && note.detail) chip.title = it.name + ": " + note.detail;
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "cw-chip__open";
+  open.setAttribute("aria-label", "Show " + what);
+  open.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${CHIP_ICONS[it.kind] || CHIP_ICONS.file}"></path></svg>`;
+  const name = document.createElement("span");
+  name.className = "cw-chip__name";
+  name.textContent = it.name;
+  open.appendChild(name);
+  if (meta) {
+    const m = document.createElement("span");
+    m.className = "cw-chip__meta";
+    m.textContent = meta;
+    open.appendChild(m);
+  }
+  open.addEventListener("click", () => {
+    const fb = (window as any).FileBrowser;
+    if (fb && typeof fb.showChip === "function" && it.kind !== "terminal") fb.showChip(it);
+  });
+  chip.appendChild(open);
+  if (removable) {
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "cw-chip__x";
+    x.setAttribute("aria-label", "Remove " + what + " from the chat");
+    x.textContent = "×";
+    x.addEventListener("click", () => {
+      pendingContext = removeItem(pendingContext, itemKey(it));
+      renderTray();
+      (document.getElementById("chat-widget__input") as HTMLTextAreaElement | null)?.focus();
+    });
+    chip.appendChild(x);
+  }
+  return chip;
+}
+
+// Whether Genie reads the editor with every message (the "current file" chip is the switch).
+// Kept in the browser; on when there is nothing kept.
+const READ_EDITOR_KEY = "genie-read-editor";
+let readEditor: boolean = (() => {
+  try {
+    return localStorage.getItem(READ_EDITOR_KEY) !== "0";
+  } catch (e) {
+    return true;
+  }
+})();
+
+function setReadEditor(on: boolean) {
+  readEditor = on;
+  try {
+    localStorage.setItem(READ_EDITOR_KEY, on ? "1" : "0");
+  } catch (e) {
+    // the choice then lasts until the page is closed
+  }
+  renderTray();
+  const context = document.getElementById("chat-widget__context");
+  if (context) context.textContent = editorContextLabel();
+}
+
+// The editor's file name changes when another file is opened: the chip follows it.
+let fileWatcher: MutationObserver | null = null;
+function watchEditorFile() {
+  const chip = document.getElementById("editor-filename");
+  if (!chip || fileWatcher) return;
+  fileWatcher = new MutationObserver(() => {
+    renderTray();
+    const context = document.getElementById("chat-widget__context");
+    if (context) context.textContent = editorContextLabel();
+  });
+  fileWatcher.observe(chip, { childList: true, characterData: true, subtree: true });
+}
+
+// The chip that says which file Genie reads, and turns that off and on.
+function currentFileChip(): HTMLElement | null {
+  if (!document.getElementById("editor")) return null;
+  const file = (document.getElementById("editor-filename")?.textContent || "").trim();
+  const label = file && file !== "untitled" ? file : "the editor";
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "cw-chip cw-chip--current" + (readEditor ? "" : " cw-chip--off");
+  b.setAttribute("aria-pressed", readEditor ? "true" : "false");
+  b.title = readEditor ? "Genie reads " + label + " with every message. Click to stop." : "Genie is not reading the editor. Click to turn it on.";
+  b.innerHTML = readEditor
+    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>`
+    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 6.2A9.8 9.8 0 0 1 12 6c6 0 10 6 10 6a17 17 0 0 1-3.2 3.7M6.3 6.6C3.7 8.4 2 12 2 12s4 6 10 6c1.6 0 3-.4 4.2-1"></path></svg>`;
+  const name = document.createElement("span");
+  name.className = "cw-chip__name";
+  name.textContent = label;
+  const meta = document.createElement("span");
+  meta.className = "cw-chip__meta";
+  meta.textContent = readEditor ? "current file" : "not read";
+  b.append(name, meta);
+  b.addEventListener("click", () => setReadEditor(!readEditor));
+  return b;
+}
+
+function renderTray() {
+  const tray = document.getElementById("chat-widget__attached");
+  if (!tray) return;
+  tray.textContent = "";
+  const current = currentFileChip();
+  if (current) tray.appendChild(current);
+  tray.hidden = pendingContext.length === 0 && !current;
+  pendingContext.forEach((it) => tray.appendChild(chipElement(it, true)));
+}
+
+function chipsRow(items: ContextItem[], notes: Note[]): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "cw-chips";
+  items.forEach((it) => {
+    const key = itemKey(it);
+    row.appendChild(chipElement(it, false, notes.filter((n) => n.key === key)[0]));
+  });
+  return row;
+}
+
+// Puts a chip on the next message; false (with a notice) when it cannot be.
+function putContext(item: ContextItem): boolean {
+  if (!item || !item.kind || !item.name) return false;
+  const max = attachLimits().items;
+  const added = addItem(pendingContext, item, max);
+  if (added.reason === "full") {
+    const n = (window as any).notify;
+    if (typeof n === "function") n("A message takes " + max + " items. Send it, or take one off first.", { type: "info" });
+    return false;
+  }
+  pendingContext = added.list;
+  return true;
+}
+
+// ---- # in the message box: pick a file or a folder by name ------------------------------------
+//
+// Typing # and a few letters of a name lists the matching files and folders of the Files
+// panel (attach.ts: hashQuery, rankEntries). Up and Down move, Enter or Tab adds the chip
+// and takes the #word out of the message, Escape closes the list.
+
+let pickerShown: PickerEntry[] = [];
+let pickerAt = 0;
+let pickerWord: { start: number; query: string } | null = null;
+
+const pickerEl = () => document.getElementById("chat-widget__picker");
+
+function pickerOpen(): boolean {
+  const el = pickerEl();
+  return !!el && !el.hidden;
+}
+
+function closePicker() {
+  const el = pickerEl();
+  if (el) {
+    el.hidden = true;
+    el.textContent = "";
+  }
+  pickerWord = null;
+  pickerShown = [];
+  document.getElementById("chat-widget__input")?.setAttribute("aria-expanded", "false");
+}
+
+function pickerEntries(): PickerEntry[] {
+  const fb = (window as any).FileBrowser;
+  return fb && typeof fb.entries === "function" ? fb.entries() : [];
+}
+
+function renderPicker() {
+  const el = pickerEl();
+  if (!el) return;
+  el.textContent = "";
+  if (pickerShown.length === 0) {
+    const none = document.createElement("div");
+    none.className = "cw-picker__none";
+    none.textContent = "No file or folder matches";
+    el.appendChild(none);
+  }
+  pickerShown.forEach((e, i) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.id = "cw-picker-" + i;
+    row.className = "cw-picker__item" + (i === pickerAt ? " is-active" : "");
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", i === pickerAt ? "true" : "false");
+    row.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${CHIP_ICONS[e.kind]}"></path></svg>`;
+    const name = document.createElement("span");
+    name.textContent = e.name;
+    row.appendChild(name);
+    // a press must not take the focus from the box
+    row.addEventListener("mousedown", (ev) => ev.preventDefault());
+    row.addEventListener("click", () => choosePicked(e));
+    el.appendChild(row);
+  });
+  el.hidden = false;
+  const input = document.getElementById("chat-widget__input");
+  input?.setAttribute("aria-expanded", "true");
+  if (pickerShown.length > 0) input?.setAttribute("aria-activedescendant", "cw-picker-" + pickerAt);
+  else input?.removeAttribute("aria-activedescendant");
+}
+
+function updatePicker(input: HTMLTextAreaElement) {
+  const word = hashQuery(input.value, input.selectionStart || 0);
+  if (!word || !document.getElementById("chat-widget__picker")) {
+    if (pickerOpen()) closePicker();
+    return;
+  }
+  pickerWord = word;
+  pickerShown = rankEntries(pickerEntries(), word.query, 8);
+  pickerAt = 0;
+  renderPicker();
+}
+
+function choosePicked(entry: PickerEntry) {
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  if (!input || !pickerWord) return;
+  const out = withoutHash(input.value, pickerWord.start, input.selectionStart || 0);
+  input.value = out.text;
+  input.setSelectionRange(out.caret, out.caret);
+  autoGrow(input);
+  closePicker();
+  const fb = (window as any).FileBrowser;
+  const items: ContextItem[] = fb && typeof fb.chatItems === "function" ? fb.chatItems([entry.path]) : [];
+  items.forEach((it) => putContext(it));
+  renderTray();
+  input.focus();
+}
+
+// The keys of the list while it is open; true when the key was used.
+function pickerKey(ev: KeyboardEvent): boolean {
+  if (!pickerOpen()) return false;
+  if (ev.key === "Escape") {
+    closePicker();
+    return true;
+  }
+  if (pickerShown.length === 0) return false;
+  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+    pickerAt = (pickerAt + (ev.key === "ArrowDown" ? 1 : -1) + pickerShown.length) % pickerShown.length;
+    renderPicker();
+    document.getElementById("cw-picker-" + pickerAt)?.scrollIntoView({ block: "nearest" });
+    return true;
+  }
+  if (ev.key === "Enter" || ev.key === "Tab") {
+    choosePicked(pickerShown[pickerAt]);
+    return true;
+  }
+  return false;
+}
+
+// Adds a file, a folder, a selection or terminal text to the next message and shows the panel.
+function addContext(item: ContextItem): boolean {
+  if (!putContext(item)) return false;
+  open();
+  renderTray();
+  (document.getElementById("chat-widget__input") as HTMLTextAreaElement | null)?.focus();
+  return true;
+}
+
+// The chips for the message that is being sent, with the text read for them; the box of
+// chips is emptied. A peer chat gets the names and not the text, so nothing is read.
+async function takeContext(readFiles: boolean): Promise<{ items: ContextItem[]; block: string; notes: Note[] }> {
+  const items = pendingContext;
+  pendingContext = [];
+  renderTray();
+  if (items.length === 0 || !readFiles) return { items, block: "", notes: [] };
+  const got = await gather(items, pageFiles(), attachLimits());
+  return { items, block: got.block, notes: got.notes };
+}
+
 async function createNewMessageEntry(
   message: string,
   timestamp: number,
@@ -1832,7 +2174,9 @@ async function createNewMessageEntry(
   skipdbpush: boolean = false,
   meta: string = "",
   used: ContextNote[] | null = null,
-  peer: PeerSpeaker | null = null
+  peer: PeerSpeaker | null = null,
+  chips: ContextItem[] | null = null,
+  notes: Note[] = []
 ) {
   message = message.trim();
   //console.log("message: ", message)
@@ -1872,6 +2216,16 @@ async function createNewMessageEntry(
   messageText.innerHTML = markedtext;
   messageElement.appendChild(messageText);
   //console.log("marked: ", markedtext);
+  if (chips && chips.length > 0) {
+    messageElement.appendChild(chipsRow(chips, notes));
+    const problems = problemsLine(notes);
+    if (problems) {
+      const line = document.createElement("p");
+      line.classList.add("chat-widget__message-meta");
+      line.textContent = problems;
+      messageElement.appendChild(line);
+    }
+  }
 
   if (meta) {
     // which model answered, for a reply from Genie
@@ -1983,7 +2337,9 @@ const handleStandardResponse = async (res: Response, meta: string = "") => {
     if (responseData.choices && responseData.choices.length > 0) {
         const responseMessage : MessageType = responseData.choices[0].message;
         addMessageToHistory(responseMessage.role, responseMessage.content);
-        await createNewMessageEntry(responseMessage.content, Date.now(), "system", false, meta, used);
+        // what this answer used, when the model says
+        const spent = answerTokens(responseData.usage);
+        await createNewMessageEntry(responseMessage.content, Date.now(), "system", false, spent ? (meta ? meta + " · " : "") + spent : meta, used);
     } else {
         handleErrorResponse(responseData);
     }
@@ -2090,12 +2446,19 @@ async function submit(e: Event) {
     // a task: the agent shows the message itself, and takes the box until it is done
     target.reset();
     autoGrow((target.elements as any).message as HTMLTextAreaElement);
-    await agentRunner.start(msg);
+    const task = await takeContext(true);
+    sentContext = task.items.length > 0 ? { items: task.items, notes: task.notes } : null;
+    await agentRunner.start(msg, task.block);
+    fetchUsage(); // the tokens of the task's steps
     return false;
   }
-  addMessageToHistory(myrole, msg);
+  // what was added from the file browser and the editor: read now, and told as text
+  // to the model; a peer chat is shown the names only
+  const taken = await takeContext(!peerchatmode);
+  const names = peerchatmode ? namesLine(taken.items) : "";
+  addMessageToHistory(myrole, withAttached(msg, taken.block));
 
-  await createNewMessageEntry(msg, Date.now(), myrole, false, "", null, peerchatmode ? { name: peerName(UID), mine: true } : null);
+  await createNewMessageEntry(names ? msg + "\n\n" + names : msg, Date.now(), myrole, false, "", null, peerchatmode ? { name: peerName(UID), mine: true } : null, peerchatmode ? null : taken.items, taken.notes);
   target.reset();
   autoGrow((target.elements as any).message as HTMLTextAreaElement);
   if (peerchatmode) {
@@ -2154,6 +2517,8 @@ async function runRequest() {
     } else {
       await handleStandardResponse(response, usedCaption);
     }
+    // the answer is counted once it is complete: the header went out before it
+    fetchUsage();
   } catch (e: any) {
     thinkingBubble.remove();
     chatFailed = true;
@@ -2219,7 +2584,7 @@ function busy(): boolean {
   return agentRunner.running || genieBusy();
 }
 
-const ChatWidget = { open, close, toggle, config, init, ask, busy };
+const ChatWidget = { open, close, toggle, config, init, ask, busy, addContext };
 (window as any).ChatWidget = ChatWidget;
 declare global {
   interface Window {

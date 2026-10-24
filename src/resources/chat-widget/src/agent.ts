@@ -182,7 +182,7 @@ export class AgentRunner {
 
   // ---- the task ----------------------------------------------------------------
 
-  async start(task: string): Promise<void> {
+  async start(task: string, attached: string = ""): Promise<void> {
     if (this.running) return;
     this.running = true;
     this.stopped = false;
@@ -198,7 +198,7 @@ export class AgentRunner {
       await this.host.userSaid(task);
       this.drawCard(); // after the message it belongs to: the newest is shown last
       const task_: TaskState = {
-        messages: [{ role: "user", content: `[user-${this.host.uid()}] ${task}` }],
+        messages: [{ role: "user", content: `[user-${this.host.uid()}] ${task}${attached ? "\n\n" + attached : ""}` }],
         token: "",
         badAnswers: 0,
         max: this.host.maxSteps(),

@@ -129,6 +129,9 @@ const (
 	defaultContextTerminalChars = 4000
 	defaultContextTerminalLines = 20
 	defaultHistoryMessages      = 20
+	defaultAttachItems          = 8     // chips of one message (Add to Genie chat)
+	defaultAttachChars          = 8000  // characters of one file or selection of a chip
+	defaultAttachTotal          = 24000 // characters of all the chips of one message
 )
 
 // answerCap is the most tokens an answer of the model may have: the admin's
@@ -204,6 +207,15 @@ func sanitizeChatBody(body []byte) ([]byte, chatModel, error) {
 		}
 	}
 	out["model"] = model.ID
+
+	// The count of tokens an answer used (tokens.go): a stream only carries it when
+	// asked, and OpenRouter also says what the answer cost.
+	if out["stream"] == true && model.Provider != providerOpenRouter {
+		out["stream_options"] = map[string]bool{"include_usage": true}
+	}
+	if model.Provider == providerOpenRouter {
+		out["usage"] = map[string]bool{"include": true}
+	}
 
 	// The question generator asks for JSON so that a quote or a newline inside
 	// the text cannot make the reply unparseable. No other format is passed on,

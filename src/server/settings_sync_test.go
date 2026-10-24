@@ -481,6 +481,9 @@ func TestGenieNumbersAreChecked(t *testing.T) {
 		"cap of no model":   {AnswerCaps: map[string]int{"gpt-9": 1000}},
 		"host of nobody":    {OpenRouterHosts: []string{"evil.example/fp4"}},
 		"negative":          {HistoryMessages: -5},
+		"too many items":    {ContextAttachItems: 100},
+		"item too small":    {ContextAttachChars: 10},
+		"total too big":     {ContextAttachTotal: 1 << 20},
 	} {
 		if _, err := (SiteSettings{Genie: g}).normalize(); err == nil {
 			t.Errorf("%s was accepted", name)
@@ -503,13 +506,13 @@ func TestGenieNumbersAreChecked(t *testing.T) {
 
 func TestThePageGetsTheEffectiveContextNumbers(t *testing.T) {
 	adminTestServer(t)
-	if got := GetSiteSettings().public().GenieContext; got != (genieContext{12000, 4000, 20, 20}) {
+	if got := GetSiteSettings().public().GenieContext; got != (genieContext{12000, 4000, 20, 20, 8, 8000, 24000}) {
 		t.Fatalf("built-in: %+v", got)
 	}
 	if err := SaveSiteSettings(SiteSettings{Genie: GenieSettings{ContextEditorChars: 20000, HistoryMessages: 8}}); err != nil {
 		t.Fatal(err)
 	}
-	if got := GetSiteSettings().public().GenieContext; got != (genieContext{20000, 4000, 20, 8}) {
+	if got := GetSiteSettings().public().GenieContext; got != (genieContext{20000, 4000, 20, 8, 8, 8000, 24000}) {
 		t.Fatalf("set: %+v", got)
 	}
 	if strings.Contains(get2(t, "/settings.js"), "answerCaps") {
@@ -592,5 +595,8 @@ func TestTheDashboardShowsTheBuiltInNumbers(t *testing.T) {
 	w := post(h, "/admin/settings", `{"genie":{"historyMessages":3}}`)
 	if w.Code != 400 || !strings.Contains(w.Body.String(), "conversation length") {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	if d.ContextAttachItems != 8 || d.ContextAttachChars != 8000 || d.ContextAttachTotal != 24000 || d.Limits["contextAttachItems"] != [2]int{1, 20} {
+		t.Fatalf("attach defaults: %+v", d)
 	}
 }
