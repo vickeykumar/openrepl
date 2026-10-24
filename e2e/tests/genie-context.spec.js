@@ -65,7 +65,13 @@ test("selected code is added from the editor's right-click menu", async ({ page 
     ed.setValue("a = 1\nb = 2\n", -1);
     ed.selectAll();
   });
-  await page.locator(".ace_content").click({ button: "right", position: { x: 40, y: 20 } });
+  // the menu opens on the contextmenu event; a real right-click first moves Ace's cursor, which can
+  // clear the selection when the click lands a little outside it
+  await page.evaluate(() => {
+    const el = document.querySelector(".ace_content");
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 20 }));
+  });
   const item = page.locator("#genie-menu button", { hasText: "Add to Genie chat" });
   await expect(item).toBeVisible();
   await item.click();
