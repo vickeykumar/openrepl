@@ -1,8 +1,7 @@
 # The Docker image: built on every pull request to master (as before), then started
 # and checked from the outside: a smoke test (scripts/ci/smoke.sh) and the browser
-# tests (e2e/, Playwright). The browser tests do not block yet: they show what they
-# find in the job and in the "playwright-report" artifact until they have a record
-# (remove `continue-on-error` from that step to make them required).
+# tests (e2e/, Playwright). Both must pass. What the browser tests found is in the
+# job and in the "playwright-report" artifact of the run.
 name: Docker Image CI
 
 on:
@@ -54,7 +53,6 @@ jobs:
         node-version: 20
     - name: Browser tests (Playwright)
       id: e2e
-      continue-on-error: true
       working-directory: e2e
       env:
         BASE_URL: http://localhost:8080
@@ -77,7 +75,7 @@ jobs:
       if: always()
       run: |
         echo "browser tests: ${{ steps.e2e.outcome }}"
-        if [ "${{ steps.e2e.outcome }}" = "failure" ]; then echo "::warning title=Browser tests::They failed (not blocking yet). Open the playwright-report artifact."; fi
+        if [ "${{ steps.e2e.outcome }}" = "failure" ]; then echo "::error title=Browser tests::They failed. Open the playwright-report artifact of this run."; fi
     - name: Server log
       if: always()
       run: docker logs openrepl 2>&1 | tail -n 200 || true
