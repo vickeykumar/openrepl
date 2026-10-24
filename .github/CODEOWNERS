@@ -1,0 +1,8 @@
+# Who is asked to review what. The last matching line wins.
+*                      @vickeykumar
+/.github/              @vickeykumar
+/Dockerfile            @vickeykumar
+/src/server/           @vickeykumar
+/src/gateway/          @vickeykumar
+/src/user/             @vickeykumar
+/src/cookie/           @vickeykumar

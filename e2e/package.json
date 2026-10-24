@@ -1,0 +1,15 @@
+{
+  "name": "openrepl-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser tests for a running OpenREPL (Playwright). BASE_URL says where it is; the CI starts the Docker image and points them at it. See docs/ci.md.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@playwright/test": "^1.48.0"
+  }
+}

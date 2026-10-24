@@ -1,3 +1,8 @@
+# The Docker image: built on every pull request to master (as before), then started
+# and checked from the outside: a smoke test (scripts/ci/smoke.sh) and the browser
+# tests (e2e/, Playwright). The browser tests do not block yet: they show what they
+# find in the job and in the "playwright-report" artifact until they have a record
+# (remove `continue-on-error` from that step to make them required).
 name: Docker Image CI
 
 on:
@@ -5,15 +10,24 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
 
   build:
 
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Build the Docker image
       run: |
         docker build . --file Dockerfile --tag openrepl:latest
@@ -27,3 +41,43 @@ jobs:
         max_layers: 15
         show_current_size: true
         exit_zero: true
+
+    - name: Start the image
+      run: |
+        docker run -d --name openrepl -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
+          -p 8080:8080 openrepl:latest -p 8080
+    - name: Smoke test
+      run: bash scripts/ci/smoke.sh http://localhost:8080
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+    - name: Browser tests (Playwright)
+      id: e2e
+      continue-on-error: true
+      working-directory: e2e
+      env:
+        BASE_URL: http://localhost:8080
+        CI: "true"
+      run: |
+        npm install --no-audit --no-fund
+        npx playwright install --with-deps chromium
+        npx playwright test
+    - name: Browser tests report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report
+        path: |
+          e2e/playwright-report
+          e2e/test-results
+        if-no-files-found: ignore
+        retention-days: 14
+    - name: What the browser tests found
+      if: always()
+      run: |
+        echo "browser tests: ${{ steps.e2e.outcome }}"
+        if [ "${{ steps.e2e.outcome }}" = "failure" ]; then echo "::warning title=Browser tests::They failed (not blocking yet). Open the playwright-report artifact."; fi
+    - name: Server log
+      if: always()
+      run: docker logs openrepl 2>&1 | tail -n 200 || true

@@ -73,12 +73,16 @@ Run it with `-v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged` on a **cgroup v1*
 
 ## 4. CI (`.github/workflows`)
 
+The full description, how to run each check yourself and the GitHub settings that go with it are in [docs/ci.md](../ci.md). In short:
+
 | Workflow | Trigger | Steps |
 |---|---|---|
-| `docker-image.yml` | push and PR to `master` | `docker build` on ubuntu-22.04, then a size and layer report (limit 3 GB and 15 layers, non-blocking). |
+| `ci.yml` | push to `master` and `development`, PR to `master` | Parallel jobs: page script tests (`src/js`: `tsc`, `npm test`), Genie widget tests, Go tests (Go 1.19 in GOPATH mode, with `src/server/asset.go` made by `scripts/ci/build-assets.sh`, the JS console replaced by stand-ins; `go test -vet=off server utils user persist cachedb wsync`, and `-race` on `gateway tunnel trusted`), repository rules (`scripts/ci/repo-rules.mjs`: no build output or secrets, CRLF kept, a docs reminder, `gofmt` on new Go files), a secret scan (informational). `CI passed` is the job to require. |
+| `docker-image.yml` | push and PR to `master` | `docker build` on ubuntu-22.04 and a size and layer report (limit 3 GB and 15 layers, non-blocking), then the image is started and checked: `scripts/ci/smoke.sh` (pages, scripts, the contact form, the closed admin API) and the browser tests in `e2e/` (Playwright, informational for now). |
 | `docker-push.yml` | push to `master` | Log in to `${{ vars.DOCKER_REGISTRY }}`, then build and push `openrepl:<short-sha>` and retag and push `:latest`. |
+| `audit.yml` | every Monday | `npm audit` of `src/js` and the widget. |
 
-There are no Go unit-test or lint steps beyond what the Docker build runs (`install_prerequisite.sh --run-tests`).
+`.github/dependabot.yml` opens weekly pull requests for npm packages and actions, `.github/pull_request_template.md` is the checklist, and `.github/CODEOWNERS` says who reviews. `wercker.yml` (Go 1.9) was removed: it had not run for years.
 
 ## 5. systemd deployment (`gotty.service`, `.deb`)
 

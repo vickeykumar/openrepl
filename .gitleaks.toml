@@ -1,0 +1,24 @@
+# Settings for the secret scan (.github/workflows/ci.yml, job "Secret scan").
+title = "OpenREPL"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Keys that are public by design, the env template, vendored code and test values"
+paths = [
+  '''^\.env\.example$''',
+  '''^src/resources/index\.html$''',
+  '''^src/resources/practice\.html$''',
+  '''^src/(github\.com|golang\.org|gopkg\.in|google\.golang\.org)/''',
+  '''^go_1\.19/''',
+  '''^vendor/''',
+  '''_test\.go$''',
+  '''\.test\.(m?js|ts)$''',
+  '''^docs/''',
+]
+regexes = [
+  # the reCAPTCHA site key on the home page and the Firebase web config are public: they ship in the page
+  '''6Lc9IWck[0-9A-Za-z_-]+''',
+  '''AIza[0-9A-Za-z_-]{35}''',
+]

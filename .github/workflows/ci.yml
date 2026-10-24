@@ -1,0 +1,176 @@
+# Checks that run on every pull request to master (and on pushes to master and
+# development). The jobs are independent and run in parallel. `ci-ok` is the one
+# to require in the branch protection rules: it passes when all the others do.
+# What each job checks, how to run it on your machine, and what is informational
+# only: docs/ci.md.
+name: CI
+
+on:
+  push:
+    branches: [master, development]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The page script and the terminal client (src/js): type check, then the node tests
+  page-js:
+    name: Page script tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/js
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/js/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Type check
+        run: npx tsc --noEmit -p .
+      - name: Tests
+        run: npm test
+
+  # Genie's widget (src/resources/chat-widget): install builds it, then type check and tests
+  widget:
+    name: Genie widget tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/resources/chat-widget
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/resources/chat-widget/package-lock.json
+      - name: Install and build
+        run: npm ci
+      - name: Type check
+        run: npx tsc --noEmit -p .
+      - name: Tests
+        run: npm test
+
+  # The server (Go 1.19, GOPATH mode, as in the dev container and the Docker image)
+  go:
+    name: Go tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      GO111MODULE: "off"
+      GOPATH: ${{ github.workspace }}
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.19"
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            src/js/package-lock.json
+            src/resources/chat-widget/package-lock.json
+      - name: Page bundle
+        working-directory: src/js
+        run: |
+          npm ci
+          npx webpack
+      - name: Genie widget bundle
+        working-directory: src/resources/chat-widget
+        run: npm ci
+      - name: Embedded assets (src/server/asset.go)
+        run: bash scripts/ci/build-assets.sh
+      - name: The server builds
+        working-directory: src
+        run: go build -o "$RUNNER_TEMP/gotty" gotty
+      - name: Tests
+        working-directory: src
+        run: go test -vet=off server utils user persist cachedb wsync
+      - name: Tests with the race detector
+        working-directory: src
+        run: go test -vet=off -race gateway tunnel trusted
+      # these two were never part of a gate: shown, not required, until they have a record
+      - name: Other packages (informational)
+        continue-on-error: true
+        working-directory: src
+        run: go test -vet=off containers gotty
+
+  # What a pull request may and may not contain (scripts/ci/repo-rules.mjs)
+  repo-rules:
+    name: Repository rules
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      HEAD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.19"
+          cache: false
+      - name: Build output and secrets, line endings, docs
+        run: node scripts/ci/repo-rules.mjs
+      - name: gofmt on the Go files this change adds
+        run: |
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then echo "no base commit"; exit 0; fi
+          files=$(git diff --name-only --diff-filter=A "$BASE_SHA...$HEAD_SHA" -- '*.go' \
+            | grep -Ev '^(src/(github\.com|golang\.org|gopkg\.in|google\.golang\.org)/|vendor/|go_1\.19/|src/server/asset\.go$)' || true)
+          if [ -z "$files" ]; then echo "no new Go files"; exit 0; fi
+          bad=$(gofmt -l $files)
+          if [ -n "$bad" ]; then
+            echo "$bad" | while read -r f; do echo "::error file=$f::run gofmt -w on this file"; done
+            exit 1
+          fi
+          echo "new Go files are formatted"
+
+  # Keys and tokens in the history of the change. Informational until the first
+  # run shows whether the allow list (.gitleaks.toml) is right.
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  ci-ok:
+    name: CI passed
+    if: always()
+    needs: [page-js, widget, go, repo-rules]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: All the required jobs passed
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            exit 1
+          fi

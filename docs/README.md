@@ -2,7 +2,7 @@
 
 These docs describe how OpenREPL is built. The high-level design (HLD) lives in the [project README](../README.md#architecture-high-level-design). The distributed-execution design is in [docs/hld/distributed-execution.md](hld/distributed-execution.md), and how to run a gateway and workers is in the [operator guide](distributed-mode.md). The workspace-synchronization design is in [docs/hld/workspace-sync.md](hld/workspace-sync.md). The low-level design (LLD) documents below explain each subsystem at code level, naming the files, functions and data formats involved.
 
-To build, run and test OpenREPL on your machine, see [Run locally on macOS (Colima)](../README.md#run-locally-on-macos-colima) in the project README.
+What runs on a pull request, and how to run the same checks yourself, is in [Continuous integration](ci.md). To build, run and test OpenREPL on your machine, see [Run locally on macOS (Colima)](../README.md#run-locally-on-macos-colima) in the project README.
 
 ## LLD index
 
