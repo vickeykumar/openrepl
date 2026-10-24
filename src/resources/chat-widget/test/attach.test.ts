@@ -65,6 +65,9 @@ test("the same thing is added once, and a full list takes no more", () => {
   assert.deepEqual([r.added, r.reason, r.list.length], [false, "full", 2]);
   // two different pieces of one file are two chips
   assert.notEqual(itemKey(selection("a", 1, 2)), itemKey(selection("a", 3, 4)));
+  // two different texts of the same length are two chips, and the same text is one
+  assert.notEqual(itemKey(selection("line 1", 1, 1)), itemKey(selection("line 2", 1, 1)));
+  assert.equal(itemKey(selection("line 1", 1, 1)), itemKey(selection("line 1", 1, 1)));
   assert.equal(removeItem(r.list, itemKey(file("/home/a.py"))).length, 1);
 });
 

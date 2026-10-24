@@ -42,8 +42,16 @@ export const DEFAULT_LIMITS: AttachLimits = { items: 8, perItem: 8000, total: 24
 export const MAX_FILE_BYTES = 200 * 1024;
 const MAX_TREE_LINES = 200;
 
+// A short fingerprint of a text, so that two different selections never share a key.
+function fingerprint(text: string): string {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return h.toString(36) + "." + text.length;
+}
+
 export function itemKey(it: ContextItem): string {
-  return [it.kind, it.path, it.startLine || 0, it.endLine || 0, it.kind === "selection" || it.kind === "terminal" ? (it.text || "").length : 0].join("|");
+  const text = it.kind === "selection" || it.kind === "terminal" ? fingerprint(it.text || "") : "";
+  return [it.kind, it.path, it.startLine || 0, it.endLine || 0, text].join("|");
 }
 
 // The chip's second word: the lines of a selection.
