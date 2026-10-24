@@ -27,10 +27,9 @@ async function type(page, line) {
 
 const REPLS = [
   { name: "Node.js", path: "/nodejs", prompt: />/, inputs: ["6 * 7"], answer: /\b42\b/ },
-  // KNOWN PROBLEM, found by trying it: ts-node starts and then stops with "Cannot read property
-  // 'fileExists' of undefined" (it does not load the typescript compiler from the global modules).
-  // Take `fixme` off when that is fixed.
-  { name: "TypeScript (ts-node)", path: "/typescript", prompt: />/, inputs: ["40 + 2"], answer: /\b42\b/, fixme: "ts-node cannot load typescript in the image" },
+  // ts-node once stopped with "Cannot read property 'fileExists' of undefined": it loaded its own
+  // nested typescript 7 (no JavaScript API) instead of the global 4.9.5
+  { name: "TypeScript (ts-node)", path: "/typescript", prompt: />/, inputs: ["40 + 2"], answer: /\b42\b/ },
   // the Go interpreter compiles each line, so the first answer is slow
   { name: "Go", path: "/go", prompt: /go>>/, inputs: ["12+31"], answer: /^\s*43\s*$/m, slow: true },
   { name: "Java (jshell)", path: "/java", prompt: /jshell>/, inputs: ["6 * 7"], answer: /==> 42/ },

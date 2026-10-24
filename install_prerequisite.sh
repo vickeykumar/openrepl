@@ -200,8 +200,13 @@ apt-get install -y --no-install-recommends sqlite3
 
 #install typescript and ts-node
 npm install -g typescript@4.9.5
-npm install -g ts-node
+npm install -g ts-node@10.9.2
 npm link typescript
+# ts-node brings its own copy of the newest typescript (7.x, the native compiler, which has no
+# JavaScript API: no `ts.sys`) and loads that one before the global typescript 4.9.5, so the
+# TypeScript REPL stopped with "Cannot read property 'fileExists' of undefined". Remove the copy:
+# it then finds the global one.
+rm -rf "$(npm root -g)/ts-node/node_modules/typescript"
 
 # node, npm, npx, tsc and ts-node by name, for the server and the REPLs it starts. nvm puts its
 # folder on the PATH of an interactive shell only; the server has the plain system PATH. The apt
