@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 60
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Build the Docker image
       run: |
         docker build . --file Dockerfile --tag openrepl:latest
