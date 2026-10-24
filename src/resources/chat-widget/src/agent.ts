@@ -100,7 +100,7 @@ export interface AgentHost {
   messages(): HTMLElement; // where the cards go
   maxSteps(): number;
   uid(): string; // the tag of the user in the conversation
-  // The REPL of the language in use, as the picker names it ("gointerpreter").
+  // The REPL of the language in use, as the picker names it ("gomacro").
   repl?(): string;
   // What the answer of a step says the user has left (the X-OpenREPL-Usage header).
   usage?(raw: string | null): void;

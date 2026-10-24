@@ -165,11 +165,27 @@ if [ -x "$GOTTY_DIR/rappel/bin/rappel" ]; then
     fi
 fi
 
-#install gointerpreter
-git clone https://github.com/vickeykumar/Go-interpreter.git
-cd Go-interpreter
-make install
-cd ..
+#install gomacro, the Go REPL. It is pure Go and needs no Go toolchain at run time, but its go.mod
+#asks for Go 1.23, newer than the apt golang: build it with a toolchain downloaded for this step
+#only (the commit is pinned: its tags stop at 2018), then delete that toolchain.
+GOMACRO_REV=0df6c0cd20af13f83b0203c64a16ba08dda38c02
+GOMACRO_GO=go1.23.12
+case "$(uname -m)" in
+    x86_64) GOMACRO_ARCH=amd64 ;;
+    aarch64|arm64) GOMACRO_ARCH=arm64 ;;
+    armv7l|armv6l) GOMACRO_ARCH=armv6l ;;
+    *) GOMACRO_ARCH=amd64 ;;
+esac
+GOMACRO_DIR=$(mktemp -d)
+if curl -fsSL "https://go.dev/dl/$GOMACRO_GO.linux-$GOMACRO_ARCH.tar.gz" | tar -C "$GOMACRO_DIR" -xz \
+    && env -u GOROOT GO111MODULE=on GOFLAGS= GOTOOLCHAIN=local GOPATH="$GOMACRO_DIR/gopath" GOBIN=/usr/local/bin \
+        "$GOMACRO_DIR/go/bin/go" install "github.com/cosmos72/gomacro@$GOMACRO_REV"; then
+    echo "gomacro installed: $(ls -la /usr/local/bin/gomacro)"
+else
+    echo "ERROR: gomacro could not be built"
+    retVal=1
+fi
+chmod -R u+w "$GOMACRO_DIR" && rm -rf "$GOMACRO_DIR"
 
 #install jq-repl
 apt-get install -y --no-install-recommends jq
@@ -278,6 +294,7 @@ if [ $run_tests -eq 1 ]; then
 		"cling --version"
 		"go version"
 		"yaegi version"
+		"echo 'println(40+2)' | gomacro"
 		"python2.7 --version"
 		"python3 --version"
 		"python --version"

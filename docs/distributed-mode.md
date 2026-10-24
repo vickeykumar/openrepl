@@ -185,7 +185,7 @@ worker_token     = "<the token from step 1>"  // or GOTTY_WORKER_TOKEN
 | `--worker-id` | the host name | Must be unique: letters, digits, `.`, `_`, `-`, at most 64 characters, and not `local`. A second worker with the same id replaces the first. |
 | `--worker-weight` | `10` | Relative share of new sessions. A worker with 30 gets three times as many as one with 10. |
 | `--worker-capacity` | `0` = the machine's RAM in MB | Memory budget for REPLs, in the same MB units as `--max-connection`. When it is used up the worker gets no new sessions and refuses further terminals. |
-| `--worker-languages` | empty = all | Comma-separated REPL commands this worker has, e.g. `python,bash,cling,gointerpreter`. Set it only if the worker lacks some REPLs. |
+| `--worker-languages` | empty = all | Comma-separated REPL commands this worker has, e.g. `python,bash,cling,gomacro`. Set it only if the worker lacks some REPLs. |
 
 A worker reconnects by itself, with a delay that grows from 1 to 30 seconds, when the gateway restarts or the network drops.
 

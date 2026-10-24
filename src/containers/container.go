@@ -21,24 +21,24 @@ const MB = 1024 * 1024
 
 // Command Name to memory limit in MB (megabytes).
 var Commands2memLimitMap = map[string]int64{
-	"cling":         22, // threshold : 11
-	"gointerpreter": 45, // 44 with pp
-	"yaegi":         10,
-	"python":        2,
-	"python2.7":     2,  // 3
-	"bash":          10, // 2, for simultaneous bash consoles
-	"ipython":       10,
-	"ipython3":      20,
-	"irb":           10,
-	"perli":         3,
-	"node":          10,
-	"jq-repl":       2,
-	"tclsh":         2,
-	"java":          192, // jvm takes lot of memory: jshell, tuned (utils/interactive.go), peaks near 150 MB; Run uses javac and java
-	"evcxr":         50,  // rust REPL
-	"sqlite3":       10,
-	"ts-node":       50,
-	"rappel":        2,
+	"cling":     22, // threshold : 11
+	"gomacro":   45, // the weight of the Go REPL before gomacro: measure it with the image
+	"yaegi":     10,
+	"python":    2,
+	"python2.7": 2,  // 3
+	"bash":      10, // 2, for simultaneous bash consoles
+	"ipython":   10,
+	"ipython3":  20,
+	"irb":       10,
+	"perli":     3,
+	"node":      10,
+	"jq-repl":   2,
+	"tclsh":     2,
+	"java":      192, // jvm takes lot of memory: jshell, tuned (utils/interactive.go), peaks near 150 MB; Run uses javac and java
+	"evcxr":     50,  // rust REPL
+	"sqlite3":   10,
+	"ts-node":   50,
+	"rappel":    2,
 }
 
 var memLimitMutex sync.Mutex

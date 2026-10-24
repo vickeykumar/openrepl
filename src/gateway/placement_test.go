@@ -154,7 +154,7 @@ func TestLanguageMissingOnTheSessionsNode(t *testing.T) {
 		PathPrefix: "/",
 		Secret:     []byte("secret"),
 		GuestTTL:   time.Hour,
-		Terminal:   terminalFor(map[string]string{"ws_python": "python", "ws_go": "gointerpreter"}),
+		Terminal:   terminalFor(map[string]string{"ws_python": "python", "ws_go": "gomacro"}),
 	})
 	rt.AddBackend(w)
 
@@ -197,7 +197,7 @@ func TestOpenTerminalsCountAgainstCapacityImmediately(t *testing.T) {
 		PathPrefix: "/",
 		Secret:     []byte("secret"),
 		GuestTTL:   time.Hour,
-		Terminal:   terminalFor(map[string]string{"ws_go": "gointerpreter"}),
+		Terminal:   terminalFor(map[string]string{"ws_go": "gomacro"}),
 	})
 	rt.AddBackend(b)
 	gw := httptest.NewServer(rt)

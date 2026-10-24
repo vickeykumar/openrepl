@@ -92,7 +92,7 @@ func TestTheAuditLogSaysWhatChangedOnWhichNode(t *testing.T) {
 
 func languageTestServer() *Server {
 	return &Server{terminals: map[string]string{
-		"ws": "", "ws_python": "python", "ws_c": "cling", "ws_cpp": "cling", "ws_go": "gointerpreter",
+		"ws": "", "ws_python": "python", "ws_c": "cling", "ws_cpp": "cling", "ws_go": "gomacro",
 		"ws_evcxr": "evcxr", "ws_rappel": "rappel",
 		"ws_javascript": "javascript", // a route like every demo, though its console runs in the browser
 	}}
@@ -271,7 +271,7 @@ func TestTheLanguagesCardOfAWorker(t *testing.T) {
 	if r := rowOf(t, w, "python"); !r.Declared || !r.Takes || r.Rule != "default" {
 		t.Fatalf("python: %+v", r)
 	}
-	if r := rowOf(t, w, "go"); r.Declared || r.Takes || r.Command != "gointerpreter" {
+	if r := rowOf(t, w, "go"); r.Declared || r.Takes || r.Command != "gomacro" {
 		t.Fatalf("go (not declared): %+v", r)
 	}
 	if r := rowOf(t, w, "rappel"); !r.NeedsPtrace || r.Declared {

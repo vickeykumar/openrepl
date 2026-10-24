@@ -13,7 +13,7 @@ type Demo struct {
     Github   string   // link shown in the UI
     Codes    []Codes  // animated demo: []{Name, []Code{Prompt, Statement, Result}}
     Usage    []Usage  // meta-command table: []{Command, Description}
-    Doc      string   // docs link, e.g. ./docs/gointerpreter.html
+    Doc      string   // docs link, e.g. ./docs/gomacro.html
     Content  string   // starter code placed in the editor
     Compiler string   `json:"-"` // bash script used by Run; never sent to the browser
 }
@@ -87,7 +87,7 @@ On the last three routes gdb is started with `set sysroot /` and `target remote 
 
 - **`java`:** the normal backend path (`/ws_java`) for both. The interactive terminal runs a tuned `jshell` (`utils.InteractiveCommand`, used by `containers.GetCommandArgs`; LLD 09 "Java"); Run compiles and runs the file with the compiler script of `demos.xml`. Share and Fork work as for any REPL. (It used to be an iframe to tryjshell.org because of the memory of a JVM.)
 - **`javascript`:** always an iframe to `./jsconsole.html`, which evaluates in the browser. The share button is disabled.
-- **Everything else:** a WebSocket to `/ws_<option>`. `c`, `cpp` and `go` map server-side to `cling`, `cling` and `gointerpreter`.
+- **Everything else:** a WebSocket to `/ws_<option>`. `c`, `cpp` and `go` map server-side to `cling`, `cling` and `gomacro`.
 
 ## 3. File browser
 

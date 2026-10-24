@@ -8,8 +8,8 @@ import (
 
 // What Genie's agent is told about the REPL of the language in use, so that it
 // types code at the prompt the way the REPL takes it instead of guessing (a
-// model that does not know gointerpreter restarts the terminal or types :r
-// where a line of Go was wanted).
+// model that does not know a REPL restarts the terminal or types a command
+// where a line of code was wanted).
 //
 // The text is built from the demo of the REPL (resources/meta/demos.xml, the
 // same structure /demo?q=<repl> serves to the page): its prompt, its commands,
@@ -22,7 +22,7 @@ const (
 	replGuideMaxLength = 3600 // of the whole guide
 )
 
-// replGuide returns the guide for a REPL by its command name ("gointerpreter",
+// replGuide returns the guide for a REPL by its command name ("gomacro",
 // "python"), "" for a name that has no demo.
 func replGuide(command string) string {
 	if utils.Commands2DemoMap == nil {

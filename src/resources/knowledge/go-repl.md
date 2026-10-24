@@ -1,6 +1,6 @@
 ---
-title: Using the Go REPL (gointerpreter)
-keywords: gointerpreter, go interpreter, go repl, golang repl, go prompt, loop does not run in the go repl, nothing printed, :r, :c, :x, clear the session
-link: /docs/gointerpreter.html
+title: Using the Go REPL (gomacro)
+keywords: gomacro, go interpreter, go repl, golang repl, go prompt, gomacro prompt, import fmt, nothing printed, undefined fmt, :help, :quit, // int
+link: /docs/gomacro.html
 ---
-At the go>> prompt of gointerpreter, type one Go statement and press Enter. An expression such as 12+31 or a variable name prints its value at once, and so does fmt.Println. A for or if block is only kept: type :r to run what you typed so far. :r does not run the editor; the Run button does. A block stays in the session and prints again later, and a statement with an error keeps failing: type :c to clear the session.
+At the gomacro> prompt, type one Go statement and press Enter. It runs as soon as it is complete, and an expression such as 12+31 or a variable name prints its value and its type, for example 43 // int. Import a package before you use it: import "fmt", then fmt.Println("hi"). A for or if block runs when its braces close, so there is nothing to type to run it; the lines of a block that is not closed yet go on to the next line. A line with an error only prints the error. :help lists the commands and :quit leaves; the Run button, not the prompt, runs the program in the editor.

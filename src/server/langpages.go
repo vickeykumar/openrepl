@@ -22,7 +22,7 @@ type LangPage struct {
 var langPages = []LangPage{
 	{"c", "c", "C", "Type C statements in the Cling interpreter, or write a whole program and press Run."},
 	{"cpp", "cpp", "C++", "Try C++ one statement at a time in the Cling interpreter, or write a whole program and press Run."},
-	{"go", "go", "Go", "Try Go expressions in the Go interpreter, or write a whole program and press Run."},
+	{"go", "go", "Go", "Try Go expressions in the gomacro interpreter, or write a whole program and press Run."},
 	{"python", "python", "Python", "Python 3 is ready to type in, and IPython and Python 2.7 are in the language picker."},
 	{"rust", "evcxr", "Rust", "Evaluate Rust expressions in the evcxr REPL, or write a whole program and press Run."},
 	{"java", "java", "Java", "Try Java snippets in JShell, or write a whole class and press Run."},

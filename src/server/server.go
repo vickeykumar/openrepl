@@ -350,8 +350,8 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	wsMux.HandleFunc(pathPrefix+"ws", server.generateHandleWS(ctx, cancel, counter))
 	wsMux.HandleFunc(pathPrefix+"ws_c", server.generateHandleWS(ctx, cancel, counter, "cling"))
 	wsMux.HandleFunc(pathPrefix+"ws_cpp", server.generateHandleWS(ctx, cancel, counter, "cling"))
-	wsMux.HandleFunc(pathPrefix+"ws_go", server.generateHandleWS(ctx, cancel, counter, "gointerpreter"))
-	server.terminals = map[string]string{"ws": "", "ws_c": "cling", "ws_cpp": "cling", "ws_go": "gointerpreter"}
+	wsMux.HandleFunc(pathPrefix+"ws_go", server.generateHandleWS(ctx, cancel, counter, "gomacro"))
+	server.terminals = map[string]string{"ws": "", "ws_c": "cling", "ws_cpp": "cling", "ws_go": "gomacro"}
 
 	// Expose all other APIs form Commands2DemoMap, refer utils.go
 	if utils.Commands2DemoMap == nil {

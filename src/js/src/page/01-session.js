@@ -88,7 +88,7 @@ function isMaster() {
 window.option2cmdMap = {
     "c":"cling",
     "cpp":"cling",
-    "go":"gointerpreter",
+    "go":"gomacro",
     "java":"java",
     "python2.7":"python",
 };

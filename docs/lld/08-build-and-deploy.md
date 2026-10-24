@@ -56,7 +56,7 @@ It has three stages, all based on `ubuntu:22.04`:
 1. **`builder`:** copies `install_prerequisite.sh`, `bin/gdb` and the debug helpers (`scripts/ptrace-probe.c`, `scripts/openrepl-gdb`, `scripts/openrepl-rappel`), then runs `./install_prerequisite.sh --cleanup-tools --run-tests`. This installs every REPL runtime:
    - from apt: gcc/g++, default-jdk, python2.7/3, ipython/ipython3, golang, yaegi, npm/nvm/node, ruby, perl, tcl, sqlite3, jq, rustc/cargo, rust-gdb, nasm, rlwrap, net-tools, libcap2-bin;
    - prebuilt: cling (`repls/cling-Ubuntu-22.04-x86_64-*.tar.bz2`) and evcxr;
-   - from source: gointerpreter, jq-repl, perli, rappel;
+   - from source: gomacro (built with a Go 1.23 toolchain downloaded for that step and removed after it; the commit is pinned), jq-repl, perli, rappel;
    - from npm: `typescript@4.9.5` and `ts-node`;
    - for Debug on hosts without `ptrace` (LLD 04 §2): `qemu-user` from apt, `openrepl-ptrace-probe` (built from `scripts/ptrace-probe.c` once, here, so Debug never compiles anything), `openrepl-gdb`, and `/usr/local/bin/rappel` as a wrapper in front of the real rappel. The bundled `bin/gdb` is copied but Ubuntu's gdb (pulled in by `rust-gdb`) is the one that ends up in use.
    - `--run-tests` runs each command through `bash -c`, so the `tclsh` check is a real pipe. It also debugs a small program through the QEMU route (this one must pass), through `ptrace` and the rappel REPL (reported, not fatal, and skipped when the build host has no `ptrace`).
