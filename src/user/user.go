@@ -80,6 +80,12 @@ type UserProfile struct {
     Email           string          `json:"email"`
     PhotoURL        string          `json:"photoURL"`
     SessionMap      map[string]UserSession  `json:"sessions,omitempty"`
+    // When the account signed in (milliseconds): the latest sign-in, the first
+    // one since this was recorded, and how many there have been. Zero is "not
+    // recorded": the account last signed in before these were kept.
+    LastSignIn      int64           `json:"lastSignIn,omitempty"`
+    FirstSignIn     int64           `json:"firstSignIn,omitempty"`
+    SignIns         int             `json:"signIns,omitempty"`
 }
 
 func NewUserProfile(Uid string) (*UserProfile) {
@@ -102,6 +108,15 @@ func (up *UserProfile) Update(user *User) {
     } else {
         up.PhotoURL = user.PhotoURL
     }
+}
+
+// recordSignIn notes a sign-in at the time given (milliseconds).
+func (up *UserProfile) recordSignIn(now int64) {
+    up.LastSignIn = now
+    if up.FirstSignIn == 0 {
+        up.FirstSignIn = now
+    }
+    up.SignIns++
 }
 
 func (up *UserProfile) addSession(session UserSession) {
@@ -371,6 +386,8 @@ func UpdateAndStoreSessionData(Uid, SessionID string, ss *UserSession, isdelete 
     } else {
         // a single user can have multiple sessions, may be from diffrent browsers/client
         up.addSession(*ss)
+        // and this is a sign-in (the browser posts the session once Firebase has signed the person in)
+        up.recordSignIn(utils.GetUnixMilli())
     }
 
     data, err := json.Marshal(up)

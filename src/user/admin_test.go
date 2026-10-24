@@ -180,3 +180,59 @@ func TestACopyOfTheSecretSavedByAnEarlierVersionIsRemoved(t *testing.T) {
 		t.Fatalf("the secret is still in the database: %q", v)
 	}
 }
+
+func TestSignInsAreRecordedOnTheAccount(t *testing.T) {
+	var up UserProfile
+	up.recordSignIn(100)
+	up.recordSignIn(250)
+	if up.FirstSignIn != 100 || up.LastSignIn != 250 || up.SignIns != 2 {
+		t.Fatalf("after two: %+v", up)
+	}
+
+	open(t)
+	before := utils.GetUnixMilli()
+	signIn(t, "uid-a", "ann@example.com", true)
+	signIn(t, "uid-a", "ann@example.com", true)
+	after := utils.GetUnixMilli()
+	got, err := FetchUserProfileData("uid-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SignIns != 2 || got.FirstSignIn < before || got.LastSignIn < got.FirstSignIn || got.LastSignIn > after {
+		t.Fatalf("two sign-ins: %+v (between %d and %d)", got, before, after)
+	}
+	accounts, _ := ListAccounts()
+	if len(accounts) != 1 || accounts[0].SignIns != 2 || accounts[0].LastSignIn != got.LastSignIn || accounts[0].FirstSignIn != got.FirstSignIn {
+		t.Fatalf("the list: %+v", accounts)
+	}
+
+	// signing out is not a sign-in, and a blocked account's attempt is refused and not counted
+	ss := &UserSession{Uid: "uid-a", SessionID: "tok-uid-a"}
+	if err := UpdateAndStoreSessionData("uid-a", ss.SessionID, ss, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetBlocked("uid-a", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateAndStoreSessionData("uid-a", "x", &UserSession{}, false); err != ErrBlocked {
+		t.Fatal(err)
+	}
+	again, _ := FetchUserProfileData("uid-a")
+	if again.SignIns != 2 || again.LastSignIn != got.LastSignIn {
+		t.Errorf("a sign-out or a refused sign-in was counted: %+v", again)
+	}
+}
+
+func TestAnAccountFromBeforeHasNoRecordedSignIn(t *testing.T) {
+	open(t)
+	db := GetUserDBHandle()
+	db.Store([]byte("uid-old"), []byte(`{"uid":"uid-old","displayName":"Old","email":"old@example.com"}`))
+	db.Commit()
+	accounts, err := ListAccounts()
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("%+v %v", accounts, err)
+	}
+	if a := accounts[0]; a.LastSignIn != 0 || a.FirstSignIn != 0 || a.SignIns != 0 {
+		t.Errorf("an account that never had a time was given one: %+v", a)
+	}
+}

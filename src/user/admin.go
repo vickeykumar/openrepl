@@ -117,6 +117,11 @@ type Account struct {
 	Email    string `json:"email"`
 	Sessions int    `json:"sessions"` // signed-in sessions that have not expired
 	Blocked  bool   `json:"blocked"`
+	// When the account signed in, in milliseconds; 0 if that was not recorded
+	// (the account last signed in before it was).
+	LastSignIn  int64 `json:"lastSignIn"`
+	FirstSignIn int64 `json:"firstSignIn"`
+	SignIns     int   `json:"signIns"`
 }
 
 // ListAccounts returns every account, by email address.
@@ -133,7 +138,7 @@ func ListAccounts() ([]Account, error) {
 		if json.Unmarshal(value, &up) != nil || up.Uid != k {
 			return true
 		}
-		a := Account{Uid: up.Uid, Name: up.Name, Email: up.Email}
+		a := Account{Uid: up.Uid, Name: up.Name, Email: up.Email, LastSignIn: up.LastSignIn, FirstSignIn: up.FirstSignIn, SignIns: up.SignIns}
 		for _, s := range up.SessionMap {
 			if s.ExpirationTime > now {
 				a.Sessions++

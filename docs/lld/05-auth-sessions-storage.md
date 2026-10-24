@@ -114,7 +114,12 @@ Every write calls `Commit()` right away. Listing uses UnQLite cursors (`FetchFee
 // user/user.go
 type User        struct { Uid, Name(displayName), Email, PhotoURL string; StsTokenManager{AccessToken, RefreshToken string; ExpirationTime int64} }
 type UserSession struct { Uid, SessionID string; ExpirationTime int64; LoggedIn bool; User *User /* only on the wire */ }
-type UserProfile struct { Uid, Name, Email, PhotoURL string; SessionMap map[string]UserSession }
+type UserProfile struct { Uid, Name, Email, PhotoURL string; SessionMap map[string]UserSession; LastSignIn, FirstSignIn int64; SignIns int }
+```
+
+The last three are when the account signed in (milliseconds) and how many times, noted by `UpdateAndStoreSessionData` whenever it adds a session, which only the browser's `POST /login` does once Firebase has signed the person in: opening a page while signed in asks `GET /login` and does not count, and neither does signing out or a sign-in that was refused for a blocked account. They are zero (not recorded) for an account that last signed in before they existed, until its next sign-in. They live on the profile, not on a session, because a session is dropped when its token expires.
+
+```go
 
 // server/db.go, server/blog_db.go
 type feedback struct { Name, Email, Message string }

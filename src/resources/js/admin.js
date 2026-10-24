@@ -1534,10 +1534,25 @@
   function viewUsers() {
     var root = h('div'), box = h('div');
     var data = null, query = '';
+    var sort = { key: 'lastSignIn', dir: 'desc' }, show = 'all';
     var search = h('input', { type: 'search', placeholder: 'Search by name or email', 'aria-label': 'Search accounts',
       oninput: function () { query = search.value.trim().toLowerCase(); box.__key = null; draw(); } });
+    var filter = h('select', { 'aria-label': 'Which accounts to show', onchange: function () { show = filter.value; box.__key = null; draw(); } },
+      h('option', { value: 'all', text: 'All accounts' }), h('option', { value: 'live', text: 'Signed in now' }),
+      h('option', { value: 'week', text: 'Signed in the last 7 days' }), h('option', { value: 'unrecorded', text: 'Sign-in not recorded' }));
     root.appendChild(pageHead('Users', 'Accounts that have signed in. Signing a user out ends their sessions; blocking also stops them signing in again.'));
-    root.appendChild(h('div', { class: 'toolbar' }, search, h('span', { class: 'grow' }), h('span', { class: 'sub', id: 'users-count' })));
+    root.appendChild(h('div', { class: 'toolbar' }, search, filter, h('span', { class: 'grow' }), h('span', { class: 'sub', id: 'users-count' })));
+
+    // a time in milliseconds as the page tells times: "3h 5m ago", the exact time on hover; 0 is "not recorded"
+    function stamp(ms, none) {
+      if (!ms) return h('span', { class: 'sub', text: none || '–' });
+      return when(new Date(ms).toISOString());
+    }
+    function sortBy(key) {
+      sort = sort.key === key ? { key: key, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { key: key, dir: key === 'email' ? 'asc' : 'desc' };
+      box.__key = null;
+      draw();
+    }
     root.appendChild(box);
 
     function act(u, action, title, body, confirm, done, danger) {
@@ -1548,8 +1563,14 @@
     }
 
     var cols = [
-      { key: 'email', label: 'Account', cell: function (u) { return h('div', null, h('b', { text: u.email || '(no email)' }), h('div', { class: 'sub', text: u.name && u.name !== u.email ? u.name : '' })); } },
-      { key: 'sessions', label: 'Signed in', num: true, cell: function (u) { return u.sessions ? plural(u.sessions, 'session', 'sessions') : h('span', { class: 'sub', text: 'no' }); } },
+      { key: 'email', label: 'Account', sort: true, cell: function (u) { return h('div', null, h('b', { text: u.email || '(no email)' }), h('div', { class: 'sub', text: u.name && u.name !== u.email ? u.name : '' })); } },
+      { key: 'lastSignIn', label: 'Last signed in', sort: true, cell: function (u) {
+        var live = u.sessions ? h('span', { title: plural(u.sessions, 'session', 'sessions') }, pill('signed in now', 'ok')) : null;
+        if (!u.lastSignIn) return h('div', null, h('span', { class: 'sub', text: 'Not recorded' }), h('div', { class: 'sub', text: 'signed in before this was kept' }), live);
+        return h('div', null, stamp(u.lastSignIn), h('div', { class: 'sub', text: localTime(new Date(u.lastSignIn).toISOString()) }), live);
+      } },
+      { key: 'firstSignIn', label: 'First signed in', sort: true, cell: function (u) { return u.firstSignIn ? h('span', { title: u.signIns ? plural(u.signIns, 'sign-in', 'sign-ins') + ' since then' : '' }, stamp(u.firstSignIn)) : stamp(0); } },
+      { key: 'lastGenie', label: 'Last Genie use', sort: true, cell: function (u) { return stamp(u.lastGenie, 'never'); } },
       { key: 'status', label: 'Status', cell: function (u) {
         return h('span', { class: 'actions' }, u.admin ? pill('admin', 'info') : null, u.blocked ? pill('blocked', 'danger') : null, !u.admin && !u.blocked ? h('span', { class: 'sub', text: '–' }) : null); } },
       { key: 'actions', label: '', cell: function (u) {
@@ -1563,9 +1584,23 @@
     ];
 
     function draw() {
-      var rows = data.users.filter(function (u) { return !query || (u.email + ' ' + u.name).toLowerCase().indexOf(query) >= 0; });
+      var weekAgo = Date.now() - 7 * 86400000;
+      var rows = data.users.filter(function (u) {
+        if (query && (u.email + ' ' + u.name).toLowerCase().indexOf(query) < 0) return false;
+        return show === 'all' || (show === 'live' && u.sessions > 0) || (show === 'week' && u.lastSignIn >= weekAgo) || (show === 'unrecorded' && !u.lastSignIn);
+      });
+      // an account with no time for the column is last, whichever way it is sorted
+      rows.sort(function (a, b) {
+        var x = a[sort.key], y = b[sort.key], dir = sort.dir === 'asc' ? 1 : -1;
+        if (sort.key !== 'email') {
+          x = x || 0; y = y || 0;
+          if (!x !== !y) return !x ? 1 : -1;
+          return x === y ? (a.email < b.email ? -1 : 1) : (x - y) * dir;
+        }
+        return String(x || '').localeCompare(String(y || '')) * dir;
+      });
       $('users-count').textContent = plural(rows.length, 'account', 'accounts') + (rows.length !== data.users.length ? ' of ' + data.users.length : '');
-      render(box, JSON.stringify(rows), table(cols, rows, { empty: data.users.length ? 'No account matches.' : 'Nobody has signed in yet.' }));
+      render(box, JSON.stringify([rows, sort]), table(cols, rows, { sort: sort, onSort: sortBy, empty: data.users.length ? 'No account matches.' : 'Nobody has signed in yet.' }));
     }
     function refresh() { return api.get('admin/users').then(function (r) { data = r; draw(); }); }
     return { root: root, refresh: refresh, poll: true };
