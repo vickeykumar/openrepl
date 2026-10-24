@@ -108,6 +108,8 @@ func google(t *testing.T) (calls *int) {
 		switch r.PostForm.Get("response") {
 		case "good":
 			json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+		case "expired":
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "hostname": "openrepl.com", "error-codes": []string{"timeout-or-duplicate"}})
 		case "down":
 			http.Error(w, "boom", http.StatusInternalServerError)
 		default:
@@ -135,6 +137,11 @@ func TestWithTheSecretSetTheRecaptchaAnswerIsChecked(t *testing.T) {
 	w = postForm(url.Values{"message": {"Please add Kotlin"}, "g-recaptcha-response": {"forged"}}, nil)
 	if w.Code != 400 || !strings.Contains(w.Body.String(), "did not pass") || len(stored()) != 0 {
 		t.Fatalf("forged: %d %q stored %d", w.Code, w.Body.String(), len(stored()))
+	}
+	// an answer that is too old or was used already says so
+	w = postForm(url.Values{"message": {"Please add Kotlin"}, "g-recaptcha-response": {"expired"}}, nil)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "ran out of time") || len(stored()) != 0 {
+		t.Fatalf("expired: %d %q stored %d", w.Code, w.Body.String(), len(stored()))
 	}
 	// Google cannot be asked: the message is not kept, and the visitor is told to retry
 	w = postForm(url.Values{"message": {"Please add Kotlin"}, "g-recaptcha-response": {"down"}}, nil)
