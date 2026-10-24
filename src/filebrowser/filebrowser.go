@@ -7,6 +7,7 @@ import (
 	"path/filepath"
     "github.com/fsnotify/fsnotify"
     "log"
+    "meters"
     "utils"
     "net/http"
     "archive/zip"
@@ -186,6 +187,7 @@ func (fb *Filebrowser) PurgePendingEventNotifications() {
 }
 
 func (fb *Filebrowser) eventHandler(event fsnotify.Event) {
+    meters.Add(meters.FileEvents, 1)
     path := event.Name
     var isdir bool = utils.IsDir(path)
     var newEventsNotifList []*Event
@@ -289,6 +291,8 @@ func (fb *Filebrowser) eventHandler(event fsnotify.Event) {
 
 func (fb *Filebrowser) StartWatching() {
     go func() {
+        meters.GaugeAdd(meters.FileWatches, 1)
+        defer meters.GaugeAdd(meters.FileWatches, -1)
         log.Println("Started watching browser:", fb.Root)
         for {
             select {

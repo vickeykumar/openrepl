@@ -21,6 +21,7 @@ import (
 	"gateway"
 	"webtty"
 	"filebrowser"
+	"meters"
 	"utils"
 	"cookie"
 	"io"
@@ -86,12 +87,16 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		}
 
 		num := counter.add(1)
+		// the dashboard's live map counts the terminals of each program
+		replName := replLabel(command)
+		meters.GaugeAdd(meters.Repl+replName, 1)
 		wieght := containers.GetCommandWieght(command)
 		totalWieght := counter.addWieght(int(wieght))
 		closeReason := "unknown reason"
 		closeCode := websocket.CloseNormalClosure
 
 		defer func() {
+			meters.GaugeAdd(meters.Repl+replName, -1)
 			num := counter.done()
 			totalWieght := counter.removeWieght(int(wieght))
 			log.Printf(

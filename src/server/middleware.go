@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/base64"
 	"log"
+	"meters"
 	"net/http"
 	"strings"
 )
@@ -13,6 +14,11 @@ func (server *Server) wrapLogger(handler http.Handler) http.Handler {
 		handler.ServeHTTP(rw, r)
 		if server.isAdminPoll(r, rw.status) {
 			return
+		}
+		// the dashboard's live map counts the site's own requests, not its polling
+		meters.Add(meters.HTTPReq, 1)
+		if rw.status >= 500 {
+			meters.Add(meters.HTTPErr, 1)
 		}
 		log.Printf("%s %d %s %s", r.RemoteAddr, rw.status, r.Method, r.URL.Path)
 	})
