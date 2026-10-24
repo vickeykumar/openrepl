@@ -82,7 +82,7 @@ The full description, how to run each check yourself and the GitHub settings tha
 | `docker-push.yml` | push to `master` | Log in to `${{ vars.DOCKER_REGISTRY }}`, then build and push `openrepl:<short-sha>` and retag and push `:latest`. |
 | `audit.yml` | every Monday | `npm audit` of `src/js` and the widget. |
 
-`.github/dependabot.yml` opens weekly pull requests for npm packages and actions, `.github/pull_request_template.md` is the checklist, and `.github/CODEOWNERS` says who reviews. `wercker.yml` (Go 1.9) was removed: it had not run for years.
+Dependencies are upgraded by hand (there is no Dependabot configuration), `.github/pull_request_template.md` is the checklist, and `.github/CODEOWNERS` says who reviews. `wercker.yml` (Go 1.9) was removed: it had not run for years.
 
 ## 5. systemd deployment (`gotty.service`, `.deb`)
 
