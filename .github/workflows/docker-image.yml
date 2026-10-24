@@ -49,7 +49,7 @@ jobs:
     - name: Smoke test
       run: bash scripts/ci/smoke.sh http://localhost:8080
 
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v7
       with:
         node-version: 20
     - name: Browser tests (Playwright)
