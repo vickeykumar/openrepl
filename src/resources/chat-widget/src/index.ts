@@ -1670,10 +1670,14 @@ function close() {
   renderActivity();
 }
 
-function toggle(e?: Event) {
+// pin: the app bar's Genie button opens the panel pinned beside the IDE (where
+// there is room for it; otherwise it floats as before). The floating "Ask Genie"
+// button leaves the pin as it is.
+function toggle(e?: Event, opts?: { pin?: boolean }) {
   if (isOpen()) {
     close();
   } else {
+    if (opts && opts.pin && canDock() && !pinnedPref) setPinned(true);
     open(e);
   }
 }

@@ -32,11 +32,19 @@ const THEME = {
     brightWhite: "#F2F0EC",
 };
 
+// The colours of the editor theme that is picked (page/21-ide-theme.js sets
+// window.__idePalette); the default theme above when none is.
+function currentTheme() {
+    const p = (window as any).__idePalette;
+    return p && p.term ? p.term : THEME;
+}
+
 export class Xterm {
     elem: HTMLElement;
     term: XTerminal;
     fitAddon: FitAddon;
     resizeListener: () => void;
+    themeListener: () => void;
     decoder: ByteStringDecoder;
 
     message: HTMLElement;
@@ -57,7 +65,7 @@ export class Xterm {
             lineHeight: 1.0,
             cursorBlink: true,
             scrollback: 5000,
-            theme: THEME,
+            theme: currentTheme(),
             macOptionIsMeta: false,
             // links open in a new tab, without access back to this page
             linkHandler: {
@@ -78,6 +86,9 @@ export class Xterm {
         // editor split, the Files panel, a tab becoming visible again.
         this.resizeListener = () => { this.scheduleFit(); };
         window.addEventListener("resize", this.resizeListener);
+        // another editor theme was picked: the terminal follows
+        this.themeListener = () => { this.term.options.theme = currentTheme(); };
+        window.addEventListener("idethemechange", this.themeListener);
 
         this.term.open(elem);
         // a name for screen readers (T15)
@@ -263,6 +274,7 @@ export class Xterm {
     close(): void {
         console.log("closing connection for window xterm")
         window.removeEventListener("resize", this.resizeListener);
+        window.removeEventListener("idethemechange", this.themeListener);
         if (this.sizeObserver) this.sizeObserver.disconnect();
         if (this.fitFrame) cancelAnimationFrame(this.fitFrame);
         this.listeners.forEach((l) => l.dispose());

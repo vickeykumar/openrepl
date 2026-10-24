@@ -135,9 +135,10 @@ type practiceDoc   struct { Questions map[string]json.RawMessage; State map[stri
 
 | Store | Key | Purpose |
 |---|---|---|
-| localStorage | `theme` | `light` or `dark` once someone uses the theme switch; absent means follow the system setting (`js/theme.js`). |
+| localStorage | `theme` | `light` or `dark` once someone picks it in the theme menu; absent means System, which follows the device's setting (`js/theme.js`). |
 | localStorage | `files-panel` | `open` or `closed` for the Files panel in the workspace. |
 | localStorage | `editor-theme` | The Ace theme picked in the status bar; absent means OpenREPL Dark (`ace/theme/openrepl_dark`). |
+| localStorage | `ide-palette` | `{theme, palette}`: the colours the IDE took from that editor theme, so the next visit starts in them (`21-ide-theme.js`). Ignored when `theme` is not the picked `editor-theme`. |
 | localStorage | `questions`, `bookmarkedRows`, `topic`, `difficultyLevel`, `temperature` | Practice mode: generated questions (latest 100) with per-language code, the ids marked done (kept for older code), the last topic and level, LLM temperature. |
 | localStorage | `practiceState` | `{id: {done, t}}` or `{id: {del: true, t}}`: done marks and deletions with the time of each change, for merging (`js/practice-store.js`). Created from `bookmarkedRows` on first use. |
 | localStorage | `practiceFilters` | Status, topic, level and sort chosen on the practice list. |

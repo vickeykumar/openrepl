@@ -54,8 +54,9 @@ $(function() {
     
     // Select the desired theme of the editor
     $("#select-theme").change(function () {
-        // Set the theme in the editor
-        editor.setTheme(this.value);
+        // Set the theme in the editor, then the IDE around it follows (21-ide-theme.js)
+        var picked = this.value;
+        editor.setTheme(picked, function () { if (window.applyIdeTheme) window.applyIdeTheme(editor, picked); });
         
         // Update the theme in the localStorage
         // We wrap this operation in a try-catch because some browsers don't
@@ -147,7 +148,7 @@ $(function() {
         // Initialize the ACE editor
         editor = ace.edit("editor");
         try { editor.textInput.getElement().setAttribute("aria-label", "Code editor"); } catch (e) {} // T15
-        editor.setTheme(getTheme());
+        editor.setTheme(getTheme(), function () { if (window.applyIdeTheme) window.applyIdeTheme(editor, getTheme()); });
         editor.setFontSize("14px");
         editor.$blockScrolling = Infinity;
         editor.setOptions({

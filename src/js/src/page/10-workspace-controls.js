@@ -74,10 +74,10 @@ $(function () {
     if (!$(e.target).closest(".run-split").length) closeRunMenu();
   });
 
-  // The app bar button opens and closes the docked Genie panel.
+  // The app bar button opens the Genie panel pinned beside the IDE, and closes it again.
   $("#genie-button").on("click", function () {
     if (!window.ChatWidget) return;
-    if (window.ChatWidget.toggle) window.ChatWidget.toggle({ target: this });
+    if (window.ChatWidget.toggle) window.ChatWidget.toggle({ target: this }, { pin: true }); // from the app bar it opens pinned
     else window.ChatWidget.open({ target: this });
   });
   // keep the button's pressed state in step with the panel

@@ -420,7 +420,25 @@
     return api;
   }
 
+  // jQuery's .val(x) on a <select> sets option.selected one by one: it never goes through the
+  // select's own value setter, so the button would keep showing the first option (the IDE's
+  // language and theme showed "Assembly x86" and "Chrome" while the editor used C and OpenREPL
+  // Dark). After every jQuery .val() on an enhanced select the button is refreshed.
+  function patchJQuery(jq) {
+    var hooks = jq && jq.valHooks && jq.valHooks.select;
+    if (!hooks || typeof hooks.set !== "function" || hooks.__selectMenuPatched) return false;
+    var original = hooks.set;
+    hooks.set = function (elem, value, name) {
+      var result = original.call(this, elem, value, name);
+      if (elem && elem.__selectMenu && typeof elem.__selectMenu.refresh === "function") elem.__selectMenu.refresh();
+      return result;
+    };
+    hooks.__selectMenuPatched = true;
+    return true;
+  }
+
   function init() {
+    patchJQuery(window.jQuery);
     // a touch screen keeps the browser's own picker
     if (window.matchMedia && window.matchMedia("(hover: none), (pointer: coarse)").matches) return;
     var selects = document.querySelectorAll("select[data-select-menu]");
@@ -433,7 +451,7 @@
     }
   }
 
-  window.SelectMenu = { enhance: enhance, init: init, itemsOf: itemsOf, filterItems: filterItems, placeMenu: placeMenu, moveActive: moveActive, typeAhead: typeAhead };
+  window.SelectMenu = { enhance: enhance, init: init, patchJQuery: patchJQuery, itemsOf: itemsOf, filterItems: filterItems, placeMenu: placeMenu, moveActive: moveActive, typeAhead: typeAhead };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

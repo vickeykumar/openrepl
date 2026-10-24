@@ -1,6 +1,6 @@
 /* Genie panel (T1/T3 follow-up). Matches the "Genie panel" in the redesign
-   mockup. The panel is dark in both site themes, like the IDE it sits next
-   to, so its colours are set here instead of following [data-theme]. The
+   mockup. The panel is dark by default, like the IDE it sits next
+   to. Floating, it follows the site's light or dark theme (a light block below); pinned, it follows the editor theme. The
    accent follows the site tokens (--accent-color, --on-accent-color) so the
    admin "colour of the day" switch still applies. */
 #chat-widget__container {
@@ -46,6 +46,32 @@
   color: var(--cw-text);
   text-align: left;
   animation: cw-rise 0.18s ease-out;
+}
+/* Floating (not pinned) with the site in its light theme: a light panel. Pinned beside
+   the IDE it takes the colours of the editor theme instead (page/lib-ide-theme.mjs,
+   written by page/21-ide-theme.js). */
+html[data-theme="light"] #chat-widget__container:not(.is-docked) {
+  --cw-bg: #FFFFFF;
+  --cw-border: #E4E1DA;
+  --cw-text: #2A2A32;
+  --cw-strong: #15151C;
+  --cw-muted: #5B5866;
+  --cw-icon: #5B5866;
+  --cw-field-bg: #FAFAF7;
+  --cw-field-border: #D9D6CF;
+  --cw-code-bg: #F3F1EC;
+  --cw-code-text: #2A2A32;
+  --cw-secondary-bg: #ECEAE5;
+  --cw-user-bg: #15151C;
+  --cw-user-text: #F2F0EC;
+  --cw-link: #B8323A;
+  --cw-chip-bg: #F0EEEA;
+  --cw-chip-text: #3A3842;
+  --cw-pop-bg: #FFFFFF;
+  --cw-pop-border: #D9D6CF;
+  --cw-seg-bg: #F0EEEA;
+  --cw-seg-on: #FFFFFF;
+  box-shadow: 0 24px 60px -12px rgba(21, 21, 28, 0.25), 0 2px 8px rgba(21, 21, 28, 0.12);
 }
 #chat-widget__container * {
   box-sizing: border-box;
@@ -360,7 +386,7 @@
   border: 1px solid var(--cw-border);
   border-radius: 8px;
   font: 400 13px/20px var(--font-code, "JetBrains Mono", ui-monospace, monospace);
-  color: #ECEAE6;
+  color: var(--cw-code-text, #ECEAE6);
   white-space: pre;
   scrollbar-width: thin;
   scrollbar-color: var(--cw-field-border) transparent;
