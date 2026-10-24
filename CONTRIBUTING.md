@@ -20,6 +20,10 @@ Please run `go fmt` on your Go code and make sure that your commits are organize
 
 [Go's official code style guide](https://github.com/golang/go/wiki/CodeReviewComments) is also helpful.
 
+### Checks
+
+A pull request to `master` runs the CI (`.github/workflows`): the Go tests, the page script and Genie widget tests, a few repository rules (no build output or secrets, CRLF files stay CRLF, docs in the same change), and the Docker image build with a smoke test and browser tests. What each one checks and how to run it yourself: [docs/ci.md](docs/ci.md).
+
 ### Format of the commit message
 
 When you write a commit message, we recommend include following information to make review easier and keep the history cleaerer.

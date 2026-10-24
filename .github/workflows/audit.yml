@@ -1,0 +1,35 @@
+# Once a week: known problems in the npm packages. It only reports (a summary on the
+# run, and a failed run when a high one is found); it does not block a pull request.
+name: Dependency audit
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [src/js, src/resources/chat-widget]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Audit ${{ matrix.dir }}
+        working-directory: ${{ matrix.dir }}
+        run: |
+          {
+            echo "### npm audit: ${{ matrix.dir }}"
+            echo '```'
+            npm audit --omit=dev --audit-level=high 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          npm audit --omit=dev --audit-level=high
