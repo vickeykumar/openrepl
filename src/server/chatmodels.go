@@ -129,6 +129,9 @@ const (
 	defaultContextTerminalChars = 4000
 	defaultContextTerminalLines = 20
 	defaultHistoryMessages      = 20
+	defaultAttachItems          = 8     // chips of one message (Add to Genie chat)
+	defaultAttachChars          = 8000  // characters of one file or selection of a chip
+	defaultAttachTotal          = 24000 // characters of all the chips of one message
 )
 
 // answerCap is the most tokens an answer of the model may have: the admin's

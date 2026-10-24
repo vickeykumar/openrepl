@@ -100,6 +100,10 @@ Genie can work on a task in steps in the editor. Full design and decisions: `doc
 - **Admin:** the Genie settings (`agentDisabled`, `agentOnPractice`, `agentTasksPerHour`, `agentMaxSteps`) are in the Agent mode card of `/admin` (LLD 13) and in `settings.js` (`agentEnabled`, true unless an admin switched it off and only while Genie itself is on, `agentOnPractice`, `agentMaxSteps`).
 - **Tests:** `agent_test.go` (the ledger: steps, tokens, expiry, the hourly count, giving a step back; the proxy: guest, switched off, practice, charging only the first step, the model failing, admins, the settings and the audit log; and a test that compares the action list with `agent-protocol.ts`); `test/agent-protocol.test.ts` in the chat widget (`npm test` there; Node 22.18 or later), for what the page accepts from the model.
 
+## 3c. Files and code added to the chat
+
+What the user adds with Add to Genie chat is read in the browser and sent as part of the user's own message (LLD 06, "Add to Genie chat"): the server sees ordinary message text and does nothing special with it. A message carries at most 8 chips and 24,000 characters of them by default. Nothing is stored apart from the conversation itself.
+
 ## 4. Genie assistant (chat widget)
 
 - **Opening:** on the home page Genie no longer opens on load. It opens from the app bar's Ask Genie button, the floating button, or the note that appears after the first error in a terminal, which fills in that error (`setupGenieErrorNudge` in `scribbler.js`). On `/practice` it still opens on load, because it plays the interviewer.

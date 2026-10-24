@@ -128,6 +128,14 @@ function openMenu(x, y, sel) {
   root.appendChild(head);
 
   const practice = onPractice();
+  if (canAddToChat()) {
+    root.appendChild(
+      item("Add to Genie chat", shortcutLabel(), function () {
+        closeMenu(false);
+        addSelectionToChat(sel);
+      }, "genie-menu__item--add")
+    );
+  }
   root.appendChild(
     item("Explain", "in chat", function () {
       closeMenu(false);
@@ -297,3 +305,184 @@ async function codeAction(id, sel) {
   }
 }
 
+
+// ---- Add to Genie chat: the selection as a chip of the chat -----------------------------------
+//
+// The same thing from three places: the item at the top of the right-click menu, the small
+// button that shows next to a selection, and Ctrl+Shift+L (Cmd+Shift+L on a Mac). The chip
+// holds the text as it was selected, with the file and the lines (chat-widget/src/attach.ts).
+
+function canAddToChat() {
+  return genieAvailable() && typeof window.ChatWidget.addContext === "function";
+}
+
+function shortcutLabel() {
+  return /Mac|iP(hone|ad)/.test(navigator.platform) ? "\u2318\u21E7L" : "Ctrl+Shift+L";
+}
+
+// The chip for what is selected (sel is what captureSelection took when the menu opened), or null.
+function selectionItem(ed, sel) {
+  const text = sel ? sel.text : ed.getSelectedText();
+  if (!text || text.trim() === "") return null;
+  const doc = ed.getSession().getDocument();
+  const range = ed.getSelectionRange();
+  const start = sel ? doc.indexToPosition(sel.from) : range.start;
+  const end = sel ? doc.indexToPosition(sel.to) : range.end;
+  // a selection that ends at the start of a line does not include that line
+  const lastRow = end.column === 0 && end.row > start.row ? end.row - 1 : end.row;
+  const files = window.FileBrowser && window.FileBrowser.ready && window.FileBrowser.ready() ? window.FileBrowser : null;
+  const rel = files ? files.current() : "";
+  const mode = ed.getSession().getMode();
+  return {
+    kind: "selection",
+    path: rel ? files.home() + "/" + rel : "",
+    name: rel || "editor",
+    startLine: start.row + 1,
+    endLine: lastRow + 1,
+    text: text,
+    language: String((mode && mode.$id) || "").split("/").pop() || "",
+  };
+}
+
+function addSelectionToChat(sel) {
+  const ed = aceEditor();
+  if (!ed || !canAddToChat()) return false;
+  const it = selectionItem(ed, sel || null);
+  if (!it) {
+    say("Select some code first, then add it to the chat.");
+    return false;
+  }
+  hideAddButton();
+  return window.ChatWidget.addContext(it);
+}
+
+let addButton = null; // the small button next to a selection
+let addAction = null; // what it does when pressed
+
+function hideAddButton() {
+  if (addButton) addButton.hidden = true;
+  addAction = null;
+}
+
+// The button at a place on the screen (x, y in window pixels); pressing it runs action.
+function showAddButtonAt(x, y, action) {
+  if (!addButton) {
+    addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "genie-add-btn";
+    addButton.setAttribute("aria-label", "Add the selection to the Genie chat");
+    addButton.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg><span>Add to chat</span><span class="genie-add-btn__keys"></span>';
+    // a press must not take the focus (and the selection) away from the editor or the terminal
+    addButton.addEventListener("mousedown", function (ev) {
+      ev.preventDefault();
+    });
+    addButton.addEventListener("click", function () {
+      const run = addAction;
+      hideAddButton();
+      if (run) run();
+    });
+    document.body.appendChild(addButton);
+  }
+  addAction = action;
+  addButton.querySelector(".genie-add-btn__keys").textContent = shortcutLabel();
+  addButton.hidden = false;
+  const w = addButton.offsetWidth;
+  addButton.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + "px";
+  addButton.style.top = Math.max(8, Math.min(y, window.innerHeight - 40)) + "px";
+}
+
+function showAddButton(ed) {
+  if (!canAddToChat() || ed.selection.isEmpty() || !ed.getSelectedText().trim()) {
+    hideAddButton();
+    return;
+  }
+  const end = ed.getSelectionRange().end;
+  const at = ed.renderer.textToScreenCoordinates(end.row, end.column);
+  showAddButtonAt(at.pageX - window.pageXOffset + 10, at.pageY - window.pageYOffset + 24, function () {
+    addSelectionToChat(null);
+  });
+}
+
+// ---- the terminal's selection --------------------------------------------------------------
+
+// The text selected in the active terminal, or "".
+function terminalSelection() {
+  try {
+    const tab = document.querySelector("#terminal-tabs .tab.active");
+    const xt = tab && tab.gottyterm && tab.gottyterm.term && tab.gottyterm.term.term;
+    return xt && xt.hasSelection() ? String(xt.getSelection()) : "";
+  } catch (e) {
+    return "";
+  }
+}
+
+function addTerminalToChat() {
+  if (!canAddToChat()) return false;
+  const text = terminalSelection();
+  if (!text.trim()) {
+    say("Select some text in the terminal first, then add it to the chat.");
+    return false;
+  }
+  hideAddButton();
+  return window.ChatWidget.addContext({ kind: "terminal", path: "", name: "Terminal", text: text });
+}
+
+// the button appears when the mouse is let go on selected terminal text, and the shortcut works there
+document.addEventListener("mouseup", function (ev) {
+  if (ev.button !== 0 || !(ev.target instanceof Element) || !ev.target.closest(".xterm") || !canAddToChat()) return;
+  const x = ev.clientX;
+  const y = ev.clientY;
+  setTimeout(function () {
+    if (terminalSelection().trim()) showAddButtonAt(x + 10, y + 18, addTerminalToChat);
+    else hideAddButton();
+  }, 0);
+});
+document.addEventListener(
+  "keydown",
+  function (ev) {
+    const hit = ev.shiftKey && (ev.ctrlKey || ev.metaKey) && (ev.key === "L" || ev.key === "l");
+    if (!hit || !(ev.target instanceof Element) || !ev.target.closest(".xterm")) return;
+    if (addTerminalToChat()) {
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+  },
+  true
+);
+
+// The editor is created by another part of the page: wait for it, then add the shortcut and
+// show the button when the mouse is let go on a selection.
+(function installAddToChat() {
+  let tries = 0;
+  function install() {
+    const ed = aceEditor();
+    if (!ed) {
+      if (++tries < 60) setTimeout(install, 500);
+      return;
+    }
+    ed.commands.addCommand({
+      name: "genieAddToChat",
+      bindKey: { win: "Ctrl-Shift-L", mac: "Command-Shift-L" },
+      exec: function () {
+        addSelectionToChat(null);
+      },
+      readOnly: true,
+    });
+    ed.container.addEventListener("mouseup", function (ev) {
+      if (ev.button !== 0) return;
+      setTimeout(function () {
+        showAddButton(ed);
+      }, 0);
+    });
+    ed.on("changeSelection", function () {
+      if (ed.selection.isEmpty()) hideAddButton();
+    });
+    ed.session.on("changeScrollTop", hideAddButton);
+    ed.session.on("changeScrollLeft", hideAddButton);
+    window.addEventListener("resize", hideAddButton);
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") hideAddButton();
+    });
+  }
+  install();
+})();

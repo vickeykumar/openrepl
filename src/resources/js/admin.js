@@ -942,6 +942,7 @@
           defaultModel: form.defModel.value,
           contextEditorChars: int(form.ctxEditor.value), contextTerminalChars: int(form.ctxTermChars.value),
           contextTerminalLines: int(form.ctxTermLines.value), historyMessages: int(form.history.value),
+          contextAttachItems: int(form.attachItems.value), contextAttachChars: int(form.attachChars.value), contextAttachTotal: int(form.attachTotal.value),
           openRouterTimeoutSec: int(form.orTimeout.value),
           answerCaps: capsOf(models.map(function (m) { return [m.id, int(form.caps[m.id].value)]; })),
           openRouterHosts: hostsOf(form.host1.value, form.host2.value),
@@ -970,6 +971,7 @@
           defaultModel: s.genie.defaultModel || '',
           contextEditorChars: s.genie.contextEditorChars || 0, contextTerminalChars: s.genie.contextTerminalChars || 0,
           contextTerminalLines: s.genie.contextTerminalLines || 0, historyMessages: s.genie.historyMessages || 0,
+          contextAttachItems: s.genie.contextAttachItems || 0, contextAttachChars: s.genie.contextAttachChars || 0, contextAttachTotal: s.genie.contextAttachTotal || 0,
           openRouterTimeoutSec: s.genie.openRouterTimeoutSec || 0,
           answerCaps: capsOf(models.map(function (m) { return [m.id, (s.genie.answerCaps || {})[m.id] || 0]; })),
           openRouterHosts: (s.genie.openRouterHosts || []).slice(),
@@ -1112,6 +1114,9 @@
       form.ctxTermChars = numberField('f-ctx-term-chars', 'contextTerminalChars', 'Characters of terminal output', defaults.contextTerminalChars, limits.contextTerminalChars || [200, 20000]);
       form.ctxTermLines = numberField('f-ctx-term-lines', 'contextTerminalLines', 'Lines of terminal output', defaults.contextTerminalLines, limits.contextTerminalLines || [1, 200]);
       form.history = numberField('f-history', 'historyMessages', 'Messages kept', defaults.historyMessages, limits.historyMessages || [6, 50]);
+      form.attachItems = numberField('f-attach-items', 'contextAttachItems', 'Items added to one message', defaults.contextAttachItems || 8, limits.contextAttachItems || [1, 20]);
+      form.attachChars = numberField('f-attach-chars', 'contextAttachChars', 'Characters of one added item', defaults.contextAttachChars || 8000, limits.contextAttachChars || [500, 50000]);
+      form.attachTotal = numberField('f-attach-total', 'contextAttachTotal', 'Characters of all the added items', defaults.contextAttachTotal || 24000, limits.contextAttachTotal || [2000, 100000]);
       form.agentTasks = numberField('f-agent-tasks', 'agentTasksPerHour', 'Agent tasks per hour for each signed-in user', defaults.agentTasksPerHour || 20, limits.agentTasksPerHour || [1, 200]);
       form.agentSteps = numberField('f-agent-steps', 'agentMaxSteps', 'Steps in an agent task', defaults.agentMaxSteps || 8, limits.agentMaxSteps || [1, 8]);
       form.orTimeout = numberField('f-or-timeout', 'openRouterTimeoutSec', 'OpenRouter time limit in seconds', defaults.openRouterTimeoutSec, limits.openRouterTimeoutSec || [10, 90]);
@@ -1349,6 +1354,9 @@
           row('Terminal output, characters', 'The most recent characters of the active terminal.', form.ctxTermChars),
           row('Terminal output, lines', 'How many recent lines are read from the terminal first.', form.ctxTermLines),
           row('Conversation length', 'Messages Genie remembers (the oldest go first).', form.history),
+          row('Added to a message: items', 'Files, folders and selections a user may add to one message with Add to Genie chat.', form.attachItems),
+          row('Added to a message: one item', 'Characters read of one added file or selection; a longer one is cut.', form.attachChars),
+          row('Added to a message: all items', 'Characters of everything added to one message; what does not fit is left out.', form.attachTotal),
           capRows.map(function (c) { return row('Answer size: ' + c.model.name, 'The most tokens an answer may have. A visitor asks for less by choosing a lower effort.', c.input); }),
           row('OpenRouter time limit', 'Seconds before Gemma\'s answer is given up on. Keep it under 90: the site\'s proxy gives up at about 100.', form.orTimeout),
           row('OpenRouter first host', 'Gemma is run by this host first.', form.host1),

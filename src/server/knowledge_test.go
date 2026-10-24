@@ -144,6 +144,7 @@ func TestSearchFindsTheRightNoteForQuestionsAboutTheSite(t *testing.T) {
 		{"what is agent mode", "genie-agent-mode"},
 		{"why is fmt undefined in the go repl", "go-repl"},
 		{"what does :help do in gomacro", "go-repl"},
+		{"how do i attach a file to the genie chat", "genie-add-to-chat"},
 		{"does genie keep working if i close the panel", "genie"},
 		{"how many genie requests do i have left", "genie"},
 		{"how do I make genie run my code for me", "genie-agent-mode"},
