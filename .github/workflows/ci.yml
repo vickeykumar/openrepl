@@ -94,6 +94,9 @@ jobs:
       - name: Genie widget bundle
         working-directory: src/resources/chat-widget
         run: npm ci
+      # the log and data folders the server expects (the Docker image and the dev container have them)
+      - name: Folders the server writes to
+        run: sudo mkdir -p /gottyTraces /opt/gotty && sudo chmod 777 /gottyTraces /opt/gotty
       - name: Embedded assets (src/server/asset.go)
         run: bash scripts/ci/build-assets.sh
       - name: The server builds

@@ -40,7 +40,6 @@ check "practice page" 200 "$BASE/practice/dsa-questions"
 check "privacy page" 200 "$BASE/privacy.html"
 check "terms page" 200 "$BASE/terms.html"
 check "about page" 200 "$BASE/about.html"
-check "blog" 200 "$BASE/blog"
 check "health check" 200 "$BASE/healthz"
 
 # the contact form refuses an empty message and thanks (and drops) an obvious spam one

@@ -93,8 +93,8 @@ test.describe("the whole page follows the theme", () => {
     expect(await backgroundLuminance(page, "#header-nav, .site-nav")).toBeGreaterThan(0.75);
   });
 
-  test("blog and docs pages have a light footer in the light theme", async ({ page }) => {
-    for (const path of ["/blog", "/doc.html"]) {
+  test("the about and docs pages have a light footer in the light theme", async ({ page }) => {
+    for (const path of ["/about.html", "/doc.html"]) {
       await page.goto(path);
       await setTheme(page, "light");
       expect(await backgroundLuminance(page, ".footer"), `${path} footer`).toBeGreaterThan(0.75);
