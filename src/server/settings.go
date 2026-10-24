@@ -52,6 +52,10 @@ type SiteSettings struct {
 	// node_languages.go. The Settings page does not send them; /admin/workers
 	// changes them.
 	NodeLanguages map[string]NodeLanguages `json:"nodeLanguages,omitempty"`
+	// DBCapacityMB is how much room the remote database has, in megabytes (an
+	// Atlas free cluster has 512), for the live map's "used of total". 0: not
+	// set, and the map uses the disk size MongoDB reports, if it does.
+	DBCapacityMB int `json:"dbCapacityMB"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
 	// Admins are the accounts added in the dashboard, lower case, besides the
@@ -157,6 +161,9 @@ var languagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.+-]{0,19}$`)
 // normalize cleans up settings from an untrusted source and says what is
 // wrong with them, if anything.
 func (s SiteSettings) normalize() (SiteSettings, error) {
+	if s.DBCapacityMB != 0 && (s.DBCapacityMB < minDBCapacityMB || s.DBCapacityMB > maxDBCapacityMB) {
+		return s, fmt.Errorf("the database capacity must be between %d and %d MB (or empty)", minDBCapacityMB, maxDBCapacityMB)
+	}
 	s.Announcement.Text = strings.TrimSpace(s.Announcement.Text)
 	s.Maintenance.Message = strings.TrimSpace(s.Maintenance.Message)
 	if utf8.RuneCountInString(s.Announcement.Text) > noticeMaxChars {
@@ -420,6 +427,7 @@ const (
 	minTerminalLines, maxTerminalLines = 1, 200
 	minHistory, maxHistory             = 6, 50
 	maxPricePerMillion                 = 10000
+	minDBCapacityMB, maxDBCapacityMB   = 10, 100000000
 	minAttachItems, maxAttachItems     = 1, 20
 	minAttachChars, maxAttachChars     = 500, 50000
 	minAttachTotal, maxAttachTotal     = 2000, 100000
@@ -722,6 +730,9 @@ func settingsChanges(a, b SiteSettings) []string {
 			name = m.Name
 		}
 		out = append(out, "default model: "+name)
+	}
+	if a.DBCapacityMB != b.DBCapacityMB {
+		out = append(out, "database capacity changed")
 	}
 	if ga, gb := a.Genie, b.Genie; ga.context() != gb.context() || ga.OpenRouterTimeoutSec != gb.OpenRouterTimeoutSec ||
 		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || fmt.Sprint(ga.ModelPrices) != fmt.Sprint(gb.ModelPrices) || ga.ShowCostToUsers != gb.ShowCostToUsers || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {

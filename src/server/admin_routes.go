@@ -26,6 +26,7 @@ func (server *Server) registerAdmin(mux *http.ServeMux, prefix string) {
 	api("admin/admins", server.handleAdminAdmins)
 	api("admin/gateway", server.handleAdminGateway)
 	api("admin/health", server.handleAdminHealth)
+	api("admin/architecture", server.handleAdminArchitecture)
 	api("admin/audit", server.handleAdminAudit)
 	api("admin/stats", server.handleAdminStats)
 	api("admin/logs", server.handleAdminLogs)

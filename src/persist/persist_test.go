@@ -1,6 +1,7 @@
 package persist
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"meters"
 	"utils"
 )
 
@@ -209,4 +211,38 @@ func fastInit(t *testing.T) {
 	oldT, oldP, oldD := initTries, probeTimeout, retryDelay
 	initTries, probeTimeout, retryDelay = 3, 300*time.Millisecond, time.Millisecond
 	t.Cleanup(func() { initTries, probeTimeout, retryDelay = oldT, oldP, oldD })
+}
+
+// failingStore is a database that refuses every write.
+type failingStore struct{}
+
+func (failingStore) Store(k, v []byte) error        { return errors.New("no") }
+func (failingStore) Fetch(k []byte) ([]byte, error) { return nil, ErrNotFound }
+func (failingStore) Delete(k []byte) error          { return errors.New("no") }
+func (failingStore) Commit() error                  { return errors.New("no") }
+func (failingStore) Rollback() error                { return nil }
+func (failingStore) Each(fn func(key, value []byte) bool) error {
+	return nil
+}
+func (failingStore) Close() error    { return nil }
+func (failingStore) Backend() string { return "fake" }
+
+func TestTheOperationsOnADatabaseAreCountedForTheDashboard(t *testing.T) {
+	ops, errs := func() (int64, int64) {
+		return meters.Get(meters.DBOps).Sum(300), meters.Get(meters.DBErr).Sum(300)
+	}()
+	s := &countedStore{inner: failingStore{}}
+	s.Store([]byte("a"), []byte("b"))
+	s.Fetch([]byte("a")) // a key that is not there is a read, not an error
+	s.Delete([]byte("a"))
+	s.Commit()
+	s.Rollback()
+	s.Each(func(k, v []byte) bool { return true })
+	ops2, errs2 := meters.Get(meters.DBOps).Sum(300), meters.Get(meters.DBErr).Sum(300)
+	if ops2-ops != 5 || errs2-errs != 3 {
+		t.Errorf("operations +%d, errors +%d (want +5 and +3)", ops2-ops, errs2-errs)
+	}
+	if s.Backend() != "fake" || s.Close() != nil {
+		t.Error("the other calls pass through")
+	}
 }

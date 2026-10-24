@@ -33,6 +33,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 
+	"meters"
 	"utils"
 )
 
@@ -248,6 +249,43 @@ func ResetRemote() {
 // time a collection is empty and the file exists, the file's records are
 // copied into it once; after that MongoDB wins and the file is not read again.
 func Open(path string) (Store, error) {
+	s, err := open(path)
+	if err != nil {
+		return nil, err
+	}
+	return &countedStore{inner: s}, nil
+}
+
+// countedStore counts the operations on a database for the dashboard's live map
+// (package meters). A read of a key that is not there is not an error.
+type countedStore struct{ inner Store }
+
+func (c *countedStore) Store(k, v []byte) error {
+	return counted(c.inner.Store(k, v))
+}
+func (c *countedStore) Fetch(k []byte) ([]byte, error) {
+	meters.Add(meters.DBOps, 1)
+	return c.inner.Fetch(k)
+}
+func (c *countedStore) Delete(k []byte) error { return counted(c.inner.Delete(k)) }
+func (c *countedStore) Commit() error         { return counted(c.inner.Commit()) }
+func (c *countedStore) Rollback() error       { return c.inner.Rollback() }
+func (c *countedStore) Each(fn func(key, value []byte) bool) error {
+	meters.Add(meters.DBOps, 1)
+	return c.inner.Each(fn)
+}
+func (c *countedStore) Close() error    { return c.inner.Close() }
+func (c *countedStore) Backend() string { return c.inner.Backend() }
+
+func counted(err error) error {
+	meters.Add(meters.DBOps, 1)
+	if err != nil {
+		meters.Add(meters.DBErr, 1)
+	}
+	return err
+}
+
+func open(path string) (Store, error) {
 	switch Init() {
 	case backendFirestore:
 		s := &firestoreStore{f: FirestoreClient(), coll: "kv_" + strings.TrimSuffix(filepath.Base(path), ".db")}

@@ -108,7 +108,7 @@ func TestAdminAPIAnswersOnlyAdmins(t *testing.T) {
 	_, h := adminTestServer(t)
 	for _, path := range []string{
 		"/admin/gateway", "/admin/health", "/admin/audit", "/admin/stats", "/admin/logs",
-		"/admin/settings", "/admin/feedback", "/admin/snippets", "/admin/users", "/admin/genie-usage",
+		"/admin/settings", "/admin/feedback", "/admin/snippets", "/admin/users", "/admin/genie-usage", "/admin/architecture",
 	} {
 		w := adminCall{method: "GET", path: path}.do(h)
 		if w.Code != http.StatusUnauthorized {

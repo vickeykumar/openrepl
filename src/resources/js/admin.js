@@ -58,6 +58,7 @@
     health: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
     params: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
     logs: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
+    map: '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M6 8l5 8M18 8l-5 8"/>',
     usage: '<path d="M3 20h18M6 16V9M11 16V5M16 16v-4M20 16V8"/>',
     audit: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
     copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
@@ -937,6 +938,7 @@
         announcement: { text: form.ann.value.trim(), level: form.level.value },
         maintenance: { enabled: form.maint.checked, message: form.maintMsg.value.trim() },
         disabledLanguages: languages.filter(function (l) { return !form.langs[l.value].checked; }).map(function (l) { return l.value; }).sort(),
+        dbCapacityMB: int(form.dbCap.value),
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
           customModels: (form.custom || []).map(readCustom),
@@ -988,6 +990,7 @@
       return { colorOfTheDay: !!s.colorOfTheDay, announcement: { text: s.announcement.text, level: s.announcement.level || 'info' },
         maintenance: { enabled: !!s.maintenance.enabled, message: s.maintenance.message || '' },
         disabledLanguages: (s.disabledLanguages || []).slice().sort(),
+        dbCapacityMB: s.dbCapacityMB || 0,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
           disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
           defaultModel: s.genie.defaultModel || '',
@@ -1017,6 +1020,10 @@
       var colour = toggle('f-colour', settings.colorOfTheDay, 'Colour of the day');
       var maint = toggle('f-maint', settings.maintenance.enabled, 'Maintenance mode');
       var genie = toggle('f-genie', !settings.genie.disabled, 'Genie available');
+      // how much room MongoDB has, for the live map (an Atlas free cluster has 512 MB)
+      form.dbCap = h('input', { type: 'number', class: 'field', id: 'f-db-cap', min: '10', max: '100000000', step: '1', placeholder: 'not set', 'aria-label': 'Database capacity in megabytes', oninput: update });
+      form.dbCap.value = settings.dbCapacityMB || '';
+      form.dbCap.style.maxWidth = '9rem';
       form.colour = colour.input; form.maint = maint.input; form.genie = genie.input;
       // agent mode: on for signed-in users unless switched off here, and off on the practice page unless allowed
       var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
@@ -1373,6 +1380,8 @@
         card('Maintenance mode', 'Visitors can still read pages and use their files, but cannot start terminals. Admins are not affected.', [
           row('Maintenance mode', 'Shows the message below on every page and in a terminal that is refused.', maint.node),
           h('div', { class: 'form-row' }, h('div', { class: 'full' }, maintMsg, maintCount)) ]),
+        card('Database capacity', 'How much room MongoDB has, so that the Live map can show used of total (a free Atlas cluster has 512 MB). Leave it empty to use the disk size MongoDB reports, if it reports one. Firestore needs no number: the map shows its daily operations against the free allowance.', [
+          row('Capacity in MB', 'Used only with MongoDB. Amber from 80% used, red from 95%.', form.dbCap) ]),
         card('Languages', 'Untick a language that is broken. The picker greys it out and its terminals refuse to start with a message; terminals that are already open keep running. Admins can still start it, to test a fix.', langGrid),
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),
@@ -1760,10 +1769,194 @@
     return { root: root, refresh: refresh, poll: true };
   }
 
+  // ---- Live map
+  //
+  // The parts of the system, each with a status dot and a live number, joined by lines
+  // with dots that move while traffic runs (GET admin/architecture, asked every few
+  // seconds while the view is open). The boxes are drawn once and updated in place, so
+  // the moving dots never restart; the animation is CSS and stops with Pause, with a
+  // hidden tab and with the browser's reduced-motion setting.
+
+  var MAP_W = 1440, MAP_H = 830;
+  var MAP_PANELS = [
+    { x: 64, y: 112, w: 272, h: 500, c: '#8B5CF6', name: 'Browser', nx: 82, ny: 124 },
+    { x: 400, y: 112, w: 640, h: 500, c: '#38BDF8', name: 'OpenREPL host (this server)', nx: 418, ny: 124 },
+    { x: 416, y: 168, w: 300, h: 428, c: '#38BDF8', name: 'gotty process', nx: 432, ny: 180, inner: true },
+    { x: 740, y: 168, w: 284, h: 428, c: '#2DD4BF', name: 'Execution and workspaces', nx: 756, ny: 180, inner: true },
+    { x: 1100, y: 112, w: 276, h: 500, c: '#F59E0B', name: 'Persistence', nx: 1118, ny: 124 },
+    { x: 64, y: 680, w: 320, h: 130, c: '#D946EF', name: 'Firebase', nx: 82, ny: 692 },
+    { x: 740, y: 680, w: 300, h: 130, c: '#D946EF', name: 'Language models', nx: 758, ny: 692 }
+  ];
+  var MAP_NODES = [
+    { id: 'page', x: 80, y: 224, w: 240, h: 86, c: '#8B5CF6', t: 'page and IDE', s: 'editor, Files panel', g: 'Browser' },
+    { id: 'terminals', x: 80, y: 334, w: 240, h: 86, c: '#8B5CF6', t: 'terminals', s: 'xterm.js tabs', g: 'Browser' },
+    { id: 'genie', x: 80, y: 444, w: 240, h: 86, c: '#8B5CF6', t: 'chat-widget.js', s: 'Genie panel', g: 'Browser' },
+    { id: 'http', x: 432, y: 224, w: 268, h: 86, c: '#38BDF8', t: 'HTTP mux', s: 'pages and REST APIs', g: 'gotty process' },
+    { id: 'ws', x: 432, y: 334, w: 268, h: 86, c: '#38BDF8', t: 'WebSocket handlers', s: '/ws, /ws_python, …', g: 'gotty process' },
+    { id: 'chat', x: 432, y: 444, w: 268, h: 86, c: '#38BDF8', t: 'chat proxy', s: '/chat/completions', g: 'gotty process' },
+    { id: 'procs', x: 756, y: 224, w: 252, h: 72, c: '#2DD4BF', t: 'terminal processes', s: '', g: 'Execution' },
+    { id: 'files', x: 756, y: 316, w: 252, h: 72, c: '#2DD4BF', t: 'file browser', s: '', g: 'Execution' },
+    { id: 'sandbox', x: 756, y: 408, w: 252, h: 72, c: '#2DD4BF', t: 'sandboxes', s: '', g: 'Execution' },
+    { id: 'repls', x: 756, y: 500, w: 252, h: 72, c: '#2DD4BF', t: 'REPL programs', s: '', g: 'Execution' },
+    { id: 'workers', x: 1100, y: 680, w: 244, h: 72, c: '#2DD4BF', t: 'workers', s: 'other machines', g: 'Fleet' },
+    { id: 'data', x: 1116, y: 168, w: 244, h: 86, c: '#F59E0B', t: 'user and feedback data', s: 'sessions, blog, practice', g: 'Persistence' },
+    { id: 'store', x: 1116, y: 278, w: 244, h: 86, c: '#F59E0B', t: 'UnQLite files', s: '/opt/gotty/*.db', g: 'Persistence' },
+    { id: 'external', x: 1116, y: 388, w: 244, h: 86, c: '#8C8A98', t: 'MongoDB or Firestore', s: 'optional', g: 'Persistence', dashed: true },
+    { id: 'fb-db', x: 80, y: 728, w: 142, h: 66, c: '#D946EF', t: 'Realtime DB', s: '', g: 'Firebase', small: true },
+    { id: 'fb-auth', x: 232, y: 728, w: 136, h: 66, c: '#D946EF', t: 'Auth', s: '', g: 'Firebase', small: true },
+    { id: 'openai', x: 756, y: 728, w: 132, h: 66, c: '#D946EF', t: 'OpenAI', s: '', g: 'Language models', small: true },
+    { id: 'openrouter', x: 896, y: 728, w: 132, h: 66, c: '#D946EF', t: 'OpenRouter', s: '', g: 'Language models', small: true }
+  ];
+  // a line is one or two straight pieces: [x, y, length, 'h' or 'v']
+  var MAP_LINKS = [
+    { id: 'page-http', segs: [[320, 267, 112, 'h']], label: ['HTTPS', 340, 244] },
+    { id: 'term-ws', segs: [[320, 377, 112, 'h']], label: ['WebSocket', 340, 354] },
+    { id: 'genie-chat', segs: [[320, 487, 112, 'h']] },
+    { id: 'ws-exec', segs: [[700, 377, 40, 'h']] },
+    { id: 'data-persist', segs: [[1024, 211, 92, 'h']] },
+    { id: 'persist-store', segs: [[1024, 321, 92, 'h']] },
+    { id: 'chat-llm', segs: [[566, 530, 231, 'v'], [566, 761, 190, 'h']], label: ['API key added here', 582, 640] },
+    { id: 'browser-firebase', segs: [[200, 612, 116, 'v']] }
+  ];
+  var STATUS_WORD = { ok: 'working', warn: 'slow or warning', fail: 'down', off: 'off or not set up' };
+
+  function viewMap() {
+    var root = h('div'), paused = false, selected = '', data = null;
+    var stage = h('div', { class: 'am-stage' });
+    var wrap = h('div', { class: 'am-wrap' }, stage);
+    var drawer = h('div', { class: 'am-drawer card', hidden: true });
+    var pauseBtn = h('button', { class: 'btn small', type: 'button', text: 'Pause', onclick: function () {
+      paused = !paused;
+      pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+      stage.classList.toggle('am-paused', paused);
+    } });
+    var live = h('span', { class: 'sub', text: '' });
+    root.appendChild(pageHead('Live map', 'What is running, and how busy each part is right now. Dots on a line are traffic: they move faster when it is busier.'));
+    root.appendChild(h('div', { class: 'toolbar' },
+      h('span', { class: 'am-key' }, h('i', { class: 'am-dot ok' }), 'working'),
+      h('span', { class: 'am-key' }, h('i', { class: 'am-dot warn' }), 'slow or warning'),
+      h('span', { class: 'am-key' }, h('i', { class: 'am-dot fail' }), 'down'),
+      h('span', { class: 'am-key' }, h('i', { class: 'am-dot off' }), 'off or not set up'),
+      h('span', { class: 'grow' }), live, pauseBtn));
+    root.appendChild(wrap);
+    root.appendChild(drawer);
+
+    MAP_PANELS.forEach(function (p) {
+      stage.appendChild(h('div', { class: 'am-panel' + (p.inner ? ' inner' : ''), 'aria-hidden': 'true', vars: { left: p.x + 'px', top: p.y + 'px', width: p.w + 'px', height: p.h + 'px', '--c': p.c } }));
+      stage.appendChild(h('div', { class: 'am-pname', 'aria-hidden': 'true', text: p.name, vars: { left: p.nx + 'px', top: p.ny + 'px', '--c': p.c } }));
+    });
+    var linkEls = {};
+    MAP_LINKS.forEach(function (l) {
+      linkEls[l.id] = l.segs.map(function (s) {
+        var horizontal = s[3] === 'h';
+        var el = h('div', { class: 'am-link ' + s[3], 'aria-hidden': 'true', vars: { left: s[0] + 'px', top: s[1] + 'px', width: (horizontal ? s[2] : 2) + 'px', height: (horizontal ? 2 : s[2]) + 'px' } });
+        stage.appendChild(el);
+        return el;
+      });
+      if (l.label) stage.appendChild(h('div', { class: 'am-linklabel', 'aria-hidden': 'true', text: l.label[0], vars: { left: l.label[1] + 'px', top: l.label[2] + 'px' } }));
+    });
+    var nodeEls = {};
+    MAP_NODES.forEach(function (n) {
+      var text = h('span', { class: 'am-text', text: '–' });
+      var word = h('span', { class: 'visually-hidden', text: '' });
+      var el = h('button', { type: 'button', class: 'am-node' + (n.dashed ? ' dashed' : '') + (n.small ? ' small' : ''), 'data-id': n.id, 'data-group': n.g,
+        hidden: n.id === 'workers', 'aria-pressed': 'false',
+        vars: { left: n.x + 'px', top: n.y + 'px', width: n.w + 'px', height: n.h + 'px', '--c': n.c },
+        onclick: function () { select(n.id); } },
+        h('b', { text: n.t }), n.s ? h('span', { class: 'am-sub', text: n.s }) : null,
+        h('span', { class: 'am-val' }, h('i', { class: 'am-dot off' }), word, text));
+      nodeEls[n.id] = { el: el, text: text, word: word, dot: el.querySelector('.am-dot'), def: n };
+      stage.appendChild(el);
+    });
+
+    function fit() {
+      var narrow = root.clientWidth > 0 && root.clientWidth < 900;
+      root.classList.toggle('am-narrow', narrow);
+      var scale = narrow ? 1 : Math.min(1, (wrap.clientWidth || MAP_W) / MAP_W);
+      stage.style.transform = narrow ? '' : 'scale(' + scale + ')';
+      wrap.style.height = narrow ? '' : Math.round(MAP_H * scale) + 'px';
+    }
+    window.addEventListener('resize', fit);
+
+    function setLink(id, lvl, status) {
+      (linkEls[id] || []).forEach(function (el, i) {
+        if (el.__lvl === lvl + status) return;
+        el.__lvl = lvl + status;
+        el.className = 'am-link ' + (el.classList.contains('h') ? 'h' : 'v') + ' lv-' + lvl + ' st-' + (status || 'ok');
+        el.textContent = '';
+        var dots = { none: 0, low: 1, mid: 2, high: 3, state: 0 }[lvl] || 0;
+        for (var k = 0; k < dots; k++) el.appendChild(h('span', { class: 'am-fx', vars: { '--delay': (k * 0.55 + i * 0.3) + 's' } }));
+      });
+    }
+
+    function draw(r) {
+      data = r;
+      var seen = {};
+      r.nodes.forEach(function (n) {
+        var ne = nodeEls[n.id];
+        if (!ne) return;
+        seen[n.id] = true;
+        ne.el.hidden = false;
+        if (ne.text.textContent !== n.text) ne.text.textContent = n.text;
+        ne.dot.className = 'am-dot ' + n.status;
+        ne.word.textContent = STATUS_WORD[n.status] + ': ';
+        ne.el.classList.toggle('is-off', n.status === 'off');
+        ne.el.classList.toggle('is-warn', n.status === 'warn');
+        ne.el.classList.toggle('is-fail', n.status === 'fail');
+      });
+      Object.keys(nodeEls).forEach(function (id) { if (!seen[id]) nodeEls[id].el.hidden = true; });
+      r.links.forEach(function (l) { setLink(l.id, l.level, l.status); });
+      live.textContent = 'Live · ' + new Date(r.at * 1000).toLocaleTimeString();
+      if (selected) showDrawer();
+    }
+
+    function select(id) {
+      selected = selected === id ? '' : id;
+      Object.keys(nodeEls).forEach(function (k) { nodeEls[k].el.setAttribute('aria-pressed', String(k === selected)); });
+      showDrawer();
+    }
+
+    function showDrawer() {
+      if (!selected || !data) { drawer.hidden = true; return; }
+      var n = data.nodes.filter(function (x) { return x.id === selected; })[0], def = nodeEls[selected] && nodeEls[selected].def;
+      if (!n || !def) { drawer.hidden = true; return; }
+      drawer.hidden = false;
+      drawer.textContent = '';
+      drawer.appendChild(h('div', { class: 'toolbar' }, h('i', { class: 'am-dot ' + n.status }), h('b', { text: def.t }),
+        h('span', { class: 'sub', text: STATUS_WORD[n.status] + ' · ' + n.text }), h('span', { class: 'grow' }),
+        n.view && VIEWS[n.view] ? h('a', { class: 'btn small', href: '#' + n.view, text: 'Open ' + VIEWS[n.view].label }) : null,
+        h('button', { class: 'btn small', type: 'button', text: 'Close', onclick: function () { select(selected); } })));
+      if (n.series && n.series.length) {
+        var max = Math.max.apply(null, n.series.concat([1]));
+        var bars = h('div', { class: 'am-bars', 'aria-label': 'The last 30 minutes, a bar for each minute', role: 'img' });
+        n.series.forEach(function (v) { bars.appendChild(h('span', { class: 'am-bar', title: String(v), vars: { height: Math.max(2, Math.round(v * 100 / max)) + '%' } })); });
+        drawer.appendChild(bars);
+        drawer.appendChild(h('div', { class: 'sub', text: 'The last 30 minutes, a bar for each minute.' }));
+      }
+      (n.rows || []).forEach(function (row) {
+        drawer.appendChild(h('div', { class: 'am-row' }, row.status ? h('i', { class: 'am-dot ' + row.status }) : null, h('span', { text: row.label }), h('span', { class: 'grow' }), h('span', { class: 'mono', text: row.value })));
+      });
+      if (['chat', 'openai', 'openrouter'].indexOf(selected) >= 0 && data.problems && data.problems.length) {
+        drawer.appendChild(h('div', { class: 'sub', text: 'Recent problems' }));
+        data.problems.slice(0, 5).forEach(function (p) {
+          drawer.appendChild(h('div', { class: 'am-row' }, h('span', { class: 'mono', text: new Date(p.at * 1000).toLocaleTimeString() }), h('span', { text: p.text })));
+        });
+      }
+    }
+
+    function refresh() {
+      fit();
+      if (document.hidden) return Promise.resolve(); // nobody is looking: ask for nothing
+      return api.get('admin/architecture').then(draw);
+    }
+    return { root: root, refresh: refresh, poll: true };
+  }
+
   // ---- navigation --------------------------------------------------------------
 
   var VIEWS = {
     overview: { label: 'Overview', icon: 'overview', make: viewOverview },
+    map: { label: 'Live map', icon: 'map', make: viewMap },
     workers: { label: 'Workers', icon: 'workers', make: viewWorkers, gateway: true },
     sessions: { label: 'Sessions', icon: 'sessions', make: viewSessions, gateway: true },
     site: { label: 'Site settings', icon: 'site', make: viewSite },
@@ -1778,7 +1971,7 @@
   };
 
   var GROUPS = [
-    ['', ['overview']],
+    ['', ['overview', 'map']],
     ['Fleet', ['workers', 'sessions']],
     ['Site', ['site', 'feedback', 'snippets', 'users', 'usage']],
     ['System', ['health', 'params', 'logs', 'audit']]

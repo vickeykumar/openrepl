@@ -794,6 +794,11 @@ func (l *Link) forget(home string, err error) bool {
 	if hs == nil {
 		return false
 	}
+	// The reason is set before the home's context is cancelled: the goroutine that
+	// runs the home finishes it with the context's error as soon as that is
+	// cancelled, and whoever finishes first wins. Cancelling first sometimes left a
+	// caller with "context canceled" where it was refused.
+	hs.finish(err)
 	hs.cancel()
 	hs.mu.Lock()
 	if hs.saveTimer != nil {
@@ -803,7 +808,6 @@ func (l *Link) forget(home string, err error) bool {
 	hs.recDirty = false // the record on disk must stay as it is, or go with a drop
 	hs.detached = true
 	hs.mu.Unlock()
-	hs.finish(err)
 	return true
 }
 

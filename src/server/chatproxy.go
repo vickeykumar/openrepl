@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"meters"
 	"strings"
 	"time"
 	"utils"
@@ -451,8 +452,10 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 
 
 	// Send the proxy request using the custom transport
+	asked := time.Now()
 	resp, err := customTransport.RoundTrip(proxyReq)
 	if err != nil {
+		noteChat(model.Provider, false, asked)
 		log.Println("Error: making request: ", err)
 		if model.Provider == providerOpenRouter {
 			modelUnavailable(rw, req, model)
@@ -476,6 +479,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 		// error: the visitor is told the model is not available, not charged
 		// a request, and the reason is logged
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		noteChat(model.Provider, false, asked)
 		log.Println("Error: OpenRouter answered", resp.StatusCode, "for", model.ID, ":", string(detail))
 		modelUnavailable(rw, req, model)
 		return
@@ -490,6 +494,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 		whole, rerr := io.ReadAll(io.LimitReader(resp.Body, maxUpstreamAnswerBytes))
 		if rerr == nil {
 			if why := emptyAnswer(whole); why != "" {
+				noteChat(model.Provider, false, asked)
 				log.Println("Error: OpenRouter answered", resp.StatusCode, "for", model.ID, "without an answer:", why, "; body:", string(clipBytes(whole, 600)))
 				modelAnswerEmpty(rw, req, model, why)
 				return
@@ -540,10 +545,12 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
     // the count of tokens the answer used (tokens.go)
     tap := &bodyTap{r: resp.Body, limit: maxUpstreamAnswerBytes}
     _, err = io.Copy(rw, tap)
+    noteChat(model.Provider, err == nil && resp.StatusCode < 400, asked)
     if err == nil && !tap.over && resp.StatusCode < 300 {
         if used, ok := extractUsage(tap.buf.Bytes()); ok {
             key, visit := whoPays(req)
             tokenTotals.add(key, visit, model.ID, used)
+            meters.Add(meters.ChatTokens, used.In+used.Out)
         }
     }
     if err != nil {
