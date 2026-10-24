@@ -229,7 +229,7 @@ func (server *Server) archSlowRead() (health map[string]string, signIns int) {
 	archSlow.at = time.Now()
 	archSlow.signIns = 0
 	if accounts, err := user.ListAccounts(); err == nil {
-		day := time.Now().Truncate(24 * time.Hour).UnixNano() / int64(time.Millisecond)
+		day := time.Now().Truncate(24*time.Hour).UnixNano() / int64(time.Millisecond)
 		for _, a := range accounts {
 			if a.LastSignIn >= day {
 				archSlow.signIns++
@@ -462,4 +462,3 @@ func (server *Server) handleAdminArchitecture(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Cache-Control", "no-store")
 	adminJSON(w, http.StatusOK, server.architecture())
 }
-
