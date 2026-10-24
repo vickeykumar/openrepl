@@ -42,20 +42,20 @@ $(function() {
     // We set the theme per user, in the browser's local storage
     var LS_THEME_KEY = "editor-theme";
 
-    // This function will return the user theme or OpenREPL Dark (the
-    // default, see defineOpenreplAceTheme)
+    // This function will return the user theme or Monokai (the default)
     function getTheme() {
         try {
-            return localStorage.getItem(LS_THEME_KEY) || "ace/theme/openrepl_dark";
+            return localStorage.getItem(LS_THEME_KEY) || "ace/theme/monokai";
         } catch (e) {
-            return "ace/theme/openrepl_dark";
+            return "ace/theme/monokai";
         }
     }
     
     // Select the desired theme of the editor
     $("#select-theme").change(function () {
-        // Set the theme in the editor
-        editor.setTheme(this.value);
+        // Set the theme in the editor, then the IDE around it follows (21-ide-theme.js)
+        var picked = this.value;
+        editor.setTheme(picked, function () { if (window.applyIdeTheme) window.applyIdeTheme(editor, picked); });
         
         // Update the theme in the localStorage
         // We wrap this operation in a try-catch because some browsers don't
@@ -147,7 +147,7 @@ $(function() {
         // Initialize the ACE editor
         editor = ace.edit("editor");
         try { editor.textInput.getElement().setAttribute("aria-label", "Code editor"); } catch (e) {} // T15
-        editor.setTheme(getTheme());
+        editor.setTheme(getTheme(), function () { if (window.applyIdeTheme) window.applyIdeTheme(editor, getTheme()); });
         editor.setFontSize("14px");
         editor.$blockScrolling = Infinity;
         editor.setOptions({

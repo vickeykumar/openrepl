@@ -156,12 +156,12 @@
       }
     }
 
-    var dark = document.documentElement.getAttribute("data-theme") === "dark";
-    if (document.querySelector("[data-theme-toggle]")) {
-      add("Appearance", dark ? "Switch to light theme" : "Switch to dark theme", function () {
-        var b = document.querySelector("[data-theme-toggle]");
-        if (b) b.click();
-      }, { words: "mode color night day" });
+    if (typeof window.setThemeChoice === "function") {
+      // the other two choices of the theme menu
+      var now = window.getThemeChoice();
+      [["light", "Light theme"], ["dark", "Dark theme"], ["system", "System theme (follow my device)"]].forEach(function (d) {
+        if (d[0] !== now) add("Appearance", "Switch to " + d[1].charAt(0).toLowerCase() + d[1].slice(1), function () { window.setThemeChoice(d[0]); }, { words: "theme mode color night day appearance light dark system device" });
+      });
     }
 
     add("Help", "Keyboard shortcuts", function () { open("shortcuts"); }, { keys: ["?"], words: "keys hotkeys keybindings" });

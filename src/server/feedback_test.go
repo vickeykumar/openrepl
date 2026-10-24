@@ -20,7 +20,9 @@ func feedbackRig(t *testing.T) {
 	withFeedbackDB(t, nil)
 	old := feedbackLimit
 	feedbackLimit = &feedbackLimiter{visitor: map[string][]time.Time{}}
-	t.Cleanup(func() { feedbackLimit = old })
+	oldEmail := emailLimit
+	emailLimit = &emailLimiter{seen: map[string]time.Time{}}
+	t.Cleanup(func() { feedbackLimit = old; emailLimit = oldEmail })
 }
 
 func stored() []feedback {

@@ -181,3 +181,8 @@ h2.section__title { font-family: inherit; font-size: 1.17em; }
 .doc__content li a { text-decoration: underline; text-underline-offset: 2px; }
 .footer:not(.site-footer) .link--light { color: #FF8C8D; text-decoration: underline; text-underline-offset: 2px; }
 .footer:not(.site-footer) .go__color { color: #FF8C8D; }
+
+/* Light theme: the footer of the document and blog pages is light too (the dark theme has its own above) */
+[data-theme="light"] .footer:not(.site-footer) { background-color: #EDEAE3; color: #4A4852; }
+[data-theme="light"] .footer:not(.site-footer) .link--light,
+[data-theme="light"] .footer:not(.site-footer) .go__color { color: #B8323A; }

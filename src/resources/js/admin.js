@@ -1379,9 +1379,10 @@
     var root = h('div'), box = h('div');
     var data = null, show = 'unread';
     var filter = h('select', { 'aria-label': 'Which messages to show', onchange: function () { show = filter.value; box.__key = null; draw(); } },
-      h('option', { value: 'unread', text: 'Unread' }), h('option', { value: 'all', text: 'All messages' }));
+      h('option', { value: 'unread', text: 'Unread' }), h('option', { value: 'all', text: 'All messages' }), h('option', { value: 'spam', text: 'Looks like spam' }));
     root.appendChild(pageHead('Feedback', 'Messages from the feedback form on the site.'));
-    root.appendChild(h('div', { class: 'toolbar' }, filter, h('span', { class: 'grow' }), h('span', { class: 'sub', id: 'fb-count' }),
+    var spamBtn = h('button', { class: 'btn danger', type: 'button', hidden: true, onclick: function () { removeSpam(); } });
+    root.appendChild(h('div', { class: 'toolbar' }, filter, h('span', { class: 'grow' }), h('span', { class: 'sub', id: 'fb-count' }), spamBtn,
       h('a', { class: 'btn', href: BASE + 'admin/feedback?format=csv', download: 'openrepl-feedback.csv', text: 'Export CSV' })));
     root.appendChild(box);
 
@@ -1395,14 +1396,26 @@
       });
     }
 
+    function removeSpam() {
+      var n = data.feedback.filter(function (f) { return f.spam; }).length;
+      return ask({ title: 'Delete ' + plural(n, 'message', 'messages') + ' that look like spam?', body: 'Link tags, many links, casino and pill spam, and the same message sent again. This cannot be undone.', confirm: 'Delete', danger: true }).then(function (yes) {
+        if (!yes) return;
+        return api.post('admin/feedback/spam/delete').then(function (r) { toast(plural(r.deleted, 'message', 'messages') + ' deleted.'); }, fail).then(refreshCurrent);
+      });
+    }
+
     function draw() {
-      var rows = data.feedback.filter(function (f) { return show === 'all' || !f.read; });
+      var spamCount = data.feedback.filter(function (f) { return f.spam; }).length;
+      spamBtn.hidden = spamCount === 0;
+      spamBtn.textContent = 'Delete spam (' + spamCount + ')';
+      var rows = data.feedback.filter(function (f) { return show === 'all' ? true : show === 'spam' ? !!f.spam : (!f.read && !f.spam); });
       $('fb-count').textContent = plural(data.unread, 'unread message', 'unread messages') + ' · ' + data.feedback.length + ' in all';
       var list = h('div', { class: 'stack' });
       rows.forEach(function (f) {
         list.appendChild(h('div', { class: 'card' },
           h('div', { class: 'toolbar' },
             f.read ? null : pill('new', 'info'),
+            f.spam ? h('span', { title: 'Looks like spam: ' + f.spam }, pill('spam', 'warn')) : null,
             h('b', { text: f.name || 'Anonymous' }),
             f.email ? h('a', { href: 'mailto:' + f.email, text: f.email }) : null,
             h('span', { class: 'grow' }),
@@ -1411,7 +1424,7 @@
             h('button', { class: 'btn small danger', type: 'button', text: 'Delete', onclick: function () { remove(f); } })),
           h('div', { class: 'wrap-text', text: f.message || '(empty message)' })));
       });
-      render(box, JSON.stringify([rows, show]), rows.length ? list : h('div', { class: 'card' }, emptyState(show === 'unread' ? 'No unread messages. 🎉' : 'No feedback yet.')));
+      render(box, JSON.stringify([rows, show]), rows.length ? list : h('div', { class: 'card' }, emptyState(show === 'unread' ? 'No unread messages. 🎉' : show === 'spam' ? 'No spam.' : 'No feedback yet.')));
       setUnread(data.unread);
     }
 

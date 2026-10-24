@@ -125,3 +125,25 @@ test("typing in a list with no search box jumps to a name that starts so", () =>
   assert.equal(SM.typeAhead(items, "z", 0), -1);
   assert.equal(SM.typeAhead(items, "", 0), -1);
 });
+
+test("jQuery .val() on an enhanced select refreshes its button (the IDE's language and theme at first load)", () => {
+  const calls = [];
+  const jq = { valHooks: { select: { set(elem, value) { calls.push("set:" + value); return "ok"; } } } };
+  assert.equal(SM.patchJQuery(jq), true);
+  const refreshed = [];
+  const enhanced = { __selectMenu: { refresh: () => refreshed.push("refresh") } };
+  assert.equal(jq.valHooks.select.set(enhanced, "ace/theme/openrepl_dark", "value"), "ok");
+  assert.deepEqual(calls, ["set:ace/theme/openrepl_dark"]);
+  assert.deepEqual(refreshed, ["refresh"]);
+  // a select that was not enhanced is left alone
+  assert.doesNotThrow(() => jq.valHooks.select.set({}, "x", "value"));
+  assert.equal(refreshed.length, 1);
+});
+
+test("the jQuery patch is applied once, and a page without jQuery is fine", () => {
+  const jq = { valHooks: { select: { set() {} } } };
+  assert.equal(SM.patchJQuery(jq), true);
+  assert.equal(SM.patchJQuery(jq), false);
+  assert.equal(SM.patchJQuery(undefined), false);
+  assert.equal(SM.patchJQuery({}), false);
+});

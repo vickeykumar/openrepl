@@ -378,10 +378,8 @@
     window.addEventListener("beforeunload", function (e) {
       if (state.dirty) { e.preventDefault(); e.returnValue = ""; }
     });
-    // the theme button switches the editor's skin too
-    document.addEventListener("click", function (e) {
-      if (e.target.closest && e.target.closest("[data-theme-toggle]")) setTimeout(reinitForTheme, 80);
-    });
+    // a change of theme (the theme menu, or the device when it is on System) switches the editor's skin too
+    window.addEventListener("themechange", function () { setTimeout(reinitForTheme, 80); });
     document.querySelector("[data-logout]").addEventListener("click", function (e) {
       e.preventDefault();
       fetch("/logout", { method: "POST", credentials: "same-origin" }).finally(function () { location.assign("/"); });

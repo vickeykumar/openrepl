@@ -1955,6 +1955,15 @@ body.files-collapsed .files-panel { display: none; }
    with its content instead (and is never shorter than the screen). */
 .legal-page,
 .profile-page { height: auto; min-height: 100%; }
+/* a short page still ends at the bottom of the window: the footer is pushed down, not left under the content */
+.legal-page,
+.profile-page { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+.legal-page > main,
+.profile-page > main { flex: 1 0 auto; box-sizing: border-box; width: 100%; }
+.legal-page > .site-nav,
+.legal-page > .site-footer,
+.profile-page > .site-nav,
+.profile-page > .site-footer { flex: none; }
 .legal-page { background: #FAFAF7; }
 .site-nav--simple { justify-content: space-between; }
 .site-nav__back {
@@ -3836,3 +3845,91 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .genie-menu__item:focus-visible { background: var(--ink-600); outline: none; }
 .genie-menu__hint { font-size: 11.5px; color: var(--muted-2, #8C8A98); }
 .genie-menu__foot { margin-top: 4px; padding: 6px 8px 2px; border-top: 1px solid var(--ink-500); font-size: 11.5px; color: var(--muted-2, #8C8A98); }
+
+/* ------------------------------------------------------------------ */
+/* Light theme: the top and bottom of the pages are light too          */
+/* The nav, the hero, the workspace band, the closing call to action   */
+/* and the footer used to be dark in both themes. In the light theme   */
+/* they are light: the page's dark-surface tokens are turned over just */
+/* inside them. The IDE, code samples and terminals stay dark screens, */
+/* and what opens over the page (menus, the palette, Genie) is not in  */
+/* these areas, so it keeps its own colours.                           */
+/* ------------------------------------------------------------------ */
+[data-theme="light"] :is(.site-nav, #header-nav.site-nav, .hero, .practice-hero, .workspace, .band--dark, .site-footer) {
+  --hero-bg: #FAFAF7;
+  --paper: #16151A;
+  --muted-1: #3A3842;
+  --muted-2: #5B5866;
+  --muted-3: #6A6772;
+  --ink-950: #FFFFFF;
+  --ink-900: #FAFAF7;
+  --ink-850: #F3F1EC;
+  --ink-800: #FFFFFF;
+  --ink-750: #F0EEE9;
+  --ink-700: #E4E1DA;
+  --ink-600: #D9D6CF;
+  --ink-500: #CFCBC2;
+  --accent-on-dark: #B8323A;
+  --focus-ring: #B8323A;
+}
+/* the dark screens inside them keep the dark tokens */
+[data-theme="light"] :is(.ide-shell, .code-sample, .copy-line, .demo__terminal) {
+  --paper: #F2F0EC;
+  --muted-1: #C9C7D1;
+  --muted-2: #A9A7B4;
+  --muted-3: #8C8A98;
+  --ink-950: #0D0D12;
+  --ink-900: #121218;
+  --ink-850: #15151C;
+  --ink-800: #1B1B24;
+  --ink-750: #1D1D26;
+  --ink-700: #24242E;
+  --ink-600: #2E2E3A;
+  --ink-500: #3A3A48;
+  --accent-on-dark: #FF9C9D;
+  --focus-ring: #FE6A6B;
+}
+[data-theme="light"] #header-nav.site-nav,
+[data-theme="light"] .site-nav {
+  background-color: #FFFFFF;
+  border-bottom-color: #E4E1DA;
+}
+[data-theme="light"] #header-nav.site-nav .menu.responsive { border-bottom-color: #E4E1DA; }
+[data-theme="light"] :is(.hero, .practice-hero, .band--dark) {
+  background-image: radial-gradient(rgba(22, 21, 26, 0.07) 1px, transparent 1px);
+}
+[data-theme="light"] .workspace { background-color: #FAFAF7; }
+[data-theme="light"] .ide-shell { box-shadow: 0 24px 50px -24px rgba(22, 21, 26, 0.45); }
+[data-theme="light"] .hero__eyebrow { background: #FFFFFF; border-color: #E4E1DA; }
+[data-theme="light"] .hero .hero__description,
+[data-theme="light"] .practice-hero__blurb,
+[data-theme="light"] .final-cta p,
+[data-theme="light"] .site-footer__brand p { color: #5B5866; }
+[data-theme="light"] .hero__secondary { border-color: #CFCBC2; }
+[data-theme="light"] .hero__secondary:hover,
+[data-theme="light"] .hero__secondary:focus-visible { border-color: #16151A; background: rgba(22, 21, 26, 0.04); }
+[data-theme="light"] .hero__try,
+[data-theme="light"] .progress-card { background: #FFFFFF; border-color: #E4E1DA; }
+[data-theme="light"] .lang-chip { background: #FFFFFF; border-color: #DAD6CD; }
+[data-theme="light"] .lang-chip:hover,
+[data-theme="light"] .lang-chip:focus-visible { border-color: #16151A; background: #F3F1EC; }
+[data-theme="light"] .lang-chip--more { border-color: #CFCBC2; }
+/* the chosen language keeps the accent (the plain light chip above must not cover it) */
+[data-theme="light"] .lang-chip[aria-pressed="true"],
+[data-theme="light"] .lang-chip[aria-pressed="true"]:hover,
+[data-theme="light"] .lang-chip[aria-pressed="true"]:focus-visible {
+  color: var(--on-accent-color);
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+}
+[data-theme="light"] .progress-card__bar { background: #ECEAE5; }
+[data-theme="light"] .progress-card__sync { border-top-color: #E4E1DA; }
+[data-theme="light"] .practice-hero .level--easy { color: #17603C; background: #DDF3E6; }
+[data-theme="light"] .practice-hero .level--medium { color: #7A4D00; background: #FBEBC8; }
+[data-theme="light"] .practice-hero .level--hard { color: #A32A32; background: #FFE1E1; }
+[data-theme="light"] .band--dark { background-color: #F3F1EC; }
+[data-theme="light"] .site-footer { background: #EDEAE3; border-top: 1px solid #E4E1DA; }
+[data-theme="light"] .site-footer__bottom { border-top-color: #D9D5CC; }
+[data-theme="light"] .site-footer .request-form input[type="text"],
+[data-theme="light"] .site-footer .request-form input[type="email"],
+[data-theme="light"] .site-footer .request-form textarea { color: #16151A; background: #FFFFFF; border-color: #D9D6CF; }
