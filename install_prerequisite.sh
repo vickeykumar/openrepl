@@ -203,6 +203,20 @@ npm install -g typescript@4.9.5
 npm install -g ts-node
 npm link typescript
 
+# node, npm, npx, tsc and ts-node by name, for the server and the REPLs it starts. nvm puts its
+# folder on the PATH of an interactive shell only; the server has the plain system PATH. The apt
+# nodejs (the same 12.22.9) is removed by the cleanup below, so without these links the image has
+# no `node` at all: the Node.js and TypeScript REPLs answered "executable file not found in $PATH".
+NODE_BIN_DIR="$HOME/.nvm/versions/node/v12.22.9/bin"
+if [ -x "$NODE_BIN_DIR/node" ]; then
+    for f in "$NODE_BIN_DIR"/*; do
+        ln -sf "$f" "/usr/local/bin/$(basename "$f")"
+    done
+else
+    echo "ERROR: $NODE_BIN_DIR/node is missing: nvm did not install node"
+    retVal=1
+fi
+
 # Docker: Error response from daemon: cgroups: cgroup mountpoint does not exist: unknown
 # if using docker use privileged mode with cgroup mounted (-v /sys/fs/cgroup:/sys/fs/cgroup:rw )
 mkdir /sys/fs/cgroup/systemd || true
@@ -283,9 +297,11 @@ if [ $run_tests -eq 1 ]; then
 	)
 
 
-	# Loop through the array and execute each command, through bash so that a pipe is one
+	# Loop through the array and execute each command, through bash so that a pipe is one.
+	# With the PATH of the finished image (what the server and the REPLs have), not this
+	# shell's: nvm adds its own folder to this one, which hid that `node` was missing.
 	while IFS= read -r cmd; do
-	  bash -c "$cmd"
+	  env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin bash -c "$cmd"
 	  status=$?
 	  if [ $status -eq 0 ]; then
 	    echo "test [$cmd] => PASSED"
