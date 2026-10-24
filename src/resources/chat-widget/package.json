@@ -34,6 +34,6 @@
     "html-minifier": "^4.0.0",
     "marked": "^12.0.0",
     "microbundle": "^0.15.1",
-    "firebase": "^3.6.6"
+    "firebase": "^13.0.0"
   }
 }
