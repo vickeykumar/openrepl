@@ -1,4 +1,4 @@
-FROM ubuntu:22.04 as builder
+FROM ubuntu:26.04 as builder
 LABEL maintainer="Vickey Kumar <kumarvickey45@yahoo.com>"
 
 RUN mkdir -p /opt/gotty &&  mkdir -p /opt/openrepl
