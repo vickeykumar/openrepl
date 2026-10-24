@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"utils"
 )
 
 // POST /feedback takes a message from the contact form on the home page (or any
@@ -35,14 +37,15 @@ const (
 var feedbackRates = struct {
 	perVisitor     int
 	perVisitorSpan time.Duration
+	perDay         int // one visitor, a day
 	global         int
 	globalSpan     time.Duration
-}{3, 10 * time.Minute, 60, time.Hour}
+}{3, 10 * time.Minute, 6, 30, time.Hour}
 
 // feedbackLimiter is a sliding window of the times of the messages taken.
 type feedbackLimiter struct {
 	mu      sync.Mutex
-	visitor map[string][]time.Time
+	visitor map[string][]time.Time // the last day of each visitor
 	all     []time.Time
 }
 
@@ -60,20 +63,26 @@ func recent(times []time.Time, now time.Time, span time.Duration) []time.Time {
 func (l *feedbackLimiter) take(ip string, now time.Time) (ok bool, wait time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	mine := recent(l.visitor[ip], now, feedbackRates.perVisitorSpan)
+	day := recent(l.visitor[ip], now, 24*time.Hour)
+	mine := recent(day, now, feedbackRates.perVisitorSpan)
 	if len(mine) >= feedbackRates.perVisitor {
-		l.visitor[ip] = mine
+		l.visitor[ip] = day
 		return false, feedbackRates.perVisitorSpan - now.Sub(mine[0])
+	}
+	if len(day) >= feedbackRates.perDay {
+		l.visitor[ip] = day
+		return false, 24*time.Hour - now.Sub(day[0])
 	}
 	l.all = recent(l.all, now, feedbackRates.globalSpan)
 	if len(l.all) >= feedbackRates.global {
+		l.visitor[ip] = day
 		return false, feedbackRates.globalSpan - now.Sub(l.all[0])
 	}
-	l.visitor[ip] = append(mine, now)
+	l.visitor[ip] = append(day, now)
 	l.all = append(l.all, now)
-	if len(l.visitor) > 10000 { // forget the visitors whose window has passed
+	if len(l.visitor) > 10000 { // forget the visitors whose day has passed
 		for k, v := range l.visitor {
-			if len(recent(v, now, feedbackRates.perVisitorSpan)) == 0 {
+			if len(recent(v, now, 24*time.Hour)) == 0 {
 				delete(l.visitor, k)
 			}
 		}
@@ -162,13 +171,14 @@ func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	req.Body = http.MaxBytesReader(rw, req.Body, feedbackMaxBody)
-	var name, email, message, trap string
+	var name, email, message, trap, captcha string
 	if strings.HasPrefix(req.Header.Get("Content-Type"), "application/json") {
 		var in struct {
 			Name    string `json:"name"`
 			Email   string `json:"email"`
 			Message string `json:"message"`
 			Website string `json:"website"`
+			Captcha string `json:"g-recaptcha-response"`
 		}
 		if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
 			status, msg := http.StatusBadRequest, "The message was not valid JSON."
@@ -178,7 +188,7 @@ func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 			feedbackReply(rw, req, status, msg)
 			return
 		}
-		name, email, message, trap = in.Name, in.Email, in.Message, in.Website
+		name, email, message, trap, captcha = in.Name, in.Email, in.Message, in.Website, in.Captcha
 	} else {
 		if err := req.ParseForm(); err != nil {
 			status, msg := http.StatusBadRequest, "The form could not be read."
@@ -189,6 +199,7 @@ func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 		name, email, message, trap = req.PostForm.Get("name"), req.PostForm.Get("email"), req.PostForm.Get("message"), req.PostForm.Get("website")
+		captcha = req.PostForm.Get("g-recaptcha-response")
 	}
 
 	// "q=delete" was the old admin action; deleting is done in the dashboard now
@@ -213,10 +224,42 @@ func handleFeedback(rw http.ResponseWriter, req *http.Request) {
 		feedbackReply(rw, req, http.StatusServiceUnavailable, "Feedback can't be saved right now. Please try again later.")
 		return
 	}
+	// Text that only spam has in it is told it worked and nothing is kept.
+	if reason := spamReason(fb); reason != "" {
+		log.Printf("feedback dropped: looks like spam (%s)", reason)
+		feedbackReply(rw, req, http.StatusOK, "Thanks, your message was sent.")
+		return
+	}
+	// The reCAPTCHA answer is checked here: the box on the page only switches the
+	// Send button on, and a bot sends straight to this address.
+	if secret := utils.RecaptchaSecret(); secret != "" {
+		if strings.TrimSpace(captcha) == "" {
+			feedbackReply(rw, req, http.StatusBadRequest, "Please tick \u201cI'm not a robot\u201d first.")
+			return
+		}
+		good, err := verifyRecaptcha(secret, captcha, clientIP(req))
+		if err != nil {
+			feedbackReply(rw, req, http.StatusServiceUnavailable, "The check could not be made right now. Please try again in a moment.")
+			return
+		}
+		if !good {
+			feedbackReply(rw, req, http.StatusBadRequest, "The check did not pass. Please tick \u201cI'm not a robot\u201d again.")
+			return
+		}
+	} else {
+		recaptchaWarned.Do(func() {
+			log.Println("WARNING:", utils.EnvRecaptchaSecret, "is not set: the contact form's reCAPTCHA is not checked on the server")
+		})
+	}
 	if ok, wait := feedbackLimit.take(clientIP(req), time.Now()); !ok {
 		secs := int(wait.Seconds()) + 1
 		rw.Header().Set("Retry-After", strconv.Itoa(secs))
 		feedbackReply(rw, req, http.StatusTooManyRequests, "You've sent a few messages already. Try again in a few minutes.")
+		return
+	}
+	if ok, wait := emailLimit.take(fb.Email, time.Now()); !ok {
+		rw.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		feedbackReply(rw, req, http.StatusTooManyRequests, "A message from this email address was sent already today. Try again tomorrow.")
 		return
 	}
 	if err := StoreFeedbackData(&fb); err != nil {

@@ -42,13 +42,12 @@ $(function() {
     // We set the theme per user, in the browser's local storage
     var LS_THEME_KEY = "editor-theme";
 
-    // This function will return the user theme or OpenREPL Dark (the
-    // default, see defineOpenreplAceTheme)
+    // This function will return the user theme or Monokai (the default)
     function getTheme() {
         try {
-            return localStorage.getItem(LS_THEME_KEY) || "ace/theme/openrepl_dark";
+            return localStorage.getItem(LS_THEME_KEY) || "ace/theme/monokai";
         } catch (e) {
-            return "ace/theme/openrepl_dark";
+            return "ace/theme/monokai";
         }
     }
     

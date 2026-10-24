@@ -37,6 +37,7 @@ type feedbackRow struct {
 	Email   string `json:"email"`
 	Message string `json:"message"`
 	Read    bool   `json:"read"`
+	Spam    string `json:"spam,omitempty"` // why it looks like spam (feedback_spam.go), or empty
 }
 
 func feedbackRows() []feedbackRow {
@@ -49,10 +50,12 @@ func feedbackRows() []feedbackRow {
 		keys = append(keys, k)
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i] > keys[j] }) // newest first
+	spam := spamReasons(keys, map[int64]feedback(m))
 	rows := make([]feedbackRow, 0, len(keys))
 	for _, k := range keys {
 		fb := m[k]
 		rows = append(rows, feedbackRow{
+			Spam:    spam[k],
 			ID:      strconv.FormatInt(k, 10),
 			Time:    time.Unix(0, k).UTC().Format(time.RFC3339),
 			Name:    fb.Name,
@@ -91,11 +94,24 @@ func (server *Server) handleAdminFeedback(w http.ResponseWriter, r *http.Request
 		}
 		unread := 0
 		for _, f := range rows {
-			if !f.Read {
+			if !f.Read && f.Spam == "" { // spam does not count as waiting to be read
 				unread++
 			}
 		}
 		adminJSON(w, http.StatusOK, map[string]interface{}{"feedback": rows, "unread": unread})
+	case len(parts) == 3 && r.Method == http.MethodPost && parts[1] == "spam" && parts[2] == "delete":
+		// every message that looks like spam (what the list marks), in one go
+		n := 0
+		for _, f := range feedbackRows() {
+			if f.Spam == "" {
+				continue
+			}
+			if err := deleteFeedbackData(f.ID); err == nil {
+				n++
+			}
+		}
+		server.audit(r, "feedback delete spam", strconv.Itoa(n)+" messages")
+		adminJSON(w, http.StatusOK, map[string]int{"deleted": n})
 	case len(parts) == 3 && r.Method == http.MethodPost && feedbackIDPattern.MatchString(parts[1]):
 		id := parts[1]
 		switch parts[2] {

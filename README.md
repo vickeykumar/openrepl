@@ -643,6 +643,7 @@ The server-side settings come from environment variables, and gotty can load the
 | `OPENREPL_MONGODB_DB` | The MongoDB database for it. Default `openrepl`. | |
 | `OPENREPL_SECRET` | Optional. A long random secret for the server's own use: it signs the session cookies and encrypts the API keys an admin saves in the dashboard (a key saved there wins over the two above). When set, it is not saved anywhere (the cookie key is derived from it); when not set, the server makes one and saves it in its database. A worker takes its gateway's. If it changes, everybody is signed out once and saved keys must be entered again. | |
 | `OPENREPL_OPENROUTER_API_KEY` | Optional. The OpenRouter key, as it is. Without it the Gemma 4 31B choice is not offered. | |
+| `OPENREPL_RECAPTCHA_SECRET` | Optional. The reCAPTCHA secret key of the site key on the home page. With it the server checks the contact form's reCAPTCHA answer (the box alone only switches on the Send button, a bot can post straight to `/feedback`). Without it the answer is not checked. | |
 | `OPENREPL_HOST` | The origin the chat proxy accepts. Default `localhost`. | `user.host` |
 | `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Default: the built-in production project. See below. | |
 | `OPENREPL_ENV` | `dev` or `production` (the default). Dev shows the values of these settings in the start-up log; production only says which are set. | |

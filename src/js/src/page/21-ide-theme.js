@@ -4,11 +4,13 @@
 // terminal. The maths is in lib-ide-theme.mjs; this part reads the page and
 // puts the result on it.
 //
-// OpenREPL Dark, the default, keeps the page's own dark tokens, so nothing
-// changes for someone who never picks a theme.
-import { derivePalette, paletteCss } from "./lib-ide-theme.mjs";
+// Monokai is the default editor theme, so a visitor who never picks one gets the
+// IDE in Monokai's colours. OpenREPL Dark, still in the list, keeps the page's own
+// dark tokens (no palette), as the IDE always looked.
+import { derivePalette, paletteCss, MONOKAI_THEME } from "./lib-ide-theme.mjs";
 
-var IDE_THEME_DEFAULT = "ace/theme/openrepl_dark";
+var IDE_THEME_DEFAULT = "ace/theme/monokai";     // when no theme was picked (06-editor.js)
+var IDE_THEME_PLAIN = "ace/theme/openrepl_dark"; // the page's own dark tokens, no palette
 var IDE_PALETTE_KEY = "ide-palette";   // localStorage: the last palette, so the next visit starts in it
 var IDE_THEME_KEY = "editor-theme";    // localStorage: the theme picked in the status bar (06-editor.js)
 
@@ -93,7 +95,7 @@ function readAceTheme(editor) {
 // Called by 06-editor.js once an editor theme has been applied.
 window.applyIdeTheme = function (editor, themeName) {
   try {
-    if (!themeName || themeName === IDE_THEME_DEFAULT) {
+    if (!themeName || themeName === IDE_THEME_PLAIN) {
       try { localStorage.removeItem(IDE_PALETTE_KEY); } catch (e) {}
       clearIdeTheme();
       return null;
@@ -110,14 +112,21 @@ window.applyIdeTheme = function (editor, themeName) {
   }
 };
 
-// The next visit starts in the last palette, before the editor has loaded its
-// theme, so the page does not flash from the default to the chosen colours.
+// The page starts in the palette of the theme in use before the editor has loaded
+// its theme, so it does not flash from the plain look to the theme: the last one
+// kept, or Monokai's own colours for a first visit that picked nothing.
 (function applyRememberedIdeTheme() {
   try {
-    var picked = localStorage.getItem(IDE_THEME_KEY);
+    var picked = localStorage.getItem(IDE_THEME_KEY) || IDE_THEME_DEFAULT;
+    if (picked === IDE_THEME_PLAIN) return;
     var saved = JSON.parse(localStorage.getItem(IDE_PALETTE_KEY) || "null");
-    if (picked && picked !== IDE_THEME_DEFAULT && saved && saved.theme === picked && saved.palette && saved.palette.term) {
+    if (saved && saved.theme === picked && saved.palette && saved.palette.term) {
       putIdeTheme(saved.palette);
+    } else if (picked === IDE_THEME_DEFAULT) {
+      putIdeTheme(derivePalette(MONOKAI_THEME));
     }
-  } catch (e) { /* storage may be blocked: the theme is applied when the editor loads */ }
+  } catch (e) {
+    // storage may be blocked: the default is Monokai's colours, the rest is applied when the editor loads
+    try { if (!document.documentElement.hasAttribute("data-ide-theme")) putIdeTheme(derivePalette(MONOKAI_THEME)); } catch (e2) {}
+  }
 })();

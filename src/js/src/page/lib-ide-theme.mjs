@@ -129,6 +129,13 @@ function ansiColors(theme, bg, dark, fg) {
   return { out, bright };
 }
 
+// The colours of Ace's Monokai theme, the default editor theme: the IDE can start in them
+// before the editor has loaded its theme, so a first visit does not flash.
+export const MONOKAI_THEME = {
+  bg: "#272822", fg: "#F8F8F2", selection: "#49483E", comment: "#75715E",
+  keyword: "#F92672", string: "#E6DB74", number: "#AE81FF", fn: "#A6E22E", type: "#66D9EF"
+};
+
 // theme: colours read from the page, any CSS colour string:
 //   bg, fg, gutterBg, gutterFg, selection, comment, keyword, string, number, fn, type
 // returns hex strings for the shell, and `term` for xterm.js.

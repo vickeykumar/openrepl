@@ -27,6 +27,8 @@ import (
 //	OPENREPL_OPENAI_API_KEY  the OpenAI key as it is; file: user.OpenaiAPIKey, base64
 //	OPENREPL_OPENROUTER_API_KEY  the OpenRouter key as it is (env only); without it the
 //	                         OpenRouter models are not offered
+//	OPENREPL_RECAPTCHA_SECRET the reCAPTCHA secret key of the site key on the page; with it the
+//	                         server checks the contact form's reCAPTCHA answer (env only, a secret)
 //	OPENREPL_MONGODB_URI     optional; keeps the admin settings in MongoDB (Atlas, a
 //	                         mongodb+srv:// URI) instead of settings.json; a secret
 //	OPENREPL_MONGODB_DB      the database for it, default openrepl
@@ -35,14 +37,15 @@ import (
 //	OPENREPL_FIREBASE_CONFIG the Firebase web app config the page signs in
 //	                         with, as JSON or base64 of JSON; see FirebaseConfigFromEnv
 const (
-	EnvMode          = "OPENREPL_ENV"
-	EnvAdminEmails   = "OPENREPL_ADMIN_EMAILS"
-	EnvOpenAIKey     = "OPENREPL_OPENAI_API_KEY"
-	EnvOpenRouterKey = "OPENREPL_OPENROUTER_API_KEY"
-	EnvHost          = "OPENREPL_HOST"
-	EnvMongoURI      = "OPENREPL_MONGODB_URI"
-	EnvMongoDB       = "OPENREPL_MONGODB_DB"
-	EnvSecret        = "OPENREPL_SECRET"
+	EnvMode            = "OPENREPL_ENV"
+	EnvAdminEmails     = "OPENREPL_ADMIN_EMAILS"
+	EnvOpenAIKey       = "OPENREPL_OPENAI_API_KEY"
+	EnvOpenRouterKey   = "OPENREPL_OPENROUTER_API_KEY"
+	EnvRecaptchaSecret = "OPENREPL_RECAPTCHA_SECRET"
+	EnvHost            = "OPENREPL_HOST"
+	EnvMongoURI        = "OPENREPL_MONGODB_URI"
+	EnvMongoDB         = "OPENREPL_MONGODB_DB"
+	EnvSecret          = "OPENREPL_SECRET"
 	// a Google service account key (JSON, base64 of it, or a file path) that
 	// lets the server use the Firebase project's Firestore as its database
 	EnvFirestoreCredentials = "OPENREPL_FIRESTORE_CREDENTIALS"
@@ -288,6 +291,12 @@ func OpenRouterKey() string {
 		return over
 	}
 	return strings.TrimSpace(os.Getenv(EnvOpenRouterKey))
+}
+
+// RecaptchaSecret is OPENREPL_RECAPTCHA_SECRET, as it is, or "" when it is not
+// set: then the server does not check the contact form's reCAPTCHA answer.
+func RecaptchaSecret() string {
+	return strings.TrimSpace(os.Getenv(EnvRecaptchaSecret))
 }
 
 // FirestoreConfigured reports whether Firestore was asked for: a service
@@ -552,6 +561,12 @@ func configSummary(dev bool) string {
 	item("admin emails", EnvAdminEmails, "user.email", strings.Join(admins, ","), len(admins))
 	item("openai key", EnvOpenAIKey, "user.OpenaiAPIKey", OpenAIKey(), 0)
 	item("openrouter key", EnvOpenRouterKey, "", OpenRouterKey(), 0)
+	// a secret: never its value, not even in dev
+	if RecaptchaSecret() != "" {
+		fmt.Fprintf(&b, "; recaptcha: contact form is checked on the server (from env)")
+	} else {
+		fmt.Fprintf(&b, "; recaptcha: not set, the contact form is not checked on the server")
+	}
 	item("host", EnvHost, "user.host", Host(), 0)
 	// the URI holds a password: never its value, not even in dev
 	switch {

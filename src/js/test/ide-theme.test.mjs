@@ -172,3 +172,13 @@ test("the css puts the clear file browser colours on names, icons, title and the
     assert.ok(css.includes(s), s);
   });
 });
+
+import { MONOKAI_THEME } from "../src/page/lib-ide-theme.mjs";
+
+test("Monokai's own colours make a complete palette, for a first visit that picked nothing", () => {
+  const p = derivePalette(MONOKAI_THEME);
+  assert.equal(p.dark, true);
+  assert.equal(p.surface, "#272822");
+  assert.ok(p.term && p.genie, "terminal and Genie colours too");
+  assert.ok(contrast(parseColor(p.text), parseColor(p.surface)) >= 7);
+});

@@ -36,6 +36,7 @@ All of them run on the gateway or the standalone server, never on a worker. The 
 | `/admin/logs` | GET | The end of the log: `lines` (default 200, at most 1000), `q` (text to find), `level=error`. |
 | `/admin/feedback` | GET | Messages, newest first, and the unread count. `?format=csv` downloads them. |
 | `/admin/feedback/<id>/read`, `/unread`, `/delete` | POST | `<id>` is the message's key, digits only. |
+| `/admin/feedback/spam/delete` | POST | Deletes every message the list marks as spam (`spam` on a row says why: link tags, many links, casino or pill words, the inquiry template, or the same message sent again) and answers `{deleted}`. Spam is not counted in the unread count. |
 | `/admin/snippets` | GET | The newest 300 shared snippets with a short preview. |
 | `/admin/snippets/<id>` | GET | One snippet with its code. |
 | `/admin/snippets/<id>/delete` | POST | Remove it; its `/s/<id>` link stops working. |

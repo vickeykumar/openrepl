@@ -3914,6 +3914,14 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 [data-theme="light"] .lang-chip:hover,
 [data-theme="light"] .lang-chip:focus-visible { border-color: #16151A; background: #F3F1EC; }
 [data-theme="light"] .lang-chip--more { border-color: #CFCBC2; }
+/* the chosen language keeps the accent (the plain light chip above must not cover it) */
+[data-theme="light"] .lang-chip[aria-pressed="true"],
+[data-theme="light"] .lang-chip[aria-pressed="true"]:hover,
+[data-theme="light"] .lang-chip[aria-pressed="true"]:focus-visible {
+  color: var(--on-accent-color);
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+}
 [data-theme="light"] .progress-card__bar { background: #ECEAE5; }
 [data-theme="light"] .progress-card__sync { border-top-color: #E4E1DA; }
 [data-theme="light"] .practice-hero .level--easy { color: #17603C; background: #DDF3E6; }
