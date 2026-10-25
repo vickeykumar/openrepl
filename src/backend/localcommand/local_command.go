@@ -258,16 +258,45 @@ func (lcmd *LocalCommand) Write(p []byte) (n int, err error) {
 }
 
 func (lcmd *LocalCommand) Close() error {
-	if lcmd.cmd != nil && lcmd.cmd.Process != nil {
-		lcmd.cmd.Process.Signal(lcmd.closeSignal)
+	if lcmd.cmd == nil || lcmd.cmd.Process == nil {
+		return nil
 	}
-	for {
-		select {
-		case <-lcmd.ptyClosed:
-			return nil
-		case <-lcmd.closeTimeoutC():
-			lcmd.cmd.Process.Signal(syscall.SIGKILL)
-		}
+
+	// pty.Start creates a new session for this terminal (and therefore a new
+	// process group led by the command). Signal the group so children started
+	// by a shell or REPL do not outlive a disconnected terminal.
+	log.Printf("lcmd: closing terminal process group pid=%d pgid=%d", lcmd.cmd.Process.Pid, lcmd.cmd.Process.Pid)
+	lcmd.signalProcessGroup(lcmd.closeSignal)
+
+	if lcmd.closeTimeout < 0 {
+		<-lcmd.ptyClosed
+		return nil
+	}
+	timer := time.NewTimer(lcmd.closeTimeout)
+	defer timer.Stop()
+	select {
+	case <-lcmd.ptyClosed:
+		log.Printf("lcmd: terminal process exited pid=%d", lcmd.cmd.Process.Pid)
+		return nil
+	case <-timer.C:
+		log.Printf("lcmd: terminal process did not exit after %s; sending SIGKILL to process group pid=%d", lcmd.closeTimeout, lcmd.cmd.Process.Pid)
+		lcmd.signalProcessGroup(syscall.SIGKILL)
+		<-lcmd.ptyClosed
+		log.Printf("lcmd: terminal process reaped pid=%d", lcmd.cmd.Process.Pid)
+		return nil
+	}
+}
+
+func (lcmd *LocalCommand) signalProcessGroup(signal syscall.Signal) {
+	if lcmd.cmd == nil || lcmd.cmd.Process == nil {
+		return
+	}
+	pid := lcmd.cmd.Process.Pid
+	// The command is started in its own session, so its PID is also its
+	// process-group ID. Fall back to signaling the command directly if group
+	// signaling is unavailable, while preserving cleanup of the main process.
+	if err := syscall.Kill(-pid, signal); err != nil {
+		_ = lcmd.cmd.Process.Signal(signal)
 	}
 }
 
@@ -302,12 +331,4 @@ func (lcmd *LocalCommand) ResizeTerminal(width int, height int) error {
 	} else {
 		return nil
 	}
-}
-
-func (lcmd *LocalCommand) closeTimeoutC() <-chan time.Time {
-	if lcmd.closeTimeout >= 0 {
-		return time.After(lcmd.closeTimeout)
-	}
-
-	return make(chan time.Time)
 }
