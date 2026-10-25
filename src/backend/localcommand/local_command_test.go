@@ -74,6 +74,34 @@ func TestWorkspaceLauncherJoinsNamespacesBeforeDroppingIdentity(t *testing.T) {
 	}
 }
 
+func TestWorkspaceCleanupLauncherUsesWorkspaceIdentity(t *testing.T) {
+	bin := t.TempDir()
+	setpriv := filepath.Join(bin, "setpriv")
+	if err := os.WriteFile(setpriv, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	id := workspace.Identity{UID: 1234567890, GID: 1234567891}
+	got, err := workspaceCleanupLauncher(id, 123, 123, syscall.SIGINT, 250*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0] != setpriv {
+		t.Fatalf("cleanup executable = %q, want %q", got[0], setpriv)
+	}
+	joined := strings.Join(got, "\x00")
+	for _, arg := range []string{
+		"--reuid=1234567890", "--regid=1234567891", "--clear-groups",
+		"--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs",
+		"/bin/sh", "kill -\"$signal\" -- \"$target\"", "-123", "2", "3",
+	} {
+		if !strings.Contains(joined, arg) {
+			t.Errorf("cleanup launcher is missing %q: %v", arg, got)
+		}
+	}
+}
+
 func TestCloseKillsProcessGroupAfterLeaderExits(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("uses Linux /proc process state")
