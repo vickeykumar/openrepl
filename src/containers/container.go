@@ -3,11 +3,9 @@ package containers
 import (
 	"log"
 	"net/url"
-	"os"
 	"os/exec"
 	"sync"
 	"syscall"
-	"utils"
 )
 
 var Containers = make(map[string]*container)
@@ -81,10 +79,17 @@ func AddProcess(name string, cmd *exec.Cmd) {
 	containerobj.AddProcess(pid)
 }
 
-// Status says how many of the sandboxes that InitContainers tried to make exist.
-// A REPL whose sandbox is missing runs without namespaces and without a memory
-// limit (LLD 03).
-func Status() (ready, total int) { return len(Containers), len(Commands2memLimitMap) }
+// Status reports available memory cgroups and the number of supported
+// per-feature sandbox controls.
+func Status() (ready, total int) {
+	total = len(Commands2memLimitMap)
+	for _, c := range Containers {
+		if c.MemoryAvailable {
+			ready++
+		}
+	}
+	return
+}
 
 func InitContainers() {
 	HasCAPSysAdmin = detectCAPSysAdmin()
@@ -97,17 +102,12 @@ func InitContainers() {
 			continue
 		}
 		Containers[command] = containerObj
-		os.MkdirAll(utils.HOME_DIR, 0777)
-		os.Chmod(utils.HOME_DIR, 0777)
-		os.MkdirAll(utils.HOME_DIR+command, 0777)
-		os.Chmod(utils.HOME_DIR+command, 0777)
 	}
 }
 
 func DeleteContainers() {
 	for command, containerObj := range Containers {
 		containerObj.Delete()
-		os.RemoveAll(utils.HOME_DIR + command)
 		log.Println("Container Deleted for : ", command)
 	}
 }
@@ -138,8 +138,9 @@ func DeleteProcessFromSubCgroup(name string, pid int) {
 // capability) the cgroup bookkeeping below is empty, and a fork was refused as
 // "invalid parent id" even though the parent terminal was running.
 var (
-	liveMu sync.Mutex
-	live   = map[int]struct{}{}
+	liveMu      sync.Mutex
+	live        = map[int]struct{}{}
+	processHome = map[int]string{}
 )
 
 // TrackProcess records a REPL that has started.
@@ -149,10 +150,29 @@ func TrackProcess(pid int) {
 	liveMu.Unlock()
 }
 
+// TrackWorkspaceProcess records the trusted workspace for a REPL process.
+// Runtime UIDs make /proc/<pid>/environ unreadable to the service, so fork
+// resolution must use this server-side record instead of inspecting HOME.
+func TrackWorkspaceProcess(pid int, home string) {
+	liveMu.Lock()
+	live[pid] = struct{}{}
+	processHome[pid] = home
+	liveMu.Unlock()
+}
+
+// WorkspaceHome returns the workspace recorded when this server started pid.
+func WorkspaceHome(pid int) (string, bool) {
+	liveMu.Lock()
+	defer liveMu.Unlock()
+	home, ok := processHome[pid]
+	return home, ok && home != ""
+}
+
 // UntrackProcess forgets a REPL that has ended.
 func UntrackProcess(pid int) {
 	liveMu.Lock()
 	delete(live, pid)
+	delete(processHome, pid)
 	liveMu.Unlock()
 }
 
@@ -171,13 +191,6 @@ func IsProcess(pid int) bool {
 		if containerObj.IsProcess(pid) {
 			return true
 		}
-	}
-	// In an unprivileged container, cgroup setup can be unavailable even
-	// though the parent terminal is still alive. The nsenter fallback does not
-	// request namespaces in that mode, so accepting a live local process is
-	// safe and lets secondary terminal tabs share its workspace.
-	if !HasCAPSysAdmin && processExists(pid) {
-		return true
 	}
 	return false
 }

@@ -3,5 +3,6 @@ Version: 1.0-Beta
 Section: base
 Priority: optional
 Architecture: all
+Depends: util-linux, libnss-wrapper
 Maintainer: Vickey Kumar
 Description: gotty service

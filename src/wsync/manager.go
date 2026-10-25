@@ -29,6 +29,14 @@ type ManagerConfig struct {
 	// OnDrop (worker only) is called when the gateway says a home expired or
 	// moved away.
 	OnDrop func(home string)
+	// SecureHome establishes trusted local ownership and mode before sync scans
+	// or applies entries.
+	SecureHome func(home string) error
+	// Identity returns the locally authorized UID/GID to exchange in home
+	// attach metadata. Incoming values are verified against this mapping.
+	Identity func(home string) (uid, gid uint32, err error)
+	// OnChange applies local ownership after an incoming write or rename.
+	OnChange func(home, rel string) error
 	// ReadyTimeout is how long a worker may take to reconcile its homes
 	// after connecting. Default 5 minutes.
 	ReadyTimeout time.Duration
@@ -249,7 +257,10 @@ func (m *Manager) Serve(ctx context.Context, peer string, conn io.ReadWriteClose
 		Node: m.cfg.Node, Peer: peer, IsGateway: m.cfg.IsGateway,
 		BaseDir: m.cfg.BaseDir, Records: m.records, MaxFileSize: m.cfg.MaxFileSize,
 		Accept:         func(home string) error { return m.accept(peer, home) },
+		SecureHome:     m.cfg.SecureHome,
+		Identity:       m.cfg.Identity,
 		OnAttach:       func(home string) { m.homeAttached(peer, home) },
+		OnChange:       m.cfg.OnChange,
 		OnDrop:         func(home string) { m.handleDrop(peer, home) },
 		OnRefused:      func(home string) { m.homeRefused(peer, l, home) },
 		Debounce:       m.cfg.Debounce,

@@ -14,7 +14,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	msgs := []Message{
 		{Type: MsgHello, Node: "worker-1", Version: ProtocolVersion, Now: 123},
 		{Type: MsgPut, Seq: 1, Home: "guest-a", Entry: &e, Body: 5},
-		{Type: MsgAttach, Home: "guest-a", Digest: "d", Entries: []Entry{e, {Path: "d", Type: Dir, Mode: 0755}}},
+		{Type: MsgAttach, Home: "guest-a", UID: 1234567890, GID: 1234567890, Digest: "d", Entries: []Entry{e, {Path: "d", Type: Dir, Mode: 0755}}},
 		{Type: MsgAck, Seq: 1, Status: AckOK},
 	}
 	for _, m := range msgs {
@@ -32,7 +32,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("frame %d: %v", i, err)
 		}
-		if got.Type != want.Type || got.Seq != want.Seq || got.Home != want.Home || got.Body != want.Body || got.Node != want.Node {
+		if got.Type != want.Type || got.Seq != want.Seq || got.Home != want.Home || got.Body != want.Body || got.Node != want.Node || got.UID != want.UID || got.GID != want.GID {
 			t.Fatalf("frame %d = %+v, want %+v", i, got, want)
 		}
 		if want.Entry != nil && (got.Entry == nil || *got.Entry != *want.Entry) {

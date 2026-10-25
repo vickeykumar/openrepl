@@ -43,6 +43,28 @@ func TestEveryReplOfTheSiteHasAGuideThatFits(t *testing.T) {
 	}
 }
 
+func TestCompilationScriptsQuoteWorkspacePaths(t *testing.T) {
+	if utils.Commands2DemoMap == nil {
+		InitCommands2DemoMap()
+	}
+	checked := 0
+	for name, demo := range utils.Commands2DemoMap {
+		for _, line := range strings.Split(demo.Compiler, "\n") {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "cd ") || !strings.Contains(line, "WORKDIR") {
+				continue
+			}
+			checked++
+			if line != `cd "$WORKDIR";` {
+				t.Errorf("%s compiler has an unsafe workspace cd command: %q", name, line)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no compiler workspace directory changes were checked")
+	}
+}
+
 func TestAStepCarriesTheGuideOfTheReplInUse(t *testing.T) {
 	body := func(repl string) []map[string]string {
 		in := map[string]json.RawMessage{"messages": json.RawMessage(`[{"role":"user","content":"do it"}]`)}

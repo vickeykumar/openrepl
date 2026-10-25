@@ -54,7 +54,8 @@ cd ~
 export TZ=Etc/UTC
 
 apt-get update -y
-apt-get install -y --no-install-recommends make gcc g++ default-jdk git
+apt-get install -y --no-install-recommends make gcc g++ default-jdk git libnss-wrapper
+apt-mark manual libnss-wrapper
 # the Java REPL is jshell (utils/interactive.go): part of the JDK since 9, but fail early if it is missing
 command -v jshell >/dev/null || { echo "jshell was not installed with default-jdk"; exit 1; }
 
@@ -282,9 +283,17 @@ if [ $cleanup_tools -eq 1 ]; then
 	apt-get -y autoremove
 fi
 
-# finally give the ownership to username 
-chown -R $username:$username $GOTTY_DIR
-chmod -R 755 $GOTTY_DIR
+# finally give the ownership to username, while preserving per-workspace NSS
+# database ownership and permissions used by active REPL sessions.
+chown "$username:$username" "$GOTTY_DIR"
+chmod 755 "$GOTTY_DIR"
+find "$GOTTY_DIR" -mindepth 1 -maxdepth 1 ! -name runtime-nss -exec chown -R "$username:$username" {} +
+find "$GOTTY_DIR" -mindepth 1 -maxdepth 1 ! -name runtime-nss -exec chmod -R 755 {} +
+if [ -d "$GOTTY_DIR/runtime-nss" ]; then
+  chown "$username:$username" "$GOTTY_DIR/runtime-nss"
+  chmod 0711 "$GOTTY_DIR/runtime-nss"
+  find "$GOTTY_DIR/runtime-nss" -maxdepth 1 -type f \( -name 'passwd-*' -o -name 'group-*' \) -exec chmod 0400 {} +
+fi
 
 #test
 if [ $run_tests -eq 1 ]; then

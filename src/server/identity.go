@@ -5,7 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -17,6 +17,7 @@ import (
 	"tunnel"
 	"user"
 	"utils"
+	"workspace"
 )
 
 // trustedConnKey marks requests that arrived over the gateway tunnel. Only
@@ -38,6 +39,7 @@ func isTrusted(r *http.Request) bool {
 // On a worker they come from the gateway's trusted headers. Everywhere else
 // they come from the session cookie, as before.
 func (server *Server) requestIdentity(w http.ResponseWriter, r *http.Request) (uid string, homedir string) {
+	_ = r.ParseForm()
 	if isTrusted(r) {
 		uid, homedir, _ = server.trustedIdentity(r)
 		return uid, homedir
@@ -50,7 +52,10 @@ func (server *Server) requestIdentity(w http.ResponseWriter, r *http.Request) (u
 			uid = cookie.Get_Uid(r)
 		}
 		homedir = utils.HOME_DIR + home
-		os.MkdirAll(homedir, 0755)
+		if _, err := workspace.Prepare(utils.HOME_DIR, homedir); err != nil {
+			log.Printf("workspace %q could not be secured: %v", home, err)
+			homedir = ""
+		}
 		if gateway.OwnWorkspace(r) {
 			// Let a fork link or a shared session opened elsewhere find it.
 			server.routes.home(homedir)
@@ -58,7 +63,32 @@ func (server *Server) requestIdentity(w http.ResponseWriter, r *http.Request) (u
 		return uid, homedir
 	}
 	uid = cookie.Get_Uid(r)
-	homedir = cookie.GetOrUpdateHomeDir(w, r, uid)
+	if jid := r.Form.Get("jid"); jid != "" {
+		pid := encoder.DecodeToPID(jid)
+		parentHome, ok := containers.WorkspaceHome(pid)
+		if pid == -1 || !ok || !containers.IsProcess(pid) {
+			log.Printf("rejecting workspace override for invalid live JID")
+			homedir = ""
+		} else {
+			homedir = parentHome
+		}
+	} else if r.Form.Has(utils.HOME_DIR_KEY) {
+		// A client may not select an arbitrary workspace by path. Shared and
+		// forked sessions carry the owner's live JID; the JID is resolved above.
+		log.Printf("rejecting workspace path override without a live JID")
+		homedir = ""
+	} else {
+		homedir = cookie.GetOrUpdateHomeDir(w, r, uid)
+	}
+	if homedir == "" && !homeOverridden(r) {
+		// Keep ordinary sessions available when the cookie has not yet acquired
+		// a home, but never turn an invalid explicit override into a new home.
+		homedir = cookie.GetOrUpdateHomeDir(w, r, uid)
+	}
+	if _, err := workspace.Prepare(utils.HOME_DIR, homedir); err != nil {
+		log.Printf("workspace could not be secured: %v", err)
+		homedir = ""
+	}
 	if !homeOverridden(r) {
 		server.announce(r).home(homedir)
 	}
@@ -86,6 +116,7 @@ func homeOverridden(r *http.Request) bool {
 // follows the same order as cookie.GetOrUpdateHomeDir: a fork's jid, then an
 // explicit homedir, then the requester's own directory.
 func (server *Server) trustedIdentity(r *http.Request) (uid string, homedir string, privilege string) {
+	_ = r.ParseForm()
 	id := trusted.FromHeader(r.Header)
 	uid = id.UID
 	privilege = utils.GUEST
@@ -93,11 +124,22 @@ func (server *Server) trustedIdentity(r *http.Request) (uid string, homedir stri
 		privilege = utils.ADMIN
 	}
 
-	if ppid := encoder.DecodeToPID(r.Form.Get("jid")); ppid != -1 {
-		return uid, containers.GetWorkingDir(ppid), privilege
+	if jid := r.Form.Get("jid"); jid != "" {
+		ppid := encoder.DecodeToPID(jid)
+		home, ok := containers.WorkspaceHome(ppid)
+		if ppid == -1 || !ok || !containers.IsProcess(ppid) {
+			return uid, "", privilege
+		}
+		return uid, home, privilege
 	}
 	if r.Form.Has(utils.HOME_DIR_KEY) {
-		return uid, r.Form.Get(utils.HOME_DIR_KEY), privilege
+		// The gateway's authenticated identity determines the workspace. An
+		// explicit path is accepted only when it names that identity's home.
+		expected, err := trusted.HomeDir(utils.HOME_DIR, id)
+		if err != nil || filepath.Clean(expected) != filepath.Clean(r.Form.Get(utils.HOME_DIR_KEY)) {
+			return uid, "", privilege
+		}
+		return uid, expected, privilege
 	}
 
 	homedir, err := trusted.HomeDir(utils.HOME_DIR, id)
@@ -105,10 +147,12 @@ func (server *Server) trustedIdentity(r *http.Request) (uid string, homedir stri
 		// The gateway always sends a home id or a guest id.
 		log.Println("Error: forwarded request without a usable identity: ", err)
 		homedir = user.GetHomeDir("")
-	} else if _, serr := os.Stat(homedir); os.IsNotExist(serr) {
-		os.MkdirAll(homedir, 0755)
 	}
-	if uid == "" {
+	if _, serr := workspace.Prepare(utils.HOME_DIR, homedir); serr != nil {
+		log.Printf("forwarded workspace could not be secured: %v", serr)
+		homedir = ""
+	}
+	if uid == "" && homedir != "" {
 		// A guest's directory is deleted after the same idle time as on a
 		// single server.
 		dir := homedir

@@ -15,8 +15,56 @@ import (
 
 	"tunnel"
 	"utils"
+	"workspace"
 	"wsync"
 )
+
+func secureSyncHome(name string) error {
+	_, err := workspace.Prepare(utils.HOME_DIR, filepath.Join(utils.HOME_DIR, name))
+	return err
+}
+
+func syncWorkspaceIdentity(name string) (uid, gid uint32, err error) {
+	id, err := workspace.IdentityFor(utils.HOME_DIR, filepath.Join(utils.HOME_DIR, name))
+	if err != nil {
+		return 0, 0, err
+	}
+	return id.UID, id.GID, nil
+}
+
+func secureSyncEntry(name, rel string) error {
+	homePath := filepath.Join(utils.HOME_DIR, name)
+	id, err := workspace.IdentityFor(utils.HOME_DIR, homePath)
+	if err != nil {
+		return err
+	}
+	h, err := wsync.OpenHome(utils.HOME_DIR, name, false)
+	if err != nil {
+		return err
+	}
+	defer h.Close()
+	parts := strings.Split(rel, "/")
+	for i := range parts {
+		p := strings.Join(parts[:i+1], "/")
+		entry, err := h.Lstat(p)
+		if err != nil {
+			return err
+		}
+		if err := h.Chown(p, int(id.UID), int(id.GID)); err != nil {
+			return err
+		}
+		if entry.Type == wsync.Dir {
+			if err := h.Chmod(p, 0700); err != nil {
+				return err
+			}
+		} else if entry.Type == wsync.File {
+			if err := h.Chmod(p, (entry.Mode&0700)|0600); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // workspaceWait is how long a request waits for its home to be in step
 // before it gets "workspace is synchronizing".
@@ -68,10 +116,13 @@ func (server *Server) workerSyncManager() (*wsync.Manager, error) {
 	s := &server.workerSync
 	s.once.Do(func() {
 		s.mgr, s.err = wsync.NewManager(wsync.ManagerConfig{
-			Node:      server.options.WorkerID,
-			IsGateway: false,
-			BaseDir:   utils.HOME_DIR,
-			StateDir:  server.syncStateDir(),
+			Node:       server.options.WorkerID,
+			IsGateway:  false,
+			BaseDir:    utils.HOME_DIR,
+			StateDir:   server.syncStateDir(),
+			SecureHome: secureSyncHome,
+			Identity:   syncWorkspaceIdentity,
+			OnChange:   secureSyncEntry,
 			OnDrop: func(home string) {
 				log.Printf("Workspace sync: the gateway dropped home %s; removing it", home)
 				utils.RemoveDirNow(utils.HOME_DIR + home)

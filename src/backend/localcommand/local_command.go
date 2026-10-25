@@ -1,21 +1,22 @@
 package localcommand
 
 import (
-	"os"
-	"os/exec"
-	"syscall"
-	"time"
-	"unsafe"
-	"io/ioutil"
 	"containers"
 	"github.com/kr/pty"
 	"github.com/pkg/errors"
+	"io/ioutil"
 	"log"
-	"utils"
-	"user"
 	"net/url"
+	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
+	"unsafe"
+	"utils"
+	"workspace"
 )
 
 const (
@@ -44,34 +45,45 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	}
 	uid := utils.GetUid(params)
 	homedir := utils.GetHomeDir(params)
-	commandArgs := containers.GetCommandArgs(command, argv, ppid, params)
-	cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
 	if ppid != -1 {
-		var err error
-		// using home directory of parent process only 
-		cmd.Dir, err = containers.GetHomeDirFromEnv(ppid)
-		if err!=nil {
-			// try to get the current working directory, if failed
-			cmd.Dir = containers.GetWorkingDir(ppid)
+		parentHome, ok := containers.WorkspaceHome(ppid)
+		if !ok {
+			return nil, errors.New("parent REPL has no verified workspace")
 		}
+		homedir = parentHome
+	}
+	if homedir == "" {
+		return nil, errors.New("workspace identity could not be resolved")
+	}
+	if err := workspace.PrepareCapability(); err != nil {
+		return nil, err
+	}
+	identity, err := workspace.Prepare(utils.HOME_DIR, homedir)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to prepare private workspace")
+	}
+	commandArgs := containers.GetCommandArgs(command, argv, ppid, params)
+	launcher, err := workspaceLauncher(identity, commandArgs, ppid)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.Command(launcher[0], launcher[1:]...)
+	if ppid != -1 {
+		cmd.Dir = homedir
 	} else {
-		// get working for a user uid, same as homedir generated
-		if homedir == "" {
-			cmd.Dir = user.GetHomeDir(uid)
-		} else {
-			cmd.Dir = homedir
-		}
-		os.MkdirAll(cmd.Dir, 0755)
+		cmd.Dir = homedir
 		if uid == "" {
-				// reset the job to delete the guests working dir after a certain deadline, longer now as session has just started
-				jobname := utils.REMOVE_JOB_KEY+cmd.Dir
-				utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
-					utils.RemoveDir(cmd.Dir)
-				})
+			// reset the job to delete the guests working dir after a certain deadline, longer now as session has just started
+			jobname := utils.REMOVE_JOB_KEY + cmd.Dir
+			utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+				utils.RemoveDir(cmd.Dir)
+			})
 		}
 	}
 	if command == "bash" {
-		ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0644)
+		if err := ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]repl@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0600); err == nil {
+			_ = os.Chown(cmd.Dir+"/.bashrc", int(identity.UID), int(identity.GID))
+		}
 	}
 	// not the server's own environment: its secrets must not reach the user's shell
 	cmd.Env = utils.ChildEnviron(os.Environ())
@@ -95,18 +107,44 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	envvars := strings.Split(envargs, " ")
 
 	for _, envvar := range envvars {
-		// sanitize 
+		// sanitize
 		if strings.Contains(envvar, "$") {
-	        // Expand nested environment variable references, in the environment
-	        // the program gets and not in the server's
-	        envvar = utils.ExpandIn(cmd.Env, envvar)
-	    }
-	    if strings.Contains(envvar, "~/") {
-	        // Replace '~' with user's home directory
-		envvar = strings.ReplaceAll(envvar, "~/", homedir+"/")
-	    }
-	    cmd.Env = append(cmd.Env, envvar)
+			// Expand nested environment variable references, in the environment
+			// the program gets and not in the server's
+			envvar = utils.ExpandIn(cmd.Env, envvar)
+		}
+		if strings.Contains(envvar, "~/") {
+			// Replace '~' with user's home directory
+			envvar = strings.ReplaceAll(envvar, "~/", homedir+"/")
+		}
+		cmd.Env = append(cmd.Env, envvar)
 	} // done filling env vars
+
+	// Do not let user-controlled loader variables affect setpriv while it is
+	// still running with the service credentials. The NSS wrapper is enabled
+	// by the post-drop shell only.
+	safeEnv := cmd.Env[:0]
+	for _, entry := range cmd.Env {
+		name := entry
+		if at := strings.IndexByte(entry, '='); at >= 0 {
+			name = entry[:at]
+		}
+		switch name {
+		case "LD_PRELOAD", "LD_AUDIT", "LD_LIBRARY_PATH", "LD_ORIGIN_PATH",
+			"NSS_WRAPPER_PASSWD", "NSS_WRAPPER_GROUP", "OPENREPL_NSS_WRAPPER":
+			continue
+		}
+		safeEnv = append(safeEnv, entry)
+	}
+	cmd.Env = safeEnv
+
+	// Add the private NSS mapping after client environment flags. NSS wrapper
+	// is loaded by the target REPL only after setpriv has dropped credentials.
+	if nssEnv, nssErr := workspace.NSSWrapperEnvironment(identity, homedir); nssErr != nil {
+		log.Printf("workspace: NSS identity names unavailable for uid %d: %v", identity.UID, nssErr)
+	} else {
+		cmd.Env = append(cmd.Env, nssEnv...)
+	}
 
 	pty, err := pty.Start(command, cmd, ppid, params)
 	if err != nil {
@@ -132,8 +170,9 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	}
 
 	pid := cmd.Process.Pid
+	containers.TrackWorkspaceProcess(pid, homedir)
 	containers.AddProcesstoNewSubCgroup(command, pid, utils.Iscompiled(params)) // creating and adding process to new subcrgroup container
-	go containers.EnableNetworking(pid)	// enable loopback
+	go containers.EnableNetworking(pid)                                         // enable loopback
 	// When the process is closed by the user,
 	// close pty so that Read() on the pty breaks with an EOF.
 	go func() {
@@ -145,9 +184,9 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 			// don't delete working directory if user is logged in
 			// only Guest users homedir to be deleted
 			if ppid == -1 && uid == "" {
-				// reset the job to delete the working dir after a certain deadline 
+				// reset the job to delete the working dir after a certain deadline
 				// if guest is not conecting again
-				jobname := utils.REMOVE_JOB_KEY+lcmd.cmd.Dir
+				jobname := utils.REMOVE_JOB_KEY + lcmd.cmd.Dir
 				utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
 					utils.RemoveDir(lcmd.cmd.Dir)
 				})
@@ -156,7 +195,7 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 
 		cmderr := lcmd.cmd.Wait()
 		if cmderr != nil {
-	        log.Printf("lcmd.cmd.wait : %s", cmderr.Error())
+			log.Printf("lcmd.cmd.wait : %s", cmderr.Error())
 		}
 		lcmd.exitMu.Lock()
 		lcmd.exitErr = cmderr
@@ -164,6 +203,34 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	}()
 
 	return lcmd, nil
+}
+
+// workspaceLauncher drops privileges only after a forked terminal has entered
+// its owner's namespaces. The shell sets a restrictive umask and immediately
+// execs the requested REPL, preserving the terminal process ID.
+func workspaceLauncher(id workspace.Identity, commandArgs []string, ppid int) ([]string, error) {
+	setpriv, err := exec.LookPath("setpriv")
+	if err != nil {
+		return nil, errors.Wrap(err, "setpriv is required for workspace isolation")
+	}
+	inner := []string{"--reuid=" + strconv.FormatUint(uint64(id.UID), 10), "--regid=" + strconv.FormatUint(uint64(id.GID), 10), "--clear-groups", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs", "--", "/bin/sh", "-c", "umask 077; if [ -n \"${OPENREPL_NSS_WRAPPER:-}\" ]; then export LD_PRELOAD=\"$OPENREPL_NSS_WRAPPER\"; fi; unset OPENREPL_NSS_WRAPPER; exec \"$@\"", "openrepl-workspace"}
+	userCommand := commandArgs
+	if ppid != -1 && len(commandArgs) > 0 && commandArgs[0] == "/usr/bin/nsenter" {
+		// Keep nsenter privileged long enough to join the parent's namespaces,
+		// then drop to the exact same workspace identity before user code.
+		at := 1
+		for at < len(commandArgs) && strings.HasPrefix(commandArgs[at], "-") {
+			at++
+		}
+		out := append([]string{}, commandArgs[:at]...)
+		out = append(out, "--", setpriv)
+		userCommand = commandArgs[at:]
+		inner = append(inner, userCommand...)
+		return append(out, inner...), nil
+	}
+	inner = append(inner, userCommand...)
+	out := []string{setpriv}
+	return append(out, inner...), nil
 }
 
 // ExitReason reports why the command ended: "killed" when it was stopped by
