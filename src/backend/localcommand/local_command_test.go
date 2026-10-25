@@ -2,10 +2,15 @@ package localcommand
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"workspace"
 )
@@ -65,6 +70,72 @@ func TestWorkspaceLauncherJoinsNamespacesBeforeDroppingIdentity(t *testing.T) {
 	for _, arg := range got[len(wantPrefix):] {
 		if arg == "/usr/bin/nsenter" || arg == "-t123" || arg == "--net" {
 			t.Fatalf("namespace launcher arguments leaked into user command: %v", got)
+		}
+	}
+}
+
+func TestCloseKillsProcessGroupAfterLeaderExits(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("uses Linux /proc process state")
+	}
+
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+	cmd := exec.Command("/bin/sh", "-c", `trap 'exit 0' INT; (trap '' INT; exec sleep 30) & echo $! > "$1"; wait`, "test", pidFile)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	ptyClosed := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(ptyClosed)
+	}()
+
+	var childPID int
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(pidFile)
+		if err == nil {
+			childPID, err = strconv.Atoi(strings.TrimSpace(string(data)))
+			if err == nil {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if childPID == 0 {
+		t.Fatal("child process did not start")
+	}
+
+	lcmd := &LocalCommand{
+		cmd:          cmd,
+		pgid:         cmd.Process.Pid,
+		closeSignal:  syscall.SIGINT,
+		closeTimeout: 200 * time.Millisecond,
+		ptyClosed:    ptyClosed,
+	}
+	if err := lcmd.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// A zombie has stopped executing and can only be reaped by PID 1; accept
+	// that state while ensuring the child did not survive as a live process.
+	stat, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(childPID), "stat"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read child process state: %v", err)
+	}
+	if err == nil {
+		end := strings.LastIndexByte(string(stat), ')')
+		if end < 0 {
+			t.Fatalf("could not parse child process state: %q", stat)
+		}
+		fields := strings.Fields(string(stat[end+1:]))
+		if len(fields) == 0 {
+			t.Fatalf("could not parse child process state: %q", stat)
+		}
+		state := fields[0]
+		if state != "Z" {
+			t.Fatalf("child process %d is still running with state %q", childPID, state)
 		}
 	}
 }

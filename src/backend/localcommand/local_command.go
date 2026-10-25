@@ -33,6 +33,7 @@ type LocalCommand struct {
 
 	cmd       *exec.Cmd
 	pty       *os.File
+	pgid      int
 	ptyClosed chan struct{}
 
 	exitMu  sync.Mutex
@@ -170,6 +171,15 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	}
 
 	pid := cmd.Process.Pid
+	pgid, pgidErr := syscall.Getpgid(pid)
+	if pgidErr != nil {
+		log.Printf("lcmd: unable to read process group for pid=%d: %v", pid, pgidErr)
+		pgid = pid // pty.Start creates a new session, so PID is the expected PGID.
+	}
+	if pgid != pid {
+		log.Printf("lcmd: unexpected process group for terminal pid=%d pgid=%d; group signaling disabled", pid, pgid)
+	}
+	lcmd.pgid = pgid
 	containers.TrackWorkspaceProcess(pid, homedir)
 	containers.AddProcesstoNewSubCgroup(command, pid, utils.Iscompiled(params)) // creating and adding process to new subcrgroup container
 	go containers.EnableNetworking(pid)                                         // enable loopback
@@ -265,26 +275,67 @@ func (lcmd *LocalCommand) Close() error {
 	// pty.Start creates a new session for this terminal (and therefore a new
 	// process group led by the command). Signal the group so children started
 	// by a shell or REPL do not outlive a disconnected terminal.
-	log.Printf("lcmd: closing terminal process group pid=%d pgid=%d", lcmd.cmd.Process.Pid, lcmd.cmd.Process.Pid)
+	log.Printf("lcmd: closing terminal process group pid=%d pgid=%d", lcmd.cmd.Process.Pid, lcmd.processGroupID())
 	lcmd.signalProcessGroup(lcmd.closeSignal)
 
-	if lcmd.closeTimeout < 0 {
-		<-lcmd.ptyClosed
-		return nil
+	var timer *time.Timer
+	var timeout <-chan time.Time
+	if lcmd.closeTimeout >= 0 {
+		timer = time.NewTimer(lcmd.closeTimeout)
+		defer timer.Stop()
+		timeout = timer.C
 	}
-	timer := time.NewTimer(lcmd.closeTimeout)
-	defer timer.Stop()
-	select {
-	case <-lcmd.ptyClosed:
-		log.Printf("lcmd: terminal process exited pid=%d", lcmd.cmd.Process.Pid)
-		return nil
-	case <-timer.C:
-		log.Printf("lcmd: terminal process did not exit after %s; sending SIGKILL to process group pid=%d", lcmd.closeTimeout, lcmd.cmd.Process.Pid)
-		lcmd.signalProcessGroup(syscall.SIGKILL)
-		<-lcmd.ptyClosed
-		log.Printf("lcmd: terminal process reaped pid=%d", lcmd.cmd.Process.Pid)
-		return nil
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	// cmd.Wait only tracks the session leader. It may exit on SIGINT while a
+	// child in the same process group ignores the signal and keeps running.
+	// Keep checking the group after the leader is reaped; only finish when the
+	// whole group is gone or the grace period expires.
+	leaderExited := lcmd.ptyClosed
+	for {
+		if !lcmd.processGroupExists() {
+			if leaderExited != nil {
+				<-leaderExited
+			}
+			log.Printf("lcmd: terminal process group exited pgid=%d", lcmd.processGroupID())
+			return nil
+		}
+		select {
+		case <-leaderExited:
+			leaderExited = nil
+		case <-ticker.C:
+		case <-timeout:
+			log.Printf("lcmd: terminal process group did not exit after %s; sending SIGKILL pgid=%d", lcmd.closeTimeout, lcmd.processGroupID())
+			lcmd.signalProcessGroup(syscall.SIGKILL)
+			if leaderExited != nil {
+				<-leaderExited
+			}
+			log.Printf("lcmd: terminal process group kill sent pgid=%d", lcmd.processGroupID())
+			return nil
+		}
 	}
+}
+
+func (lcmd *LocalCommand) processGroupID() int {
+	if lcmd.pgid > 0 {
+		return lcmd.pgid
+	}
+	if lcmd.cmd != nil && lcmd.cmd.Process != nil {
+		return lcmd.cmd.Process.Pid
+	}
+	return 0
+}
+
+func (lcmd *LocalCommand) processGroupExists() bool {
+	if lcmd.cmd == nil || lcmd.cmd.Process == nil {
+		return false
+	}
+	if lcmd.processGroupID() != lcmd.cmd.Process.Pid {
+		return lcmd.cmd.Process.Signal(syscall.Signal(0)) == nil
+	}
+	err := syscall.Kill(-lcmd.processGroupID(), 0)
+	return err == nil || err == syscall.EPERM
 }
 
 func (lcmd *LocalCommand) signalProcessGroup(signal syscall.Signal) {
@@ -292,11 +343,21 @@ func (lcmd *LocalCommand) signalProcessGroup(signal syscall.Signal) {
 		return
 	}
 	pid := lcmd.cmd.Process.Pid
-	// The command is started in its own session, so its PID is also its
-	// process-group ID. Fall back to signaling the command directly if group
-	// signaling is unavailable, while preserving cleanup of the main process.
-	if err := syscall.Kill(-pid, signal); err != nil {
-		_ = lcmd.cmd.Process.Signal(signal)
+	pgid := lcmd.processGroupID()
+	// pty.Start should make the command the leader of a private session and
+	// process group. Refuse to signal a different group, which could be shared
+	// with GoTTY or another terminal if startup attributes were not applied.
+	if pgid != pid {
+		if err := lcmd.cmd.Process.Signal(signal); err != nil {
+			log.Printf("lcmd: unable to signal terminal pid=%d with %s: %v", pid, signal, err)
+		}
+		return
+	}
+	if err := syscall.Kill(-pgid, signal); err != nil {
+		log.Printf("lcmd: unable to signal terminal process group pgid=%d with %s: %v", pgid, signal, err)
+		if processErr := lcmd.cmd.Process.Signal(signal); processErr != nil {
+			log.Printf("lcmd: unable to signal terminal pid=%d with %s: %v", pid, signal, processErr)
+		}
 	}
 }
 
