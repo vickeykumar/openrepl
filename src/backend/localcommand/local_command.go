@@ -34,6 +34,7 @@ type LocalCommand struct {
 	cmd       *exec.Cmd
 	pty       *os.File
 	pgid      int
+	identity  workspace.Identity
 	ptyClosed chan struct{}
 
 	exitMu  sync.Mutex
@@ -163,6 +164,7 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 
 		cmd:       cmd,
 		pty:       pty,
+		identity:  identity,
 		ptyClosed: ptyClosed,
 	}
 
@@ -274,10 +276,21 @@ func (lcmd *LocalCommand) Close() error {
 
 	// pty.Start creates a new session for this terminal (and therefore a new
 	// process group led by the command). Signal the group so children started
-	// by a shell or REPL do not outlive a disconnected terminal.
+	// by a shell or REPL do not outlive a disconnected terminal. Use the normal
+	// signal path first; only fall back to a helper under the workspace UID if
+	// the service is denied permission.
 	log.Printf("lcmd: closing terminal process group pid=%d pgid=%d", lcmd.cmd.Process.Pid, lcmd.processGroupID())
-	lcmd.signalProcessGroup(lcmd.closeSignal)
-
+	if err := lcmd.signalProcessGroup(lcmd.closeSignal); err != nil {
+		log.Printf("lcmd: direct signal failed pid=%d pgid=%d: %v; retrying under workspace identity", lcmd.cmd.Process.Pid, lcmd.processGroupID(), err)
+		if helperErr := lcmd.signalWorkspaceProcessGroup(lcmd.closeSignal, lcmd.closeTimeout); helperErr != nil {
+			log.Printf("lcmd: workspace-identity process cleanup failed pid=%d pgid=%d: %v", lcmd.cmd.Process.Pid, lcmd.processGroupID(), helperErr)
+			return nil
+		}
+		if lcmd.ptyClosed != nil {
+			<-lcmd.ptyClosed
+		}
+		return nil
+	}
 	var timer *time.Timer
 	var timeout <-chan time.Time
 	if lcmd.closeTimeout >= 0 {
@@ -307,7 +320,13 @@ func (lcmd *LocalCommand) Close() error {
 		case <-ticker.C:
 		case <-timeout:
 			log.Printf("lcmd: terminal process group did not exit after %s; sending SIGKILL pgid=%d", lcmd.closeTimeout, lcmd.processGroupID())
-			lcmd.signalProcessGroup(syscall.SIGKILL)
+			if err := lcmd.signalProcessGroup(syscall.SIGKILL); err != nil {
+				log.Printf("lcmd: direct SIGKILL failed pid=%d pgid=%d: %v; retrying under workspace identity", lcmd.cmd.Process.Pid, lcmd.processGroupID(), err)
+				if helperErr := lcmd.signalWorkspaceProcessGroup(syscall.SIGKILL, 0); helperErr != nil {
+					log.Printf("lcmd: workspace-identity SIGKILL failed pid=%d pgid=%d: %v", lcmd.cmd.Process.Pid, lcmd.processGroupID(), helperErr)
+					return nil
+				}
+			}
 			if leaderExited != nil {
 				<-leaderExited
 			}
@@ -315,6 +334,79 @@ func (lcmd *LocalCommand) Close() error {
 			return nil
 		}
 	}
+}
+
+// signalWorkspaceProcessGroup runs cleanup as the REPL's workspace identity.
+// It is used only when the ordinary service-credential signal was denied.
+func (lcmd *LocalCommand) signalWorkspaceProcessGroup(signal syscall.Signal, grace time.Duration) error {
+	launcher, err := workspaceCleanupLauncher(lcmd.identity, lcmd.cmd.Process.Pid, lcmd.processGroupID(), signal, grace)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(launcher[0], launcher[1:]...)
+	// The cleanup helper needs no application or user environment.
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	output, err := cmd.CombinedOutput()
+	if len(output) > 0 {
+		log.Printf("lcmd: workspace process cleanup pid=%d pgid=%d: %s", lcmd.cmd.Process.Pid, lcmd.processGroupID(), strings.TrimSpace(string(output)))
+	}
+	if err != nil {
+		return errors.Wrap(err, "workspace cleanup helper failed")
+	}
+	return nil
+}
+
+func workspaceCleanupLauncher(id workspace.Identity, pid, pgid int, signal syscall.Signal, grace time.Duration) ([]string, error) {
+	setpriv, err := exec.LookPath("setpriv")
+	if err != nil {
+		return nil, errors.Wrap(err, "setpriv is required to clean up workspace processes")
+	}
+	target := strconv.Itoa(pgid)
+	if pgid == pid {
+		target = "-" + target
+	} else {
+		log.Printf("lcmd: unexpected process group for terminal pid=%d pgid=%d; cleanup targets only the terminal pid", pid, pgid)
+		target = strconv.Itoa(pid)
+	}
+	graceTenths := "0"
+	if grace < 0 {
+		graceTenths = "-1"
+	} else if grace > 0 {
+		graceTenths = strconv.FormatInt(int64((grace+100*time.Millisecond-1)/(100*time.Millisecond)), 10)
+	}
+	const cleanupScript = `
+target=$1
+signal=$2
+grace=$3
+if ! kill -"$signal" -- "$target" 2>/dev/null; then
+  echo "unable to send $signal to $target" >&2
+  exit 1
+fi
+if [ "$grace" -lt 0 ]; then
+  while kill -0 -- "$target" 2>/dev/null; do sleep 0.1; done
+  exit 0
+fi
+count=0
+while kill -0 -- "$target" 2>/dev/null; do
+  if [ "$count" -ge "$grace" ]; then
+    echo "process group did not exit after grace period; sending SIGKILL to $target" >&2
+    kill -9 -- "$target" 2>/dev/null || {
+      echo "unable to send SIGKILL to $target" >&2
+      exit 1
+    }
+    exit 0
+  fi
+  sleep 0.1
+  count=$((count + 1))
+done
+`
+	return []string{setpriv,
+		"--reuid=" + strconv.FormatUint(uint64(id.UID), 10),
+		"--regid=" + strconv.FormatUint(uint64(id.GID), 10),
+		"--clear-groups", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs", "--",
+		"/bin/sh", "-c", cleanupScript, "openrepl-workspace-cleanup",
+		target, strconv.Itoa(int(signal)), graceTenths,
+	}, nil
 }
 
 func (lcmd *LocalCommand) processGroupID() int {
@@ -338,9 +430,9 @@ func (lcmd *LocalCommand) processGroupExists() bool {
 	return err == nil || err == syscall.EPERM
 }
 
-func (lcmd *LocalCommand) signalProcessGroup(signal syscall.Signal) {
+func (lcmd *LocalCommand) signalProcessGroup(signal syscall.Signal) error {
 	if lcmd.cmd == nil || lcmd.cmd.Process == nil {
-		return
+		return nil
 	}
 	pid := lcmd.cmd.Process.Pid
 	pgid := lcmd.processGroupID()
@@ -350,15 +442,18 @@ func (lcmd *LocalCommand) signalProcessGroup(signal syscall.Signal) {
 	if pgid != pid {
 		if err := lcmd.cmd.Process.Signal(signal); err != nil {
 			log.Printf("lcmd: unable to signal terminal pid=%d with %s: %v", pid, signal, err)
+			return err
 		}
-		return
+		return nil
 	}
 	if err := syscall.Kill(-pgid, signal); err != nil {
 		log.Printf("lcmd: unable to signal terminal process group pgid=%d with %s: %v", pgid, signal, err)
 		if processErr := lcmd.cmd.Process.Signal(signal); processErr != nil {
 			log.Printf("lcmd: unable to signal terminal pid=%d with %s: %v", pid, signal, processErr)
+			return processErr
 		}
 	}
+	return nil
 }
 
 func (lcmd *LocalCommand) WindowTitleVariables() map[string]interface{} {
