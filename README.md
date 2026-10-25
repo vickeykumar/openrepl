@@ -184,7 +184,7 @@ Then do a quick manual check at `localhost:8080`:
 
 ### Notes
 
-- **No per-REPL sandboxing locally.** Colima's VM uses cgroup v2, so the log shows `Unable to create Container` and REPLs run without their own namespaces or memory limits. Test sandboxing on a cgroup v1 host.
+- **Sandbox features depend on the VM's delegated capabilities.** OpenREPL probes namespaces and memory cgroups independently; cgroup v2 works when its memory controller is delegated. Home isolation requires `setpriv` and permission to switch UID/GID and change file ownership. Check the admin Health panel for what this VM enabled.
 - **Debug runs under QEMU locally.** Rosetta cannot trace programs, so plain gdb fails with `Couldn't get registers`. Debug detects it and runs your program under QEMU, which gdb connects to (see [LLD 04](docs/lld/04-ide-run-and-files.md)). The program starts paused: set breakpoints, then type `c`. The assembly REPL (rappel) needs real ptrace and does not start here.
 - **Don't commit `bin/gotty`.** The dev container rebuilds this tracked file. Restore it before committing with `git checkout -- bin/gotty`, and don't commit `node_modules` or `dist` folders.
 - **Genie and Practice question generation need an OpenAI key.** Set `OPENREPL_OPENAI_API_KEY` (see [Settings and secrets](#settings-and-secrets)), then restart the server.
@@ -626,7 +626,10 @@ flowchart TB
 ```
 
 - **Image:** the multi-stage `Dockerfile` builds on Ubuntu 22.04. `install_prerequisite.sh` installs every REPL toolchain, and `make all` builds the binary. CI builds the image on every PR and push to `master`. Pushes to `master` also publish `:<sha>` and `:latest`.
-- **Sandboxing needs cgroup v1.** With `--privileged` and `/sys/fs/cgroup` mounted, each REPL gets its own namespaces and memory cgroup. Without them, REPLs still run but share the container.
+- **Workspace isolation and optional sandbox controls:** every REPL workspace is owned by a distinct runtime UID/GID and has mode `0700`; `/tmp/home` has mode `0711`. This home-directory boundary requires `setpriv` plus `CAP_SETUID`, `CAP_SETGID`, `CAP_CHOWN`, and `CAP_DAC_OVERRIDE` (or equivalent root privileges). If the service cannot establish it, REPL launch fails closed. Namespace features and cgroup memory limits are probed independently and enabled only when available; cgroup v2 memory limits require systemd delegation (`Delegate=yes`) or equivalent controller delegation. The admin Health panel reports each feature separately. `--privileged` is not required for UID-based home isolation, though it may be needed for additional namespace or cgroup features in some container setups.
+
+  The packaged systemd unit includes the required capabilities and `Delegate=yes`. For a custom unit, grant those four capabilities, install `setpriv` (from util-linux), and delegate the memory controller if cgroup v2 limits are wanted. In Docker or another container runtime, grant equivalent capabilities and ensure the runtime UID range is usable inside the container. In distributed mode, configure the same UID range on gateway and workers.
+  The runtime image also installs `libnss-wrapper`. OpenREPL gives each REPL a private passwd/group mapping for its synthetic UID/GID, so `groups` and `id` can display a name without adding synthetic users to host account databases. Custom deployments should install `libnss-wrapper`; without it, account-name lookups may show numeric IDs or warnings.
 - **Server-side secrets** come from the environment (see [Settings and secrets](#settings-and-secrets)). The older git-config file, `/opt/gotty/.gitconfig`, still works as a fallback.
 
 ### Settings and secrets
@@ -645,6 +648,8 @@ The server-side settings come from environment variables, and gotty can load the
 | `OPENREPL_OPENROUTER_API_KEY` | Optional. The OpenRouter key, as it is. Without it the Gemma 4 31B choice is not offered. | |
 | `OPENREPL_RECAPTCHA_SECRET` | Optional. The reCAPTCHA secret key of the site key on the home page. With it the server checks the contact form's reCAPTCHA answer (the box alone only switches on the Send button, a bot can post straight to `/feedback`). Without it the answer is not checked. | |
 | `OPENREPL_HOST` | The origin the chat proxy accepts. Default `localhost`. | `user.host` |
+| `OPENREPL_RUNTIME_UID_MIN` | Optional lower bound, inclusive, of the reserved runtime UID/GID range. Default `1000000000`. | |
+| `OPENREPL_RUNTIME_UID_MAX` | Optional upper bound, inclusive, of the reserved runtime UID/GID range. Default `2000000000`. Must be greater than the lower bound. Keep the range consistent on gateway and workers and reserve it for OpenREPL. | |
 | `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Default: the built-in production project. See below. | |
 | `OPENREPL_ENV` | `dev` or `production` (the default). Dev shows the values of these settings in the start-up log; production only says which are set. | |
 

@@ -11,33 +11,271 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
-	"strings"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
 
-	"gateway"
-	"webtty"
-	"filebrowser"
-	"meters"
-	"utils"
+	"archive/zip"
 	"cookie"
+	"crypto/sha256"
+	"encoder"
+	"encoding/base64"
+	"filebrowser"
+	"gateway"
 	"io"
 	"io/ioutil"
-	"encoding/base64"
-	"crypto/sha256"
+	"meters"
 	"os"
-	"archive/zip"
 	"path/filepath"
-	"encoder"
+	"sort"
+	"utils"
+	"webtty"
+	"workspace"
+	"wsync"
 )
 
+func writeWorkspaceFile(home *wsync.Home, rel string, data []byte) error {
+	if rel == "" {
+		return wsync.ErrUnsafePath
+	}
+	return home.WriteFile(wsync.Entry{
+		Path: rel, Type: wsync.File, Size: int64(len(data)),
+		ModTime: time.Now().UnixNano(), Mode: 0600,
+	}, bytes.NewReader(data))
+}
+
+func workspaceTree(home *wsync.Home, root, rel string) (filebrowser.TreeNode, error) {
+	entry, err := home.Lstat(rel)
+	if err != nil {
+		return filebrowser.TreeNode{}, err
+	}
+	label := filepath.Base(rel)
+	if rel == "" {
+		label = filepath.Base(root)
+	}
+	node := filebrowser.TreeNode{Id: root, Text: label, Type: "file"}
+	if rel != "" {
+		node.Id = filepath.Join(root, filepath.FromSlash(rel))
+	}
+	if entry.Type != wsync.Dir {
+		return node, nil
+	}
+	node.Type = "default"
+	names, err := home.ListDir(rel)
+	if err != nil {
+		return filebrowser.TreeNode{}, err
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		childRel := name
+		if rel != "" {
+			childRel = rel + "/" + name
+		}
+		child, err := workspaceTree(home, root, childRel)
+		if err != nil {
+			// Unsupported special files are omitted from the browser.
+			if err == wsync.ErrNotRegular {
+				continue
+			}
+			return filebrowser.TreeNode{}, err
+		}
+		node.Children = append(node.Children, child)
+	}
+	return node, nil
+}
+
+func workspaceUsage(home *wsync.Home, rel string) (int64, error) {
+	entry, err := home.Lstat(rel)
+	if err != nil {
+		return 0, err
+	}
+	if entry.Type == wsync.File {
+		return entry.Size, nil
+	}
+	if entry.Type != wsync.Dir {
+		return 0, nil
+	}
+	names, err := home.ListDir(rel)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, name := range names {
+		child := name
+		if rel != "" {
+			child = rel + "/" + name
+		}
+		size, err := workspaceUsage(home, child)
+		if err != nil {
+			if err == wsync.ErrNotRegular {
+				continue
+			}
+			return 0, err
+		}
+		total += size
+	}
+	return total, nil
+}
+
+func writeWorkspaceZip(home *wsync.Home, rootRel string, zw *zip.Writer) error {
+	root, err := home.Lstat(rootRel)
+	if err != nil {
+		return err
+	}
+	var walk func(string) error
+	walk = func(rel string) error {
+		entry, err := home.Lstat(rel)
+		if err != nil {
+			return err
+		}
+		if entry.Type == wsync.Dir {
+			names, err := home.ListDir(rel)
+			if err != nil {
+				return err
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				child := name
+				if rel != "" {
+					child = rel + "/" + name
+				}
+				if err := walk(child); err != nil && err != wsync.ErrNotRegular {
+					return err
+				}
+			}
+			return nil
+		}
+		if entry.Type != wsync.File {
+			return nil // do not follow or archive symlinks
+		}
+		file, err := home.OpenRead(rel)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		name := filepath.Base(rel)
+		if root.Type == wsync.Dir {
+			name, err = filepath.Rel(rootRel, rel)
+			if err != nil {
+				return err
+			}
+			name = filepath.ToSlash(name)
+		}
+		header := &zip.FileHeader{Name: name}
+		header.SetMode(os.FileMode(entry.Mode & 0700))
+		header.SetModTime(time.Unix(0, entry.ModTime))
+		writer, err := zw.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(writer, file)
+		return err
+	}
+	return walk(rootRel)
+}
+
+func processWorkspaceEvent(w http.ResponseWriter, home *wsync.Home, root string, event filebrowser.Event) {
+	rel, err := workspace.RelativePath(root, event.Name)
+	if err != nil || rel == "" {
+		http.Error(w, "invalid workspace path", http.StatusBadRequest)
+		return
+	}
+	dest := ""
+	if event.NewName != "" {
+		dest, err = workspace.RelativePath(root, event.NewName)
+		if err != nil || dest == "" {
+			http.Error(w, "invalid workspace destination", http.StatusBadRequest)
+			return
+		}
+	}
+	if event.Op&fsnotify.Create == fsnotify.Create {
+		if dest != "" {
+			err = copyWorkspacePath(home, rel, dest)
+		} else if event.Type == "folder" || event.Type == "default" {
+			err = home.PutDir(wsync.Entry{Path: rel, Type: wsync.Dir, Mode: 0700})
+		} else {
+			err = writeWorkspaceFile(home, rel, nil)
+		}
+	} else if event.Op&fsnotify.Remove == fsnotify.Remove {
+		err = removeWorkspacePath(home, rel)
+	} else if event.Op&fsnotify.Rename == fsnotify.Rename {
+		err = home.Rename(rel, dest)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func removeWorkspacePath(home *wsync.Home, rel string) error {
+	entry, err := home.Lstat(rel)
+	if err != nil {
+		return err
+	}
+	if entry.Type == wsync.Dir {
+		names, err := home.ListDir(rel)
+		if err != nil {
+			return err
+		}
+		for _, name := range names {
+			if err := removeWorkspacePath(home, rel+"/"+name); err != nil {
+				return err
+			}
+		}
+	}
+	return home.Remove(rel)
+}
+
+func copyWorkspacePath(home *wsync.Home, from, to string) error {
+	entry, err := home.Lstat(from)
+	if err != nil {
+		return err
+	}
+	switch entry.Type {
+	case wsync.Dir:
+		entry.Path = to
+		entry.Mode = 0700
+		if err := home.PutDir(entry); err != nil {
+			return err
+		}
+		names, err := home.ListDir(from)
+		if err != nil {
+			return err
+		}
+		for _, name := range names {
+			if err := copyWorkspacePath(home, from+"/"+name, to+"/"+name); err != nil && err != wsync.ErrNotRegular {
+				return err
+			}
+		}
+		return nil
+	case wsync.Symlink:
+		entry.Path = to
+		entry.Link, err = home.Readlink(from)
+		if err != nil {
+			return err
+		}
+		return home.PutSymlink(entry)
+	case wsync.File:
+		file, err := home.OpenRead(from)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		entry.Path, entry.Mode = to, (entry.Mode&0700)|0600
+		return home.WriteFile(entry, file)
+	default:
+		return wsync.ErrNotRegular
+	}
+}
 
 func updateparams(params *url.Values, payload map[string]string) {
 	for key, value := range payload {
-		params.Set(key,value)
+		params.Set(key, value)
 	}
 }
 
@@ -126,12 +364,12 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			log.Println("Can not upgrade connection: " + closeReason)
 			return
 		}
-		
+
 		defer func() {
 			log.Println("close status: ", closeCode)
-			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode , closeReason), time.Now().Add(time.Second))
+			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode, closeReason), time.Now().Add(time.Second))
 			//wait for 1 sec deadline to write the buffers
-			time.Sleep(2*time.Second)
+			time.Sleep(2 * time.Second)
 			conn.Close()
 		}()
 
@@ -143,7 +381,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 				return
 			}
 		}
-		
+
 		log.Printf("New client (uid: %s) connected: %s, connections: %d/%d, TotalUsage(MB): %d",
 			req_payload[utils.UidKey], r.RemoteAddr, num, server.options.MaxConnection, totalWieght,
 		)
@@ -168,7 +406,6 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		log.Println("WS connection closed due to: " + closeReason)
 	}
 }
-
 
 // process websocket connection for uid (user)
 // req_payload is initial payload carried by request
@@ -214,8 +451,8 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 		return errors.Wrapf(err, "failed to parse arguments")
 	}
 	params := query.Query()
-	updateparams(&params, req_payload)	// update the params with reqest payload
-	updateparams(&params, init.Payload)	// update the params with init payload by ws conn
+	updateparams(&params, req_payload)  // update the params with reqest payload
+	updateparams(&params, init.Payload) // update the params with init payload by ws conn
 	//log.Println("updated params: ", params)
 
 	var slave Slave
@@ -291,7 +528,6 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 	}
 	defer fb.Close()
 
-
 	log.Println("running webtty: ")
 	err = tty.Run(ctx)
 	if err == context.Canceled && r.Context().Err() != nil {
@@ -353,15 +589,15 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		// Still refresh the guest session cookie as the call above would.
 		cookie.UpdateGuestSessionCookieAge(w, r, utils.DEADLINE_MINUTES*60)
 	}
-	defer func () {
-                if uid == "" && homedir != "" {
-                                // reset the job to delete the guests working dir after a certain deadline 
-                                jobname := utils.REMOVE_JOB_KEY+homedir
-                                utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
-                                        utils.RemoveDir(homedir)
-                                })
-                }
-        }()
+	defer func() {
+		if uid == "" && homedir != "" {
+			// reset the job to delete the guests working dir after a certain deadline
+			jobname := utils.REMOVE_JOB_KEY + homedir
+			utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+				utils.RemoveDir(homedir)
+			})
+		}
+	}()
 
 	titleVars := server.titleVariables(
 		[]string{"server", "master"},
@@ -377,7 +613,7 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	err := server.titleTemplate.Execute(titleBuf, titleVars)
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
-		log.Println("Error while executing title template: ",err.Error())
+		log.Println("Error while executing title template: ", err.Error())
 		return
 	}
 
@@ -390,7 +626,7 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	err = server.indexTemplate.Execute(indexBuf, indexVars)
 	if err != nil {
 		http.Error(w, "Internal Server Error", 500)
-		log.Println("Error while executing Index template: ",err.Error())
+		log.Println("Error while executing Index template: ", err.Error())
 		return
 	}
 
@@ -406,26 +642,26 @@ func (server *Server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
 func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript")
 	w.Write([]byte("var gotty_term = '" + server.options.Term + "';"))
-	
+
 	w.Write(firebaseConfigJS())
 
-    _, secret := cookie.GetOpenApiAccessToken(r) 
+	_, secret := cookie.GetOpenApiAccessToken(r)
 	// check if already a secret present from prev active session.
-	if string(secret)=="" {
+	if string(secret) == "" {
 		secret = encoder.GenerateLargePrime().Bytes()
 	}
-    access_token, err := encoder.Encrypt([]byte(openAIToken()), secret)
-    if err == nil {
-    	err = cookie.SetOpenApiAccessToken(w, r, access_token, secret)
-    	if err != nil {
-    		log.Println("Error: saving access_token: ", err)
-    	}
-    	w.Write([]byte("var openai_access_token = '" + string(access_token) + "';"))
-    	// the page offers the OpenRouter models only when the server can call them
-    	w.Write([]byte("\nvar openrouter_enabled = " + strconv.FormatBool(utils.OpenRouterKey() != "") + ";"))
-    } else {
-    	log.Println("Error: encrypting access_token: ", err)
-    }
+	access_token, err := encoder.Encrypt([]byte(openAIToken()), secret)
+	if err == nil {
+		err = cookie.SetOpenApiAccessToken(w, r, access_token, secret)
+		if err != nil {
+			log.Println("Error: saving access_token: ", err)
+		}
+		w.Write([]byte("var openai_access_token = '" + string(access_token) + "';"))
+		// the page offers the OpenRouter models only when the server can call them
+		w.Write([]byte("\nvar openrouter_enabled = " + strconv.FormatBool(utils.OpenRouterKey() != "") + ";"))
+	} else {
+		log.Println("Error: encrypting access_token: ", err)
+	}
 }
 
 // builtinFirebaseConfig is the production Firebase project's web config, used
@@ -486,13 +722,12 @@ func (server *Server) titleVariables(order []string, varUnits map[string]map[str
 	return titleVars
 }
 
-
 func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Request) {
 	bodybuf, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		log.Println("error reading body : ", err)
 	}
-   	log.Println("body: ", string(bodybuf))
+	log.Println("body: ", string(bodybuf))
 	req.ParseForm()
 	log.Println("method: ", req.Method, " Form: ", req.Form, " body: ", req.Body)
 	uid, homedir := server.requestIdentity(rw, req)
@@ -501,53 +736,79 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 	//command := req.Form.Get("command")
-	defer func () {
+	defer func() {
 		if uid == "" {
-				// reset the job to delete the guests working dir after a certain deadline 
-				jobname := utils.REMOVE_JOB_KEY+homedir
-				utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
-					utils.RemoveDir(homedir)
-				})
+			// reset the job to delete the guests working dir after a certain deadline
+			jobname := utils.REMOVE_JOB_KEY + homedir
+			utils.GottyJobs.ResetJob(jobname, utils.DEADLINE_MINUTES*time.Minute, func() {
+				utils.RemoveDir(homedir)
+			})
 		}
 	}()
+	if req.Method == http.MethodPost {
+		defer func() {
+			if homedir != "" {
+				if err := workspace.ReconcileOwnership(utils.HOME_DIR, homedir); err != nil {
+					log.Printf("workspace ownership reconciliation failed for %s: %v", homedir, err)
+				}
+			}
+		}()
+	}
 
 	query := req.Form.Get("q")
 	path := req.Form.Get("filepath")
-	if path!="" && !strings.HasPrefix(path, homedir) {	// something fishy, bad request, return
-		http.Error(rw, path+" not Found", http.StatusNotFound)
-		return
-	}
 	if path == "" {
 		path = homedir
 	}
-	fb, err := filebrowser.New(path, nil, false, true)	// without watcher on path directories, deferwatch=true
+	relPath, pathErr := workspace.RelativePath(homedir, path)
+	if pathErr != nil {
+		http.Error(rw, "path is outside the workspace", http.StatusNotFound)
+		return
+	}
+	home, homeErr := wsync.OpenHome(utils.HOME_DIR, filepath.Base(homedir), false)
+	if homeErr != nil {
+		http.Error(rw, "workspace is unavailable", http.StatusInternalServerError)
+		return
+	}
+	defer home.Close()
+	if _, err := home.Lstat(relPath); err != nil {
+		http.Error(rw, "path is not available inside the workspace", http.StatusNotFound)
+		return
+	}
+	usageBytes, err := workspaceUsage(home, relPath)
 	if err != nil {
-		log.Println("failed to create filebrowser: ", err)
-		// still proceed as user can take necessary actions like free up the space
+		http.Error(rw, "workspace path is unavailable", http.StatusNotFound)
+		return
 	}
 
 	if req.Method == "GET" {
 		if query == "load" {
-			if !utils.IsFile(path) {
-				log.Println("Not a File: ", path)
+			entry, err := home.Lstat(relPath)
+			if err != nil || entry.Type != wsync.File {
+				log.Println("Not a regular file: ", path, err)
 				http.Error(rw, path+" is not a Valid file", http.StatusBadRequest)
 				return
 			}
-			content, err := ioutil.ReadFile(path)
-		    if err != nil {
-		        http.Error(rw, err.Error(), http.StatusInternalServerError)
-		        return
-		    }
+			file, err := home.OpenRead(relPath)
+			if err != nil {
+				http.Error(rw, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			defer file.Close()
+			content, err := ioutil.ReadAll(io.LimitReader(file, entry.Size+1))
+			if err != nil {
+				http.Error(rw, err.Error(), http.StatusInternalServerError)
+				return
+			}
 
-		    // encode the content in base64
-		    encoded := base64.StdEncoding.EncodeToString(content)
+			// encode the content in base64
+			encoded := base64.StdEncoding.EncodeToString(content)
 
-		    // set the response header and write the encoded content
-		    rw.Header().Set("Content-Type", "text/plain")
-		    fmt.Fprintf(rw, encoded)
+			// set the response header and write the encoded content
+			rw.Header().Set("Content-Type", "text/plain")
+			fmt.Fprintf(rw, encoded)
 		} else if query == "zip" {
-			parentDir := filepath.Dir(homedir)	// get parent of homedir
-			filename := strings.TrimPrefix(path, parentDir+"/")
+			filename := filepath.Base(path)
 			// Set the content type and attachment header
 			rw.Header().Set("Content-Type", "application/zip")
 			rw.Header().Set("Content-Disposition", "attachment; filename="+filename+".zip")
@@ -555,13 +816,13 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 			// Create a new zip archive
 			zipWriter := zip.NewWriter(rw)
 			defer zipWriter.Close()
-			fb.Writezip(zipWriter)
+			if err := writeWorkspaceZip(home, relPath, zipWriter); err != nil {
+				http.Error(rw, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		} else if query == "usage" {
 			// workspace size for the Files panel (T7)
-			used := 0.0
-			if fb != nil {
-				used = fb.GetSize()
-			}
+			used := float64(usageBytes) / (1024 * 1024)
 			rw.Header().Set("Content-Type", "application/json")
 			rw.Header().Set("Cache-Control", "no-store")
 			rw.Write(utils.JsonMarshal(map[string]interface{}{
@@ -571,11 +832,14 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 				"deleteAfterMinutes": utils.DEADLINE_MINUTES,
 			}))
 		} else {
-			tree, err := fb.GetJsonTree()
-		    if err != nil {
-		        log.Println("Error: ",err)
-		    }
-		    log.Println("file Tree: ", tree)
+			tree, err := workspaceTree(home, homedir, relPath)
+			if err != nil {
+				log.Printf("file browser tree failed for %q: %v", path, err)
+				http.Error(rw, "could not read this workspace path", http.StatusInternalServerError)
+				return
+			}
+			log.Println("file Tree: ", tree)
+			rw.Header().Set("Content-Type", "application/json")
 			rw.Write(utils.JsonMarshal(tree))
 		}
 	} else if req.Method == "POST" {
@@ -585,9 +849,13 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 				http.Error(rw, err.Error(), http.StatusBadRequest)
 				return
 			}
+			if usageBytes+int64(len(decoded)) > int64(filebrowser.MAXDISKUSAGE_MB)*1024*1024 {
+				http.Error(rw, "workspace disk quota exceeded", http.StatusInsufficientStorage)
+				return
+			}
 
 			// Write the decoded data to a file
-			err = ioutil.WriteFile(path, decoded, os.ModePerm)
+			err = writeWorkspaceFile(home, relPath, decoded)
 			if err != nil {
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
 				return
@@ -596,17 +864,38 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 			rw.WriteHeader(http.StatusOK)
 		} else {
 			var event filebrowser.Event
-		    err := json.Unmarshal(bodybuf, &event)
-		    if err != nil {
-		    	log.Println("failed unmarhalling body : ", err)
-		        http.Error(rw, err.Error(), http.StatusBadRequest)
-		        return
-		    }
-		    if !strings.HasPrefix(event.Name, homedir) {	// something fishy, bad request, return
-		    	http.Error(rw, event.Name+" not Found", http.StatusNotFound)
-		    	return
-		    }
-		    fb.ProcessEventRequests(rw, req, event)
+			err := json.Unmarshal(bodybuf, &event)
+			if err != nil {
+				log.Println("failed unmarhalling body : ", err)
+				http.Error(rw, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if _, err := workspace.RelativePath(homedir, event.Name); err != nil {
+				http.Error(rw, "event path is outside the workspace", http.StatusNotFound)
+				return
+			}
+			if event.NewName != "" {
+				if _, err := workspace.RelativePath(homedir, event.NewName); err != nil {
+					http.Error(rw, "event destination is outside the workspace", http.StatusNotFound)
+					return
+				}
+			}
+			if event.Op&fsnotify.Create == fsnotify.Create {
+				needed := int64(0)
+				if event.NewName != "" {
+					sourceRel, _ := workspace.RelativePath(homedir, event.Name)
+					needed, err = workspaceUsage(home, sourceRel)
+					if err != nil {
+						http.Error(rw, "copy source is unavailable", http.StatusNotFound)
+						return
+					}
+				}
+				if usageBytes+needed > int64(filebrowser.MAXDISKUSAGE_MB)*1024*1024 {
+					http.Error(rw, "workspace disk quota exceeded", http.StatusInsufficientStorage)
+					return
+				}
+			}
+			processWorkspaceEvent(rw, home, homedir, event)
 		}
 	}
 }
@@ -620,20 +909,28 @@ func (server *Server) handleFileUpload(w http.ResponseWriter, req *http.Request)
 		http.Error(w, "workspace is synchronizing, please try again", http.StatusServiceUnavailable)
 		return
 	}
+	defer func() {
+		if err := workspace.ReconcileOwnership(utils.HOME_DIR, homedir); err != nil {
+			log.Printf("workspace ownership reconciliation failed for %s: %v", homedir, err)
+		}
+	}()
 
-	fb, err := filebrowser.New(homedir, nil, false, true)	// without watcher on path directories, deferwatch=true
+	home, err := wsync.OpenHome(utils.HOME_DIR, filepath.Base(homedir), false)
 	if err != nil {
-		log.Println("failed to create filebrowser: ", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
+		http.Error(w, "workspace is unavailable", http.StatusInternalServerError)
+		return
 	}
-
-	// prevent create requests if dir quota is reached
-    if fb.GetSize() > float64(filebrowser.MAXDISKUSAGE_MB) {
-        errstr := fmt.Sprintf("Max Disk Usage Limit of %dMB Reached for : %s Please delete unwanted files and try again.\n", filebrowser.MAXDISKUSAGE_MB, homedir)
-        http.Error(w, errstr, http.StatusInsufficientStorage)
-        return
-    }
+	defer home.Close()
+	usageBytes, err := workspaceUsage(home, "")
+	if err != nil {
+		http.Error(w, "workspace is unavailable", http.StatusInternalServerError)
+		return
+	}
+	if usageBytes >= int64(filebrowser.MAXDISKUSAGE_MB)*1024*1024 {
+		errstr := fmt.Sprintf("Max Disk Usage Limit of %dMB Reached for : %s Please delete unwanted files and try again.\n", filebrowser.MAXDISKUSAGE_MB, homedir)
+		http.Error(w, errstr, http.StatusInsufficientStorage)
+		return
+	}
 
 	file, handler, err := req.FormFile("file")
 	if err != nil {
@@ -644,6 +941,10 @@ func (server *Server) handleFileUpload(w http.ResponseWriter, req *http.Request)
 	defer file.Close()
 
 	filename := handler.Filename
+	if strings.ContainsAny(filename, "/\\\x00") || wsync.ValidRel(filename) != nil {
+		http.Error(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
 
 	// Get the checksum of the file from the form data
 	checksum := req.FormValue("checksum")
@@ -656,10 +957,10 @@ func (server *Server) handleFileUpload(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	 // Remove the BOM from the file contents, if it has
-    if bytes.HasPrefix(buf.Bytes(), []byte("\xef\xbb\xbf")) {
-        buf.Next(3)
-    }
+	// Remove the BOM from the file contents, if it has
+	if bytes.HasPrefix(buf.Bytes(), []byte("\xef\xbb\xbf")) {
+		buf.Next(3)
+	}
 
 	//log.Println("buffer: ", buf.String())
 	localchecksum := fmt.Sprintf("%x", sha256.Sum256(buf.Bytes()))
@@ -669,17 +970,13 @@ func (server *Server) handleFileUpload(w http.ResponseWriter, req *http.Request)
 		//http.Error(w, "Checksum verification failed", http.StatusBadRequest)
 		//return
 	}
-
-	// Save the file to disk
-	f, err := os.OpenFile(homedir+"/"+filename, os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		log.Println("Failed to create file on server: ", err)
-		http.Error(w, "Failed to create file on server", http.StatusInternalServerError)
+	if usageBytes+int64(buf.Len()) > int64(filebrowser.MAXDISKUSAGE_MB)*1024*1024 {
+		http.Error(w, "workspace disk quota exceeded", http.StatusInsufficientStorage)
 		return
 	}
-	defer f.Close()
 
-	if _, err := io.Copy(f, buf); err != nil {
+	err = writeWorkspaceFile(home, filename, buf.Bytes())
+	if err != nil {
 		log.Println("Failed to save file on server: ", err)
 		http.Error(w, "Failed to save file on server", http.StatusInternalServerError)
 		return

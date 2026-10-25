@@ -10,7 +10,7 @@ import (
 )
 
 // ProtocolVersion is bumped when the messages change incompatibly.
-const ProtocolVersion = 1
+const ProtocolVersion = 2
 
 // Message types.
 const (
@@ -52,6 +52,8 @@ type Message struct {
 	Status  string  `json:"status,omitempty"`
 	Reason  string  `json:"reason,omitempty"`
 	Node    string  `json:"node,omitempty"`
+	UID     uint32  `json:"uid,omitempty"`
+	GID     uint32  `json:"gid,omitempty"`
 	Version int     `json:"v,omitempty"`
 	Now     int64   `json:"now,omitempty"`
 	T0      int64   `json:"t0,omitempty"`

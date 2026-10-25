@@ -54,7 +54,8 @@ cd ~
 export TZ=Etc/UTC
 
 apt-get update -y
-apt-get install -y --no-install-recommends make gcc g++ default-jdk git
+apt-get install -y --no-install-recommends make gcc g++ default-jdk git libnss-wrapper
+apt-mark manual libnss-wrapper
 # the Java REPL is jshell (utils/interactive.go): part of the JDK since 9, but fail early if it is missing
 command -v jshell >/dev/null || { echo "jshell was not installed with default-jdk"; exit 1; }
 
@@ -230,7 +231,13 @@ rm -rf "$(npm root -g)/ts-node/node_modules/typescript"
 # no `node` at all: the Node.js and TypeScript REPLs answered "executable file not found in $PATH".
 NODE_BIN_DIR="$HOME/.nvm/versions/node/v12.22.9/bin"
 if [ -x "$NODE_BIN_DIR/node" ]; then
-    for f in "$NODE_BIN_DIR"/*; do
+    # REPLs run under synthetic workspace UIDs that cannot traverse /root.
+    # Put the Node runtime under the shared tool directory before exposing its
+    # executables on the system PATH.
+    NODE_RUNTIME_DIR="$GOTTY_DIR/node-v12.22.9"
+    rm -rf "$NODE_RUNTIME_DIR"
+    cp -a "$(dirname "$NODE_BIN_DIR")" "$NODE_RUNTIME_DIR"
+    for f in "$NODE_RUNTIME_DIR/bin"/*; do
         ln -sf "$f" "/usr/local/bin/$(basename "$f")"
     done
 else
@@ -282,9 +289,26 @@ if [ $cleanup_tools -eq 1 ]; then
 	apt-get -y autoremove
 fi
 
-# finally give the ownership to username 
-chown -R $username:$username $GOTTY_DIR
-chmod -R 755 $GOTTY_DIR
+# finally give the ownership to username, while preserving per-workspace NSS
+# database ownership and permissions used by active REPL sessions.
+chown "$username:$username" "$GOTTY_DIR"
+chmod 755 "$GOTTY_DIR"
+find "$GOTTY_DIR" -mindepth 1 -maxdepth 1 ! -name runtime-nss -exec chown -R "$username:$username" {} +
+find "$GOTTY_DIR" -mindepth 1 -maxdepth 1 ! -name runtime-nss ! -name node-v12.22.9 -exec chmod -R 755 {} +
+if [ -d "$GOTTY_DIR/runtime-nss" ]; then
+  chown "$username:$username" "$GOTTY_DIR/runtime-nss"
+  chmod 0711 "$GOTTY_DIR/runtime-nss"
+  find "$GOTTY_DIR/runtime-nss" -maxdepth 1 -type f \( -name 'passwd-*' -o -name 'group-*' \) -exec chmod 0400 {} +
+fi
+if [ -d "$GOTTY_DIR/node-v12.22.9" ]; then
+  # Keep the runtime available to all workspace UIDs while preserving the
+  # execute bits of binaries and scripts only.
+  chmod -R a+rX,u+w,go-w "$GOTTY_DIR/node-v12.22.9"
+  if ! setpriv --reuid=65534 --regid=65534 --clear-groups /usr/local/bin/node --version; then
+    echo "ERROR: Node is not executable by an isolated workspace UID"
+    retVal=1
+  fi
+fi
 
 #test
 if [ $run_tests -eq 1 ]; then

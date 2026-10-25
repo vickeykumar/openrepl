@@ -1,18 +1,21 @@
 package utils
 
 import (
-	"encoding/json"
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"github.com/natefinch/lumberjack"
+	"io"
 	"log"
 	"net/url"
 	"os"
 	"os/exec"
-	"time"
 	"path/filepath"
-	"io"
-	"io/ioutil"
-	"errors"
+	"strings"
+	"time"
+	"workspace"
+	"wsync"
 )
 
 const HOME_DIR = "/tmp/home/"
@@ -29,7 +32,7 @@ const EnvFlagsKey = "EnvFlags"
 const UidKey = "uid"
 const HOME_DIR_KEY = "homedir"
 const RequestContextKey = "RequestContextKey"
-const DEADLINE_MINUTES = 60 	// keep the deadline to delete the homedir for guest as 1hr
+const DEADLINE_MINUTES = 60 // keep the deadline to delete the homedir for guest as 1hr
 const JobFile = "jobfile"
 const REMOVE_JOB_KEY = "REMOVE-"
 
@@ -37,7 +40,7 @@ const REMOVE_JOB_KEY = "REMOVE-"
 const OPENAI_REQUEST_COUNT_KEY = "OPENAI_REQUEST_COUNT"
 const OPENAI_REQUEST_LAST_ACCESS = "OPENAI_REQUEST_LAST_ACCESS"
 const GUEST_FACTOR = 0.33 // 0.33 request per minute for guest, with initial balance of 20 req
-const USER_FACTOR = 1 // 1 requests per minute for loggedin user, initial balance 60
+const USER_FACTOR = 1     // 1 requests per minute for loggedin user, initial balance 60
 const ACCESS_TOKEN_KEY = "ACCESS_TOKEN"
 const ACCESS_SECRET_KEY = "ACCESS_SECRET"
 
@@ -135,11 +138,11 @@ func GetEnvFlags(params url.Values) string {
 }
 
 func GetUnixMilli() int64 {
- 	return time.Now().UnixNano() / int64(time.Millisecond)
+	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
 func IsUserAdmin(params url.Values) bool {
-	return params.Get(USER_PRIVILEGE_KEY)==ADMIN
+	return params.Get(USER_PRIVILEGE_KEY) == ADMIN
 }
 func IsDir(path string) bool {
 	fileInfo, err := os.Stat(path)
@@ -150,11 +153,11 @@ func IsDir(path string) bool {
 }
 
 func IsFile(path string) bool {
-    fileInfo, err := os.Stat(path)
-    if err != nil {
-        return false
-    }
-    return !fileInfo.IsDir()
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !fileInfo.IsDir()
 }
 
 // IsDirEmpty returns true if the directory is empty, false otherwise.
@@ -206,99 +209,112 @@ func RemoveDir(dirPath string) {
 // RemoveDirNow deletes a home directory without asking the guard.
 func RemoveDirNow(dirPath string) {
 	absDir, err := filepath.Abs(dirPath)
-    	if err != nil {
-        	log.Printf("Error getting absolute path: %s\n", err)
-        	return
-    	}
+	if err != nil {
+		log.Printf("Error getting absolute path: %s\n", err)
+		return
+	}
 	// Check that the absolute path is under the root directory to prevent accidental deletion of system files
-    	root := string(HOME_DIR)
-    	if !filepath.HasPrefix(absDir, root) {
-        	log.Println("Error: directory path is not under root directory", HOME_DIR)
-        	return
-    	}
+	root := string(HOME_DIR)
+	if !filepath.HasPrefix(absDir, root) {
+		log.Println("Error: directory path is not under root directory", HOME_DIR)
+		return
+	}
 	// attempts to delete
 	err = os.RemoveAll(absDir)
 	if err != nil {
 		log.Printf("Error removing directory, trying rm -rf : %s\n", err)
-		    // Execute the rm -rf command
-    		cmd := exec.Command("rm", "-rf", absDir)
-    		err = cmd.Run()
-    		if err != nil {
-        		log.Printf("Error removing directory: %s\n", err)
-    		} else {
-       	 		log.Printf("Directory %s successfully removed\n", absDir)
-    		}
+		// Execute the rm -rf command
+		cmd := exec.Command("rm", "-rf", absDir)
+		err = cmd.Run()
+		if err != nil {
+			log.Printf("Error removing directory: %s\n", err)
+		} else {
+			log.Printf("Directory %s successfully removed\n", absDir)
+		}
 	} else {
 		log.Printf("Directory %s successfully removed\n", absDir)
 	}
 }
 
 func CopyFile(srcPath string, dstPath string) error {
-    src, err := os.Open(srcPath)
-    if err != nil {
-        return err
-    }
-    defer src.Close()
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
 
-    dst, err := os.Create(dstPath)
-    if err != nil {
-        return err
-    }
-    defer dst.Close()
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
 
-    if _, err := io.Copy(dst, src); err != nil {
-        return err
-    }
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
 
-    if err := dst.Sync(); err != nil {
-        return err
-    }
+	if err := dst.Sync(); err != nil {
+		return err
+	}
 
-    return nil
+	return nil
 }
 
 func CopyDir(src string, dst string) error {
-    // create the destination directory if it doesn't exist
-    if err := os.MkdirAll(dst, os.ModePerm); err != nil {
-        return err
-    }
+	// create the destination directory if it doesn't exist
+	if err := os.MkdirAll(dst, os.ModePerm); err != nil {
+		return err
+	}
 
-    // walk the source directory and copy its files and directories
-    return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-        if err != nil {
-            return err
-        }
+	// walk the source directory and copy its files and directories
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 
-        // calculate the destination path
-        relPath, err := filepath.Rel(src, path)
-        if err != nil {
-            return err
-        }
-        dstPath := filepath.Join(dst, relPath)
+		// calculate the destination path
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		dstPath := filepath.Join(dst, relPath)
 
-        // copy the file or create the directory
-        if info.IsDir() {
-            return os.MkdirAll(dstPath, os.ModePerm)
-        } else {
-            return CopyFile(path, dstPath)
-        }
-    })
+		// copy the file or create the directory
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, os.ModePerm)
+		} else {
+			return CopyFile(path, dstPath)
+		}
+	})
 }
 
 func SaveIdeContentToFile(params url.Values, filename string) error {
-	if filename == "" || !IsFile(filename) {
-		return errors.New(filename+" Not a Valid File")
+	home := GetHomeDir(params)
+	if filename == "" || home == "" {
+		return errors.New("invalid workspace file")
 	}
 	decoded, err := base64.StdEncoding.DecodeString(GetIdeContent(params))
 	if err != nil {
 		return err
 	}
-
-	// Write the decoded data to a file
-	err = ioutil.WriteFile(filename, decoded, os.ModePerm)
+	if !filepath.IsAbs(filename) {
+		filename = filepath.Join(home, filename)
+	}
+	rel, err := filepath.Rel(filepath.Clean(home), filepath.Clean(filename))
+	if err != nil || rel == "." || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return wsync.ErrUnsafePath
+	}
+	rel = filepath.ToSlash(rel)
+	if err := wsync.ValidRel(rel); err != nil {
+		return err
+	}
+	h, err := wsync.OpenHome(HOME_DIR, filepath.Base(filepath.Clean(home)), false)
 	if err != nil {
 		return err
 	}
-	return nil
+	defer h.Close()
+	if err := h.WriteFile(wsync.Entry{Path: rel, Type: wsync.File, Size: int64(len(decoded)), ModTime: time.Now().UnixNano(), Mode: 0600}, bytes.NewReader(decoded)); err != nil {
+		return err
+	}
+	return workspace.OwnEntry(HOME_DIR, home, rel)
 }
-
