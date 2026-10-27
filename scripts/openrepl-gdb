@@ -10,9 +10,9 @@
 #             Raspberry Pi worker). Emulated programs cannot be traced, but the
 #             emulator can serve gdb: QEMU_GDB=<port> in the environment of the
 #             program makes the emulator that runs it wait for gdb on that port.
-#   qemu      no ptrace and no emulator around us (x86 code under Rosetta, a
-#             sandbox without ptrace): the image's own qemu-x86_64 runs the
-#             program the same way
+#   qemu      no ptrace and no emulator around us (for example x86 code under
+#             Rosetta, or a sandbox without ptrace): the image's matching
+#             qemu-user emulator runs the program
 #   none      nothing works: say so and stop
 #
 # On the last two routes the program starts paused at its first instruction, and
@@ -32,6 +32,15 @@ if [ -z "$prog" ]; then
 	exit 2
 fi
 shift
+
+qemu_for_host() {
+	case "$(uname -m)" in
+		x86_64) echo qemu-x86_64 ;;
+		aarch64|arm64) echo qemu-aarch64 ;;
+		armv7l|armv6l) echo qemu-arm ;;
+		*) return 1 ;;
+	esac
+}
 # env and qemu need a path, gdb takes either
 case "$prog" in
 */*) ;;
@@ -50,7 +59,7 @@ if [ "$route" = auto ]; then
 		*)
 			if QEMU_VERSION=1 /bin/true 2>/dev/null | grep -q '^qemu-'; then
 				route=emulator
-			elif [ "$(uname -m)" = x86_64 ] && command -v qemu-x86_64 >/dev/null 2>&1; then
+			elif qemu_cmd=$(qemu_for_host 2>/dev/null) && command -v "$qemu_cmd" >/dev/null 2>&1; then
 				route=qemu
 			else
 				route=none
@@ -76,6 +85,17 @@ emulator | qemu) ;;
 	exit 1
 	;;
 esac
+
+if [ "$route" = qemu ]; then
+	qemu_cmd=$(qemu_for_host) || {
+		echo "No QEMU user emulator is configured for $(uname -m)." >&2
+		exit 1
+	}
+	command -v "$qemu_cmd" >/dev/null 2>&1 || {
+		echo "Required QEMU emulator is missing: $qemu_cmd" >&2
+		exit 1
+	}
+fi
 
 # --- remote routes: the program runs under qemu and gdb connects to its port ---
 
@@ -116,7 +136,7 @@ port=${port:-$((20000 + RANDOM % 30000))}
 if [ "$route" = emulator ]; then
 	launch=(env "QEMU_GDB=$port" "$prog")
 else
-	launch=(env "QEMU_GDB=$port" QEMU_LD_PREFIX=/ qemu-x86_64 "$prog")
+	launch=(env "QEMU_GDB=$port" QEMU_LD_PREFIX=/ "$qemu_cmd" "$prog")
 fi
 
 init=$(mktemp)
