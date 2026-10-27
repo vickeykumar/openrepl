@@ -14,8 +14,12 @@ async function ready(page) {
       window.editor.env &&
       window.editor.env.editor &&
       window.FileBrowser &&
-      window.FileBrowser.ready()
+      window.FileBrowser.ready() &&
+      window.editor.env.editor.commands.commands.genieAddToChat
   );
+  // The Ace instance exists before its first Firebase snapshot is applied. Wait for the
+  // editor's startup loader to finish so that snapshot cannot overwrite test content.
+  await expect(page.locator("#loader")).toBeHidden();
 }
 
 // a file in the guest's workspace, shown in the Files panel
