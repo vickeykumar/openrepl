@@ -98,13 +98,16 @@ test("the same thing is added once, and the ninth chip is refused", async ({ pag
 test("typing # lists the files, and choosing one adds it and takes the word out", async ({ page }) => {
   await ready(page);
   await makeFile(page, "report-draft.txt");
+  await expect.poll(() => page.evaluate(() =>
+    window.FileBrowser.entries().some((entry) => entry.name === "report-draft.txt")
+  )).toBe(true);
   await page.evaluate(() => window.ChatWidget.open());
   const input = page.locator("#chat-widget__input");
   await input.click();
   await page.keyboard.type("look at #report");
   const first = page.locator("#chat-widget__picker .cw-picker__item").first();
   await expect(first).toContainText("report-draft.txt");
-  await page.keyboard.press("Enter");
+  await first.click();
   await expect(chips(page)).toHaveCount(1);
   await expect(chips(page).first()).toContainText("report-draft.txt");
   await expect(input).toHaveValue("look at ");
