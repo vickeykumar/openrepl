@@ -500,14 +500,3 @@ func (h *Home) SetTime(rel string, mtimeNs int64) error {
 	ts := []unix.Timespec{timespec(mtimeNs), timespec(mtimeNs)}
 	return unix.UtimesNanoAt(dirfd, name, ts, unix.AT_SYMLINK_NOFOLLOW)
 }
-
-// Chown changes the owner of a path below the home without following a
-// symbolic link. The caller must supply IDs derived from trusted local state.
-func (h *Home) Chown(rel string, uid, gid int) error {
-	dirfd, name, err := h.parent(rel, false)
-	if err != nil {
-		return err
-	}
-	defer unix.Close(dirfd)
-	return unix.Fchownat(dirfd, name, uid, gid, unix.AT_SYMLINK_NOFOLLOW)
-}

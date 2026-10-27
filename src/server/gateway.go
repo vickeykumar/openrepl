@@ -195,11 +195,8 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 			mgr, err := wsync.NewManager(wsync.ManagerConfig{
 				Node: "gateway", IsGateway: true,
 				BaseDir: utils.HOME_DIR, StateDir: server.syncStateDir(),
-				SecureHome: secureSyncHome,
-				Identity:   syncWorkspaceIdentity,
-				OnChange:   secureSyncEntry,
-				OwnerOf:    router.OwnerOf,
-				Logf:       log.Printf,
+				OwnerOf: router.OwnerOf,
+				Logf:    log.Printf,
 			})
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to start workspace sync")

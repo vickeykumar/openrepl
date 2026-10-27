@@ -27,20 +27,12 @@ type Config struct {
 	// Accept is asked before a home the peer starts is synchronized. A
 	// gateway uses it to check that the peer owns the home. Nil accepts all.
 	Accept func(home string) error
-	// SecureHome establishes local ownership and mode before a home is scanned.
-	SecureHome func(home string) error
-	// Identity returns the locally authorized runtime identity for a home. It is
-	// exchanged in attach manifests and compared before file reconciliation.
-	Identity func(home string) (uid, gid uint32, err error)
 	// OnAttach is called when a home's conversation starts, before its first
 	// scan. A node starts watching the home here, so that a change made
 	// between the scan and the first event is not missed.
 	OnAttach func(home string)
 	// OnSynced is called when a home has been reconciled.
 	OnSynced func(home string)
-	// OnChange applies trusted local ownership policy after a peer writes or
-	// renames an entry into this home. Peer messages never supply host IDs.
-	OnChange func(home, rel string) error
 	// OnDrop is called when the peer says a home expired or moved away.
 	OnDrop func(home string)
 	// OnRefused is called when the peer would not synchronize a home, after
@@ -479,8 +471,6 @@ func (l *Link) measureOffset() {
 type homeSync struct {
 	name string
 	home *Home
-	uid  uint32
-	gid  uint32
 
 	// ctx ends when the link ends or the home is detached.
 	ctx    context.Context
@@ -680,19 +670,6 @@ func (l *Link) homeFor(name string, incoming bool) (*homeSync, error) {
 			return nil, err
 		}
 	}
-	if l.cfg.SecureHome != nil {
-		if err := l.cfg.SecureHome(name); err != nil {
-			return nil, err
-		}
-	}
-	var uid, gid uint32
-	if l.cfg.Identity != nil {
-		var err error
-		uid, gid, err = l.cfg.Identity(name)
-		if err != nil {
-			return nil, err
-		}
-	}
 	h, err := OpenHome(l.cfg.BaseDir, name, true)
 	if err != nil {
 		return nil, err
@@ -714,8 +691,6 @@ func (l *Link) homeFor(name string, incoming bool) (*homeSync, error) {
 	hs := &homeSync{
 		name:       name,
 		home:       h,
-		uid:        uid,
-		gid:        gid,
 		ctx:        hctx,
 		cancel:     hcancel,
 		rec:        rec,
@@ -992,7 +967,7 @@ func (l *Link) round(hs *homeSync, peer *Message) error {
 		baseEntries = append(baseEntries, snap.Entries[p])
 	}
 	hs.mu.Unlock()
-	l.send(Message{Type: MsgAttach, Home: hs.name, UID: hs.uid, GID: hs.gid, Digest: digest, Entries: mine, Base: baseEntries}, nil, nil)
+	l.send(Message{Type: MsgAttach, Home: hs.name, Digest: digest, Entries: mine, Base: baseEntries}, nil, nil)
 
 	// Wait for the peer's manifest.
 	if peer == nil {
@@ -1133,12 +1108,6 @@ func (l *Link) waitIdle(hs *homeSync) error {
 func (l *Link) handleAttach(m Message) error {
 	hs, err := l.homeFor(m.Home, true)
 	if err != nil {
-		l.cfg.Logf("wsync: refusing home %q: %v", m.Home, err)
-		l.send(Message{Type: MsgRefuse, Home: m.Home, Reason: err.Error()}, nil, nil)
-		return nil
-	}
-	if l.cfg.Identity != nil && (m.UID != hs.uid || m.GID != hs.gid) {
-		err := fmt.Errorf("workspace identity mismatch: peer sent uid/gid %d/%d, expected %d/%d", m.UID, m.GID, hs.uid, hs.gid)
 		l.cfg.Logf("wsync: refusing home %q: %v", m.Home, err)
 		l.send(Message{Type: MsgRefuse, Home: m.Home, Reason: err.Error()}, nil, nil)
 		return nil
@@ -1469,11 +1438,6 @@ func (l *Link) apply(hs *homeSync, m Message, body *bodyReader) (status, reason 
 			}
 			return AckError, perr.Error()
 		}
-		if l.cfg.OnChange != nil {
-			if err := l.cfg.OnChange(hs.name, e.Path); err != nil {
-				return AckError, err.Error()
-			}
-		}
 		hs.rec.Set(e)
 		return AckOK, ""
 
@@ -1519,11 +1483,6 @@ func (l *Link) apply(hs *homeSync, m Message, body *bodyReader) (status, reason 
 		case curFrom != nil && baseFrom != nil && curFrom.Equal(*baseFrom) && curTo == nil && curFrom.Equal(withPath(e, m.From)):
 			if err := hs.home.Rename(m.From, e.Path); err != nil {
 				return AckError, err.Error()
-			}
-			if l.cfg.OnChange != nil {
-				if err := l.cfg.OnChange(hs.name, e.Path); err != nil {
-					return AckError, err.Error()
-				}
 			}
 			hs.home.SetTime(e.Path, e.ModTime)
 		default:

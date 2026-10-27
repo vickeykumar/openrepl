@@ -320,7 +320,7 @@ else
 	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 
-cd "$WORKDIR";
+cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
 		go build -gcflags=all="-N -l" -o "$FILE".o "$FILE" $@;
@@ -470,7 +470,7 @@ else
 	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 
-cd "$WORKDIR";
+cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
 		go build -gcflags=all="-N -l" -o "$FILE".o $FILE $@;
@@ -1322,7 +1322,7 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if [ "$runall" -eq 1 ]; then
 	    $JAVA "$WORKDIR"/*.java $@;
 	else
-		cd "$WORKDIR";
+		cd $WORKDIR;
 	    $COMPILER $FILE $@;
     	$JAVA $CLASS_NAME $@;
 	fi
@@ -2249,7 +2249,7 @@ else
 	echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 
-cd "$WORKDIR";
+cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 	if $debug; then
 		$COMPILER -g -o "$FILE".o $FILE $@;
@@ -2371,7 +2371,7 @@ else
     echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 
-cd "$WORKDIR";
+cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     if $debug; then
         $COMPILER $@&lt;&lt;EOF
@@ -2493,7 +2493,7 @@ else
     echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 
-cd "$WORKDIR";
+cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     if $debug; then
         TS_NODE_DEBUG=true $COMPILER $FILE $@
@@ -2630,7 +2630,7 @@ else
     echo $0|base64 --decode > "$WORKDIR/$FILE";
 fi
 
-cd "$WORKDIR";
+cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
     $COMPILER -felf64 -o "$WORKDIR/$FILE".o "$WORKDIR/$FILE" $@;
 fi
