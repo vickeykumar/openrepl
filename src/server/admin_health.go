@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"os/exec"
 	"syscall"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	"gateway"
 	"persist"
 	"utils"
-	"workspace"
 )
 
 // healthCheck is one line of the health panel.
@@ -110,26 +108,12 @@ func (server *Server) health() (status string, checks []healthCheck) {
 		add("Database choice", healthWarn, "the start-up test fell back to "+backend+": "+notes)
 	}
 
-	if err := workspace.PrepareCapability(); err != nil {
-		add("Workspace UID isolation", healthFail, err.Error())
-	} else if _, err := exec.LookPath("setpriv"); err != nil {
-		add("Workspace UID isolation", healthFail, "setpriv is required to drop REPL credentials and capabilities")
-	} else {
-		add("Workspace UID isolation", healthOK, "distinct runtime UID/GID switching and ownership are available")
-	}
-	for name, available := range containers.NamespaceStatus() {
-		if available {
-			add("Namespace: "+name, healthOK, "available to REPL processes")
-		} else {
-			add("Namespace: "+name, healthWarn, "unavailable; REPLs run without this namespace")
-		}
-	}
 	if ready, total := containers.Status(); total == 0 {
-		add("Memory cgroups", healthWarn, "no REPL memory cgroups are configured")
+		add("Sandbox", healthWarn, "no sandbox is configured")
 	} else if ready == total {
-		add("Memory cgroups", healthOK, fmt.Sprintf("memory cgroups are available for all %d REPLs", total))
+		add("Sandbox", healthOK, fmt.Sprintf("%d of %d REPL sandboxes (cgroups) are ready", ready, total))
 	} else {
-		add("Memory cgroups", healthWarn, fmt.Sprintf("memory cgroups are available for %d of %d REPLs", ready, total))
+		add("Sandbox", healthWarn, fmt.Sprintf("%d of %d REPL sandboxes are ready; the others run without namespaces or a memory limit", ready, total))
 	}
 
 	if n := len(utils.AdminEmails()); n == 0 {

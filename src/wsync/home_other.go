@@ -28,5 +28,4 @@ func (h *Home) Remove(rel string) error                      { return ErrUnsuppo
 func (h *Home) Rename(from, to string) error                 { return ErrUnsupported }
 func (h *Home) Chmod(rel string, mode uint32) error          { return ErrUnsupported }
 func (h *Home) SetTime(rel string, mtimeNs int64) error      { return ErrUnsupported }
-func (h *Home) Chown(rel string, uid, gid int) error         { return ErrUnsupported }
 func (h *Home) removeStaleTemp(rel string, cutoffNs int64)   {}

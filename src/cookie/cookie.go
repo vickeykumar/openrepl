@@ -1,22 +1,21 @@
 package cookie
 
 import (
-	"containers"
 	"crypto/rand"
-	"encoder"
 	"encoding/hex"
-	"errors"
 	"github.com/gorilla/sessions"
 	"log"
 	"net/http"
 	"strconv"
-	"user"
 	"utils"
+	"user"
+	"errors"
+	"encoder"
+	"containers"
 )
 
 const MAX_CONN_PER_BROWSER = 1
-
-// this key will be used for encryption and decdryption of tokens
+// this key will be used for encryption and decdryption of tokens 
 var SECRET_KEY []byte = encoder.GenerateLargePrime().Bytes()
 
 // handling for cookies and incrementing session cookie counter
@@ -69,6 +68,7 @@ func GetCounterCookieValue(req *http.Request) int {
 	return sessionCount
 }
 
+
 var session_store *sessions.CookieStore
 
 // initilize the cookiestore with secret stored in session DB
@@ -85,93 +85,96 @@ func Get_SessionStore() *sessions.CookieStore {
 // worker uses files, a gateway may use MongoDB, package persist), so it is
 // loaded by InitSecret from there and not when the package loads.
 func init() {
-	Init_SessionStore(SECRET_KEY)
+    Init_SessionStore(SECRET_KEY)
 }
 
 // InitSecret replaces the random secret with the one stored in the session
 // database (user.InitSessionDBHandle creates it the first time). Call it after
 // that database is open.
 func InitSecret() {
-	secret := user.CookieKey()
-	if len(secret) == 0 {
-		// the session database was opened another way: read the saved one
-		session_db_handle := user.GetUserDBHandle()
-		if session_db_handle == nil {
-			panic(errors.New("uninitialized session_db_handle!!"))
-		}
-		var err error
-		secret, err = session_db_handle.Fetch([]byte(user.SESSION_KEY))
-		log.Println("secret fetched: ", err)
-		if err != nil {
-			// failed to fetch secret, generate a temporary secret for this instance
-			secret = encoder.GenerateLargePrime().Bytes()
-			log.Println("Failed to fetch secret for session_cookie, generated temporary secret. ", err)
-		}
-	}
-	SECRET_KEY = secret
-	// init one time session store using SESSION_KEY
-	Init_SessionStore(secret)
+    secret := user.CookieKey()
+    if len(secret) == 0 {
+        // the session database was opened another way: read the saved one
+        session_db_handle := user.GetUserDBHandle()
+        if session_db_handle == nil {
+            panic(errors.New("uninitialized session_db_handle!!"))
+        }
+        var err error
+        secret, err = session_db_handle.Fetch([]byte(user.SESSION_KEY))
+        log.Println("secret fetched: ", err)
+        if err != nil {
+            // failed to fetch secret, generate a temporary secret for this instance
+            secret = encoder.GenerateLargePrime().Bytes()
+            log.Println("Failed to fetch secret for session_cookie, generated temporary secret. ", err)
+        }
+    }
+    SECRET_KEY = secret
+    // init one time session store using SESSION_KEY
+    Init_SessionStore(secret)
 
 }
+
 
 func Set_SessionCookie(rw http.ResponseWriter, req *http.Request, session user.UserSession) (err error) {
-	session_cookie, err := session_store.Get(req, "user-session")
-	if err != nil {
-		// log and move on, u can still save
-		log.Println("Error: while getting cookie err: ", err.Error())
-	}
-	// Set some session values.
-	session_cookie.Values["uid"] = session.Uid
-	session_cookie.Values["sessionID"] = session.SessionID
-	session_cookie.Values["loggedIn"] = session.LoggedIn
-	session_cookie.Values["expirationTime"] = session.ExpirationTime
-	session_cookie.Values[utils.HOME_DIR_KEY] = user.GetHomeDir(session.Uid)
+		session_cookie, err := session_store.Get(req, "user-session")
+		if err != nil {
+			// log and move on, u can still save
+			log.Println("Error: while getting cookie err: ", err.Error())
+		}
+		// Set some session values.
+		session_cookie.Values["uid"] = session.Uid
+		session_cookie.Values["sessionID"] = session.SessionID
+		session_cookie.Values ["loggedIn"] = session.LoggedIn
+		session_cookie.Values ["expirationTime"] = session.ExpirationTime
+		session_cookie.Values [utils.HOME_DIR_KEY] = user.GetHomeDir(session.Uid)
 
-	// number of api request remaining in seconds
-	var req_count_rem float64 = float64(session.ExpirationTime-utils.GetUnixMilli()) / 1000
-	// set maxage of the session
-	session_cookie.Options = &sessions.Options{
-		Path:   "/",
-		MaxAge: int(req_count_rem),
-	}
+		// number of api request remaining in seconds
+		var req_count_rem float64 = float64(session.ExpirationTime-utils.GetUnixMilli())/1000
+		// set maxage of the session
+		session_cookie.Options = &sessions.Options{
+			Path:     "/",
+			MaxAge:   int(req_count_rem),
+		}
 
-	if session.LoggedIn {
-		session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = (req_count_rem / 60) * utils.UserFactor()
-	} else {
-		session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = (req_count_rem / 60) * utils.GuestFactor()
-	}
+		if session.LoggedIn {
+			session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = (req_count_rem/60)*utils.UserFactor()
+		} else {
+			session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = (req_count_rem/60)*utils.GuestFactor()
+		}
 
-	log.Println("session cookie save: ", int(session.ExpirationTime-utils.GetUnixMilli())/1000)
-	return session_store.Save(req, rw, session_cookie)
-
+		log.Println("session cookie save: ", int(session.ExpirationTime-utils.GetUnixMilli())/1000)
+		return session_store.Save(req, rw, session_cookie)
+		
 }
+
 
 func Delete_SessionCookie(rw http.ResponseWriter, req *http.Request, session user.UserSession) (err error) {
-	session_cookie, err := session_store.Get(req, "user-session")
-	if err != nil {
-		log.Println("Error: while getting cookie err: ", err.Error())
-	}
-	// Set some session values.
-	session_cookie.Values["uid"] = session.Uid
-	session_cookie.Values["sessionID"] = session.SessionID
-	session_cookie.Values["loggedIn"] = false
-	delete(session_cookie.Values, utils.OPENAI_REQUEST_COUNT_KEY)
-	delete(session_cookie.Values, utils.OPENAI_REQUEST_LAST_ACCESS)
+		session_cookie, err := session_store.Get(req, "user-session")
+		if err != nil {
+			log.Println("Error: while getting cookie err: ", err.Error())
+		}
+		// Set some session values.
+		session_cookie.Values["uid"] = session.Uid
+		session_cookie.Values["sessionID"] = session.SessionID
+		session_cookie.Values ["loggedIn"] = false
+		delete(session_cookie.Values, utils.OPENAI_REQUEST_COUNT_KEY)
+		delete(session_cookie.Values, utils.OPENAI_REQUEST_LAST_ACCESS)
 
-	// set maxage of the session
-	session_cookie.Options = &sessions.Options{
-		Path:   "/",
-		MaxAge: -1,
-	}
+		// set maxage of the session
+		session_cookie.Options = &sessions.Options{
+			Path:     "/",
+			MaxAge:   -1,
+		}
 
-	return session_store.Save(req, rw, session_cookie)
+		return session_store.Save(req, rw, session_cookie)
 }
+
 
 func Is_UserLoggedIn(req *http.Request) (loggedin bool) {
 	session_cookie, err := session_store.Get(req, "user-session")
 	val := session_cookie.Values["loggedIn"]
-	loggedin, ok := val.(bool)
-	log.Println("loggedIn: ", loggedin, err)
+	loggedin, ok := val.(bool);
+	log.Println ("loggedIn: ", loggedin, err)
 	if !ok {
 		return false
 	}
@@ -181,7 +184,7 @@ func Is_UserLoggedIn(req *http.Request) (loggedin bool) {
 func Get_Uid(req *http.Request) (uid string) {
 	session_cookie, _ := session_store.Get(req, "user-session")
 	val := session_cookie.Values["uid"]
-	uid, ok := val.(string)
+	uid, ok := val.(string);
 	if !ok {
 		return ""
 	}
@@ -191,7 +194,7 @@ func Get_Uid(req *http.Request) (uid string) {
 func Get_SessionID(req *http.Request) (sessionid string) {
 	session_cookie, _ := session_store.Get(req, "user-session")
 	val := session_cookie.Values["sessionID"]
-	sessionid, ok := val.(string)
+	sessionid, ok := val.(string);
 	if !ok {
 		return ""
 	}
@@ -201,7 +204,7 @@ func Get_SessionID(req *http.Request) (sessionid string) {
 func Get_ExpirationTime(req *http.Request) (e int64) {
 	session_cookie, _ := session_store.Get(req, "user-session")
 	val := session_cookie.Values["expirationTime"]
-	e, ok := val.(int64)
+	e, ok := val.(int64);
 	if !ok {
 		return utils.GetUnixMilli()
 	}
@@ -209,7 +212,7 @@ func Get_ExpirationTime(req *http.Request) (e int64) {
 }
 
 func IsSessionExpired(req *http.Request) bool {
-	var age int = int(Get_ExpirationTime(req)-utils.GetUnixMilli()) / 1000
+	var age int = int(Get_ExpirationTime(req)-utils.GetUnixMilli())/1000
 	if age < 0 {
 		return true
 	}
@@ -219,7 +222,7 @@ func IsSessionExpired(req *http.Request) bool {
 func GetOpenApiRequestCount(req *http.Request) (count float64) {
 	session_cookie, _ := session_store.Get(req, "user-session")
 	val := session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY]
-	count, ok := val.(float64)
+	count, ok := val.(float64);
 	if !ok {
 		return float64(0)
 	}
@@ -235,17 +238,17 @@ func SetOpenApiRequestCount(rw http.ResponseWriter, req *http.Request, count flo
 func GetOpenApiLastAccessTime(req *http.Request) (lastaccesstime int64) {
 	session_cookie, _ := session_store.Get(req, "user-session")
 	val := session_cookie.Values[utils.OPENAI_REQUEST_LAST_ACCESS]
-	lastaccesstime, ok := val.(int64)
+	lastaccesstime, ok := val.(int64);
 	if !ok {
 		return utils.GetUnixMilli() - utils.DEADLINE_MINUTES*60*1000
 	}
 	return lastaccesstime
 }
 
-/*
-to be called whenever openAIapi request is made, to recharge the request count
-based on current time lapsed, it should eb able to give n number of requests per minute,
-as given by user or GUEST_FACTOR
+/* 
+   to be called whenever openAIapi request is made, to recharge the request count
+   based on current time lapsed, it should eb able to give n number of requests per minute,
+   as given by user or GUEST_FACTOR
 */
 func UpdateOpenApiRequestCountBalance(rw http.ResponseWriter, req *http.Request) (err error) {
 	session_cookie, _ := session_store.Get(req, "user-session")
@@ -267,13 +270,13 @@ func OpenApiRequestBalance(req *http.Request) (left, max_cap, per_minute float64
 
 func openApiRequestBalanceAt(req *http.Request, current_time_mili int64) (left, max_cap, per_minute float64) {
 	// recharge req_count balance in sec
-	var req_count_balance_sec float64 = float64(current_time_mili-GetOpenApiLastAccessTime(req)) / 1000
+	var req_count_balance_sec float64 = float64(current_time_mili-GetOpenApiLastAccessTime(req))/1000
 	per_minute = utils.GuestFactor()
 	if Is_UserLoggedIn(req) {
 		per_minute = utils.UserFactor()
 	}
-	max_cap = per_minute * utils.DEADLINE_MINUTES // max num of request per minute a user can make
-	left = GetOpenApiRequestCount(req) + (req_count_balance_sec/60)*per_minute
+	max_cap = per_minute*utils.DEADLINE_MINUTES // max num of request per minute a user can make
+	left = GetOpenApiRequestCount(req)+(req_count_balance_sec/60)*per_minute
 	if left > max_cap {
 		left = max_cap
 	}
@@ -284,8 +287,8 @@ func GetOpenApiAccessToken(req *http.Request) (acc_token, secret []byte) {
 	session_cookie, _ := session_store.Get(req, "user-session")
 	val := session_cookie.Values[utils.ACCESS_TOKEN_KEY]
 	secretval := session_cookie.Values[utils.ACCESS_SECRET_KEY]
-	acc_token, _ = val.([]byte)
-	secret, _ = secretval.([]byte)
+	acc_token, _ = val.([]byte);
+	secret, _ = secretval.([]byte);
 	return acc_token, secret
 }
 
@@ -297,11 +300,11 @@ func SetOpenApiAccessToken(rw http.ResponseWriter, req *http.Request, acc_token,
 }
 
 func Get_SessionCookie(req *http.Request) (session user.UserSession) {
-	session.Uid = Get_Uid(req)
-	session.SessionID = Get_SessionID(req)
-	session.LoggedIn = Is_UserLoggedIn(req)
-	session.ExpirationTime = Get_ExpirationTime(req)
-	return session
+		session.Uid = Get_Uid(req)
+		session.SessionID = Get_SessionID(req)
+		session.LoggedIn = Is_UserLoggedIn(req)
+		session.ExpirationTime = Get_ExpirationTime(req)
+		return session
 }
 
 func UpdateGuestSessionCookieAge(rw http.ResponseWriter, req *http.Request, newage int) (err error) {
@@ -310,17 +313,17 @@ func UpdateGuestSessionCookieAge(rw http.ResponseWriter, req *http.Request, newa
 		// log and move on, u can still save
 		log.Println("Error: while getting cookie err: ", err.Error())
 	}
-	var maxage int = int(Get_ExpirationTime(req)-utils.GetUnixMilli()) / 1000
+	var maxage int = int(Get_ExpirationTime(req)-utils.GetUnixMilli())/1000
 
 	if !Is_UserLoggedIn(req) || IsSessionExpired(req) {
 		// only update age if user not logged in
 
 		maxage = newage
 	}
-	// update maxage (sec) of the session
+	// update maxage (sec) of the session 
 	session_cookie.Options = &sessions.Options{
-		Path:   "/",
-		MaxAge: maxage,
+		Path:     "/",
+		MaxAge:   maxage,
 	}
 	err = session_store.Save(req, rw, session_cookie)
 	log.Println("session cookie save: ", maxage, "Error: ", err)
@@ -328,49 +331,47 @@ func UpdateGuestSessionCookieAge(rw http.ResponseWriter, req *http.Request, newa
 }
 
 func GetOrUpdateHomeDir(rw http.ResponseWriter, req *http.Request, Uid string) (homedir string) {
-	// try to get homedir from jid, priority 1
-	jid := req.Form.Get("jid")
-	ppid := encoder.DecodeToPID(jid) // try getting parent processid
-	if ppid != -1 {                  // called as a fork of another parent process
-		if home, ok := containers.WorkspaceHome(ppid); ok && containers.IsProcess(ppid) {
-			return home
+		// try to get homedir from jid, priority 1
+		jid := req.Form.Get("jid")
+		ppid := encoder.DecodeToPID(jid)	// try getting parent processid
+		if ppid != -1 {		// called as a fork of another parent process
+			return containers.GetWorkingDir(ppid)
 		}
-		return ""
-	}
 
-	// try getting homedir from request query itself, priority 2
-	if req.Form.Has(utils.HOME_DIR_KEY) {
-		homedir = req.Form.Get(utils.HOME_DIR_KEY)
+		// try getting homedir from request query itself, priority 2
+		if req.Form.Has(utils.HOME_DIR_KEY) {
+			homedir = req.Form.Get(utils.HOME_DIR_KEY)
+			return homedir
+		}
+
+		// try getting homedir from session cookie
+		session_cookie, err := session_store.Get(req, "user-session")
+		if err != nil {
+			// log and move on, u can still save
+			log.Println("Error: while getting cookie err: ", err.Error())
+		}
+		if !Is_UserLoggedIn(req) || IsSessionExpired(req) {
+			// this is as good as empty Uid
+			Uid = ""
+		}
+		var ok bool
+
+		homedir, ok = session_cookie.Values[utils.HOME_DIR_KEY].(string);
+		log.Println("previous homedir: ", homedir, ok)
+		// check if same uid amd valid home dir, if not generate a new homedir
+		if Uid!=Get_Uid(req) || !ok || homedir=="" {
+			homedir = user.GetHomeDir(Uid)
+		}
+		session_cookie.Values[utils.HOME_DIR_KEY] = homedir
+
+		err = UpdateGuestSessionCookieAge(rw, req, utils.DEADLINE_MINUTES*60) 
+		if err != nil {
+			// log and move on
+			log.Println("Error: while updating cookie err: ", err.Error())
+		}
 		return homedir
-	}
-
-	// try getting homedir from session cookie
-	session_cookie, err := session_store.Get(req, "user-session")
-	if err != nil {
-		// log and move on, u can still save
-		log.Println("Error: while getting cookie err: ", err.Error())
-	}
-	if !Is_UserLoggedIn(req) || IsSessionExpired(req) {
-		// this is as good as empty Uid
-		Uid = ""
-	}
-	var ok bool
-
-	homedir, ok = session_cookie.Values[utils.HOME_DIR_KEY].(string)
-	log.Println("previous homedir: ", homedir, ok)
-	// check if same uid amd valid home dir, if not generate a new homedir
-	if Uid != Get_Uid(req) || !ok || homedir == "" {
-		homedir = user.GetHomeDir(Uid)
-	}
-	session_cookie.Values[utils.HOME_DIR_KEY] = homedir
-
-	err = UpdateGuestSessionCookieAge(rw, req, utils.DEADLINE_MINUTES*60)
-	if err != nil {
-		// log and move on
-		log.Println("Error: while updating cookie err: ", err.Error())
-	}
-	return homedir
 }
+
 
 // guestIDKey is where a visitor's anonymous id is kept in the session cookie.
 const guestIDKey = "gid"

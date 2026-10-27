@@ -6,15 +6,14 @@ package containers
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"github.com/containerd/cgroups"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/pkg/errors"
 	"log"
 	"math"
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,7 +25,6 @@ import (
 const (
 	CLONE_NEWUTS  = "-u"
 	CLONE_NEWPID  = "-p"
-	CLONE_NEWMNT  = "-m"
 	CLONE_NEWNET  = "-n"
 	CLONE_NEWUSER = "-U"
 )
@@ -34,7 +32,6 @@ const (
 var ns_flags = []string{
 	CLONE_NEWUTS,
 	CLONE_NEWPID,
-	CLONE_NEWMNT,
 	CLONE_NEWNET,
 	CLONE_NEWUSER,
 }
@@ -64,6 +61,14 @@ func detectCAPSysAdmin() bool {
 	return false
 }
 
+func processExists(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	_, err := os.Stat("/proc/" + strconv.Itoa(pid))
+	return err == nil
+}
+
 // syscall attributes where an admin get privilege over other
 // admin gets network access
 var admin_privileges = []uintptr{
@@ -83,151 +88,14 @@ type container struct {
 	// SysProcAttr holds optional, operating system-specific attributes to containerize the Process.
 	SysProcAttr *syscall.SysProcAttr
 
-	SubCgroups      map[int]cgroups.Cgroup // map of pid to cgroup control of subcgroups
-	MemoryAvailable bool
-	v2Base          string
-	v2SubCgroups    map[int]string
-	mu              sync.Mutex
-}
-
-var cgroupV2State struct {
-	sync.Once
-	base string
-	err  error
-}
-
-// setupCgroupV2 delegates the memory controller beneath this service's
-// systemd cgroup. The service moves into a child before controllers are
-// enabled, leaving the parent empty as required by cgroup v2.
-func setupCgroupV2() (string, error) {
-	cgroupV2State.Do(func() {
-		data, err := os.ReadFile("/proc/self/cgroup")
-		if err != nil {
-			cgroupV2State.err = err
-			return
-		}
-		var rel string
-		for _, line := range strings.Split(string(data), "\n") {
-			if strings.HasPrefix(line, "0::") {
-				rel = strings.TrimPrefix(line, "0::")
-				break
-			}
-		}
-		if rel == "" {
-			cgroupV2State.err = fmt.Errorf("no unified cgroup v2 membership")
-			return
-		}
-		root := filepath.Join("/sys/fs/cgroup", strings.TrimPrefix(filepath.Clean("/"+rel), string(filepath.Separator)))
-		controllers, err := os.ReadFile(filepath.Join(root, "cgroup.controllers"))
-		if err != nil || !strings.Contains(" "+string(controllers)+" ", " memory ") {
-			cgroupV2State.err = fmt.Errorf("cgroup v2 memory controller is unavailable")
-			return
-		}
-		base := filepath.Join(root, "openrepl")
-		if err = os.Mkdir(base, 0755); err != nil && !os.IsExist(err) {
-			cgroupV2State.err = err
-			return
-		}
-		if err = writeCgroup(filepath.Join(base, "cgroup.procs"), strconv.Itoa(os.Getpid())); err != nil {
-			cgroupV2State.err = fmt.Errorf("move service into delegated cgroup: %w", err)
-			return
-		}
-		if err = enableCgroupController(root, "memory"); err != nil {
-			cgroupV2State.err = err
-			return
-		}
-		control := filepath.Join(base, "control")
-		if err = os.Mkdir(control, 0755); err != nil && !os.IsExist(err) {
-			cgroupV2State.err = err
-			return
-		}
-		if err = writeCgroup(filepath.Join(control, "cgroup.procs"), strconv.Itoa(os.Getpid())); err != nil {
-			cgroupV2State.err = fmt.Errorf("move service into control cgroup: %w", err)
-			return
-		}
-		if err = enableCgroupController(base, "memory"); err != nil {
-			cgroupV2State.err = err
-			return
-		}
-		cgroupV2State.base = base
-	})
-	return cgroupV2State.base, cgroupV2State.err
-}
-
-func writeCgroup(path, value string) error {
-	return os.WriteFile(path, []byte(value), 0644)
-}
-
-func enableCgroupController(dir, name string) error {
-	path := filepath.Join(dir, "cgroup.subtree_control")
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	if strings.Contains(" "+string(contents)+" ", " "+name+" ") {
-		return nil
-	}
-	if err := writeCgroup(path, "+"+name); err != nil {
-		return fmt.Errorf("enable cgroup v2 %s controller: %w", name, err)
-	}
-	return nil
-}
-
-var namespaceProfile struct {
-	sync.Once
-	flags uintptr
-	names map[string]bool
-}
-
-func probeNamespaces() {
-	namespaceProfile.names = map[string]bool{}
-	probes := []struct {
-		name string
-		flag uintptr
-	}{
-		{"uts", syscall.CLONE_NEWUTS}, {"pid", syscall.CLONE_NEWPID},
-		{"mount", syscall.CLONE_NEWNS}, {"network", syscall.CLONE_NEWNET},
-	}
-	for _, p := range probes {
-		cmd := exec.Command("/bin/true")
-		cmd.SysProcAttr = &syscall.SysProcAttr{Cloneflags: p.flag}
-		if err := cmd.Run(); err == nil {
-			namespaceProfile.flags |= p.flag
-			namespaceProfile.names[p.name] = true
-		} else {
-			log.Printf("sandbox: %s namespace unavailable: %v", p.name, err)
-			namespaceProfile.names[p.name] = false
-		}
-	}
-	for namespaceProfile.flags != 0 {
-		cmd := exec.Command("/bin/true")
-		cmd.SysProcAttr = &syscall.SysProcAttr{Cloneflags: namespaceProfile.flags}
-		if cmd.Run() == nil {
-			break
-		}
-		for _, p := range probes {
-			if namespaceProfile.flags&p.flag != 0 {
-				namespaceProfile.flags &^= p.flag
-				namespaceProfile.names[p.name] = false
-				log.Printf("sandbox: namespace combination unavailable; disabling %s", p.name)
-				break
-			}
-		}
-	}
-}
-
-// NamespaceStatus reports each startup probe result.
-func NamespaceStatus() map[string]bool {
-	namespaceProfile.Do(probeNamespaces)
-	out := make(map[string]bool, len(namespaceProfile.names))
-	for k, v := range namespaceProfile.names {
-		out[k] = v
-	}
-	return out
+	SubCgroups map[int]cgroups.Cgroup // map of pid to cgroup control of subcgroups
+	mu         sync.Mutex
 }
 
 func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr, params url.Values) {
 	containerAttribs.Cloneflags = c.SysProcAttr.Cloneflags
+	containerAttribs.UidMappings = c.SysProcAttr.UidMappings
+	containerAttribs.GidMappings = c.SysProcAttr.GidMappings
 	if utils.IsUserAdmin(params) {
 		// give special rights to admin
 		for _, flags := range admin_privileges {
@@ -237,11 +105,6 @@ func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr
 }
 
 func (c *container) AddProcess(pid int) {
-	TrackProcess(pid)
-	if c.Control == nil {
-		log.Printf("sandbox: memory cgroup unavailable for pid %d", pid)
-		return
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err := c.Control.Add(cgroups.Process{Pid: pid}); err != nil {
@@ -258,44 +121,19 @@ func (c *container) IsProcess(pid int) bool {
 }
 
 func (c *container) Delete() {
-	if c.Control != nil {
-		c.Control.Delete()
-	}
+	c.Control.Delete()
 	log.Println("controller deleted for : ", c.Name)
 	// TBD : delete sub cgroup MAP
 }
 
 func (c *container) AddProcesstoNewSubCgroup(pid int, iscompiled bool) {
-	TrackProcess(pid)
-	if c.Control == nil && c.v2Base == "" {
-		return
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	pidstr := strconv.Itoa(pid)
 	memlimit := Commands2memLimitMap[c.Name] * MB // mem limit in MBs
 	if iscompiled {
 		memlimit = int64(math.Floor(3.0 * float64(memlimit)))
 		log.Println("effective memlimit: ", memlimit)
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.Control == nil {
-		path := filepath.Join(c.v2Base, c.Name+"-"+pidstr)
-		if err := os.Mkdir(path, 0755); err != nil {
-			log.Printf("sandbox: unable to create cgroup v2 for %s pid %d: %v", c.Name, pid, err)
-			return
-		}
-		if err := writeCgroup(filepath.Join(path, "memory.max"), strconv.FormatInt(memlimit, 10)); err != nil {
-			log.Printf("sandbox: unable to set cgroup v2 memory limit for %s pid %d: %v", c.Name, pid, err)
-			os.Remove(path)
-			return
-		}
-		if err := writeCgroup(filepath.Join(path, "cgroup.procs"), pidstr); err != nil {
-			log.Printf("sandbox: unable to move pid %d into cgroup v2: %v", pid, err)
-			os.Remove(path)
-			return
-		}
-		c.v2SubCgroups[pid] = path
-		return
 	}
 	control, err := c.Control.New(pidstr, &specs.LinuxResources{
 		/*CPU: &specs.LinuxCPU{
@@ -321,15 +159,8 @@ func (c *container) AddProcesstoNewSubCgroup(pid int, iscompiled bool) {
 }
 
 func (c *container) DeleteProcessFromSubCgroup(pid int) {
-	UntrackProcess(pid)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if path, ok := c.v2SubCgroups[pid]; ok {
-		if err := os.Remove(path); err != nil {
-			log.Printf("sandbox: unable to remove cgroup v2 for pid %d: %v", pid, err)
-		}
-		delete(c.v2SubCgroups, pid)
-	}
 	cgroup, ok := c.SubCgroups[pid]
 	if ok {
 		err := cgroup.Delete()
@@ -345,10 +176,6 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 	var containerObj container
 	var err error
 	containerObj.Name = name
-	containerObj.SubCgroups = make(map[int]cgroups.Cgroup)
-	containerObj.v2SubCgroups = make(map[int]string)
-	namespaceProfile.Do(probeNamespaces)
-	containerObj.SysProcAttr = &syscall.SysProcAttr{Cloneflags: namespaceProfile.flags}
 	// Load and clean up the containers if already exists
 	ctrl, err := cgroups.Load(cgroups.V1, cgroups.StaticPath("/"+name+"_container"))
 	if err == nil {
@@ -366,33 +193,33 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 		},
 	})
 	if err != nil {
-		log.Printf("sandbox: memory cgroup unavailable for %s: %v", name, err)
-		containerObj.Control = nil
-		if base, v2err := setupCgroupV2(); v2err == nil {
-			containerObj.v2Base = base
-			containerObj.MemoryAvailable = true
-		} else {
-			log.Printf("sandbox: cgroup v2 memory unavailable for %s: %v", name, v2err)
-		}
-	} else {
-		containerObj.MemoryAvailable = true
+		return &containerObj, errors.New("Unable to create Container: " + err.Error())
 	}
-	log.Println("INFO: New sandbox profile created for : ", name, memlimit)
+
+	containerObj.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags:   syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWUSER,
+		Unshareflags: syscall.CLONE_NEWNS | syscall.CLONE_NEWNET,
+		UidMappings: []syscall.SysProcIDMap{
+			{
+				ContainerID: 0,
+				HostID:      os.Getuid(),
+				Size:        1,
+			},
+		},
+		GidMappings: []syscall.SysProcIDMap{
+			{
+				ContainerID: 0,
+				HostID:      os.Getgid(),
+				Size:        1,
+			},
+		},
+	}
+	containerObj.SubCgroups = make(map[int]cgroups.Cgroup)
+	log.Println("INFO: New Container created for : ", name, memlimit)
 	return &containerObj, nil
 }
 
 func EnableNetworking(pid int) {
-	// REPLs normally share the service's network namespace when namespace
-	// creation is unavailable. nsenter -n still calls setns in that case and
-	// fails without CAP_SYS_ADMIN, even though there is nothing to configure.
-	ours, ourErr := os.Readlink("/proc/self/ns/net")
-	theirs, theirErr := os.Readlink("/proc/" + strconv.Itoa(pid) + "/ns/net")
-	if ourErr == nil && theirErr == nil && ours == theirs {
-		return
-	}
-	if !HasCAPSysAdmin {
-		return
-	}
 	//log.Println("euid: ",syscall.Getuid(), syscall.Geteuid())
 	var b bytes.Buffer
 	cmd := exec.Command("/usr/bin/nsenter", "-n", "-t"+strconv.Itoa(pid), "ifconfig", "lo", "up")
@@ -453,26 +280,23 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 		compilerOptions := []string{"-c", utils.GetCompilationScript(command), arg0, otherargs}
 		commandlist = append(commandlist, compilerOptions...)
 	}
-	if ppid == -1 || !HasCAPSysAdmin {
-		// Without a distinct namespace to join (or permission to join one),
-		// launch directly. In particular, bare `nsenter -t PID` may try to
-		// enter every namespace and fail even though the parent is usable.
+	if ppid == -1 {
 		commandArgs = append(commandArgs, commandlist...)
 	} else {
 		// this process will run in namespace of ppid (forked namespace)
 		// syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWUSER
-		// Enter only namespaces which differ from this process. A REPL that
-		// started without namespaces already shares ours; invoking nsenter with
-		// only -t can attempt to enter all of them unnecessarily.
-		namespaceFlags := differingNamespaceFlags(ppid)
-		if len(namespaceFlags) == 0 {
-			commandArgs = append(commandArgs, commandlist...)
-		} else {
-			nsenterArgs := []string{"/usr/bin/nsenter", "-t" + strconv.Itoa(ppid)}
-			nsenterArgs = append(nsenterArgs, namespaceFlags...)
-			commandArgs = append(commandArgs, nsenterArgs...)
-			commandArgs = append(commandArgs, commandlist...)
+		nsenterArgs := []string{"/usr/bin/nsenter", "-t" + strconv.Itoa(ppid)}
+		if HasCAPSysAdmin {
+			// Request the parent's namespaces only when the process has the
+			// capability required to enter them, and only those that are not
+			// ours already: a REPL that was started without namespaces (no
+			// cgroups or user namespaces on this host) lives in the same ones
+			// as this process, and nsenter fails to "enter" a user namespace
+			// one is in.
+			nsenterArgs = append(nsenterArgs, differingNamespaceFlags(ppid)...)
 		}
+		commandArgs = append(commandArgs, nsenterArgs...)
+		commandArgs = append(commandArgs, commandlist...)
 	}
 	log.Println("commands Args: ", commandArgs)
 	return commandArgs
@@ -489,14 +313,52 @@ func GetWorkingDir(pid int) string {
 	return wd
 }
 
-// GetHomeDirFromEnv retains its historical name, but HOME is no longer read
-// from /proc: runtime UIDs intentionally make that file unreadable to the
-// server. Only processes started and registered by this server are resolvable.
-func GetHomeDirFromEnv(pid int) (string, error) {
-	if home, ok := WorkspaceHome(pid); ok {
-		return home, nil
+// splitEnv splits a string containing null-separated environment variable entries into a slice
+func splitEnv(env string) []string {
+	return strings.Split(env, "\x00")
+}
+
+// parseEnv parses an environment variable entry of the form "NAME=value" and returns the name, value, and a boolean indicating success
+func parseEnv(entry string) (name, value string, ok bool) {
+	parts := strings.SplitN(entry, "=", 2)
+	if len(parts) != 2 {
+		return "", "", false
 	}
-	return "", os.ErrNotExist
+	return parts[0], parts[1], true
+}
+
+// GetHomeDirFromEnv returns the home directory of the user associated with the given PID
+func GetHomeDirFromEnv(pid int) (string, error) {
+	// Get the environment variables of the process
+	envPath := "/proc/" + strconv.Itoa(pid) + "/environ"
+	file, err := os.Open(envPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// Read the environment variables
+	buf := make([]byte, 8192) // Allocate a buffer for reading
+	n, err := file.Read(buf)
+	if err != nil {
+		return "", err
+	}
+
+	// Convert the buffer to a string and split it into environment variables
+	env := string(buf[:n])
+	var homeDir string
+	for _, entry := range splitEnv(env) {
+		if name, value, ok := parseEnv(entry); ok && name == "HOME" {
+			homeDir = value
+			break
+		}
+	}
+
+	if homeDir == "" {
+		return "", os.ErrNotExist // HOME environment variable not found
+	}
+
+	return homeDir, nil
 }
 
 // differingNamespaceFlags returns the nsenter flags of the namespaces of pid
@@ -504,8 +366,7 @@ func GetHomeDirFromEnv(pid int) (string, error) {
 // process that is gone, /proc not readable) it returns all of them, as before.
 func differingNamespaceFlags(pid int) []string {
 	pairs := []struct{ flag, ns string }{
-		{CLONE_NEWUTS, "uts"}, {CLONE_NEWPID, "pid"}, {CLONE_NEWMNT, "mnt"},
-		{CLONE_NEWNET, "net"}, {CLONE_NEWUSER, "user"},
+		{CLONE_NEWUTS, "uts"}, {CLONE_NEWPID, "pid"}, {CLONE_NEWNET, "net"}, {CLONE_NEWUSER, "user"},
 	}
 	var flags []string
 	for _, p := range pairs {

@@ -6,7 +6,6 @@ package containers
 import (
 	"log"
 	"net/url"
-	"os"
 	"syscall"
 	"utils"
 )
@@ -15,14 +14,11 @@ const BASH_PATH = "/bin/bash"
 
 func detectCAPSysAdmin() bool { return false }
 
+func processExists(pid int) bool { return false }
+
 type container struct {
 	// Name of the container as per command Name.
-	Name            string
-	MemoryAvailable bool
-}
-
-func NamespaceStatus() map[string]bool {
-	return map[string]bool{"uts": false, "pid": false, "mount": false, "network": false}
+	Name string
 }
 
 func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr, params url.Values) {
@@ -94,6 +90,6 @@ func GetWorkingDir(pid int) string {
 	return ""
 }
 
-func GetHomeDirFromEnv(pid int) (string, error) {
-	return "", os.ErrNotExist
+func GetHomeDirFromEnv(pid int) string {
+	return ""
 }
