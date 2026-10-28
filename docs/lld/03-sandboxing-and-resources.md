@@ -7,23 +7,24 @@ Scope: `src/containers/{container.go,container_linux.go,container_notlinux.go}`,
 OpenREPL does not use a container runtime. Each REPL is a normal child process of `gotty` that is:
 
 - **Cloned into new namespaces**, set by `SysProcAttr.Cloneflags` on `exec.Cmd`.
-- **Placed in a cgroup v1 memory cgroup** of its own, through `github.com/containerd/cgroups` (`cgroups.V1`).
+- **Placed in its own cgroup v2 memory-limited leaf**, using `github.com/containerd/cgroups/v3/cgroup2` and the unified cgroup filesystem (`memory.max`).
 
 ```mermaid
 flowchart TB
-    subgraph cg["/sys/fs/cgroup/memory (cgroup v1)"]
-        P1["/python_container<br/>(no limit)"]
-        P1 --> C11["/python_container/4121<br/>limit 2 MB"]
-        P1 --> C12["/python_container/4388<br/>limit 6 MB (Run: 3×)"]
-        P2["/cling_container<br/>(no limit)"]
-        P2 --> C21["/cling_container/5002<br/>limit 22 MB"]
+    subgraph cg["delegated cgroup v2 subtree"]
+        M["openrepl/manager<br/>(gotty process)"]
+        P1["openrepl/python_container<br/>(empty parent)"]
+        P1 --> C11["python_container/4121<br/>memory.max = 2 MB"]
+        P1 --> C12["python_container/4388<br/>memory.max = 6 MB (Run: 3×)"]
+        P2["openrepl/cling_container<br/>(empty parent)"]
+        P2 --> C21["cling_container/5002<br/>memory.max = 22 MB"]
     end
 ```
 
-- `containers.InitContainers()` (at start-up) creates one parent cgroup `/<command>_container` for every key in `Commands2memLimitMap`. It first deletes any stale cgroup of that name. For each container it creates successfully, it also creates `/tmp/home/` and `/tmp/home/<command>/` with mode 0777.
-- `container.AddProcesstoNewSubCgroup(pid, iscompiled)` creates the child cgroup `<pid>` with `memory.limit = Commands2memLimitMap[cmd] MB`, tripled for Run/compile. It then moves the PID in and records it in `SubCgroups[pid]`.
+- `containers.InitContainers()` reads the server's unified cgroup path, creates an `openrepl` manager with the containerd cgroups v3 library, creates an `openrepl/manager` leaf and moves gotty into it. This leaves the delegated parent empty so the library can enable the `memory` controller. It then creates one empty `/<command>_container` parent per key in `Commands2memLimitMap`.
+- `container.AddProcesstoNewSubCgroup(pid, iscompiled)` creates the child cgroup `<pid>` with `Resources{Memory: {Max: Commands2memLimitMap[cmd] MB}}` (tripled for Run/compile), then moves the PID into it and records the manager in `SubCgroups[pid]`.
 - `DeleteProcessFromSubCgroup(pid)` removes it when the process exits. `DeleteContainers()` removes the parents on shutdown.
-- If `cgroups.New` fails (for example on a cgroup v2 host, or in Docker without `--privileged` and the `/sys/fs/cgroup` mount), the command gets **no** entry in `Containers`. Every later call becomes a no-op, so the REPL runs with no namespaces and no memory limit. The log line `Unable to create Container` is the signal.
+- If cgroup v2 is unavailable or the server's cgroup is not delegated and writable, initialization fails and `Containers` stays empty. REPLs then run without namespaces or memory limits. The cgroup initialization error is logged.
 - The CPU limit code is present but commented out, so only memory is limited.
 
 ### Namespaces
@@ -77,7 +78,7 @@ on connect:  n  = counter.add(1)
 on close:    counter.done(); counter.removeWieght(memLimit[command])
 ```
 
-With `--max-connection 2564` (production), that is a budget of about 2.5 GB of REPL memory limits, which matches `MAX_MEMORY_LIMIT = 2564`. For example, it allows about 20 concurrent Java REPLs or about 1,280 Python REPLs.
+With `--max-connection 2564` (production), that is a budget of about 2.5 GB of REPL memory limits, which matches `MAX_MEMORY_LIMIT = 2564`. For example, it allows about 13 concurrent Java REPLs (192 MB each) or about 80 Python REPLs (32 MB each).
 
 ## 4. Disk quota
 

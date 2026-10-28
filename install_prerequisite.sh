@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # please run as sudo
-# reboot once after installing to take effect for cgroups and containers
 
 GOTTY_DIR=/opt/gotty 
 mkdir -p $GOTTY_DIR || true
@@ -277,18 +276,6 @@ else
     echo "ERROR: $NODE_BIN_DIR/node is missing: nvm did not install node"
     retVal=1
 fi
-
-# Docker: Error response from daemon: cgroups: cgroup mountpoint does not exist: unknown
-# if using docker use privileged mode with cgroup mounted (-v /sys/fs/cgroup:/sys/fs/cgroup:rw )
-mkdir /sys/fs/cgroup/systemd || true
-mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd 2>&1 || true
-
-# check /sys/fs/cgroup/memory is mounted correctly, if not
-# enable memory cgroup V1 by changing /etc/default/grub
-# GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=0"
-# cgroup_enable=memory
-# reboot
-
 
 # currently stable gdb version is 8.1.1, can be copied from bin/ build from src
 #apt-get install -y --no-install-recommends gdb

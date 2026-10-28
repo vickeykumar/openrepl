@@ -18,12 +18,12 @@ These are quirks and debt found during the code walkthrough, ordered by impact w
 
 | # | Issue | Suggested fix |
 |---|---|---|
-| P1 | **cgroup v1 only** (`cgroups.New(cgroups.V1, …)`). On cgroup v2 hosts, containers are silently skipped and REPLs run without namespaces or limits. The only signal is a log line. | Port to cgroup v2 (`containerd/cgroups/v3` `cgroup2` manager). Until then, fail fast or show a banner when `InitContainers` creates nothing. |
+| P1 | **Sandboxing requires cgroup v2 delegation.** Without a writable delegated memory controller, REPLs run without namespaces and per-process memory limits; the server logs the initialization failure. | Delegate the memory controller to the OpenREPL service/container and mount its cgroup hierarchy read-write. |
 | P2 | **Workspaces live under `/tmp/home`**, including signed-in users' files. They are lost when the container is recreated unless a volume is mounted. | Move them under a configurable data dir (for example `/opt/gotty/home`) and document the volume. |
 | P3 | **REPLs share the host filesystem view** (new mount namespace, no chroot). Workspaces are separated only by cwd and `$HOME`. | Consider a read-only base plus a per-user bind mount (pivot_root), or an OCI runtime. |
 | P4 | **Only memory is limited.** CPU shares are commented out, and there is no pids or disk-I/O limit. The disk quota is checked only on session start, create and upload. | Enable the `cpu` and `pids` controllers, and consider per-workspace quotas (XFS project quotas or loopback images). |
 | P5 | **Minimal automated tests.** Only `webtty/webtty_test.go` exists. `make test` checks only `go fmt`, and CI only builds the image. | Add handler tests (routing, file-browser path checks, rate limiter) and run `go test` in CI. |
-| P6 | **Legacy Go build.** Go 1.19 with GOPATH and vendored copies (some patched in place). The terminal client was upgraded in Phase 3 (T19): xterm.js 6, webpack 5, TypeScript 4.9, and no bundled Firebase. The build image still uses Node 12, which keeps TypeScript below 5. | Migrate to Go modules (keeping the pty patch as a fork), and move the build image to a current Node LTS. |
+| P6 | **Legacy Go build.** Go 1.23 with GOPATH and vendored copies (some patched in place). The terminal client was upgraded in Phase 3 (T19): xterm.js 6, webpack 5, TypeScript 4.9, and no bundled Firebase. The build image still uses Node 12, which keeps TypeScript below 5. | Migrate to Go modules (keeping the pty patch as a fork), and move the build image to a current Node LTS. |
 
 ## Frontend
 

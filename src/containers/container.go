@@ -21,24 +21,37 @@ const MB = 1024 * 1024
 
 // Command Name to memory limit in MB (megabytes).
 var Commands2memLimitMap = map[string]int64{
-	"cling":     22, // threshold : 11
-	"gomacro":   45, // the weight of the Go REPL before gomacro: measure it with the image
-	"yaegi":     10,
-	"python":    2,
-	"python2.7": 2,  // 3
-	"bash":      10, // 2, for simultaneous bash consoles
-	"ipython":   10,
-	"ipython3":  20,
-	"irb":       10,
-	"perli":     3,
-	"node":      10,
+	"cling":     192, // Cling 1.2 on arm64 starts near 123 MB (it was 22 for the old minimal x86 build; threshold : 11)
+	"gomacro":   45,  // the weight of the Go REPL before gomacro: measure it with the image
+	"yaegi":     48,  // starts near 16 MB
+	"python":    32,  // Python 3: it starts at 6 MB, the rest is for the user's code
+	"python2.7": 16,  // starts near 5 MB
+	"bash":      0,   // set in init: the largest limit of the others, since a shell starts any of them
+	"ipython":   96,
+	"ipython3":  96, // starts near 40 MB
+	"irb":       64, // starts near 17 MB
+	"perli":     32, // starts near 8 MB
+	"node":      64, // starts near 29 MB
 	"jq-repl":   2,
-	"tclsh":     2,
+	"tclsh":     8,   // starts near 3 MB
 	"java":      192, // jvm takes lot of memory: jshell, tuned (utils/interactive.go), peaks near 150 MB; Run uses javac and java
 	"evcxr":     50,  // rust REPL
 	"sqlite3":   10,
-	"ts-node":   50,
+	"ts-node":   192, // starts near 104 MB: it loads the TypeScript compiler
 	"rappel":    2,
+}
+
+// A bash console can start any other REPL, and what it starts runs in its cgroup,
+// so its limit is the largest of the others. It follows the table: change a
+// limit above and bash changes with it.
+func init() {
+	var largest int64
+	for name, mb := range Commands2memLimitMap {
+		if name != "bash" && mb > largest {
+			largest = mb
+		}
+	}
+	Commands2memLimitMap["bash"] = largest
 }
 
 var memLimitMutex sync.Mutex
@@ -89,6 +102,10 @@ func Status() (ready, total int) { return len(Containers), len(Commands2memLimit
 func InitContainers() {
 	HasCAPSysAdmin = detectCAPSysAdmin()
 	log.Println("INFO: CAP_SYS_ADMIN available:", HasCAPSysAdmin)
+	if err := initCgroupV2(); err != nil {
+		log.Println("ERROR: unable to initialize cgroup v2 sandboxing:", err)
+		return
+	}
 
 	for command, _ := range Commands2memLimitMap {
 		containerObj, err := NewContainer(command, MAX_MEMORY_LIMIT*MB) // memlimit in MB
@@ -133,10 +150,10 @@ func DeleteProcessFromSubCgroup(name string, pid int) {
 }
 
 // The REPLs this server started and that have not ended, by pid. A forked tab
-// may only join one of these. It does not depend on cgroups: on a host where
-// the memory cgroups cannot be made (cgroup v2, a container without the
-// capability) the cgroup bookkeeping below is empty, and a fork was refused as
-// "invalid parent id" even though the parent terminal was running.
+// may only join one of these. It does not depend on cgroups: if delegated
+// cgroup access is unavailable, the cgroup bookkeeping below is empty, and a
+// fork was refused as "invalid parent id" even though the parent terminal was
+// running.
 var (
 	liveMu sync.Mutex
 	live   = map[int]struct{}{}

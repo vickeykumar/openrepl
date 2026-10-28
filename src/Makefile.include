@@ -1,14 +1,19 @@
-GIT_TOP=$(shell git rev-parse --show-toplevel 2>/dev/null)
-# git refuses a repo owned by another user (a folder mounted into the dev
-# container, until safe.directory is set). Then the repo root is simply the
-# folder above this file, which works from src/ and from src/gotty/.
-ifeq ($(GIT_TOP),)
-GIT_TOP := $(abspath $(dir $(realpath $(lastword $(MAKEFILE_LIST))))..)
+# Resolve the repository root from this include file, not the caller's
+# working directory. This also works when Git refuses the mounted repository
+# because of its ownership (for example, inside the dev container).
+MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+GIT_TOP := $(shell git -C "$(MAKEFILE_DIR)" rev-parse --show-toplevel 2>/dev/null)
+ifeq ($(strip $(GIT_TOP)),)
+GIT_TOP := $(abspath $(MAKEFILE_DIR)..)
 endif
 UNAME := $(shell uname)
 
 ifeq ($(UNAME), Linux)
-	GOROOT=${GIT_TOP}/go_1.19/go
+# One Go per CPU architecture: the repository folder is shared between containers
+# of different architectures (an arm64 and an amd64 dev container), and a Go for
+# the other architecture fails with "no such instruction" when it builds cgo code.
+HOST_ARCH := $(shell uname -m)
+GOROOT=${GIT_TOP}/go_1.23/$(HOST_ARCH)/go
 else
 	GOROOT=$(shell python -c 'import os.path; print(os.path.realpath("/usr/local/bin/go").rstrip("/bin/go"))')
 endif

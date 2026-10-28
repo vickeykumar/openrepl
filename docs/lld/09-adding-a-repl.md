@@ -75,7 +75,7 @@ Checklist:
 - [ ] `/demo?q=lua5.4` returns `"Status":"SUCCESS"`.
 - [ ] Selecting **Lua** opens a working prompt, and the log shows `New client … connections` with the new weight.
 - [ ] **Run** executes the editor content, and a file selected in the tree is saved and run.
-- [ ] On a cgroup v1 host, `/sys/fs/cgroup/memory/lua5.4_container/<pid>/memory.limit_in_bytes` exists for a live session.
+- [ ] On a delegated cgroup v2 host, `memory.max` exists in the live session's REPL cgroup below the OpenREPL delegated subtree.
 - [ ] **Fork REPL** and an extra terminal tab both work (nsenter into the same namespaces).
 - [ ] The Docker image builds (`docker build .`), and CI passes.
 

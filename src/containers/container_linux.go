@@ -6,19 +6,20 @@ package containers
 import (
 	"bufio"
 	"bytes"
-	"github.com/containerd/cgroups"
-	specs "github.com/opencontainers/runtime-spec/specs-go"
-	"github.com/pkg/errors"
 	"log"
 	"math"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"utils"
+
+	cgroup2 "github.com/containerd/cgroups/v3/cgroup2"
+	"github.com/pkg/errors"
 )
 
 // flags for nsenter
@@ -82,13 +83,13 @@ var CPUshares = uint64(1024)
 type container struct {
 	// Name of the container as per command Name.
 	Name string
-	// Control holds container specific control/limits.
-	Control cgroups.Cgroup
+	// Control is this command's cgroup v2 parent. REPL processes live in children.
+	Control *cgroup2.Manager
 
 	// SysProcAttr holds optional, operating system-specific attributes to containerize the Process.
 	SysProcAttr *syscall.SysProcAttr
 
-	SubCgroups map[int]cgroups.Cgroup // map of pid to cgroup control of subcgroups
+	SubCgroups map[int]*cgroup2.Manager // map of pid to cgroup v2 leaf control
 	mu         sync.Mutex
 }
 
@@ -105,11 +106,8 @@ func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr
 }
 
 func (c *container) AddProcess(pid int) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if err := c.Control.Add(cgroups.Process{Pid: pid}); err != nil {
-		log.Printf("ERROR: Error while adding process : %d to cgroups: %s\n", pid, err.Error())
-	}
+	// The process remains in the server's manager leaf until
+	// AddProcesstoNewSubCgroup creates its limited leaf and moves it there.
 	log.Println("INFO: Waiting for command to finish...", pid)
 }
 
@@ -121,7 +119,9 @@ func (c *container) IsProcess(pid int) bool {
 }
 
 func (c *container) Delete() {
-	c.Control.Delete()
+	if err := c.Control.Delete(); err != nil {
+		log.Printf("ERROR: unable to remove cgroup %s: %v", c.Name, err)
+	}
 	log.Println("controller deleted for : ", c.Name)
 	// TBD : delete sub cgroup MAP
 }
@@ -135,24 +135,18 @@ func (c *container) AddProcesstoNewSubCgroup(pid int, iscompiled bool) {
 		memlimit = int64(math.Floor(3.0 * float64(memlimit)))
 		log.Println("effective memlimit: ", memlimit)
 	}
-	control, err := c.Control.New(pidstr, &specs.LinuxResources{
-		/*CPU: &specs.LinuxCPU{
-		        Shares: &CPUshares,
-		        Cpus:   "0",
-		        Mems:   "0",
-		},*/
-		Memory: &specs.LinuxMemory{
-			Limit: &memlimit,
-		},
+	control, err := c.Control.NewChild(pidstr, &cgroup2.Resources{
+		Memory: &cgroup2.Memory{Max: &memlimit},
 	})
 	if err != nil {
-		log.Println("ERROR: unable to create sub cgroup for : " + c.Name + " pid: " + pidstr + " error: " + err.Error())
+		log.Printf("ERROR: unable to create limited cgroup for %s pid %s: %v", c.Name, pidstr, err)
 		return
 	}
-	err = control.Add(cgroups.Process{Pid: pid})
-	if err != nil {
-		log.Println("ERROR: Unable to add process to sub cgroup: " + c.Name + " pid: " + pidstr + " error: " + err.Error())
-		control.Delete()
+	if err := control.AddProc(uint64(pid)); err != nil {
+		log.Printf("ERROR: unable to move process to cgroup for %s pid %s: %v", c.Name, pidstr, err)
+		if deleteErr := control.Delete(); deleteErr != nil {
+			log.Printf("ERROR: unable to remove failed cgroup for %s pid %s: %v", c.Name, pidstr, deleteErr)
+		}
 		return
 	}
 	c.SubCgroups[pid] = control
@@ -163,8 +157,7 @@ func (c *container) DeleteProcessFromSubCgroup(pid int) {
 	defer c.mu.Unlock()
 	cgroup, ok := c.SubCgroups[pid]
 	if ok {
-		err := cgroup.Delete()
-		if err != nil {
+		if err := cgroup.Delete(); err != nil {
 			log.Println("ERROR: Unable to delete cgroup for : " + c.Name + " pid: " + strconv.Itoa(pid) + " ERROR: " + err.Error())
 		}
 		delete(c.SubCgroups, pid)
@@ -174,27 +167,25 @@ func (c *container) DeleteProcessFromSubCgroup(pid int) {
 
 func NewContainer(name string, memlimit int64) (*container, error) {
 	var containerObj container
-	var err error
 	containerObj.Name = name
-	// Load and clean up the containers if already exists
-	ctrl, err := cgroups.Load(cgroups.V1, cgroups.StaticPath("/"+name+"_container"))
-	if err == nil {
-		log.Println("INFO: cgroup already exists, deleting: " + name + "_container")
-		ctrl.Delete()
+	groupName := name + "_container"
+	stalePath := filepath.Join(cgroupV2Mountpoint, "openrepl", groupName)
+	if _, err := os.Stat(stalePath); err == nil {
+		stale, loadErr := cgroup2.Load(filepath.Join("/openrepl", groupName), cgroup2.WithMountpoint(cgroupV2Mountpoint))
+		if loadErr != nil {
+			return &containerObj, errors.Wrap(loadErr, "unable to load stale cgroup v2 command group")
+		}
+		if err := stale.Delete(); err != nil {
+			return &containerObj, errors.Wrap(err, "unable to remove stale cgroup v2 command group")
+		}
+	} else if !os.IsNotExist(err) {
+		return &containerObj, errors.Wrap(err, "unable to inspect stale cgroup v2 command group")
 	}
-	containerObj.Control, err = cgroups.New(cgroups.V1, cgroups.StaticPath("/"+name+"_container"), &specs.LinuxResources{
-		/*CPU: &specs.LinuxCPU{
-		        Shares: &CPUshares,
-		        Cpus:   "0",
-		        Mems:   "0",
-		},*/
-		Memory: &specs.LinuxMemory{
-			Limit: nil, // unlimited, will impose memlimit when adding it to subgroups
-		},
-	})
+	control, err := cgroupV2Root.NewChild(groupName, &cgroup2.Resources{Memory: &cgroup2.Memory{}})
 	if err != nil {
-		return &containerObj, errors.New("Unable to create Container: " + err.Error())
+		return &containerObj, errors.Wrap(err, "unable to create cgroup v2 command group")
 	}
+	containerObj.Control = control
 
 	containerObj.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags:   syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWUSER,
@@ -214,9 +205,53 @@ func NewContainer(name string, memlimit int64) (*container, error) {
 			},
 		},
 	}
-	containerObj.SubCgroups = make(map[int]cgroups.Cgroup)
+	containerObj.SubCgroups = make(map[int]*cgroup2.Manager)
 	log.Println("INFO: New Container created for : ", name, memlimit)
 	return &containerObj, nil
+}
+
+const cgroupV2Mount = "/sys/fs/cgroup"
+
+var (
+	cgroupV2Root       *cgroup2.Manager
+	cgroupV2Mountpoint string
+)
+
+// initCgroupV2 prepares a delegated, process-free parent for REPL cgroups.
+// cgroup v2 requires processes to live in leaf cgroups when controllers are
+// enabled for child cgroups, so the server moves itself into a manager leaf.
+func initCgroupV2() error {
+	data, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil {
+		return err
+	}
+	var rel string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "0::") {
+			rel = strings.TrimPrefix(line, "0::")
+			break
+		}
+	}
+	if rel == "" {
+		return errors.New("unified cgroup v2 hierarchy not found for process")
+	}
+	rel = strings.TrimPrefix(filepath.Clean("/"+rel), "/")
+	cgroupV2Mountpoint = filepath.Join(cgroupV2Mount, rel)
+	if _, err := os.Stat(filepath.Join(cgroupV2Mountpoint, "cgroup.controllers")); err != nil {
+		return errors.Wrap(err, "cgroup v2 is not mounted at /sys/fs/cgroup")
+	}
+	cgroupV2Root, err = cgroup2.NewManager(cgroupV2Mountpoint, "/openrepl", &cgroup2.Resources{})
+	if err != nil {
+		return errors.Wrap(err, "create cgroup v2 root")
+	}
+	manager, err := cgroupV2Root.NewChild("manager", nil)
+	if err != nil {
+		return errors.Wrap(err, "create cgroup v2 manager leaf")
+	}
+	if err := manager.AddProc(uint64(os.Getpid())); err != nil {
+		return errors.Wrap(err, "move server into cgroup v2 manager leaf")
+	}
+	return nil
 }
 
 func EnableNetworking(pid int) {

@@ -10,7 +10,7 @@ What runs on a pull request, and how to run the same checks yourself, is in [Con
 |---|---|---|
 | 01 | [Server, startup and routing](lld/01-server-and-routing.md) | `gotty/main.go`, options and config, HTTP mux, middleware, route table, admin model, logging |
 | 02 | [Terminal sessions and the WebTTY protocol](lld/02-terminal-sessions.md) | WebSocket handshake, message types, `webtty`, `localcommand`, PTY, timeouts, connection limits |
-| 03 | [Sandboxing and resource limits](lld/03-sandboxing-and-resources.md) | Namespaces, cgroup v1 layout, memory weights, fork/`jid`, disk quota, guest cleanup |
+| 03 | [Sandboxing and resource limits](lld/03-sandboxing-and-resources.md) | Namespaces, cgroup v2 layout, memory weights, fork/`jid`, disk quota, guest cleanup |
 | 04 | [IDE: Run/Debug, demos and files](lld/04-ide-run-and-files.md) | `demos.xml`, Compiler scripts, the Run pipeline, file browser API and events, uploads |
 | 05 | [Auth, sessions and storage](lld/05-auth-sessions-storage.md) | Firebase sign-in, `/login`, session cookie, the stores and their backends (UnQLite files, MongoDB, Firestore), home-directory resolution, data models |
 | 06 | [Frontend](lld/06-frontend.md) | Pages, script load order, `gotty-bundle` modules, tabs, sharing over Firebase, chat widget, Practice, command palette, Phase 2 additions |

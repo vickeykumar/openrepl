@@ -2,6 +2,7 @@ bindata
 src/js/dist/*
 src/js/node_modules/*
 go_19/*
+go_1.23/
 src/tags
 deb/gotty.deb
 deb/gotty/usr/local/bin/gotty

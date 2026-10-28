@@ -1,0 +1,219 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+      - 'release/**'
+  pull_request:
+    branches:
+      - main
+      - 'release/**'
+
+
+permissions:
+  contents: read
+
+jobs:
+  #
+  # Project checks
+  #
+  project:
+    name: Project Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      #
+      # Checkout repos
+      #
+      - name: Checkout cgroups
+        uses: actions/checkout@v6
+        with:
+          path: src/github.com/containerd/cgroups
+          fetch-depth: 25
+
+      #
+      # Install Go
+      #
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.22.x'
+          cache-dependency-path: src/github.com/containerd/cgroups
+
+      - name: Project checks
+        uses: containerd/project-checks@v1.2.2
+        with:
+          working-directory: src/github.com/containerd/cgroups
+
+  lint:
+    name: Lint
+    timeout-minutes: 10
+    needs: [project]
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        go-version: [1.22.x, 1.23.x]
+
+    steps:
+      - name: Checkout cgroups
+        uses: actions/checkout@v6
+        with:
+          path: src/github.com/containerd/cgroups
+
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache-dependency-path: src/github.com/containerd/cgroups
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.6.2
+          skip-cache: true
+          args: --verbose -D errcheck
+          working-directory: src/github.com/containerd/cgroups
+
+  cgroupV1:
+    name: Cgroup V1 tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: [project]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: [1.22.x, 1.23.x]
+
+    env:
+      BOX: almalinux/8
+      GO_VERSION: ${{ matrix.go-version }}
+
+    steps:
+      - name: Show the host info
+        run: |
+          set -x
+          uname -a
+          cat /etc/os-release
+          cat /proc/cpuinfo
+          free -mt
+
+      - name: Checkout cgroups
+        uses: actions/checkout@v6
+        with:
+          path: src/github.com/containerd/cgroups
+
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Set Go version
+        run: |
+          go_version=$(go version | grep -oP 'go\d+\.\d+\.\d+' | sed -E 's/go([0-9]+)\.([0-9]+)\.([0-9]+)/\1\.\2\.\3/')
+          echo "GO_VERSION=$go_version" >> $GITHUB_ENV
+
+      - uses: actions/cache@v5
+        with:
+          path: /root/.vagrant.d
+          key: vagrant-${{ env.BOX }}
+
+      - name: Set up vagrant
+        run: |
+          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get update
+          sudo apt-get install -y libvirt-daemon libvirt-daemon-system vagrant ovmf
+
+          # https://github.com/vagrant-libvirt/vagrant-libvirt/issues/1725#issuecomment-1454058646
+          sudo cp /usr/share/OVMF/OVMF_VARS_4M.fd /var/lib/libvirt/qemu/nvram/
+          sudo systemctl enable --now libvirtd
+          sudo apt-get build-dep -y ruby-libvirt
+          sudo apt-get install -y --no-install-recommends libxslt-dev libxml2-dev libvirt-dev ruby-bundler ruby-dev zlib1g-dev
+
+          if ! vagrant plugin list | grep -q vagrant-libvirt; then
+            sudo env VAGRANT_DISABLE_STRICT_DEPENDENCY_ENFORCEMENT=1 vagrant plugin install vagrant-libvirt
+          fi
+
+      - name: Boot VM
+        working-directory: src/github.com/containerd/cgroups
+        run: sudo BOX=$BOX GO_VERSION=$GO_VERSION vagrant up --provision-with=install-packages,setup-etc-environment,install-golang,setup-gopath
+
+      - name: Run cgroup tests
+        working-directory: src/github.com/containerd/cgroups
+        run: sudo BOX=$BOX GO_VERSION=$GO_VERSION vagrant up --provision-with=test
+
+      - name: Build cgctl
+        working-directory: src/github.com/containerd/cgroups
+        run: sudo BOX=$BOX GO_VERSION=$GO_VERSION vagrant up --provision-with=build-cgctl
+
+  cgroupV2:
+    name: Cgroup V2 tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: [project]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: [1.22.x, 1.23.x]
+
+    steps:
+      - name: Checkout cgroups
+        uses: actions/checkout@v6
+        with:
+          path: src/github.com/containerd/cgroups
+
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Run cgroup tests
+        run: |
+          $(command -v go) test -exec sudo -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+        working-directory: src/github.com/containerd/cgroups
+
+      - name: Build cgctl
+        run: make all
+        working-directory: src/github.com/containerd/cgroups
+
+  proto:
+    name: Compare auto-generated Go files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout cgroups
+        uses: actions/checkout@v6
+        with:
+          path: src/github.com/containerd/cgroups
+
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.22.x'
+          cache-dependency-path: src/github.com/containerd/cgroups
+
+      - name: Read buf version
+        id: buf-version
+        working-directory: src/github.com/containerd/cgroups
+        run: echo "version=$(cat script/buf-version)" >> $GITHUB_OUTPUT
+
+      - name: Install buf
+        uses: bufbuild/buf-action@v1
+        with:
+          # We use the action to install buf.
+          setup_only: true
+          version: ${{ steps.buf-version.outputs.version }}
+
+      - name: Install go-fix-acronym
+        run: go install github.com/containerd/protobuild/cmd/go-fix-acronym@v0.3.0
+
+      - name: Compare auto-generated Go files
+        run: |
+          make maintainer-clean proto
+          git diff --exit-code
+        working-directory: src/github.com/containerd/cgroups
