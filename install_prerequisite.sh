@@ -134,13 +134,14 @@ else
     else
         # No arm64 build of the bundled Cling archive exists. Ubuntu's native
         # clang-repl provides the C++ REPL there. Keep the "cling" command used
-        # by OpenREPL and discard its legacy -xc flag (clang-repl is C++ only).
+        # by OpenREPL and discard the Cling-only flags it passes for C mode
+        # (-xc, -noruntime): clang-repl is C++ only and rejects unknown options.
         apt-get install -y --no-install-recommends clang-tools-14
         cat > /usr/local/bin/cling <<'EOF'
 #!/usr/bin/env bash
 args=()
 for arg in "$@"; do
-    [ "$arg" = "-xc" ] || args+=("$arg")
+    case "$arg" in -xc|-noruntime) ;; *) args+=("$arg") ;; esac
 done
 exec /usr/bin/clang-repl-14 "${args[@]}"
 EOF
