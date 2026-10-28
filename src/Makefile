@@ -20,7 +20,7 @@ gotty: go-toolchain asset ${TARGET}/main.go utils/*.go server/*.go webtty/*.go f
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: go-toolchain bindata/static/js/gotty-bundle.js bindata/static/js/chat-widget.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/admin.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta bindata/knowledge
+asset: go-bindata bindata/static/js/gotty-bundle.js bindata/static/js/chat-widget.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/admin.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta bindata/knowledge
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	GO111MODULE=off $(GOROOT)/bin/gofmt -w server/asset.go
 
@@ -34,6 +34,19 @@ ifeq ($(UNAME), Linux)
 		curl -fsSL "https://go.dev/dl/go1.23.12.linux-$$arch.tar.gz" | tar -C "$(dir $(GOROOT))" -xz; \
 	fi
 endif
+
+# The bin/go-bindata in the repo is an x86-64 binary: it cannot run on arm64, and in a
+# dev container the bin folder can be an empty volume. When it is missing or does not
+# run, build it with the Go in use (into $(ROOT)/bin, with its module cache in a temp
+# folder so the repo gets no pkg/mod).
+.PHONY: go-bindata
+go-bindata: go-toolchain
+	@if ! "$(ROOT)/bin/go-bindata" -version >/dev/null 2>&1; then \
+		echo "installing go-bindata into $(ROOT)/bin"; \
+		mkdir -p "$(ROOT)/bin"; \
+		GO111MODULE=on GOFLAGS= GOPATH="$${TMPDIR:-/tmp}/go-bindata-gopath" GOBIN="$(ROOT)/bin" \
+			"$(GOROOT)/bin/go" install github.com/jteeuwen/go-bindata/go-bindata@v3.0.7+incompatible; \
+	fi
 
 .PHONY: all
 all: $(PRE_REQ) clean asset gotty
