@@ -201,6 +201,11 @@ else
     chmod 755 /usr/local/bin/rappel
     cd ..
 fi
+# The assembly programs are x86-64 (nasm -felf64). On another host, arm64, they are linked with
+# the x86-64 linker and run under qemu-user (see the Compiler script of assembly in demos.xml).
+if [ "$DEB_ARCH" != amd64 ]; then
+    apt-get install -y --no-install-recommends binutils-x86-64-linux-gnu
+fi
 # rappel traces its child with ptrace: on a host without it the wrapper says so, and
 # starts the real rappel (OPENREPL_RAPPEL_BIN) everywhere else
 if [ -x "$GOTTY_DIR/rappel/bin/rappel" ]; then
