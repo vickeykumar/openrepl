@@ -108,13 +108,17 @@ source $HOME/.bashrc
 # ENV for nvm
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-# nodejs.org is sometimes unreachable from a CI runner for a few minutes: try again before giving up
+# nodejs.org is sometimes slow or unreachable from a CI runner, and nvm's download has no
+# time limit: a stalled connection holds the build for as long as the job allows. Cut each
+# attempt off after 3 minutes and try again (nvm resumes a partial download) before giving up.
 for attempt in 1 2 3; do
-    nvm install v12.22.9
+    timeout 180 bash -c '. "$NVM_DIR/nvm.sh" && nvm install v12.22.9'
     [ -x "$NVM_DIR/versions/node/v12.22.9/bin/node" ] && break
     echo "nvm install v12.22.9 failed (attempt $attempt of 3)" >&2
     sleep 15
 done
+# the attempts run in their own shell: switch this one to the node they installed
+nvm use v12.22.9
 npm install npm@8.5.1 -g
 
 #install C++ REPL
