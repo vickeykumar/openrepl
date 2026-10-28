@@ -2619,6 +2619,14 @@ COMPILER=nasm
 FILE=test.asm
 debug=false
 WORKDIR=$HOME
+# The programs are x86-64 (nasm -felf64). On another host (arm64) the plain ld cannot link them
+# ("file in wrong format"): link with the x86-64 linker and run them under qemu-user.
+LD=ld
+RUNNER=""
+if [ "$(uname -m)" != "x86_64" ]; then
+    LD=x86_64-linux-gnu-ld
+    RUNNER="qemu-x86_64"
+fi
 if [ "$CompilerOption" = "debug" ]; then
     debug=true;
 fi
@@ -2636,12 +2644,12 @@ if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
 fi
 
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE.o" ]; then
-	ld -o "$WORKDIR/$FILE".out "$WORKDIR/$FILE".o 
+	$LD -o "$WORKDIR/$FILE".out "$WORKDIR/$FILE".o
 	if $debug; then
 		openrepl-gdb "$WORKDIR/$FILE".out $@;
 	else
 		#second quoate with escape, as -c option takes a string argument.
-    	$SHELL -c "\"$WORKDIR/$FILE\".out $@";
+    	$SHELL -c "$RUNNER \"$WORKDIR/$FILE\".out $@";
     fi
 fi
 printf "\n";
