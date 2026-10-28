@@ -35,7 +35,7 @@ const REPLS = [
   { name: "Python", path: "/python", prompt: />>>/, inputs: ["6 * 7"], answer: /\b42\b/ },
   { name: "Ruby (irb)", path: "/ruby", prompt: />/, inputs: ["6 * 7"], answer: /=> 42/ },
   // cling is in C mode here, which does not print the value of an expression: print it
-  { name: "C and C++ (cling)", path: "/c", prompt: /\[cling\]|clang-repl>/, inputs: ["#include <stdio.h>", 'printf("%d\\n", 6 * 7);'], answer: /(^|\s)42(\s|$)/m },
+  { name: "C and C++ (cling)", path: "/c", prompt: /\[cling\]/, inputs: ["#include <stdio.h>", 'printf("%d\\n", 6 * 7);'], answer: /(^|\s)42(\s|$)/m },
 ];
 
 for (const repl of REPLS) {

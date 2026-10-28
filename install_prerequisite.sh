@@ -109,7 +109,13 @@ source $HOME/.bashrc
 # ENV for nvm
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-nvm install v12.22.9
+# nodejs.org is sometimes unreachable from a CI runner for a few minutes: try again before giving up
+for attempt in 1 2 3; do
+    nvm install v12.22.9
+    [ -x "$NVM_DIR/versions/node/v12.22.9/bin/node" ] && break
+    echo "nvm install v12.22.9 failed (attempt $attempt of 3)" >&2
+    sleep 15
+done
 npm install npm@8.5.1 -g
 
 #install C++ REPL
@@ -132,21 +138,24 @@ else
         chmod 755 /usr/local/bin/cling
         rm "$CLING_ARCHIVE"
     else
-        # No arm64 build of the bundled Cling archive exists. Ubuntu's native
-        # clang-repl provides the C++ REPL there. Keep the "cling" command used
-        # by OpenREPL and discard the Cling-only flags it passes for C mode
-        # (-xc, -noruntime): clang-repl is C++ only and rejects unknown options.
-        apt-get install -y --no-install-recommends clang-tools-14
-        cat > /usr/local/bin/cling <<'EOF'
-#!/usr/bin/env bash
-args=()
-for arg in "$@"; do
-    case "$arg" in -xc|-noruntime) ;; *) args+=("$arg") ;; esac
-done
-exec /usr/bin/clang-repl-14 "${args[@]}"
-EOF
+        # No arm64 build of the bundled Cling archive exists, but conda-forge
+        # publishes Cling for linux-aarch64 (Ubuntu's clang-repl takes declarations
+        # only and has no meta-commands, so it cannot stand in for it). micromamba
+        # installs it, then the build-only parts (static LLVM libraries, headers,
+        # cmake files, the package cache) are deleted: 2.9 GB becomes about 1.6 GB.
+        CLING_PREFIX=/opt/cling
+        MAMBA_DIR=$(mktemp -d)
+        # keep micromamba's package cache (about as large as the install) in MAMBA_DIR, so removing it
+        # below removes the cache too; by default it goes to ~/.local/share/mamba and stays in the image
+        export MAMBA_ROOT_PREFIX="$MAMBA_DIR/root"
+        curl -fsSL https://micro.mamba.pm/api/micromamba/linux-aarch64/latest | tar -C "$MAMBA_DIR" -xj bin/micromamba
+        "$MAMBA_DIR/bin/micromamba" create -y -q -p "$CLING_PREFIX" -c conda-forge --override-channels cling=1.2
+        find "$CLING_PREFIX" -name '*.a' -delete
+        rm -rf "$CLING_PREFIX/conda-meta" "$CLING_PREFIX/pkgs" "$CLING_PREFIX/lib/cmake" \
+            "$CLING_PREFIX"/include/llvm* "$CLING_PREFIX"/include/mlir* "$MAMBA_DIR"
+        unset MAMBA_ROOT_PREFIX
+        ln -s "$CLING_PREFIX/bin/cling" /usr/local/bin/cling
         chmod 755 /usr/local/bin/cling
-        echo "Installed clang-repl-14 as the arm64 C++ REPL (its meta-commands differ from Cling)."
     fi
 fi
 
