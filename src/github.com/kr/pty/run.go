@@ -1,6 +1,7 @@
 package pty
 
 import (
+	"childreaper"
 	"containers"
 	"os"
 	"os/exec"
@@ -24,7 +25,7 @@ func Start(command string, c *exec.Cmd, ppid int, params url.Values) (pty *os.Fi
 	if ppid == -1 {
 		containers.AddContainerAttributes(command, c.SysProcAttr, params) // containers attrib not inside parent
 	}
-	err = c.Start()
+	err = childreaper.Start(c)
 	if err != nil {
 		pty.Close()
 		return nil, err

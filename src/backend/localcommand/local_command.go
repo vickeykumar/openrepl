@@ -1,6 +1,7 @@
 package localcommand
 
 import (
+	"childreaper"
 	"os"
 	"os/exec"
 	"syscall"
@@ -154,7 +155,7 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 			}
 		}()
 
-		cmderr := lcmd.cmd.Wait()
+		cmderr := childreaper.Wait(lcmd.cmd)
 		if cmderr != nil {
 	        log.Printf("lcmd.cmd.wait : %s", cmderr.Error())
 		}

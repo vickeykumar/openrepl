@@ -1,6 +1,7 @@
 package main
 
 import (
+	"childreaper"
 	"utils"
 	"backend/localcommand"
 	"containers"
@@ -52,6 +53,9 @@ func common_cleanup() {
 }
 
 func main() {
+	if err := childreaper.Init(); err != nil {
+		log.Printf("orphan child reaping unavailable: %v", err)
+	}
 	// Settings in an env file must be in the environment before anything reads
 	// one, the GOTTY_* flags included, so this comes first.
 	if err := loadEnvFile(); err != nil {

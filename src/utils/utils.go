@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"childreaper"
 	"encoding/json"
 	"encoding/base64"
 	"github.com/natefinch/lumberjack"
@@ -222,7 +223,7 @@ func RemoveDirNow(dirPath string) {
 		log.Printf("Error removing directory, trying rm -rf : %s\n", err)
 		    // Execute the rm -rf command
     		cmd := exec.Command("rm", "-rf", absDir)
-    		err = cmd.Run()
+			err = childreaper.Run(cmd)
     		if err != nil {
         		log.Printf("Error removing directory: %s\n", err)
     		} else {

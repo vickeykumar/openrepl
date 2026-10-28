@@ -6,6 +6,7 @@ package containers
 import (
 	"bufio"
 	"bytes"
+	"childreaper"
 	"log"
 	"math"
 	"net/url"
@@ -260,13 +261,13 @@ func EnableNetworking(pid int) {
 	cmd := exec.Command("/usr/bin/nsenter", "-n", "-t"+strconv.Itoa(pid), "ifconfig", "lo", "up")
 	cmd.Stdout = &b
 	cmd.Stderr = &b
-	err := cmd.Start()
+	err := childreaper.Start(cmd)
 	if err != nil {
 		log.Println("ERROR: error enabling network for pid: ", pid, "error: ", err.Error(), string(b.Bytes()))
 		return
 	}
 
-	err = cmd.Wait()
+	err = childreaper.Wait(cmd)
 	if err != nil {
 		log.Println("Error: waiting for network enable for pid: ", pid, err.Error(), string(b.Bytes()))
 	}

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"childreaper"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -359,7 +360,7 @@ func (server *Server) bindNodeLanguages(router *gateway.Router) {
 func ptraceProbe() string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "openrepl-ptrace-probe").Output()
+	out, err := childreaper.Output(exec.CommandContext(ctx, "openrepl-ptrace-probe"))
 	text := strings.TrimSpace(string(out))
 	if i := strings.IndexByte(text, '\n'); i >= 0 {
 		text = text[:i]
