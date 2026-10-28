@@ -78,7 +78,7 @@ on connect:  n  = counter.add(1)
 on close:    counter.done(); counter.removeWieght(memLimit[command])
 ```
 
-With `--max-connection 2564` (production), that is a budget of about 2.5 GB of REPL memory limits, which matches `MAX_MEMORY_LIMIT = 2564`. For example, it allows about 20 concurrent Java REPLs or about 1,280 Python REPLs.
+With `--max-connection 2564` (production), that is a budget of about 2.5 GB of REPL memory limits, which matches `MAX_MEMORY_LIMIT = 2564`. For example, it allows about 13 concurrent Java REPLs (192 MB each) or about 80 Python REPLs (32 MB each).
 
 ## 4. Disk quota
 
