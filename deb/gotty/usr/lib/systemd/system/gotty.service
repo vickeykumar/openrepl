@@ -14,10 +14,6 @@ Environment="GOPATH=/opt/gotty/"
 Environment="GOPATH=/opt/gotty/"
 Environment="GCC_EXEC_PREFIX=/usr/lib/gcc/"
 Environment="GODEBUG=cgocheck=0"
-ExecStartPre=-+/bin/mkdir /sys/fs/cgroup/systemd
-ExecStartPre=-+/bin/mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd
-ExecStartPre=-+/bin/chgrp -R cgroupusers /sys/fs/cgroup
-ExecStartPre=-+/bin/chmod -R u=rwx,g=rwx /sys/fs/cgroup
 ExecStartPre=-+/bin/chmod 4755 /usr/bin/nsenter
 ExecStart=/usr/local/bin/gotty -w --max-connection 2564 --port 80 --title-format "<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>"
 ExecStop=/usr/bin/pkill gotty
@@ -31,6 +27,7 @@ RestartPreventExitStatus=126
 RestartSec=1
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SYS_PTRACE CAP_SYS_ADMIN CAP_SETUID CAP_SETGID
 AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_SYS_PTRACE CAP_SYS_ADMIN CAP_SETUID CAP_SETGID
+Delegate=memory
 NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target

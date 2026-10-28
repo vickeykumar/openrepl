@@ -5,7 +5,7 @@ Scope: `src/Makefile`, `src/Makefile.include`, `src/gotty/Makefile`, `src/js/{pa
 ## 1. Toolchain and layout
 
 - **GOPATH.** `Makefile.include` sets `ROOT = GOPATH = <git top>`, and `GO111MODULE=off`. When `git rev-parse` fails (git refuses a repo owned by another user, as in the dev container with the repo mounted), it falls back to the folder above `Makefile.include`. Packages are imported by directory name under `src/`.
-- **Go version.** On Linux, `GOROOT` is the checked-in `go_1.19/go`. Elsewhere it is derived from `/usr/local/bin/go`.
+- **Go version.** The cgroups v3 dependency requires Go 1.22 or newer. On Linux, `make` downloads Go 1.23.12 to `go_1.23/<uname -m>/go` (one folder per CPU architecture, because containers of different architectures can share the repository folder) if it is missing and invokes that toolchain for formatting and compilation. Elsewhere the build uses the installed Go toolchain.
 - **Dependencies.** Third-party Go packages are vendored as plain directories: `src/github.com/…`, `src/golang.org/x/…`, `src/pkg/…`. Some of them are **patched**, for example `github.com/kr/pty/run.go` (LLD 02). `Godeps/Godeps.json` records the original versions.
 - **Helper binaries.** `bin/` holds `go-bindata`, `godep`, `gox`, `ghr` and a `gdb` build copied into the Docker image.
 
@@ -63,13 +63,13 @@ It has three stages, all based on `ubuntu:22.04`:
 2. **`build-image`:** adds make, git and npm (pinned to 8.5.1), copies the repo, and runs `make all`.
 3. **Final:** `builder` plus `/usr/local/bin/gotty` and `/opt/scripts/run_app.sh`. It creates `/gottyTraces` and `/opt/gotty`, sets `ENV TERM=xterm GODEBUG=cgocheck=1 GOPATH=/opt/gotty/`, `EXPOSE 80`, `ENTRYPOINT run_app.sh`, `CMD ["-p","80"]`.
 
-`scripts/run_app.sh` mounts a `name=systemd` cgroup v1 hierarchy (best-effort) so nested cgroups work, then runs:
+`scripts/run_app.sh` replaces its shell with gotty so the container's delegated cgroup is empty before gotty enables its child controllers:
 
 ```sh
-/usr/local/bin/gotty -w --title-format "<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>" "$@"
+exec /usr/local/bin/gotty -w --title-format "<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>" "$@"
 ```
 
-Run it with `-v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged` on a **cgroup v1** host to get per-REPL namespaces and memory limits (LLD 03). The image is amd64 only, because the cling tarball is x86_64.
+Run it with `--cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged` on a cgroup v2 host whose runtime delegates the memory controller to the container to get per-REPL namespaces and memory limits (LLD 03). The image is amd64 only, because the cling tarball is x86_64.
 
 **Node.js and TypeScript in the image.** `install_prerequisite.sh` installs the apt `npm` (which pulls the apt `nodejs`) and then Node 12.22.9 with nvm, and the global `typescript` and `ts-node` go into nvm's folder. nvm only adds that folder to the `PATH` of an interactive shell, and the cleanup (`apt-get remove npm`, `autoremove`) removes the apt `nodejs`, so the image once had no `node` on the server's `PATH` and the Node.js and TypeScript REPLs failed with "executable file not found in $PATH". The script now links everything in nvm's `bin` into `/usr/local/bin`, runs its `--run-tests` with the finished image's plain `PATH` (not the shell nvm had changed), and the Docker Image CI checks `node`, `npm`, `tsc`, `ts-node` and a few more with that `PATH`, and its browser tests open the Node.js, TypeScript, Go, Java, Python, Ruby and C/C++ REPLs through the running server (`e2e/tests/repl.spec.js`). `npm install -g ts-node` also puts its own copy of the newest `typescript` (7.x, which has no JavaScript API) in `ts-node/node_modules`, and ts-node loads that before the global 4.9.5 and stops with "Cannot read property 'fileExists' of undefined"; the script removes that copy.
 
@@ -79,7 +79,7 @@ The full description, how to run each check yourself and the GitHub settings tha
 
 | Workflow | Trigger | Steps |
 |---|---|---|
-| `ci.yml` | push to `master`, PR to `master` (a branch with an open PR is checked through it; any branch by hand with "Run workflow") | Parallel jobs: page script tests (`src/js`: `tsc`, `npm test`), Genie widget tests, Go tests (Go 1.19 in GOPATH mode, with `src/server/asset.go` made by `scripts/ci/build-assets.sh`, the JS console replaced by stand-ins; `go test -vet=off server utils user persist cachedb wsync`, and `-race` on `gateway tunnel trusted`), repository rules (`scripts/ci/repo-rules.mjs`: no build output or secrets, CRLF kept, a docs reminder, `gofmt` on new Go files), a secret scan (informational). `CI passed` is the job to require. |
+| `ci.yml` | push to `master`, PR to `master` (a branch with an open PR is checked through it; any branch by hand with "Run workflow") | Parallel jobs: page script tests (`src/js`: `tsc`, `npm test`), Genie widget tests, Go tests (Go 1.23 in GOPATH mode, with `src/server/asset.go` made by `scripts/ci/build-assets.sh`, the JS console replaced by stand-ins; `go test -vet=off server utils user persist cachedb wsync`, and `-race` on `gateway tunnel trusted`), repository rules (`scripts/ci/repo-rules.mjs`: no build output or secrets, CRLF kept, a docs reminder, `gofmt` on new Go files), a secret scan (informational). `CI passed` is the job to require. |
 | `docker-image.yml` | push and PR to `master` | `docker build` on ubuntu-22.04 and a size and layer report (limit 3 GB and 15 layers, non-blocking), then the image is started and checked: `scripts/ci/smoke.sh` (pages, scripts, the contact form, the closed admin API) and the browser tests in `e2e/` (Playwright; both must pass, the report is the `playwright-report` artifact). |
 | `docker-push.yml` | push to `master` | Log in to `${{ vars.DOCKER_REGISTRY }}`, then build and push `openrepl:<short-sha>` and retag and push `:latest`. |
 | `audit.yml` | every Monday | `npm audit` of `src/js` and the widget. |
@@ -111,15 +111,15 @@ Dependencies are upgraded by hand (there is no Dependabot configuration), `.gith
 | `/tmp/home/` | `guest-*` and user workspaces, plus `/<command>/` dirs | Mount a volume if signed-in users' files should survive restarts. |
 | `/tmp/go_cache/` | Go build cache for Go REPLs | Disposable |
 | `/gottyTraces/gotty.log*` | Rotated logs | Optional volume |
-| `/sys/fs/cgroup/memory/<cmd>_container/<pid>` | Per-REPL cgroups (LLD 03) | Host kernel |
+| `<delegated cgroup>/openrepl/<cmd>_container/<pid>/memory.max` | Per-REPL cgroup v2 memory limit (LLD 03) | Host kernel |
 
 ## 7. Typical production topology
 
 ```mermaid
 flowchart LR
     User --> Edge["CDN / tunnel<br/>TLS termination, caching"]
-    Edge --> VM["cgroup v1 Linux VM"]
-    VM --> C["docker run --privileged<br/>-v /sys/fs/cgroup:/sys/fs/cgroup:rw<br/>-v gotty-data:/opt/gotty<br/>-p 127.0.0.1:8080:8080<br/>vickeykumar/openrepl:latest -p 8080"]
+    Edge --> VM["cgroup v2 Linux VM with delegation"]
+    VM --> C["docker run --privileged --cgroupns=host<br/>-v /sys/fs/cgroup:/sys/fs/cgroup:rw<br/>-v gotty-data:/opt/gotty<br/>-p 127.0.0.1:8080:8080<br/>vickeykumar/openrepl:latest -p 8080"]
 ```
 
 TLS is normally terminated at the edge. gotty's own `--tls` flags are available if you expose it directly. WebSockets must be allowed through the edge. `user.host` in the gitconfig must match the public hostname, or the chat proxy returns 403.

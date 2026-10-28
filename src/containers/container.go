@@ -89,6 +89,10 @@ func Status() (ready, total int) { return len(Containers), len(Commands2memLimit
 func InitContainers() {
 	HasCAPSysAdmin = detectCAPSysAdmin()
 	log.Println("INFO: CAP_SYS_ADMIN available:", HasCAPSysAdmin)
+	if err := initCgroupV2(); err != nil {
+		log.Println("ERROR: unable to initialize cgroup v2 sandboxing:", err)
+		return
+	}
 
 	for command, _ := range Commands2memLimitMap {
 		containerObj, err := NewContainer(command, MAX_MEMORY_LIMIT*MB) // memlimit in MB
@@ -133,10 +137,10 @@ func DeleteProcessFromSubCgroup(name string, pid int) {
 }
 
 // The REPLs this server started and that have not ended, by pid. A forked tab
-// may only join one of these. It does not depend on cgroups: on a host where
-// the memory cgroups cannot be made (cgroup v2, a container without the
-// capability) the cgroup bookkeeping below is empty, and a fork was refused as
-// "invalid parent id" even though the parent terminal was running.
+// may only join one of these. It does not depend on cgroups: if delegated
+// cgroup access is unavailable, the cgroup bookkeeping below is empty, and a
+// fork was refused as "invalid parent id" even though the parent terminal was
+// running.
 var (
 	liveMu sync.Mutex
 	live   = map[int]struct{}{}

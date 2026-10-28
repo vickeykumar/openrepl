@@ -14,6 +14,8 @@ const BASH_PATH = "/bin/bash"
 
 func detectCAPSysAdmin() bool { return false }
 
+func initCgroupV2() error { return nil }
+
 func processExists(pid int) bool { return false }
 
 type container struct {

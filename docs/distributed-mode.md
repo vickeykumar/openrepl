@@ -234,14 +234,14 @@ ExecStart=/usr/local/bin/gotty -w --mode=worker --worker-server wss://gateway.ex
 ```bash
 # gateway
 docker run -itd --name openrepl-gateway \
-  -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
+  --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
   -v openrepl-gateway-keys:/keys \
   --env-file /etc/openrepl/tunnel.env \
   -p 80:80 <image> -p 80 --mode=gateway --tunnel-hostkey /keys/tunnel_key
 
 # worker: no -p, it only connects out
 docker run -itd --name openrepl-worker-01 --hostname worker-01 \
-  -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
+  --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
   --env-file /etc/openrepl/tunnel.env \
   <image> --mode=worker --worker-server wss://gateway.example.com/api/tunnel
 ```

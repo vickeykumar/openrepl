@@ -23,7 +23,7 @@ COPY . /opt/openrepl/
 WORKDIR /opt/openrepl/src
 ENV GOROOT=/opt/go
 # dpkg names the image's architecture (amd64, arm64) with or without BuildKit, unlike TARGETARCH
-RUN curl -fsSL "https://go.dev/dl/go1.19.13.linux-$(dpkg --print-architecture).tar.gz" -o /tmp/go.tar.gz && \
+RUN curl -fsSL "https://go.dev/dl/go1.23.12.linux-$(dpkg --print-architecture).tar.gz" -o /tmp/go.tar.gz && \
     mkdir -p "$GOROOT" && tar -C "$GOROOT" --strip-components=1 -xzf /tmp/go.tar.gz && \
     rm /tmp/go.tar.gz && \
     GOBIN=/opt/openrepl/bin "$GOROOT/bin/go" install github.com/jteeuwen/go-bindata/go-bindata@v3.0.7+incompatible && \

@@ -8,7 +8,6 @@ What runs on a pull request to `master`, what each check is for, and how to run 
 |---|---|---|---|
 | `ci.yml` | **Page script tests** | yes | `src/js`: `npm ci`, `tsc --noEmit`, `npm test` (the node tests in `src/js/test`: the page script, the IDE theme, the theme choice, the select menu, the notes and links of the site, the CI's own rules) |
 | `ci.yml` | **Genie widget tests** | yes | `src/resources/chat-widget`: install and build, `tsc --noEmit`, `npm test` (the widget, the agent protocol, the guard against the bundler dropping `continue` and `break` in `await` loops) |
-| `ci.yml` | **Go tests** | yes | Go 1.19 in GOPATH mode, as in the Docker image: builds the page bundle and the widget, writes `src/server/asset.go` (`scripts/ci/build-assets.sh`), builds the server, then `go test -vet=off server utils user persist cachedb wsync meters` and `go test -race gateway tunnel trusted`. `containers` and `gotty` run too but are informational |
 | `ci.yml` | **Repository rules** | yes | `scripts/ci/repo-rules.mjs`: no build output (`bin/gotty`, `src/js/dist`, `asset.go`, `bindata`) or secrets (env files, keys, service accounts) in the change; a CRLF file stays CRLF; a reminder (warning) when code changes and no document does; and `gofmt` on the Go files the change adds |
 | `ci.yml` | **Secret scan** | no (informational) | gitleaks on the commits of the change, with `.gitleaks.toml` allowing the keys that are public by design |
 | `ci.yml` | **CI passed** | **the one to require** | Passes when the four required jobs did |
@@ -32,9 +31,9 @@ Go (in the dev container, the repo is mounted at `/opt/openrepl`):
 
 ```bash
 docker exec openrepl-devbox bash -c 'cd /opt/openrepl/src && \
-  GO111MODULE=off GOPATH=/opt/openrepl ../go_1.19/go/bin/go test -vet=off server utils user persist cachedb wsync meters'
+  GO111MODULE=off GOPATH=/opt/openrepl ../go_1.23/$(uname -m)/go/bin/go test -vet=off server utils user persist cachedb wsync meters'
 docker exec openrepl-devbox bash -c 'cd /opt/openrepl/src && \
-  GO111MODULE=off GOPATH=/opt/openrepl ../go_1.19/go/bin/go test -vet=off -race gateway tunnel trusted'
+  GO111MODULE=off GOPATH=/opt/openrepl ../go_1.23/$(uname -m)/go/bin/go test -vet=off -race gateway tunnel trusted'
 ```
 
 `src/server/asset.go` comes from `make asset` (or, without the JS console, `bash scripts/ci/build-assets.sh` after building the page bundle and the widget). A change to a note, a page or a script needs it made again before the server tests.

@@ -76,7 +76,7 @@ To deploy and run a local copy of openrepl :
    -  with nested containers (containerized REPLs inside docker, nested containers)
       ```bash
       docker run -itd --name openrepl \
-        -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
+        --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
         -p 8080:8080 vickeykumar/openrepl:latest \
         -p 8080
       ```
@@ -88,7 +88,7 @@ To deploy and run a local copy of openrepl :
 
      ```bash
       docker run -itd --name openrepl \
-        -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
+        --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
         -p 8080:8080 vickeykumar/openrepl:latest \
         -p 8080 [ <other CLI Options>]
       ```
@@ -170,7 +170,7 @@ rm -rf bindata && make gotty && ../bin/gotty -w -p 8080 --title-format '<fmt><ti
 Run the Go unit tests inside the dev container:
 
 ```bash
-GO111MODULE=off GOPATH=/opt/openrepl ../go_1.19/go/bin/go test -race gateway tunnel trusted
+GO111MODULE=off GOPATH=/opt/openrepl ../go_1.23/$(uname -m)/go/bin/go test -race gateway tunnel trusted
 ```
 
 Then do a quick manual check at `localhost:8080`:
@@ -184,7 +184,7 @@ Then do a quick manual check at `localhost:8080`:
 
 ### Notes
 
-- **No per-REPL sandboxing locally.** Colima's VM uses cgroup v2, so the log shows `Unable to create Container` and REPLs run without their own namespaces or memory limits. Test sandboxing on a cgroup v1 host.
+- **Sandboxing needs delegated cgroup v2 access locally.** If the VM does not delegate the memory controller to OpenREPL, the log reports cgroup initialization failure and REPLs run without their own namespaces or memory limits.
 - **Debug runs under QEMU locally.** Rosetta cannot trace programs, so plain gdb fails with `Couldn't get registers`. Debug detects it and runs your program under QEMU, which gdb connects to (see [LLD 04](docs/lld/04-ide-run-and-files.md)). The program starts paused: set breakpoints, then type `c`. The assembly REPL (rappel) needs real ptrace and does not start here.
 - **Don't commit `bin/gotty`.** The dev container rebuilds this tracked file. Restore it before committing with `git checkout -- bin/gotty`, and don't commit `node_modules` or `dist` folders.
 - **Genie and Practice question generation need an OpenAI key.** Set `OPENREPL_OPENAI_API_KEY` (see [Settings and secrets](#settings-and-secrets)), then restart the server.
@@ -474,7 +474,7 @@ This section gives the big picture. Each component has a low-level design (LLD) 
 OpenREPL is one Go binary (`bin/gotty`, a fork of GoTTY). The same binary does three jobs:
 
 1. **Serves the web app.** The HTML, CSS, JS and images are compiled into the binary with `go-bindata`.
-2. **Starts a REPL for each browser terminal.** Each REPL runs as a child process on a pseudo-terminal (PTY), inside a lightweight container made of Linux namespaces and a cgroup v1 memory limit.
+2. **Starts a REPL for each browser terminal.** Each REPL runs as a child process on a pseudo-terminal (PTY), inside a lightweight container made of Linux namespaces and a cgroup v2 memory limit.
 3. **Streams the terminal over a WebSocket.** It relays PTY output to the browser (xterm.js) and keystrokes back to the REPL.
 
 These services sit around the core:
@@ -502,7 +502,7 @@ flowchart LR
             FB["filebrowser<br/>fsnotify watcher"]
             CP["chat proxy<br/>/chat/completions"]
         end
-        CG["containers<br/>namespaces + cgroup v1"]
+        CG["containers<br/>namespaces + cgroup v2"]
         REPL["REPL processes<br/>cling, python, node, ..."]
         FS[("/tmp/home/*<br/>user workspaces")]
         PS["persist<br/>one key-value interface"]
@@ -614,9 +614,9 @@ Details: [LLD 05, section 4](docs/lld/05-auth-sessions-storage.md) (stores, back
 ```mermaid
 flowchart TB
     U["Users"] --> CF["CDN / tunnel<br/>(e.g. Cloudflare)"]
-    CF --> H["Linux VM (cgroup v1 host)"]
+    CF --> H["Linux VM (cgroup v2 host with delegation)"]
     subgraph H
-        D["Docker container<br/>--privileged, /sys/fs/cgroup mounted<br/>run_app.sh → gotty -w ..."]
+        D["Docker container<br/>--privileged --cgroupns=host, /sys/fs/cgroup mounted<br/>run_app.sh → gotty -w ..."]
         S["or: systemd gotty.service<br/>(deb package, user gottyuser)"]
     end
     D --> V1[("/opt/gotty<br/>DB files, settings, audit log,<br/>jobfile, .gitconfig")]
@@ -626,7 +626,7 @@ flowchart TB
 ```
 
 - **Image:** the multi-stage `Dockerfile` builds on Ubuntu 22.04. `install_prerequisite.sh` installs every REPL toolchain, and `make all` builds the binary. CI builds the image on every PR and push to `master`. Pushes to `master` also publish `:<sha>` and `:latest`.
-- **Sandboxing needs cgroup v1.** With `--privileged` and `/sys/fs/cgroup` mounted, each REPL gets its own namespaces and memory cgroup. Without them, REPLs still run but share the container.
+- **Sandboxing needs cgroup v2 delegation.** Run with `--privileged --cgroupns=host` and `/sys/fs/cgroup` mounted read-write. Without `--cgroupns=host`, Docker gives the container a private cgroup namespace, the server builds its cgroup paths at the host root, and the kernel refuses to move it there (`write …/cgroup.procs: no such file or directory`). OpenREPL enables the memory controller in its delegated subtree and gives each REPL a `memory.max` limit. Without delegation, REPLs run without namespaces or memory limits.
 - **Server-side secrets** come from the environment (see [Settings and secrets](#settings-and-secrets)). The older git-config file, `/opt/gotty/.gitconfig`, still works as a fallback.
 
 ### Settings and secrets

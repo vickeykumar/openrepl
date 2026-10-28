@@ -416,7 +416,7 @@ gotty -w --mode=worker \
 ```
 
 - Outbound only: no inbound port or public address is needed, so it works behind NAT or a firewall. It opens a port of its own only when asked (6.2a).
-- It must have the same runtime as a normal server (the Dockerfile image, REPL toolchains, `nsenter`, cgroup v1 access). If it has only some REPLs, list them with `--worker-languages` (the command names behind the `ws_<name>` routes, for example `python,bash,cling,gomacro`).
+- It must have the same runtime as a normal server (the Dockerfile image, REPL toolchains, `nsenter`, delegated cgroup v2 memory access). If it has only some REPLs, list them with `--worker-languages` (the command names behind the `ws_<name>` routes, for example `python,bash,cling,gomacro`).
 - `--worker-capacity` (memory-weight units) defaults to a value derived from RAM. It replaces `--max-connection` for admission on the worker side.
 - It reconnects automatically with backoff if the gateway restarts or the link drops.
 

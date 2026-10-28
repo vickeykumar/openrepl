@@ -52,7 +52,7 @@ jobs:
 
     - name: Start the image
       run: |
-        docker run -d --name openrepl -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
+        docker run -d --name openrepl --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
           -p 8080:8080 openrepl:${{ matrix.arch }} -p 8080
     - name: Smoke test
       run: bash scripts/ci/smoke.sh http://localhost:8080

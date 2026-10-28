@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# To run REPL containers inside container
-mkdir /sys/fs/cgroup/systemd || true
-mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd || true
-
+# Run as PID 1 so the cgroup delegated to this container has no leftover shell
+# process when gotty enables the cgroup v2 memory controller.
 exec /usr/local/bin/gotty -w --title-format "<fmt><title>{{ .command }}</title><jid>{{ encodePID .pid }}</jid></fmt>" "$@"
