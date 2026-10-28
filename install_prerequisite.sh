@@ -7,6 +7,15 @@ mkdir -p $GOTTY_DIR || true
 chmod 644 $GOTTY_DIR
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Use the Debian package architecture, which describes the image being built and
+# is more reliable than uname -m when the build runs under emulation.
+DEB_ARCH=$(dpkg --print-architecture)
+case "$DEB_ARCH" in
+    amd64) GO_ARCH=amd64; EVCXR_TARGET=x86_64-unknown-linux-gnu ;;
+    arm64) GO_ARCH=arm64; EVCXR_TARGET=aarch64-unknown-linux-gnu ;;
+    *) echo "Unsupported Debian architecture: $DEB_ARCH (supported: amd64, arm64)" >&2; exit 1 ;;
+esac
+
 retVal=0
 
 display_usage() {
@@ -100,10 +109,16 @@ source $HOME/.bashrc
 # ENV for nvm
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-nvm install v12.22.9
+# nodejs.org is sometimes unreachable from a CI runner for a few minutes: try again before giving up
+for attempt in 1 2 3; do
+    nvm install v12.22.9
+    [ -x "$NVM_DIR/versions/node/v12.22.9/bin/node" ] && break
+    echo "nvm install v12.22.9 failed (attempt $attempt of 3)" >&2
+    sleep 15
+done
 npm install npm@8.5.1 -g
 
-#install cling
+#install C++ REPL
 #use following to compile minimal cling
 #/usr/bin/ld.gold --strip-all --no-map-whole-files --no-keep-memory --no-keep-files-mapped $@ 
 # cling takes some time to init first instance, add below lines to rc.local(startup)
@@ -114,12 +129,34 @@ if [ -e "/usr/local/bin/cling" ]; then
     echo "File /usr/local/bin/cling exists."
 else
     echo "File /usr/local/bin/cling does not exist. installing..."
-    wget https://raw.githubusercontent.com/vickeykumar/openrepl/e596c6f0918e48eeba7a0bf7b7d2632f6b155ffb/repls/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
-		tar -xvf cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
-		chmod 755 cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling
-		ln -s $GOTTY_DIR/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling /usr/local/bin/cling
-		chmod 755 /usr/local/bin/cling
-		rm cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
+    if [ "$DEB_ARCH" = amd64 ]; then
+        CLING_ARCHIVE=cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c.tar.bz2
+        wget "https://raw.githubusercontent.com/vickeykumar/openrepl/e596c6f0918e48eeba7a0bf7b7d2632f6b155ffb/repls/$CLING_ARCHIVE"
+        tar -xvf "$CLING_ARCHIVE"
+        chmod 755 "$GOTTY_DIR/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling"
+        ln -s "$GOTTY_DIR/cling-Ubuntu-22.04-x86_64-1.0~dev-d47b49c/bin/cling" /usr/local/bin/cling
+        chmod 755 /usr/local/bin/cling
+        rm "$CLING_ARCHIVE"
+    else
+        # No arm64 build of the bundled Cling archive exists, but conda-forge
+        # publishes Cling for linux-aarch64 (Ubuntu's clang-repl takes declarations
+        # only and has no meta-commands, so it cannot stand in for it). micromamba
+        # installs it, then the build-only parts (static LLVM libraries, headers,
+        # cmake files, the package cache) are deleted: 2.9 GB becomes about 1.6 GB.
+        CLING_PREFIX=/opt/cling
+        MAMBA_DIR=$(mktemp -d)
+        # keep micromamba's package cache (about as large as the install) in MAMBA_DIR, so removing it
+        # below removes the cache too; by default it goes to ~/.local/share/mamba and stays in the image
+        export MAMBA_ROOT_PREFIX="$MAMBA_DIR/root"
+        curl -fsSL https://micro.mamba.pm/api/micromamba/linux-aarch64/latest | tar -C "$MAMBA_DIR" -xj bin/micromamba
+        "$MAMBA_DIR/bin/micromamba" create -y -q -p "$CLING_PREFIX" -c conda-forge --override-channels cling=1.2
+        find "$CLING_PREFIX" -name '*.a' -delete
+        rm -rf "$CLING_PREFIX/conda-meta" "$CLING_PREFIX/pkgs" "$CLING_PREFIX/lib/cmake" \
+            "$CLING_PREFIX"/include/llvm* "$CLING_PREFIX"/include/mlir* "$MAMBA_DIR"
+        unset MAMBA_ROOT_PREFIX
+        ln -s "$CLING_PREFIX/bin/cling" /usr/local/bin/cling
+        chmod 755 /usr/local/bin/cling
+    fi
 fi
 
 #install evcxr and set all the required dependencies
@@ -130,13 +167,21 @@ else
     apt-get install -y --no-install-recommends rustc
     apt-get install -y --no-install-recommends rust-gdb
     apt-get install -y --no-install-recommends cargo
-    #evcxr install
-    wget https://github.com/evcxr/evcxr/releases/download/v0.17.0/evcxr-v0.17.0-x86_64-unknown-linux-gnu.tar.gz
-    tar -xvf evcxr-v0.17.0-x86_64-unknown-linux-gnu.tar.gz
-    cp evcxr-v0.17.0-x86_64-unknown-linux-gnu/evcxr /usr/local/bin/evcxr
-    chmod 755 /usr/local/bin/evcxr
-    rm evcxr-v0.17.0-x86_64-unknown-linux-gnu.tar.gz
-    rm -rf evcxr-v0.17.0-x86_64-unknown-linux-gnu
+    if [ "$DEB_ARCH" = amd64 ]; then
+        EVCXR_ARCHIVE="evcxr-v0.17.0-$EVCXR_TARGET.tar.gz"
+        wget "https://github.com/evcxr/evcxr/releases/download/v0.17.0/$EVCXR_ARCHIVE"
+        tar -xvf "$EVCXR_ARCHIVE"
+        cp "evcxr-v0.17.0-$EVCXR_TARGET/evcxr" /usr/local/bin/evcxr
+        chmod 755 /usr/local/bin/evcxr
+        rm "$EVCXR_ARCHIVE"
+        rm -rf "evcxr-v0.17.0-$EVCXR_TARGET"
+    else
+        # Build natively because the upstream prebuilt asset is x86_64 only.
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.74.1
+        . "$HOME/.cargo/env"
+        cargo install --locked --version 0.17.0 evcxr_repl
+        ln -sf "$HOME/.cargo/bin/evcxr" /usr/local/bin/evcxr
+    fi
 fi
 
 #install rappel, nasm and set all the required dependencies
@@ -170,12 +215,7 @@ fi
 #only (the commit is pinned: its tags stop at 2018), then delete that toolchain.
 GOMACRO_REV=0df6c0cd20af13f83b0203c64a16ba08dda38c02
 GOMACRO_GO=go1.23.12
-case "$(uname -m)" in
-    x86_64) GOMACRO_ARCH=amd64 ;;
-    aarch64|arm64) GOMACRO_ARCH=arm64 ;;
-    armv7l|armv6l) GOMACRO_ARCH=armv6l ;;
-    *) GOMACRO_ARCH=amd64 ;;
-esac
+GOMACRO_ARCH=$GO_ARCH
 GOMACRO_DIR=$(mktemp -d)
 if curl -fsSL "https://go.dev/dl/$GOMACRO_GO.linux-$GOMACRO_ARCH.tar.gz" | tar -C "$GOMACRO_DIR" -xz \
     && env -u GOROOT GO111MODULE=on GOFLAGS= GOTOOLCHAIN=local GOPATH="$GOMACRO_DIR/gopath" GOBIN=/usr/local/bin \
@@ -252,8 +292,10 @@ mount -t cgroup -o none,name=systemd cgroup /sys/fs/cgroup/systemd 2>&1 || true
 
 # currently stable gdb version is 8.1.1, can be copied from bin/ build from src
 #apt-get install -y --no-install-recommends gdb
-cp $SCRIPT_DIR/bin/gdb /usr/local/bin/ || true
-chmod 755 /usr/local/bin/gdb || true
+if [ "$DEB_ARCH" = amd64 ]; then
+    cp "$SCRIPT_DIR/bin/gdb" /usr/local/bin/ || true
+    chmod 755 /usr/local/bin/gdb || true
+fi
 
 # Debug (gdb) needs ptrace, and some hosts do not have it: the Raspberry Pi workers
 # (an amd64 image under qemu-user), x86 code under Rosetta, sandboxes. There gdb

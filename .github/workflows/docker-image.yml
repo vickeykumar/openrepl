@@ -21,22 +21,31 @@ permissions:
 jobs:
 
   build:
-
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
 
     steps:
     - uses: actions/checkout@v4
     - name: Build the Docker image
       run: |
-        docker build . --file Dockerfile --tag openrepl:latest
-        docker history openrepl:latest
-        docker inspect openrepl:latest
+        docker build --platform linux/${{ matrix.arch }} . --file Dockerfile --tag openrepl:${{ matrix.arch }}
+        docker history openrepl:${{ matrix.arch }}
+        docker inspect openrepl:${{ matrix.arch }}
     - name: docker-image-size-limit
       uses: wemake-services/docker-image-size-limit@master
       with:  # lint this image by itself
-        image: 'openrepl:latest'
-        size: 3GB
+        image: 'openrepl:${{ matrix.arch }}'
+        # The arm64 image is larger: it carries the conda-forge Cling (about 1.6 GB pruned)
+        # and the Rust toolchain that builds evcxr. Keep the amd64 budget at 3 GB.
+        size: ${{ matrix.arch == 'arm64' && '6GB' || '3GB' }}
         max_layers: 15
         show_current_size: true
         exit_zero: true
@@ -44,7 +53,7 @@ jobs:
     - name: Start the image
       run: |
         docker run -d --name openrepl -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
-          -p 8080:8080 openrepl:latest -p 8080
+          -p 8080:8080 openrepl:${{ matrix.arch }} -p 8080
     - name: Smoke test
       run: bash scripts/ci/smoke.sh http://localhost:8080
     # the programs the REPLs start must be found with the plain system PATH, as the server finds them

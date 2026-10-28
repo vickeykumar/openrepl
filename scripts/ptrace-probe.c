@@ -1,7 +1,7 @@
 /* Can a debugger work on this host?
  *
  * gdb needs two things from the kernel: to trace a child (PTRACE_TRACEME) and to
- * read its registers (PTRACE_GETREGS). Some hosts allow neither (a kernel or a
+ * read its registers (PTRACE_GETREGSET). Some hosts allow neither (a kernel or a
  * sandbox without ptrace: "Function not implemented"), some only the first (x86
  * code run through Rosetta: "Input/output error"). This does exactly those two
  * things and says which one failed.
@@ -15,6 +15,7 @@
  * /usr/local/bin/openrepl-ptrace-probe; openrepl-gdb runs it on every Debug.
  */
 #include <errno.h>
+#include <elf.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -22,7 +23,7 @@
 #include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
-#include <sys/user.h>
+#include <sys/uio.h>
 #include <sys/wait.h>
 
 int main(void) {
@@ -47,8 +48,12 @@ int main(void) {
         return 1;
     }
 
-    struct user_regs_struct regs;
-    int regs_ok = ptrace(PTRACE_GETREGS, pid, 0, &regs) == 0;
+    /* PTRACE_GETREGS is x86-specific; GETREGSET with NT_PRSTATUS works across
+       the supported amd64 and arm64 targets. */
+    unsigned char registers[4096];
+    struct iovec regs = { .iov_base = registers, .iov_len = sizeof(registers) };
+    errno = 0;
+    int regs_ok = ptrace(PTRACE_GETREGSET, pid, (void *)(long)NT_PRSTATUS, &regs) == 0;
     int why = errno;
     kill(pid, SIGKILL);
     waitpid(pid, &st, 0);

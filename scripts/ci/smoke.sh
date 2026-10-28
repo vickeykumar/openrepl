@@ -28,7 +28,7 @@ check() {
 }
 # has <name> <text>: the last body has the text
 has() {
-  if printf '%s' "$body" | grep -q -- "$2"; then echo "ok    $1"; else echo "FAIL  $1: no \"$2\" in the answer"; fail=1; fi
+  if [[ "$body" == *"$2"* ]]; then echo "ok    $1"; else echo "FAIL  $1: no \"$2\" in the answer"; fail=1; fi
 }
 
 check "home page" 200 "$BASE/";                          has "home page names OpenREPL" "OpenREPL"
