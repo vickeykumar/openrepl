@@ -158,6 +158,8 @@ Keys the backend reads: `arg` (extra argv), `jid` (fork parent), `uid`, `homedir
 
 **What the browser may name.** The parameters a REPL is started with are the arguments of the connection and the payload of the init message (the IDE fields: `IdeLang`, `IdeContent`, `IdeFileName`, `CompilerOption`, `CompilerFlags`, `EnvFlags`), and then what the server decided about the user: `uid`, `homedir` and `usermode` (`launchParams`). The browser cannot name those three: `usermode=admin` would give a guest an admin's REPL, which has no sandbox (LLD 14).
 
+**Shared workspaces.** A collaborator's file browser shows the master's files: its requests carry `?homedir=<master's workspace>&hsig=<signature>`. The signature is `utils.SignHome(homedir)`, an HMAC-SHA256 of the path with the server's secret (`utils.Secret()`: the environment's, or the one saved in the database, so it is the same after a restart; a worker has its gateway's). The server adds it as `hsig` to the root of the tree it sends the master's file browser (`handleFileBrowser`), the master's page puts that node in Firebase with the rest of the sync, and the collaborator's page reads it and appends it to its requests (`preprocessurl`). `utils.SharedHome` accepts `?homedir=` only with a valid signature; a request with a path and no valid signature is logged and gets the caller's own workspace, and a signature is good for the one path it was made for. There is no expiry. Without a secret nothing is signed and no shared workspace is accepted. The terminal is not affected: its identity is the server's (above). Tests: `utils/homesig_test.go`, `server/sharing_test.go`, `e2e/tests/sharing.spec.js`.
+
 ## 5. WebTTY pumps
 
 `WebTTY.Run` sends the initialize messages and starts two goroutines:

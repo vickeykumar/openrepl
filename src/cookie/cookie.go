@@ -339,9 +339,9 @@ func GetOrUpdateHomeDir(rw http.ResponseWriter, req *http.Request, Uid string) (
 		}
 
 		// try getting homedir from request query itself, priority 2
-		if req.Form.Has(utils.HOME_DIR_KEY) {
-			homedir = req.Form.Get(utils.HOME_DIR_KEY)
-			return homedir
+		// (only with the signature the master's file browser gave out: utils.SignHome)
+		if shared, _, ok := utils.SharedHome(req.Form); ok {
+			return shared
 		}
 
 		// try getting homedir from session cookie

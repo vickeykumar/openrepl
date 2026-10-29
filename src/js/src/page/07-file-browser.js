@@ -333,6 +333,7 @@
       var nodedata = contentRef.val();
       if ((nodedata) && (nodedata.id)) {
         homedir = nodedata.id;
+        window.homesig = nodedata.hsig || "";
       }
 
       $('#file-browser').jstree({
@@ -824,6 +825,7 @@
             nodedata = snapshot.val();
             if ((nodedata) && (nodedata.id)) {
               homedir = nodedata.id;
+              window.homesig = nodedata.hsig || "";
               $('#file-browser').jstree(true).settings.core.data = nodedata;
               $('#file-browser').jstree(true).refresh();
             }

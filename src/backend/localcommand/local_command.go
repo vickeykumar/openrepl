@@ -2,6 +2,7 @@ package localcommand
 
 import (
 	"os"
+	"path/filepath"
 	"os/exec"
 	"syscall"
 	"time"
@@ -89,6 +90,9 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	cmd.Env = append(cmd.Env, "GOPATH=/opt/gotty/")
 	cmd.Env = append(cmd.Env, "GOCACHE=/tmp/go_cache/.cache/go-build/")
 	cmd.Env = append(cmd.Env, "HOME="+cmd.Dir)
+	if rh := rustupHome(); rh != "" {
+		cmd.Env = append(cmd.Env, "RUSTUP_HOME="+rh)
+	}
 	cmd.Env = append(cmd.Env, "HOSTNAME="+command)
 	cmd.Env = append(cmd.Env, "GCC_EXEC_PREFIX=/usr/lib/gcc/")
 	cmd.Env = append(cmd.Env, utils.IdeLangKey+"="+utils.GetCompilerLang(params))
@@ -290,4 +294,22 @@ func (lcmd *LocalCommand) closeTimeoutC() <-chan time.Time {
 	}
 
 	return make(chan time.Time)
+}
+
+// rustupHome is where the server's own user keeps the Rust toolchains. The REPL's HOME is its workspace, and
+// rustup looks for its toolchains below HOME: without this the cargo and rustc of the PATH (the rustup proxies)
+// say "no default toolchain" and the Rust REPL (evcxr) stops with "No such file or directory".
+func rustupHome() string {
+	if v := os.Getenv("RUSTUP_HOME"); v != "" {
+		return v
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Join(home, ".rustup")
+	if st, err := os.Stat(dir); err == nil && st.IsDir() {
+		return dir
+	}
+	return ""
 }

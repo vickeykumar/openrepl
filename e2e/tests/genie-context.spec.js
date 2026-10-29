@@ -64,21 +64,25 @@ test("selected code is added with Ctrl+Shift+L, with its lines", async ({ page }
 
 test("selected code is added from the editor's right-click menu", async ({ page }) => {
   await ready(page);
-  await page.evaluate(() => {
-    const ed = window.editor.env.editor;
-    ed.setValue("a = 1\nb = 2\n", -1);
-    ed.selectAll();
-  });
-  // the menu opens on the contextmenu event; a real right-click first moves Ace's cursor, which can
-  // clear the selection when the click lands a little outside it
-  await page.evaluate(() => {
-    const el = document.querySelector(".ace_content");
-    const r = el.getBoundingClientRect();
-    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 20 }));
-  });
   const item = page.locator("#genie-menu button", { hasText: "Add to Genie chat" });
-  await expect(item).toBeVisible();
-  await item.click();
+  // The menu opens on the contextmenu event, and only for a selection. A real right-click first moves
+  // Ace's cursor, which can clear the selection when the click lands a little outside it, so the event
+  // is sent directly. The editor can still be given its content again after the page is ready (the
+  // first snapshot of the shared editor, the settings of the site), which clears the selection and
+  // left the menu out: so the selection is made again and the event sent again until the menu is there and clicked.
+  await expect(async () => {
+    await page.evaluate(() => {
+      const ed = window.editor.env.editor;
+      ed.setValue("a = 1\nb = 2\n", -1);
+      ed.selectAll();
+      const el = document.querySelector(".ace_content");
+      const r = el.getBoundingClientRect();
+      el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 20 }));
+    });
+    // the menu closes by itself when the window is resized or scrolled (the layout can still be settling),
+    // so it is clicked as soon as it is there, in the same attempt
+    await item.click({ timeout: 2000 });
+  }).toPass({ timeout: 20 * 1000 });
   await expect(chips(page)).toHaveCount(1);
 });
 
