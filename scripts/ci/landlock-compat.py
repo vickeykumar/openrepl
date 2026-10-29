@@ -56,6 +56,14 @@ def server_env(workspace, name):
         "HOME": workspace, "HOSTNAME": name, "GCC_EXEC_PREFIX": "/usr/lib/gcc/",
         "PATH": env.get("PATH", "/usr/local/bin:/usr/bin:/bin") + ":/opt/gotty/bin",
     })
+    # the server's own PATH has the rustup proxies, and its HOME holds the toolchains (localcommand.rustupHome):
+    # a REPL's HOME is its workspace, so without RUSTUP_HOME cargo and rustc find no toolchain and evcxr stops
+    cargo = os.path.expanduser("~/.cargo/bin")
+    if os.path.isdir(cargo):
+        env["PATH"] = cargo + ":" + env["PATH"]
+    rustup = os.path.expanduser("~/.rustup")
+    if os.path.isdir(rustup):
+        env["RUSTUP_HOME"] = rustup
     return env
 
 
