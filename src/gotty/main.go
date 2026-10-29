@@ -33,6 +33,8 @@ func common_setup() {
 	user.InitSessionDBHandle()
 	cookie.InitSecret()
 	containers.InitContainers()
+	// /tmp is shared by the REPLs: delete what is old, when OPENREPL_TMP_MAX_AGE says so
+	utils.StartTmpCleaner()
 }
 
 var setup_done bool = false
@@ -61,6 +63,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(2)
 	}
+	// where the workspaces live comes from the settings, so after the env file
+	utils.InitHomeDir()
 	utils.LogConfig()
 	// The databases are opened once the mode is known (in app.Action): a
 	// worker keeps its data in files, a gateway or a standalone server may keep

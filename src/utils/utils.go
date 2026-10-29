@@ -15,7 +15,6 @@ import (
 	"errors"
 )
 
-const HOME_DIR = "/tmp/home/"
 const GOTTY_PATH = "/opt/gotty"
 const SYSTEM_CONFIG_PATH = "/etc"
 const GitConfigFile = ".gitconfig"

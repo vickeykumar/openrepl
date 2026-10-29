@@ -645,6 +645,9 @@ The server-side settings come from environment variables, and gotty can load the
 | `OPENREPL_OPENROUTER_API_KEY` | Optional. The OpenRouter key, as it is. Without it the Gemma 4 31B choice is not offered. | |
 | `OPENREPL_RECAPTCHA_SECRET` | Optional. The reCAPTCHA secret key of the site key on the home page. With it the server checks the contact form's reCAPTCHA answer (the box alone only switches on the Send button, a bot can post straight to `/feedback`). Without it the answer is not checked. | |
 | `OPENREPL_HOST` | The origin the chat proxy accepts. Default `localhost`. | `user.host` |
+| `OPENREPL_HOME_DIR` | The folder that holds the users' workspaces, one folder each. Default `/tmp/home/`. The Docker image sets `/home/openrepl/`, so that `/tmp` can stay open to the REPLs under the filesystem sandbox. It must be the same on a gateway and its workers. | |
+| `OPENREPL_LANDLOCK` | The filesystem sandbox of the REPLs (LLD 14): `auto` (the default) applies it where the kernel has Landlock and says in the log and on the admin health page where it does not, `off` switches it off, `require` refuses to start a REPL without it. | |
+| `OPENREPL_TMP_MAX_AGE` | A duration such as `1h`: the server deletes from `/tmp` what nobody has touched for that long. The Docker image sets `1h`. Not set: never. | |
 | `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Default: the built-in production project. See below. | |
 | `OPENREPL_ENV` | `dev` or `production` (the default). Dev shows the values of these settings in the start-up log; production only says which are set. | |
 
