@@ -158,6 +158,11 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 		if cmderr != nil {
 	        log.Printf("lcmd.cmd.wait : %s", cmderr.Error())
 		}
+		// The terminal is over, so is everything it started that is still running
+		// (what a shell left behind, the program a Run started, the command nsenter
+		// forked): they are in the terminal's process group, and without this they
+		// outlive it, are adopted by gotty, and stay <defunct> when they end.
+		killGroup(pid)
 		lcmd.exitMu.Lock()
 		lcmd.exitErr = cmderr
 		lcmd.exitMu.Unlock()
@@ -192,16 +197,42 @@ func (lcmd *LocalCommand) Write(p []byte) (n int, err error) {
 
 func (lcmd *LocalCommand) Close() error {
 	if lcmd.cmd != nil && lcmd.cmd.Process != nil {
-		lcmd.cmd.Process.Signal(lcmd.closeSignal)
+		lcmd.signalAll(lcmd.closeSignal)
 	}
 	for {
 		select {
 		case <-lcmd.ptyClosed:
 			return nil
 		case <-lcmd.closeTimeoutC():
-			lcmd.cmd.Process.Signal(syscall.SIGKILL)
+			lcmd.signalAll(syscall.SIGKILL)
 		}
 	}
+}
+
+// killGroup kills every process of the terminal that begins with the process pid.
+// pty.Start makes that process the leader of a session of its own, so its
+// process group has the same number, and its children and theirs are in it. A
+// process that moved to a group of its own is not reached.
+func killGroup(pid int) {
+	if pid > 1 {
+		syscall.Kill(-pid, syscall.SIGKILL)
+	}
+}
+
+// signalAll sends sig to the terminal's whole process group, not only to the command it
+// started: the programs under it would otherwise keep running. Once the terminal has
+// ended it sends nothing, because the number may be somebody else's by then.
+func (lcmd *LocalCommand) signalAll(sig syscall.Signal) {
+	select {
+	case <-lcmd.ptyClosed:
+		return
+	default:
+	}
+	pid := lcmd.cmd.Process.Pid
+	if pid > 1 && syscall.Kill(-pid, sig) == nil {
+		return
+	}
+	lcmd.cmd.Process.Signal(sig)
 }
 
 func (lcmd *LocalCommand) WindowTitleVariables() map[string]interface{} {

@@ -12,7 +12,7 @@ ifneq ($(UNAME), Linux)
 	PRE_REQ = tools
 endif
 
-gotty: go-toolchain asset ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.go backend/*.go backend/localcommand/*.go containers/*.go cachedb/*.go meters/*.go user/*.go cookie/*.go ${TARGET}/Makefile
+gotty: go-toolchain asset ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.go backend/*.go backend/localcommand/*.go containers/*.go cachedb/*.go meters/*.go reaper/*.go user/*.go cookie/*.go ${TARGET}/Makefile
 	@echo "building gotty: "${TARGET}
 	cd ${TARGET} && \
 	make

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"persist"
+	"reaper"
 	"pkg/homedir"
 	"server"
 	"strings"
@@ -20,6 +21,8 @@ import (
 )
 
 func common_setup() {
+	// as PID 1 in the image gotty adopts the orphans of its terminals: reap them when they end
+	reaper.Start()
 	// load pending jobs from previous births
 	utils.GottyJobs.LoadJobsFromFile(utils.GOTTY_PATH+"/"+utils.JobFile, nil)
 	server.InitFeedbackDBHandle()
