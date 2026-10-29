@@ -35,6 +35,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: docker/setup-buildx-action@v3
+    # Which Landlock the runner's kernel has (LLD 14): 4 is files and TCP, 5 adds device ioctls, 6 (kernel 6.12)
+    # adds the signal and abstract-socket scopes. It only prints; the compatibility step below skips itself
+    # when there is none.
+    - name: Landlock on this runner
+      run: |
+        uname -rm
+        python3 -c "import ctypes;c=ctypes.CDLL(None,use_errno=True);r=c.syscall(444,None,0,1);print('Landlock ABI:',r if r>=0 else 'none (errno %d)'%ctypes.get_errno())"
     # The toolchain layer (install_prerequisite.sh: nvm, Rust, Cling) is the same on every run and
     # takes minutes to build, so its layers are kept in the GitHub Actions cache, one scope per
     # architecture. The scope names are those of the Docker Push CI, which fills the cache from

@@ -27,6 +27,10 @@ const (
 	EnvTmpMaxAge = "OPENREPL_TMP_MAX_AGE"
 )
 
+// WorkspaceQuotaMB is the size a workspace may have in the file browser, and the size one file may have
+// that a REPL writes (RLIMIT_FSIZE, set by the sandbox helper): one number for both.
+const WorkspaceQuotaMB = 50
+
 const defaultHomeDir = "/tmp/home/"
 
 // HOME_DIR holds the workspaces. It ends with a slash. It is the default until

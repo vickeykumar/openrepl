@@ -68,6 +68,12 @@ func GetCommandWieght(command string) int64 {
 }
 
 func AddContainerAttributes(name string, containerAttribs *syscall.SysProcAttr, params url.Values) {
+	// an admin's REPL runs without namespaces (and without cgroups and the filesystem sandbox): the
+	// admin owns the server, and uses the REPL for what the server's own host can do
+	if utils.IsUserAdmin(params) {
+		log.Println("INFO: no namespaces for an admin's REPL")
+		return
+	}
 	if containerAttribs == nil {
 		containerAttribs = &syscall.SysProcAttr{}
 	}

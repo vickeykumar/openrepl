@@ -156,6 +156,8 @@ Keys the backend reads: `arg` (extra argv), `jid` (fork parent), `uid`, `homedir
 
 **Orphans and zombies.** In the image gotty is PID 1 (`scripts/run_app.sh` uses `exec`, which the cgroup v2 setup needs), so a process that loses its parent anyway (it left its group, or an interactive shell's job) is adopted by gotty, and when it ends it stays `<defunct>` because gotty waits only for the children it started. The package `reaper` (`reaper.Start`, called in `common_setup` when the PID is 1) looks every 3 seconds for zombies whose parent is gotty and reaps one, by its exact PID, once it was also a zombie at the sweep before; it never waits for "any child", which would take the exit status from a child whose own `Wait` is about to read it. The Docker Image CI starts an orphan that ends and fails if a defunct process is left under PID 1. `ResizeTerminal` issues `TIOCSWINSZ` on the PTY fd.
 
+**What the browser may name.** The parameters a REPL is started with are the arguments of the connection and the payload of the init message (the IDE fields: `IdeLang`, `IdeContent`, `IdeFileName`, `CompilerOption`, `CompilerFlags`, `EnvFlags`), and then what the server decided about the user: `uid`, `homedir` and `usermode` (`launchParams`). The browser cannot name those three: `usermode=admin` would give a guest an admin's REPL, which has no sandbox (LLD 14).
+
 ## 5. WebTTY pumps
 
 `WebTTY.Run` sends the initialize messages and starts two goroutines:

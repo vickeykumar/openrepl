@@ -69,7 +69,8 @@ def run(argv, stdin, env, cwd, timeout):
 
 
 def sandboxed(helper, workspace, home_root, argv, debug=False):
-    return [helper, "--workspace", workspace, "--home-root", home_root] + (["--debug"] if debug else []) + ["--"] + argv
+    # --max-file-mb is what the server passes to every REPL (utils.WorkspaceQuotaMB)
+    return [helper, "--workspace", workspace, "--home-root", home_root, "--max-file-mb", "50"] + (["--debug"] if debug else []) + ["--"] + argv
 
 
 def main():
@@ -179,6 +180,19 @@ def main():
                 print("    with the sandbox   : %r" % outs[1][-500:])
             elif status == "BASELINE-FAILS":
                 print("    (without the sandbox too: %r)" % outs[0][-300:])
+
+    # the per-file limit (RLIMIT_FSIZE): a REPL that writes a file bigger than the limit gets an error
+    ws = tempfile.mkdtemp(prefix="box-", dir=args.home_root)
+    os.chmod(ws, 0o777)
+    big = ["python3", "-c", "open('big.bin', 'wb').write(b'x' * 3000000); print('WROTE')"]
+    small = ["python3", "-c", "open('small.bin', 'wb').write(b'x' * 100000); print('WROTE')"]
+    limited = [args.helper, "--workspace", ws, "--home-root", args.home_root, "--max-file-mb", "1", "--"]
+    rc_big, o_big = run(limited + big, "", server_env(ws, "python"), ws, 30)
+    rc_small, o_small = run(limited + small, "", server_env(ws, "python"), ws, 30)
+    ok = "File too large" in o_big and "WROTE" not in o_big and "WROTE" in o_small
+    results.append(("file size limit", "PASS" if ok else "FAIL"))
+    print("%-16s %s" % ("file size limit", "PASS" if ok else "FAIL big=%r small=%r" % (o_big[-120:], o_small[-120:])))
+    shutil.rmtree(ws, ignore_errors=True)
 
     # the isolation itself, with a real REPL: bash under the policy tries what it must not do
     box_ws = tempfile.mkdtemp(prefix="box-", dir=args.home_root)

@@ -69,8 +69,10 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 				})
 		}
 	}
-	if err := containers.LandlockCheck(); err != nil {
-		return nil, err
+	if !utils.IsUserAdmin(params) {
+		if err := containers.LandlockCheck(); err != nil {
+			return nil, err
+		}
 	}
 	// the command depends on the workspace: under the filesystem sandbox the helper that applies its
 	// policy runs it. exec.Command, so that a program that is not found is told so when it starts.
@@ -140,8 +142,14 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	}
 
 	pid := cmd.Process.Pid
-	containers.AddProcesstoNewSubCgroup(command, pid, utils.Iscompiled(params)) // creating and adding process to new subcrgroup container
-	go containers.EnableNetworking(pid)	// enable loopback
+	if utils.IsUserAdmin(params) {
+		// an admin's REPL has no namespaces, no memory limit and no filesystem sandbox; it is only tracked, so
+		// that a fork can join it
+		containers.TrackProcess(pid)
+	} else {
+		containers.AddProcesstoNewSubCgroup(command, pid, utils.Iscompiled(params)) // creating and adding process to new subcrgroup container
+		go containers.EnableNetworking(pid)	// enable loopback
+	}
 	// When the process is closed by the user,
 	// close pty so that Read() on the pty breaks with an EOF.
 	go func() {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -23,6 +24,7 @@ type LandlockInfo struct {
 	Mode   string // auto, off or require (OPENREPL_LANDLOCK)
 	Active bool   // REPLs are started under the policy
 	ABI    int    // the kernel's version, 0 when it has none
+	Scope  bool   // the kernel has the signal scope (ABI 6): REPLs without a PID namespace of their own get it
 	Helper string // the helper program
 	Reason string // why it is not active, or what is applied
 }
@@ -81,7 +83,13 @@ func InitLandlock() {
 			break
 		}
 		info.Active = true
-		info.Reason = fmt.Sprintf("REPLs run under the Landlock policy (kernel ABI %d)", abi)
+		info.Scope = landlock.ScopeSupported()
+		info.Reason = fmt.Sprintf("REPLs run under the Landlock policy (kernel ABI %d), a file a REPL writes may have %d MB at most", abi, utils.WorkspaceQuotaMB)
+		if info.Scope {
+			info.Reason += "; signals between REPLs are blocked where a REPL has no PID namespace of its own"
+		} else {
+			info.Reason += "; no signal scope on this kernel (needs ABI 6, Linux 6.12)"
+		}
 	}
 	landlockMu.Lock()
 	landlockInfo = info
@@ -115,7 +123,7 @@ func LandlockCheck() error {
 // wrapWithLandlock makes a command run under the policy of the workspace: the
 // helper applies it and then runs the command. With no workspace, or no
 // sandbox on this server, the command is returned as it is.
-func wrapWithLandlock(command []string, workspace string, debug bool) []string {
+func wrapWithLandlock(command []string, workspace string, debug, scopeSignals bool) []string {
 	if workspace == "" || len(command) == 0 {
 		return command
 	}
@@ -123,7 +131,11 @@ func wrapWithLandlock(command []string, workspace string, debug bool) []string {
 	if !info.Active {
 		return command
 	}
-	wrapped := []string{info.Helper, "--workspace", workspace, "--home-root", strings.TrimSuffix(utils.HOME_DIR, "/")}
+	wrapped := []string{info.Helper, "--workspace", workspace, "--home-root", strings.TrimSuffix(utils.HOME_DIR, "/"),
+		"--max-file-mb", strconv.Itoa(utils.WorkspaceQuotaMB)}
+	if scopeSignals && info.Scope {
+		wrapped = append(wrapped, "--scope-signals")
+	}
 	if debug {
 		wrapped = append(wrapped, "--debug")
 	}
