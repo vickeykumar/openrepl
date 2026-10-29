@@ -16,7 +16,7 @@ import (
 
 func collaboratorRequest(t *testing.T, id trusted.Identity, masterHome string) *http.Request {
 	t.Helper()
-	r := httptest.NewRequest("GET", "/ws?homedir="+url.QueryEscape(masterHome), nil)
+	r := httptest.NewRequest("GET", "/ws?homedir="+url.QueryEscape(masterHome)+"&hsig="+utils.SignHome(masterHome), nil)
 	trusted.Set(r.Header, id)
 	if err := r.ParseForm(); err != nil {
 		t.Fatal(err)
@@ -24,7 +24,14 @@ func collaboratorRequest(t *testing.T, id trusted.Identity, masterHome string) *
 	return r
 }
 
+func withSecret(t *testing.T) {
+	t.Helper()
+	utils.SetGeneratedSecret("test-secret")
+	t.Cleanup(func() { utils.SetGeneratedSecret("") })
+}
+
 func TestACollaboratorsFileBrowserFollowsTheMastersWorkspace(t *testing.T) {
+	withSecret(t)
 	s := &Server{}
 	r := collaboratorRequest(t, trusted.Identity{Guest: "g2", Privilege: utils.GUEST}, "/home/openrepl/master-home")
 
@@ -38,6 +45,7 @@ func TestACollaboratorsFileBrowserFollowsTheMastersWorkspace(t *testing.T) {
 }
 
 func TestACollaboratorOfAnAdminStaysAGuest(t *testing.T) {
+	withSecret(t)
 	s := &Server{}
 	// the admin's workspace is named, the collaborator is a guest
 	r := collaboratorRequest(t, trusted.Identity{Guest: "g2", Privilege: utils.GUEST}, "/home/openrepl/admin-home")
@@ -57,6 +65,7 @@ func TestACollaboratorOfAnAdminStaysAGuest(t *testing.T) {
 }
 
 func TestTheAdminKeepsTheAdminRoleWhenACollaboratorJoins(t *testing.T) {
+	withSecret(t)
 	s := &Server{}
 	// the master's own request carries no homedir; the collaborator's does
 	r := httptest.NewRequest("GET", "/ws", nil)
@@ -76,5 +85,27 @@ func TestAForkLinkIsAlsoAnOverrideOfTheWorkspace(t *testing.T) {
 	r.ParseForm()
 	if !homeOverridden(r) {
 		t.Error("a fork link does not name the parent's workspace")
+	}
+}
+
+func TestAStrangerWhoKnowsTheWorkspacePathGetsTheirOwn(t *testing.T) {
+	withSecret(t)
+	s := &Server{}
+	home := "/home/openrepl/master-home"
+	for name, target := range map[string]string{
+		"no signature":      "/ws?homedir=" + url.QueryEscape(home),
+		"a made-up one":     "/ws?homedir=" + url.QueryEscape(home) + "&hsig=abcdef",
+		"another path":      "/ws?homedir=" + url.QueryEscape(home+"2") + "&hsig=" + utils.SignHome(home),
+	} {
+		r := httptest.NewRequest("GET", target, nil)
+		trusted.Set(r.Header, trusted.Identity{Guest: "stranger", Privilege: utils.GUEST})
+		r.ParseForm()
+		if homeOverridden(r) {
+			t.Errorf("%s: the request was allowed to name a workspace", name)
+		}
+		_, got, _ := s.trustedIdentity(r)
+		if got == home || got == home+"2" {
+			t.Errorf("%s: the stranger got %q", name, got)
+		}
 	}
 }

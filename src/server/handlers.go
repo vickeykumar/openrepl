@@ -39,7 +39,7 @@ import (
 // arguments of the connection and the payload of its init message) must not be able to name them:
 // usermode=admin would give a guest the admin's REPL, which has no sandbox, and homedir or uid
 // would put a guest in another user's workspace.
-var reservedParams = []string{utils.UidKey, utils.HOME_DIR_KEY, utils.USER_PRIVILEGE_KEY}
+var reservedParams = []string{utils.UidKey, utils.HOME_DIR_KEY, utils.USER_PRIVILEGE_KEY, utils.HomeSigKey}
 
 // launchParams are the parameters a REPL is started with: what the browser asked for, then what the
 // server decided about the user, which wins.
@@ -596,6 +596,9 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 		        log.Println("Error: ",err)
 		    }
 		    log.Println("file Tree: ", tree)
+			if tree.Id == homedir {
+				tree.HomeSig = utils.SignHome(homedir)
+			}
 			rw.Write(utils.JsonMarshal(tree))
 		}
 	} else if req.Method == "POST" {

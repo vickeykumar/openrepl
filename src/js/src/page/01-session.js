@@ -128,10 +128,12 @@ function preprocessurl(url) {
 
     // update homedir for slaves
     if (!isMaster() && (homedir)) {
+      // the signature came with the master's tree: the server ignores a workspace without it
+      var homeparams = HOME_DIR_KEY+"="+homedir + (window.homesig ? "&hsig="+window.homesig : "");
       if (url.indexOf("?") === -1) {
-        url = url + "?"+HOME_DIR_KEY+"="+homedir;
+        url = url + "?"+homeparams;
       } else {
-        url = url + "&"+HOME_DIR_KEY+"="+homedir;
+        url = url + "&"+homeparams;
       }
     }
     return url;

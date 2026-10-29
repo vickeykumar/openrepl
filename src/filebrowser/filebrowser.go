@@ -24,6 +24,7 @@ type TreeNode struct {
     Id       string      `json:"id"`
     Text     string      `json:"text"`
     Type     string      `json:"type"`
+    HomeSig  string      `json:"hsig,omitempty"` // on the root of a workspace: the signature a collaborator needs (utils.SignHome)
     Children []TreeNode  `json:"children,omitempty"`
 }
 

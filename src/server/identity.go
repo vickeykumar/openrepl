@@ -79,7 +79,8 @@ func (server *Server) announce(r *http.Request) *routeTracker {
 // homeOverridden reports whether the request names its workspace itself (a
 // fork link's jid or a shared session's homedir) instead of using its own.
 func homeOverridden(r *http.Request) bool {
-	return r.Form.Get("jid") != "" || r.Form.Has(utils.HOME_DIR_KEY)
+	_, _, ok := utils.SharedHome(r.Form)
+	return r.Form.Get("jid") != "" || ok
 }
 
 // trustedIdentity resolves a forwarded request on a worker. The workspace
@@ -96,8 +97,8 @@ func (server *Server) trustedIdentity(r *http.Request) (uid string, homedir stri
 	if ppid := encoder.DecodeToPID(r.Form.Get("jid")); ppid != -1 {
 		return uid, containers.GetWorkingDir(ppid), privilege
 	}
-	if r.Form.Has(utils.HOME_DIR_KEY) {
-		return uid, r.Form.Get(utils.HOME_DIR_KEY), privilege
+	if shared, _, ok := utils.SharedHome(r.Form); ok {
+		return uid, shared, privilege
 	}
 
 	homedir, err := trusted.HomeDir(utils.HOME_DIR, id)
