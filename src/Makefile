@@ -12,7 +12,7 @@ ifneq ($(UNAME), Linux)
 	PRE_REQ = tools
 endif
 
-gotty: go-toolchain asset ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.go backend/*.go backend/localcommand/*.go containers/*.go cachedb/*.go meters/*.go reaper/*.go user/*.go cookie/*.go ${TARGET}/Makefile
+gotty: go-toolchain asset landlock-helper ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.go backend/*.go backend/localcommand/*.go containers/*.go cachedb/*.go meters/*.go reaper/*.go user/*.go cookie/*.go ${TARGET}/Makefile
 	@echo "building gotty: "${TARGET}
 	cd ${TARGET} && \
 	make
@@ -23,6 +23,12 @@ gotty: go-toolchain asset ${TARGET}/main.go utils/*.go server/*.go webtty/*.go f
 asset: go-bindata bindata/static/js/gotty-bundle.js bindata/static/js/chat-widget.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/admin.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta bindata/knowledge
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	GO111MODULE=off $(GOROOT)/bin/gofmt -w server/asset.go
+
+# The helper that puts the filesystem sandbox (Landlock, LLD 14) on a REPL before it runs. Without cgo,
+# so that it is a static program that loads nothing from the environment of the REPL.
+.PHONY: landlock-helper
+landlock-helper: go-toolchain landlock/*.go landlockhelper/*.go
+	CGO_ENABLED=0 GO111MODULE=off $(GOROOT)/bin/go build -o $(ROOT)/bin/landlock-helper landlockhelper
 
 .PHONY: go-toolchain
 go-toolchain:

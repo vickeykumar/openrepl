@@ -36,15 +36,22 @@ RUN mkdir -p /gottyTraces && mkdir -p /opt/gotty && \
 mkdir -p /opt/scripts
 
 COPY --from=build-image /opt/openrepl/bin/gotty /usr/local/bin/
+# puts the filesystem sandbox on a REPL before it runs: beside gotty, which looks for it there
+COPY --from=build-image /opt/openrepl/bin/landlock-helper /usr/local/bin/
 COPY --from=build-image /opt/openrepl/scripts/run_app.sh /opt/scripts/
 
-RUN chmod 755 /usr/local/bin/gotty && chmod 755 /opt/scripts/run_app.sh
+RUN chmod 755 /usr/local/bin/gotty /usr/local/bin/landlock-helper && chmod 755 /opt/scripts/run_app.sh
 
 WORKDIR /opt/openrepl
 
 ENV TERM=xterm
 ENV GODEBUG=cgocheck=1
 ENV GOPATH=/opt/gotty/
+# The users' folders are not in /tmp, so that /tmp can stay open to the REPLs under the filesystem
+# sandbox (LLD 14). A gateway and its workers must have the same value: this image sets it for all.
+ENV OPENREPL_HOME_DIR=/home/openrepl/
+# /tmp is shared by the REPLs and nothing cleans it in a container: delete what is an hour old
+ENV OPENREPL_TMP_MAX_AGE=1h
 
 EXPOSE 80
 ENTRYPOINT ["/opt/scripts/run_app.sh"]

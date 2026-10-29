@@ -2,6 +2,8 @@
 
 Scope: `src/containers/{container.go,container_linux.go,container_notlinux.go}`, `src/encoder/encode.go` (jid), `src/utils/jobscheduler.go`, `src/filebrowser` (quota), `src/server/handler_atomic.go` (admission).
 
+The filesystem between REPLs (a REPL may use only its own workspace) is a separate layer, specified in [LLD 14](14-landlock-repl-isolation.md): it does not depend on the cgroups and namespaces below.
+
 ## 1. Container model
 
 OpenREPL does not use a container runtime. Each REPL is a normal child process of `gotty` that is:
@@ -92,10 +94,10 @@ With `--max-connection 2564` (production), that is a budget of about 2.5 GB of R
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Created: first request (GetHomeDir(""), TempDir /tmp/home/guest-*)
+    [*] --> Created: first request (GetHomeDir(""), TempDir <workspaces folder>/guest-*, by default /tmp/home/)
     Created --> Scheduled: ResetJob("REMOVE-<dir>", 60 min)
     Scheduled --> Scheduled: any page load, file-browser call, /login, REPL start or exit
-    Scheduled --> Deleted: timer fires → utils.RemoveDir (only under /tmp/home/)
+    Scheduled --> Deleted: timer fires → utils.RemoveDir (only under the workspaces folder: `OPENREPL_HOME_DIR`, default `/tmp/home/`)
     Scheduled --> Persisted: gotty shutdown → SaveJobsToFile(/opt/gotty/jobfile, gob)
     Persisted --> Scheduled: next start → InitGottyJobs() reloads remaining time
     Deleted --> [*]
