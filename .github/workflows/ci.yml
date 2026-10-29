@@ -105,7 +105,7 @@ jobs:
         run: go build -o "$RUNNER_TEMP/gotty" gotty
       - name: Tests
         working-directory: src
-        run: go test -vet=off server utils user persist cachedb wsync meters
+        run: go test -vet=off server utils user persist cachedb wsync meters reaper backend/localcommand
       - name: Tests with the race detector
         working-directory: src
         run: go test -vet=off -race gateway tunnel trusted

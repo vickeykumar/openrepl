@@ -95,6 +95,12 @@ jobs:
           node -p "require(\"$G/typescript/package.json\").version + \" main=\" + require(\"$G/typescript/package.json\").main"
           tsc --version; echo "const a: number = 40 + 2; console.log(a)" > /tmp/a.ts; ts-node /tmp/a.ts 2>&1 | head -4; cd /tmp && tsc a.ts && node a.js'
 
+    # gotty is PID 1 in the image, so a process that loses its parent is handed to it and, when it
+    # ends, stays <defunct> unless gotty reaps it (src/reaper): the parent of this one goes at once
+    - name: Orphans that end are reaped
+      run: |
+        docker exec openrepl bash -c '(sh -c "sleep 1 & exit 0"); sleep 10; z=$(ps -eo pid,ppid,stat,comm | awk "\$3 ~ /^Z/ && \$2 == 1"); if [ -n "$z" ]; then echo "defunct processes left under PID 1:"; echo "$z"; exit 1; fi; echo "no defunct process under PID 1"'
+
     - uses: actions/setup-node@v4
       with:
         node-version: 20

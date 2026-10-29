@@ -152,7 +152,9 @@ Keys the backend reads: `arg` (extra argv), `jid` (fork parent), `uid`, `homedir
 7. It moves the PID into its own memory cgroup and brings up loopback in the new net namespace.
 8. A goroutine waits for the process to exit. It then closes the PTY, deletes the sub-cgroup, and (for guests) resets the workspace cleanup job.
 
-`LocalCommand.Close()` sends `closeSignal`, waits for the PTY to close, and escalates to SIGKILL after `closeTimeout`. `ResizeTerminal` issues `TIOCSWINSZ` on the PTY fd.
+`LocalCommand.Close()` sends `closeSignal` to the terminal's whole process group (the command is a session leader, so its group is its own PID and holds what it started: the program a Run started, what a shell left behind, the command `nsenter` forked), waits for the PTY to close, and escalates to SIGKILL after `closeTimeout`. When the command ends, the wait goroutine kills what is left of the group (`killGroup`); once the PTY is closed `signalAll` sends nothing, because the PID may be somebody else's by then.
+
+**Orphans and zombies.** In the image gotty is PID 1 (`scripts/run_app.sh` uses `exec`, which the cgroup v2 setup needs), so a process that loses its parent anyway (it left its group, or an interactive shell's job) is adopted by gotty, and when it ends it stays `<defunct>` because gotty waits only for the children it started. The package `reaper` (`reaper.Start`, called in `common_setup` when the PID is 1) looks every 3 seconds for zombies whose parent is gotty and reaps one, by its exact PID, once it was also a zombie at the sweep before; it never waits for "any child", which would take the exit status from a child whose own `Wait` is about to read it. The Docker Image CI starts an orphan that ends and fails if a defunct process is left under PID 1. `ResizeTerminal` issues `TIOCSWINSZ` on the PTY fd.
 
 ## 5. WebTTY pumps
 
