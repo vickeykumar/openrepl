@@ -120,11 +120,11 @@ func New(fbpath string, eventwriter Eventwriter, watch bool, deferwatch bool) (*
 
     // Traverse the directory tree recursively, calculate the the size on the way
     filepath.Walk(fbpath, func(path string, info os.FileInfo, err error) error {
-	if err == nil {
+	if err == nil && info != nil {
         	// calculate the total size of directory
         	dirSize += info.Size()
 	}
-        if watch && info.IsDir() {
+        if info != nil && watch && info.IsDir() {
             if recursivewatch {
                 err = watcher.Add(path)
                 if err != nil {
@@ -199,6 +199,11 @@ func (fb *Filebrowser) eventHandler(event fsnotify.Event) {
             // install watcher only not installed already
             // Traverse the directory tree recursively, usefull in case deflating of archives
             filepath.Walk(path, func(walkpath string, info os.FileInfo, err error) error {
+                if err != nil || info == nil {
+                    // gone since the event (a build folder made and removed at once): nothing to watch.
+                    // It used to be dereferenced, and the whole server stopped.
+                    return nil
+                }
                 if info.IsDir() {
                     if _, ok := fb.watcherMap[walkpath]; !ok {
                         err = fb.watcher.Add(walkpath)
