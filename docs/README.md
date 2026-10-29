@@ -21,6 +21,7 @@ What runs on a pull request, and how to run the same checks yourself, is in [Con
 | 11 | [Distributed execution](lld/11-distributed-execution.md) | Implemented: gateway/worker modes, route ownership, session affinity, SSH tunnel, jid routing, capacity, failure handling |
 | 12 | [Workspace synchronization](lld/12-workspace-sync.md) | Implemented (flag `--workspace-sync`): a copy of each home on the gateway and on its owning node, two-way sync over the tunnel, base record, reconcile on reconnect, `SYNCING` state, gateway fallback for file requests, guest expiry, copy on placement |
 | 13 | [Admin dashboard](lld/13-admin-dashboard.md) | Implemented: `/admin`, its JSON API and who may use it, site settings (announcement, maintenance, languages, Genie), accounts and moderation, ending and moving sessions, health, usage numbers, log viewer, audit log |
+| 14 | [Filesystem sandbox (Landlock)](lld/14-landlock-repl-isolation.md) | Implemented: a Landlock policy on each REPL (its workspace, the system read-only, `/tmp`), the static helper that applies it, modes `auto`/`off`/`require`, the configurable workspaces folder, the `/tmp` cleaner, what it does not cover |
 
 ## Source map
 
@@ -55,7 +56,7 @@ Go code uses a GOPATH layout: the repo root is `GOPATH`, packages live under `sr
 - **jid**: an encoded PID of a running REPL (`encoder.EncodePID`). Used by **Fork REPL** and by extra terminal tabs to join that REPL's namespaces.
 - **optionchange / optionrun / optiondebug**: DOM events on a terminal element. They mean, respectively: switch language (start a fresh REPL), run the editor content, and run it in debug mode.
 - **Demo**: an entry in `demos.xml` describing one REPL (animation, usage, docs, starter code, Compiler script).
-- **homedir**: the per-user workspace under `/tmp/home/`. It is the REPL's `$HOME` and the file browser's root.
+- **homedir**: the per-user workspace under the workspaces folder (`/tmp/home/` by default, `OPENREPL_HOME_DIR`). It is the REPL's `$HOME` and the file browser's root.
 
 ## Keeping these docs current
 

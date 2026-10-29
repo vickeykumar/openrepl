@@ -246,7 +246,7 @@ docker run -itd --name openrepl-worker-01 --hostname worker-01 \
   <image> --mode=worker --worker-server wss://gateway.example.com/api/tunnel
 ```
 
-The `/keys` volume keeps the gateway's tunnel host key across container replacements, so its fingerprint stays the same. User files live in `/tmp/home` on whichever node runs the session; mount a volume there on workers (and on the gateway if it runs sessions) if they must survive the container.
+The `/keys` volume keeps the gateway's tunnel host key across container replacements, so its fingerprint stays the same. User files live in the workspaces folder (`/tmp/home` by default, `OPENREPL_HOME_DIR`; the image uses `/home/openrepl/`, and a gateway and its workers must use the same one) on whichever node runs the session; mount a volume there on workers (and on the gateway if it runs sessions) if they must survive the container.
 
 ## How sessions are placed
 

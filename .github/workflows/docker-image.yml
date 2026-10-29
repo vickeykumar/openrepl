@@ -78,6 +78,15 @@ jobs:
           for c in "node --version" "npm --version" "tsc --version" "ts-node --version" "python3 --version" "go version" "java --version" "irb --version" "jshell --version" "cling --version"; do
             echo "== $c"; bash -c "$c" || { echo "FAILED: $c"; exit 1; }
           done'
+    # every REPL and every Run under the filesystem sandbox (LLD 14), each without it and with it: what works
+    # without must work with it. The script skips itself when the runner's kernel has no Landlock.
+    - name: Every REPL and Run under the filesystem sandbox
+      run: |
+        docker exec openrepl bash -c 'grep -a "filesystem sandbox" /gottyTraces/gotty.log || true'
+        docker cp scripts/ci/landlock-compat.py openrepl:/tmp/landlock-compat.py
+        docker cp src/resources/meta/demos.xml openrepl:/tmp/demos.xml
+        docker exec openrepl python3 /tmp/landlock-compat.py --demos /tmp/demos.xml
+
     # why the ts-node REPL stops ("Cannot read property 'fileExists' of undefined"): which compiler it
     # loads and whether that one has `sys`. Only prints, it does not fail the build.
     - name: Look at ts-node

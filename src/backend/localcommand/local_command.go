@@ -44,8 +44,7 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	}
 	uid := utils.GetUid(params)
 	homedir := utils.GetHomeDir(params)
-	commandArgs := containers.GetCommandArgs(command, argv, ppid, params)
-	cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
+	cmd := &exec.Cmd{} // only for its folder here: the program is set once the workspace is known
 	if ppid != -1 {
 		var err error
 		// using home directory of parent process only 
@@ -70,6 +69,15 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 				})
 		}
 	}
+	if err := containers.LandlockCheck(); err != nil {
+		return nil, err
+	}
+	// the command depends on the workspace: under the filesystem sandbox the helper that applies its
+	// policy runs it. exec.Command, so that a program that is not found is told so when it starts.
+	dir := cmd.Dir
+	commandArgs := containers.GetCommandArgsIn(command, argv, ppid, params, dir)
+	cmd = exec.Command(commandArgs[0], commandArgs[1:]...)
+	cmd.Dir = dir
 	if command == "bash" {
 		ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0644)
 	}

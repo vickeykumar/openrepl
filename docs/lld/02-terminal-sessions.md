@@ -141,7 +141,7 @@ Keys the backend reads: `arg` (extra argv), `jid` (fork parent), `uid`, `homedir
 ## 4. Starting the REPL (`localcommand.New`)
 
 1. If a `jid` is given, it must decode to a PID that `containers.IsProcess` knows about. Otherwise the connection fails.
-2. `containers.GetCommandArgs` builds the argv. See LLD 03 for the `nsenter` prefix and the Run form `/bin/bash -c <script> <file|content> <flags>`.
+2. `containers.GetCommandArgsIn` builds the argv, once the working directory of step 3 is known (the filesystem sandbox needs it). See LLD 03 for the `nsenter` prefix and the Run form `/bin/bash -c <script> <file|content> <flags>`. Under the filesystem sandbox the program is preceded by `landlock-helper --workspace <dir> --home-root <folder of the workspaces> --`, after the `nsenter` prefix of a fork (LLD 14); with `OPENREPL_LANDLOCK=require` and no sandbox the start fails here.
 3. It sets the working directory:
    - **Fork:** the parent's `$HOME` (read from `/proc/<ppid>/environ`), falling back to its cwd.
    - **Otherwise:** `homedir`, or `user.GetHomeDir(uid)`, created with `MkdirAll`.

@@ -108,6 +108,21 @@ func (server *Server) health() (status string, checks []healthCheck) {
 		add("Database choice", healthWarn, "the start-up test fell back to "+backend+": "+notes)
 	}
 
+	// the filesystem sandbox (Landlock) is independent of the cgroup sandbox below
+	ll := containers.LandlockStatus()
+	switch {
+	case ll.Active:
+		add("Filesystem sandbox", healthOK, ll.Reason)
+	case ll.Mode == utils.LandlockRequire:
+		add("Filesystem sandbox", healthFail, "required (OPENREPL_LANDLOCK=require) but not available: "+ll.Reason+"; no REPL starts")
+	case ll.Mode == utils.LandlockOff:
+		add("Filesystem sandbox", healthWarn, ll.Reason+": REPLs can read the files of the server and of other users")
+	default:
+		add("Filesystem sandbox", healthWarn, "not available: "+ll.Reason+". REPLs can read the files of the server and of other users")
+	}
+	if _, err := os.Stat(os.TempDir()); err == nil {
+		checks = append(checks, diskCheck("Disk space for /tmp", os.TempDir()))
+	}
 	if ready, total := containers.Status(); total == 0 {
 		add("Sandbox", healthWarn, "no sandbox is configured")
 	} else if ready == total {

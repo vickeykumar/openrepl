@@ -6,6 +6,7 @@ go_1.23/
 src/tags
 deb/gotty.deb
 deb/gotty/usr/local/bin/gotty
+bin/landlock-helper
 src/server/asset.go
 bin/gotty
 

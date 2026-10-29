@@ -11,7 +11,7 @@ What runs on a pull request to `master`, what each check is for, and how to run 
 | `ci.yml` | **Repository rules** | yes | `scripts/ci/repo-rules.mjs`: no build output (`bin/gotty`, `src/js/dist`, `asset.go`, `bindata`) or secrets (env files, keys, service accounts) in the change; a CRLF file stays CRLF; a reminder (warning) when code changes and no document does; and `gofmt` on the Go files the change adds |
 | `ci.yml` | **Secret scan** | no (informational) | gitleaks on the commits of the change, with `.gitleaks.toml` allowing the keys that are public by design |
 | `ci.yml` | **CI passed** | **the one to require** | Passes when the four required jobs did |
-| `docker-image.yml` | **build** | yes | Builds the Docker image (as before), starts it, runs `scripts/ci/smoke.sh` (pages and scripts are served, the contact form refuses an empty message and drops spam, the admin API is closed to a visitor) then a check that an orphaned process that ends is reaped (gotty is PID 1 in the image, `src/reaper`) and then the browser tests |
+| `docker-image.yml` | **build** | yes | Builds the Docker image (as before), starts it, runs `scripts/ci/smoke.sh` (pages and scripts are served, the contact form refuses an empty message and drops spam, the admin API is closed to a visitor) then a check that every REPL and every Run still works under the filesystem sandbox (`scripts/ci/landlock-compat.py`, LLD 14; it skips itself where the runner's kernel has no Landlock) then a check that an orphaned process that ends is reaped (gotty is PID 1 in the image, `src/reaper`) and then the browser tests |
 | `docker-image.yml` | browser tests (a step of **build**) | yes | `e2e/` (Playwright, Chromium): the theme choice and that light means a light page, the dropdowns of the IDE show what the editor uses, the Monokai default, the practice page, a short page's footer, the contact form's server side, **the Node.js, TypeScript, Go, Java (jshell), Python, Ruby and C/C++ REPLs start and answer a sum** and the TypeScript (ts-node) one (`e2e/tests/repl.spec.js`), **Add to Genie chat** (`e2e/tests/genie-context.spec.js`: the Files panel menu, Ctrl+Shift+L and the editor menu, the chip limit, the `#` list and the current file switch), **the tokens in the Genie usage details** (`e2e/tests/genie-usage.spec.js`, with the server's answer made up), and an accessibility scan (axe) that only reports. The report is in the `playwright-report` artifact of the run |
 | `audit.yml` | **npm audit** | no | Every Monday: known problems in the npm packages of `src/js` and the widget |
 | `docker-push.yml` | | | On a push to `master`: pushes the image (unchanged) |
@@ -31,7 +31,7 @@ Go (in the dev container, the repo is mounted at `/opt/openrepl`):
 
 ```bash
 docker exec openrepl-devbox bash -c 'cd /opt/openrepl/src && \
-  GO111MODULE=off GOPATH=/opt/openrepl ../go_1.23/$(uname -m)/go/bin/go test -vet=off server utils user persist cachedb wsync meters reaper backend/localcommand'
+  GO111MODULE=off GOPATH=/opt/openrepl ../go_1.23/$(uname -m)/go/bin/go test -vet=off server utils user persist cachedb wsync meters reaper landlock containers backend/localcommand'
 docker exec openrepl-devbox bash -c 'cd /opt/openrepl/src && \
   GO111MODULE=off GOPATH=/opt/openrepl ../go_1.23/$(uname -m)/go/bin/go test -vet=off -race gateway tunnel trusted'
 ```

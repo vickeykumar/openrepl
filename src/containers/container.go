@@ -28,17 +28,17 @@ var Commands2memLimitMap = map[string]int64{
 	"python2.7": 16,  // starts near 5 MB
 	"bash":      0,   // set in init: the largest limit of the others, since a shell starts any of them
 	"ipython":   96,
-	"ipython3":  96, // starts near 40 MB
-	"irb":       64, // starts near 17 MB
-	"perli":     32, // starts near 8 MB
-	"node":      64, // starts near 29 MB
-	"jq-repl":   2,
+	"ipython3":  96,  // starts near 40 MB
+	"irb":       64,  // starts near 17 MB
+	"perli":     32,  // starts near 8 MB
+	"node":      64,  // starts near 29 MB
+	"jq-repl":   8,   // 2 was killed at start; the sandbox helper that becomes it peaks near 8 MB, so 8 is the least
 	"tclsh":     8,   // starts near 3 MB
 	"java":      192, // jvm takes lot of memory: jshell, tuned (utils/interactive.go), peaks near 150 MB; Run uses javac and java
 	"evcxr":     50,  // rust REPL
 	"sqlite3":   10,
 	"ts-node":   192, // starts near 104 MB: it loads the TypeScript compiler
-	"rappel":    2,
+	"rappel":    8,   // as jq-repl
 }
 
 // A bash console can start any other REPL, and what it starts runs in its cgroup,
@@ -102,6 +102,8 @@ func Status() (ready, total int) { return len(Containers), len(Commands2memLimit
 func InitContainers() {
 	HasCAPSysAdmin = detectCAPSysAdmin()
 	log.Println("INFO: CAP_SYS_ADMIN available:", HasCAPSysAdmin)
+	// the filesystem sandbox does not depend on the cgroups below
+	InitLandlock()
 	if err := initCgroupV2(); err != nil {
 		log.Println("ERROR: unable to initialize cgroup v2 sandboxing:", err)
 		return
