@@ -59,6 +59,11 @@ func EnableNetworking(pid int) {
 	log.Println("Network enabled for pid: ", pid)
 }
 
+// GetCommandArgsIn is GetCommandArgs; there is no filesystem sandbox here.
+func GetCommandArgsIn(command string, argv []string, ppid int, params map[string][]string, workspace string) (commandArgs []string) {
+	return GetCommandArgs(command, argv, ppid, params)
+}
+
 func GetCommandArgs(command string, argv []string, ppid int, params map[string][]string) (commandArgs []string) {
 	var commandlist []string
 	var err error

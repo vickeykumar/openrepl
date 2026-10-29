@@ -273,6 +273,14 @@ func EnableNetworking(pid int) {
 }
 
 func GetCommandArgs(command string, argv []string, ppid int, params map[string][]string) (commandArgs []string) {
+	return GetCommandArgsIn(command, argv, ppid, params, "")
+}
+
+// GetCommandArgsIn is GetCommandArgs for a REPL whose workspace is the folder workspace: when the
+// filesystem sandbox is on, the command runs under its policy (landlock.go). For a fork the
+// command nsenter makes comes first and the helper runs inside the namespaces it joined: the
+// helper sets no_new_privs, which would stop a setuid nsenter from joining them.
+func GetCommandArgsIn(command string, argv []string, ppid int, params map[string][]string, workspace string) (commandArgs []string) {
 	var commandlist []string
 	var commandpath string
 	var leadArgs []string // arguments that belong to the program itself, before the request's
@@ -315,6 +323,7 @@ func GetCommandArgs(command string, argv []string, ppid int, params map[string][
 		compilerOptions := []string{"-c", utils.GetCompilationScript(command), arg0, otherargs}
 		commandlist = append(commandlist, compilerOptions...)
 	}
+	commandlist = wrapWithLandlock(commandlist, workspace, utils.Iscompiled(params) && utils.GetCompilerOption(params) == "debug")
 	if ppid == -1 {
 		commandArgs = append(commandArgs, commandlist...)
 	} else {
