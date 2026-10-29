@@ -35,6 +35,27 @@ import (
 )
 
 
+// reservedParams are decided by the server from who the user is. What the browser sends (the
+// arguments of the connection and the payload of its init message) must not be able to name them:
+// usermode=admin would give a guest the admin's REPL, which has no sandbox, and homedir or uid
+// would put a guest in another user's workspace.
+var reservedParams = []string{utils.UidKey, utils.HOME_DIR_KEY, utils.USER_PRIVILEGE_KEY}
+
+// launchParams are the parameters a REPL is started with: what the browser asked for, then what the
+// server decided about the user, which wins.
+func launchParams(query url.Values, requestPayload, initPayload map[string]string) url.Values {
+	params := url.Values{}
+	for k, v := range query {
+		params[k] = v
+	}
+	updateparams(&params, initPayload)
+	for _, k := range reservedParams {
+		params.Del(k)
+	}
+	updateparams(&params, requestPayload)
+	return params
+}
+
 func updateparams(params *url.Values, payload map[string]string) {
 	for key, value := range payload {
 		params.Set(key,value)
@@ -213,9 +234,8 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse arguments")
 	}
-	params := query.Query()
-	updateparams(&params, req_payload)	// update the params with reqest payload
-	updateparams(&params, init.Payload)	// update the params with init payload by ws conn
+	// the user's identity and privilege come from the server, not from the browser
+	params := launchParams(query.Query(), req_payload, init.Payload)
 	//log.Println("updated params: ", params)
 
 	var slave Slave
