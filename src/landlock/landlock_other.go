@@ -10,6 +10,9 @@ var errNotLinux = errors.New("Landlock exists on Linux only")
 // ABI says there is no Landlock here.
 func ABI() (int, error) { return 0, errNotLinux }
 
+// ScopeSupported is false here.
+func ScopeSupported() bool { return false }
+
 // Self is empty here.
 func Self() string { return "" }
 

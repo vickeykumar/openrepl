@@ -35,7 +35,7 @@ func child() {
 		os.Exit(3)
 	}
 	ws, root := os.Getenv("LL_WORKSPACE"), os.Getenv("LL_ROOT")
-	p, err := Build(Options{Workspace: ws, HomeRoot: root, ABI: abi, Self: Self()}, nil)
+	p, err := Build(Options{Workspace: ws, HomeRoot: root, ABI: abi, Self: Self(), ScopeSignals: os.Getenv("LL_SCOPE") == "1" && ScopeSupported()}, nil)
 	if err != nil {
 		fmt.Println("build:", err)
 		os.Exit(4)
@@ -74,12 +74,23 @@ func child() {
 	// a child process reads its own entry too (ps, top, a program that asks for /proc/self/exe)
 	try("proc_child_self", func() error { return exec.Command("/bin/cat", "/proc/self/status").Run() })
 	try("proc_meminfo", func() error { _, err := ioutil.ReadFile("/proc/meminfo"); return err })
+	// signals: the process that started this child is outside its sandbox
+	try("signal_parent", func() error { return syscall.Kill(os.Getppid(), 0) })
+	try("signal_self", func() error { return syscall.Kill(os.Getpid(), 0) })
+	try("signal_own_child", func() error {
+		c := exec.Command("/bin/sleep", "5")
+		if err := c.Start(); err != nil {
+			return err
+		}
+		defer c.Process.Kill()
+		return syscall.Kill(c.Process.Pid, 0)
+	})
 }
 
-func runChild(t *testing.T, ws, root, other string) map[string]string {
+func runChild(t *testing.T, ws, root, other string, extraEnv ...string) map[string]string {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=NoSuchTest")
-	cmd.Env = append(os.Environ(), childEnv+"=1", "LL_WORKSPACE="+ws, "LL_ROOT="+root, "LL_OTHER="+other)
+	cmd.Env = append(append(os.Environ(), childEnv+"=1", "LL_WORKSPACE="+ws, "LL_ROOT="+root, "LL_OTHER="+other), extraEnv...)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -145,5 +156,30 @@ func TestAProcessIsConfinedToItsWorkspace(t *testing.T) {
 	}
 	if b, _ := ioutil.ReadFile(filepath.Join(other, "secret.txt")); string(b) != "secret" {
 		t.Error("the secret of the other workspace was changed")
+	}
+}
+
+func TestTheSignalScopeStopsASignalToAProcessOutsideTheSandbox(t *testing.T) {
+	if !ScopeSupported() {
+		t.Skip("this kernel has no signal scope (it needs Landlock ABI 6, Linux 6.12)")
+	}
+	root := t.TempDir()
+	ws, other := filepath.Join(root, "guest-1"), filepath.Join(root, "guest-2")
+	for _, d := range []string{ws, other} {
+		if err := os.Mkdir(d, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// with the scope: the sandbox's own process and its children can be signalled, the process outside cannot
+	got := runChild(t, ws, root, other, "LL_SCOPE=1")
+	if got["signal_parent"] != "denied" {
+		t.Errorf("signal to a process outside the sandbox: %q, want denied", got["signal_parent"])
+	}
+	if got["signal_self"] != "allowed" || got["signal_own_child"] != "allowed" {
+		t.Errorf("a sandbox cannot signal itself or its children: self %q, child %q", got["signal_self"], got["signal_own_child"])
+	}
+	// without the scope the parent can be signalled
+	if got := runChild(t, ws, root, other); got["signal_parent"] != "allowed" {
+		t.Errorf("without the scope the signal to the parent was %q", got["signal_parent"])
 	}
 }

@@ -259,6 +259,23 @@ func TestProcIsReadableForAllAndWritableOnlyForTheOwnEntry(t *testing.T) {
 	}
 }
 
+func TestTheSignalScopeIsOnlyForAKernelThatHasItAndOnlyWhenAskedFor(t *testing.T) {
+	fs := newFS("/home/openrepl", "/home/openrepl/g")
+	for _, c := range []struct {
+		abi  int
+		ask  bool
+		want uint64
+	}{{4, true, 0}, {5, true, 0}, {6, true, ScopeSignal}, {8, true, ScopeSignal}, {6, false, 0}, {8, false, 0}} {
+		p, err := Build(Options{Workspace: "/home/openrepl/g", HomeRoot: "/home/openrepl", ABI: c.abi, ScopeSignals: c.ask}, fs)
+		if err != nil || p.Scoped != c.want {
+			t.Errorf("ABI %d, asked %v: scoped %b, want %b (%v)", c.abi, c.ask, p.Scoped, c.want, err)
+		}
+	}
+	if ScopeSignal != 2 {
+		t.Errorf("LANDLOCK_SCOPE_SIGNAL is 1<<1, not %d", ScopeSignal)
+	}
+}
+
 func TestTheDevicesAreAnAllowlist(t *testing.T) {
 	fs := newFS("/home/openrepl", "/home/openrepl/g")
 	p, _ := Build(Options{Workspace: "/home/openrepl/g", HomeRoot: "/home/openrepl", ABI: 5}, fs)

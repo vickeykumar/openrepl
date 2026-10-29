@@ -70,12 +70,6 @@ func processExists(pid int) bool {
 	return err == nil
 }
 
-// syscall attributes where an admin get privilege over other
-// admin gets network access
-var admin_privileges = []uintptr{
-	syscall.CLONE_NEWNET,
-}
-
 const BASH_PATH = "/bin/bash"
 
 var CPUshares = uint64(1024)
@@ -97,12 +91,6 @@ func (c *container) AddContainerAttributes(containerAttribs *syscall.SysProcAttr
 	containerAttribs.Cloneflags = c.SysProcAttr.Cloneflags
 	containerAttribs.UidMappings = c.SysProcAttr.UidMappings
 	containerAttribs.GidMappings = c.SysProcAttr.GidMappings
-	if utils.IsUserAdmin(params) {
-		// give special rights to admin
-		for _, flags := range admin_privileges {
-			containerAttribs.Cloneflags &^= flags
-		}
-	}
 }
 
 func (c *container) AddProcess(pid int) {
@@ -323,7 +311,14 @@ func GetCommandArgsIn(command string, argv []string, ppid int, params map[string
 		compilerOptions := []string{"-c", utils.GetCompilationScript(command), arg0, otherargs}
 		commandlist = append(commandlist, compilerOptions...)
 	}
-	commandlist = wrapWithLandlock(commandlist, workspace, utils.Iscompiled(params) && utils.GetCompilerOption(params) == "debug")
+	// An admin's REPL has no filesystem sandbox. The signal scope is for a REPL that has no PID namespace of
+	// its own (no cgroup sandbox for its command): with one it cannot see the other processes anyway, and
+	// the tabs of a fork share it.
+	if utils.IsUserAdmin(params) {
+		workspace = ""
+	}
+	_, ownNamespaces := Containers[command]
+	commandlist = wrapWithLandlock(commandlist, workspace, utils.Iscompiled(params) && utils.GetCompilerOption(params) == "debug", !ownNamespaces)
 	if ppid == -1 {
 		commandArgs = append(commandArgs, commandlist...)
 	} else {

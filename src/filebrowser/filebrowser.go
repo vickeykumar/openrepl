@@ -17,7 +17,8 @@ import (
 )
 
 const oneMB = 1024*1024
-const MAXDISKUSAGE_MB = 50
+// MAXDISKUSAGE_MB is the quota of a workspace: utils.WorkspaceQuotaMB, which a REPL's per-file limit shares.
+const MAXDISKUSAGE_MB = utils.WorkspaceQuotaMB
 
 type TreeNode struct {
     Id       string      `json:"id"`

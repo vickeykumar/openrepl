@@ -51,6 +51,11 @@ func allRights(abi int) uint64 {
 	return r
 }
 
+// ScopeSignal is LANDLOCK_SCOPE_SIGNAL (ABI 6, Linux 6.12): the process may signal only processes of its own
+// sandbox (and the ones below it), not other REPLs and not the server. The server is not sandboxed, so it can
+// still signal every REPL.
+const ScopeSignal uint64 = 1 << 1
+
 // FileRights masks rights down to those a rule on a file may have.
 func FileRights(rights uint64) uint64 {
 	return rights & (Execute | WriteFile | ReadFile | Truncate | IoctlDev)
@@ -76,12 +81,16 @@ type Options struct {
 	// /proc/<pid>/mem, which needs write access to /proc. Only this run gets it: with it a process could
 	// write the memory of any other process of the same user that the kernel lets it trace.
 	Debug bool
+	// ScopeSignals asks for the signal scope. It is applied only where the kernel has it (ABI 6 or newer).
+	ScopeSignals bool
 }
 
 // Policy is what Build returns.
 type Policy struct {
 	Handled uint64
-	Rules   []Rule
+	// Scoped is the scopes of the ruleset (ScopeSignal), 0 on a kernel older than ABI 6
+	Scoped uint64
+	Rules  []Rule
 	// Skipped says which paths of the lists below were left out, and why (for the log)
 	Skipped []string
 	// TmpClosed is true when /tmp has no rule because the workspaces are inside it: a program
@@ -181,6 +190,9 @@ func Build(o Options, fs FS) (*Policy, error) {
 	}
 
 	p := &Policy{Handled: Handled(o.ABI)}
+	if o.ScopeSignals && o.ABI >= 6 {
+		p.Scoped = ScopeSignal
+	}
 	all := allRights(o.ABI)
 	ro := (Execute | ReadFile | ReadDir) & all
 	rw := all

@@ -3,6 +3,7 @@ package containers
 import (
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -27,8 +28,8 @@ func TestACommandIsRunByTheHelperWhenTheSandboxIsOn(t *testing.T) {
 	defer func() { utils.HOME_DIR = saved }()
 	utils.HOME_DIR = "/home/openrepl/"
 	setLandlock(t, LandlockInfo{Mode: utils.LandlockAuto, Active: true, Helper: "/usr/local/bin/landlock-helper", ABI: 4})
-	got := wrapWithLandlock([]string{"/usr/bin/python3", "-i"}, "/home/openrepl/guest-1", false)
-	want := []string{"/usr/local/bin/landlock-helper", "--workspace", "/home/openrepl/guest-1", "--home-root", "/home/openrepl", "--", "/usr/bin/python3", "-i"}
+	got := wrapWithLandlock([]string{"/usr/bin/python3", "-i"}, "/home/openrepl/guest-1", false, false)
+	want := []string{"/usr/local/bin/landlock-helper", "--workspace", "/home/openrepl/guest-1", "--home-root", "/home/openrepl", "--max-file-mb", "50", "--", "/usr/bin/python3", "-i"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v\nwant %v", got, want)
 	}
@@ -36,8 +37,8 @@ func TestACommandIsRunByTheHelperWhenTheSandboxIsOn(t *testing.T) {
 
 func TestOnlyADebugRunGetsTheDebugFlag(t *testing.T) {
 	setLandlock(t, LandlockInfo{Mode: utils.LandlockAuto, Active: true, Helper: "/h", ABI: 4})
-	plain := wrapWithLandlock([]string{"/bin/bash"}, "/home/x/g", false)
-	debug := wrapWithLandlock([]string{"/bin/bash"}, "/home/x/g", true)
+	plain := wrapWithLandlock([]string{"/bin/bash"}, "/home/x/g", false, false)
+	debug := wrapWithLandlock([]string{"/bin/bash"}, "/home/x/g", true, false)
 	if strings.Contains(strings.Join(plain, " "), "--debug") {
 		t.Errorf("a plain run got the debug flag: %v", plain)
 	}
@@ -49,11 +50,11 @@ func TestOnlyADebugRunGetsTheDebugFlag(t *testing.T) {
 func TestACommandIsLeftAloneWhenThereIsNoSandboxOrNoWorkspace(t *testing.T) {
 	cmd := []string{"/usr/bin/python3"}
 	setLandlock(t, LandlockInfo{Mode: utils.LandlockAuto, Active: false, Reason: "no Landlock"})
-	if got := wrapWithLandlock(cmd, "/home/x/g", false); !reflect.DeepEqual(got, cmd) {
+	if got := wrapWithLandlock(cmd, "/home/x/g", false, false); !reflect.DeepEqual(got, cmd) {
 		t.Errorf("wrapped without a sandbox: %v", got)
 	}
 	setLandlock(t, LandlockInfo{Mode: utils.LandlockAuto, Active: true, Helper: "/h"})
-	if got := wrapWithLandlock(cmd, "", false); !reflect.DeepEqual(got, cmd) {
+	if got := wrapWithLandlock(cmd, "", false, false); !reflect.DeepEqual(got, cmd) {
 		t.Errorf("wrapped without a workspace: %v", got)
 	}
 }
@@ -106,5 +107,50 @@ func TestAForkRunsTheHelperInsideTheNamespacesItJoined(t *testing.T) {
 	// nsenter first: the helper sets no_new_privs, which a setuid nsenter could not survive
 	if !strings.HasPrefix(got[1], "-t") {
 		t.Errorf("nsenter's options do not come first: %v", got)
+	}
+}
+
+func TestAFileOfAREPLMayHaveTheSizeOfTheQuotaOfAWorkspace(t *testing.T) {
+	setLandlock(t, LandlockInfo{Mode: utils.LandlockAuto, Active: true, Helper: "/h", ABI: 4})
+	got := strings.Join(wrapWithLandlock([]string{"/bin/bash"}, "/home/x/g", false, false), " ")
+	want := "--max-file-mb " + strconv.Itoa(utils.WorkspaceQuotaMB)
+	if !strings.Contains(got, want) {
+		t.Errorf("the per-file limit is not the quota of a workspace (%s): %s", want, got)
+	}
+}
+
+func TestTheSignalScopeIsAskedForOnlyWhereTheKernelHasItAndTheREPLHasNoPIDNamespace(t *testing.T) {
+	// the kernel has it, and the REPL has no namespace of its own: asked for
+	setLandlock(t, LandlockInfo{Mode: utils.LandlockAuto, Active: true, Helper: "/h", ABI: 6, Scope: true})
+	if got := strings.Join(wrapWithLandlock([]string{"/bin/bash"}, "/home/x/g", false, true), " "); !strings.Contains(got, "--scope-signals") {
+		t.Errorf("no scope asked for on a kernel that has it: %s", got)
+	}
+	// the REPL has its own PID namespace (the cgroup sandbox): not asked for, the tabs of a fork share it
+	if got := strings.Join(wrapWithLandlock([]string{"/bin/bash"}, "/home/x/g", false, false), " "); strings.Contains(got, "--scope-signals") {
+		t.Errorf("a REPL with a PID namespace was scoped: %s", got)
+	}
+	// a kernel that has no scope: never asked for
+	setLandlock(t, LandlockInfo{Mode: utils.LandlockAuto, Active: true, Helper: "/h", ABI: 4, Scope: false})
+	if got := strings.Join(wrapWithLandlock([]string{"/bin/bash"}, "/home/x/g", false, true), " "); strings.Contains(got, "--scope-signals") {
+		t.Errorf("the scope was asked for on a kernel without it: %s", got)
+	}
+}
+
+func TestAnAdminsREPLGetsNoFilesystemSandbox(t *testing.T) {
+	saved := utils.HOME_DIR
+	defer func() { utils.HOME_DIR = saved }()
+	utils.HOME_DIR = "/home/openrepl/"
+	setLandlock(t, LandlockInfo{Mode: utils.LandlockAuto, Active: true, Helper: "/usr/local/bin/landlock-helper", ABI: 6, Scope: true})
+	admin := map[string][]string{utils.USER_PRIVILEGE_KEY: {utils.ADMIN}}
+	guest := map[string][]string{utils.USER_PRIVILEGE_KEY: {utils.GUEST}}
+	for name, params := range map[string]map[string][]string{"admin": admin, "guest": guest} {
+		got := GetCommandArgsIn("python", nil, -1, params, "/home/openrepl/guest-1")
+		helper := strings.Contains(strings.Join(got, " "), "landlock-helper")
+		if name == "admin" && helper {
+			t.Errorf("an admin's REPL runs under the helper: %v", got)
+		}
+		if name == "guest" && !helper {
+			t.Errorf("a guest's REPL runs without the helper: %v", got)
+		}
 	}
 }

@@ -22,7 +22,19 @@ const (
 	oPath                = 0x200000
 )
 
-type rulesetAttr struct{ handledAccessFS uint64 }
+// the ruleset attribute of the kernel: the filesystem rights (ABI 1), the network rights (ABI 4, not used here)
+// and the scopes (ABI 6). The kernel accepts the shorter form of an older ABI, so only a ruleset with a scope
+// is passed in full.
+type rulesetAttr struct {
+	handledAccessFS  uint64
+	handledAccessNet uint64
+	scoped           uint64
+}
+
+const (
+	attrSizeFS    = 8
+	attrSizeScope = 24
+)
 
 // the kernel declares this packed
 type pathBeneathAttr struct {
@@ -50,6 +62,18 @@ func ABI() (int, error) {
 	}
 }
 
+// ScopeSupported reports whether the kernel accepts the signal scope (ABI 6). It makes a ruleset and closes
+// it, which restricts nothing.
+func ScopeSupported() bool {
+	attr := rulesetAttr{scoped: uint64(ScopeSignal)}
+	fd, _, errno := syscall.Syscall(sysCreateRuleset, uintptr(unsafe.Pointer(&attr)), attrSizeScope, 0)
+	if errno != 0 {
+		return false
+	}
+	syscall.Close(int(fd))
+	return true
+}
+
 // Self is what /proc/self points to for this process: its number in the /proc
 // that is mounted (which is not what getpid says inside a PID namespace).
 func Self() string {
@@ -63,8 +87,12 @@ func Self() string {
 // Restrict puts the policy on this process and on every process it starts. It
 // cannot be undone.
 func Restrict(p *Policy) error {
-	attr := rulesetAttr{handledAccessFS: p.Handled}
-	fd, _, errno := syscall.Syscall(sysCreateRuleset, uintptr(unsafe.Pointer(&attr)), unsafe.Sizeof(attr), 0)
+	attr := rulesetAttr{handledAccessFS: p.Handled, scoped: p.Scoped}
+	size := uintptr(attrSizeFS)
+	if p.Scoped != 0 {
+		size = attrSizeScope
+	}
+	fd, _, errno := syscall.Syscall(sysCreateRuleset, uintptr(unsafe.Pointer(&attr)), size, 0)
 	if errno != 0 {
 		return fmt.Errorf("creating the ruleset: %v", errno)
 	}
