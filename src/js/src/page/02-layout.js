@@ -135,11 +135,11 @@ function SaveSelectedNodeToFile(oldSelectedNodeId, errcallback=null) {
 
 function ToggleEditor() {
     if (direction===null) {
-      // first time
+      // first time: the layout of the last visit on a desktop, the phone is always stacked
       if (ismob()) {
         direction = 'vertical';
       } else {
-        direction = 'horizontal'
+        direction = savedEditorLayout() || 'horizontal';
       }
       
     }
@@ -210,6 +210,20 @@ function syncEditorLayoutUI() {
     document.body.classList.toggle("editor-hidden", hidden);
     setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 50);
 }
+// The layout the user chose last time ('horizontal' or 'vertical'), kept in localStorage so the next visit starts in it.
+var EDITOR_LAYOUT_KEY = "editor-layout";
+function savedEditorLayout() {
+  try {
+    var saved = localStorage.getItem(EDITOR_LAYOUT_KEY);
+    return (saved === 'horizontal' || saved === 'vertical') ? saved : null;
+  } catch (e) { return null; }
+}
+function saveEditorLayout(dir) {
+  try { localStorage.setItem(EDITOR_LAYOUT_KEY, dir); } catch (e) {}
+}
+// Set while the page, not the user, changes the layout (Genie pinned beside the IDE): that is not a choice to keep.
+var layoutByPage = false;
+
 /* rotates direction of editor/REPL vertical <-> horizontal */
 function ToggleRotateEditor() {
   if (direction===null) {
@@ -227,6 +241,7 @@ function ToggleRotateEditor() {
       direction = 'vertical';
     }
   }
+  if (!layoutByPage && !ismob()) saveEditorLayout(direction);
   if (einst) {
     einst.destroy();
     einst = null; // destroy and reset splitter
@@ -243,7 +258,8 @@ function SetEditorDirection(dir) {
     direction = dir;
     syncEditorLayoutUI();
   } else {
-    ToggleRotateEditor();
+    layoutByPage = true;
+    try { ToggleRotateEditor(); } finally { layoutByPage = false; }
   }
   return true;
 }
