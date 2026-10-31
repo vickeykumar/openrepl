@@ -159,9 +159,12 @@ type ModelOption = {
   id: string;
   name: string; // in the picker and under a reply
   short: string; // on the chip
-  group: string; // who runs it: "OpenAI" or "OpenRouter"; the picker's sections
+  group: string; // who runs it: "OpenAI", "OpenRouter" or "Cloudflare Workers AI"; the picker's sections
+  provider?: string;
+  free?: boolean;
+  limit?: string; // what limits it, for the details beside the list (may be empty)
   tag: string; // may be empty
-  
+
   desc: string;
   reasoning: boolean; // takes an effort level; 4o mini and Gemma do not
 };
@@ -175,6 +178,12 @@ type SharedChoice = {
   fields(opts?: FieldOptions): Record<string, any>;
   fallback(exceptId: string): ModelOption | null;
   onChange(fn: () => void): void;
+  // the short list, the rest by provider, search and pins (js/model-choice.js)
+  your(): ModelOption[];
+  others(): { group: string; models: ModelOption[] }[];
+  search(query: string): ModelOption[];
+  isPinned(id: string): boolean;
+  togglePin(id: string): void;
 };
 const MC: SharedChoice = (window as any).ModelChoice;
 if (!MC) {
@@ -566,6 +575,7 @@ function setSettingsOpen(open: boolean, focusChip: boolean = false) {
   if (!el || !chip) return;
   el.hidden = !open;
   chip.setAttribute("aria-expanded", open ? "true" : "false");
+  if (!open) hideDetails();
   if (!open && focusChip) chip.focus();
 }
 
@@ -1412,6 +1422,185 @@ function wireMode(): () => void {
   return () => watch.disconnect();
 }
 
+// ---- The model list: Your models, Other models, search, and the details beside it ----
+
+let modelQuery = "";
+let othersOpen = false;
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+// the name with what the search matched marked (built from nodes, never HTML)
+function markedName(name: string, query: string): Node {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return document.createTextNode(name);
+  const lower = name.toLowerCase();
+  const hit: boolean[] = new Array(name.length).fill(false);
+  words.forEach((w) => {
+    let at = lower.indexOf(w);
+    while (at >= 0) {
+      for (let i = at; i < at + w.length; i++) hit[i] = true;
+      at = lower.indexOf(w, at + w.length);
+    }
+  });
+  const frag = document.createDocumentFragment();
+  let i = 0;
+  while (i < name.length) {
+    let j = i;
+    while (j < name.length && hit[j] === hit[i]) j++;
+    const part = name.slice(i, j);
+    if (hit[i]) frag.appendChild(el("mark", undefined, part));
+    else frag.appendChild(document.createTextNode(part));
+    i = j;
+  }
+  return frag;
+}
+
+// One model: the radio button that chooses it, and the star that pins it.
+function modelRow(m: ModelOption, compact: boolean, query: string = "", sub: string = ""): HTMLElement {
+  const wrap = el("div", "cw-modelrow");
+  const btn = el("button", compact ? "cw-model is-compact" : "cw-model");
+  btn.type = "button";
+  btn.setAttribute("role", "radio");
+  btn.setAttribute("aria-checked", m.id === chosenModel().id ? "true" : "false");
+  btn.dataset.id = m.id;
+  const dot = el("span", "cw-model__dot");
+  dot.setAttribute("aria-hidden", "true");
+  const text = el("span", "cw-model__text");
+  const name = el("span", "cw-model__name");
+  const title = el("span");
+  title.appendChild(markedName(m.name, query));
+  name.appendChild(title);
+  if (m.tag) {
+    const tag = el("span", m.free ? "cw-model__tag is-free" : "cw-model__tag", m.tag);
+    name.appendChild(tag);
+  }
+  text.appendChild(name);
+  if (!compact) text.appendChild(el("span", "cw-model__desc", m.desc));
+  else if (sub) text.appendChild(el("span", "cw-model__sub", sub));
+  btn.append(dot, text);
+  btn.addEventListener("click", () => MC.set(m.id));
+  btn.addEventListener("mouseenter", () => showDetails(m, btn));
+  btn.addEventListener("focus", () => showDetails(m, btn));
+  btn.addEventListener("mouseleave", hideDetails);
+  btn.addEventListener("blur", hideDetails);
+
+  const pinned = MC.isPinned(m.id);
+  const pin = el("button", "cw-pin");
+  pin.type = "button";
+  pin.dataset.id = m.id;
+  pin.setAttribute("aria-pressed", pinned ? "true" : "false");
+  pin.setAttribute("aria-label", `${pinned ? "Unpin" : "Pin"} ${m.name}`);
+  pin.innerHTML =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"></path></svg>';
+  pin.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    MC.togglePin(m.id);
+    // the lists are drawn again: keep the keyboard on the same star
+    const again = document.querySelector<HTMLElement>(`.cw-pin[data-id="${CSS.escape(m.id)}"]`);
+    if (again) again.focus();
+  });
+  wrap.append(btn, pin);
+  return wrap;
+}
+
+// Draws "Your models", the grouped "Other models" and the search results from the
+// shared list (js/model-choice.js). Called whenever the choice, a pin or the search changes.
+function renderLists() {
+  const yours = document.getElementById("chat-widget__models");
+  const results = document.getElementById("chat-widget__results");
+  const othersBox = document.getElementById("chat-widget__others");
+  const toggle = document.getElementById("chat-widget__others-toggle");
+  const yoursLabel = document.getElementById("cw-model-label");
+  const count = document.getElementById("chat-widget__model-count");
+  const clear = document.getElementById("chat-widget__model-clear");
+  const othersCount = document.getElementById("chat-widget__others-count");
+  if (!yours || !results || !othersBox || !toggle || !yoursLabel || !count) return;
+
+  const query = modelQuery.trim();
+  const searching = query !== "";
+  if (clear) clear.hidden = !modelQuery;
+  yours.hidden = yoursLabel.hidden = toggle.hidden = searching;
+  results.hidden = count.hidden = !searching;
+  othersBox.hidden = searching || !othersOpen;
+
+  // with the other models open there is little room: the short list is names only
+  yours.replaceChildren(...MC.your().map((m) => modelRow(m, othersOpen)));
+
+  const groups = MC.others();
+  const total = groups.reduce((n, g) => n + g.models.length, 0);
+  toggle.hidden = searching || total === 0;
+  toggle.setAttribute("aria-expanded", othersOpen ? "true" : "false");
+  if (othersCount) othersCount.textContent = othersOpen ? String(total) : `${total} more`;
+  const rows: HTMLElement[] = [];
+  groups.forEach((g) => {
+    const heading = el("div", "cw-set__group-label", g.group);
+    heading.setAttribute("role", "presentation");
+    rows.push(heading);
+    g.models.forEach((m) => rows.push(modelRow(m, true)));
+  });
+  othersBox.replaceChildren(...rows);
+
+  if (searching) {
+    const found = MC.search(query);
+    count.textContent = found.length === 0 ? `No model matches "${query}"` : found.length === 1 ? "1 model matches" : `${found.length} models match`;
+    results.replaceChildren(...found.map((m) => modelRow(m, true, query, m.group)));
+  } else {
+    results.replaceChildren();
+  }
+}
+
+function setModelQuery(q: string) {
+  modelQuery = q;
+  const input = document.getElementById("chat-widget__model-search") as HTMLInputElement | null;
+  if (input && input.value !== q) input.value = q;
+  renderLists();
+}
+
+// The details of the model under the pointer or the keyboard, beside the list. It needs
+// room to the left of the panel, so a narrow window shows only the list.
+function detailsEl(): HTMLElement {
+  let d = document.getElementById("chat-widget__details");
+  if (!d) {
+    d = el("div", "cw-details");
+    d.id = "chat-widget__details";
+    d.setAttribute("role", "tooltip");
+    d.hidden = true;
+    containerElement.appendChild(d);
+  }
+  return d;
+}
+function hideDetails() {
+  const d = document.getElementById("chat-widget__details");
+  if (d) d.hidden = true;
+}
+function showDetails(m: ModelOption, anchor: HTMLElement) {
+  const panel = containerElement.getBoundingClientRect();
+  const width = 296;
+  if (panel.left < width + 16) return;
+  const d = detailsEl();
+  const head = el("div", "cw-details__head");
+  head.appendChild(el("div", "cw-details__name", m.name));
+  if (m.tag) head.appendChild(el("span", m.free ? "cw-model__tag is-free" : "cw-model__tag", m.tag));
+  const list = el("dl");
+  const add = (k: string, v: string) => {
+    list.append(el("dt", undefined, k), el("dd", undefined, v));
+  };
+  add("Runs on", m.group);
+  add("Limit", m.limit || "Counts toward your Genie requests");
+  add("Thinks first", m.reasoning ? "Yes, so Effort applies" : "No, Effort does not apply");
+  d.replaceChildren(head, el("p", "cw-details__desc", m.desc), list);
+  d.hidden = false;
+  const row = anchor.getBoundingClientRect();
+  const top = Math.max(12, Math.min(row.top - 24, window.innerHeight - d.offsetHeight - 12));
+  d.style.left = `${Math.round(panel.left - width - 10)}px`;
+  d.style.top = `${Math.round(top)}px`;
+}
+
 // Brings the chip, the cards and the effort control in line with `choice`.
 function renderChoice() {
   const m = chosenModel();
@@ -1422,9 +1611,7 @@ function renderChoice() {
     if (label) label.textContent = chipText();
     chip.setAttribute("aria-label", `Model and effort: ${chipText()}`);
   }
-  document.querySelectorAll<HTMLElement>("#chat-widget__models .cw-model").forEach((btn) => {
-    btn.setAttribute("aria-checked", btn.dataset.id === m.id ? "true" : "false");
-  });
+  renderLists();
   const group = document.getElementById("chat-widget__efforts");
   const effortLabel = document.getElementById("cw-effort-label");
   if (group) group.classList.toggle("is-off", !m.reasoning);
@@ -1445,12 +1632,12 @@ function renderChoice() {
 MC.onChange(renderChoice);
 
 // Arrow keys move through a group of buttons and choose as they go.
-function arrowKeys(group: HTMLElement) {
+function arrowKeys(group: HTMLElement, selector: string = "button") {
   group.addEventListener("keydown", (ev: KeyboardEvent) => {
     const keys = ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"];
     if (keys.indexOf(ev.key) < 0) return;
     const buttons = Array.prototype.slice
-      .call(group.querySelectorAll("button"))
+      .call(group.querySelectorAll(selector))
       .filter((b: HTMLButtonElement) => !b.disabled) as HTMLButtonElement[];
     const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
     if (at < 0 || buttons.length < 2) return;
@@ -1470,43 +1657,33 @@ function setupSettings(): () => void {
   const efforts = document.getElementById("chat-widget__efforts");
   if (!chip || !models || !efforts) return () => {};
 
-  let lastGroup = "";
-  MODELS.forEach((m) => {
-    if (m.group !== lastGroup) {
-      // "OpenAI", "OpenRouter": a heading for each provider
-      lastGroup = m.group;
-      const heading = document.createElement("div");
-      heading.className = "cw-set__group-label";
-      heading.setAttribute("role", "presentation");
-      heading.textContent = m.group;
-      models.appendChild(heading);
-    }
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "cw-model";
-    btn.setAttribute("role", "radio");
-    btn.dataset.id = m.id;
-    const dot = document.createElement("span");
-    dot.className = "cw-model__dot";
-    dot.setAttribute("aria-hidden", "true");
-    const text = document.createElement("span");
-    text.className = "cw-model__text";
-    const name = document.createElement("span");
-    name.className = "cw-model__name";
-    name.textContent = m.name;
-    if (m.tag) {
-      const tag = document.createElement("span");
-      tag.className = "cw-model__tag";
-      tag.textContent = m.tag;
-      name.appendChild(tag);
-    }
-    const desc = document.createElement("span");
-    desc.className = "cw-model__desc";
-    desc.textContent = m.desc;
-    text.append(name, desc);
-    btn.append(dot, text);
-    btn.addEventListener("click", () => MC.set(m.id));
-    models.appendChild(btn);
+  modelQuery = "";
+  othersOpen = false;
+  // the lists are drawn by renderLists (renderChoice calls it)
+  const search = document.getElementById("chat-widget__model-search") as HTMLInputElement | null;
+  const clear = document.getElementById("chat-widget__model-clear");
+  const toggle = document.getElementById("chat-widget__others-toggle");
+  if (search) {
+    search.addEventListener("input", () => setModelQuery(search.value));
+    search.addEventListener("keydown", (ev: KeyboardEvent) => {
+      if (ev.key !== "ArrowDown") return;
+      const first = document.querySelector<HTMLElement>("#chat-widget__settings .cw-model");
+      const visible = Array.prototype.slice
+        .call(document.querySelectorAll("#chat-widget__settings .cw-model"))
+        .filter((b: HTMLElement) => !!b.offsetParent)[0] as HTMLElement | undefined;
+      if (visible || first) {
+        ev.preventDefault();
+        (visible || first)!.focus();
+      }
+    });
+  }
+  if (clear) clear.addEventListener("click", () => {
+    setModelQuery("");
+    search?.focus();
+  });
+  if (toggle) toggle.addEventListener("click", () => {
+    othersOpen = !othersOpen;
+    renderLists();
   });
   EFFORTS.forEach((e) => {
     const btn = document.createElement("button");
@@ -1516,7 +1693,10 @@ function setupSettings(): () => void {
     btn.addEventListener("click", () => MC.set(undefined, e.id));
     efforts.appendChild(btn);
   });
-  arrowKeys(models);
+  for (const id of ["chat-widget__models", "chat-widget__others", "chat-widget__results"]) {
+    const group = document.getElementById(id);
+    if (group) arrowKeys(group, ".cw-model");
+  }
   arrowKeys(efforts);
 
   chip.addEventListener("click", () => setSettingsOpen(!settingsOpen()));
@@ -1525,7 +1705,15 @@ function setupSettings(): () => void {
   form.addEventListener("keydown", (ev: KeyboardEvent) => {
     if (ev.key === "Escape" && settingsOpen()) {
       ev.stopPropagation();
-      setSettingsOpen(false, true);
+      // the first Esc clears a search, the next closes the list
+      if (modelQuery) setModelQuery("");
+      else setSettingsOpen(false, true);
+    } else if (ev.key === "/" && settingsOpen()) {
+      const target = ev.target as HTMLElement;
+      if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+        ev.preventDefault();
+        (document.getElementById("chat-widget__model-search") as HTMLInputElement | null)?.focus();
+      }
     }
   });
   const onDocClick = (ev: MouseEvent) => {

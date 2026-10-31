@@ -165,6 +165,14 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	} else {
 		add("OpenRouter key", healthOK, "set (from the "+keySourceName(utils.KeySource("openrouter"))+"): Gemma 4 31B is offered")
 	}
+	switch {
+	case utils.CloudflareEnabled():
+		add("Cloudflare Workers AI", healthOK, "token (from the "+keySourceName(utils.KeySource("cloudflare"))+") and account id are set: the Workers AI models are offered")
+	case utils.CloudflareToken() != "" || utils.CloudflareAccountID() != "":
+		add("Cloudflare Workers AI", healthWarn, "the token and the account id are both needed: the Workers AI models are not offered")
+	default:
+		add("Cloudflare Workers AI", healthOK, "not set (optional): the Workers AI models are not offered")
+	}
 	settingsMu.Lock()
 	problem := keysProblem
 	settingsMu.Unlock()

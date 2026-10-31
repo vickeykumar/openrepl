@@ -68,8 +68,23 @@
     </div>
     <div id="chat-widget__picker" class="cw-picker" role="listbox" aria-label="Files and folders" hidden></div>
     <div id="chat-widget__settings" role="dialog" aria-label="Model and effort" hidden>
-      <div class="cw-set__label" id="cw-model-label">Model</div>
+      <label class="cw-search" for="chat-widget__model-search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <input type="text" id="chat-widget__model-search" placeholder="Search models" autocomplete="off" spellcheck="false" aria-label="Search models">
+        <button type="button" id="chat-widget__model-clear" class="cw-search__clear" aria-label="Clear search" hidden>&times;</button>
+      </label>
+      <div class="cw-set__count" id="chat-widget__model-count" role="status" hidden></div>
+      <div class="cw-set__scroll">
+      <div class="cw-set__label" id="cw-model-label">Your models</div>
       <div class="cw-set__group" id="chat-widget__models" role="radiogroup" aria-labelledby="cw-model-label"></div>
+      <div class="cw-set__group" id="chat-widget__results" role="radiogroup" aria-label="Matching models" hidden></div>
+      <button type="button" id="chat-widget__others-toggle" class="cw-others" aria-expanded="false" aria-controls="chat-widget__others">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="cw-others__chev"><path d="M9 6l6 6-6 6"></path></svg>
+        <span class="cw-others__name">Other models</span>
+        <span class="cw-others__count" id="chat-widget__others-count"></span>
+      </button>
+      <div class="cw-others__list" id="chat-widget__others" hidden></div>
+      </div>
       <div class="cw-set__label cw-set__label--effort" id="cw-effort-label">Effort</div>
       <div class="cw-seg" id="chat-widget__efforts" role="group" aria-labelledby="cw-effort-label"></div>
       <p class="cw-set__note" id="chat-widget__effort-note"></p>

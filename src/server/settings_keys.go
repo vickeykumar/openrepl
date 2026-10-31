@@ -20,7 +20,8 @@ import (
 	"utils"
 )
 
-// API keys an admin saves in the dashboard (OpenAI, OpenRouter).
+// API keys an admin saves in the dashboard (OpenAI, OpenRouter, and the Cloudflare
+// Workers AI token and account id).
 //
 // They are kept in the settings document (settings.json, or MongoDB) as
 // ciphertext, AES-256-GCM under a key derived from OPENREPL_SECRET,
@@ -39,15 +40,24 @@ import (
 type StoredKeys struct {
 	OpenAI     string `json:"openai,omitempty"`
 	OpenRouter string `json:"openrouter,omitempty"`
+	// the Workers AI token, and the id of its account (not secret, but kept the same way)
+	Cloudflare        string `json:"cloudflare,omitempty"`
+	CloudflareAccount string `json:"cloudflareAccount,omitempty"`
 }
 
 const (
 	keyOpenAI     = "openai"
 	keyOpenRouter = "openrouter"
+	keyCloudflare = "cloudflare"
+	keyCFAccount  = "cloudflare-account"
 
 	minKeyLen = 8
 	maxKeyLen = 512
 )
+
+// the names the audit log uses
+var keyNames = map[string]string{keyOpenAI: "OpenAI", keyOpenRouter: "OpenRouter",
+	keyCloudflare: "Cloudflare Workers AI token", keyCFAccount: "Cloudflare account id"}
 
 var errNoSettingsSecret = errors.New("OPENREPL_SECRET is not set on the server, so keys cannot be kept here")
 
@@ -117,14 +127,15 @@ var keysProblem string
 // key that cannot be read is skipped, the problem is remembered for the health
 // page, and the environment's key stays in use.
 func applyKeyOverrides(k *StoredKeys) {
-	var openai, openrouter string
+	var openai, openrouter, cfToken, cfAccount string
 	problem := ""
 	if k != nil {
 		secret := utils.Secret()
 		for _, f := range []struct {
 			provider, sealed string
 			out              *string
-		}{{keyOpenAI, k.OpenAI, &openai}, {keyOpenRouter, k.OpenRouter, &openrouter}} {
+		}{{keyOpenAI, k.OpenAI, &openai}, {keyOpenRouter, k.OpenRouter, &openrouter},
+			{keyCloudflare, k.Cloudflare, &cfToken}, {keyCFAccount, k.CloudflareAccount, &cfAccount}} {
 			if f.sealed == "" {
 				continue
 			}
@@ -138,6 +149,7 @@ func applyKeyOverrides(k *StoredKeys) {
 		}
 	}
 	utils.SetKeyOverrides(openai, openrouter)
+	utils.SetCloudflareOverrides(cfToken, cfAccount)
 	settingsMu.Lock()
 	keysProblem = problem
 	settingsMu.Unlock()
@@ -156,8 +168,17 @@ var (
 // answer says nothing about the key. warning is for the admin to read.
 func checkKey(provider, key string) (rejected bool, warning string) {
 	url := openAIKeyCheckURL
-	if provider == keyOpenRouter {
+	switch provider {
+	case keyOpenRouter:
 		url = openRouterKeyCheckURL
+	case keyCFAccount:
+		return false, "" // an id, not a secret: nothing to check it with
+	case keyCloudflare:
+		account := utils.CloudflareAccountID()
+		if account == "" {
+			return false, "The token could not be checked yet: save the account id too."
+		}
+		url = cloudflareModelsURL(account) + "?per_page=1"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -220,6 +241,10 @@ func setStoredKey(provider, key string) error {
 		k.OpenAI = sealed
 	case keyOpenRouter:
 		k.OpenRouter = sealed
+	case keyCloudflare:
+		k.Cloudflare = sealed
+	case keyCFAccount:
+		k.CloudflareAccount = sealed
 	default:
 		return fmt.Errorf("%q is not a provider", provider)
 	}
@@ -256,14 +281,21 @@ func currentKeysReply() keysReply {
 		if cur.Secrets == nil {
 			return false
 		}
-		return map[string]bool{keyOpenAI: cur.Secrets.OpenAI != "", keyOpenRouter: cur.Secrets.OpenRouter != ""}[p]
+		return map[string]bool{keyOpenAI: cur.Secrets.OpenAI != "", keyOpenRouter: cur.Secrets.OpenRouter != "",
+			keyCloudflare: cur.Secrets.Cloudflare != "", keyCFAccount: cur.Secrets.CloudflareAccount != ""}[p]
 	}
 	out := keysReply{CanStore: utils.Secret() != ""}
-	for _, p := range []struct{ id, name string }{{keyOpenAI, "OpenAI"}, {keyOpenRouter, "OpenRouter"}} {
+	for _, p := range []struct{ id, name string }{{keyOpenAI, "OpenAI"}, {keyOpenRouter, "OpenRouter"},
+		{keyCloudflare, "Cloudflare Workers AI token"}, {keyCFAccount, "Cloudflare account id"}} {
 		st := keyStatus{Provider: p.id, Name: p.name, Source: utils.KeySource(p.id), Stored: stored(p.id)}
 		key := utils.OpenAIKey()
-		if p.id == keyOpenRouter {
+		switch p.id {
+		case keyOpenRouter:
 			key = utils.OpenRouterKey()
+		case keyCloudflare:
+			key = utils.CloudflareToken()
+		case keyCFAccount:
+			key = utils.CloudflareAccountID()
 		}
 		st.Set = key != ""
 		if st.Stored && st.Source != "dashboard" {
@@ -291,8 +323,8 @@ func (server *Server) handleAdminKeys(rw http.ResponseWriter, req *http.Request)
 			adminError(rw, http.StatusBadRequest, "The request was not valid JSON.")
 			return
 		}
-		if in.Provider != keyOpenAI && in.Provider != keyOpenRouter {
-			adminError(rw, http.StatusBadRequest, "Choose OpenAI or OpenRouter.")
+		if _, known := keyNames[in.Provider]; !known {
+			adminError(rw, http.StatusBadRequest, "Choose OpenAI, OpenRouter or Cloudflare.")
 			return
 		}
 		if utils.Secret() == "" {
@@ -324,7 +356,7 @@ func (server *Server) handleAdminKeys(rw http.ResponseWriter, req *http.Request)
 			}
 			return
 		}
-		name := map[string]string{keyOpenAI: "OpenAI", keyOpenRouter: "OpenRouter"}[in.Provider]
+		name := keyNames[in.Provider]
 		if key == "" {
 			server.audit(req, "settings", name+" key removed from the dashboard")
 		} else {

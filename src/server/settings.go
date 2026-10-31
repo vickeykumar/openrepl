@@ -124,6 +124,10 @@ type GenieSettings struct {
 	// DefaultModel is the model that answers a request naming none, and the one
 	// a visitor starts with. Empty means the built-in choice. It must be on.
 	DefaultModel string `json:"defaultModel"`
+	// FeaturedModels are the models the picker lists first ("Your models") for a visitor who has
+	// not used or pinned any yet; the rest are under "Other models". Empty: the default model and
+	// the first others. Built-in or added models, at most maxFeaturedModels.
+	FeaturedModels []string `json:"featuredModels"`
 
 	// Agent mode (agent.go): Genie works on a task in steps, in the editor, once
 	// the user allowed each kind of action. Signed-in users have it, unless an
@@ -263,6 +267,23 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	if !anyOn {
 		return s, fmt.Errorf("at least one model has to stay switched on")
 	}
+	featured := []string{}
+	seenFeatured := map[string]bool{}
+	for _, id := range s.Genie.FeaturedModels {
+		id = strings.TrimSpace(id)
+		if id == "" || seenFeatured[id] {
+			continue
+		}
+		if _, known := s.Genie.modelByID(id); !known {
+			return s, fmt.Errorf("%q is not a model", id)
+		}
+		seenFeatured[id] = true
+		featured = append(featured, id)
+	}
+	if len(featured) > maxFeaturedModels {
+		return s, fmt.Errorf("at most %d models can start in the short list", maxFeaturedModels)
+	}
+	s.Genie.FeaturedModels = featured
 	s.Genie.DefaultModel = strings.TrimSpace(s.Genie.DefaultModel)
 	if d := s.Genie.DefaultModel; d != "" {
 		m, known := s.Genie.modelByID(d)
@@ -382,6 +403,8 @@ type publicSettings struct {
 	// the models an admin added that are on, for the picker
 	CustomModels []publicCustomModel `json:"customModels"`
 	DefaultModel string              `json:"defaultModel"`
+	// the models the picker starts a new visitor with (empty: its own choice)
+	FeaturedModels []string `json:"featuredModels"`
 	// what Genie reads from the page and keeps (the effective numbers)
 	GenieContext genieContext `json:"genieContext"`
 	// agent mode: whether the panel offers it (to signed-in users; the server
@@ -534,6 +557,7 @@ func (s SiteSettings) public() publicSettings {
 		DisabledModels:    models,
 		CustomModels:      s.Genie.publicCustomModels(),
 		DefaultModel:      s.Genie.DefaultModel,
+		FeaturedModels:    append([]string{}, s.Genie.FeaturedModels...),
 		GenieContext:      s.Genie.context(),
 		AgentEnabled:      !s.Genie.AgentDisabled && !s.Genie.Disabled,
 		AgentOnPractice:   s.Genie.AgentOnPractice,
@@ -624,6 +648,9 @@ func reply(s SiteSettings) settingsReply {
 	settingsMu.Unlock()
 	if s.Genie.DisabledModels == nil {
 		s.Genie.DisabledModels = []string{}
+	}
+	if s.Genie.FeaturedModels == nil {
+		s.Genie.FeaturedModels = []string{}
 	}
 	s.Genie.CustomModels = append([]CustomModel{}, s.Genie.customList()...) // the list in effect, never null
 	s.Secrets = nil
@@ -724,6 +751,9 @@ func settingsChanges(a, b SiteSettings) []string {
 		}
 	}
 	out = append(out, customModelChanges(a.Genie, b.Genie)...)
+	if strings.Join(a.Genie.FeaturedModels, ",") != strings.Join(b.Genie.FeaturedModels, ",") {
+		out = append(out, "models that start in the short list changed")
+	}
 	if a.Genie.DefaultModel != b.Genie.DefaultModel {
 		name := "built-in"
 		if m, ok := chatModels[b.Genie.DefaultModel]; ok {
@@ -773,11 +803,7 @@ func modelInfos() []modelInfo {
 	out := make([]modelInfo, 0, len(chatModelOrder))
 	for _, id := range chatModelOrder {
 		m := chatModels[id]
-		key := utils.OpenAIKey()
-		if m.Provider == providerOpenRouter {
-			key = utils.OpenRouterKey()
-		}
-		out = append(out, modelInfo{ID: m.ID, Name: m.Name, Provider: m.Provider, KeySet: key != ""})
+		out = append(out, modelInfo{ID: m.ID, Name: m.Name, Provider: m.Provider, KeySet: providerKey(m.Provider) != ""})
 	}
 	return out
 }

@@ -531,7 +531,7 @@ dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top
 .cm-field small { color: var(--faint); font-size: 11.5px; }
 .cm-checks { display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .cm-check { display: inline-flex; align-items: center; gap: 7px; }
-.cm-add { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.cm-add { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 @media (max-width: 640px) { .cm-add { grid-template-columns: 1fr; } }
 
 

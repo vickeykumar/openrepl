@@ -914,8 +914,22 @@
     root.appendChild(pageHead('Site settings', 'Switches that change what every visitor sees. Changes apply to the next page a visitor loads.'));
     root.appendChild(body);
 
-    // ---- the OpenRouter models an admin adds (the three built-in ones stay as they are)
+    // ---- the models an admin adds, from any provider (the built-in ones stay as they are)
     var CUSTOM_ID = /^[a-z0-9][a-z0-9._-]{0,63}\/[a-z0-9][a-z0-9._:+-]{0,95}$/;
+    var CF_ID = /^@cf\/[a-z0-9][a-z0-9._-]{0,63}\/[a-z0-9][a-z0-9._:+-]{0,95}$/;
+    var OPENAI_ID = /^[a-z0-9][a-z0-9._:-]{0,79}$/;
+    var PROVIDER_NAMES = { '': 'OpenRouter', openrouter: 'OpenRouter', openai: 'OpenAI', cloudflare: 'Cloudflare Workers AI' };
+    function providerOf(c) { return c.provider === 'openai' || c.provider === 'cloudflare' ? c.provider : ''; }
+    function idOk(provider, id) {
+      if (provider === 'openai') return OPENAI_ID.test(id);
+      if (provider === 'cloudflare') return CF_ID.test(id);
+      return CUSTOM_ID.test(id);
+    }
+    var ID_HELP = {
+      '': 'An OpenRouter id looks like author/model-name, for example nvidia/nemotron-3-super-120b-a12b:free.',
+      openai: 'An OpenAI model name looks like gpt-4.1-mini.',
+      cloudflare: 'A Cloudflare id starts with @cf/, for example @cf/qwen/qwen3-30b-a3b-fp8. Keep the @cf/: without it Cloudflare bills your AI Gateway credit instead of the free allowance.'
+    };
     function hostsFrom(text) {
       var seen = {}, out = [];
       String(text || '').toLowerCase().split(/[\s,]+/).forEach(function (x) { if (x && !seen[x]) { seen[x] = 1; out.push(x); } });
@@ -924,12 +938,20 @@
     // one shape for a model from the server and from a row of the form, so that they compare
     function cleanCustom(c) {
       var id = String(c.id || '').trim().toLowerCase();
-      return { id: id, name: String(c.name || '').trim() || id, enabled: !!c.enabled, free: !!c.free || /:free$/.test(id),
-        answerTokens: int(c.answerTokens), thinkingRoom: int(c.thinkingRoom), jsonMode: !!c.jsonMode, hosts: (c.hosts || []).slice() };
+      var provider = providerOf(c);
+      return { provider: provider, id: id, name: String(c.name || '').trim() || id, enabled: !!c.enabled, free: !!c.free || /:free$/.test(id),
+        answerTokens: int(c.answerTokens), thinkingRoom: int(c.thinkingRoom), jsonMode: !!c.jsonMode,
+        reasoning: provider === 'openai' && !!c.reasoning, hosts: provider === '' ? (c.hosts || []).slice() : [] };
     }
     function readCustom(r) {
-      return cleanCustom({ id: r.id, name: r.name.value, enabled: r.on.checked, free: r.free.checked, answerTokens: r.answer.value,
-        thinkingRoom: r.room.value, jsonMode: r.json.checked, hosts: hostsFrom(r.hosts.value) });
+      return cleanCustom({ provider: r.provider, id: r.id, name: r.name.value, enabled: r.on.checked, free: r.free.checked, answerTokens: r.answer.value,
+        thinkingRoom: r.room.value, jsonMode: r.json.checked, reasoning: r.reasoning ? r.reasoning.checked : false, hosts: r.hosts ? hostsFrom(r.hosts.value) : [] });
+    }
+    // the models that start in the short list: the built-in ones that are ticked, then the added ones
+    function featuredNow() {
+      var ids = models.filter(function (m) { return form.featured && form.featured[m.id] && form.featured[m.id].checked; }).map(function (m) { return m.id; });
+      (form.custom || []).forEach(function (r) { if (r.featured && r.featured.checked) ids.push(r.id); });
+      return ids;
     }
 
     function snapshot() {
@@ -942,6 +964,7 @@
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
           customModels: (form.custom || []).map(readCustom),
+          featuredModels: featuredNow(),
           defaultModel: form.defModel.value,
           contextEditorChars: int(form.ctxEditor.value), contextTerminalChars: int(form.ctxTermChars.value),
           contextTerminalLines: int(form.ctxTermLines.value), historyMessages: int(form.history.value),
@@ -993,6 +1016,7 @@
         dbCapacityMB: s.dbCapacityMB || 0,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
           disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
+          featuredModels: (s.genie.featuredModels || []).slice(),
           defaultModel: s.genie.defaultModel || '',
           contextEditorChars: s.genie.contextEditorChars || 0, contextTerminalChars: s.genie.contextTerminalChars || 0,
           contextTerminalLines: s.genie.contextTerminalLines || 0, historyMessages: s.genie.historyMessages || 0,
@@ -1064,10 +1088,13 @@
       user.value = settings.genie.userPerMinute || '';
       Object.assign(form, { ann: ann, level: level, maintMsg: maintMsg, guest: guest, user: user });
 
-      // one switch for each model, and the model a visitor starts with
+      // one switch for each model, a tick for the ones that start in the picker's short list, and the model a visitor starts with
+      form.featured = {};
+      var wantedFeatured = settings.genie.featuredModels || [];
       var modelToggles = models.map(function (m) {
         var on = toggle('f-model-' + m.id.replace(/[^a-z0-9]/gi, '-'), (settings.genie.disabledModels || []).indexOf(m.id) < 0, m.name + ' available');
         form.models[m.id] = on.input;
+        form.featured[m.id] = h('input', { type: 'checkbox', checked: wantedFeatured.indexOf(m.id) >= 0, onchange: update, 'aria-label': m.name + ' starts in the short list' });
         return { model: m, node: on.node };
       });
       var defModel = h('select', { class: 'field', id: 'f-defmodel', 'aria-label': 'Default model', onchange: update },
@@ -1080,10 +1107,12 @@
       // the models an admin added: one block each, with its own switch
       form.custom = [];
       var builtInIds = models.map(function (m) { return m.id; });
-      var openRouterKeySet = models.some(function (m) { return m.provider === 'openrouter' && m.keySet; });
+      var keySetFor = function (p) { return models.some(function (m) { return m.provider === p && m.keySet; }); };
+      var openRouterKeySet = keySetFor('openrouter'), cloudflareKeySet = keySetFor('cloudflare');
+
       var customList = h('div', { class: 'custom-models' });
       function addCustomRow(c) {
-        var r = { id: c.id };
+        var r = { id: c.id, provider: providerOf(c) };
         var on = toggle('f-cm-' + form.custom.length + '-' + Date.now(), !!c.enabled, (c.name || c.id) + ' available');
         r.on = on.input;
         r.name = h('input', { type: 'text', class: 'field', maxlength: '40', 'aria-label': 'Name of ' + c.id, oninput: update });
@@ -1094,8 +1123,12 @@
         r.answer.value = c.answerTokens || '';
         r.room = h('input', { type: 'number', class: 'field', min: '0', max: '16000', step: '100', placeholder: '0', 'aria-label': 'Room for thinking of ' + c.id, oninput: update });
         r.room.value = c.thinkingRoom || '';
-        r.hosts = h('input', { type: 'text', class: 'field', placeholder: 'OpenRouter chooses', 'aria-label': 'Providers allowed for ' + c.id, oninput: update });
-        r.hosts.value = (c.hosts || []).join(', ');
+        if (r.provider === '') {
+          r.hosts = h('input', { type: 'text', class: 'field', placeholder: 'OpenRouter chooses', 'aria-label': 'Providers allowed for ' + c.id, oninput: update });
+          r.hosts.value = (c.hosts || []).join(', ');
+        }
+        if (r.provider === 'openai') r.reasoning = h('input', { type: 'checkbox', checked: !!c.reasoning, onchange: update, 'aria-label': c.id + ' thinks first and takes an effort' });
+        r.featured = h('input', { type: 'checkbox', checked: wantedFeatured.indexOf(c.id) >= 0, onchange: update, 'aria-label': c.id + ' starts in the short list' });
         var remove = h('button', { class: 'btn small', type: 'button', text: 'Remove', 'aria-label': 'Remove ' + c.id, onclick: function () {
           form.custom = form.custom.filter(function (x) { return x !== r; });
           if (r.node.parentNode) r.node.parentNode.removeChild(r.node);
@@ -1104,26 +1137,52 @@
         var field = function (label, input, hint) { return h('label', { class: 'cm-field' }, h('span', { text: label }), input, hint ? h('small', { text: hint }) : null); };
         var check = function (input, label) { return h('label', { class: 'cm-check' }, input, h('span', { text: label })); };
         r.node = h('div', { class: 'custom-model' },
-          h('div', { class: 'cm-head' }, on.node, h('div', { class: 'cm-title' }, r.name, h('span', { class: 'mono', text: c.id })), remove),
+          h('div', { class: 'cm-head' }, on.node, h('div', { class: 'cm-title' }, r.name, h('span', { class: 'mono', text: PROVIDER_NAMES[r.provider] + ' · ' + c.id })), remove),
           h('div', { class: 'cm-grid' },
             field('Answer tokens', r.answer, 'Most tokens of an answer. Empty: 4000.'),
             field('Room for thinking', r.room, 'Extra tokens for a model that thinks first.'),
-            field('Providers', r.hosts, 'Only these may answer (OpenRouter names, comma separated).')),
-          h('div', { class: 'cm-checks' }, check(r.free, 'Free tier (visitors are told)'), check(r.json, 'Its host takes JSON mode (Agent mode)')));
+            r.hosts ? field('Providers', r.hosts, 'Only these may answer (OpenRouter names, comma separated).') : null),
+          h('div', { class: 'cm-checks' }, check(r.free, r.provider === 'cloudflare' ? 'Free plan (visitors are told)' : 'Free tier (visitors are told)'), check(r.json, 'Its host takes JSON mode (Agent mode)'),
+            r.reasoning ? check(r.reasoning, 'Thinks first (takes an effort, like Luna)') : null, check(r.featured, 'Starts in the short list')));
         form.custom.push(r);
         customList.appendChild(r.node);
         return r;
       }
       (settings.genie.customModels || []).forEach(addCustomRow);
-      var addId = h('input', { type: 'text', class: 'field', id: 'f-cm-new-id', placeholder: 'author/model-name:free', 'aria-label': 'OpenRouter model id', autocomplete: 'off' });
+      var addProvider = h('select', { class: 'field', id: 'f-cm-new-provider', 'aria-label': 'Provider of the new model' },
+        h('option', { value: '', text: 'OpenRouter' }), h('option', { value: 'openai', text: 'OpenAI' }), h('option', { value: 'cloudflare', text: 'Cloudflare Workers AI' }));
+      var cfList = h('datalist', { id: 'f-cm-cf-list' });
+      var cfNote = h('p', { class: 'sub', id: 'f-cm-help', text: ID_HELP[''] });
+      var addId = h('input', { type: 'text', class: 'field', id: 'f-cm-new-id', placeholder: 'author/model-name:free', 'aria-label': 'Model id', autocomplete: 'off', list: 'f-cm-cf-list' });
+      var cfPrices = {};
+      var cfLoaded = false;
+      addProvider.addEventListener('change', function () {
+        var p = addProvider.value;
+        addId.placeholder = p === 'cloudflare' ? '@cf/qwen/qwen3-30b-a3b-fp8' : p === 'openai' ? 'gpt-4.1-mini' : 'author/model-name:free';
+        cfNote.textContent = ID_HELP[p];
+        // Cloudflare's own list of its models (exact ids and prices), once
+        if (p === 'cloudflare' && !cfLoaded) {
+          cfLoaded = true;
+          api.get('admin/cloudflare-models').then(function (r) {
+            (r.models || []).forEach(function (m) {
+              cfPrices[m.id] = m;
+              cfList.appendChild(h('option', { value: m.id, label: '$' + (m.inputPerM || 0) + ' in / $' + (m.outputPerM || 0) + ' out per million tokens' }));
+            });
+            if (r.warning) cfNote.textContent = r.warning + ' ' + ID_HELP.cloudflare;
+            else if (!r.configured) cfNote.textContent = 'Set the Cloudflare token and account id under API keys to pick from Cloudflare\'s list. ' + ID_HELP.cloudflare;
+            else cfNote.textContent = (r.models || []).length + ' models in your account (start typing to choose). ' + ID_HELP.cloudflare;
+          }, function () { cfNote.textContent = ID_HELP.cloudflare; });
+        }
+      });
       var addName = h('input', { type: 'text', class: 'field', id: 'f-cm-new-name', maxlength: '40', placeholder: 'Name visitors see (optional)', 'aria-label': 'Name of the new model', autocomplete: 'off' });
       var addBtn = h('button', { class: 'btn', type: 'button', text: 'Add model', onclick: function () {
         var id = addId.value.trim().toLowerCase();
-        if (!CUSTOM_ID.test(id)) { toast('An OpenRouter id looks like author/model-name, for example nvidia/nemotron-3-super-120b-a12b:free.', 'error'); return; }
+        var provider = addProvider.value;
+        if (!idOk(provider, id)) { toast(ID_HELP[provider], 'error'); return; }
         if (builtInIds.indexOf(id) >= 0 || form.custom.some(function (r) { return r.id === id; })) { toast(id + ' is in the list already.', 'error'); return; }
         if (form.custom.length >= 20) { toast('At most 20 models can be added. Remove one first.', 'error'); return; }
         var free = /:free$/.test(id);
-        addCustomRow({ id: id, name: addName.value.trim(), enabled: false, free: free, jsonMode: false, thinkingRoom: free ? 3000 : 0, hosts: [] });
+        addCustomRow({ provider: provider, id: id, name: addName.value.trim(), enabled: false, free: free, jsonMode: false, thinkingRoom: free ? 3000 : 0, hosts: [], reasoning: false });
         addId.value = ''; addName.value = '';
         update();
       } });
@@ -1386,18 +1445,19 @@
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),
           modelToggles.map(function (t) {
-            var what = t.model.provider === 'openrouter' ? 'Through OpenRouter.' : 'Through OpenAI.';
+            var what = t.model.provider === 'openrouter' ? 'Through OpenRouter.' : t.model.provider === 'cloudflare' ? 'Through Cloudflare Workers AI (free plan: a daily allowance the whole site shares).' : 'Through OpenAI.';
             if (!t.model.keySet) what += ' No key is set on the server, so it cannot answer yet.';
-            return row(t.model.name, what, t.node);
+            return row(t.model.name, what, t.node, h('label', { class: 'cm-check' }, form.featured[t.model.id], h('span', { text: 'Starts in the short list' })));
           }),
           row('Default model', 'The model visitors start with, and the one that answers a request that names none. Built in is Luna for visitors and GPT-4o mini for older callers.', defModel),
           row('Guests', 'Requests per minute (0 or empty uses the built-in rate).', guest),
           row('Signed-in users', 'Requests per minute (0 or empty uses the built-in rate).', user) ]),
-        card('OpenRouter models', 'The three models above are built in and stay. Add any other model of OpenRouter by its id (find them at openrouter.ai/models), switch it on when you want visitors to have it, and remove it when you do not. A model that is off is not offered, and the server refuses it. Save to apply.', [
-          openRouterKeySet ? null : h('p', { class: 'callout', text: 'No OpenRouter key is set on the server, so these models cannot answer yet. Add one under API keys below.' }),
+        card('Added models', 'The models above are built in and stay. Add any other model of OpenRouter (find them at openrouter.ai/models), OpenAI or Cloudflare Workers AI by its id, switch it on when you want visitors to have it, and remove it when you do not. A model that is off is not offered, and the server refuses it. Save to apply.', [
+          openRouterKeySet ? null : h('p', { class: 'callout', text: 'No OpenRouter key is set on the server, so OpenRouter models cannot answer yet. Add one under API keys below.' }),
+          cloudflareKeySet ? null : h('p', { class: 'callout', text: 'The Cloudflare token and account id are not both set on the server, so Cloudflare models cannot answer yet. Add them under API keys below.' }),
           h('p', { class: 'callout info', text: 'A model whose id ends in :free costs nothing, but its provider may keep and use what visitors send (their code and terminal output) and its limits are shared by everyone, so it can be busy. Visitors see it labelled free. Any other model is paid for from your OpenRouter credit. Name the providers that may answer if you want to know where the code goes; empty lets OpenRouter choose. The privacy page names only the hosts of Gemma and says other models are chosen by the site owner.' }),
           customList,
-          h('div', { class: 'cm-add' }, addId, addName, addBtn) ]),
+          h('div', { class: 'cm-add' }, addProvider, addId, addName, addBtn), cfList, cfNote ]),
         card('Genie limits', 'What Genie is told about the page and how long its answers may be. An empty box means the built-in value. Changes reach a page the next time it loads.', [
           row('Editor code', 'Characters of the editor\'s code sent with each question.', form.ctxEditor),
           row('Terminal output, characters', 'The most recent characters of the active terminal.', form.ctxTermChars),

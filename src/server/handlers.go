@@ -443,6 +443,8 @@ func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
     	w.Write([]byte("var openai_access_token = '" + string(access_token) + "';"))
     	// the page offers the OpenRouter models only when the server can call them
     	w.Write([]byte("\nvar openrouter_enabled = " + strconv.FormatBool(utils.OpenRouterKey() != "") + ";"))
+    	// and the Workers AI models only when the token and the account id are both set
+    	w.Write([]byte("\nvar cloudflare_enabled = " + strconv.FormatBool(utils.CloudflareEnabled()) + ";"))
     } else {
     	log.Println("Error: encrypting access_token: ", err)
     }

@@ -24,6 +24,7 @@ const (
 
 const (
 	maxCustomModels        = 20
+	maxFeaturedModels      = 8
 	maxCustomNameChars     = 40
 	maxCustomHosts         = 4
 	defaultCustomAnswer    = 4000  // the answer cap of a model that has none of its own
@@ -35,12 +36,22 @@ const (
 // (":free"). Lower case, so that two spellings are not two models.
 var customModelIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}/[a-z0-9][a-z0-9._:+-]{0,95}$`)
 
+// a Cloudflare Workers AI model id: it keeps the @cf/ prefix, which is what keeps a call on the free
+// allowance (a name without it is billed from the AI Gateway credit)
+var cloudflareModelIDPattern = regexp.MustCompile(`^@cf/[a-z0-9][a-z0-9._-]{0,63}/[a-z0-9][a-z0-9._:+-]{0,95}$`)
+
+// an OpenAI model name, such as gpt-4o-mini
+var openAIModelIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,79}$`)
+
 // an OpenRouter provider slug, as in "nvidia" or "modelrun/fp4"
 var hostSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._/-]{0,39}$`)
 
-// CustomModel is an OpenRouter model an admin added.
+// CustomModel is a model an admin added, from any provider.
 type CustomModel struct {
-	// ID is OpenRouter's id of the model, for example "nvidia/nemotron-3-super-120b-a12b:free".
+	// Provider is "openrouter" (also when empty), "openai" or "cloudflare".
+	Provider string `json:"provider,omitempty"`
+	// ID is the provider's id of the model, for example "nvidia/nemotron-3-super-120b-a12b:free"
+	// (OpenRouter), "gpt-4o-mini" (OpenAI) or "@cf/qwen/qwen3-30b-a3b-fp8" (Cloudflare).
 	ID string `json:"id"`
 	// Name is what visitors see.
 	Name string `json:"name"`
@@ -62,8 +73,20 @@ type CustomModel struct {
 	// again when it cannot read the answer.
 	JSONMode bool `json:"jsonMode"`
 	// Hosts are the OpenRouter providers (slugs) that may answer, and no others.
-	// Empty: OpenRouter chooses, which the privacy page cannot name.
+	// Empty: OpenRouter chooses, which the privacy page cannot name. Only for OpenRouter.
 	Hosts []string `json:"hosts"`
+	// Reasoning is for an OpenAI model that thinks first (like GPT-6 Luna): it takes an
+	// effort and max_completion_tokens, not a temperature and max_tokens.
+	Reasoning bool `json:"reasoning,omitempty"`
+}
+
+// provider is the provider of the model, OpenRouter when none is named.
+func (c CustomModel) provider() string {
+	switch c.Provider {
+	case providerOpenAI, providerCloudflare:
+		return c.Provider
+	}
+	return providerOpenRouter
 }
 
 // defaultCustomModels are in the list until an admin saves one of their own: the
@@ -93,9 +116,10 @@ func (c CustomModel) model() chatModel {
 		answer = defaultCustomAnswer
 	}
 	return chatModel{
-		ID: c.ID, Name: c.Name, Provider: providerOpenRouter, MaxTokensCap: answer,
+		ID: c.ID, Name: c.Name, Provider: c.provider(), MaxTokensCap: answer,
 		Free: c.Free || strings.HasSuffix(c.ID, ":free"), Hosts: append([]string(nil), c.Hosts...),
 		ThinkingRoom: c.ThinkingRoom, NoJSONMode: !c.JSONMode, Custom: true,
+		Reasoning: c.provider() == providerOpenAI && c.Reasoning,
 	}
 }
 
@@ -130,14 +154,35 @@ func normalizeCustomModels(in []CustomModel) ([]CustomModel, error) {
 		return nil, nil
 	}
 	if len(in) > maxCustomModels {
-		return nil, fmt.Errorf("at most %d OpenRouter models can be added", maxCustomModels)
+		return nil, fmt.Errorf("at most %d models can be added", maxCustomModels)
 	}
 	out := []CustomModel{}
 	seen := map[string]bool{}
 	for _, c := range in {
 		c.ID = strings.ToLower(strings.TrimSpace(c.ID))
-		if len(c.ID) > customModelIDMaxLength || !customModelIDPattern.MatchString(c.ID) {
-			return nil, fmt.Errorf("%q is not an OpenRouter model id (it looks like author/model-name)", c.ID)
+		c.Provider = strings.ToLower(strings.TrimSpace(c.Provider))
+		if c.Provider != "" && c.Provider != providerOpenRouter && c.Provider != providerOpenAI && c.Provider != providerCloudflare {
+			return nil, fmt.Errorf("%q is not a provider (use openrouter, openai or cloudflare)", c.Provider)
+		}
+		if c.Provider == providerOpenRouter {
+			c.Provider = "" // the same as nothing: older lists have none
+		}
+		if len(c.ID) > customModelIDMaxLength {
+			return nil, fmt.Errorf("%q is too long for a model id", c.ID)
+		}
+		switch c.provider() {
+		case providerOpenAI:
+			if !openAIModelIDPattern.MatchString(c.ID) {
+				return nil, fmt.Errorf("%q is not an OpenAI model name (it looks like gpt-4o-mini)", c.ID)
+			}
+		case providerCloudflare:
+			if !cloudflareModelIDPattern.MatchString(c.ID) {
+				return nil, fmt.Errorf("%q is not a Cloudflare model id (it starts with @cf/ and looks like @cf/qwen/qwen3-30b-a3b-fp8)", c.ID)
+			}
+		default:
+			if !customModelIDPattern.MatchString(c.ID) {
+				return nil, fmt.Errorf("%q is not an OpenRouter model id (it looks like author/model-name)", c.ID)
+			}
 		}
 		if _, builtin := chatModels[c.ID]; builtin {
 			return nil, fmt.Errorf("%s is one of the built-in models; they cannot be added or removed", c.ID)
@@ -168,6 +213,12 @@ func normalizeCustomModels(in []CustomModel) ([]CustomModel, error) {
 		if strings.HasSuffix(c.ID, ":free") {
 			c.Free = true
 		}
+		if c.provider() != providerOpenAI {
+			c.Reasoning = false
+		}
+		if c.provider() != providerOpenRouter && len(c.Hosts) > 0 {
+			return nil, fmt.Errorf("providers can only be named for an OpenRouter model, not for %s", c.ID)
+		}
 		hosts := []string{}
 		seenHost := map[string]bool{}
 		for _, h := range c.Hosts {
@@ -192,9 +243,12 @@ func normalizeCustomModels(in []CustomModel) ([]CustomModel, error) {
 
 // publicCustomModel is what a page needs of a model that is on.
 type publicCustomModel struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Free bool   `json:"free"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Free     bool   `json:"free"`
+	Provider string `json:"provider"`
+	// Reasoning: the model thinks first and takes an effort (OpenAI only)
+	Reasoning bool `json:"reasoning,omitempty"`
 }
 
 // publicCustomModels lists the models that are on, for the picker.
@@ -202,7 +256,8 @@ func (g GenieSettings) publicCustomModels() []publicCustomModel {
 	out := []publicCustomModel{}
 	for _, c := range g.customList() {
 		if c.Enabled {
-			out = append(out, publicCustomModel{ID: c.ID, Name: c.Name, Free: c.model().Free})
+			m := c.model()
+			out = append(out, publicCustomModel{ID: c.ID, Name: c.Name, Free: m.Free, Provider: m.Provider, Reasoning: m.Reasoning})
 		}
 	}
 	return out
@@ -225,16 +280,16 @@ func customModelChanges(a, b GenieSettings) []string {
 			if c.Enabled {
 				state = "on"
 			}
-			out = append(out, "OpenRouter model "+c.ID+" added ("+state+")")
+			out = append(out, providerName(c.provider())+" model "+c.ID+" added ("+state+")")
 		case old.Enabled != c.Enabled:
-			out = append(out, "OpenRouter model "+c.ID+" "+map[bool]string{true: "switched on", false: "switched off"}[c.Enabled])
+			out = append(out, providerName(c.provider())+" model "+c.ID+" "+map[bool]string{true: "switched on", false: "switched off"}[c.Enabled])
 		case fmt.Sprint(old) != fmt.Sprint(c):
-			out = append(out, "OpenRouter model "+c.ID+" changed (name, limits or providers)")
+			out = append(out, providerName(c.provider())+" model "+c.ID+" changed (name, limits or providers)")
 		}
 	}
 	for _, c := range a.customList() {
 		if !after[c.ID] {
-			out = append(out, "OpenRouter model "+c.ID+" removed")
+			out = append(out, providerName(c.provider())+" model "+c.ID+" removed")
 		}
 	}
 	return out
