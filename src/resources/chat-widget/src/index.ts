@@ -1110,6 +1110,14 @@ function renderActivity() {
   const a = genieActivity();
   const fab = document.querySelector("[data-chat-widget-button]") as HTMLElement | null;
   const bar = document.getElementById("genie-button");
+  // what kind of work: the lamp moves one way for a chat answer, another for an Agent task
+  const work = a.state !== "working" ? "" : agentRunner.running ? "agent" : "chat";
+  [fab, bar, containerElement].forEach((b) => {
+    if (!b) return;
+    if (work) b.setAttribute("data-genie-work", work);
+    else b.removeAttribute("data-genie-work");
+  });
+  containerElement.setAttribute("data-genie-state", a.state);
   [fab, bar].forEach((b) => {
     if (!b) return;
     if (a.state === "idle") b.removeAttribute("data-genie-state");
