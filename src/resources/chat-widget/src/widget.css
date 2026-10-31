@@ -1536,3 +1536,104 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 .cw-usage__more .cw-usage__sep { display: block; height: 1px; padding: 0; margin: 6px 0; background: var(--cw-border); }
 .cw-usage__more p.cw-usage__note { color: var(--cw-muted); font-size: 12px; line-height: 1.45; }
 #chat-widget__submit.is-empty:not(.is-stop) { opacity: 0.45; }
+
+/* Genie's lamp (the icon of the Ask Genie buttons and of the panel header). It is still when
+   Genie is idle. While a chat answer is on its way the sparkle twinkles and a wisp of smoke
+   rises; while an Agent task runs the lamp rocks and small sparkles pop; when a result is ready
+   the sparkle bursts once. The state is set by renderActivity (index.ts): data-genie-work on the
+   buttons and on the panel, data-genie-state for the dot and the burst. */
+.genie-ico .gi-smoke,
+.genie-ico .gi-mini,
+.genie-ico .gi-tick {
+  opacity: 0;
+}
+.genie-ico .gi-tick {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.genie-ico .gi-spark,
+.genie-ico .gi-mini {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+/* the sparkles grow past the edge of the icon while they burst or pop: let them show, and keep the
+   small ones thin (a thick stroke on a star this small fills it in) */
+.genie-ico {
+  overflow: visible;
+}
+.genie-ico .gi-mini {
+  stroke-width: 1.1;
+}
+.genie-ico .gi-lamp {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+[data-genie-work="chat"] .genie-ico .gi-spark {
+  animation: gi-twinkle 1.3s ease-in-out infinite;
+}
+[data-genie-work="chat"] .genie-ico .gi-smoke {
+  stroke-dasharray: 16;
+  animation: gi-rise 1.8s ease-in-out infinite;
+}
+[data-genie-work="agent"] .genie-ico .gi-lamp {
+  animation: gi-rub 0.8s ease-in-out infinite;
+}
+[data-genie-work="agent"] .genie-ico .gi-spark {
+  animation: gi-spin 3.2s linear infinite;
+}
+[data-genie-work="agent"] .genie-ico .gi-mini {
+  animation: gi-pop 1.6s ease-out infinite;
+}
+[data-genie-work="agent"] .genie-ico .gi-m2 {
+  animation-delay: 0.5s;
+}
+[data-genie-work="agent"] .genie-ico .gi-m3 {
+  animation-delay: 1s;
+}
+[data-genie-state="done"] .genie-ico .gi-spark {
+  animation: gi-burst 0.7s ease-out 1;
+}
+/* a result is ready: the green tick comes beside the lamp (it takes the place of the dot) */
+[data-genie-state="done"] .genie-ico .gi-tick {
+  opacity: 1;
+  animation: gi-tick-in 0.35s ease-out 1;
+}
+@keyframes gi-tick-in {
+  0% { opacity: 0; transform: scale(0.2); }
+  70% { transform: scale(1.25); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes gi-twinkle {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.55); opacity: 0.45; }
+}
+@keyframes gi-rise {
+  0% { opacity: 0; stroke-dashoffset: 16; }
+  30% { opacity: 1; }
+  100% { opacity: 0; stroke-dashoffset: -4; }
+}
+@keyframes gi-rub {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+@keyframes gi-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes gi-pop {
+  0% { opacity: 0; transform: scale(0.2); }
+  25% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.4) translateY(-3px); }
+}
+@keyframes gi-burst {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.6); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .genie-ico * {
+    animation: none !important;
+  }
+  [data-genie-work] .genie-ico .gi-smoke {
+    opacity: 0.7;
+  }
+}

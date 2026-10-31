@@ -189,6 +189,22 @@ func minutes(s *meters.Series) []int64 {
 	return out
 }
 
+// shortDuration is a duration in its biggest units, for a line on the map: "45s", "12m", "3h".
+func shortDuration(d time.Duration) string {
+	switch {
+	case d < 0:
+		d = 0
+		fallthrough
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d/time.Second))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d/time.Minute))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%dh", int(d/time.Hour))
+	}
+	return fmt.Sprintf("%dd", int(d/(24*time.Hour)))
+}
+
 func pct(n float64) string { return fmt.Sprintf("%.0f%%", n) }
 
 func ms(n float64) string {
@@ -387,9 +403,49 @@ func (server *Server) architecture() archReply {
 		fire = archFail
 	}
 
+	// the job scheduler: the removals of the guests' folders that wait, and the recurring jobs
+	jobs := currentJobs(time.Now())
+	jobsStatus := archOK
+	switch utils.Worst(jobs.Jobs) {
+	case utils.JobFailing:
+		jobsStatus = archFail
+	case utils.JobLate:
+		jobsStatus = archWarn
+	}
+	nextRemoval := "nothing waits"
+	if jobs.Removals.NextAt > 0 {
+		nextRemoval = "in " + shortDuration(time.Until(time.Unix(jobs.Removals.NextAt, 0)))
+	}
+	jobRows := []archRow{
+		{"Folder removals waiting", fmt.Sprintf("%d", jobs.Removals.Pending), ""},
+		{"Next removal", nextRemoval, ""},
+		{"Removed since the start", fmt.Sprintf("%d", jobs.Removals.Fired), ""},
+	}
+	for _, j := range jobs.Jobs {
+		if j.State == utils.JobOff {
+			continue
+		}
+		st := archOK
+		switch j.State {
+		case utils.JobLate:
+			st = archWarn
+		case utils.JobFailing:
+			st = archFail
+		}
+		value := "not run yet"
+		if j.LastAt > 0 {
+			value = "ran " + shortDuration(time.Since(time.Unix(j.LastAt, 0))) + " ago"
+		}
+		jobRows = append(jobRows, archRow{Label: j.Name, Value: value, Status: st})
+	}
+	jobsText := fmt.Sprintf("%d folders waiting", jobs.Removals.Pending)
+	if jobs.Removals.Pending == 1 {
+		jobsText = "1 folder waiting"
+	}
 	fmtTerm := fmt.Sprintf("%d connected", terminals)
 	add(archNode{ID: "genie", Status: chatStatus, Text: rate(chatRate) + " answers a minute", View: "usage"})
 	add(archNode{ID: "terminals", Status: archOK, Text: fmtTerm, View: "sessions"})
+	add(archNode{ID: "jobs", Status: jobsStatus, Text: jobsText, Rows: jobRows, View: "jobs", Series: minutes(meters.Get(utils.MeterJobRuns))})
 	add(archNode{ID: "page", Status: httpStatus, Text: rate(httpRate) + " requests a minute"})
 	add(archNode{ID: "http", Status: httpStatus, Text: rate(httpRate) + " req/min · " + pct(errShare(httpReq, httpErr)) + " errors", Series: minutes(httpReq), Rows: []archRow{
 		{"Requests a minute", rate(httpRate), ""}, {"Server errors, last 5 minutes", pct(errShare(httpReq, httpErr)), httpStatus},
@@ -421,6 +477,7 @@ func (server *Server) architecture() archReply {
 	link("term-ws", termLevel)
 	link("genie-chat", level(chatRate))
 	link("ws-exec", termLevel)
+	link("jobs-exec", level(meters.Get(utils.MeterJobRemovals).PerMinute(60)))
 	link("data-persist", level(dbOps.PerMinute(60)))
 	link("persist-store", level(dbOps.PerMinute(60)))
 	link("chat-llm", level(chatRate))

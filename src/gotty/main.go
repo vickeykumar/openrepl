@@ -23,8 +23,10 @@ import (
 func common_setup() {
 	// as PID 1 in the image gotty adopts the orphans of its terminals: reap them when they end
 	reaper.Start()
-	// load pending jobs from previous births
-	utils.GottyJobs.LoadJobsFromFile(utils.GOTTY_PATH+"/"+utils.JobFile, nil)
+	// the pending jobs of the last birth were loaded by utils.init (InitGottyJobs); they are saved
+	// every minute from now on, and at a clean stop, and forgotten guest folders are swept
+	utils.GottyJobs.StartJobSaver(utils.GOTTY_PATH + "/" + utils.JobFile)
+	utils.StartGuestSweeper()
 	server.InitFeedbackDBHandle()
 	server.InitBlogDBHandle()
 	server.InitSnippetDBHandle()

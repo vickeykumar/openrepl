@@ -24,6 +24,7 @@ func (server *Server) registerAdmin(mux *http.ServeMux, prefix string) {
 	api("admin/settings", server.handleAdminSettings)
 	api("admin/keys", server.handleAdminKeys)
 	api("admin/cloudflare-models", server.handleAdminCloudflareModels)
+	api("admin/jobs", server.handleAdminJobs)
 	api("admin/admins", server.handleAdminAdmins)
 	api("admin/gateway", server.handleAdminGateway)
 	api("admin/health", server.handleAdminHealth)

@@ -15,6 +15,7 @@
 package reaper
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"utils"
 )
 
 // Interval is how often the reaper looks.
@@ -31,17 +33,27 @@ const Interval = 3 * time.Second
 // else something else is the init and it does nothing.
 func Start() {
 	if os.Getpid() != 1 {
+		utils.Jobs.RegisterOff("reaper", "Orphan reaper", "Reaps the processes that end after gotty adopted them, so that none stays <defunct>.", "gotty is not PID 1 here, something else is the init")
 		return
 	}
 	log.Println("reaper: running as PID 1, orphans that end will be reaped")
-	go run(Interval, os.Getpid(), zombiesOf, reap, log.Printf)
+	report := utils.Jobs.Register("reaper", "Orphan reaper", "Reaps the processes that end after gotty adopted them, so that none stays <defunct>.", Interval)
+	total := 0
+	go run(Interval, os.Getpid(), zombiesOf, reap, log.Printf, func(reaped int) {
+		total += reaped
+		report.Record(time.Now(), fmt.Sprintf("%d orphans reaped so far", total), nil)
+	})
 }
 
-func run(every time.Duration, self int, zombies func(parent int) []int, reapOne func(pid int) bool, logf func(string, ...interface{})) {
+func run(every time.Duration, self int, zombies func(parent int) []int, reapOne func(pid int) bool, logf func(string, ...interface{}), after func(reaped int)) {
 	s := &sweeper{seen: map[int]bool{}}
 	for range time.Tick(every) {
-		for _, pid := range s.sweep(zombies(self), reapOne) {
+		reaped := s.sweep(zombies(self), reapOne)
+		for _, pid := range reaped {
 			logf("reaper: reaped the orphan %d", pid)
+		}
+		if after != nil {
+			after(len(reaped))
 		}
 	}
 }

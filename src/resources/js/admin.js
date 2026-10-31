@@ -56,6 +56,7 @@
     snippets: '<path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/>',
     users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
     health: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+    jobs: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     params: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
     logs: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
     map: '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M6 8l5 8M18 8l-5 8"/>',
@@ -1839,11 +1840,11 @@
 
   var MAP_W = 1440, MAP_H = 830;
   var MAP_PANELS = [
-    { x: 64, y: 112, w: 272, h: 500, c: '#8B5CF6', name: 'Browser', nx: 82, ny: 124 },
-    { x: 400, y: 112, w: 640, h: 500, c: '#38BDF8', name: 'OpenREPL host (this server)', nx: 418, ny: 124 },
-    { x: 416, y: 168, w: 300, h: 428, c: '#38BDF8', name: 'gotty process', nx: 432, ny: 180, inner: true },
-    { x: 740, y: 168, w: 284, h: 428, c: '#2DD4BF', name: 'Execution and workspaces', nx: 756, ny: 180, inner: true },
-    { x: 1100, y: 112, w: 276, h: 500, c: '#F59E0B', name: 'Persistence', nx: 1118, ny: 124 },
+    { x: 64, y: 112, w: 272, h: 540, c: '#8B5CF6', name: 'Browser', nx: 82, ny: 124 },
+    { x: 400, y: 112, w: 640, h: 540, c: '#38BDF8', name: 'OpenREPL host (this server)', nx: 418, ny: 124 },
+    { x: 416, y: 168, w: 300, h: 468, c: '#38BDF8', name: 'gotty process', nx: 432, ny: 180, inner: true },
+    { x: 740, y: 168, w: 284, h: 468, c: '#2DD4BF', name: 'Execution and workspaces', nx: 756, ny: 180, inner: true },
+    { x: 1100, y: 112, w: 276, h: 540, c: '#F59E0B', name: 'Persistence', nx: 1118, ny: 124 },
     { x: 64, y: 680, w: 320, h: 130, c: '#D946EF', name: 'Firebase', nx: 82, ny: 692 },
     { x: 740, y: 680, w: 300, h: 130, c: '#D946EF', name: 'Language models', nx: 758, ny: 692 }
   ];
@@ -1854,6 +1855,7 @@
     { id: 'http', x: 432, y: 224, w: 268, h: 86, c: '#38BDF8', t: 'HTTP mux', s: 'pages and REST APIs', g: 'gotty process' },
     { id: 'ws', x: 432, y: 334, w: 268, h: 86, c: '#38BDF8', t: 'WebSocket handlers', s: '/ws, /ws_python, …', g: 'gotty process' },
     { id: 'chat', x: 432, y: 444, w: 268, h: 86, c: '#38BDF8', t: 'chat proxy', s: '/chat/completions', g: 'gotty process' },
+    { id: 'jobs', x: 530, y: 554, w: 170, h: 72, c: '#38BDF8', t: 'job scheduler', s: '', g: 'gotty process' },
     { id: 'procs', x: 756, y: 224, w: 252, h: 72, c: '#2DD4BF', t: 'terminal processes', s: '', g: 'Execution' },
     { id: 'files', x: 756, y: 316, w: 252, h: 72, c: '#2DD4BF', t: 'file browser', s: '', g: 'Execution' },
     { id: 'sandbox', x: 756, y: 408, w: 252, h: 72, c: '#2DD4BF', t: 'sandboxes', s: '', g: 'Execution' },
@@ -1875,8 +1877,9 @@
     { id: 'ws-exec', segs: [[700, 377, 40, 'h']] },
     { id: 'data-persist', segs: [[1024, 211, 92, 'h']] },
     { id: 'persist-store', segs: [[1024, 321, 92, 'h']] },
-    { id: 'chat-llm', segs: [[566, 530, 231, 'v'], [566, 761, 190, 'h']], label: ['API key added here', 582, 640] },
-    { id: 'browser-firebase', segs: [[200, 612, 116, 'v']] }
+    { id: 'chat-llm', segs: [[470, 530, 231, 'v'], [470, 761, 286, 'h']], label: ['API key added here', 486, 650] },
+    { id: 'jobs-exec', segs: [[700, 590, 40, 'h']] },
+    { id: 'browser-firebase', segs: [[200, 652, 76, 'v']] }
   ];
   var STATUS_WORD = { ok: 'working', warn: 'slow or warning', fail: 'down', off: 'off or not set up' };
 
@@ -2014,6 +2017,66 @@
 
   // ---- navigation --------------------------------------------------------------
 
+  // ---- jobs: what runs by itself on this server
+
+  function viewJobs() {
+    var root = h('div'), box = h('div');
+    root.appendChild(pageHead('Jobs', 'What runs by itself on this server, how often, when it last ran and what it did. A guest\'s folder is removed an hour after their last visit; the jobs below look after the rest. The counts start again when the server restarts.'));
+    root.appendChild(box);
+
+    function iso(sec) { return sec ? new Date(sec * 1000).toISOString() : ''; }
+    // "every 3s", "every 15m", "every 1h": exact units, not "1m 0s"
+    function every(sec) {
+      if (!sec) return '–';
+      if (sec % 3600 === 0) return 'every ' + sec / 3600 + 'h';
+      if (sec % 60 === 0) return 'every ' + sec / 60 + 'm';
+      return 'every ' + sec + 's';
+    }
+    // when something is due: worked out when the view is drawn (it is drawn again every few seconds), and "due" for a job that is about to run
+    function dueIn(sec) {
+      var left = sec - Math.floor(Date.now() / 1000);
+      return h('span', { title: localTime(new Date(sec * 1000).toISOString()), text: left <= 0 ? 'due' : 'in ' + fmtDur(left) });
+    }
+    var TONE = { ok: 'ok', waiting: 'info', late: 'warn', failing: 'fail', off: '' };
+    var WORD = { ok: 'Running', waiting: 'Waiting', late: 'Late', failing: 'Failing', off: 'Off' };
+
+    var cols = [
+      { key: 'name', label: 'Job', cell: function (j) {
+        return h('div', null, h('div', { text: j.name }), h('div', { class: 'sub', text: j.state === 'off' ? j.what + ' Off here: ' + j.off + '.' : j.what }));
+      } },
+      { key: 'every', label: 'How often', cell: function (j) { return every(j.everySec); } },
+      { key: 'state', label: 'State', cell: function (j) { return pill(WORD[j.state] || j.state, TONE[j.state]); } },
+      { key: 'last', label: 'Last run', cell: function (j) { return j.state === 'off' ? '–' : when(iso(j.lastAt)); } },
+      { key: 'result', label: 'What it did', cell: function (j) {
+        if (j.lastError) return h('span', { class: 'sub', text: 'Failed: ' + j.lastError });
+        return h('span', { class: 'sub', text: j.lastResult || '–' });
+      } },
+      { key: 'runs', label: 'Runs', num: true, cell: function (j) { return j.state === 'off' ? '–' : j.runs + (j.failures ? ' (' + j.failures + ' failed)' : ''); } },
+      { key: 'next', label: 'Next run', cell: function (j) { return j.state === 'off' ? '–' : dueIn(j.nextAt); } }
+    ];
+    var folderCols = [
+      { key: 'folder', label: 'Guest folder', cell: function (r) { return mono(r.folder); } },
+      { key: 'due', label: 'Removed', cell: function (r) { return dueIn(r.dueAt); } }
+    ];
+
+    function draw(r) {
+      var rm = r.removals;
+      var removals = h('div', { class: 'card' },
+        h('div', { class: 'toolbar' }, h('b', { text: 'Guest folder removals' }), h('span', { class: 'grow' }),
+          h('span', { text: plural(rm.pending, 'folder waits', 'folders wait') + ' · next ' }), rm.nextAt ? dueIn(rm.nextAt) : h('span', { class: 'sub', text: 'nothing waits' }),
+          h('span', { text: ' · ' + rm.fired + ' removed since the start' })),
+        h('p', { class: 'sub', text: 'Each guest\'s folder is set to be removed an hour after their last visit; a visit moves it later. The waiting removals are saved every minute, so a crash does not lose them, and the sweep below removes any folder that was lost anyway.' }),
+        rm.items.length ? table(folderCols, rm.items, { empty: '' }) : null,
+        rm.pending > rm.items.length ? h('p', { class: 'sub', text: 'The first ' + rm.items.length + ' of ' + rm.pending + ' are listed, the soonest first.' }) : null);
+      var node = h('div', { class: 'stack' }, table(cols, r.jobs, { empty: 'No jobs have registered yet.' }), removals);
+      // drawn again on every refresh: the times left are worked out here and would go stale on the same data
+      render(box, Date.now() + JSON.stringify(r.jobs.map(function (j) { return [j.id, j.state, j.runs, j.lastAt, j.lastResult, j.lastError]; }).concat([rm.pending, rm.fired, rm.nextAt, rm.items.map(function (i) { return i.folder; })])), node);
+    }
+
+    function refresh() { return api.get('admin/jobs').then(draw); }
+    return { root: root, refresh: refresh, poll: true };
+  }
+
   var VIEWS = {
     overview: { label: 'Overview', icon: 'overview', make: viewOverview },
     map: { label: 'Live map', icon: 'map', make: viewMap },
@@ -2025,6 +2088,7 @@
     users: { label: 'Users', icon: 'users', make: viewUsers },
     usage: { label: 'Genie usage', icon: 'usage', make: viewGenieUsage },
     health: { label: 'Health', icon: 'health', make: viewHealth },
+    jobs: { label: 'Jobs', icon: 'jobs', make: viewJobs },
     params: { label: 'Parameters', icon: 'params', make: viewParams },
     logs: { label: 'Log', icon: 'logs', make: viewLogs },
     audit: { label: 'Audit log', icon: 'audit', make: viewAudit }
@@ -2034,7 +2098,7 @@
     ['', ['overview', 'map']],
     ['Fleet', ['workers', 'sessions']],
     ['Site', ['site', 'feedback', 'snippets', 'users', 'usage']],
-    ['System', ['health', 'params', 'logs', 'audit']]
+    ['System', ['health', 'jobs', 'params', 'logs', 'audit']]
   ];
 
   var unread = 0;

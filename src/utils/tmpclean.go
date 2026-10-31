@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -24,14 +25,20 @@ var tmpKept = map[string]bool{"go_cache": true}
 func StartTmpCleaner() {
 	maxAge := TmpMaxAge()
 	if maxAge <= 0 {
+		Jobs.RegisterOff("tmp-clean", "/tmp cleaner", "Deletes what has not been touched in /tmp for a while, so that a program cannot fill the disk.", EnvTmpMaxAge+" is not set")
 		return
 	}
+	report := Jobs.Register("tmp-clean", "/tmp cleaner", "Deletes what has not been touched in /tmp for a while, so that a program cannot fill the disk.", TmpCleanInterval)
 	log.Printf("INFO: /tmp is cleaned every %v of what is older than %v (%s)", TmpCleanInterval, maxAge, EnvTmpMaxAge)
 	go func() {
 		for range time.Tick(TmpCleanInterval) {
-			if n := CleanDir(os.TempDir(), maxAge, time.Now(), tmpKeep()); n > 0 {
-				log.Printf("INFO: removed %d old entries from %s", n, os.TempDir())
-			}
+			report.Run(func() (string, error) {
+				n := CleanDir(os.TempDir(), maxAge, time.Now(), tmpKeep())
+				if n > 0 {
+					log.Printf("INFO: removed %d old entries from %s", n, os.TempDir())
+				}
+				return fmt.Sprintf("%d old entries removed", n), nil
+			})
 		}
 	}()
 }
