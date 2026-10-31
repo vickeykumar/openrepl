@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"path/filepath"
@@ -53,10 +54,15 @@ func SweepGuestHomes(root string, pending func(job string) bool, maxAge time.Dur
 // GuestSweepInterval. It returns what stops it.
 func StartGuestSweeper() (stop func()) {
 	done := make(chan struct{})
+	report := Jobs.Register("guest-sweep", "Forgotten guest folders", "Removes a guest folder that no removal waits for and in which nothing was written for 90 minutes (a crash can lose the waiting removals).", GuestSweepInterval)
 	sweep := func() {
-		if n := SweepGuestHomes(filepath.Clean(HOME_DIR), GottyJobs.Pending, GuestSweepAge, time.Now(), RemoveDir); n > 0 {
-			log.Printf("INFO: %d forgotten guest folders were removed from %s", n, HOME_DIR)
-		}
+		report.Run(func() (string, error) {
+			n := SweepGuestHomes(filepath.Clean(HOME_DIR), GottyJobs.Pending, GuestSweepAge, time.Now(), RemoveDir)
+			if n > 0 {
+				log.Printf("INFO: %d forgotten guest folders were removed from %s", n, HOME_DIR)
+			}
+			return fmt.Sprintf("%d forgotten folders removed", n), nil
+		})
 	}
 	go func() {
 		wait := time.NewTimer(guestSweepFirst)

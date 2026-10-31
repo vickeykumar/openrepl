@@ -91,6 +91,7 @@ func StartSettingsSync(ctx context.Context, mode string) {
 	// seconds), so that the keys saved in the dashboard are in use from the
 	// first request instead of the environment's.
 	step()
+	report := utils.Jobs.Register("settings-poll", "Settings poll", "Reads the site settings from the shared database, so that every server sees what an admin saved.", settingsPollInterval)
 	go func() {
 		tick := time.NewTicker(settingsPollInterval)
 		defer tick.Stop()
@@ -99,7 +100,16 @@ func StartSettingsSync(ctx context.Context, mode string) {
 			case <-ctx.Done():
 				return
 			case <-tick.C:
-				step()
+				report.Run(func() (string, error) {
+					step()
+					settingsMu.Lock()
+					lastErr, version := settingsLastErr, settingsVersion
+					settingsMu.Unlock()
+					if lastErr != "" {
+						return "", errors.New(lastErr)
+					}
+					return fmt.Sprintf("settings version %d", version), nil
+				})
 			}
 		}
 	}()

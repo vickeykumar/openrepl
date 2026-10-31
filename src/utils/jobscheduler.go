@@ -1,6 +1,7 @@
 package utils
 
 import (
+    "fmt"
     "log"
     "sync"
     "time"
@@ -18,6 +19,9 @@ type Job struct {
 type JobScheduler struct {
     Jobs  map[string]*Job   // map of job name to job object
     mutex sync.Mutex        // mutex for read write in job scheduler
+
+    fired     int64     // jobs that have run out since the start (RemovalStats)
+    lastFired time.Time
 }
 
 func NewJobScheduler() *JobScheduler {
@@ -41,6 +45,7 @@ func (js *JobScheduler) AddJob(name string, durationafter time.Duration, jobFunc
     job.timer = time.AfterFunc(durationafter, func() {
         log.Println("running job on timer expiry: ", name)
         jobFunc()
+        js.noteFired()
         js.forget(job)
     })
     js.Jobs[name] = job
@@ -110,6 +115,7 @@ func (js *JobScheduler) LoadJobsFromFile(file string, jobFunc func(jobname strin
             if jobFunc != nil {
                 jobFunc(j.Name) // run the job with the jobname
             }
+            js.noteFired()
             js.forget(j)
         })
         js.Jobs[name] = j
@@ -149,15 +155,20 @@ var JobSaveInterval = time.Minute
 // waiting and the folders stayed. Now the most that is lost is the last minute. It returns what stops it.
 func (js *JobScheduler) StartJobSaver(file string) (stop func()) {
     done := make(chan struct{})
+    report := Jobs.Register("job-saver", "Waiting removals saved", "Writes the guest folders that wait to be removed to the job file, so that a crash does not lose them.", JobSaveInterval)
     go func() {
         ticker := time.NewTicker(JobSaveInterval)
         defer ticker.Stop()
         for {
             select {
             case <-ticker.C:
-                if err := js.SaveJobsToFile(file); err != nil {
-                    log.Println("Error: saving the waiting jobs: ", err)
-                }
+                report.Run(func() (string, error) {
+                    err := js.SaveJobsToFile(file)
+                    if err != nil {
+                        log.Println("Error: saving the waiting jobs: ", err)
+                    }
+                    return fmt.Sprintf("saved %d waiting removals", js.Stats().Pending), err
+                })
             case <-done:
                 return
             }

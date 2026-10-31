@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -273,12 +274,15 @@ func (server *Server) expireGuests(ctx context.Context, router *gateway.Router, 
 	ttl := utils.DEADLINE_MINUTES * time.Minute
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
+	report := utils.Jobs.Register("guest-expiry", "Guest expiry (gateway)", "Ends the guests that were idle for an hour and deletes their homes on the gateway and on the worker that held them.", time.Minute)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case now := <-t.C:
+			started, expired := time.Now(), 0
 			for _, e := range router.ExpireGuests(now, ttl) {
+				expired++
 				log.Printf("Workspace sync: guest home %s expired (%s)", e.Home, e.Backend)
 				if e.Backend != gateway.LocalID {
 					if err := mgr.Drop(e.Backend, e.Home); err != nil {
@@ -299,7 +303,9 @@ func (server *Server) expireGuests(ctx context.Context, router *gateway.Router, 
 				log.Printf("Workspace sync: stale guest home %s (idle %v, worker %s)", st.Home, st.Age.Round(time.Minute), st.Peer)
 				mgr.Drop(st.Peer, st.Home)
 				utils.RemoveDirNow(utils.HOME_DIR + st.Home)
+				expired++
 			}
+			report.Record(started, fmt.Sprintf("%d guest homes expired", expired), nil)
 		}
 	}
 }
