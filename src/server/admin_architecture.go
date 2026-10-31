@@ -109,8 +109,11 @@ func recentProblems() []archProblem {
 }
 
 func providerName(p string) string {
-	if p == providerOpenRouter {
+	switch p {
+	case providerOpenRouter:
 		return "OpenRouter"
+	case providerCloudflare:
+		return "Cloudflare Workers AI"
 	}
 	return "OpenAI"
 }

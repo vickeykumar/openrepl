@@ -27,6 +27,9 @@ import (
 //	OPENREPL_OPENAI_API_KEY  the OpenAI key as it is; file: user.OpenaiAPIKey, base64
 //	OPENREPL_OPENROUTER_API_KEY  the OpenRouter key as it is (env only); without it the
 //	                         OpenRouter models are not offered
+//	OPENREPL_CLOUDFLARE_API_TOKEN, OPENREPL_CLOUDFLARE_ACCOUNT_ID  the Cloudflare Workers AI token (with
+//	                         the Workers AI permissions) and the id of the account it belongs to; without
+//	                         both the Workers AI models are not offered
 //	OPENREPL_RECAPTCHA_SECRET the reCAPTCHA secret key of the site key on the page; with it the
 //	                         server checks the contact form's reCAPTCHA answer (env only, a secret)
 //	OPENREPL_MONGODB_URI     optional; keeps the admin settings in MongoDB (Atlas, a
@@ -37,15 +40,17 @@ import (
 //	OPENREPL_FIREBASE_CONFIG the Firebase web app config the page signs in
 //	                         with, as JSON or base64 of JSON; see FirebaseConfigFromEnv
 const (
-	EnvMode            = "OPENREPL_ENV"
-	EnvAdminEmails     = "OPENREPL_ADMIN_EMAILS"
-	EnvOpenAIKey       = "OPENREPL_OPENAI_API_KEY"
-	EnvOpenRouterKey   = "OPENREPL_OPENROUTER_API_KEY"
-	EnvRecaptchaSecret = "OPENREPL_RECAPTCHA_SECRET"
-	EnvHost            = "OPENREPL_HOST"
-	EnvMongoURI        = "OPENREPL_MONGODB_URI"
-	EnvMongoDB         = "OPENREPL_MONGODB_DB"
-	EnvSecret          = "OPENREPL_SECRET"
+	EnvMode              = "OPENREPL_ENV"
+	EnvAdminEmails       = "OPENREPL_ADMIN_EMAILS"
+	EnvOpenAIKey         = "OPENREPL_OPENAI_API_KEY"
+	EnvOpenRouterKey     = "OPENREPL_OPENROUTER_API_KEY"
+	EnvRecaptchaSecret   = "OPENREPL_RECAPTCHA_SECRET"
+	EnvCloudflareToken   = "OPENREPL_CLOUDFLARE_API_TOKEN"
+	EnvCloudflareAccount = "OPENREPL_CLOUDFLARE_ACCOUNT_ID"
+	EnvHost              = "OPENREPL_HOST"
+	EnvMongoURI          = "OPENREPL_MONGODB_URI"
+	EnvMongoDB           = "OPENREPL_MONGODB_DB"
+	EnvSecret            = "OPENREPL_SECRET"
 	// a Google service account key (JSON, base64 of it, or a file path) that
 	// lets the server use the Firebase project's Firestore as its database
 	EnvFirestoreCredentials = "OPENREPL_FIRESTORE_CREDENTIALS"
@@ -230,6 +235,8 @@ var (
 	keyMu             sync.RWMutex
 	openAIOverride    string
 	openRouterOverr   string
+	cfTokenOverr      string
+	cfAccountOverr    string
 	secretFromGateway string
 	generatedSecret   string
 )
@@ -241,11 +248,21 @@ func SetKeyOverrides(openai, openrouter string) {
 	keyMu.Unlock()
 }
 
+// SetCloudflareOverrides sets the Workers AI token and account id saved in the
+// dashboard; "" means none.
+func SetCloudflareOverrides(token, account string) {
+	keyMu.Lock()
+	cfTokenOverr, cfAccountOverr = strings.TrimSpace(token), strings.TrimSpace(account)
+	keyMu.Unlock()
+}
+
 // KeySource says where the key in use comes from: "dashboard", "env", "file",
-// or "" when there is none. provider is "openai" or "openrouter".
+// or "" when there is none. provider is "openai", "openrouter", "cloudflare"
+// (the token) or "cloudflare-account".
 func KeySource(provider string) string {
 	keyMu.RLock()
-	over := map[string]string{"openai": openAIOverride, "openrouter": openRouterOverr}[provider]
+	over := map[string]string{"openai": openAIOverride, "openrouter": openRouterOverr,
+		"cloudflare": cfTokenOverr, "cloudflare-account": cfAccountOverr}[provider]
 	keyMu.RUnlock()
 	switch {
 	case over != "":
@@ -254,6 +271,10 @@ func KeySource(provider string) string {
 		return source(EnvOpenAIKey, "user.OpenaiAPIKey")
 	case provider == "openrouter":
 		return source(EnvOpenRouterKey, "")
+	case provider == "cloudflare":
+		return source(EnvCloudflareToken, "")
+	case provider == "cloudflare-account":
+		return source(EnvCloudflareAccount, "")
 	}
 	return ""
 }
@@ -291,6 +312,36 @@ func OpenRouterKey() string {
 		return over
 	}
 	return strings.TrimSpace(os.Getenv(EnvOpenRouterKey))
+}
+
+// CloudflareToken returns the Workers AI API token: the one saved in the
+// dashboard, else OPENREPL_CLOUDFLARE_API_TOKEN, or "".
+func CloudflareToken() string {
+	keyMu.RLock()
+	over := cfTokenOverr
+	keyMu.RUnlock()
+	if over != "" {
+		return over
+	}
+	return strings.TrimSpace(os.Getenv(EnvCloudflareToken))
+}
+
+// CloudflareAccountID returns the id of the Cloudflare account the token
+// belongs to: the one saved in the dashboard, else OPENREPL_CLOUDFLARE_ACCOUNT_ID.
+func CloudflareAccountID() string {
+	keyMu.RLock()
+	over := cfAccountOverr
+	keyMu.RUnlock()
+	if over != "" {
+		return over
+	}
+	return strings.TrimSpace(os.Getenv(EnvCloudflareAccount))
+}
+
+// CloudflareEnabled reports whether the Workers AI models can be called: the
+// token and the account id are both set.
+func CloudflareEnabled() bool {
+	return CloudflareToken() != "" && CloudflareAccountID() != ""
 }
 
 // RecaptchaSecret is OPENREPL_RECAPTCHA_SECRET, as it is, or "" when it is not
@@ -561,6 +612,8 @@ func configSummary(dev bool) string {
 	item("admin emails", EnvAdminEmails, "user.email", strings.Join(admins, ","), len(admins))
 	item("openai key", EnvOpenAIKey, "user.OpenaiAPIKey", OpenAIKey(), 0)
 	item("openrouter key", EnvOpenRouterKey, "", OpenRouterKey(), 0)
+	item("cloudflare token", EnvCloudflareToken, "", CloudflareToken(), 0)
+	item("cloudflare account", EnvCloudflareAccount, "", CloudflareAccountID(), 0)
 	// a secret: never its value, not even in dev
 	if RecaptchaSecret() != "" {
 		fmt.Fprintf(&b, "; recaptcha: contact form is checked on the server (from env)")

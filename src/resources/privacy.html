@@ -29,7 +29,7 @@
       <span class="site-nav__right"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button><a class="site-nav__back" href="/">Back to the editor</a></span>
     </nav>
     <main class="legal">
-      <p class="legal__meta">Last updated 8 October 2026</p>
+      <p class="legal__meta">Last updated 31 October 2026</p>
       <h1>Privacy policy</h1>
       <p class="legal__lead">OpenREPL is a free, open-source service for running code in your browser. This page explains what data the service handles, why, and the choices you have.</p>
 
@@ -58,11 +58,11 @@
 
       <h3>Genie, the AI helper</h3>
       <p>We keep a count of the tokens Genie uses for each signed-in account, by month and in all, and for visitors as one total, to show you your own usage and to see what the service costs. It holds numbers only, not your messages, code or answers.</p>
-      <p>When you use Genie, your messages, the code in your editor and the most recent output of your terminal are sent through our server to OpenAI to generate replies. You can choose which model answers: GPT-6 Luna or GPT-4o mini (both run by OpenAI), or Gemma 4 31B, which runs through OpenRouter on servers operated by ModelRun and, if that is unavailable, CoreWeave. If you choose Gemma, your messages go to OpenRouter and to whichever of those two answers, not to OpenAI. The site owner can also add other models that run through OpenRouter. If you choose one, your messages go to OpenRouter and to the provider that runs it, which the owner names or OpenRouter picks, not to OpenAI. A model marked free runs on a provider's free tier, and such a provider may keep what you send and use it under its own terms, so do not send anything private to a free model. Genie is optional; if you don't open it and don't ask for a practice question, nothing is sent to OpenAI or OpenRouter.</p>
+      <p>When you use Genie, your messages, the code in your editor and the most recent output of your terminal are sent through our server to OpenAI to generate replies. You can choose which model answers: GPT-6 Luna or GPT-4o mini (both run by OpenAI), or Gemma 4 31B, which runs through OpenRouter on servers operated by ModelRun and, if that is unavailable, CoreWeave. If you choose Gemma, your messages go to OpenRouter and to whichever of those two answers, not to OpenAI. You can also choose a model that runs on Cloudflare Workers AI (Gemma 4 26B, Qwen3 30B or GLM 4.7 Flash): then your messages go to Cloudflare, not to OpenAI or OpenRouter. The site owner can add other models that run through OpenAI, OpenRouter or Cloudflare. If you choose one that runs through OpenRouter, your messages go to OpenRouter and to the provider that runs it, which the owner names or OpenRouter picks, not to OpenAI. A model marked free runs on a provider's free tier, and such a provider may keep what you send and use it under its own terms, so do not send anything private to a free model. Genie is optional; if you don't open it and don't ask for a practice question, nothing is sent to OpenAI, OpenRouter or Cloudflare.</p>
       <p>To answer questions about OpenREPL itself, Genie may add short passages from our own notes about the service, and from blog posts published on this site, to your message before it is sent to the model. This text is public. It is picked on our server by matching words in your question, with no extra service involved, and nothing about you is added to it. If nothing matches, nothing is added. Genie shows under its reply which notes were used. The Ask Genie button of the blog editor works the same way for the people who write posts. Practice questions do not use it.</p>
       <p>Agent mode, when you are signed in and choose it in the Genie panel, lets Genie work on a task in several steps. Each step sends the same things as a Genie message (your task, the code in your editor and the recent output of your terminal) to the model you chose. Genie changes your editor, switches the language, runs your code, restarts your terminal, opens, switches or closes terminal tabs, types a line in your terminal, or works in your Files panel only after you allowed that kind of action (the names of your files are sent to the model when it lists them; renaming, moving and deleting are asked about every time), and you review every change to the editor before it is applied. You see the exact line before it is typed, and a line that could delete or change things is asked about every time. It stops when you press Stop or close the panel.</p>
       <p>The right-click actions on selected code (Fix problems, Add comments, Write tests) send the selected code, the file it is in, the language and the recent terminal output to the model you chose; Explain is sent as a Genie message. On the practice page the coach (hints, a solution review and complexity) sends the editor, which holds the problem and your code, and the recent terminal output in the same way. Hints used are counted in your browser only.</p>
-      <p>The practice page's New question uses OpenAI in the same way: the topic, level and extra instructions you enter, the language, and the titles of your earlier questions on that topic are sent to the model you chose (OpenAI, or OpenRouter for Gemma) to write the question.</p>
+      <p>The practice page's New question uses OpenAI in the same way: the topic, level and extra instructions you enter, the language, and the titles of your earlier questions on that topic are sent to the model you chose (OpenAI, OpenRouter for Gemma, or Cloudflare) to write the question.</p>
 
       <h3>Language requests and feedback</h3>
       <p>If you send a request or feedback, we store the name, email and message you enter so we can read and reply to it. Google reCAPTCHA checks the form for spam.</p>
@@ -79,6 +79,7 @@
         <li>Google (Firebase Authentication and Realtime Database, Tag Manager and Analytics, reCAPTCHA, Fonts): <a href="https://policies.google.com/privacy">Google Privacy Policy</a></li>
         <li>OpenAI (Genie replies and practice questions): <a href="https://openai.com/policies/privacy-policy">OpenAI Privacy Policy</a></li>
         <li>OpenRouter, and the hosts it uses for Gemma (ModelRun, CoreWeave): <a href="https://openrouter.ai/privacy">OpenRouter Privacy Policy</a></li>
+        <li>Cloudflare Workers AI (if you choose one of its models): <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare Privacy Policy</a></li>
         <li>GitHub (if you sign in with GitHub): <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a></li>
       </ul>
       <p>We do not sell your personal information.</p>
@@ -95,7 +96,7 @@
       <h2>Your choices</h2>
       <ul>
         <li>Use OpenREPL as a guest without an account.</li>
-        <li>Don't open Genie if you don't want your code sent to OpenAI or OpenRouter.</li>
+        <li>Don't open Genie if you don't want your code sent to OpenAI, OpenRouter or Cloudflare.</li>
         <li>Block or clear cookies and site data in your browser. Signing in needs the session cookie.</li>
         <li>Ask us to delete your account data or workspace (see Contact).</li>
       </ul>

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"time"
+	"utils"
 )
 
 // What the chat proxy lets through to a model. The Genie panel and the New
@@ -16,10 +17,17 @@ import (
 const (
 	providerOpenAI     = "openai"
 	providerOpenRouter = "openrouter"
+	providerCloudflare = "cloudflare"
 
 	modelLuna  = "gpt-6-luna"
 	modelMini  = "gpt-4o-mini"
 	modelGemma = "google/gemma-4-31b-it"
+
+	// Cloudflare Workers AI. The "@cf/" prefix matters: without it Cloudflare treats the name as a
+	// third-party model and bills the AI Gateway credit instead of the free allowance.
+	modelCFGemma = "@cf/google/gemma-4-26b-a4b-it"
+	modelCFQwen  = "@cf/qwen/qwen3-30b-a3b-fp8"
+	modelCFGLM   = "@cf/zai-org/glm-4.7-flash"
 
 	// a request that names any other model (or none) is answered by this one,
 	// unless an admin chose another default (defaultModelID)
@@ -58,12 +66,44 @@ type chatModel struct {
 }
 
 // the order the models are listed in, in the dashboard and as a last resort
-var chatModelOrder = []string{modelLuna, modelMini, modelGemma}
+var chatModelOrder = []string{modelLuna, modelMini, modelGemma, modelCFGemma, modelCFQwen, modelCFGLM}
 
 var chatModels = map[string]chatModel{
 	modelLuna:  {ID: modelLuna, Name: "GPT-6 Luna", Provider: providerOpenAI, Reasoning: true},
 	modelMini:  {ID: modelMini, Name: "GPT-4o mini", Provider: providerOpenAI, MaxTokensCap: 3000},
 	modelGemma: {ID: modelGemma, Name: "Gemma 4 31B", Provider: providerOpenRouter, MaxTokensCap: 4000},
+	// the free plan covers these (10,000 neurons a day, shared); none takes response_format here
+	modelCFGemma: {ID: modelCFGemma, Name: "Gemma 4 26B (Cloudflare)", Provider: providerCloudflare, MaxTokensCap: 4000, Free: true, NoJSONMode: true},
+	modelCFQwen:  {ID: modelCFQwen, Name: "Qwen3 30B (Cloudflare)", Provider: providerCloudflare, MaxTokensCap: 4000, Free: true, ThinkingRoom: 2000, NoJSONMode: true},
+	modelCFGLM:   {ID: modelCFGLM, Name: "GLM 4.7 Flash (Cloudflare)", Provider: providerCloudflare, MaxTokensCap: 4000, Free: true, ThinkingRoom: 2000, NoJSONMode: true},
+}
+
+// providerKey is the API key the server holds for a provider: "" when there is none (for
+// Cloudflare, when the token or the account id is missing).
+func providerKey(provider string) string {
+	switch provider {
+	case providerOpenRouter:
+		return utils.OpenRouterKey()
+	case providerCloudflare:
+		if utils.CloudflareEnabled() {
+			return utils.CloudflareToken()
+		}
+		return ""
+	}
+	return utils.OpenAIKey()
+}
+
+// cloudflareAPI is where the Cloudflare API is (a variable so that tests can point it elsewhere).
+var cloudflareAPI = "https://api.cloudflare.com/client/v4"
+
+// cloudflareModelsURL is the model search of an account, which also checks a token.
+func cloudflareModelsURL(account string) string {
+	return cloudflareAPI + "/accounts/" + account + "/ai/models/search"
+}
+
+// cloudflareEndpoint is the OpenAI compatible chat endpoint of Workers AI for the account.
+func cloudflareEndpoint(account string) string {
+	return cloudflareAPI + "/accounts/" + account + "/ai/v1/chat/completions"
 }
 
 // defaultModelID is the model that answers a request naming none (or one that
@@ -210,7 +250,7 @@ func sanitizeChatBody(body []byte) ([]byte, chatModel, error) {
 
 	// The count of tokens an answer used (tokens.go): a stream only carries it when
 	// asked, and OpenRouter also says what the answer cost.
-	if out["stream"] == true && model.Provider != providerOpenRouter {
+	if out["stream"] == true && model.Provider == providerOpenAI {
 		out["stream_options"] = map[string]bool{"include_usage": true}
 	}
 	if model.Provider == providerOpenRouter {

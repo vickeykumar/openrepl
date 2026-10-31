@@ -859,9 +859,11 @@ body #chat-widget__container #chat-widget__input:focus-visible {
   left: 12px;
   bottom: calc(100% - 4px);
   z-index: 2;
-  width: min(330px, calc(100% - 24px));
-  max-height: min(440px, calc(100vh - 220px));
-  overflow-y: auto;
+  width: min(376px, calc(100% - 24px));
+  /* the panel is at most 600px tall; the composer and the header take the rest. Search stays on
+     top and Effort at the bottom: only the list between them scrolls. */
+  max-height: min(440px, calc(100vh - 260px));
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -873,6 +875,20 @@ body #chat-widget__container #chat-widget__input:focus-visible {
 }
 #chat-widget__settings[hidden] {
   display: none;
+}
+/* the parts keep their size; only the model list (the middle) scrolls */
+#chat-widget__settings > * {
+  flex-shrink: 0;
+}
+#chat-widget__settings > .cw-set__scroll {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 -6px;
+  padding: 0 6px;
 }
 .cw-set__label {
   font-size: 11px;
@@ -970,6 +986,232 @@ body #chat-widget__container #chat-widget__input:focus-visible {
   font-size: 12.5px;
   line-height: 1.4;
   color: var(--cw-icon);
+  /* one line: the details beside the list have the whole text */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The model list: a search box, "Your models", "Other models" (grouped, scrolling), search results */
+.cw-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  color: var(--cw-muted);
+  background: var(--cw-field-bg);
+  border: 1px solid var(--cw-field-border);
+  border-radius: 8px;
+}
+.cw-search:focus-within {
+  border-color: var(--cw-accent);
+}
+#chat-widget__settings .cw-search input {
+  flex: 1;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--cw-text);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: 0;
+}
+.cw-search__clear {
+  padding: 0 2px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--cw-icon);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.cw-set__count {
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--cw-muted);
+}
+.cw-modelrow {
+  position: relative;
+}
+.cw-modelrow .cw-model {
+  padding: 8px 38px 8px 12px;
+}
+.cw-modelrow .cw-model.is-compact {
+  padding: 7px 38px 7px 12px;
+}
+.cw-model.is-compact {
+  align-items: center;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  border-color: transparent;
+}
+.cw-model.is-compact:hover {
+  background: var(--cw-chip-bg);
+}
+.cw-model.is-compact .cw-model__dot {
+  margin-top: 0;
+}
+.cw-model__sub {
+  font-size: 12px;
+  color: var(--cw-icon);
+}
+.cw-model__tag.is-free {
+  color: #9FE3B4;
+  background: #1F3A2A;
+}
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.is-free {
+  color: #1E6B3A;
+  background: #DDF3E4;
+}
+.cw-model mark {
+  color: var(--cw-strong);
+  background: color-mix(in srgb, var(--cw-accent) 28%, transparent);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.cw-pin {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  margin-top: -13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cw-icon);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+}
+.cw-modelrow:hover .cw-pin,
+.cw-pin:focus-visible,
+.cw-pin[aria-pressed="true"] {
+  opacity: 1;
+}
+.cw-pin[aria-pressed="true"] {
+  color: var(--cw-accent);
+}
+.cw-pin[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+.cw-pin:hover {
+  background: var(--cw-chip-bg);
+}
+.cw-others {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--cw-text);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--cw-seg-on);
+  border-radius: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.cw-others__name {
+  flex: 1;
+}
+.cw-others__count {
+  font-size: 12px;
+  color: var(--cw-muted);
+}
+.cw-others__chev {
+  transition: transform 0.12s;
+}
+.cw-others[aria-expanded="true"] .cw-others__chev {
+  transform: rotate(90deg);
+}
+.cw-others[hidden],
+.cw-others__list[hidden],
+.cw-set__group[hidden],
+.cw-set__label[hidden],
+.cw-set__count[hidden] {
+  display: none;
+}
+.cw-others__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: 6px;
+  padding-left: 6px;
+  border-left: 2px solid var(--cw-seg-on);
+}
+.cw-others__list .cw-set__group-label {
+  margin-top: 8px;
+  padding-left: 10px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cw-muted);
+}
+.cw-others__list .cw-set__group-label:first-child {
+  margin-top: 2px;
+}
+/* The details of a model beside the list; it needs room to the left of the panel. */
+.cw-details {
+  position: fixed;
+  z-index: 10000;
+  width: 296px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  color: var(--cw-text);
+  background: var(--cw-pop-bg);
+  border: 1px solid var(--cw-pop-border);
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.cw-details[hidden] {
+  display: none;
+}
+.cw-details__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cw-details__name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cw-strong);
+}
+.cw-details__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--cw-icon);
+}
+.cw-details dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 12.5px;
+}
+.cw-details dt {
+  color: var(--cw-muted);
+  white-space: nowrap;
+}
+.cw-details dd {
+  margin: 0;
+  color: var(--cw-strong);
 }
 .cw-seg {
   display: flex;
@@ -1001,7 +1243,7 @@ body #chat-widget__container #chat-widget__input:focus-visible {
   opacity: 0.4;
 }
 .cw-set__note {
-  min-height: 34px;
+  min-height: 0;
   margin: 0;
   font-size: 12px;
   line-height: 1.45;

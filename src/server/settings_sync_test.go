@@ -364,7 +364,7 @@ func TestTheDashboardSaysWhenTheStoreIsNotReachable(t *testing.T) {
 func TestModelSwitchesAreChecked(t *testing.T) {
 	for name, g := range map[string]GenieSettings{
 		"unknown model":   {DisabledModels: []string{"gpt-9"}},
-		"all off":         {DisabledModels: []string{modelLuna, modelMini, modelGemma}},
+		"all off":         {DisabledModels: chatModelOrder},
 		"unknown default": {DefaultModel: "gpt-9"},
 		"default is off":  {DisabledModels: []string{modelMini}, DefaultModel: modelMini},
 	} {
@@ -448,14 +448,14 @@ func TestTheDashboardListsTheModelsAndTheirKeys(t *testing.T) {
 	t.Setenv("OPENREPL_OPENROUTER_API_KEY", "")
 	var r settingsReply
 	decode(t, get(h, "/admin/settings"), &r)
-	if len(r.Models) != 3 || r.Models[0].ID != modelLuna || !r.Models[0].KeySet || r.Models[2].ID != modelGemma || r.Models[2].KeySet {
+	if len(r.Models) != len(chatModelOrder) || r.Models[0].ID != modelLuna || !r.Models[0].KeySet || r.Models[2].ID != modelGemma || r.Models[2].KeySet {
 		t.Fatalf("models: %+v", r.Models)
 	}
 	w := post(h, "/admin/settings", `{"genie":{"disabledModels":["gpt-4o-mini"],"defaultModel":"gpt-6-luna"}}`)
 	if w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
-	if w := post(h, "/admin/settings", `{"genie":{"disabledModels":["gpt-6-luna","gpt-4o-mini","google/gemma-4-31b-it"]}}`); w.Code != 400 {
+	if w := post(h, "/admin/settings", `{"genie":{"disabledModels":["gpt-6-luna","gpt-4o-mini","google/gemma-4-31b-it","@cf/google/gemma-4-26b-a4b-it","@cf/qwen/qwen3-30b-a3b-fp8","@cf/zai-org/glm-4.7-flash"]}}`); w.Code != 400 {
 		t.Fatalf("all models off: %d", w.Code)
 	}
 	pub := GetSiteSettings().public()

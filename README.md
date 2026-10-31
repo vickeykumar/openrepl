@@ -480,7 +480,7 @@ OpenREPL is one Go binary (`bin/gotty`, a fork of GoTTY). The same binary does t
 These services sit around the core:
 
 - **Firebase:** Authentication (sign-in) and the Realtime Database (live sharing of a REPL, and Genie chat history).
-- **OpenAI and OpenRouter:** reached only through a server-side proxy, for the *Genie* assistant and *Practice* question generation.
+- **OpenAI, OpenRouter and Cloudflare Workers AI:** reached only through a server-side proxy, for the *Genie* assistant and *Practice* question generation.
 - **A database, optional:** the server keeps its own data (accounts and sessions, feedback, blog, shared code, practice progress, admin settings) in files on its disk by default, or in MongoDB or Firestore when one is configured. See [Data and storage](#data-and-storage).
 
 ### System context
@@ -643,6 +643,7 @@ The server-side settings come from environment variables, and gotty can load the
 | `OPENREPL_MONGODB_DB` | The MongoDB database for it. Default `openrepl`. | |
 | `OPENREPL_SECRET` | Optional. A long random secret for the server's own use: it signs the session cookies and encrypts the API keys an admin saves in the dashboard (a key saved there wins over the two above). When set, it is not saved anywhere (the cookie key is derived from it); when not set, the server makes one and saves it in its database. A worker takes its gateway's. If it changes, everybody is signed out once and saved keys must be entered again. | |
 | `OPENREPL_OPENROUTER_API_KEY` | Optional. The OpenRouter key, as it is. Without it the Gemma 4 31B choice is not offered. | |
+| `OPENREPL_CLOUDFLARE_API_TOKEN`, `OPENREPL_CLOUDFLARE_ACCOUNT_ID` | Optional. A Cloudflare API token with the Workers AI permissions, and the id of its account. Both are needed for the Workers AI models (Gemma 4 26B, Qwen3 30B, GLM 4.7 Flash) to be offered. The free plan gives the account 10,000 neurons a day, shared by everyone. | |
 | `OPENREPL_RECAPTCHA_SECRET` | Optional. The reCAPTCHA secret key of the site key on the home page. With it the server checks the contact form's reCAPTCHA answer (the box alone only switches on the Send button, a bot can post straight to `/feedback`). Without it the answer is not checked. | |
 | `OPENREPL_HOST` | The origin the chat proxy accepts. Default `localhost`. | `user.host` |
 | `OPENREPL_HOME_DIR` | The folder that holds the users' workspaces, one folder each. Default `/tmp/home/`. The Docker image sets `/home/openrepl/`, so that `/tmp` can stay open to the REPLs under the filesystem sandbox. It must be the same on a gateway and its workers. | |

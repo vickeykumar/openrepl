@@ -23,6 +23,7 @@ func (server *Server) registerAdmin(mux *http.ServeMux, prefix string) {
 	mux.Handle(prefix+"admin", server.wrapAdmin(http.HandlerFunc(server.handleAdminPage)))
 	api("admin/settings", server.handleAdminSettings)
 	api("admin/keys", server.handleAdminKeys)
+	api("admin/cloudflare-models", server.handleAdminCloudflareModels)
 	api("admin/admins", server.handleAdminAdmins)
 	api("admin/gateway", server.handleAdminGateway)
 	api("admin/health", server.handleAdminHealth)

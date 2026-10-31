@@ -399,6 +399,18 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
             return
         }
     }
+    if model.Provider == providerCloudflare {
+        // the token and the account id are both needed; the time limit is the one of the other routed hosts
+        upstreamURL, upstreamKey, timeout = cloudflareEndpoint(utils.CloudflareAccountID()), providerKey(providerCloudflare), openRouterTimeoutSetting()
+        if openRouterTimeout > 0 {
+            timeout = openRouterTimeout
+        }
+        if upstreamKey == "" {
+            log.Println("Error: ", model.ID, "was asked for, but", utils.EnvCloudflareToken, "or", utils.EnvCloudflareAccount, "is not set")
+            modelUnavailable(rw, req, model)
+            return
+        }
+    }
 
     // a visitor gets an anonymous id in the session cookie, to count the visit's tokens under
     if _, signedIn := agentUser(req); !signedIn {
@@ -457,7 +469,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		noteChat(model.Provider, false, asked)
 		log.Println("Error: making request: ", err)
-		if model.Provider == providerOpenRouter {
+		if model.Provider != providerOpenAI {
 			modelUnavailable(rw, req, model)
 			return
 		}
@@ -474,13 +486,13 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 
 	defer resp.Body.Close()
 
-	if model.Provider == providerOpenRouter && resp.StatusCode >= 400 {
+	if model.Provider != providerOpenAI && resp.StatusCode >= 400 {
 		// no host could answer (404), no credit (402), a limit (429) or a host
 		// error: the visitor is told the model is not available, not charged
 		// a request, and the reason is logged
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		noteChat(model.Provider, false, asked)
-		log.Println("Error: OpenRouter answered", resp.StatusCode, "for", model.ID, ":", string(detail))
+		log.Println("Error:", providerName(model.Provider), "answered", resp.StatusCode, "for", model.ID, ":", string(detail))
 		modelUnavailable(rw, req, model)
 		return
 	}
@@ -490,12 +502,12 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 	// that is busy, or one that spent its whole budget thinking). A whole reply
 	// (not a streamed one) is read here so that this is told apart: the visitor
 	// is told what happened and is not charged, and the detail is logged.
-	if model.Provider == providerOpenRouter && resp.StatusCode < 300 && !bytes.Contains(chatBody, []byte(`"stream":true`)) {
+	if model.Provider != providerOpenAI && resp.StatusCode < 300 && !bytes.Contains(chatBody, []byte(`"stream":true`)) {
 		whole, rerr := io.ReadAll(io.LimitReader(resp.Body, maxUpstreamAnswerBytes))
 		if rerr == nil {
 			if why := emptyAnswer(whole); why != "" {
 				noteChat(model.Provider, false, asked)
-				log.Println("Error: OpenRouter answered", resp.StatusCode, "for", model.ID, "without an answer:", why, "; body:", string(clipBytes(whole, 600)))
+				log.Println("Error:", providerName(model.Provider), "answered", resp.StatusCode, "for", model.ID, "without an answer:", why, "; body:", string(clipBytes(whole, 600)))
 				modelAnswerEmpty(rw, req, model, why)
 				return
 			}

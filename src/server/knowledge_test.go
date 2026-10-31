@@ -130,6 +130,8 @@ func TestSearchFindsTheRightNoteForQuestionsAboutTheSite(t *testing.T) {
 		{"is there a rust repl", "languages"},
 		{"how do I debug c code with gdb", "run-and-debug"},
 		{"why does debug start paused and say qemu", "run-and-debug"},
+		{"how do I choose a different AI model in Genie", "genie"},
+		{"which Genie models are free", "genie"},
 		{"can I debug go or assembly with gdb", "run-and-debug"},
 		{"how do I upload a file", "files-and-workspace"},
 		{"what happens to my files after an hour", "files-and-workspace"},
