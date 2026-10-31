@@ -98,11 +98,12 @@ stateDiagram-v2
     Created --> Scheduled: ResetJob("REMOVE-<dir>", 60 min)
     Scheduled --> Scheduled: any page load, file-browser call, /login, REPL start or exit
     Scheduled --> Deleted: timer fires → utils.RemoveDir (only under the workspaces folder: `OPENREPL_HOME_DIR`, default `/tmp/home/`)
-    Scheduled --> Persisted: gotty shutdown → SaveJobsToFile(/opt/gotty/jobfile, gob)
+    Scheduled --> Persisted: every minute and at a clean stop → SaveJobsToFile(/opt/gotty/jobfile, gob, written beside it and renamed)
     Persisted --> Scheduled: next start → InitGottyJobs() reloads remaining time
     Deleted --> [*]
 ```
 
-- The key is `REMOVE-<absolute dir>`. `JobScheduler` keeps `name → {ExpirationTime, *time.Timer}` under a mutex.
+- The key is `REMOVE-<absolute dir>`. `JobScheduler` keeps `name → {ExpirationTime, *time.Timer}` under a mutex. A job that ends forgets only itself (a newer job of the same name stays), loading skips a name already scheduled, and a job whose time came while the server was down runs at once.
+- **What a hard stop loses.** The file is saved every `JobSaveInterval` (1 minute), so a crash, an out of memory kill or `kill -9` loses at most the last minute of changes. `StartGuestSweeper` (`utils/guestsweep.go`) covers the rest: two minutes after the start and every 15 minutes it removes a `guest-*` folder under the workspaces folder that no job waits for and in which nothing (the folder or any file below it) was written for `GuestSweepAge` (90 minutes), through `RemoveDir`, so `RemoveDirGuard` (workspace sync) is still asked. Tests: `utils/jobscheduler_test.go`; checked by hand with `kill -9` and a restart (the waiting job came back with its remaining time) and an old folder planted with no job (swept).
 - On reload, jobs whose time has passed fire immediately. The reload callback removes the directory named in the job.
 - Signed-in users' directories (`/tmp/home/<id>`) are never scheduled for deletion. They still live under `/tmp`, so they survive only as long as that filesystem does (LLD 10).
