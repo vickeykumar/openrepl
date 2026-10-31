@@ -30,6 +30,7 @@ test("the lamp moves while an answer is on its way, and stops when it arrives", 
   });
   await page.evaluate(() => window.ChatWidget.open());
   await page.locator("#chat-widget__input").fill("hello");
+  await expect(page.locator("#chat-widget__submit")).toBeEnabled();
   await page.locator("#chat-widget__submit").click();
 
   const panel = page.locator("#chat-widget__container");
@@ -65,4 +66,28 @@ test("an Agent task rocks the lamp and pops sparkles, and a ready result shows t
   await button.evaluate((b) => b.removeAttribute("data-genie-state"));
   await expect.poll(() => css(".gi-tick", "opacity")).toBe("0");
   await expect.poll(() => css(".gi-lamp", "animationName")).toBe("none");
+});
+
+test("an answer that arrives while the panel is open shows the tick for a few seconds, then it goes", async ({ page }) => {
+  await openGenie(page);
+  await page.route((url) => url.pathname.endsWith("/chat/completions"), (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ choices: [{ message: { role: "assistant", content: "Hello" }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 1 } }),
+    })
+  );
+  await page.evaluate(() => window.ChatWidget.open());
+  await page.locator("#chat-widget__input").fill("hello");
+  await expect(page.locator("#chat-widget__submit")).toBeEnabled();
+  await page.locator("#chat-widget__submit").click();
+
+  const button = page.locator("#genie-button");
+  const panel = page.locator("#chat-widget__container");
+  await expect(button).toHaveAttribute("data-genie-state", "done");
+  await expect(panel).toHaveAttribute("data-genie-state", "done");
+  await expect(page.locator("#chat-widget__title_icon .gi-tick")).toHaveCSS("opacity", "1");
+  await expect(button.locator(".gi-tick")).toHaveCSS("opacity", "1");
+  // it is a flash, not a mark to clear: a few seconds later the lamp is quiet again
+  await expect(button).not.toHaveAttribute("data-genie-state", /.+/, { timeout: 9000 });
+  await expect(button.locator(".gi-tick")).toHaveCSS("opacity", "0");
 });

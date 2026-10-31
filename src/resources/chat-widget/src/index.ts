@@ -871,6 +871,8 @@ const agentRunner = new AgentRunner(
       // somebody has to be told only when the panel is not there to show it
       if (outcome !== "stopped" && !isOpen()) {
         unread = outcome === "done" ? { kind: "done", label: "Task done" } : { kind: "failed", label: "Task stopped" };
+      } else if (outcome === "done") {
+        flashDone();
       }
       renderActivity();
     },
@@ -1085,11 +1087,25 @@ let titleShown: { base: string; shown: string } | null = null;
 
 type Activity = { state: "idle" | "working" | "needs" | "done" | "failed"; label: string };
 
+// A result that comes while the panel is open is shown for a few seconds as well (the tick beside the
+// lamp, on the app bar's button and in the panel's header): without it only a closed panel says "done".
+let doneFlash = false;
+let doneFlashTimer = 0;
+function flashDone() {
+  doneFlash = true;
+  window.clearTimeout(doneFlashTimer);
+  doneFlashTimer = window.setTimeout(() => {
+    doneFlash = false;
+    renderActivity();
+  }, 5000);
+}
+
 function genieActivity(): Activity {
   if (needsYou > 0) return { state: "needs", label: "Genie needs you" };
   if (agentRunner.running) return { state: "working", label: stepMax > 0 ? `Genie is working… ${stepNow}/${stepMax}` : "Genie is working…" };
   if (chatInFlight) return { state: "working", label: "Genie is thinking…" };
   if (unread) return { state: unread.kind, label: unread.label };
+  if (doneFlash) return { state: "done", label: "Done" };
   return { state: "idle", label: "Ask Genie" };
 }
 
@@ -1108,6 +1124,7 @@ function setTabTitle(text: string | null) {
 
 function renderActivity() {
   const a = genieActivity();
+  if (a.state === "working") doneFlash = false; // a new piece of work ends the last one's tick
   const fab = document.querySelector("[data-chat-widget-button]") as HTMLElement | null;
   const bar = document.getElementById("genie-button");
   // what kind of work: the lamp moves one way for a chat answer, another for an Agent task
@@ -2725,6 +2742,7 @@ async function runRequest() {
   chatInFlight = false;
   document.getElementById("chat-widget__submit")?.removeAttribute("disabled");
   if (!isOpen()) unread = chatFailed ? { kind: "failed", label: "Genie couldn't answer" } : { kind: "done", label: "Answer ready" };
+  else if (!chatFailed) flashDone();
   renderActivity();
 }
 

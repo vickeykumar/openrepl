@@ -103,7 +103,11 @@ test("the details of a model show beside the list", async ({ page }) => {
 
 test("the / key puts the cursor in the search box", async ({ page }) => {
   const picker = await openPicker(page);
-  await picker.locator(".cw-model").first().focus();
-  await page.keyboard.press("/");
-  await expect(page.locator("#chat-widget__model-search")).toBeFocused();
+  // the list is drawn again when the page tells the panel something (the usage line, a pin): try again if it was
+  // drawn between the focus and the key
+  await expect(async () => {
+    await picker.locator(".cw-model").first().focus();
+    await page.keyboard.press("/");
+    await expect(page.locator("#chat-widget__model-search")).toBeFocused({ timeout: 1000 });
+  }).toPass({ timeout: 10000 });
 });
