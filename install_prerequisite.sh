@@ -159,6 +159,18 @@ else
         unset MAMBA_ROOT_PREFIX
         ln -s "$CLING_PREFIX/bin/cling" /usr/local/bin/cling
         chmod 755 /usr/local/bin/cling
+        # The conda build of Cling finds the standard library headers by running the C++ compiler of its
+        # own environment by name (aarch64-conda-linux-gnu-c++), which it expects on PATH because conda
+        # activates the environment. Nothing does here, so every Cling printed "cannot extract standard
+        # library include paths!" at the start. A script on PATH runs the compiler. It also unsets
+        # GCC_EXEC_PREFIX, which the server sets for every REPL (for the system gcc): the conda compiler
+        # takes it as the place of its own parts, finds none there and prints nothing.
+        cat > /usr/local/bin/aarch64-conda-linux-gnu-c++ <<'WRAPPER'
+#!/bin/sh
+unset GCC_EXEC_PREFIX
+exec /opt/cling/bin/aarch64-conda-linux-gnu-c++ "$@"
+WRAPPER
+        chmod 755 /usr/local/bin/aarch64-conda-linux-gnu-c++
     fi
 fi
 

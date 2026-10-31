@@ -56,7 +56,7 @@ for (const repl of REPLS) {
     await page.goto(repl.path);
     await waitForTerminal(page, repl.prompt, `${repl.name}: no prompt in the terminal`);
     const shown = await terminalText(page);
-    expect(shown, "the server could not start the program").not.toMatch(/executable file not found|failed to create backend|command not found/i);
+    expect(shown, "the server could not start the program").not.toMatch(/executable file not found|failed to create backend|command not found|cannot extract standard library include paths/i);
     if (repl.anyOf) {
       // the line to type depends on the server (assembly of arm64 or x86-64): the first that is answered
       let answered = false;
