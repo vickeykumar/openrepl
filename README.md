@@ -1,9 +1,12 @@
 <p align="center">
-<img width="400" src="src/resources/images/logo_large.png" alt="OpenREPL" title="OpenREPL" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="src/resources/images/logo-lockup-dark.png">
+  <img width="400" src="src/resources/images/logo-lockup-light.png" alt="OpenREPL" title="OpenREPL" />
+</picture>
 </p>
 
 
-# ![](https://raw.githubusercontent.com/vickeykumar/openrepl/97fd80845a409005e6983e0f6a807c3a8ef3025a/src/resources/images/favicon.png) OpenREPL
+# ![](src/resources/images/logo.svg) OpenREPL
 
     
 [![Workflow](https://github.com/vickeykumar/openrepl/actions/workflows/docker-image.yml/badge.svg?style=flat-square)][docker-image]

@@ -1,0 +1,14 @@
+{
+  "name": "OpenREPL",
+  "short_name": "OpenREPL",
+  "description": "Write it. Run it. Share it. Free and open source online REPL for 19 languages.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#121218",
+  "theme_color": "#121218",
+  "icons": [
+    { "src": "/images/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/images/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/images/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
