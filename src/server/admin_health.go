@@ -8,6 +8,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -364,5 +366,14 @@ func homesHealth() (status, detail string) {
 	case st.LastRun.IsZero():
 		return healthOK, fmt.Sprintf("%d workspaces are followed; the first round comes a few minutes after the start%s", st.Homes, note)
 	}
-	return healthOK, fmt.Sprintf("%d workspaces are followed, %d snapshots made since the start, the last round %s ago%s", st.Homes, st.Total, time.Since(st.LastRun).Round(time.Minute), note)
+	why := ""
+	if len(st.Notes) > 0 {
+		var parts []string
+		for h, n := range st.Notes {
+			parts = append(parts, h+": "+n)
+		}
+		sort.Strings(parts)
+		why = "; not snapshotted yet: " + strings.Join(parts, ", ")
+	}
+	return healthOK, fmt.Sprintf("%d workspaces are followed, %d snapshots made since the start, the last round %s ago%s%s", st.Homes, st.Total, time.Since(st.LastRun).Round(time.Minute), why, note)
 }

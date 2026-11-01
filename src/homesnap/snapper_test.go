@@ -333,9 +333,9 @@ func TestTheFinalSnapshotDoesNotWaitForAHomeToSettle(t *testing.T) {
 	dir := makeHome(t, base, "anna0123")
 	s.Touch("anna0123")
 	write(t, filepath.Join(dir, "main.c"), "just written", 0)
-	made, _, _ := s.SnapshotAll(ctx)
-	if made != 0 {
-		t.Errorf("a home that is changing was snapshotted: %d", made)
+	round, _ := s.SnapshotAll(ctx)
+	if round.Made != 0 || round.Notes["still changing"] != 1 {
+		t.Errorf("a home that is changing was snapshotted: %+v", round)
 	}
 	s.Final(5 * time.Second)
 	if len(f.Stored()) != 2 {
@@ -410,5 +410,52 @@ func TestAFileThatChangesWhileItIsReadIsLeftOutAndABigOneToo(t *testing.T) {
 	}
 	if _, err := Extract(data, filepath.Join(t.TempDir(), "o")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestARoundSaysWhyAHomeWasNotSnapshotted(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	s.Touch("nofolder1") // a home the server has no folder for (a gateway before sync brought its files)
+	makeHome(t, base, "anna0123")
+	s.Touch("anna0123")
+	round, err := s.SnapshotAll(ctx)
+	if err != nil || round.Made != 1 || round.Notes["this server has no folder for it"] != 1 {
+		t.Fatalf("%+v %v", round, err)
+	}
+	if got := round.String(); got != "1 snapshots made; 1 not snapshotted: this server has no folder for it" {
+		t.Errorf("%q", got)
+	}
+	st := s.Status()
+	if st.Notes["nofolder1"] != "this server has no folder for it" || st.LastRound != round.String() || st.Notes["anna0123"] != "" {
+		t.Errorf("status: %+v", st)
+	}
+	// the folder arrives (sync copied it): the next round makes it
+	makeHome(t, base, "nofolder1")
+	round, _ = s.SnapshotAll(ctx)
+	if round.Made != 1 {
+		t.Errorf("after the folder came: %+v", round)
+	}
+	if st := s.Status(); len(st.Notes) != 0 {
+		t.Errorf("notes after it was made: %v", st.Notes)
+	}
+}
+
+func TestAHomeThatNeverRestsIsSnapshottedAfterAFewRounds(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.Touch("anna0123")
+	for round := 1; round <= maxWaitRounds+1; round++ {
+		write(t, filepath.Join(dir, "log.txt"), fmt.Sprint("line ", round), 0) // written just now, every round
+		r, _ := s.SnapshotAll(ctx)
+		if round <= maxWaitRounds && (r.Made != 0 || r.Notes["still changing"] != 1) {
+			t.Fatalf("round %d: %+v", round, r)
+		}
+		if round > maxWaitRounds && r.Made != 1 {
+			t.Fatalf("round %d: %+v", round, r)
+		}
 	}
 }
