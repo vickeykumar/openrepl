@@ -19,15 +19,17 @@
 	  <meta property="og:type" content="website"/>
 	  <meta property="og:site_name" content="OpenREPL"/>
 	  <meta property="og:description" content="{{.Page.Description}}"/>
-	  <meta property="og:image" content="https://openrepl.com/images/logo_large.png"/>
+	  <meta property="og:image" content="https://openrepl.com/images/og-image.png"/>
+	  <meta property="og:image:width" content="1200"/>
+	  <meta property="og:image:height" content="630"/>
 	  <meta property="og:image:alt" content="OpenREPL"/>
-	  <meta name="twitter:card" content="summary"/>
+	  <meta name="twitter:card" content="summary_large_image"/>
 	  <meta name="twitter:title" content="{{.Page.Title}}"/>
 	  <meta name="twitter:description" content="{{.Page.Description}}"/>
-	  <meta name="twitter:image:src" content="https://openrepl.com/images/logo_large.png"/>
+	  <meta name="twitter:image:src" content="https://openrepl.com/images/og-image.png"/>
 	  <meta itemprop="name" content="OpenREPL"/>
 	  <meta itemprop="description" content="{{.Page.Description}}"/>
-	  <meta itemprop="image" content="https://openrepl.com/images/logo_large.png"/>
+	  <meta itemprop="image" content="https://openrepl.com/images/og-image.png"/>
     <meta name="google-site-verification" content="iejQHkSDbrldGCn37ZJ79J1zoQQcW7-MAlqsHSHwnOI" />
     <meta name="msvalidate.01" content="75003493DFA09CBFBBDC3F0E2AE85DFD" />
 	  <!--  meta data end -->
@@ -35,7 +37,10 @@
 	
       <title>{{.Page.Title}}</title>
       <link rel="canonical" href="{{.Page.URL}}">
-      <link rel="icon" type="image/svg" href="./images/logo.svg">
+      <link rel="icon" type="image/svg+xml" href="./images/favicon.svg">
+      <link rel="icon" type="image/x-icon" sizes="48x48" href="./images/favicon.ico">
+      <link rel="apple-touch-icon" href="./images/apple-touch-icon.png">
+      <link rel="manifest" href="./images/manifest.json">
       <!--link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"-->
       <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
       <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -135,7 +140,7 @@
   "@context" : "http://schema.org",
   "@type" : "SoftwareApplication",
   "name" : "OpenREPL",
-  "image" : "https://openrepl.com/images/logo_large.png",
+  "image" : "https://openrepl.com/images/og-image.png",
   "url" : "https://openrepl.com/",
   "applicationCategory" : [ "C/C++", "evaluation statement", "Cling Interpreter", "Learn", "navigating", "text editor", "writing code, compile", "run", "REPLs", "Commands", "REPL", "programming language", "cloud", "terminal", "Interpreter", "shell", "python", "bash","golang","learn programming","making easy","new language","free","open" ],
   "requirements" : "cling, gomacro, golang, c, c++, python, java, bash, xterm",
@@ -144,7 +149,7 @@
   "@context" : "http://schema.org",
   "@type" : "SoftwareApplication",
   "name" : "Check your codes instantaneously with OpenREPL",
-  "image" : "https://openrepl.com/images/logo_large.png",
+  "image" : "https://openrepl.com/images/og-image.png",
   "url" : "https://openrepl.com/",
   "applicationCategory" : [ "C/C++", "evaluation statement", "Cling Interpreter", "Learn", "navigating", "text editor", "writing code, compile", "run", "REPLs", "Commands", "REPL", "programming language" ],
   "requirements" : "cling, gomacro, golang, c, c++, python, java, bash, terminal",

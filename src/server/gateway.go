@@ -16,6 +16,7 @@ import (
 	"containers"
 	"cookie"
 	"gateway"
+	"homesnap"
 	"pkg/homedir"
 	"trusted"
 	"tunnel"
@@ -118,6 +119,9 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 			if m == nil {
 				return nil
 			}
+			// a gateway on a disk that was wiped gets a signed-in user's home back from the object store
+			// first: sync then compares it with the worker's, which keeps its newer files
+			homesnap.Default.Touch(home)
 			if _, err := os.Stat(utils.HOME_DIR + home); os.IsNotExist(err) {
 				return nil
 			}

@@ -103,6 +103,14 @@ h1, h2, h3 { margin: 0; line-height: 1.25; }
   letter-spacing: -0.4px;
   color: var(--text);
 }
+.brand::before {
+  content: "";
+  align-self: center;
+  width: 1.4em;
+  height: 1.4em;
+  margin-right: 0.4em;
+  background: url("../images/logo.svg") center / contain no-repeat;
+}
 .brand:hover { text-decoration: none; }
 .brand b {
   margin-left: 2px;

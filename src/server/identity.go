@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"cookie"
 	"encoder"
 	"gateway"
+	"homesnap"
 	"trusted"
 	"tunnel"
 	"user"
@@ -50,6 +52,7 @@ func (server *Server) requestIdentity(w http.ResponseWriter, r *http.Request) (u
 			uid = cookie.Get_Uid(r)
 		}
 		homedir = utils.HOME_DIR + home
+		touchHome(uid, homedir)
 		os.MkdirAll(homedir, 0755)
 		if gateway.OwnWorkspace(r) {
 			// Let a fork link or a shared session opened elsewhere find it.
@@ -60,6 +63,7 @@ func (server *Server) requestIdentity(w http.ResponseWriter, r *http.Request) (u
 	uid = cookie.Get_Uid(r)
 	homedir = cookie.GetOrUpdateHomeDir(w, r, uid)
 	if !homeOverridden(r) {
+		touchHome(uid, homedir)
 		server.announce(r).home(homedir)
 	}
 	return uid, homedir
@@ -184,4 +188,14 @@ func (t *routeTracker) jidOpen(pid interface{}) func() {
 	jid := encoder.EncodePID(pid)
 	t.sink.RouteOpen(tunnel.RouteJID, jid)
 	return func() { t.sink.RouteClose(tunnel.RouteJID, jid) }
+}
+
+// touchHome tells the workspace snapshots (package homesnap) that a signed-in user's home is in use: the first
+// time, a home whose folder is missing is restored from the object store, and from then on it is snapshotted
+// when it changes. A guest's home, and one that is not directly under the workspaces folder, are not.
+func touchHome(uid, homedir string) {
+	if uid == "" || filepath.Dir(filepath.Clean(homedir)) != filepath.Clean(utils.HOME_DIR) {
+		return
+	}
+	homesnap.Default.Touch(filepath.Base(homedir))
 }

@@ -1,15 +1,22 @@
 package server
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 
+	"backup"
 	"containers"
 	"gateway"
+	"homesnap"
+	"objstore"
 	"persist"
 	"utils"
 )
@@ -173,6 +180,16 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	default:
 		add("Cloudflare Workers AI", healthOK, "not set (optional): the Workers AI models are not offered")
 	}
+	storage := objectStorageHealth()
+	add("Object storage", storage.status, storage.detail)
+	if utils.S3Enabled() {
+		status, detail := backupHealth()
+		add("Backups", status, detail)
+		if homesnap.Default.Enabled() {
+			status, detail := homesHealth()
+			add("Workspace snapshots", status, detail)
+		}
+	}
 	settingsMu.Lock()
 	problem := keysProblem
 	settingsMu.Unlock()
@@ -256,4 +273,96 @@ func persistWanted() string {
 		return "mongodb"
 	}
 	return "firestore"
+}
+
+// objectStorageHealth says whether the object store (S3, R2) that holds the backups and the workspaces of
+// signed-in users answers. A request to the bucket is made at most once a minute, whatever asks.
+type objectStorageState struct {
+	status string
+	detail string
+	at     time.Time
+	key    string // the settings it was made for: a change of them makes it stale
+}
+
+func objectStorageSettingsKey() string {
+	sum := sha256.Sum256([]byte(utils.S3SecretKey()))
+	return utils.S3Endpoint() + "|" + utils.S3Bucket() + "|" + utils.S3AccessKey() + "|" + hex.EncodeToString(sum[:4])
+}
+
+var (
+	objectStorageMu    sync.Mutex
+	objectStorageCache objectStorageState
+)
+
+func objectStorageHealth() objectStorageState {
+	objectStorageMu.Lock()
+	defer objectStorageMu.Unlock()
+	key := objectStorageSettingsKey()
+	if time.Since(objectStorageCache.at) < time.Minute && objectStorageCache.detail != "" && objectStorageCache.key == key {
+		return objectStorageCache
+	}
+	st := objectStorageState{at: time.Now(), key: key}
+	switch {
+	case !utils.S3Enabled() && (utils.S3Endpoint() != "" || utils.S3Bucket() != "" || utils.S3AccessKey() != "" || utils.S3SecretKey() != ""):
+		st.status, st.detail = healthWarn, "set up in part: the endpoint, the bucket and both keys are all needed, so nothing is stored"
+	case !utils.S3Enabled():
+		st.status, st.detail = healthOK, "not set (optional): no backups, and workspaces stay on this server's disk"
+	default:
+		c, err := objstore.Default()
+		if err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err = c.Check(ctx)
+			cancel()
+		}
+		if err != nil {
+			st.status, st.detail = healthFail, "the bucket does not answer: "+redactErr(err).Error()
+		} else {
+			st.status, st.detail = healthOK, "bucket "+utils.S3Bucket()+" answers (from the "+keySourceName(utils.KeySource("s3-secret"))+")"
+		}
+	}
+	objectStorageCache = st
+	return st
+}
+
+// backupHealth sums up the backups for the Health page: when the last one was made and how big it was, a
+// failure, or a backup that is late; and whether this server's files came back from a backup at start.
+func backupHealth() (status, detail string) {
+	st := backup.Default.Status()
+	state := utils.JobOK
+	for _, j := range utils.Jobs.Snapshot(time.Now()) {
+		if j.ID == "backup" {
+			state = j.State
+		}
+	}
+	note := ""
+	if st.Restored != nil {
+		note = "; this server's files were restored from the backup of " + st.Restored.CreatedAt.Format("2006-01-02 15:04") + " UTC at start"
+	}
+	switch {
+	case st.LastErr != "" && (st.LastOK.IsZero() || st.LastErrAt.After(st.LastOK)):
+		return healthFail, "the last backup failed: " + st.LastErr + note
+	case st.LastOK.IsZero():
+		return healthOK, "no backup yet (the first is made a few minutes after the start, and only when there is something to back up)" + note
+	case state == utils.JobLate:
+		return healthWarn, "the backup job has not run for a long time; the last backup was " + time.Since(st.LastOK).Round(time.Minute).String() + " ago" + note
+	}
+	return healthOK, fmt.Sprintf("last backup %s ago, %.1f KB, %d files, %d archives kept%s", time.Since(st.LastOK).Round(time.Minute), float64(st.LastSize)/1024, len(st.Files), st.Kept, note)
+}
+
+// homesHealth sums up the snapshots of the signed-in users' workspaces.
+func homesHealth() (status, detail string) {
+	st := homesnap.Default.Status()
+	note := ""
+	if st.Restores > 0 {
+		note = fmt.Sprintf("; %d restored from the object store since the start (the last: %s)", st.Restores, st.LastRestor)
+	}
+	switch {
+	case st.LastErr != "" && st.LastErrAt.After(st.LastRun):
+		return healthWarn, "the last snapshot failed: " + st.LastErr + note
+	case st.Homes == 0:
+		return healthOK, "no signed-in user's workspace has been used since the start" + note
+	case st.LastRun.IsZero():
+		return healthOK, fmt.Sprintf("%d workspaces are followed; the first round comes a few minutes after the start%s", st.Homes, note)
+	}
+	return healthOK, fmt.Sprintf("%d workspaces are followed, %d snapshots made since the start, the last round %s ago%s", st.Homes, st.Total, time.Since(st.LastRun).Round(time.Minute), note)
 }

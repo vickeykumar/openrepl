@@ -23,6 +23,31 @@ html, body {
   grid-column: 2;
 }
 
+/* wordmark: the icon, "open" and the coral "repl" badge (same as the .brand in ui-refresh.css) */
+.logo .brand {
+  display: inline-flex;
+  align-items: baseline;
+  text-decoration: none;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+.logo .brand::before {
+  content: "";
+  align-self: center;
+  width: 1.25em;
+  height: 1.25em;
+  margin-right: 0.4em;
+  background: url("../images/logo.svg") center / contain no-repeat;
+}
+.logo .brand__open { color: var(--primary-color); }
+.logo .brand__repl {
+  margin-left: 2px;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--on-accent-color);
+  background: var(--accent-color);
+}
+
 .logo__thin {
   font-weight: 300;
 }

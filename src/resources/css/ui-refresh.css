@@ -34,6 +34,14 @@
   font-size: 22px;
   letter-spacing: -0.5px;
 }
+.brand::before {
+  content: "";
+  align-self: center;
+  width: 1.25em;
+  height: 1.25em;
+  margin-right: 0.4em;
+  background: url("../images/logo.svg") center / contain no-repeat;
+}
 .brand__open { color: var(--paper); }
 .brand__repl {
   margin-left: 2px;

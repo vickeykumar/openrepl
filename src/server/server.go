@@ -319,6 +319,10 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 
 	siteMux.Handle(pathPrefix+"js/", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"images/", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.HandleFunc(pathPrefix+"favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = "/images/favicon.ico"
+		staticFileHandler.ServeHTTP(w, r)
+	})
 	siteMux.Handle(pathPrefix+"media/", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"docs/", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"doc.html", http.StripPrefix(pathPrefix, staticFileHandler))

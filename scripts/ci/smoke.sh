@@ -41,6 +41,11 @@ check "privacy page" 200 "$BASE/privacy.html"
 check "terms page" 200 "$BASE/terms.html"
 check "about page" 200 "$BASE/about.html"
 check "health check" 200 "$BASE/healthz"
+check "tab icon (svg)" 200 "$BASE/images/favicon.svg";  has "tab icon is the B8 mark" "orf-rim"
+check "favicon.ico" 200 "$BASE/favicon.ico"
+check "touch icon" 200 "$BASE/images/apple-touch-icon.png"
+check "link card" 200 "$BASE/images/og-image.png"
+check "app manifest" 200 "$BASE/images/manifest.json"; has "manifest names OpenREPL" "OpenREPL"
 
 # the contact form refuses an empty message and thanks (and drops) an obvious spam one
 check "feedback: empty message" 400 -X POST -d 'message=' "$BASE/feedback"

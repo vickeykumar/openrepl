@@ -30,6 +30,11 @@ import (
 //	OPENREPL_CLOUDFLARE_API_TOKEN, OPENREPL_CLOUDFLARE_ACCOUNT_ID  the Cloudflare Workers AI token (with
 //	                         the Workers AI permissions) and the id of the account it belongs to; without
 //	                         both the Workers AI models are not offered
+//	OPENREPL_S3_ENDPOINT, _BUCKET, _ACCESS_KEY_ID, _SECRET_ACCESS_KEY, _REGION, _PREFIX  an S3 API object
+//	                         store (Cloudflare R2, AWS S3, MinIO, RustFS) where the server keeps backups and the
+//	                         workspaces of signed-in users, so that a disk that is wiped loses nothing; the region
+//	                         is "auto" for R2; without the endpoint, the bucket and both keys nothing is stored
+//	OPENREPL_BACKUP_NAME     names this deployment in the bucket (default "default"), so that several share one
 //	OPENREPL_RECAPTCHA_SECRET the reCAPTCHA secret key of the site key on the page; with it the
 //	                         server checks the contact form's reCAPTCHA answer (env only, a secret)
 //	OPENREPL_MONGODB_URI     optional; keeps the admin settings in MongoDB (Atlas, a
@@ -45,6 +50,13 @@ const (
 	EnvOpenAIKey         = "OPENREPL_OPENAI_API_KEY"
 	EnvOpenRouterKey     = "OPENREPL_OPENROUTER_API_KEY"
 	EnvRecaptchaSecret   = "OPENREPL_RECAPTCHA_SECRET"
+	EnvS3Endpoint        = "OPENREPL_S3_ENDPOINT"
+	EnvS3Region          = "OPENREPL_S3_REGION"
+	EnvS3Bucket          = "OPENREPL_S3_BUCKET"
+	EnvS3AccessKey       = "OPENREPL_S3_ACCESS_KEY_ID"
+	EnvS3SecretKey       = "OPENREPL_S3_SECRET_ACCESS_KEY"
+	EnvS3Prefix          = "OPENREPL_S3_PREFIX"
+	EnvBackupName        = "OPENREPL_BACKUP_NAME"
 	EnvCloudflareToken   = "OPENREPL_CLOUDFLARE_API_TOKEN"
 	EnvCloudflareAccount = "OPENREPL_CLOUDFLARE_ACCOUNT_ID"
 	EnvHost              = "OPENREPL_HOST"
@@ -237,6 +249,8 @@ var (
 	openRouterOverr   string
 	cfTokenOverr      string
 	cfAccountOverr    string
+	s3AccessOverr     string
+	s3SecretOverr     string
 	secretFromGateway string
 	generatedSecret   string
 )
@@ -256,13 +270,20 @@ func SetCloudflareOverrides(token, account string) {
 	keyMu.Unlock()
 }
 
+// SetS3Overrides sets the object store's key id and secret saved in the dashboard; "" means none.
+func SetS3Overrides(access, secret string) {
+	keyMu.Lock()
+	s3AccessOverr, s3SecretOverr = strings.TrimSpace(access), strings.TrimSpace(secret)
+	keyMu.Unlock()
+}
+
 // KeySource says where the key in use comes from: "dashboard", "env", "file",
 // or "" when there is none. provider is "openai", "openrouter", "cloudflare"
 // (the token) or "cloudflare-account".
 func KeySource(provider string) string {
 	keyMu.RLock()
 	over := map[string]string{"openai": openAIOverride, "openrouter": openRouterOverr,
-		"cloudflare": cfTokenOverr, "cloudflare-account": cfAccountOverr}[provider]
+		"cloudflare": cfTokenOverr, "cloudflare-account": cfAccountOverr, "s3-access": s3AccessOverr, "s3-secret": s3SecretOverr}[provider]
 	keyMu.RUnlock()
 	switch {
 	case over != "":
@@ -275,6 +296,10 @@ func KeySource(provider string) string {
 		return source(EnvCloudflareToken, "")
 	case provider == "cloudflare-account":
 		return source(EnvCloudflareAccount, "")
+	case provider == "s3-access":
+		return source(EnvS3AccessKey, "")
+	case provider == "s3-secret":
+		return source(EnvS3SecretKey, "")
 	}
 	return ""
 }
@@ -312,6 +337,60 @@ func OpenRouterKey() string {
 		return over
 	}
 	return strings.TrimSpace(os.Getenv(EnvOpenRouterKey))
+}
+
+// S3Endpoint, S3Region, S3Bucket and S3Prefix are the object store's settings, from the environment as they
+// are (the region is "auto", what R2 wants, when none is set).
+func S3Endpoint() string { return strings.TrimSpace(os.Getenv(EnvS3Endpoint)) }
+func S3Bucket() string   { return strings.TrimSpace(os.Getenv(EnvS3Bucket)) }
+func S3Prefix() string   { return strings.Trim(strings.TrimSpace(os.Getenv(EnvS3Prefix)), "/") }
+func S3Region() string {
+	if v := strings.TrimSpace(os.Getenv(EnvS3Region)); v != "" {
+		return v
+	}
+	return "auto"
+}
+
+// S3AccessKey and S3SecretKey are the key id and the secret of the object store: the ones saved in the
+// dashboard, else the environment's.
+func S3AccessKey() string {
+	keyMu.RLock()
+	over := s3AccessOverr
+	keyMu.RUnlock()
+	if over != "" {
+		return over
+	}
+	return strings.TrimSpace(os.Getenv(EnvS3AccessKey))
+}
+
+func S3SecretKey() string {
+	keyMu.RLock()
+	over := s3SecretOverr
+	keyMu.RUnlock()
+	if over != "" {
+		return over
+	}
+	return strings.TrimSpace(os.Getenv(EnvS3SecretKey))
+}
+
+// S3Enabled reports whether the object store can be used: the endpoint, the bucket and both keys are set.
+func S3Enabled() bool {
+	return S3Endpoint() != "" && S3Bucket() != "" && S3AccessKey() != "" && S3SecretKey() != ""
+}
+
+// BackupName names this deployment in the bucket: OPENREPL_BACKUP_NAME, else "default". Only letters, digits,
+// dots, dashes and underscores are kept.
+func BackupName() string {
+	name := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_' {
+			return r
+		}
+		return -1
+	}, strings.TrimSpace(os.Getenv(EnvBackupName)))
+	if name == "" {
+		return "default"
+	}
+	return name
 }
 
 // CloudflareToken returns the Workers AI API token: the one saved in the
@@ -614,6 +693,14 @@ func configSummary(dev bool) string {
 	item("openrouter key", EnvOpenRouterKey, "", OpenRouterKey(), 0)
 	item("cloudflare token", EnvCloudflareToken, "", CloudflareToken(), 0)
 	item("cloudflare account", EnvCloudflareAccount, "", CloudflareAccountID(), 0)
+	// the endpoint and the bucket say nothing secret; the keys never show, not even in dev
+	item("object store endpoint", EnvS3Endpoint, "", S3Endpoint(), 0)
+	item("object store bucket", EnvS3Bucket, "", S3Bucket(), 0)
+	if S3AccessKey() != "" && S3SecretKey() != "" {
+		fmt.Fprintf(&b, "; object store keys: set (from %s)", KeySource("s3-secret"))
+	} else {
+		fmt.Fprintf(&b, "; object store keys: not set")
+	}
 	// a secret: never its value, not even in dev
 	if RecaptchaSecret() != "" {
 		fmt.Fprintf(&b, "; recaptcha: contact form is checked on the server (from env)")

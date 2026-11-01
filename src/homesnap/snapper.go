@@ -1,0 +1,560 @@
+// Package homesnap keeps a copy of the workspaces of signed-in users in the object store (S3, R2), and puts
+// one back when its folder is missing (a host that keeps no disk between deploys). Only the node that is the
+// authority for a home does it: the gateway (which holds a copy of every home) or a single server, never a
+// worker (workers have no keys). Guest workspaces are not kept. The sync engine (package wsync) stays as it
+// is: after a restore it reconciles the home with the worker as it always does, and the worker's newer files
+// win by its usual rules.
+//
+// A snapshot is a new object, homes/<name>/<home>/<generation>-<time>.tar.gz, never overwritten; a small
+// latest.json beside them, written last, says which is the newest complete one. A snapshot that dies on the
+// way is never the one that is restored.
+package homesnap
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"objstore"
+	"utils"
+)
+
+const (
+	// Interval is how often the homes that changed are snapshotted; a home is snapshotted only after Settle has
+	// passed with no change in it
+	Interval = 5 * time.Minute
+	Settle   = 30 * time.Second
+	// Keep is how many snapshots of a home are kept
+	Keep = 3
+	// a home that has no snapshot is not asked about again for this long
+	noSnapshotFor = 10 * time.Minute
+	timeLayout    = "20060102T150405Z"
+)
+
+// ErrConflict is what SnapshotHome answers when another writer advanced the home's pointer meanwhile.
+var ErrConflict = errors.New("homesnap: another writer made a newer snapshot of this home")
+
+// Latest is what latest.json holds.
+type Latest struct {
+	Generation int64     `json:"generation"`
+	Key        string    `json:"key"`
+	SHA256     string    `json:"sha256"`
+	Size       int64     `json:"size"`
+	Writer     string    `json:"writer"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+var homeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+
+// IsKept says that the home of this name is one a snapshot is made of: a signed-in user's, not a guest's, not a
+// folder of the sandboxes.
+func IsKept(home string) bool {
+	return homeName.MatchString(home) && !strings.HasPrefix(home, "guest-")
+}
+
+// Snapper keeps the homes under Base.
+type Snapper struct {
+	Base   func() string // utils.HOME_DIR
+	Name   func() string // names this deployment in the bucket
+	Client func() (*objstore.Client, error)
+	Now    func() time.Time
+
+	// beforePointer is for tests: it runs after the archive is uploaded and before the pointer is written
+	beforePointer func(home string)
+
+	mu      sync.Mutex
+	enabled bool
+	writer  string
+	homes   map[string]*homeState
+	started bool
+	status  Status
+}
+
+type homeState struct {
+	fingerprint string    // of what was last snapshotted or restored
+	generation  int64     // the last one this process knows
+	noSnapshot  time.Time // asked at this time and there was none
+	busy        bool
+	touched     bool // Touch has looked at its folder
+}
+
+// Status is what the dashboard shows.
+type Status struct {
+	Homes      int // homes known to this process
+	LastRun    time.Time
+	LastCount  int // snapshots made by the last run
+	Total      int64
+	LastErr    string
+	LastErrAt  time.Time
+	Restores   int64
+	LastRestor string
+}
+
+// Default is the snapshotter of this server. It does nothing until Enable is called.
+var Default = &Snapper{
+	Base:   func() string { return utils.HOME_DIR },
+	Name:   utils.BackupName,
+	Client: objstore.Default,
+	Now:    time.Now,
+}
+
+func (s *Snapper) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
+}
+
+// Enable lets the snapshotter work (it is not enabled on a worker).
+func (s *Snapper) Enable() {
+	s.mu.Lock()
+	s.enabled = true
+	s.mu.Unlock()
+}
+
+// Enabled says whether it works: enabled, and an object store is set up.
+func (s *Snapper) Enabled() bool {
+	s.mu.Lock()
+	on := s.enabled
+	s.mu.Unlock()
+	if !on {
+		return false
+	}
+	_, err := s.Client()
+	return err == nil
+}
+
+// Status reports what it did.
+func (s *Snapper) Status() Status {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.status
+	st.Homes = len(s.homes)
+	return st
+}
+
+func (s *Snapper) writerID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.writer == "" {
+		b := make([]byte, 6)
+		rand.Read(b)
+		host, _ := os.Hostname()
+		s.writer = host + "-" + hex.EncodeToString(b)
+	}
+	return s.writer
+}
+
+func (s *Snapper) state(home string) *homeState {
+	if s.homes == nil {
+		s.homes = map[string]*homeState{}
+	}
+	h := s.homes[home]
+	if h == nil {
+		h = &homeState{}
+		s.homes[home] = h
+	}
+	return h
+}
+
+func (s *Snapper) prefix(home string) string { return "homes/" + s.Name() + "/" + home + "/" }
+
+func (s *Snapper) dir(home string) string { return filepath.Join(s.Base(), home) }
+
+func (s *Snapper) fail(err error) {
+	s.mu.Lock()
+	s.status.LastErr, s.status.LastErrAt = err.Error(), s.now()
+	s.mu.Unlock()
+}
+
+// readLatest reads latest.json of a home (ErrNotFound when there is none).
+func (s *Snapper) readLatest(ctx context.Context, c *objstore.Client, home string) (Latest, error) {
+	var l Latest
+	raw, _, err := c.Get(ctx, s.prefix(home)+"latest.json")
+	if err != nil {
+		return l, err
+	}
+	if err := json.Unmarshal(raw, &l); err != nil || l.Key == "" {
+		return l, errors.New("homesnap: latest.json cannot be read")
+	}
+	return l, nil
+}
+
+// ---- snapshot --------------------------------------------------------------------------------------
+
+// Result is what one snapshot did.
+type Result struct {
+	Made       bool
+	Generation int64
+	Size       int64
+	Files      int
+	Skipped    int
+	Deleted    int
+	Note       string
+}
+
+// SnapshotHome makes a snapshot of one home if it changed since the last one and has settled (nothing in it
+// changed for Settle); force skips both checks. It is safe to call from several places: a home that is being
+// snapshotted is skipped.
+func (s *Snapper) SnapshotHome(ctx context.Context, home string, force bool) (Result, error) {
+	return s.snapshot(ctx, home, force, !force)
+}
+
+// snapshot is SnapshotHome with the wait for a home to settle apart from the check for a change.
+func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool) (Result, error) {
+	if !IsKept(home) {
+		return Result{Note: "not a home that is kept"}, nil
+	}
+	c, err := s.Client()
+	if err != nil {
+		return Result{Note: "no object store is set up"}, nil
+	}
+	dir := s.dir(home)
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		return Result{Note: "no such workspace"}, nil
+	}
+	_, fp, err := scan(dir)
+	if err != nil {
+		s.fail(err)
+		return Result{}, err
+	}
+	s.mu.Lock()
+	st := s.state(home)
+	if st.busy {
+		s.mu.Unlock()
+		return Result{Note: "being snapshotted"}, nil
+	}
+	if st.fingerprint == fp && !force {
+		s.mu.Unlock()
+		return Result{Note: "unchanged"}, nil
+	}
+	prevGen := st.generation
+	st.busy = true
+	s.mu.Unlock()
+	defer func() { s.mu.Lock(); st.busy = false; s.mu.Unlock() }()
+
+	if settle {
+		if last := newest(dir); !last.IsZero() && s.now().Sub(last) < Settle {
+			return Result{Note: "still changing"}, nil
+		}
+	}
+
+	// the generation after the newest one in the bucket
+	latest, lerr := s.readLatest(ctx, c, home)
+	if lerr != nil && !errors.Is(lerr, objstore.ErrNotFound) {
+		s.fail(lerr)
+		return Result{}, lerr
+	}
+	gen := latest.Generation
+	if prevGen > gen {
+		gen = prevGen
+	}
+	gen++
+	archive, m, err := Build(dir, home, gen, s.writerID(), s.now())
+	if err != nil {
+		s.fail(err)
+		return Result{}, err
+	}
+	// the writer is in the name: two writers that reach the same generation in the same second do not
+	// overwrite each other
+	key := s.prefix(home) + fmt.Sprintf("%010d-%s-%s.tar.gz", gen, m.CreatedAt.Format(timeLayout), sum([]byte(s.writerID()))[:6])
+	hash := sum(archive)
+	if err := c.Put(ctx, key, archive, "application/gzip", map[string]string{"sha256": hash, "generation": fmt.Sprint(gen)}); err != nil {
+		s.fail(err)
+		return Result{}, fmt.Errorf("uploading the snapshot: %w", err)
+	}
+	if s.beforePointer != nil {
+		s.beforePointer(home)
+	}
+	// the pointer moves only if nobody else moved it since it was read
+	now, nerr := s.readLatest(ctx, c, home)
+	if (nerr == nil && now.Generation != latest.Generation) || (nerr != nil && !errors.Is(nerr, objstore.ErrNotFound)) || (errors.Is(nerr, objstore.ErrNotFound) && lerr == nil) {
+		c.Delete(ctx, key)
+		if nerr != nil && !errors.Is(nerr, objstore.ErrNotFound) {
+			s.fail(nerr)
+			return Result{}, nerr
+		}
+		s.fail(ErrConflict)
+		return Result{}, ErrConflict
+	}
+	l := Latest{Generation: gen, Key: key, SHA256: hash, Size: int64(len(archive)), Writer: s.writerID(), CreatedAt: m.CreatedAt}
+	raw, _ := json.Marshal(l)
+	if err := c.Put(ctx, s.prefix(home)+"latest.json", raw, "application/json", nil); err != nil {
+		s.fail(err)
+		return Result{}, fmt.Errorf("writing latest.json: %w", err)
+	}
+	s.mu.Lock()
+	st.fingerprint, st.generation = fp, gen
+	s.status.Total++
+	s.status.LastErr = ""
+	s.mu.Unlock()
+	res := Result{Made: true, Generation: gen, Size: int64(len(archive)), Files: len(m.Entries), Skipped: len(m.Skipped)}
+	res.Deleted = s.prune(ctx, c, home, key)
+	return res, nil
+}
+
+// prune keeps the newest Keep snapshots of a home and deletes the rest. A listing that fails deletes nothing.
+func (s *Snapper) prune(ctx context.Context, c *objstore.Client, home, protect string) int {
+	objs, err := c.List(ctx, s.prefix(home))
+	if err != nil {
+		return 0
+	}
+	var snaps []string
+	for _, o := range objs {
+		if strings.HasSuffix(o.Key, ".tar.gz") {
+			snaps = append(snaps, o.Key)
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(snaps))) // the generation is the start of the name: newest first
+	deleted := 0
+	for i, k := range snaps {
+		if i < Keep || k == protect {
+			continue
+		}
+		if c.Delete(ctx, k) == nil {
+			deleted++
+		}
+	}
+	return deleted
+}
+
+// Touch tells the snapshotter that a signed-in user's home is in use: it is snapshotted from now on, and if
+// its folder is missing it is restored first (this blocks for as long as the restore takes, at most a minute).
+func (s *Snapper) Touch(home string) {
+	if !IsKept(home) || !s.Enabled() {
+		return
+	}
+	s.mu.Lock()
+	st := s.state(home)
+	seen := st.touched
+	st.touched = true
+	s.mu.Unlock()
+	if seen {
+		return // the folder was looked at when it was first used: this is called on every request
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if _, err := s.Ensure(ctx, home); err != nil {
+		log.Printf("homesnap: restoring %s: %v", home, err)
+	}
+}
+
+// ---- restore ---------------------------------------------------------------------------------------
+
+// Ensure puts a home back from its newest good snapshot when its folder is missing or empty, and says whether
+// it did. A home that is there is left alone. A home with no snapshot is not asked about again for ten
+// minutes.
+func (s *Snapper) Ensure(ctx context.Context, home string) (bool, error) {
+	if !IsKept(home) {
+		return false, nil
+	}
+	c, err := s.Client()
+	if err != nil {
+		return false, nil
+	}
+	dir := s.dir(home)
+	if entries, err := ioutil.ReadDir(dir); err == nil && len(entries) > 0 {
+		return false, nil
+	}
+	s.mu.Lock()
+	st := s.state(home)
+	if st.busy || (!st.noSnapshot.IsZero() && s.now().Sub(st.noSnapshot) < noSnapshotFor) {
+		s.mu.Unlock()
+		return false, nil
+	}
+	st.busy = true
+	s.mu.Unlock()
+	defer func() { s.mu.Lock(); st.busy = false; s.mu.Unlock() }()
+
+	archive, latest, err := s.newestValid(ctx, c, home)
+	if err != nil {
+		s.fail(err)
+		return false, err
+	}
+	if archive == nil {
+		s.mu.Lock()
+		st.noSnapshot = s.now()
+		s.mu.Unlock()
+		return false, nil
+	}
+	// written into a folder of its own and moved into place, so that a restore that stops leaves no home
+	// that looks whole
+	tmp := filepath.Join(s.Base(), fmt.Sprintf(".restore-%s-%d", home, s.now().UnixNano()))
+	if _, err := Extract(archive, tmp); err != nil {
+		s.fail(err)
+		return false, err
+	}
+	if err := os.MkdirAll(s.Base(), 0777); err != nil {
+		os.RemoveAll(tmp)
+		return false, err
+	}
+	os.Remove(dir) // an empty folder in the way
+	if err := os.Rename(tmp, dir); err != nil {
+		os.RemoveAll(tmp)
+		return false, err
+	}
+	_, fp, _ := scan(dir)
+	s.mu.Lock()
+	st.fingerprint, st.generation = fp, latest.Generation
+	s.status.Restores++
+	s.status.LastRestor = home + " from generation " + fmt.Sprint(latest.Generation)
+	s.mu.Unlock()
+	log.Printf("homesnap: %s was restored from its snapshot of %s (generation %d)", home, latest.CreatedAt.Format(time.RFC3339), latest.Generation)
+	return true, nil
+}
+
+// newestValid is the snapshot latest.json names if it is whole, else the newest of the others that is (three
+// are tried); nil when the home has none.
+func (s *Snapper) newestValid(ctx context.Context, c *objstore.Client, home string) ([]byte, Latest, error) {
+	tried := map[string]bool{}
+	l, err := s.readLatest(ctx, c, home)
+	if err == nil {
+		tried[l.Key] = true
+		if data, _, gerr := c.Get(ctx, l.Key); gerr == nil && sum(data) == l.SHA256 {
+			return data, l, nil
+		}
+		log.Printf("homesnap: %s is missing or damaged, looking for an older one", l.Key)
+	} else if !errors.Is(err, objstore.ErrNotFound) {
+		return nil, l, err
+	}
+	objs, err := c.List(ctx, s.prefix(home))
+	if err != nil {
+		return nil, l, err
+	}
+	var snaps []string
+	for _, o := range objs {
+		if strings.HasSuffix(o.Key, ".tar.gz") && !tried[o.Key] {
+			snaps = append(snaps, o.Key)
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(snaps)))
+	if len(snaps) > 3 {
+		snaps = snaps[:3]
+	}
+	for _, k := range snaps {
+		data, obj, gerr := c.Get(ctx, k)
+		if gerr != nil {
+			continue
+		}
+		if want := obj.Meta["sha256"]; want != "" && want != sum(data) {
+			continue
+		}
+		var gen int64
+		fmt.Sscan(k[strings.LastIndex(k, "/")+1:], &gen)
+		return data, Latest{Generation: gen, Key: k, SHA256: sum(data), Size: int64(len(data))}, nil
+	}
+	if len(tried) > 0 || len(snaps) > 0 {
+		return nil, l, errors.New("homesnap: none of the newest snapshots could be used")
+	}
+	return nil, l, nil
+}
+
+// ---- the job ---------------------------------------------------------------------------------------
+
+// SnapshotAll snapshots the homes this process knows that changed and settled. It returns how many it made.
+func (s *Snapper) SnapshotAll(ctx context.Context) (made, unchanged int, err error) {
+	s.mu.Lock()
+	var homes []string
+	for h := range s.homes {
+		homes = append(homes, h)
+	}
+	s.mu.Unlock()
+	sort.Strings(homes)
+	for _, h := range homes {
+		res, e := s.SnapshotHome(ctx, h, false)
+		switch {
+		case e != nil:
+			err = e
+		case res.Made:
+			made++
+		default:
+			unchanged++
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	s.mu.Lock()
+	s.status.LastRun, s.status.LastCount = s.now(), made
+	s.mu.Unlock()
+	return made, unchanged, err
+}
+
+// Start runs the job that snapshots the homes every Interval and reports to utils.Jobs; it returns what stops it.
+func (s *Snapper) Start() (stop func()) {
+	s.mu.Lock()
+	if s.started || !s.enabled {
+		s.mu.Unlock()
+		return func() {}
+	}
+	s.started = true
+	s.mu.Unlock()
+	const what = "Snapshots the workspaces of signed-in users that changed to the object store, so that a disk that is wiped loses none of them."
+	if _, err := s.Client(); err != nil {
+		utils.Jobs.RegisterOff("home-snapshots", "Workspace snapshots", what, "no object store is set up (OPENREPL_S3_*)")
+		return func() {}
+	}
+	report := utils.Jobs.Register("home-snapshots", "Workspace snapshots", what, Interval)
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(Interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				report.Run(func() (string, error) {
+					ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+					defer cancel()
+					made, unchanged, err := s.SnapshotAll(ctx)
+					return fmt.Sprintf("%d snapshots made, %d homes unchanged", made, unchanged), err
+				})
+			case <-done:
+				return
+			}
+		}
+	}()
+	var once sync.Once
+	return func() { once.Do(func() { close(done) }) }
+}
+
+// Final snapshots every home that changed, once, when the server stops cleanly (nothing waits for a home to
+// settle: the sessions are over).
+func (s *Snapper) Final(timeout time.Duration) {
+	if !s.Enabled() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	s.mu.Lock()
+	var homes []string
+	for h := range s.homes {
+		homes = append(homes, h)
+	}
+	s.mu.Unlock()
+	made := 0
+	for _, h := range homes {
+		if res, err := s.snapshot(ctx, h, false, false); err != nil {
+			log.Printf("homesnap: the last snapshot of %s failed: %v", h, err)
+		} else if res.Made {
+			made++
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	if made > 0 {
+		log.Printf("homesnap: %d workspaces were snapshotted at the stop", made)
+	}
+}

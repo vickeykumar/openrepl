@@ -1,0 +1,63 @@
+# LLD 15: Object storage (backups and workspace snapshots)
+
+Status: implemented (2026-11-01). Scope: `src/objstore` (the S3 client), `src/backup` (backups and restore of this server's own files), `src/homesnap` (snapshots of signed-in users' workspaces), `src/utils/{config,jobregistry}.go`, `src/server/{settings_keys,admin_health,identity,gateway}.go`, `src/gotty/main.go`.
+
+## 1. Why
+
+A host that keeps no disk between deploys (Render's free tier) loses `/opt/gotty` (the database files, the settings, the audit log, the usage totals) and the workspaces of signed-in users. MongoDB or Firestore already keep the databases for a server that uses them; the audit log, the totals and every workspace are only on disk. An object store (S3 API: Cloudflare R2, AWS S3, MinIO, RustFS) holds a copy and gives it back. It is not a primary store: a database that updates keys all the time does not fit it.
+
+## 2. Settings
+
+| Setting | Meaning |
+|---|---|
+| `OPENREPL_S3_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` | All four are needed (`utils.S3Enabled`). The key id and the secret can also be saved in the dashboard (Site settings, API keys), encrypted like the other keys (`settings_keys.go`; a pair is checked with the bucket when the second one is saved). |
+| `OPENREPL_S3_REGION` | `auto` (R2's) when not set. |
+| `OPENREPL_S3_PREFIX` | Put before every key. |
+| `OPENREPL_BACKUP_NAME` | Names this deployment (`default`) so that several share a bucket: backups are under `backups/<name>/`, snapshots under `homes/<name>/<home>/`. |
+
+R2: endpoint `https://<account id>.r2.cloudflarestorage.com`, an API token with object read and write on the bucket. Without the four settings nothing is stored and the server behaves as before.
+
+## 3. `objstore`
+
+A client with the standard library only (like `persist/firestore.go`): AWS Signature V4 (`sigv4.go`, checked against the example of the AWS documentation and against a real RustFS), path-style addressing, `Put`, `Get`, `Head`, `Delete`, `List` (follows the pages; a listing past 20,000 objects is an error, never a silent cut), `Check`. A 5xx, a 429 or a lost connection is tried again three times. Whole objects only: no multipart (a backup is a few MB, a workspace is limited to 50 MB; a `PutObject` is atomic: it shows only when it is complete). `Fake` (`fake.go`) is a bucket in memory that checks the signature, for the tests of the three packages.
+
+## 4. Backups (`backup`)
+
+- **What:** every `*.db` file, `settings.json`, `admin-audit.jsonl` and `admin-stats.json` of `/opt/gotty`, as one gzipped tar with a manifest (sizes and SHA-256). When MongoDB or Firestore holds the databases (`persist.Remote()`), only the audit log and the totals: the rest is not on disk.
+- **A database is copied safely:** each file is copied to a temporary folder, the original must not have changed (size and modification time) while it was copied, the copy must begin as an unqlite file does, be a whole number of pages and be readable record by record; if not, the run tries again (three times, a second apart) and fails with "copied in the middle of a write". unqlite opens a file that is not a database without a word, so opening alone proves nothing.
+- **When:** a recurring job (`utils.Jobs`, "Backup to object storage") every 15 minutes, the first one two minutes after the start, only when the fingerprint of the files (names, sizes, times) changed since the last upload; and once more at a clean stop, after the databases are closed.
+- **Layout:** `backups/<name>/<UTC time>.tar.gz` (the SHA-256 in its metadata) and `backups/<name>/latest.json`, written last: a backup that dies on the way is never what latest names.
+- **Retention (`Prune`):** keep the newest archive of each of the last 24 hours and of each of the last 7 days (UTC), the newest 3 and the one latest names (about 31 archives at most). It runs after each good upload; it never runs on a listing that could not be read whole; the first run of a process only logs what it would delete.
+- **Restore:** `backup.Default.RestoreIfEmpty` runs at the start, before any database is opened (`common_setup`), when none of the files a backup holds is in the folder. It takes the archive latest names if its hash matches, else the newest of the others that opens (three are tried); extracts it into a folder of its own (`.restore-*`) and moves each file into place, never over a file that exists. Nothing usable is an error that is logged; the server then starts as it would without a backup.
+- **Not in a backup:** `jobfile` (the waiting guest-folder removals; saved by its own job), `wsync/` records, the logs.
+
+## 5. Workspace snapshots (`homesnap`)
+
+- **Who:** the node that is the authority for a home: a single server, or the gateway (which holds a copy of every home, LLD 12). Never a worker (`homesnap.Default.Enable()` is not called in worker mode; workers have no keys). Only signed-in users' homes: `guest-*` are never kept.
+- **Registered by use:** `touchHome` (`server/identity.go`) and the gateway's `PrepareHome` call `Touch(home)` when a signed-in user's request resolves its home. The first time a home is touched in a process: if its folder is missing or empty it is restored (below); from then on it is followed. A home that nobody touches is not asked about again.
+- **Snapshot (`SnapshotHome`):** a job every 5 minutes snapshots the followed homes whose fingerprint changed and in which nothing was written for 30 seconds; at a clean stop every changed home, without waiting. A snapshot holds plain files and folders (empty ones too), never a link, a socket or anything named `.wsync-*`; a file over 50 MB, or one that changes while it is read, is left out and noted in the manifest; a home over 100 MB is not snapshotted (an error in the job's result).
+- **Storage:** an immutable object `homes/<name>/<home>/<generation>-<time>-<writer>.tar.gz` and `latest.json` (generation, key, SHA-256, writer). The newest 3 snapshots are kept.
+- **Two writers** (an overlapping deploy): the writer reads latest before and again after its upload; if the generation moved it deletes its own archive and gives up (`ErrConflict`), so the pointer is only ever moved by a writer that was the newest. Without conditional writes this is a check, not a lock: a race inside the few milliseconds between the second read and the pointer write can still happen, and then costs one of the two snapshots, never a damaged one (an archive is whole or not there).
+- **Restore (`Ensure`):** `latest.json`, the archive, its hash, `Extract` (a path that leaves the folder, a link, a file the manifest does not list, a wrong size or hash: refused and nothing is written), into `.restore-<home>-*` and a rename onto the home. A damaged latest falls back to the newest good one (three tried). The sync engine is untouched: after a restore the gateway attaches the home to the worker as always and its three-way compare keeps the worker's newer files. The sync record is not part of a snapshot, so the first round after a restore treats every path as new and decides by modification time (LLD 12, "Three-way comparison").
+- **Cost of a request:** one in-memory check after the first time; a home that has no snapshot is asked about at most once in ten minutes.
+
+## 6. Dashboard
+
+Health: "Object storage" (a request to the bucket at most once a minute), "Backups" (last one, size, files, archives kept, and that the files were restored at start), "Workspace snapshots". Jobs: "Backup to object storage" and "Workspace snapshots", with their last run and result (LLD 13). API keys: "Object store key id" and "Object store secret".
+
+## 7. R2 limits (checked 2026-11-01) and what this uses
+
+Free each month: 10 GB of storage, 1 million class A operations (put, list, copy), 10 million class B (get, head); deletes and downloads are free. Backups: at most 2,880 runs a month, each 1 archive put, 1 pointer put and 1 listing (about 8,600 class A, 0.9%); the storage is about 31 archives. Snapshots: a few per active user a day. Storage, not operations, is the limit: 200 users with 5 MB workspaces kept 3 deep is about 3 GB; if every one filled the 50 MB limit it would pass 10 GB.
+
+## 8. Tests
+
+`objstore` (the AWS signature example, the fake, retries, paging, a cut upload, wrong keys, and a run against a real server when `OPENREPL_TEST_S3_*` is set), `backup` (retention, archive checks, a database that is not whole, changed-only uploads, a dead upload, pruning, restore on an empty disk, Firestore mode, a damaged latest), `homesnap` (round trip, never replacing a home, settling, retention of 3, a dead upload, a second writer, fallback, Touch, the archive checks), `server/admin_*` (keys). CI: `.github/workflows/ci.yml` runs the three packages.
+
+## 9. Limits and ideas
+
+- A snapshot is of the gateway's copy: files a worker wrote and has not yet sent are not in it.
+- The sync record is not snapshotted (section 5).
+- No multipart: an object is one request (the largest is about 100 MB).
+- A deleted account's snapshots are not removed yet.
+- Backups are not encrypted at rest by the server (the bucket's own encryption applies); the workspaces may hold anything a user wrote.
+- Not built: logs in the bucket, a restore button in the dashboard, conditional writes for the pointer (R2's support to be checked).

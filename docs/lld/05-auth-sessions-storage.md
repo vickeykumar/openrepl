@@ -137,6 +137,10 @@ type practiceDoc   struct { Questions map[string]json.RawMessage; State map[stri
 
 `/profile?q=json` returns `UserProfile` with `SessionMap` set to nil.
 
+### 4b. Copies in an object store
+
+The files of `/opt/gotty` and the signed-in users' workspaces can be backed up to an S3 API object store and restored on an empty disk (LLD 15). MongoDB and Firestore stay the stores for the databases; the backup then covers only the audit log and the usage totals.
+
 ## 5. Browser-side state
 
 | Store | Key | Purpose |
