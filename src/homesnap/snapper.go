@@ -87,7 +87,9 @@ type homeState struct {
 	generation  int64     // the last one this process knows
 	noSnapshot  time.Time // asked at this time and there was none
 	busy        bool
-	touched     bool // Touch has looked at its folder
+	touched     bool   // Touch has looked at its folder
+	changing    int    // rounds in a row in which the home was still changing
+	lastNote    string // why the last round did not snapshot it ("" when it did)
 }
 
 // Status is what the dashboard shows.
@@ -100,6 +102,9 @@ type Status struct {
 	LastErrAt  time.Time
 	Restores   int64
 	LastRestor string
+	// what the last round did, in words, and why each home was not snapshotted
+	LastRound string
+	Notes     map[string]string
 }
 
 // Default is the snapshotter of this server. It does nothing until Enable is called.
@@ -142,6 +147,12 @@ func (s *Snapper) Status() Status {
 	defer s.mu.Unlock()
 	st := s.status
 	st.Homes = len(s.homes)
+	st.Notes = map[string]string{}
+	for h, hs := range s.homes {
+		if hs.lastNote != "" {
+			st.Notes[h] = hs.lastNote
+		}
+	}
 	return st
 }
 
@@ -223,7 +234,7 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 	}
 	dir := s.dir(home)
 	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
-		return Result{Note: "no such workspace"}, nil
+		return s.noted(home, Result{Note: "this server has no folder for it"}), nil
 	}
 	_, fp, err := scan(dir)
 	if err != nil {
@@ -237,6 +248,7 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 		return Result{Note: "being snapshotted"}, nil
 	}
 	if st.fingerprint == fp && !force {
+		st.lastNote, st.changing = "", 0
 		s.mu.Unlock()
 		return Result{Note: "unchanged"}, nil
 	}
@@ -247,7 +259,15 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 
 	if settle {
 		if last := newest(dir); !last.IsZero() && s.now().Sub(last) < Settle {
-			return Result{Note: "still changing"}, nil
+			// a workspace that never rests (a terminal that keeps writing) is snapshotted anyway after a few
+			// rounds, as it is: waiting for it would keep it out of the bucket for ever
+			s.mu.Lock()
+			st.changing++
+			waited := st.changing
+			s.mu.Unlock()
+			if waited <= maxWaitRounds {
+				return s.noted(home, Result{Note: "still changing"}), nil
+			}
 		}
 	}
 
@@ -297,12 +317,29 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 	}
 	s.mu.Lock()
 	st.fingerprint, st.generation = fp, gen
+	st.lastNote, st.changing = "", 0
 	s.status.Total++
 	s.status.LastErr = ""
 	s.mu.Unlock()
 	res := Result{Made: true, Generation: gen, Size: int64(len(archive)), Files: len(m.Entries), Skipped: len(m.Skipped)}
 	res.Deleted = s.prune(ctx, c, home, key)
 	return res, nil
+}
+
+// maxWaitRounds is how many rounds a home that keeps changing is left alone before it is snapshotted anyway.
+const maxWaitRounds = 2
+
+// noted remembers why a home was not snapshotted this time, and logs it when the reason changes.
+func (s *Snapper) noted(home string, r Result) Result {
+	s.mu.Lock()
+	st := s.state(home)
+	changed := st.lastNote != r.Note
+	st.lastNote = r.Note
+	s.mu.Unlock()
+	if changed {
+		log.Printf("homesnap: %s is not snapshotted: %s", home, r.Note)
+	}
+	return r
 }
 
 // prune keeps the newest Keep snapshots of a home and deletes the rest. A listing that fails deletes nothing.
@@ -463,8 +500,32 @@ func (s *Snapper) newestValid(ctx context.Context, c *objstore.Client, home stri
 
 // ---- the job ---------------------------------------------------------------------------------------
 
-// SnapshotAll snapshots the homes this process knows that changed and settled. It returns how many it made.
-func (s *Snapper) SnapshotAll(ctx context.Context) (made, unchanged int, err error) {
+// Round is what one round of snapshots did.
+type Round struct {
+	Made   int
+	Notes  map[string]int // why the others were not snapshotted, and how many
+	Errors int
+}
+
+// String says it in a line: "1 snapshot made; 1 home has no folder on this server".
+func (r Round) String() string {
+	parts := []string{fmt.Sprintf("%d snapshots made", r.Made)}
+	var reasons []string
+	for note := range r.Notes {
+		reasons = append(reasons, note)
+	}
+	sort.Strings(reasons)
+	for _, note := range reasons {
+		parts = append(parts, fmt.Sprintf("%d not snapshotted: %s", r.Notes[note], note))
+	}
+	if r.Errors > 0 {
+		parts = append(parts, fmt.Sprintf("%d failed", r.Errors))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// SnapshotAll snapshots the homes this process knows that changed and settled.
+func (s *Snapper) SnapshotAll(ctx context.Context) (Round, error) {
 	s.mu.Lock()
 	var homes []string
 	for h := range s.homes {
@@ -472,24 +533,27 @@ func (s *Snapper) SnapshotAll(ctx context.Context) (made, unchanged int, err err
 	}
 	s.mu.Unlock()
 	sort.Strings(homes)
+	round := Round{Notes: map[string]int{}}
+	var err error
 	for _, h := range homes {
 		res, e := s.SnapshotHome(ctx, h, false)
 		switch {
 		case e != nil:
 			err = e
+			round.Errors++
 		case res.Made:
-			made++
+			round.Made++
 		default:
-			unchanged++
+			round.Notes[res.Note]++
 		}
 		if ctx.Err() != nil {
 			break
 		}
 	}
 	s.mu.Lock()
-	s.status.LastRun, s.status.LastCount = s.now(), made
+	s.status.LastRun, s.status.LastCount, s.status.LastRound = s.now(), round.Made, round.String()
 	s.mu.Unlock()
-	return made, unchanged, err
+	return round, err
 }
 
 // Start runs the job that snapshots the homes every Interval and reports to utils.Jobs; it returns what stops it.
@@ -517,8 +581,8 @@ func (s *Snapper) Start() (stop func()) {
 				report.Run(func() (string, error) {
 					ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 					defer cancel()
-					made, unchanged, err := s.SnapshotAll(ctx)
-					return fmt.Sprintf("%d snapshots made, %d homes unchanged", made, unchanged), err
+					round, err := s.SnapshotAll(ctx)
+					return round.String(), err
 				})
 			case <-done:
 				return
