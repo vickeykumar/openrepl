@@ -14,6 +14,8 @@ paths = [
   '''^go_1\.19/''',
   '''^vendor/''',
   '''_test\.go$''',
+  # the fake S3 bucket the tests of three packages share (it is not a _test.go file, so that they can import it): its keys are made up
+  '''^src/objstore/fake\.go$''',
   '''\.test\.(m?js|ts)$''',
   '''^docs/''',
 ]
