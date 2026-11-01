@@ -113,6 +113,10 @@ Dependencies are upgraded by hand (there is no Dependabot configuration), `.gith
 | `/gottyTraces/gotty.log*` | Rotated logs | Optional volume |
 | `<delegated cgroup>/openrepl/<cmd>_container/<pid>/memory.max` | Per-REPL cgroup v2 memory limit (LLD 03) | Host kernel |
 
+## 6b. A disk that is not kept
+
+With an object store set up (`OPENREPL_S3_*`, LLD 15) a server that starts on an empty `/opt/gotty` restores the last backup before it opens its databases, and a signed-in user's workspace that is missing is restored when they next come. The image needs no extra volume for this.
+
 ## 7. Typical production topology
 
 ```mermaid

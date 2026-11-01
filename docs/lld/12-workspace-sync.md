@@ -395,7 +395,7 @@ All six steps are done: the engine alone, the conversation and watcher, the tunn
 - Ownership and the set-user-id, set-group-id and sticky bits are not synchronized.
 - A renamed directory is a delete plus a create of its contents' paths; its files are paired into renames one by one.
 - Changes a worker made while disconnected are lost if its session is moved before it returns (section 10).
-- A gateway that keeps neither `/tmp/home` nor the state dir between restarts gets every home back from the workers, one by one, as their users return. Until a home is back, its user can only be served by the worker that has it: if that worker is away they wait for it, however long, and are not placed elsewhere.
+- A gateway that keeps neither `/tmp/home` nor the state dir between restarts gets every home back from the workers, one by one, as their users return (with an object store set up, a signed-in user's home is restored from it first: LLD 15). Until a home is back, its user can only be served by the worker that has it: if that worker is away they wait for it, however long, and are not placed elsewhere.
 - A home that stays on a worker because the gateway had no copy to stand in for it is not removed later by the gateway, which has no record of it.
 - A drain set through the admin API is lost when the gateway restarts.
 - A program still running when its worker dies is lost; only files are kept.

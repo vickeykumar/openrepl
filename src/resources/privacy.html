@@ -29,7 +29,7 @@
       <span class="site-nav__right"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button><a class="site-nav__back" href="/">Back to the editor</a></span>
     </nav>
     <main class="legal">
-      <p class="legal__meta">Last updated 31 October 2026</p>
+      <p class="legal__meta">Last updated 1 November 2026</p>
       <h1>Privacy policy</h1>
       <p class="legal__lead">OpenREPL is a free, open-source service for running code in your browser. This page explains what data the service handles, why, and the choices you have.</p>
 
@@ -40,7 +40,7 @@
         <li><strong>Guests:</strong> the workspace is deleted about 1 hour after your last visit.</li>
         <li><strong>Signed-in users:</strong> your workspace is kept so it is there next time. Delete files from the Files panel whenever you like.</li>
       </ul>
-      <p>If the service runs on more than one server, your workspace may be copied between them so your files are there wherever your terminal runs.</p>
+      <p>If the service runs on more than one server, your workspace may be copied between them so your files are there wherever your terminal runs. If you are signed in, a copy of your workspace (not a guest's) may also be kept in an object store (Cloudflare R2 or a similar service) chosen by the site owner, so that your files are not lost when a server is replaced. The service's own data (accounts, shared code, feedback) is backed up there too, and is deleted when the oldest backups are replaced.</p>
       <p>Please don't paste passwords, keys or other secrets into the terminal, editor or Genie. Because Genie reads your terminal output, don't print secrets there either.</p>
 
       <h3>Account information</h3>
@@ -80,6 +80,7 @@
         <li>OpenAI (Genie replies and practice questions): <a href="https://openai.com/policies/privacy-policy">OpenAI Privacy Policy</a></li>
         <li>OpenRouter, and the hosts it uses for Gemma (ModelRun, CoreWeave): <a href="https://openrouter.ai/privacy">OpenRouter Privacy Policy</a></li>
         <li>Cloudflare Workers AI (if you choose one of its models): <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare Privacy Policy</a></li>
+        <li>Cloudflare R2 (or another S3-compatible object store the site owner chooses), where backups of the site's data and the files of signed-in users are kept: <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare Privacy Policy</a></li>
         <li>GitHub (if you sign in with GitHub): <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a></li>
       </ul>
       <p>We do not sell your personal information.</p>

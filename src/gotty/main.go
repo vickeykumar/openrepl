@@ -3,11 +3,13 @@ package main
 import (
 	"utils"
 	"backend/localcommand"
+	"backup"
 	"containers"
 	"cookie"
 	"context"
 	"fmt"
 	"github.com/codegangsta/cli"
+	"homesnap"
 	"log"
 	"os"
 	"os/signal"
@@ -17,12 +19,23 @@ import (
 	"server"
 	"strings"
 	"syscall"
+	"time"
 	"user"
 )
 
 func common_setup() {
 	// as PID 1 in the image gotty adopts the orphans of its terminals: reap them when they end
 	reaper.Start()
+	// A disk that was wiped (a host that keeps nothing between deploys) is filled from the last backup in the
+	// object store, before anything opens the databases. Without an object store this does nothing.
+	backup.Default.Remote = persist.Remote
+	restoreCtx, cancelRestore := context.WithTimeout(context.Background(), 2*time.Minute)
+	if r, err := backup.Default.RestoreIfEmpty(restoreCtx); err != nil {
+		log.Println("Error: restoring the last backup: ", err)
+	} else if r != nil {
+		log.Printf("backup: this server's files were restored from the backup of %s (%s): %v", r.CreatedAt.Format(time.RFC3339), r.Key, r.Files)
+	}
+	cancelRestore()
 	// the pending jobs of the last birth were loaded by utils.init (InitGottyJobs); they are saved
 	// every minute from now on, and at a clean stop, and forgotten guest folders are swept
 	utils.GottyJobs.StartJobSaver(utils.GOTTY_PATH + "/" + utils.JobFile)
@@ -37,6 +50,9 @@ func common_setup() {
 	containers.InitContainers()
 	// /tmp is shared by the REPLs: delete what is old, when OPENREPL_TMP_MAX_AGE says so
 	utils.StartTmpCleaner()
+	// what is only on this disk is copied to the object store when it changed
+	backup.Default.Start()
+	homesnap.Default.Start()
 }
 
 var setup_done bool = false
@@ -56,6 +72,10 @@ func common_cleanup() {
 	user.CloseSessionDBHandle()
 	containers.DeleteContainers()
 	cleanup_done = true
+	// the sessions are over and the databases are closed: the last snapshots and one more backup hold what was
+	// written last
+	homesnap.Default.Final(20 * time.Second)
+	backup.Default.Final(20 * time.Second)
 }
 
 func main() {
@@ -137,6 +157,11 @@ func main() {
 		persist.Configure(appOptions.Mode != server.ModeWorker)
 		// the one test of where the databases live; its choice is logged and stays
 		persist.Init()
+		// The workspaces of signed-in users are kept in the object store by the node that is their authority (a
+		// gateway or a single server); a worker holds no object store keys.
+		if appOptions.Mode != server.ModeWorker {
+			homesnap.Default.Enable()
+		}
 		common_setup()
 		setup_done = true
 

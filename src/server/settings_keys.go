@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	"objstore"
 	"utils"
 )
 
@@ -43,6 +44,9 @@ type StoredKeys struct {
 	// the Workers AI token, and the id of its account (not secret, but kept the same way)
 	Cloudflare        string `json:"cloudflare,omitempty"`
 	CloudflareAccount string `json:"cloudflareAccount,omitempty"`
+	// the key id and the secret of the object store (S3, R2)
+	S3Access string `json:"s3Access,omitempty"`
+	S3Secret string `json:"s3Secret,omitempty"`
 }
 
 const (
@@ -50,6 +54,8 @@ const (
 	keyOpenRouter = "openrouter"
 	keyCloudflare = "cloudflare"
 	keyCFAccount  = "cloudflare-account"
+	keyS3Access   = "s3-access"
+	keyS3Secret   = "s3-secret"
 
 	minKeyLen = 8
 	maxKeyLen = 512
@@ -57,7 +63,8 @@ const (
 
 // the names the audit log uses
 var keyNames = map[string]string{keyOpenAI: "OpenAI", keyOpenRouter: "OpenRouter",
-	keyCloudflare: "Cloudflare Workers AI token", keyCFAccount: "Cloudflare account id"}
+	keyCloudflare: "Cloudflare Workers AI token", keyCFAccount: "Cloudflare account id",
+	keyS3Access: "Object store key id", keyS3Secret: "Object store secret"}
 
 var errNoSettingsSecret = errors.New("OPENREPL_SECRET is not set on the server, so keys cannot be kept here")
 
@@ -127,7 +134,7 @@ var keysProblem string
 // key that cannot be read is skipped, the problem is remembered for the health
 // page, and the environment's key stays in use.
 func applyKeyOverrides(k *StoredKeys) {
-	var openai, openrouter, cfToken, cfAccount string
+	var openai, openrouter, cfToken, cfAccount, s3Access, s3Secret string
 	problem := ""
 	if k != nil {
 		secret := utils.Secret()
@@ -135,7 +142,8 @@ func applyKeyOverrides(k *StoredKeys) {
 			provider, sealed string
 			out              *string
 		}{{keyOpenAI, k.OpenAI, &openai}, {keyOpenRouter, k.OpenRouter, &openrouter},
-			{keyCloudflare, k.Cloudflare, &cfToken}, {keyCFAccount, k.CloudflareAccount, &cfAccount}} {
+			{keyCloudflare, k.Cloudflare, &cfToken}, {keyCFAccount, k.CloudflareAccount, &cfAccount},
+			{keyS3Access, k.S3Access, &s3Access}, {keyS3Secret, k.S3Secret, &s3Secret}} {
 			if f.sealed == "" {
 				continue
 			}
@@ -150,6 +158,7 @@ func applyKeyOverrides(k *StoredKeys) {
 	}
 	utils.SetKeyOverrides(openai, openrouter)
 	utils.SetCloudflareOverrides(cfToken, cfAccount)
+	utils.SetS3Overrides(s3Access, s3Secret)
 	settingsMu.Lock()
 	keysProblem = problem
 	settingsMu.Unlock()
@@ -173,6 +182,8 @@ func checkKey(provider, key string) (rejected bool, warning string) {
 		url = openRouterKeyCheckURL
 	case keyCFAccount:
 		return false, "" // an id, not a secret: nothing to check it with
+	case keyS3Access, keyS3Secret:
+		return checkS3Key(provider, key)
 	case keyCloudflare:
 		account := utils.CloudflareAccountID()
 		if account == "" {
@@ -206,6 +217,39 @@ func checkKey(provider, key string) (rejected bool, warning string) {
 
 // validKeyText rejects what cannot be a key: too short or long, or holding
 // spaces or control characters (a pasted line break, usually).
+// checkS3Key asks the object store whether it accepts the pair of keys the dashboard would have after saving
+// this one: the key id and the secret together are what is checked, so nothing is said until both are known
+// (and the endpoint and the bucket are set). Only a refusal of the keys (403) rejects.
+func checkS3Key(provider, key string) (rejected bool, warning string) {
+	cfg, ok := objstore.FromSettings()
+	if cfg.Endpoint == "" || cfg.Bucket == "" {
+		return false, "The endpoint and the bucket are not set on the server, so the keys could not be checked."
+	}
+	if provider == keyS3Access {
+		cfg.AccessKey = key
+	} else {
+		cfg.Secret = key
+	}
+	if cfg.AccessKey == "" || cfg.Secret == "" {
+		return false, "The other key is not set yet, so this one could not be checked."
+	}
+	_ = ok
+	c, err := objstore.New(cfg)
+	if err != nil {
+		return false, "The keys could not be checked: " + err.Error()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if err := c.Check(ctx); err != nil {
+		var oe *objstore.Error
+		if errors.As(err, &oe) && (oe.Status == http.StatusForbidden || oe.Status == http.StatusUnauthorized) {
+			return true, ""
+		}
+		return false, "The object store could not be reached to check the keys. They were saved as they are."
+	}
+	return false, ""
+}
+
 func validKeyText(key string) error {
 	if len(key) < minKeyLen || len(key) > maxKeyLen {
 		return fmt.Errorf("a key is between %d and %d characters", minKeyLen, maxKeyLen)
@@ -245,6 +289,10 @@ func setStoredKey(provider, key string) error {
 		k.Cloudflare = sealed
 	case keyCFAccount:
 		k.CloudflareAccount = sealed
+	case keyS3Access:
+		k.S3Access = sealed
+	case keyS3Secret:
+		k.S3Secret = sealed
 	default:
 		return fmt.Errorf("%q is not a provider", provider)
 	}
@@ -282,11 +330,13 @@ func currentKeysReply() keysReply {
 			return false
 		}
 		return map[string]bool{keyOpenAI: cur.Secrets.OpenAI != "", keyOpenRouter: cur.Secrets.OpenRouter != "",
-			keyCloudflare: cur.Secrets.Cloudflare != "", keyCFAccount: cur.Secrets.CloudflareAccount != ""}[p]
+			keyCloudflare: cur.Secrets.Cloudflare != "", keyCFAccount: cur.Secrets.CloudflareAccount != "",
+			keyS3Access: cur.Secrets.S3Access != "", keyS3Secret: cur.Secrets.S3Secret != ""}[p]
 	}
 	out := keysReply{CanStore: utils.Secret() != ""}
 	for _, p := range []struct{ id, name string }{{keyOpenAI, "OpenAI"}, {keyOpenRouter, "OpenRouter"},
-		{keyCloudflare, "Cloudflare Workers AI token"}, {keyCFAccount, "Cloudflare account id"}} {
+		{keyCloudflare, "Cloudflare Workers AI token"}, {keyCFAccount, "Cloudflare account id"},
+		{keyS3Access, "Object store key id"}, {keyS3Secret, "Object store secret"}} {
 		st := keyStatus{Provider: p.id, Name: p.name, Source: utils.KeySource(p.id), Stored: stored(p.id)}
 		key := utils.OpenAIKey()
 		switch p.id {
@@ -296,6 +346,10 @@ func currentKeysReply() keysReply {
 			key = utils.CloudflareToken()
 		case keyCFAccount:
 			key = utils.CloudflareAccountID()
+		case keyS3Access:
+			key = utils.S3AccessKey()
+		case keyS3Secret:
+			key = utils.S3SecretKey()
 		}
 		st.Set = key != ""
 		if st.Stored && st.Source != "dashboard" {

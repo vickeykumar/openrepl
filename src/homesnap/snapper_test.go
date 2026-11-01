@@ -1,0 +1,414 @@
+package homesnap
+
+import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"objstore"
+)
+
+var ctx = context.Background()
+
+func newSnapper(t *testing.T, f *objstore.Fake) (*Snapper, string) {
+	t.Helper()
+	base := t.TempDir()
+	cl, err := objstore.New(f.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	s := &Snapper{Base: func() string { return base }, Name: func() string { return "prod" },
+		Client: func() (*objstore.Client, error) { return cl, nil }, Now: func() time.Time { return now }}
+	s.Enable()
+	return s, base
+}
+
+func write(t *testing.T, path, content string, age time.Duration) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-age)
+	os.Chtimes(path, old, old)
+}
+
+func makeHome(t *testing.T, base, name string) string {
+	t.Helper()
+	dir := filepath.Join(base, name)
+	write(t, filepath.Join(dir, "main.c"), "int main(){}", time.Hour)
+	write(t, filepath.Join(dir, "src", "util", "a.py"), "print(1)", time.Hour)
+	write(t, filepath.Join(dir, ".wsync-state"), "reserved", time.Hour)
+	os.MkdirAll(filepath.Join(dir, "empty"), 0755)
+	os.Symlink("/etc/passwd", filepath.Join(dir, "link"))
+	for _, p := range []string{filepath.Join(dir, "src", "util"), filepath.Join(dir, "src"), filepath.Join(dir, "empty"), dir} {
+		old := time.Now().Add(-time.Hour)
+		os.Chtimes(p, old, old)
+	}
+	return dir
+}
+
+func TestWhichHomesAreKept(t *testing.T) {
+	for name, want := range map[string]bool{"anna0123": true, "u-1_2": true, "guest-123": false, "": false, ".hidden": false, "a/b": false, "..": false,
+		"python": true /* a name alone says nothing; Touch is only called for signed-in users */, strings.Repeat("a", 65): false} {
+		if IsKept(name) != want {
+			t.Errorf("%q: %v", name, IsKept(name))
+		}
+	}
+}
+
+func TestAHomeIsSnapshottedAndComesBackWhole(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+
+	res, err := s.SnapshotHome(ctx, "anna0123", false)
+	if err != nil || !res.Made || res.Generation != 1 || res.Files != 5 /* main.c, src/, src/util/, src/util/a.py, empty/ */ {
+		t.Fatalf("snapshot: %+v %v", res, err)
+	}
+	keys := f.Stored()
+	if len(keys) != 2 || !strings.Contains(keys[0], "pfx/homes/prod/anna0123/0000000001-") || !strings.HasSuffix(keys[1], "/latest.json") {
+		t.Fatalf("stored: %v", keys)
+	}
+
+	// the folder is wiped (a disk that was lost)
+	os.RemoveAll(dir)
+	restored, err := s.Ensure(ctx, "anna0123")
+	if err != nil || !restored {
+		t.Fatalf("restore: %v %v", restored, err)
+	}
+	for path, want := range map[string]string{"main.c": "int main(){}", "src/util/a.py": "print(1)"} {
+		if b, err := os.ReadFile(filepath.Join(dir, path)); err != nil || string(b) != want {
+			t.Errorf("%s: %q %v", path, b, err)
+		}
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "empty")); err != nil || !fi.IsDir() {
+		t.Error("an empty folder did not come back")
+	}
+	for _, never := range []string{".wsync-state", "link"} {
+		if _, err := os.Lstat(filepath.Join(dir, never)); err == nil {
+			t.Errorf("%s was in the snapshot", never)
+		}
+	}
+	if left, _ := filepath.Glob(filepath.Join(base, ".restore-*")); len(left) != 0 {
+		t.Errorf("a temporary folder was left: %v", left)
+	}
+	// what came back is what was there: nothing to snapshot again
+	if res, _ := s.SnapshotHome(ctx, "anna0123", false); res.Made || res.Note != "unchanged" {
+		t.Errorf("after a restore: %+v", res)
+	}
+}
+
+func TestAHomeThatIsThereIsNeverReplaced(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	write(t, filepath.Join(dir, "main.c"), "newer, written after the snapshot", 0)
+	if restored, err := s.Ensure(ctx, "anna0123"); restored || err != nil {
+		t.Fatalf("%v %v", restored, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "main.c")); string(b) != "newer, written after the snapshot" {
+		t.Errorf("%q", b)
+	}
+	// an empty folder in the way is replaced
+	empty := filepath.Join(base, "bob00001")
+	os.MkdirAll(empty, 0755)
+	makeHome(t, t.TempDir(), "x") // a home of another snapper does not matter
+}
+
+func TestChangesWaitForTheHomeToSettleAndUnchangedHomesAreNotUploadedAgain(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	before := len(f.Requests())
+	if res, _ := s.SnapshotHome(ctx, "anna0123", false); res.Made || res.Note != "unchanged" {
+		t.Errorf("unchanged: %+v", res)
+	}
+	if len(f.Requests()) != before {
+		t.Error("an unchanged home was asked about at the object store")
+	}
+	write(t, filepath.Join(dir, "main.c"), "being typed right now", 0)
+	if res, _ := s.SnapshotHome(ctx, "anna0123", false); res.Made || res.Note != "still changing" {
+		t.Errorf("a home that is changing: %+v", res)
+	}
+	if res, _ := s.SnapshotHome(ctx, "anna0123", true); !res.Made || res.Generation != 2 {
+		t.Errorf("forced: %+v", res)
+	}
+	write(t, filepath.Join(dir, "main.c"), "settled", time.Minute)
+	if res, _ := s.SnapshotHome(ctx, "anna0123", false); !res.Made || res.Generation != 3 {
+		t.Errorf("settled: %+v", res)
+	}
+}
+
+func TestOnlyTheNewestThreeSnapshotsAreKept(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	for i := 0; i < 6; i++ {
+		write(t, filepath.Join(dir, "main.c"), fmt.Sprint("version ", i), time.Minute)
+		if res, err := s.SnapshotHome(ctx, "anna0123", false); err != nil || !res.Made {
+			t.Fatalf("%d: %+v %v", i, res, err)
+		}
+	}
+	var snaps []string
+	for _, k := range f.Stored() {
+		if strings.HasSuffix(k, ".tar.gz") {
+			snaps = append(snaps, k[strings.LastIndex(k, "/")+1:][:10])
+		}
+	}
+	if strings.Join(snaps, ",") != "0000000004,0000000005,0000000006" {
+		t.Errorf("snapshots left: %v", snaps)
+	}
+}
+
+func TestASnapshotThatDiesLeavesTheLastOneAsItWas(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	before := strings.Join(f.Stored(), ",")
+	write(t, filepath.Join(dir, "main.c"), "changed", time.Minute)
+	f.CutPuts(true)
+	if _, err := s.SnapshotHome(ctx, "anna0123", false); err == nil {
+		t.Fatal("a dead upload was taken for a snapshot")
+	}
+	f.CutPuts(false)
+	if strings.Join(f.Stored(), ",") != before {
+		t.Errorf("the bucket changed: %v", f.Stored())
+	}
+	if res, err := s.SnapshotHome(ctx, "anna0123", false); err != nil || !res.Made || res.Generation != 2 {
+		t.Errorf("the next one: %+v %v", res, err)
+	}
+}
+
+func TestAnotherWriterThatGotThereFirstWinsAndNothingIsCorrupted(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	a, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	a.SnapshotHome(ctx, "anna0123", false)
+
+	// a second instance (an overlapping deploy) with its own copy of the home
+	b, _ := newSnapper(t, f)
+	b.Base = a.Base
+	b.writer = "other-instance"
+	a.writer = "this-instance"
+
+	write(t, filepath.Join(dir, "main.c"), "written through a", time.Minute)
+	// b makes its snapshot between a's upload and a's pointer
+	a.beforePointer = func(home string) {
+		a.beforePointer = nil
+		if res, err := b.SnapshotHome(ctx, home, true); err != nil || !res.Made {
+			t.Errorf("b: %+v %v", res, err)
+		}
+	}
+	_, err := a.SnapshotHome(ctx, "anna0123", false)
+	if err != ErrConflict {
+		t.Fatalf("a: %v", err)
+	}
+	// the pointer is b's, and a's archive is gone
+	cl, _ := objstore.New(f.Config())
+	l, err := b.readLatest(ctx, cl, "anna0123")
+	if err != nil || l.Writer != "other-instance" || l.Generation != 2 {
+		t.Fatalf("latest: %+v %v", l, err)
+	}
+	var gens []string
+	for _, k := range f.Stored() {
+		if strings.HasSuffix(k, ".tar.gz") {
+			gens = append(gens, k[strings.LastIndex(k, "/")+1:][:10])
+		}
+	}
+	if strings.Join(gens, ",") != "0000000001,0000000002" {
+		t.Errorf("archives: %v", gens)
+	}
+}
+
+func TestADamagedLatestSnapshotFallsBackToTheOlderOne(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	write(t, filepath.Join(dir, "main.c"), "second version", time.Minute)
+	s.SnapshotHome(ctx, "anna0123", false)
+	for _, k := range f.Stored() {
+		if strings.Contains(k, "/0000000002-") {
+			f.Set(k, []byte("damaged"), time.Now())
+		}
+	}
+	os.RemoveAll(dir)
+	if restored, err := s.Ensure(ctx, "anna0123"); err != nil || !restored {
+		t.Fatalf("%v %v", restored, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "main.c")); string(b) != "int main(){}" {
+		t.Errorf("the older snapshot's file: %q", b)
+	}
+	// nothing usable: an error, and no folder
+	for _, k := range f.Stored() {
+		if strings.HasSuffix(k, ".tar.gz") {
+			f.Set(k, []byte("junk"), time.Now())
+		}
+	}
+	os.RemoveAll(dir)
+	if restored, err := s.Ensure(ctx, "anna0123"); restored || err == nil {
+		t.Errorf("only junk: %v %v", restored, err)
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Error("a folder was made from junk")
+	}
+}
+
+func TestAHomeWithNoSnapshotIsAskedAboutOnceAWhile(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, _ := newSnapper(t, f)
+	if restored, err := s.Ensure(ctx, "newuser1"); restored || err != nil {
+		t.Fatal(restored, err)
+	}
+	asked := len(f.Requests())
+	s.Ensure(ctx, "newuser1")
+	s.Ensure(ctx, "newuser1")
+	if len(f.Requests()) != asked {
+		t.Errorf("asked again: %d -> %d", asked, len(f.Requests()))
+	}
+	// guests and odd names are never asked about
+	for _, h := range []string{"guest-1", "../x", ""} {
+		if _, err := s.Ensure(ctx, h); err != nil {
+			t.Errorf("%q: %v", h, err)
+		}
+	}
+	if len(f.Requests()) != asked {
+		t.Error("a guest was asked about")
+	}
+}
+
+func TestTouchRestoresAHomeThatIsMissingAndRegistersItForSnapshots(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	os.RemoveAll(dir)
+
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	s2.Touch("anna0123")
+	if b, err := os.ReadFile(filepath.Join(dir, "main.c")); err != nil || string(b) != "int main(){}" {
+		t.Fatalf("%q %v", b, err)
+	}
+	if s2.Status().Homes != 1 || s2.Status().Restores != 1 {
+		t.Errorf("status: %+v", s2.Status())
+	}
+	// a snapshotter that is not enabled does nothing
+	s3, _ := newSnapper(t, f)
+	s3.enabled = false
+	os.RemoveAll(dir)
+	s3.Touch("anna0123")
+	if _, err := os.Stat(dir); err == nil {
+		t.Error("a snapshotter that is off restored a home")
+	}
+}
+
+func TestTheFinalSnapshotDoesNotWaitForAHomeToSettle(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.Touch("anna0123")
+	write(t, filepath.Join(dir, "main.c"), "just written", 0)
+	made, _, _ := s.SnapshotAll(ctx)
+	if made != 0 {
+		t.Errorf("a home that is changing was snapshotted: %d", made)
+	}
+	s.Final(5 * time.Second)
+	if len(f.Stored()) != 2 {
+		t.Errorf("stored after the final snapshot: %v", f.Stored())
+	}
+}
+
+// ---- the archive ---------------------------------------------------------------------------------
+
+func hand(t *testing.T, manifest string, entries map[string]string, extra func(*tar.Writer)) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	put := func(name, data string) {
+		tw.WriteHeader(&tar.Header{Name: name, Mode: 0644, Size: int64(len(data)), Typeflag: tar.TypeReg})
+		tw.Write([]byte(data))
+	}
+	if manifest != "" {
+		put(manifestName, manifest)
+	}
+	for n, d := range entries {
+		put(n, d)
+	}
+	if extra != nil {
+		extra(tw)
+	}
+	tw.Close()
+	gz.Close()
+	return buf.Bytes()
+}
+
+func TestASnapshotThatIsNotWhatItSaysIsRefusedAndWritesNothing(t *testing.T) {
+	good := fmt.Sprintf(`{"version":1,"home":"x","entries":[{"path":"a.txt","size":5,"sha256":"%s","mode":420}]}`, sum([]byte("hello")))
+	dest := filepath.Join(t.TempDir(), "out")
+	if _, err := Extract(hand(t, good, map[string]string{"a.txt": "hello"}, nil), dest); err != nil {
+		t.Fatalf("a good one: %v", err)
+	}
+	for name, a := range map[string][]byte{
+		"not gzip":          []byte("hello"),
+		"no manifest":       hand(t, "", map[string]string{"a.txt": "hello"}, nil),
+		"a changed file":    hand(t, good, map[string]string{"a.txt": "HELLO"}, nil),
+		"a missing file":    hand(t, good, nil, nil),
+		"a file not listed": hand(t, good, map[string]string{"a.txt": "hello", "b.txt": "x"}, nil),
+		"a path out":        hand(t, strings.Replace(good, "a.txt", "../a.txt", 1), map[string]string{"../a.txt": "hello"}, nil),
+		"an absolute path":  hand(t, strings.Replace(good, "a.txt", "/etc/a.txt", 1), map[string]string{"/etc/a.txt": "hello"}, nil),
+		"a reserved name":   hand(t, strings.Replace(good, "a.txt", ".wsync-x", 1), map[string]string{".wsync-x": "hello"}, nil),
+		"a link": hand(t, good, map[string]string{"a.txt": "hello"}, func(tw *tar.Writer) {
+			tw.WriteHeader(&tar.Header{Name: "l", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"})
+		}),
+	} {
+		d := filepath.Join(t.TempDir(), "out")
+		if _, err := Extract(a, d); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+		if _, err := os.Stat(d); err == nil {
+			t.Errorf("%s: a folder was left", name)
+		}
+	}
+}
+
+func TestAFileThatChangesWhileItIsReadIsLeftOutAndABigOneToo(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "ok.txt"), "fine", time.Hour)
+	big := filepath.Join(dir, "big.bin")
+	f, _ := os.Create(big)
+	f.Truncate(MaxFileBytes + 1)
+	f.Close()
+	data, m, err := Build(dir, "x", 1, "w", time.Now())
+	if err != nil || len(m.Skipped) != 1 || !strings.Contains(m.Skipped[0], "big.bin") {
+		t.Fatalf("%+v %v", m.Skipped, err)
+	}
+	if _, err := Extract(data, filepath.Join(t.TempDir(), "o")); err != nil {
+		t.Fatal(err)
+	}
+}

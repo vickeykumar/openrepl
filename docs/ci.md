@@ -31,7 +31,7 @@ Go (in the dev container, the repo is mounted at `/opt/openrepl`):
 
 ```bash
 docker exec openrepl-devbox bash -c 'cd /opt/openrepl/src && \
-  GO111MODULE=off GOPATH=/opt/openrepl ../go_1.23/$(uname -m)/go/bin/go test -vet=off server utils user persist cachedb wsync meters reaper landlock containers backend/localcommand'
+  GO111MODULE=off GOPATH=/opt/openrepl ../go_1.23/$(uname -m)/go/bin/go test -vet=off server utils user persist cachedb wsync meters reaper landlock containers backend/localcommand objstore backup homesnap'
 docker exec openrepl-devbox bash -c 'cd /opt/openrepl/src && \
   GO111MODULE=off GOPATH=/opt/openrepl ../go_1.23/$(uname -m)/go/bin/go test -vet=off -race gateway tunnel trusted'
 ```
