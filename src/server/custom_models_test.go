@@ -263,24 +263,3 @@ func TestTheModelListIsKeptInTheDatabaseAndAnotherServerSeesIt(t *testing.T) {
 		t.Fatalf("what its page is told: %+v", pub)
 	}
 }
-
-// A model an admin added that the server later builds in must not make the stored settings invalid.
-func TestAnAddedModelThatBecameBuiltInIsDroppedWhenSettingsAreRead(t *testing.T) {
-	s := SiteSettings{Genie: GenieSettings{CustomModels: []CustomModel{
-		{ID: modelFree, Name: "Free (auto-pick)", Enabled: true},
-		{ID: "nvidia/x:free", Name: "Nemotron", Enabled: true},
-	}}}
-	if _, err := s.normalize(); err == nil {
-		t.Fatal("saving a list that names a built-in model is still refused")
-	}
-	got, err := s.withoutBuiltInModels().normalize()
-	if err != nil {
-		t.Fatalf("read from the store: %v", err)
-	}
-	if len(got.Genie.CustomModels) != 1 || got.Genie.CustomModels[0].ID != "nvidia/x:free" {
-		t.Errorf("custom models: %+v", got.Genie.CustomModels)
-	}
-	if len(s.Genie.CustomModels) != 2 {
-		t.Error("the caller's list was changed")
-	}
-}

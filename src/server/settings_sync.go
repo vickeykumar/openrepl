@@ -169,7 +169,7 @@ func syncSettingsOnce() {
 	}
 	var s SiteSettings
 	if err := json.Unmarshal(data, &s); err == nil {
-		s, err = s.withoutBuiltInModels().normalize()
+		s, err = s.normalize()
 		if err == nil {
 			applySettings(s, version, true)
 			return
@@ -191,7 +191,7 @@ func migrateFileToStore(backend settingsStore) {
 	data, _, found, err := fileSettingsStore{}.Load()
 	if err == nil && found {
 		if err = json.Unmarshal(data, &s); err == nil {
-			s, err = s.withoutBuiltInModels().normalize()
+			s, err = s.normalize()
 		}
 	}
 	if err != nil || !found {

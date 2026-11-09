@@ -123,24 +123,6 @@ func (c CustomModel) model() chatModel {
 	}
 }
 
-// withoutBuiltInModels is settings read from the store with the added models that have since
-// become built-in taken out. A model an admin added (the free auto-pick, say) may later be
-// built into the server; the stored list would then fail the checks (a built-in model cannot be
-// added) and the whole document would be ignored. Saving a list that names one is still refused.
-func (s SiteSettings) withoutBuiltInModels() SiteSettings {
-	if len(s.Genie.CustomModels) == 0 {
-		return s
-	}
-	kept := make([]CustomModel, 0, len(s.Genie.CustomModels))
-	for _, c := range s.Genie.CustomModels {
-		if _, builtin := chatModels[strings.TrimSpace(c.ID)]; !builtin {
-			kept = append(kept, c)
-		}
-	}
-	s.Genie.CustomModels = kept
-	return s
-}
-
 // modelByID finds a built-in model or one an admin added (on or off).
 func (g GenieSettings) modelByID(id string) (chatModel, bool) {
 	if m, ok := chatModels[id]; ok {

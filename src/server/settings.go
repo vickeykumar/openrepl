@@ -329,7 +329,7 @@ func GetSiteSettings() SiteSettings {
 			var s SiteSettings
 			if err := json.Unmarshal(data, &s); err != nil {
 				log.Println("settings: ignoring invalid ", SETTINGS_FILE, ": ", err)
-			} else if s, err = s.withoutBuiltInModels().normalize(); err != nil {
+			} else if s, err = s.normalize(); err != nil {
 				log.Println("settings: ignoring invalid ", SETTINGS_FILE, ": ", err)
 			} else {
 				siteSettings = s

@@ -22,9 +22,6 @@ const (
 	modelLuna  = "gpt-6-luna"
 	modelMini  = "gpt-4o-mini"
 	modelGemma = "google/gemma-4-31b-it"
-	// OpenRouter's router over its free models: it picks one for each request, so the answers vary.
-	// It is the model a first-time visitor starts with (model-choice.js) when the server has an OpenRouter key.
-	modelFree = "openrouter/free"
 
 	// Cloudflare Workers AI. The "@cf/" prefix matters: without it Cloudflare treats the name as a
 	// third-party model and bills the AI Gateway credit instead of the free allowance.
@@ -66,19 +63,15 @@ type chatModel struct {
 	ThinkingRoom int
 	// NoJSONMode: the model's host takes no response_format.
 	NoJSONMode bool
-	// AnyHost: no host rule, OpenRouter chooses who answers (a router such as openrouter/free).
-	AnyHost bool
 }
 
 // the order the models are listed in, in the dashboard and as a last resort
-var chatModelOrder = []string{modelLuna, modelMini, modelGemma, modelFree, modelCFGemma, modelCFQwen, modelCFGLM}
+var chatModelOrder = []string{modelLuna, modelMini, modelGemma, modelCFGemma, modelCFQwen, modelCFGLM}
 
 var chatModels = map[string]chatModel{
 	modelLuna:  {ID: modelLuna, Name: "GPT-6 Luna", Provider: providerOpenAI, Reasoning: true},
 	modelMini:  {ID: modelMini, Name: "GPT-4o mini", Provider: providerOpenAI, MaxTokensCap: 3000},
 	modelGemma: {ID: modelGemma, Name: "Gemma 4 31B", Provider: providerOpenRouter, MaxTokensCap: 4000},
-	// free, through OpenRouter, which picks the model and its host; the model it picks may think first
-	modelFree: {ID: modelFree, Name: "Free (auto-pick)", Provider: providerOpenRouter, MaxTokensCap: 4000, Free: true, ThinkingRoom: 2000, NoJSONMode: true, AnyHost: true},
 	// the free plan covers these (10,000 neurons a day, shared); none takes response_format here
 	modelCFGemma: {ID: modelCFGemma, Name: "Gemma 4 26B (Cloudflare)", Provider: providerCloudflare, MaxTokensCap: 4000, Free: true, NoJSONMode: true},
 	modelCFQwen:  {ID: modelCFQwen, Name: "Qwen3 30B (Cloudflare)", Provider: providerCloudflare, MaxTokensCap: 4000, Free: true, ThinkingRoom: 2000, NoJSONMode: true},
@@ -150,14 +143,14 @@ func activeOpenRouterHosts() []string {
 }
 
 // openRouterRouting is the host rule of a request: the hosts the model names, the
-// admin's choice for Gemma, or none for a model an admin added without hosts and for
-// the router (nil: OpenRouter chooses).
+// admin's choice for Gemma, or none for a model an admin added without hosts
+// (nil: OpenRouter chooses).
 func openRouterRouting(model chatModel) map[string]interface{} {
 	hosts := activeOpenRouterHosts()
 	switch {
 	case len(model.Hosts) > 0:
 		hosts = model.Hosts
-	case model.Custom || model.AnyHost:
+	case model.Custom:
 		return nil
 	}
 	return map[string]interface{}{
