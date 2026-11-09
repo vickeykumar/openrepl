@@ -3,6 +3,7 @@ package persist
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -87,6 +88,27 @@ func (f *fakeRemote) Each(fn func(key, value []byte) bool) error {
 		}
 	}
 	return nil
+}
+func (f *fakeRemote) isEmpty() (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.data) == 0, nil
+}
+func (f *fakeRemote) importFile(path string) (int, error) {
+	db, err := openUnqlite(path)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	n := 0
+	db.Each(func(k, v []byte) bool {
+		f.mu.Lock()
+		f.data[string(k)] = string(v)
+		f.mu.Unlock()
+		n++
+		return true
+	})
+	return n, nil
 }
 func (f *fakeRemote) Close() error    { return nil }
 func (f *fakeRemote) Backend() string { return "fake" }
@@ -290,11 +312,11 @@ func TestACopyThatCannotBeWrittenIsNotReadAnyMore(t *testing.T) {
 }
 
 func TestAFillThatFailsStopsTheServerUnlessFilesAreAllowed(t *testing.T) {
-	old, oldDir := giveUp, replicaDir
-	replicaDir = t.TempDir()
+	old := giveUp
 	var said string
 	giveUp = func(msg string) { said = msg }
-	t.Cleanup(func() { giveUp, replicaDir = old, oldDir })
+	t.Cleanup(func() { giveUp = old })
+	dir := t.TempDir()
 	t.Setenv("OPENREPL_REPLICA", "")
 	t.Setenv("OPENREPL_DB_FALLBACK", "")
 	forgetReplicas()
@@ -302,7 +324,7 @@ func TestAFillThatFailsStopsTheServerUnlessFilesAreAllowed(t *testing.T) {
 
 	remote := newFakeRemote(map[string]string{"a": "1"})
 	remote.failEach = errors.New("firestore: 429")
-	s, err := wrapReplica("/opt/gotty/blog.db", remote)
+	s, err := wrapReplica(filepath.Join(dir, "blog.db"), remote)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +338,7 @@ func TestAFillThatFailsStopsTheServerUnlessFilesAreAllowed(t *testing.T) {
 	// with files allowed it reads the remote database directly, as before there were replicas
 	said = ""
 	t.Setenv("OPENREPL_DB_FALLBACK", "files")
-	s, _ = wrapReplica("/opt/gotty/blog.db", remote)
+	s, _ = wrapReplica(filepath.Join(dir, "blog.db"), remote)
 	if said != "" || s != Store(remote) {
 		t.Errorf("fallback allowed: %q", said)
 	}
@@ -331,7 +353,7 @@ func TestTheReplicaCanBeSwitchedOff(t *testing.T) {
 	forgetReplicas()
 	t.Cleanup(forgetReplicas)
 	remote := newFakeRemote(nil)
-	s, err := wrapReplica("/opt/gotty/feedback.db", remote)
+	s, err := wrapReplica(filepath.Join(t.TempDir(), "feedback.db"), remote)
 	if err != nil || s != Store(remote) {
 		t.Fatalf("%v %v", s, err)
 	}
@@ -343,17 +365,15 @@ func TestTheReplicaCanBeSwitchedOff(t *testing.T) {
 	}
 }
 
-func TestACopyIsRebuiltAtEveryStart(t *testing.T) {
+func TestACopyIsRebuiltAtEveryStartAndTheOldOneIsKeptAside(t *testing.T) {
 	dir := t.TempDir()
-	oldDir := replicaDir
-	replicaDir = dir
-	t.Cleanup(func() { replicaDir = oldDir })
+	path := filepath.Join(dir, "blog.db")
 	t.Setenv("OPENREPL_REPLICA", "")
 	forgetReplicas()
 	t.Cleanup(forgetReplicas)
 
 	// an earlier run left a copy with a record the database no longer has
-	old, err := openLocalCopy(filepath.Join(dir, "blog.db"))
+	old, err := openUnqlite(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,16 +382,86 @@ func TestACopyIsRebuiltAtEveryStart(t *testing.T) {
 	old.Close()
 
 	remote := newFakeRemote(map[string]string{"fresh": "y"})
-	s, err := wrapReplica("/opt/gotty/blog.db", remote)
+	s, err := wrapReplica(path, remote)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
 	if fetched(t, s, "stale") != "<"+ErrNotFound.Error()+">" || fetched(t, s, "fresh") != "y" {
 		t.Errorf("stale %q fresh %q", fetched(t, s, "stale"), fetched(t, s, "fresh"))
 	}
 	if got := ReplicaStatus(); len(got) != 1 || got[0].Records != 1 || got[0].Mode != "full" {
 		t.Errorf("status: %+v", got)
+	}
+	s.Close()
+	// the earlier file is kept, whole, in "old"
+	kept, err := localRecords(filepath.Join(dir, replicaOldDir, "blog.db"))
+	if err != nil || kept != 1 {
+		t.Errorf("the earlier copy kept aside has %d records (%v), want 1", kept, err)
+	}
+	// the next start sets this run's copy aside too, and only one generation is kept
+	s2, err := wrapReplica(path, newFakeRemote(map[string]string{"third": "z"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	kept, _ = localRecords(filepath.Join(dir, replicaOldDir, "blog.db"))
+	if kept != 1 || fetched(t, s2, "third") != "z" {
+		t.Errorf("after a second start: %d records aside, third %q", kept, fetched(t, s2, "third"))
+	}
+	if entries, _ := os.ReadDir(filepath.Join(dir, replicaOldDir)); len(entries) > 2 { // the file and its journal
+		t.Errorf("more than one generation is kept: %d files", len(entries))
+	}
+}
+
+// A database file on the disk is only a copy of the remote database; it is copied back only when asked for.
+func TestALocalFileIsOnlyCopiedIntoAnEmptyRemoteDatabaseWhenAskedFor(t *testing.T) {
+	old := giveUp
+	var said string
+	giveUp = func(msg string) { said = msg }
+	t.Cleanup(func() { giveUp = old })
+	withRecords := func() string {
+		path := filepath.Join(t.TempDir(), "user_sessions.db")
+		db, err := openUnqlite(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.Store([]byte("SESSION_KEY"), []byte("secret"))
+		db.Store([]byte("u1"), []byte("profile"))
+		db.Commit()
+		db.Close()
+		return path
+	}
+	t.Setenv("OPENREPL_DB_IMPORT", "")
+
+	// the remote database has records: the file is not looked at
+	remote := newFakeRemote(map[string]string{"a": "1"})
+	if err := guardLocalFile(withRecords(), remote); err != nil || said != "" || len(remote.data) != 1 {
+		t.Errorf("a remote database with records: %v %q %v", err, said, remote.data)
+	}
+	// no file, or a file with no records: nothing to decide
+	empty := newFakeRemote(nil)
+	if err := guardLocalFile(filepath.Join(t.TempDir(), "none.db"), empty); err != nil || said != "" {
+		t.Errorf("no file: %v %q", err, said)
+	}
+	emptyFile := filepath.Join(t.TempDir(), "empty.db")
+	db, _ := openUnqlite(emptyFile)
+	db.Close()
+	if err := guardLocalFile(emptyFile, empty); err != nil || said != "" {
+		t.Errorf("a file without records: %v %q", err, said)
+	}
+	// an empty remote database and a file with records, and no request: the server stops, and nothing is copied
+	path := withRecords()
+	if err := guardLocalFile(path, empty); err == nil || said == "" {
+		t.Fatalf("not refused: %v %q", err, said)
+	}
+	if !strings.Contains(said, "OPENREPL_DB_IMPORT=files") || !strings.Contains(said, "file has 2") || len(empty.data) != 0 {
+		t.Errorf("message %q, remote %v", said, empty.data)
+	}
+	// with the request the records are copied
+	said = ""
+	t.Setenv("OPENREPL_DB_IMPORT", "files")
+	if err := guardLocalFile(path, empty); err != nil || said != "" || empty.data["SESSION_KEY"] != "secret" || len(empty.data) != 2 {
+		t.Errorf("with the request: %v %q %v", err, said, empty.data)
 	}
 }
 

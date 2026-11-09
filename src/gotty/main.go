@@ -32,6 +32,11 @@ func common_setup() {
 	restoreCtx, cancelRestore := context.WithTimeout(context.Background(), 2*time.Minute)
 	if r, err := backup.Default.RestoreIfEmpty(restoreCtx); err != nil {
 		log.Println("Error: restoring the last backup: ", err)
+		// The disk is empty and the databases are files, so a server that goes on comes up with no accounts, blog or
+		// settings. A server whose databases are remote loses only the audit log and the totals, and goes on.
+		if persist.Remote() == "" && !utils.DBFallbackToFiles() {
+			persist.Fatal("backup: the disk is empty and the last backup could not be restored (" + err.Error() + "). Not starting without the data. Fix the object store settings (OPENREPL_S3_*), or set " + utils.EnvDBFallback + "=files to start empty anyway.")
+		}
 	} else if r != nil {
 		log.Printf("backup: this server's files were restored from the backup of %s (%s): %v", r.CreatedAt.Format(time.RFC3339), r.Key, r.Files)
 	}

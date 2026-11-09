@@ -48,20 +48,24 @@ type Manifest struct {
 	Files       []FileInfo `json:"files"`
 }
 
-// Sources lists the names of the files in dir that a backup holds. With the databases in files (remote is
-// empty) that is every database, the settings, the audit log and the usage totals; when MongoDB or Firestore
-// holds the databases (and the settings), only the two files that are never there: the audit log and the
-// totals. What is not there is not listed.
+// smallFiles are the files that are never in MongoDB or Firestore: a backup of a server that keeps its databases
+// there still holds them, and a restore onto an empty disk puts them back.
+var smallFiles = []string{"admin-audit.jsonl", "admin-stats.json", "admin-usage.json"}
+
+// Sources lists the names of the files in dir that a backup holds: every database file, the audit log and the
+// usage totals, and the settings when they are in a file (remote is empty). With MongoDB or Firestore the
+// database files are the server's local copy of the remote data (persist/replica.go), backed up as a second
+// copy of it; they are not restored (RestoreFiles). What is not there is not listed.
 func Sources(dir, remote string) []string {
 	var names []string
+	matches, _ := filepath.Glob(filepath.Join(dir, "*.db"))
+	for _, m := range matches {
+		names = append(names, filepath.Base(m))
+	}
 	if remote == "" {
-		matches, _ := filepath.Glob(filepath.Join(dir, "*.db"))
-		for _, m := range matches {
-			names = append(names, filepath.Base(m))
-		}
 		names = append(names, "settings.json")
 	}
-	names = append(names, "admin-audit.jsonl", "admin-stats.json", "admin-usage.json")
+	names = append(names, smallFiles...)
 	var out []string
 	for _, n := range names {
 		if fi, err := os.Stat(filepath.Join(dir, n)); err == nil && fi.Mode().IsRegular() {
@@ -69,6 +73,26 @@ func Sources(dir, remote string) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// RestoreFiles lists the files of Sources that a restore puts back onto an empty disk, and that decide
+// whether the disk is empty. With the databases in files that is all of them. With MongoDB or Firestore only
+// the small files: the remote database wins, and a database file on the disk (a copy of it) is not a sign
+// that the disk was not wiped.
+func RestoreFiles(dir, remote string) []string {
+	all := Sources(dir, remote)
+	if remote == "" {
+		return all
+	}
+	var out []string
+	for _, n := range all {
+		for _, s := range smallFiles {
+			if n == s {
+				out = append(out, n)
+			}
+		}
+	}
 	return out
 }
 

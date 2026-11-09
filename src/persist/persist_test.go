@@ -134,10 +134,21 @@ func TestMongoStoreAndCopyOnce(t *testing.T) {
 	local.Close()
 	Configure(true)
 
+	// without the request to move from files the server stops: the records are only on the disk
+	var said string
+	oldGive := giveUp
+	giveUp = func(msg string) { said = msg }
+	t.Cleanup(func() { giveUp = oldGive })
+	if _, err := Open(path); err == nil || said == "" {
+		t.Fatalf("an empty collection and a file with records were not refused: %v %q", err, said)
+	}
+	t.Setenv("OPENREPL_DB_IMPORT", "files")
+
 	s, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("OPENREPL_DB_IMPORT", "")
 	if s.Backend() != "mongodb" {
 		t.Fatalf("backend %q", s.Backend())
 	}
@@ -147,7 +158,7 @@ func TestMongoStoreAndCopyOnce(t *testing.T) {
 	s.Store([]byte("user1"), []byte(`{"name":"changed"}`))
 	s.Delete([]byte("SESSION_KEY"))
 
-	// opening again does not copy again: MongoDB wins
+	// opening again does not copy again: MongoDB wins, and the file is only a copy of it
 	s2, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -300,7 +311,6 @@ func TestMongoReplicaReadsAreLocalAndWritesGoThrough(t *testing.T) {
 	}
 	t.Setenv("OPENREPL_MONGODB_URI", uri)
 	t.Setenv("OPENREPL_MONGODB_DB", fmt.Sprintf("openrepl_test_%d", time.Now().UnixNano()))
-	useReplicaDir(t)
 	ResetRemote()
 	Configure(true)
 	t.Cleanup(func() {

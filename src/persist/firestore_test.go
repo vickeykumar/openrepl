@@ -39,18 +39,9 @@ func useEmulator(t *testing.T) {
 	t.Setenv("OPENREPL_FIRESTORE_PROJECT", fmt.Sprintf("proj-%d", time.Now().UnixNano()))
 	t.Setenv("OPENREPL_MONGODB_URI", "")
 	t.Setenv("OPENREPL_FIRESTORE_CREDENTIALS", "")
-	useReplicaDir(t)
 	ResetRemote()
 	Configure(true)
 	t.Cleanup(func() { Configure(false); ResetRemote() })
-}
-
-// useReplicaDir keeps the local copies of a test in a folder of its own, not in /opt/gotty.
-func useReplicaDir(t *testing.T) {
-	t.Helper()
-	old := replicaDir
-	replicaDir = t.TempDir()
-	t.Cleanup(func() { replicaDir = old })
 }
 
 func TestFirestoreStore(t *testing.T) {
@@ -166,10 +157,21 @@ func TestFirestoreCopyOnce(t *testing.T) {
 	local.Close()
 	Configure(true)
 
+	// without the request to move from files the server stops: the records are only on the disk
+	var said string
+	oldGive := giveUp
+	giveUp = func(msg string) { said = msg }
+	t.Cleanup(func() { giveUp = oldGive })
+	if _, err := Open(path); err == nil || said == "" {
+		t.Fatalf("an empty collection and a file with records were not refused: %v %q", err, said)
+	}
+	t.Setenv("OPENREPL_DB_IMPORT", "files")
+
 	s, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("OPENREPL_DB_IMPORT", "")
 	if v, err := s.Fetch([]byte("SESSION_KEY")); err != nil || string(v) != "old-secret" {
 		t.Fatalf("the copy: %q %v", v, err)
 	}
@@ -206,7 +208,6 @@ func startInit(t *testing.T, mongoURI, firestoreHost string) {
 	t.Setenv("FIRESTORE_EMULATOR_HOST", firestoreHost)
 	t.Setenv("OPENREPL_FIRESTORE_CREDENTIALS", "")
 	t.Setenv("OPENREPL_FIRESTORE_PROJECT", "p")
-	useReplicaDir(t)
 	fastInit(t)
 	ResetRemote()
 	Configure(true)

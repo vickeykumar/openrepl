@@ -638,9 +638,10 @@ The server-side settings come from environment variables, and gotty can load the
 
 | Variable | Meaning | Older file key |
 |---|---|---|
-| `OPENREPL_REPLICA` | `off` makes a server whose databases are in MongoDB or Firestore read them directly, a read of the remote database for every record listed (and Firestore's free allowance of 50,000 reads a day can run out). By default the server copies the databases to a local file at start and reads from it; writes go to the remote database first. For one server only. | (on) |
+| `OPENREPL_DB_IMPORT` | `files` copies the local database files into a MongoDB or Firestore collection that is empty, once: for the first start after a move from files to a remote database. Without it a server never copies files into the remote database; an empty collection with records in the file stops the server. | (empty) |
+| `OPENREPL_REPLICA` | `off` makes a server whose databases are in MongoDB or Firestore read them directly, a read of the remote database for every record listed (and Firestore's free allowance of 50,000 reads a day can run out). By default the server rebuilds the database files in `/opt/gotty` from the remote database at start (the old ones go to `/opt/gotty/old/`) and reads from them; writes go to the remote database first, and S3 backs the files up as a second copy. For one server only. | (on) |
 | `OPENREPL_REPLICA_LAZY` | The databases not copied at start but read on demand, comma separated (`none` for no one). | `snippets` |
-| `OPENREPL_DB_FALLBACK` | `files` lets a server whose MongoDB or Firestore is configured but does not answer start with local files. Without it the server keeps trying for about three minutes and exits. | (empty) |
+| `OPENREPL_DB_FALLBACK` | `files` lets a server whose MongoDB or Firestore is configured but does not answer start with local files. Without it the server keeps trying for about three minutes and exits; it also exits when the disk is empty, the databases are files and the S3 restore fails. | (empty) |
 | `OPENREPL_SESSION_DAYS` | How long a sign-in lasts, 1 to 90 days. Anything else uses the default. Signing a user out, or blocking them, from the dashboard still ends it at once. | 7 |
 | `OPENREPL_ADMIN_EMAILS` | Owner accounts, comma-separated. Owners are admins and the only ones who can add or remove other admins in the dashboard. With none set, nobody is an admin. | `user.email` |
 | `OPENREPL_OPENAI_API_KEY` | The OpenAI key, as it is (not base64). | `user.OpenaiAPIKey` (base64) |

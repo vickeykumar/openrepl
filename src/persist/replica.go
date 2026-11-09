@@ -1,6 +1,7 @@
 package persist
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,28 +16,87 @@ import (
 //
 // Firestore bills a read for every record a scan returns, and the dashboard and the pages read lists
 // all day, so a server that read its databases straight from Firestore could use up the free daily
-// allowance (and did, on 9 Nov 2026). With a replica the server fills a local UnQLite file from the
-// remote database when it starts and then answers every read from that file; only a write goes to the
-// remote database, and the remote database stays the one that is true:
+// allowance (and did, on 9 Nov 2026). With a local copy the server fills the database file
+// (/opt/gotty/<name>.db) from the remote database when it starts and then answers every read from that
+// file; only a write goes to the remote database, and the remote database stays the one that is true:
 //
-//   - a write goes to the remote database first and to the local file after it, so the local copy is
-//     never ahead; if the remote database refuses, nothing is written locally and the caller gets the error;
-//   - the file is rebuilt at every start (it is only a copy), and a server that cannot fill it does not
-//     start (giveUp) instead of coming up with an empty database;
+//   - the file that was there is only an earlier copy: it is moved to /opt/gotty/old/ (one generation is
+//     kept) and a new one is filled, so a stale file can never be taken for the data;
+//   - a write goes to the remote database first and to the local file after it, so the copy is never
+//     ahead; if the remote database refuses, nothing is written locally and the caller gets the error;
+//   - a server that cannot fill the copy does not start (giveUp) instead of coming up with an empty
+//     database;
 //   - a collection that may be large (the shared snippets) is not filled at start but kept on demand: a
 //     record is read from the remote database the first time it is asked for and stays in the file.
 //
-// One server only. Another server's writes are not seen until this one restarts (a second stage would
-// follow the remote database's changes; see LLD 05).
-
-// replicaDir holds the local copies, apart from the files of the databases themselves (backups collect
-// *.db in the data directory, and a copy is rebuilt anyway).
-var replicaDir = utils.GOTTY_PATH + "/replica"
+// A file is copied into a remote collection only when that collection is empty and the move from files
+// is asked for (OPENREPL_DB_IMPORT=files); with local records and an empty collection and no such
+// request the server stops (guardLocalFile). One server only: another server's writes are not seen until
+// this one restarts (a second stage would follow the remote database's changes; see LLD 05).
 
 const (
 	replicaMissTTL  = 5 * time.Minute // how long a key the remote database did not have is not asked for again
 	replicaMissKeep = 10000           // how many such keys are remembered
+	replicaOldDir   = "old"           // where the files of an earlier run are kept, below the data directory
 )
+
+// remoteStore is a remote database that can say whether it is empty and take a local file's records.
+type remoteStore interface {
+	Store
+	isEmpty() (bool, error)
+	importFile(path string) (int, error)
+}
+
+// localRecords counts the records of the database file at path (0 when there is no file).
+func localRecords(path string) (int, error) {
+	if _, err := os.Stat(path); err != nil {
+		return 0, nil
+	}
+	db, err := openUnqlite(path)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	n := 0
+	err = db.Each(func(k, v []byte) bool { n++; return true })
+	return n, err
+}
+
+// guardLocalFile decides what a database file that is on the disk means when the database is remote.
+// The file is a copy of the remote database that was made by an earlier run, so it is rebuilt and never
+// copied back, with one exception: the remote collection is empty, the file has records, and the move
+// from files is asked for (OPENREPL_DB_IMPORT=files): then the records are copied into the collection once.
+// Empty collection, records on the disk and no such request: the server stops, since either this is the
+// move from files (the files are the only copy of the data and the request was forgotten) or the remote
+// data is gone (and the files are a stale copy), and neither is for the server to decide.
+func guardLocalFile(path string, r remoteStore) error {
+	empty, err := r.isEmpty()
+	if err != nil {
+		return err
+	}
+	if !empty {
+		return nil
+	}
+	n, err := localRecords(path)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+	if utils.DBImportFromFiles() {
+		copied, err := r.importFile(path)
+		if err != nil {
+			return err
+		}
+		logf("persist: copied %d records from %s into the remote database (OPENREPL_DB_IMPORT=files); it holds them now, and the file is rebuilt from it", copied, path)
+		return nil
+	}
+	msg := fmt.Sprintf("persist: the remote database for %s has no records but the file has %d. Not starting: if this is the move from files to MongoDB or Firestore, set %s=files for this start (the records are copied once); if the remote data was lost, the file is a copy from an earlier run, and %s=files would put it back, so look at it first (a copy of it is kept in %s/ after a start).",
+		filepath.Base(path), n, utils.EnvDBImport, utils.EnvDBImport, replicaOldDir)
+	giveUp(msg)
+	return errors.New(msg)
+}
 
 // ReplicaInfo says how one database is kept, for the Health page.
 type ReplicaInfo struct {
@@ -99,7 +159,7 @@ func wrapReplica(path string, remote Store) (Store, error) {
 		replicaMu.Unlock()
 		return remote, nil
 	}
-	local, err := openLocalCopy(filepath.Join(replicaDir, base))
+	local, err := openLocalCopy(path)
 	if err != nil {
 		return replicaFailed(name, remote, fmt.Errorf("the local copy of %s cannot be opened: %v", name, err))
 	}
@@ -131,17 +191,33 @@ func replicaFailed(name string, remote Store, err error) (Store, error) {
 	return remote, nil
 }
 
-// openLocalCopy opens a new, empty file: an earlier copy is only what the database held then.
-func openLocalCopy(file string) (Store, error) {
-	if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+// openLocalCopy opens a new, empty database file at path. The file that was there, a copy from an earlier run,
+// is moved to the folder "old" next to it, replacing the one kept from the run before (one generation is kept).
+func openLocalCopy(path string) (Store, error) {
+	if err := setAside(path); err != nil {
 		return nil, err
 	}
-	for _, f := range []string{file, file + "_unqlite_journal"} {
-		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
-			return nil, err
+	return openUnqlite(path)
+}
+
+func setAside(path string) error {
+	for _, f := range []string{path, path + "_unqlite_journal"} {
+		if _, err := os.Stat(f); err != nil {
+			continue
+		}
+		old := filepath.Join(filepath.Dir(path), replicaOldDir)
+		if err := os.MkdirAll(old, 0700); err != nil {
+			return err
+		}
+		dest := filepath.Join(old, filepath.Base(f))
+		if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.Rename(f, dest); err != nil {
+			return err
 		}
 	}
-	return openUnqlite(file)
+	return nil
 }
 
 func newReplica(name string, remote, local Store, lazy bool) *replicaStore {

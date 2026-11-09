@@ -243,6 +243,10 @@ func FirestoreClient() *Firestore {
 
 func logf(format string, args ...interface{}) { log.Printf(format, args...) }
 
+// Fatal ends the process with the reason, for a start that must not go on (a database or a backup that
+// cannot be read: the site would come up empty). A variable underneath, so that tests can see it.
+func Fatal(msg string) { giveUp(msg) }
+
 // giveUp ends the process when the configured database cannot be used (a variable so that tests can see it).
 var giveUp = func(msg string) {
 	logf("%s", msg)
@@ -263,10 +267,11 @@ func ResetRemote() {
 }
 
 // Open opens the database that lives in the file path when unqlite is used.
-// With MongoDB its collection is named after the file ("user_sessions.db"
-// becomes "kv_user_sessions"), in the database OPENREPL_MONGODB_DB. The first
-// time a collection is empty and the file exists, the file's records are
-// copied into it once; after that MongoDB wins and the file is not read again.
+// With MongoDB or Firestore its collection is named after the file
+// ("user_sessions.db" becomes "kv_user_sessions"), and the file is a local
+// copy of it that is rebuilt at every start (replica.go). The records of a
+// file are copied into an empty collection only when that is asked for
+// (OPENREPL_DB_IMPORT=files, guardLocalFile).
 func Open(path string) (Store, error) {
 	s, err := open(path)
 	if err != nil {
@@ -308,7 +313,7 @@ func open(path string) (Store, error) {
 	switch Init() {
 	case backendFirestore:
 		s := &firestoreStore{f: FirestoreClient(), coll: "kv_" + strings.TrimSuffix(filepath.Base(path), ".db")}
-		if err := s.copyOnce(path); err != nil {
+		if err := guardLocalFile(path, s); err != nil {
 			return nil, err
 		}
 		return wrapReplica(path, s)
@@ -321,7 +326,7 @@ func open(path string) (Store, error) {
 		return nil, err
 	}
 	m := &mongoStore{coll: coll}
-	if err := m.copyOnce(path); err != nil {
+	if err := guardLocalFile(path, m); err != nil {
 		return nil, err
 	}
 	return wrapReplica(path, m)
@@ -511,24 +516,19 @@ func (m *mongoStore) Each(fn func(key, value []byte) bool) error {
 	return cur.Err()
 }
 
-// copyOnce fills an empty collection from the unqlite file at path, if there
-// is one. The file is left as it is.
-func (m *mongoStore) copyOnce(path string) error {
+// isEmpty says whether the collection has no record.
+func (m *mongoStore) isEmpty() (bool, error) {
 	c, cancel := ctx()
 	defer cancel()
 	n, err := m.coll.CountDocuments(c, bson.M{}, options.Count().SetLimit(1))
-	if err != nil {
-		return err
-	}
-	if n > 0 {
-		return nil
-	}
-	if _, err := os.Stat(path); err != nil {
-		return nil // nothing to bring along
-	}
+	return n == 0, err
+}
+
+// importFile copies the records of the unqlite file at path into the collection, and says how many.
+func (m *mongoStore) importFile(path string) (int, error) {
 	local, err := openUnqlite(path)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer local.Close()
 	var docs []interface{}
@@ -537,19 +537,18 @@ func (m *mongoStore) copyOnce(path string) error {
 		docs = append(docs, record{ID: id(k), Value: append([]byte(nil), v...), Time: now})
 		return true
 	}); err != nil {
-		return err
+		return 0, err
 	}
 	if len(docs) == 0 {
-		return nil
+		return 0, nil
 	}
 	c2, cancel2 := context.WithTimeout(context.Background(), 5*callTimeout)
 	defer cancel2()
 	// unordered, and a key that another instance copied first is not an error
 	if _, err := m.coll.InsertMany(c2, docs, options.InsertMany().SetOrdered(false)); err != nil && !allDuplicates(err) {
-		return err
+		return 0, err
 	}
-	log.Printf("persist: copied %d records from %s into MongoDB (done once; MongoDB now holds them)", len(docs), path)
-	return nil
+	return len(docs), nil
 }
 
 func allDuplicates(err error) bool {

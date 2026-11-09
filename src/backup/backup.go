@@ -347,7 +347,7 @@ func (b *Backuper) Final(timeout time.Duration) {
 
 // isEmpty reports whether the folder has none of the files a backup holds: a fresh disk.
 func (b *Backuper) isEmpty() bool {
-	return len(Sources(b.Dir, b.Remote())) == 0
+	return len(RestoreFiles(b.Dir, b.Remote())) == 0
 }
 
 // RestoreIfEmpty puts the newest backup back when this server's folder has none of the files a backup holds.
@@ -382,7 +382,7 @@ func (b *Backuper) RestoreIfEmpty(ctx context.Context) (*Restored, error) {
 	var restored []string
 	remote := b.Remote()
 	for _, f := range m.Files {
-		if remote != "" && !(f.Name == "admin-audit.jsonl" || f.Name == "admin-stats.json" || f.Name == "admin-usage.json") {
+		if remote != "" && !isSmallFile(f.Name) {
 			continue // the databases are in MongoDB or Firestore, which wins
 		}
 		dest := filepath.Join(b.Dir, f.Name)
@@ -462,4 +462,13 @@ func (b *Backuper) newestValid(ctx context.Context, c *objstore.Client) ([]byte,
 		return nil, Latest{}, errors.New("backup: none of the newest archives could be used")
 	}
 	return nil, Latest{}, nil
+}
+
+func isSmallFile(name string) bool {
+	for _, n := range smallFiles {
+		if n == name {
+			return true
+		}
+	}
+	return false
 }
