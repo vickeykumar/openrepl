@@ -61,7 +61,7 @@ func Sources(dir, remote string) []string {
 		}
 		names = append(names, "settings.json")
 	}
-	names = append(names, "admin-audit.jsonl", "admin-stats.json")
+	names = append(names, "admin-audit.jsonl", "admin-stats.json", "admin-usage.json")
 	var out []string
 	for _, n := range names {
 		if fi, err := os.Stat(filepath.Join(dir, n)); err == nil && fi.Mode().IsRegular() {

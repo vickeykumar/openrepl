@@ -584,3 +584,14 @@ func TestFirebaseSnippetCannotCarryAnythingIntoThePage(t *testing.T) {
 		}
 	}
 }
+
+// How long a sign-in lasts: a week unless the environment says otherwise, within 1 to 90 days.
+func TestSessionLifetimeIsAWeekUnlessTheEnvironmentSaysOtherwise(t *testing.T) {
+	const day = int64(24 * 3600 * 1000)
+	for value, want := range map[string]int64{"": 7 * day, "30": 30 * day, " 14 ": 14 * day, "1": day, "90": 90 * day, "0": 7 * day, "91": 7 * day, "-3": 7 * day, "a week": 7 * day} {
+		t.Setenv(EnvSessionDays, value)
+		if got := SessionLifetimeMillis(); got != want {
+			t.Errorf("OPENREPL_SESSION_DAYS=%q: %d days, want %d", value, got/day, want/day)
+		}
+	}
+}

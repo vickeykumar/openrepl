@@ -62,7 +62,9 @@ func (session *UserSession) Update(user *User) {
     session.SessionID = user.StsTokenManager.AccessToken
     // setting 60 sec/60000ms from now for testing ,session.User.StsTokenManager.ExpirationTime
     // session.ExpirationTime = int64(60000)+utils.GetUnixMilli()
-    session.ExpirationTime = user.StsTokenManager.ExpirationTime
+    // the sign-in lasts as long as the server says (OPENREPL_SESSION_DAYS), not as long as the
+    // Firebase token, which is good for an hour and is not renewed here
+    session.ExpirationTime = utils.GetUnixMilli() + utils.SessionLifetimeMillis()
     session.LoggedIn = true
 }
 

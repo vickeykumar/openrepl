@@ -236,3 +236,17 @@ func TestAnAccountFromBeforeHasNoRecordedSignIn(t *testing.T) {
 		t.Errorf("an account that never had a time was given one: %+v", a)
 	}
 }
+
+// A sign-in lasts as long as the server says, not as long as the Firebase token (an hour).
+func TestASessionLastsAsLongAsTheServerSaysNotAsLongAsTheFirebaseToken(t *testing.T) {
+	t.Setenv("OPENREPL_SESSION_DAYS", "7")
+	u := &User{Uid: "u1"}
+	u.StsTokenManager.AccessToken = "token-a"
+	u.StsTokenManager.ExpirationTime = utils.GetUnixMilli() + 3600*1000 // an hour from now
+	var session UserSession
+	session.Update(u)
+	left := session.ExpirationTime - utils.GetUnixMilli()
+	if left < 6*24*3600*1000 || left > 7*24*3600*1000+1000 {
+		t.Errorf("the session has %d ms left, want about 7 days", left)
+	}
+}

@@ -23,7 +23,7 @@ A client with the standard library only (like `persist/firestore.go`): AWS Signa
 
 ## 4. Backups (`backup`)
 
-- **What:** every `*.db` file, `settings.json`, `admin-audit.jsonl` and `admin-stats.json` of `/opt/gotty`, as one gzipped tar with a manifest (sizes and SHA-256). When MongoDB or Firestore holds the databases (`persist.Remote()`), only the audit log and the totals: the rest is not on disk.
+- **What:** every `*.db` file, `settings.json`, `admin-audit.jsonl`, `admin-stats.json` and `admin-usage.json` of `/opt/gotty`, as one gzipped tar with a manifest (sizes and SHA-256). When MongoDB or Firestore holds the databases (`persist.Remote()`), only the audit log and the totals: the rest is not on disk.
 - **A database is copied safely:** each file is copied to a temporary folder, the original must not have changed (size and modification time) while it was copied, the copy must begin as an unqlite file does, be a whole number of pages and be readable record by record; if not, the run tries again (three times, a second apart) and fails with "copied in the middle of a write". unqlite opens a file that is not a database without a word, so opening alone proves nothing.
 - **When:** a recurring job (`utils.Jobs`, "Backup to object storage") every 15 minutes, the first one two minutes after the start, only when the fingerprint of the files (names, sizes, times) changed since the last upload; and once more at a clean stop, after the databases are closed.
 - **Layout:** `backups/<name>/<UTC time>.tar.gz` (the SHA-256 in its metadata) and `backups/<name>/latest.json`, written last: a backup that dies on the way is never what latest names.

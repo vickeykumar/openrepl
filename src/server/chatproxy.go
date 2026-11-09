@@ -562,6 +562,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         if used, ok := extractUsage(tap.buf.Bytes()); ok {
             key, visit := whoPays(req)
             tokenTotals.add(key, visit, model.ID, used)
+            siteUsage.noteGenie(whoOf(req))
             meters.Add(meters.ChatTokens, used.In+used.Out)
         }
     }

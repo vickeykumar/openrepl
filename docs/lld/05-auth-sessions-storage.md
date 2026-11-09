@@ -25,7 +25,7 @@ sequenceDiagram
             B->>S: POST /login  body = authResult JSON
             S->>S: session.Update(user): uid, sessionID = accessToken, expirationTime
             S->>DB: UpdateAndStoreSessionData(uid, sessionID, session)
-            S-->>B: Set-Cookie user-session (MaxAge = token expiry)
+            S-->>B: Set-Cookie user-session (MaxAge = session lifetime)
             B->>B: location.reload()
         end
     end
@@ -34,7 +34,7 @@ sequenceDiagram
 
 - A user can hold several sessions (browsers or devices), stored in `UserProfile.SessionMap[sessionID]`.
 - `IsSessionExpired(uid, sessionID)` treats a missing or expired entry as logged out, and starts `PurgeExpiredSessionData` in the background.
-- The session lifetime follows the Firebase ID token expiry (`stsTokenManager.expirationTime`), which is usually about 1 hour. There is no server-side refresh. The browser signs in again when the session ends.
+- The session lasts `OPENREPL_SESSION_DAYS` days (1 to 90, 7 by default: `utils.SessionLifetimeMillis`, set in `UserSession.Update`). It no longer follows the Firebase ID token (`stsTokenManager.expirationTime`), which is good for about 1 hour and is not renewed on the server; that is why people used to be signed out after an hour. The cookie's `MaxAge` is the time left. The Genie request balance given at sign-in is capped at an hour's worth (`DEADLINE_MINUTES`), so a longer session does not start with more requests. Signing a user out or blocking them in the dashboard ends the session at once; a session already issued keeps the lifetime it was given.
 - `POST /login` does not verify the Firebase ID token: it trusts the `uid` in the body (launch blocker B2 in the UI tracker). Everything keyed by `uid` inherits that gap: the workspace, the admin check (LLD 01) and practice progress (section 4).
 
 ## 2. The `user-session` cookie
@@ -104,6 +104,7 @@ All server-side stores are key-value databases behind one small interface, `pers
 | `.gitconfig` | text (read-only at runtime), the fallback for the `OPENREPL_*` environment variables | admin email, OpenAI key, allowed host | LLD 01, 07 |
 | `settings.json` (or MongoDB when `OPENREPL_MONGODB_URI` is set, LLD 13 section 3) | JSON (`server/settings.go`), read once and cached, written atomically (tmp file + rename) | `SiteSettings`: colour of the day, announcement, maintenance, switched-off languages, Genie switch and rates (LLD 13); a missing file means every switch is off | `/settings.js`, `/admin` |
 | `admin-audit.jsonl` | one JSON object per line, appended, mode 0600; the newest 500 are kept in memory | `{time, admin, action, detail, from}` for every change an admin made | `/admin/audit` (LLD 13) |
+| `admin-usage.json` | JSON, rewritten at most every 30 seconds, mode 0600 | time on site (LLD 13 section 6): per account the active seconds, visits, languages and the last 90 days, and per day the visitors, seconds, devices, countries, sources and guest journey; 120 days of days; no code, no address | `/admin/usage`, `/admin/users` (LLD 13) |
 | `admin-stats.json` | JSON, rewritten at most every 30 seconds, mode 0600 | per day: visitors, terminals by language, and for today only the keyed hashes of the visitors seen; 60 days | `/admin/stats` (LLD 13) |
 
 Every write calls `Commit()` right away. Listing uses UnQLite cursors (`FetchFeedbackDataMap`, `FetchBlogDataMap`).
