@@ -40,11 +40,17 @@ type feedbackRow struct {
 	Spam    string `json:"spam,omitempty"` // why it looks like spam (feedback_spam.go), or empty
 }
 
-func feedbackRows() []feedbackRow {
+func feedbackRows() []feedbackRow { return feedbackRowsAt(false) }
+
+// feedbackRowsAt is the list of messages; fresh asks for a new scan (Refresh).
+func feedbackRowsAt(fresh bool) []feedbackRow {
 	if feedback_db_handle == nil {
 		return []feedbackRow{}
 	}
 	m := FetchFeedbackDataMap()
+	if fresh {
+		m = fetchFeedbackDataMapFresh()
+	}
 	keys := make([]int64, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -80,7 +86,7 @@ func (server *Server) handleAdminFeedback(w http.ResponseWriter, r *http.Request
 	parts := server.adminParts(r)
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
-		rows := feedbackRows()
+		rows := feedbackRowsAt(wantFresh(r.URL.Query()))
 		if r.URL.Query().Get("format") == "csv" {
 			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 			w.Header().Set("Content-Disposition", `attachment; filename="openrepl-feedback.csv"`)
@@ -160,7 +166,9 @@ func setFeedbackRead(id string, read bool) error {
 	if err := feedback_db_handle.Store([]byte(id), data); err != nil {
 		return err
 	}
-	return feedback_db_handle.Commit()
+	err = feedback_db_handle.Commit()
+	feedbackScan.InvalidateNow()
+	return err
 }
 
 // ---- shared code ---------------------------------------------------------------
@@ -184,8 +192,13 @@ func preview(code string) string {
 	return string([]rune(code)[:160]) + "…"
 }
 
-// listSnippets returns the newest shared snippets.
-func listSnippets() ([]snippetRow, error) {
+// listSnippets returns the newest shared snippets, as of the last scan (scancaches.go).
+func listSnippets(fresh bool) ([]snippetRow, error) {
+	rows, err := snippetScan.GetFor(snippet_db_handle, fresh, scanSnippets)
+	return append([]snippetRow{}, rows...), err
+}
+
+func scanSnippets() ([]snippetRow, error) {
 	snippetDBMu.Lock()
 	defer snippetDBMu.Unlock()
 	rows := []snippetRow{}
@@ -234,14 +247,16 @@ func deleteSnippet(id string) error {
 	if err := snippet_db_handle.Delete([]byte(id)); err != nil {
 		return err
 	}
-	return snippet_db_handle.Commit()
+	err := snippet_db_handle.Commit()
+	snippetScan.InvalidateNow()
+	return err
 }
 
 func (server *Server) handleAdminSnippets(w http.ResponseWriter, r *http.Request) {
 	parts := server.adminParts(r)
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
-		rows, err := listSnippets()
+		rows, err := listSnippets(wantFresh(r.URL.Query()))
 		if err == errSnippetsOff {
 			adminJSON(w, http.StatusOK, map[string]interface{}{"snippets": rows, "off": true})
 			return
@@ -279,7 +294,11 @@ func (server *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	parts := server.adminParts(r)
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
+		fresh := wantFresh(r.URL.Query())
 		accounts, err := user.ListAccounts()
+		if fresh {
+			accounts, err = user.ListAccountsFresh()
+		}
 		if err != nil {
 			adminError(w, http.StatusInternalServerError, "Could not read the accounts.")
 			return
@@ -297,6 +316,9 @@ func (server *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 			GenieAnswers int64            `json:"genieAnswers"`
 		}
 		genie := tokenTotals.every()
+		if fresh {
+			genie = tokenTotals.everyFresh()
+		}
 		usage := siteUsage.users30()
 		rows := make([]row, len(accounts))
 		for i, a := range accounts {

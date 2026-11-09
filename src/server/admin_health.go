@@ -81,6 +81,73 @@ func diskCheck(name, path string) healthCheck {
 }
 
 // health runs the checks. It never repeats a secret: it says whether one is set.
+// replicaCheck says how the databases of a server that keeps them in MongoDB or Firestore are read: from a
+// local copy filled at start (the reads cost nothing there), or, for one that is off or broken, straight
+// from the remote database, which on Firestore is a read for every record and what used the allowance up.
+func replicaCheck(infos []persist.ReplicaInfo) (status, detail string) {
+	if len(infos) == 0 {
+		return healthOK, "no database is open yet"
+	}
+	var full, onDemand, direct, broken []string
+	records := 0
+	for _, i := range infos {
+		switch {
+		case i.Broken && i.Mode != "off":
+			broken = append(broken, i.Name)
+		case i.Mode == "full":
+			full = append(full, fmt.Sprintf("%s %d", i.Name, i.Records))
+			records += i.Records
+		case i.Mode == "on demand":
+			onDemand = append(onDemand, i.Name)
+		default:
+			direct = append(direct, i.Name)
+		}
+	}
+	var parts []string
+	if len(full) > 0 {
+		parts = append(parts, fmt.Sprintf("copied at start and read locally: %s (%d records)", strings.Join(full, ", "), records))
+	}
+	if len(onDemand) > 0 {
+		parts = append(parts, "kept on demand: "+strings.Join(onDemand, ", "))
+	}
+	switch {
+	case len(broken) > 0:
+		parts = append(parts, "the local copy could not be written, so reads go to the remote database again: "+strings.Join(broken, ", "))
+		return healthWarn, strings.Join(parts, "; ")
+	case len(direct) > 0:
+		parts = append(parts, "read straight from the remote database (OPENREPL_REPLICA=off, or the copy could not be made): "+strings.Join(direct, ", ")+". Every list the dashboard opens is then a read for each record")
+		return healthWarn, strings.Join(parts, "; ")
+	}
+	return healthOK, strings.Join(parts, "; ")
+}
+
+// firestoreAllowanceCheck is how much of Firestore's free daily allowance (persist.FirestoreFree*) the
+// operations counted today use: a warning from 70 percent, a failure from 90, when the database starts
+// answering 429 and the site's data is out of reach until the allowance starts again (midnight Pacific time).
+func firestoreAllowanceCheck(reads, writes, deletes int64) (status, detail string) {
+	parts := []struct {
+		name        string
+		used, limit int64
+	}{{"reads", reads, persist.FirestoreFreeReads}, {"writes", writes, persist.FirestoreFreeWrites}, {"deletes", deletes, persist.FirestoreFreeDeletes}}
+	worst := 0.0
+	var texts []string
+	for _, p := range parts {
+		pct := float64(p.used) * 100 / float64(p.limit)
+		if pct > worst {
+			worst = pct
+		}
+		texts = append(texts, fmt.Sprintf("%s %s of %s", p.name, thousands(p.used), thousands(p.limit)))
+	}
+	detail = "today, as this server counts: " + strings.Join(texts, ", ")
+	switch {
+	case worst >= 90:
+		return healthFail, detail + ". Nearly out of the free allowance: past it Firestore answers 429 until midnight Pacific time. Keep the admin lists closed, or move to the paid plan."
+	case worst >= 70:
+		return healthWarn, detail + ". More than 70% of the free allowance is used."
+	}
+	return healthOK, detail
+}
+
 func (server *Server) health() (status string, checks []healthCheck) {
 	add := func(name, st, detail string) { checks = append(checks, healthCheck{name, st, detail}) }
 
@@ -115,6 +182,20 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	// databases somewhere else
 	if backend, notes := persist.Chosen(); notes != "" && (utils.MongoURI() != "" || utils.FirestoreConfigured()) && backend != persistWanted() {
 		add("Database choice", healthWarn, "the start-up test fell back to "+backend+": "+notes)
+	}
+
+	// Firestore's free daily allowance (reads, writes and deletes), as this server counts it: a database that
+	// runs out of it answers 429 and, at a restart, the server could not open it
+	if persist.Remote() == "firestore" {
+		st := persist.CurrentStats()
+		s, detail := firestoreAllowanceCheck(st.Reads, st.Writes, st.Deletes)
+		add("Firestore allowance", s, detail)
+	}
+
+	// the local copy of the remote database that every read is answered from (persist/replica.go)
+	if persist.Remote() != "" {
+		s, detail := replicaCheck(persist.ReplicaStatus())
+		add("Local replica", s, detail)
 	}
 
 	// the filesystem sandbox (Landlock) is independent of the cgroup sandbox below

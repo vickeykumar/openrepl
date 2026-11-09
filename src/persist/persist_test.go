@@ -175,6 +175,7 @@ func mustOpen(t *testing.T, path string) Store {
 }
 
 func TestMongoUnreachableFallsBackToFilesAfterThreeTries(t *testing.T) {
+	t.Setenv("OPENREPL_DB_FALLBACK", "files") // the old behaviour, asked for
 	t.Setenv("OPENREPL_MONGODB_URI", "mongodb://boss:hunter2@127.0.0.1:1/")
 	t.Setenv("OPENREPL_FIRESTORE_CREDENTIALS", "")
 	t.Setenv("FIRESTORE_EMULATOR_HOST", "")
@@ -208,9 +209,11 @@ func contains(s, sub string) bool {
 // fastInit makes the start-up test quick: short tries, almost no wait.
 func fastInit(t *testing.T) {
 	t.Helper()
-	oldT, oldP, oldD := initTries, probeTimeout, retryDelay
-	initTries, probeTimeout, retryDelay = 3, 300*time.Millisecond, time.Millisecond
-	t.Cleanup(func() { initTries, probeTimeout, retryDelay = oldT, oldP, oldD })
+	oldT, oldP, oldD, oldRT, oldRD := initTries, probeTimeout, retryDelay, requiredTries, requiredDelay
+	initTries, probeTimeout, retryDelay, requiredTries, requiredDelay = 3, 300*time.Millisecond, time.Millisecond, 2, time.Millisecond
+	t.Cleanup(func() {
+		initTries, probeTimeout, retryDelay, requiredTries, requiredDelay = oldT, oldP, oldD, oldRT, oldRD
+	})
 }
 
 // failingStore is a database that refuses every write.
@@ -245,4 +248,116 @@ func TestTheOperationsOnADatabaseAreCountedForTheDashboard(t *testing.T) {
 	if s.Backend() != "fake" || s.Close() != nil {
 		t.Error("the other calls pass through")
 	}
+}
+
+// A configured database that does not answer must not be replaced by empty files without being asked: the site
+// would come up with no accounts, blog or settings and look as if they had been lost.
+func TestAConfiguredDatabaseThatDoesNotAnswerStopsTheServerUnlessFilesAreAllowed(t *testing.T) {
+	t.Setenv("OPENREPL_DB_FALLBACK", "")
+	t.Setenv("OPENREPL_MONGODB_URI", "mongodb://boss:hunter2@127.0.0.1:1/")
+	t.Setenv("OPENREPL_FIRESTORE_CREDENTIALS", "")
+	t.Setenv("FIRESTORE_EMULATOR_HOST", "")
+	fastInit(t)
+	var said string
+	old := giveUp
+	giveUp = func(msg string) { said = msg }
+	t.Cleanup(func() { giveUp = old })
+	ResetRemote()
+	Configure(true)
+	defer func() { Configure(false); ResetRemote() }()
+	Init()
+	if said == "" {
+		t.Fatal("the server went on with empty files")
+	}
+	if !contains(said, "OPENREPL_DB_FALLBACK=files") || contains(said, "hunter2") || !contains(said, "did not answer after 2 tries") {
+		t.Errorf("message: %q", said)
+	}
+
+	// with nothing configured, files are simply what is used
+	said = ""
+	t.Setenv("OPENREPL_MONGODB_URI", "")
+	ResetRemote()
+	Configure(true)
+	if Init() != "unqlite" || said != "" {
+		t.Errorf("nothing configured: %q %q", Init(), said)
+	}
+
+	// a worker never goes remote, so it is never stopped for that
+	t.Setenv("OPENREPL_MONGODB_URI", "mongodb://127.0.0.1:1/")
+	ResetRemote()
+	Configure(false)
+	if Init() != "unqlite" || said != "" {
+		t.Errorf("a worker: %q", said)
+	}
+}
+
+// With a replica a server reads from its local copy: what another process writes to the database is not
+// seen until the next start, and what this server writes is in the database at once.
+func TestMongoReplicaReadsAreLocalAndWritesGoThrough(t *testing.T) {
+	uri := os.Getenv("OPENREPL_TEST_MONGODB_URI")
+	if uri == "" {
+		t.Skip("OPENREPL_TEST_MONGODB_URI is not set")
+	}
+	t.Setenv("OPENREPL_MONGODB_URI", uri)
+	t.Setenv("OPENREPL_MONGODB_DB", fmt.Sprintf("openrepl_test_%d", time.Now().UnixNano()))
+	useReplicaDir(t)
+	ResetRemote()
+	Configure(true)
+	t.Cleanup(func() {
+		mu.Lock()
+		if client != nil {
+			c, cancel := ctx()
+			client.Database(utils.MongoDBName()).Drop(c)
+			cancel()
+		}
+		mu.Unlock()
+		Configure(false)
+		ResetRemote()
+	})
+	path := filepath.Join(t.TempDir(), "things.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exercise(t, s) // a replica behaves as any other database
+	if infos := ReplicaStatus(); len(infos) != 1 || infos[0].Mode != "full" {
+		t.Fatalf("replica status: %+v", infos)
+	}
+	// another process writes the database directly
+	coll, err := collection(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := &mongoStore{coll: coll}
+	if err := other.Store([]byte("elsewhere"), []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Fetch([]byte("elsewhere")); err == nil {
+		t.Error("a read went to MongoDB: the copy should answer it")
+	}
+	// what this server wrote is in MongoDB
+	if v, err := other.Fetch([]byte("b")); err != nil || string(v) != "22" {
+		t.Errorf("a write did not reach MongoDB: %q %v", v, err)
+	}
+	// a restart fills the copy again and sees both
+	s.Close()
+	ResetRemote()
+	Configure(true)
+	again, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if v, err := again.Fetch([]byte("elsewhere")); err != nil || string(v) != "x" {
+		t.Errorf("after a restart: %q %v", v, err)
+	}
+}
+
+func TestTheReplicaBehavesLikeAnyOtherDatabase(t *testing.T) {
+	remote := newFakeRemote(nil)
+	r := newReplica("things", remote, localCopy(t), false)
+	if err := r.fill(); err != nil {
+		t.Fatal(err)
+	}
+	exercise(t, r)
 }

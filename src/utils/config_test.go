@@ -595,3 +595,12 @@ func TestSessionLifetimeIsAWeekUnlessTheEnvironmentSaysOtherwise(t *testing.T) {
 		}
 	}
 }
+
+func TestFilesInPlaceOfAConfiguredDatabaseNeedToBeAskedFor(t *testing.T) {
+	for value, want := range map[string]bool{"": false, "files": true, " Files ": true, "yes": false, "1": false} {
+		t.Setenv(EnvDBFallback, value)
+		if got := DBFallbackToFiles(); got != want {
+			t.Errorf("OPENREPL_DB_FALLBACK=%q: %v, want %v", value, got, want)
+		}
+	}
+}

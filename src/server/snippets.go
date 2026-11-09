@@ -49,6 +49,7 @@ type snippet struct {
 func InitSnippetDBHandle() {
 	var err error
 	snippet_db_handle, err = persist.Open(SNIPPET_DB)
+	snippetScan.Reset()
 	if err != nil {
 		log.Println("ERROR: Error while creating snippet DB handle : ", err.Error())
 		snippet_db_handle = nil // share-code links are off, the rest of the site works
@@ -171,7 +172,9 @@ func storeSnippet(s snippet) (string, error) {
 		if err := snippet_db_handle.Store([]byte(id), data); err != nil {
 			return "", err
 		}
-		return id, snippet_db_handle.Commit()
+		err = snippet_db_handle.Commit()
+		snippetScan.Invalidate()
+		return id, err
 	}
 	return "", errSnippetIDs
 }

@@ -30,7 +30,9 @@ import (
 
 var errSettingsUnavailable = errors.New("the settings store is not reachable right now; nothing was saved")
 
-var settingsPollInterval = 10 * time.Second
+// A minute: each check is a read of the stored settings, and a server that saves a change applies it at
+// once itself, so only another server waits for it.
+var settingsPollInterval = 60 * time.Second
 
 var (
 	// guarded by settingsMu (settings.go)

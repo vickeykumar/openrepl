@@ -361,6 +361,7 @@ func PurgeExpiredSessionData(Uid string) {
         return
     }
     err = session_db_handle.Commit()
+    InvalidateAccounts()
     if err != nil {
             log.Println("ERROR: purged commit for user: "+Uid+" from SESSION_DB: "+err.Error())
     }
@@ -403,5 +404,6 @@ func UpdateAndStoreSessionData(Uid, SessionID string, ss *UserSession, isdelete 
         return err
     }
     err = session_db_handle.Commit()
+    InvalidateAccounts()
     return err
 }

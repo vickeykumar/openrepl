@@ -30,6 +30,7 @@ type feedback struct {
 func InitFeedbackDBHandle() {
 	var err error
 	feedback_db_handle, err = persist.Open(FEEDBACK_DB)
+	feedbackScan.Reset()
 	if err != nil {
 		log.Println("ERROR: Error while creating feedback DB handle : ", err.Error())
 		os.Exit(3)
@@ -61,6 +62,7 @@ func StoreFeedbackData(fb *feedback) error {
 		return err
 	}
 	err = feedback_db_handle.Commit()
+	feedbackScan.Invalidate()
 	if err != nil {
 		log.Println("ERROR: Failed to commit the feedbackdata to disk, error: ", err.Error())
 	}
@@ -73,12 +75,29 @@ func deleteFeedbackData(key string) error {
 		return err
 	}
 	err = feedback_db_handle.Commit()
+	feedbackScan.InvalidateNow()
 	return err
 }
 
-func FetchFeedbackDataMap() (fblistmap map[int64]feedback) {
+// FetchFeedbackDataMap is every message, as of the last scan (scancaches.go).
+func FetchFeedbackDataMap() map[int64]feedback { return copyFeedback(feedbackScan.GetFor(feedback_db_handle, false, scanFeedback)) }
+
+// fetchFeedbackDataMapFresh is the same after a new scan, unless one was made a moment ago.
+func fetchFeedbackDataMapFresh() map[int64]feedback {
+	return copyFeedback(feedbackScan.GetFor(feedback_db_handle, true, scanFeedback))
+}
+
+func copyFeedback(in map[int64]feedback, err error) map[int64]feedback {
+	out := make(map[int64]feedback, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func scanFeedback() (fblistmap map[int64]feedback, err error) {
 	fblistmap = make(map[int64]feedback)
-	err := feedback_db_handle.Each(func(key, value []byte) bool {
+	err = feedback_db_handle.Each(func(key, value []byte) bool {
 		timestamp, err := strconv.ParseInt(string(key), 10, 64)
 		if err != nil {
 			log.Println("Failed parsing for key: ", string(key), err.Error())
@@ -95,7 +114,7 @@ func FetchFeedbackDataMap() (fblistmap map[int64]feedback) {
 	if err != nil {
 		log.Println("Error reading the feedback records: ", err.Error())
 	}
-	return
+	return fblistmap, err
 }
 
 func handleLoginSession(rw http.ResponseWriter, req *http.Request) {

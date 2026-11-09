@@ -74,6 +74,10 @@ var (
 	initTries    = 3
 	probeTimeout = 5 * time.Second
 	retryDelay   = time.Second
+	// when a configured database may not be replaced by files (the default), the server waits for it: this
+	// many tries, this long apart, three minutes in all
+	requiredTries = 12
+	requiredDelay = 15 * time.Second
 )
 
 // Configure says whether this process may keep its data remotely (in MongoDB or
@@ -134,13 +138,17 @@ func Init() string {
 		notes = append(notes, "this process keeps its databases in files")
 	default:
 		chosen = backendFiles
+		tries, delay := initTries, retryDelay
+		if !utils.DBFallbackToFiles() {
+			tries, delay = requiredTries, requiredDelay
+		}
 		if uri := utils.MongoURI(); uri != "" {
-			err := tryTimes("MongoDB", func() error { return connectMongo(uri) }, uri)
+			err := tryTimes("MongoDB", func() error { return connectMongo(uri) }, uri, tries, delay)
 			if err == nil {
 				chosen = backendMongo
 				break
 			}
-			notes = append(notes, fmt.Sprintf("MongoDB did not answer after %d tries (%v)", initTries, err))
+			notes = append(notes, fmt.Sprintf("MongoDB did not answer after %d tries (%v)", tries, err))
 		}
 		f, err := newFirestore()
 		switch {
@@ -154,16 +162,20 @@ func Init() string {
 			f.http.Timeout = probeTimeout
 			err := tryTimes("Firestore", func() error {
 				return f.List("kv__probe", 1, func(*Doc) bool { return false })
-			}, "")
+			}, "", tries, delay)
 			f.http.Timeout = 15 * time.Second
 			if err == nil {
 				chosen, fsClient = backendFirestore, f
 				break
 			}
-			notes = append(notes, fmt.Sprintf("Firestore of the project %s did not answer after %d tries (%v). Is Firestore enabled for the project, and may the service account use it?", f.Project(), initTries, err))
+			notes = append(notes, fmt.Sprintf("Firestore of the project %s did not answer after %d tries (%v). Is Firestore enabled for the project, and may the service account use it?", f.Project(), tries, err))
 		}
 	}
 	why = strings.Join(notes, "; ")
+	// A database was asked for and could not be used: do not start with empty files in its place.
+	if allowed && chosen == backendFiles && (utils.MongoURI() != "" || utils.FirestoreConfigured()) && !utils.DBFallbackToFiles() {
+		giveUp("persist: MongoDB or Firestore is configured but cannot be used (" + why + "). Not starting with empty local files, which would hide the site's data; the server exits so that a host can keep the last working version. Set " + utils.EnvDBFallback + "=files to start with files anyway.")
+	}
 	switch chosen {
 	case backendMongo:
 		logf("persist: the databases are stored in MongoDB, database %s", utils.MongoDBName())
@@ -180,18 +192,18 @@ func Init() string {
 
 // tryTimes runs probe up to initTries times, waiting retryDelay between tries,
 // and returns the last error (without secret as the URI).
-func tryTimes(what string, probe func() error, secret string) error {
+func tryTimes(what string, probe func() error, secret string, tries int, delay time.Duration) error {
 	var err error
-	for i := 1; i <= initTries; i++ {
+	for i := 1; i <= tries; i++ {
 		if err = probe(); err == nil {
 			return nil
 		}
 		if secret != "" {
 			err = redact(err, secret)
 		}
-		logf("persist: %s try %d of %d failed: %v", what, i, initTries, err)
-		if i < initTries {
-			time.Sleep(retryDelay)
+		logf("persist: %s try %d of %d failed: %v", what, i, tries, err)
+		if i < tries {
+			time.Sleep(delay)
 		}
 	}
 	return err
@@ -231,10 +243,17 @@ func FirestoreClient() *Firestore {
 
 func logf(format string, args ...interface{}) { log.Printf(format, args...) }
 
+// giveUp ends the process when the configured database cannot be used (a variable so that tests can see it).
+var giveUp = func(msg string) {
+	logf("%s", msg)
+	os.Exit(4)
+}
+
 // ResetRemote forgets the choice and the MongoDB connection, so that the next
 // Init looks again. For tests.
 func ResetRemote() {
 	forgetChoice()
+	forgetReplicas()
 	mu.Lock()
 	if client != nil {
 		client.Disconnect(context.Background())
@@ -292,7 +311,7 @@ func open(path string) (Store, error) {
 		if err := s.copyOnce(path); err != nil {
 			return nil, err
 		}
-		return s, nil
+		return wrapReplica(path, s)
 	case backendMongo:
 	default:
 		return openUnqlite(path)
@@ -305,7 +324,7 @@ func open(path string) (Store, error) {
 	if err := m.copyOnce(path); err != nil {
 		return nil, err
 	}
-	return m, nil
+	return wrapReplica(path, m)
 }
 
 // ---- unqlite -------------------------------------------------------------------
