@@ -244,3 +244,54 @@ func TestTheDatabaseCapacityIsChecked(t *testing.T) {
 		t.Errorf("not set: %v", err)
 	}
 }
+
+// The box of the database files: the disk with files, the local copy of the remote data with Firestore or
+// MongoDB, "not used" only when the copy is off.
+func TestTheDatabaseFilesBoxSaysWhenTheyAreTheLocalCopyOfTheRemoteDatabase(t *testing.T) {
+	disk := func(n archNode) string { return n.Status + "/" + n.Text }
+
+	files := localCopyNode("unqlite", nil, archOK, "62% disk free")
+	if disk(files) != "ok/62% disk free" || files.Title != "" {
+		t.Errorf("with files: %+v", files)
+	}
+
+	copies := []persist.ReplicaInfo{
+		{Name: "user_sessions", Mode: "full", Records: 1300, Took: 120 * time.Millisecond},
+		{Name: "blog", Mode: "full", Records: 12, Took: 4 * time.Millisecond},
+		{Name: "snippets", Mode: "on demand"},
+	}
+	n := localCopyNode("firestore", copies, archOK, "62% disk free")
+	if n.Status != archOK || n.Title != "Local copy of Firestore" || n.Sub != "/opt/gotty/*.db" ||
+		!strings.Contains(n.Text, "1,312 records, reads are local") || !strings.Contains(n.Text, "62% disk free") {
+		t.Errorf("a local copy: %+v", n)
+	}
+	rows := map[string]string{}
+	for _, r := range n.Rows {
+		rows[r.Label] = r.Value
+	}
+	if !strings.Contains(rows["user_sessions"], "1,300 records copied at start") || !strings.Contains(rows["snippets"], "on demand") || rows["Disk"] == "" {
+		t.Errorf("rows: %v", rows)
+	}
+	// a disk that is nearly full still shows as such
+	if low := localCopyNode("mongodb", copies, archWarn, "12% disk free"); low.Status != archWarn || low.Title != "Local copy of MongoDB" {
+		t.Errorf("a full disk: %+v", low)
+	}
+
+	// the copy is off, or none was made: the files are not used
+	off := localCopyNode("firestore", []persist.ReplicaInfo{{Name: "blog", Mode: "off"}}, archOK, "62% disk free")
+	if off.Status != archOff || !strings.HasPrefix(off.Text, "not used") || off.Title != "" || len(off.Rows) != 0 {
+		t.Errorf("copy off: %+v", off)
+	}
+	if none := localCopyNode("firestore", nil, archOK, "62% disk free"); none.Status != archOff || none.Text != "not used" {
+		t.Errorf("no database opened: %+v", none)
+	}
+	// a copy that could not be written, and one database read directly next to good ones
+	bad := localCopyNode("firestore", []persist.ReplicaInfo{{Name: "blog", Mode: "full", Broken: true}, {Name: "feedback", Mode: "full", Records: 3}}, archOK, "62% disk free")
+	if bad.Status != archWarn || !strings.Contains(bad.Text, "could not be written: blog") {
+		t.Errorf("a broken copy: %+v", bad)
+	}
+	mixed := localCopyNode("firestore", []persist.ReplicaInfo{{Name: "blog", Mode: "full", Records: 3}, {Name: "feedback", Mode: "off"}}, archOK, "62% disk free")
+	if mixed.Status != archWarn || !strings.Contains(mixed.Text, "read from Firestore: feedback") {
+		t.Errorf("one read directly: %+v", mixed)
+	}
+}

@@ -2095,13 +2095,14 @@
     MAP_NODES.forEach(function (n) {
       var text = h('span', { class: 'am-text', text: '–' });
       var word = h('span', { class: 'visually-hidden', text: '' });
+      var title = h('b', { text: n.t }), sub = n.s ? h('span', { class: 'am-sub', text: n.s }) : null;
       var el = h('button', { type: 'button', class: 'am-node' + (n.dashed ? ' dashed' : '') + (n.small ? ' small' : ''), 'data-id': n.id, 'data-group': n.g,
         hidden: n.id === 'workers', 'aria-pressed': 'false',
         vars: { left: n.x + 'px', top: n.y + 'px', width: n.w + 'px', height: n.h + 'px', '--c': n.c },
         onclick: function () { select(n.id); } },
-        h('b', { text: n.t }), n.s ? h('span', { class: 'am-sub', text: n.s }) : null,
+        title, sub,
         h('span', { class: 'am-val' }, h('i', { class: 'am-dot off' }), word, text));
-      nodeEls[n.id] = { el: el, text: text, word: word, dot: el.querySelector('.am-dot'), def: n };
+      nodeEls[n.id] = { el: el, text: text, word: word, title: title, sub: sub, dot: el.querySelector('.am-dot'), def: n };
       stage.appendChild(el);
     });
 
@@ -2133,6 +2134,9 @@
         if (!ne) return;
         seen[n.id] = true;
         ne.el.hidden = false;
+        // a box that is something else for now (the database files, when Firestore is the database) says so
+        ne.title.textContent = n.title || ne.def.t;
+        if (ne.sub) ne.sub.textContent = n.sub || ne.def.s;
         if (ne.text.textContent !== n.text) ne.text.textContent = n.text;
         ne.dot.className = 'am-dot ' + n.status;
         ne.word.textContent = STATUS_WORD[n.status] + ': ';
@@ -2158,7 +2162,7 @@
       if (!n || !def) { drawer.hidden = true; return; }
       drawer.hidden = false;
       drawer.textContent = '';
-      drawer.appendChild(h('div', { class: 'toolbar' }, h('i', { class: 'am-dot ' + n.status }), h('b', { text: def.t }),
+      drawer.appendChild(h('div', { class: 'toolbar' }, h('i', { class: 'am-dot ' + n.status }), h('b', { text: n.title || def.t }),
         h('span', { class: 'sub', text: STATUS_WORD[n.status] + ' · ' + n.text }), h('span', { class: 'grow' }),
         n.view && VIEWS[n.view] ? h('a', { class: 'btn small', href: '#' + n.view, text: 'Open ' + VIEWS[n.view].label }) : null,
         h('button', { class: 'btn small', type: 'button', text: 'Close', onclick: function () { select(selected); } })));

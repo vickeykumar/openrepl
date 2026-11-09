@@ -21,6 +21,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -357,7 +358,13 @@ func (s *unqliteStore) Each(fn func(key, value []byte) bool) error {
 	if err != nil {
 		return err
 	}
-	defer cursor.Close()
+	// The library gives every cursor a finalizer that closes it again later, when the garbage collector runs, and
+	// that can run while the database is being closed (a data race the race detector reports). The cursor is
+	// closed here, so the finalizer has nothing left to do.
+	defer func() {
+		cursor.Close()
+		runtime.SetFinalizer(cursor, nil)
+	}()
 	if err := cursor.First(); err != nil {
 		return nil // an empty database has nothing to visit
 	}
