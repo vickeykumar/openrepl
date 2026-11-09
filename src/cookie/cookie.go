@@ -130,6 +130,12 @@ func Set_SessionCookie(rw http.ResponseWriter, req *http.Request, session user.U
 
 		// number of api request remaining in seconds
 		var req_count_rem float64 = float64(session.ExpirationTime-utils.GetUnixMilli())/1000
+		// the Genie balance is what the minutes left would give, but never more than an hour's
+		// worth: a sign-in that lasts days does not start with days of requests
+		balance_minutes := req_count_rem/60
+		if balance_minutes > utils.DEADLINE_MINUTES {
+			balance_minutes = utils.DEADLINE_MINUTES
+		}
 		// set maxage of the session
 		session_cookie.Options = &sessions.Options{
 			Path:     "/",
@@ -137,9 +143,9 @@ func Set_SessionCookie(rw http.ResponseWriter, req *http.Request, session user.U
 		}
 
 		if session.LoggedIn {
-			session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = (req_count_rem/60)*utils.UserFactor()
+			session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = balance_minutes*utils.UserFactor()
 		} else {
-			session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = (req_count_rem/60)*utils.GuestFactor()
+			session_cookie.Values[utils.OPENAI_REQUEST_COUNT_KEY] = balance_minutes*utils.GuestFactor()
 		}
 
 		log.Println("session cookie save: ", int(session.ExpirationTime-utils.GetUnixMilli())/1000)

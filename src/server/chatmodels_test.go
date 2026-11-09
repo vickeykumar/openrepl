@@ -241,3 +241,37 @@ func TestChatBodyReturnsTheModelItIsFor(t *testing.T) {
 		}
 	}
 }
+
+// OpenRouter's free router is built in: free, and OpenRouter picks the model and its host.
+func TestTheFreeAutoPickIsBuiltInAndOpenRouterChoosesItsHost(t *testing.T) {
+	const body = `{"model":"openrouter/free","max_tokens":99999,"reasoning_effort":"high",
+		"response_format":{"type":"json_object"},"messages":[{"role":"user","content":"hi"}]}`
+	out, model, err := sanitizeChatBody([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.ID != modelFree || model.Provider != providerOpenRouter || !model.Free || model.Custom {
+		t.Fatalf("model: %+v", model)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["model"] != "openrouter/free" || got["max_tokens"] != float64(4000+2000) {
+		t.Errorf("the answer is 4000 tokens and 2000 more for a model that thinks first: %v", got)
+	}
+	if _, has := got["provider"]; has {
+		t.Errorf("no host rule: OpenRouter chooses who answers: %v", got["provider"])
+	}
+	for _, f := range []string{"reasoning_effort", "max_completion_tokens", "response_format"} {
+		if _, has := got[f]; has {
+			t.Errorf("the router must not get %s: %v", f, got)
+		}
+	}
+	if openRouterRouting(chatModels[modelGemma]) == nil {
+		t.Error("Gemma keeps its host rule")
+	}
+	if defaultChatModel == modelFree {
+		t.Error("a request naming no model is not answered by a model that needs a key and can run out")
+	}
+}

@@ -291,13 +291,25 @@ func (server *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 			Admin bool `json:"admin"`
 			// when the account last asked Genie, in milliseconds; 0 if never
 			LastGenie int64 `json:"lastGenie"`
+			// what the account has used the site for (siteusage.go) and the Genie
+			// answers it had this month
+			Usage        UserUsageSummary `json:"usage"`
+			GenieAnswers int64            `json:"genieAnswers"`
 		}
 		genie := tokenTotals.every()
+		usage := siteUsage.users30()
 		rows := make([]row, len(accounts))
 		for i, a := range accounts {
-			rows[i] = row{Account: a, Admin: utils.IsAdminEmail(a.Email), LastGenie: genie[a.Uid].Updated * 1000}
+			u, ok := usage[a.Uid]
+			if !ok {
+				u = UserUsageSummary{Bars: make([]int, 30)}
+			}
+			rows[i] = row{Account: a, Admin: utils.IsAdminEmail(a.Email), LastGenie: genie[a.Uid].Updated * 1000, Usage: u,
+				GenieAnswers: genieAnswersThisMonth(genie[a.Uid], time.Now())}
 		}
 		adminJSON(w, http.StatusOK, map[string]interface{}{"users": rows})
+	case len(parts) == 3 && parts[2] == "usage" && r.Method == http.MethodGet && uidPattern.MatchString(parts[1]):
+		server.adminUserUsage(w, parts[1])
 	case len(parts) == 3 && r.Method == http.MethodPost && uidPattern.MatchString(parts[1]):
 		uid, action := parts[1], parts[2]
 		up, err := user.FetchUserProfileData(uid)

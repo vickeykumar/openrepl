@@ -455,7 +455,7 @@ func TestTheDashboardListsTheModelsAndTheirKeys(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
-	if w := post(h, "/admin/settings", `{"genie":{"disabledModels":["gpt-6-luna","gpt-4o-mini","google/gemma-4-31b-it","@cf/google/gemma-4-26b-a4b-it","@cf/qwen/qwen3-30b-a3b-fp8","@cf/zai-org/glm-4.7-flash"]}}`); w.Code != 400 {
+	if w := post(h, "/admin/settings", `{"genie":{"disabledModels":["gpt-6-luna","gpt-4o-mini","google/gemma-4-31b-it","openrouter/free","@cf/google/gemma-4-26b-a4b-it","@cf/qwen/qwen3-30b-a3b-fp8","@cf/zai-org/glm-4.7-flash"]}}`); w.Code != 400 {
 		t.Fatalf("all models off: %d", w.Code)
 	}
 	pub := GetSiteSettings().public()

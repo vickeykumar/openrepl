@@ -604,7 +604,7 @@ A record is `{_id: <key>, v: <value bytes>, t: <time>}` in MongoDB, and a docume
 
 **The admin settings** are one JSON document, not a key-value database: the colour of the day, the announcement, maintenance, switched-off languages (for the site and per node), Genie's switches, rates and model list, added admins, and the API keys an admin saved (encrypted with AES-256-GCM under the server's secret). It follows the same choice: the file `settings.json`, or the document `site` of the collection `settings` in MongoDB or Firestore. The document has a version, and a save succeeds only if the version has not moved, so two admins or two instances cannot overwrite each other. With MongoDB or Firestore every instance checks the version every 10 seconds and applies a change without a restart.
 
-**What always stays in files** on the server's own disk: the admin audit log (`admin-audit.jsonl`), usage numbers (`admin-stats.json`), the job file that remembers which guest workspaces to delete, the logs, and the workspaces themselves (`/tmp/home`). The agent task counts and the Genie request balance are not stored at all: the first is in memory, the second in the visitor's signed cookie.
+**What always stays in files** on the server's own disk: the admin audit log (`admin-audit.jsonl`), usage numbers (`admin-stats.json`) and time on site (`admin-usage.json`), the job file that remembers which guest workspaces to delete, the logs, and the workspaces themselves (`/tmp/home`). The agent task counts and the Genie request balance are not stored at all: the first is in memory, the second in the visitor's signed cookie.
 
 **In distributed mode** the gateway owns the databases and the settings. A worker never connects to MongoDB or Firestore, whatever its environment holds: it keeps only workspaces and takes its rules from the gateway (see [Distributed mode](#distributed-mode-gateway-and-workers)).
 
@@ -638,6 +638,7 @@ The server-side settings come from environment variables, and gotty can load the
 
 | Variable | Meaning | Older file key |
 |---|---|---|
+| `OPENREPL_SESSION_DAYS` | How long a sign-in lasts, 1 to 90 days. Anything else uses the default. Signing a user out, or blocking them, from the dashboard still ends it at once. | 7 |
 | `OPENREPL_ADMIN_EMAILS` | Owner accounts, comma-separated. Owners are admins and the only ones who can add or remove other admins in the dashboard. With none set, nobody is an admin. | `user.email` |
 | `OPENREPL_OPENAI_API_KEY` | The OpenAI key, as it is (not base64). | `user.OpenaiAPIKey` (base64) |
 | `OPENREPL_MONGODB_URI` | Optional. Keeps the admin settings and every database (sessions, feedback, blog, snippets, practice) in MongoDB (for example an Atlas `mongodb+srv://` URI) instead of files under `/opt/gotty`, so they survive deploys that wipe the disk. The first start copies the existing files in, once. A secret. Gateway and standalone only; a worker keeps files. | |

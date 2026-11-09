@@ -20,6 +20,8 @@ func (server *Server) registerAdmin(mux *http.ServeMux, prefix string) {
 		mux.Handle(prefix+path, server.adminAPI(h))
 	}
 
+	// the page's beats of active time: open to every visitor, counted in siteusage.go
+	mux.HandleFunc(prefix+"usage/beat", server.handleUsageBeat)
 	mux.Handle(prefix+"admin", server.wrapAdmin(http.HandlerFunc(server.handleAdminPage)))
 	api("admin/settings", server.handleAdminSettings)
 	api("admin/keys", server.handleAdminKeys)
@@ -31,6 +33,7 @@ func (server *Server) registerAdmin(mux *http.ServeMux, prefix string) {
 	api("admin/architecture", server.handleAdminArchitecture)
 	api("admin/audit", server.handleAdminAudit)
 	api("admin/stats", server.handleAdminStats)
+	api("admin/usage", server.handleAdminSiteUsage)
 	api("admin/logs", server.handleAdminLogs)
 	api("admin/feedback", server.handleAdminFeedback)
 	api("admin/feedback/", server.handleAdminFeedback)
@@ -101,6 +104,7 @@ func (server *Server) wrapControls(next http.Handler, prefix string) http.Handle
 			return
 		}
 		server.admin.stats.record(visitorHash(r, time.Now().UTC().Format("2006-01-02")), lang)
+		siteUsage.noteTerminal(whoOf(r))
 		next.ServeHTTP(w, r)
 	})
 }

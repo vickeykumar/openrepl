@@ -382,7 +382,7 @@ func (b *Backuper) RestoreIfEmpty(ctx context.Context) (*Restored, error) {
 	var restored []string
 	remote := b.Remote()
 	for _, f := range m.Files {
-		if remote != "" && !(f.Name == "admin-audit.jsonl" || f.Name == "admin-stats.json") {
+		if remote != "" && !(f.Name == "admin-audit.jsonl" || f.Name == "admin-stats.json" || f.Name == "admin-usage.json") {
 			continue // the databases are in MongoDB or Firestore, which wins
 		}
 		dest := filepath.Join(b.Dir, f.Name)

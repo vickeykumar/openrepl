@@ -34,9 +34,9 @@ const ids = (list) => Array.from(list, (m) => m.id);
 
 test("a provider's models are offered only when the server can call them", () => {
   assert.deepEqual(names(load().MC.models), ["GPT-6 Luna", "GPT-4o mini"]);
-  assert.deepEqual(names(load({ openrouter: true }).MC.models), ["GPT-6 Luna", "GPT-4o mini", "Gemma 4 31B"]);
+  assert.deepEqual(names(load({ openrouter: true }).MC.models), ["GPT-6 Luna", "GPT-4o mini", "Gemma 4 31B", "Free (auto-pick)"]);
   const all = load({ openrouter: true, cloudflare: true }).MC.models;
-  assert.deepEqual(names(all), ["GPT-6 Luna", "GPT-4o mini", "Gemma 4 31B", "Gemma 4 26B", "Qwen3 30B", "GLM 4.7 Flash"]);
+  assert.deepEqual(names(all), ["GPT-6 Luna", "GPT-4o mini", "Gemma 4 31B", "Free (auto-pick)", "Gemma 4 26B", "Qwen3 30B", "GLM 4.7 Flash"]);
   // every Cloudflare model keeps its @cf/ prefix: without it Cloudflare bills the AI Gateway credit
   all.filter((m) => m.provider === "cloudflare").forEach((m) => assert.ok(m.id.startsWith("@cf/"), m.id));
 });
@@ -67,10 +67,10 @@ test("an OpenAI model that thinks first takes an effort, the others do not", () 
 
 test("Your models are three: what is pinned, then what was used last, then the short list", () => {
   const { MC } = load({ openrouter: true, cloudflare: true });
-  assert.deepEqual(names(MC.your()), ["GPT-6 Luna", "GPT-4o mini", "Gemma 4 31B"]);
+  assert.deepEqual(names(MC.your()), ["Free (auto-pick)", "GPT-6 Luna", "GPT-4o mini"]);
   MC.set("@cf/qwen/qwen3-30b-a3b-fp8");
   MC.set("gpt-4o-mini");
-  assert.deepEqual(names(MC.your()), ["GPT-4o mini", "Qwen3 30B", "GPT-6 Luna"]);
+  assert.deepEqual(names(MC.your()), ["GPT-4o mini", "Qwen3 30B", "Free (auto-pick)"]);
   MC.togglePin("@cf/google/gemma-4-26b-a4b-it");
   assert.deepEqual(names(MC.your()), ["Gemma 4 26B", "GPT-4o mini", "Qwen3 30B"]);
   MC.togglePin("@cf/zai-org/glm-4.7-flash");
@@ -107,8 +107,8 @@ test("a new visitor gets the admin's short list, and pins and last used are kept
 test("Other models are the rest, by provider in a fixed order", () => {
   const { MC } = load({ openrouter: true, cloudflare: true });
   const rest = MC.others();
-  assert.deepEqual(Array.from(rest, (g) => g.group), ["Cloudflare Workers AI"]);
-  assert.equal(rest[0].models.length, 3);
+  assert.deepEqual(Array.from(rest, (g) => g.group), ["OpenRouter", "Cloudflare Workers AI"]);
+  assert.equal(rest[1].models.length, 3);
   MC.togglePin("@cf/qwen/qwen3-30b-a3b-fp8");
   MC.togglePin("@cf/zai-org/glm-4.7-flash");
   MC.togglePin("@cf/google/gemma-4-26b-a4b-it");
@@ -133,4 +133,30 @@ test("a model that is switched off is not offered or remembered", () => {
   const { MC } = load({ cloudflare: true, site: { disabledModels: ["@cf/qwen/qwen3-30b-a3b-fp8"] }, store: { "genie-model-pins": '["@cf/qwen/qwen3-30b-a3b-fp8"]' } });
   assert.ok(!ids(MC.models).includes("@cf/qwen/qwen3-30b-a3b-fp8"));
   assert.ok(!ids(MC.your()).includes("@cf/qwen/qwen3-30b-a3b-fp8"));
+});
+
+test("a first-time visitor starts with the free auto-pick, when the server has an OpenRouter key", () => {
+  const free = load({ openrouter: true }).MC;
+  assert.equal(free.get().model, "openrouter/free");
+  const model = Array.from(free.models).find((m) => m.id === "openrouter/free");
+  assert.equal(model.name, "Free (auto-pick)");
+  assert.equal(model.free, true);
+  assert.equal(model.reasoning, false); // no effort control: the model it picks decides
+  // without a key it is not offered, and the default is the first model, as before
+  const none = load().MC;
+  assert.equal(none.get().model, "gpt-6-luna");
+  assert.ok(!ids(none.models).includes("openrouter/free"));
+});
+
+test("the admin's default beats the free auto-pick, and a visitor's own choice beats both", () => {
+  assert.equal(load({ openrouter: true, site: { defaultModel: "gpt-4o-mini" } }).MC.get().model, "gpt-4o-mini");
+  const first = load({ openrouter: true });
+  first.MC.set("gpt-4o-mini");
+  assert.equal(load({ openrouter: true, store: first.store }).MC.get().model, "gpt-4o-mini");
+});
+
+test("the free auto-pick can be switched off by an admin", () => {
+  const { MC } = load({ openrouter: true, site: { disabledModels: ["openrouter/free"] } });
+  assert.ok(!ids(MC.models).includes("openrouter/free"));
+  assert.equal(MC.get().model, "gpt-6-luna");
 });

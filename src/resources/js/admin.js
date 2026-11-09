@@ -61,6 +61,7 @@
     logs: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
     map: '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M6 8l5 8M18 8l-5 8"/>',
     usage: '<path d="M3 20h18M6 16V9M11 16V5M16 16v-4M20 16V8"/>',
+    traffic: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
     audit: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
     copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     close: '<path d="M18 6L6 18M6 6l12 12"/>',
@@ -89,6 +90,22 @@
     if (hh) return hh + 'h ' + m + 'm';
     if (m) return m < 10 ? m + 'm ' + s + 's' : m + 'm';
     return s + 's';
+  }
+
+  // active time as people say it: "48 min", "38 h 20 min"
+  function fmtActive(sec) {
+    sec = Math.max(0, Math.round(Number(sec) || 0));
+    if (sec < 60) return sec ? sec + ' s' : '0 min';
+    var m = Math.round(sec / 60);
+    if (m < 60) return m + ' min';
+    var hh = Math.floor(m / 60), r = m % 60;
+    return r ? hh + ' h ' + r + ' min' : hh + ' h';
+  }
+
+  // a country code as its name ("IN" -> "India"); what the browser cannot name stays as it came
+  function countryName(code) {
+    if (!code || code === 'unknown') return 'Unknown';
+    try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) || code; } catch (e) { return code; }
   }
 
   function fmtMB(n) {
@@ -1609,8 +1626,9 @@
       oninput: function () { query = search.value.trim().toLowerCase(); box.__key = null; draw(); } });
     var filter = h('select', { 'aria-label': 'Which accounts to show', onchange: function () { show = filter.value; box.__key = null; draw(); } },
       h('option', { value: 'all', text: 'All accounts' }), h('option', { value: 'live', text: 'Signed in now' }),
-      h('option', { value: 'week', text: 'Signed in the last 7 days' }), h('option', { value: 'unrecorded', text: 'Sign-in not recorded' }));
-    root.appendChild(pageHead('Users', 'Accounts that have signed in. Signing a user out ends their sessions; blocking also stops them signing in again.'));
+      h('option', { value: 'week', text: 'Signed in the last 7 days' }), h('option', { value: 'active7', text: 'Active in the last 7 days' }),
+      h('option', { value: 'quiet', text: 'Not active in 30 days' }), h('option', { value: 'unrecorded', text: 'Sign-in not recorded' }));
+    root.appendChild(pageHead('Users', 'Accounts that have signed in, and how long they spend on the site. Click a row for one person. Signing a user out ends their sessions; blocking also stops them signing in again.'));
     root.appendChild(h('div', { class: 'toolbar' }, search, filter, h('span', { class: 'grow' }), h('span', { class: 'sub', id: 'users-count' })));
 
     // a time in milliseconds as the page tells times: "3h 5m ago", the exact time on hover; 0 is "not recorded"
@@ -1639,8 +1657,17 @@
         if (!u.lastSignIn) return h('div', null, h('span', { class: 'sub', text: 'Not recorded' }), h('div', { class: 'sub', text: 'signed in before this was kept' }), live);
         return h('div', null, stamp(u.lastSignIn), h('div', { class: 'sub', text: localTime(new Date(u.lastSignIn).toISOString()) }), live);
       } },
-      { key: 'firstSignIn', label: 'First signed in', sort: true, cell: function (u) { return u.firstSignIn ? h('span', { title: u.signIns ? plural(u.signIns, 'sign-in', 'sign-ins') + ' since then' : '' }, stamp(u.firstSignIn)) : stamp(0); } },
-      { key: 'lastGenie', label: 'Last Genie use', sort: true, cell: function (u) { return stamp(u.lastGenie, 'never'); } },
+      { key: 'activeSecs', label: 'Active time', sort: true, cell: function (u) {
+        if (!u.visits) return h('span', { class: 'sub nowrap', text: 'Not recorded' });
+        return h('div', { class: 'nowrap' }, h('b', { text: fmtActive(u.activeSecs) }), h('div', { class: 'sub', text: [u.topLang, u.lastVisitSecs ? 'last ' + fmtActive(u.lastVisitSecs) : ''].filter(Boolean).join(' · ') }));
+      } },
+      { key: 'days30', label: 'Last 30 days', sort: true, cell: function (u) {
+        var peak = Math.max.apply(null, u.usage.bars.concat([1]));
+        return h('div', { class: 'spark-row', title: u.days30 + ' of the last 30 days' },
+          h('div', { class: 'spark', 'aria-hidden': 'true' }, u.usage.bars.map(function (m) { return h('i', { vars: { '--p': m ? Math.max(8, Math.round(m / peak * 100)) : 0 } }); })),
+          h('span', { class: 'sub nowrap', text: u.days30 + ' d' }));
+      } },
+      { key: 'visits', label: 'Visits', sort: true, num: true, cell: function (u) { return u.visits ? String(u.visits) : h('span', { class: 'sub', text: '–' }); } },
       { key: 'status', label: 'Status', cell: function (u) {
         return h('span', { class: 'actions' }, u.admin ? pill('admin', 'info') : null, u.blocked ? pill('blocked', 'danger') : null, !u.admin && !u.blocked ? h('span', { class: 'sub', text: '–' }) : null); } },
       { key: 'actions', label: '', cell: function (u) {
@@ -1657,7 +1684,8 @@
       var weekAgo = Date.now() - 7 * 86400000;
       var rows = data.users.filter(function (u) {
         if (query && (u.email + ' ' + u.name).toLowerCase().indexOf(query) < 0) return false;
-        return show === 'all' || (show === 'live' && u.sessions > 0) || (show === 'week' && u.lastSignIn >= weekAgo) || (show === 'unrecorded' && !u.lastSignIn);
+        return show === 'all' || (show === 'live' && u.sessions > 0) || (show === 'week' && u.lastSignIn >= weekAgo) || (show === 'unrecorded' && !u.lastSignIn) ||
+          (show === 'active7' && u.lastActive >= weekAgo) || (show === 'quiet' && !(u.lastActive >= Date.now() - 30 * 86400000));
       });
       // an account with no time for the column is last, whichever way it is sorted
       rows.sort(function (a, b) {
@@ -1670,9 +1698,139 @@
         return String(x || '').localeCompare(String(y || '')) * dir;
       });
       $('users-count').textContent = plural(rows.length, 'account', 'accounts') + (rows.length !== data.users.length ? ' of ' + data.users.length : '');
-      render(box, JSON.stringify([rows, sort]), table(cols, rows, { sort: sort, onSort: sortBy, empty: data.users.length ? 'No account matches.' : 'Nobody has signed in yet.' }));
+      render(box, JSON.stringify([rows, sort]), table(cols, rows, { sort: sort, onSort: sortBy, onRow: userDrawer, empty: data.users.length ? 'No account matches.' : 'Nobody has signed in yet.' }));
     }
-    function refresh() { return api.get('admin/users').then(function (r) { data = r; draw(); }); }
+    function refresh() {
+      return api.get('admin/users').then(function (r) {
+        // the usage numbers sit in a row of their own; the table sorts on them as they are
+        r.users.forEach(function (u) {
+          u.usage = u.usage || { bars: [] };
+          ['activeSecs', 'visits', 'days30', 'topLang', 'lastVisitSecs', 'lastActive', 'terminals'].forEach(function (k) { u[k] = u.usage[k]; });
+        });
+        data = r; draw();
+      });
+    }
+    return { root: root, refresh: refresh, poll: true };
+  }
+
+  // one account's usage, in a side panel
+  function userDrawer(u) {
+    var body = h('div', null, h('p', { class: 'sub', text: 'Loading...' }));
+    openDrawer('usage-' + u.uid, u.email || u.name || u.uid, body);
+    api.get('admin/users/' + encodeURIComponent(u.uid) + '/usage').then(function (r) {
+      var d = r.usage, tracked = d.visits > 0;
+      var last = d.recent && d.recent.length ? d.recent[0] : null;
+      var peak = Math.max.apply(null, d.dayMins.concat([1]));
+      var node = h('div', { class: 'stack' },
+        h('div', { class: 'grid three' },
+          stat('Active time', tracked ? fmtActive(d.activeSecs) : '–', tracked ? 'since ' + d.since : 'counted from ' + d.since),
+          stat('Last visit', last ? fmtActive(last.secs) : '–', last ? localTime(new Date(last.start).toISOString()) : 'none yet'),
+          stat('Average visit', tracked ? fmtActive(d.avgVisitSecs) : '–', plural(d.visits, 'visit', 'visits'))),
+        tracked ? h('div', null, h('h3', { text: 'Active minutes per day, last 30 days' }),
+          h('div', { class: 'daybars', role: 'img', 'aria-label': 'Active minutes on each of the last 30 days' }, d.dayMins.map(function (m, i) {
+            return h('i', { vars: { '--p': m ? Math.max(4, Math.round(m / peak * 100)) : 0 }, title: m + ' min, ' + (29 - i) + ' days ago' });
+          })),
+          h('div', { class: 'daybars-axis' }, h('span', { text: '30 days ago' }), h('span', { text: 'today' }))) : null,
+        d.languages.length ? h('div', null, h('h3', { text: 'Languages (by active time)' }),
+          h('div', { class: 'hbars' }, d.languages.map(function (l) {
+            return h('div', null, h('span', { class: 'name', text: l.name, title: l.name }), h('div', { class: 'bar', vars: { '--p': l.share } }, h('i')), h('span', { class: 'n', text: fmtActive(l.count) }));
+          }))) : null,
+        h('div', null, h('h3', { text: 'Activity' }), kv([
+          ['Terminals started', String(d.terminals || 0)],
+          ['Genie answers this month', String(r.genieAnswers || 0)],
+          ['Sign-ins', r.signIns ? String(r.signIns) : ''],
+          ['First signed in', r.firstSignIn ? localTime(new Date(r.firstSignIn).toISOString()) : ''],
+          ['Last signed in', r.lastSignIn ? localTime(new Date(r.lastSignIn).toISOString()) : ''],
+          ['Devices', d.devices.map(function (x) { return x.name + ' ' + x.share + '%'; }).join(', ')]])),
+        tracked ? h('div', null, h('h3', { text: 'Recent visits' }), table([
+          { key: 'start', label: 'Started', cell: function (v) { return when(new Date(v.start).toISOString()); } },
+          { key: 'secs', label: 'Active', cell: function (v) { return fmtActive(v.secs); } },
+          { key: 'device', label: 'Device', cell: function (v) { return v.device || '–'; } },
+          { key: 'country', label: 'From', cell: function (v) { return countryName(v.country); } },
+          { key: 'source', label: 'Came from', cell: function (v) { return v.source || '–'; } }
+        ], d.recent)) : h('p', { class: 'sub', text: 'Nothing has been recorded for this account yet. Time is counted while the person has the site open and is using it; an account that has not visited since ' + d.since + ' shows nothing.' }));
+      body.textContent = '';
+      body.appendChild(node);
+    }, function (err) { body.textContent = ''; body.appendChild(h('p', { class: 'sub', text: err && err.message ? err.message : 'Could not load this account.' })); });
+  }
+
+  // ---- site usage: signed-in users and guests
+
+  function viewTraffic() {
+    var root = h('div'), box = h('div');
+    var days = 30, mode = 'both', data = null;
+    var modeBtns = {};
+    var modeBox = h('div', { class: 'seg', role: 'group', 'aria-label': 'Who to show' }, [['both', 'Both'], ['signed', 'Signed in'], ['guests', 'Guests']].map(function (m) {
+      var b = h('button', { class: 'seg-btn' + (m[0] === mode ? ' on' : ''), type: 'button', 'aria-pressed': m[0] === mode ? 'true' : 'false', text: m[1],
+        onclick: function () {
+          mode = m[0];
+          Object.keys(modeBtns).forEach(function (k) { modeBtns[k].className = 'seg-btn' + (k === mode ? ' on' : ''); modeBtns[k].setAttribute('aria-pressed', k === mode ? 'true' : 'false'); });
+          box.__key = null; if (data) draw();
+        } });
+      modeBtns[m[0]] = b;
+      return b;
+    }));
+    var rangeSel = h('select', { 'aria-label': 'Period', onchange: function () { days = Number(rangeSel.value); box.__key = null; refresh(); } },
+      h('option', { value: '7', text: 'Last 7 days' }), h('option', { value: '30', text: 'Last 30 days', selected: true }), h('option', { value: '90', text: 'Last 90 days' }));
+    rangeSel.value = '30';
+    root.appendChild(pageHead('Site usage', 'How people use the site, signed in and as guests. Guests are counted, never listed. Time counts only while a tab is in front and the person is typing, clicking or scrolling.'));
+    root.appendChild(h('div', { class: 'toolbar' }, modeBox, rangeSel, h('span', { class: 'grow' })));
+    root.appendChild(box);
+
+    function nm(n) { return Number(n || 0).toLocaleString('en-US'); }
+    function list(items, label, fmt) {
+      if (!items || !items.length) return emptyState('Nothing counted yet.');
+      return h('div', { class: 'hbars wide' }, items.map(function (x) {
+        return h('div', null, h('span', { class: 'name', text: fmt ? fmt(x.name) : x.name, title: fmt ? fmt(x.name) : x.name }), h('div', { class: 'bar', vars: { '--p': x.share } }, h('i')), h('span', { class: 'n', text: x.share + '%' }));
+      }));
+    }
+    function pct(v) { return v < 0 ? '–' : v + '%'; }
+
+    function draw() {
+      var r = data;
+      var peak = Math.max.apply(null, r.days.map(function (d) { return (mode !== 'guests' ? d.signed : 0) + (mode !== 'signed' ? d.guests : 0); }).concat([1]));
+      var chart = h('div', { class: 'vbars', role: 'img', 'aria-label': 'Visitors per day' }, r.days.map(function (d) {
+        var s = mode !== 'guests' ? d.signed : 0, g = mode !== 'signed' ? d.guests : 0;
+        return h('div', { class: 'vbar', title: d.date + ': ' + plural(d.signed, 'signed-in user', 'signed-in users') + ', ' + plural(d.guests, 'guest', 'guests') },
+          h('i', { class: 'g', vars: { '--p': g ? Math.max(2, Math.round(g / peak * 100)) : 0 } }), h('i', { class: 's', vars: { '--p': s ? Math.max(2, Math.round(s / peak * 100)) : 0 } }));
+      }));
+      var tracked = r.days.some(function (d) { return d.signed || d.guests; });
+      var node = h('div', { class: 'stack' },
+        !tracked ? h('p', { class: 'callout info', text: 'Nothing has been counted yet. Counting began on ' + r.since + ' and fills in as people use the site; pages must be reloaded once to start sending.' }) : null,
+        h('div', { class: 'grid cards' },
+          stat('Visitors per day', nm(r.avgSigned + r.avgGuests), nm(r.avgSigned) + ' signed in, ' + nm(r.avgGuests) + ' guests (average)'),
+          stat('Active time per visit', fmtActive(r.avgVisitSecs), 'signed in ' + fmtActive(r.avgSignedVisitSecs) + ', guests ' + fmtActive(r.avgGuestVisitSecs)),
+          stat('Guests who sign up', r.guestSignupPct ? r.guestSignupPct + '%' : '–', plural(r.newAccounts, 'new account', 'new accounts') + ' in this period'),
+          stat('Back after 7 days', pct(r.back7Pct), 'of new signed-in users')),
+        h('div', { class: 'card' },
+          h('div', { class: 'toolbar' }, h('b', { text: 'Visitors per day' }), h('span', { class: 'grow' }),
+            h('span', { class: 'legend' }, h('i', { class: 'dot s' }), 'Signed in', h('i', { class: 'dot g' }), 'Guests')),
+          chart,
+          h('div', { class: 'daybars-axis' }, h('span', { text: r.days[0].date.slice(5) }), h('span', { text: r.days[r.days.length - 1].date.slice(5) }))),
+        h('div', { class: 'grid two' },
+          h('div', { class: 'card' }, h('h2', { text: 'Languages, by active time' }), list(r.languages)),
+          h('div', { class: 'card' }, h('h2', { text: 'Where visitors came from' }), list(r.sources))),
+        h('div', { class: 'grid two' },
+          h('div', { class: 'card' }, h('h2', { text: 'Devices' }), list(r.devices, null, function (n) { return n.charAt(0).toUpperCase() + n.slice(1); })),
+          h('div', { class: 'card' }, h('h2', { text: 'Countries' }), list(r.countries, null, countryName))),
+        h('div', { class: 'grid two' },
+          h('div', { class: 'card' }, h('h2', { text: 'Guest journey' }),
+            h('p', { class: 'sub', text: 'Guests are counted once for each day they visit, so a guest who comes on three days counts three times. No one is identified.' }),
+            h('div', { class: 'hbars wide' }, r.funnel.map(function (f) {
+              return h('div', null, h('span', { class: 'name', text: f.label, title: f.label }), h('div', { class: 'bar', vars: { '--p': f.pct } }, h('i')), h('span', { class: 'n', text: nm(f.count) }));
+            }))),
+          h('div', { class: 'card' }, h('h2', { text: 'Do new accounts come back?' }),
+            h('p', { class: 'sub', text: 'Share of each week\'s new accounts that were active again within 1, 7 and 30 days. A dash means the week is too recent, or began before counting did.' }),
+            table([
+              { key: 'week', label: 'Joined, week of', cell: function (c) { return c.week; } },
+              { key: 'size', label: 'Accounts', num: true, cell: function (c) { return String(c.size); } },
+              { key: 'd1', label: 'Day 1', num: true, cell: function (c) { return pct(c.d1); } },
+              { key: 'd7', label: 'Day 7', num: true, cell: function (c) { return pct(c.d7); } },
+              { key: 'd30', label: 'Day 30', num: true, cell: function (c) { return pct(c.d30); } }
+            ], r.cohorts, { empty: 'No accounts have joined yet.' }))));
+      render(box, JSON.stringify([r, mode]), node);
+    }
+    function refresh() { return api.get('admin/usage?days=' + days).then(function (r) { data = r; draw(); }); }
     return { root: root, refresh: refresh, poll: true };
   }
 
@@ -2086,6 +2244,7 @@
     feedback: { label: 'Feedback', icon: 'feedback', make: viewFeedback, badge: true },
     snippets: { label: 'Shared code', icon: 'snippets', make: viewSnippets },
     users: { label: 'Users', icon: 'users', make: viewUsers },
+    traffic: { label: 'Site usage', icon: 'traffic', make: viewTraffic },
     usage: { label: 'Genie usage', icon: 'usage', make: viewGenieUsage },
     health: { label: 'Health', icon: 'health', make: viewHealth },
     jobs: { label: 'Jobs', icon: 'jobs', make: viewJobs },
@@ -2097,7 +2256,7 @@
   var GROUPS = [
     ['', ['overview', 'map']],
     ['Fleet', ['workers', 'sessions']],
-    ['Site', ['site', 'feedback', 'snippets', 'users', 'usage']],
+    ['Site', ['site', 'feedback', 'snippets', 'users', 'traffic', 'usage']],
     ['System', ['health', 'jobs', 'params', 'logs', 'audit']]
   ];
 

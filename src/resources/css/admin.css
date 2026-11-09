@@ -445,6 +445,34 @@ pre.code {
 .hbars .name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hbars .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 
+/* usage: a row's 30-day sparkline, one account's day bars, and the site's visitors per day */
+.grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 0; }
+.nowrap { white-space: nowrap; }
+.drawer .stat .value { font-size: 19px; }
+.hbars.wide > div { grid-template-columns: 130px minmax(0, 1fr) 56px; }
+.spark-row { display: flex; align-items: flex-end; gap: 8px; }
+.spark { display: flex; align-items: flex-end; gap: 1px; height: 28px; }
+.spark i { display: block; width: 3px; min-height: 1px; height: calc(var(--p) * 1%); border-radius: 1px; background: var(--info); opacity: 0.85; }
+.spark i:not([style*="--p: 0"]) { min-height: 2px; }
+.daybars { display: flex; align-items: flex-end; gap: 3px; height: 90px; padding-bottom: 1px; border-bottom: 1px solid var(--line); }
+.daybars i { flex: 1; min-width: 0; height: calc(var(--p) * 1%); min-height: 1px; background: var(--info); opacity: 0.85; border-radius: 2px 2px 0 0; }
+.daybars-axis { display: flex; justify-content: space-between; margin-top: 6px; color: var(--faint); font-size: 11px; }
+.vbars { display: flex; align-items: flex-end; gap: 4px; height: 190px; margin-top: 12px; border-bottom: 1px solid var(--line); }
+.vbar { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+.vbar i { display: block; height: calc(var(--p) * 1%); }
+.vbar i.g { background: var(--accent); opacity: 0.9; border-radius: 2px 2px 0 0; }
+.vbar i.s { background: var(--info); opacity: 0.9; }
+.legend { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.legend .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-left: 8px; }
+.legend .dot:first-child { margin-left: 0; }
+.legend .dot.s { background: var(--info); }
+.legend .dot.g { background: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.seg-btn { padding: 8px 12px; border: 0; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
+.seg-btn.on { background: var(--raised); color: var(--text); font-weight: 500; }
+.seg-btn:hover { color: var(--text); }
+
 .log {
   margin: 0;
   max-height: 68vh;

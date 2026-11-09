@@ -5,8 +5,8 @@
 // only these: server/chatmodels.go and custom_models.go hold the same lists and
 // send nothing else on (a request for any other model is answered by the default). Two come from OpenAI; Gemma 4 31B comes through OpenRouter and
 // is listed only when the server has an OpenRouter key (config.js sets
-// openrouter_enabled). The choice is kept on this device, and the default is
-// Luna with a Low effort. The picker shows "Your models" (pinned, then last used) and the rest under
+// openrouter_enabled), and so is the free auto-pick, which a first-time visitor starts with. The
+// choice is kept on this device. Without an OpenRouter key the default is Luna with a Low effort. The picker shows "Your models" (pinned, then last used) and the rest under
 // "Other models", with search; the pins and the last used are kept on this device. A page that wants a choice of its own (the blog
 // editor) sets window.MODEL_CHOICE_KEY before loading this file.
 
@@ -45,6 +45,20 @@
       provider: "openrouter",
       tag: "",
       desc: "Google's open model, run through OpenRouter. Answers without a thinking step.",
+      reasoning: false,
+    });
+    // OpenRouter's router over its free models: it picks one for each question, so answers vary.
+    // A first-time visitor starts with it (DEFAULT, below).
+    ALL.push({
+      id: "openrouter/free",
+      name: "Free (auto-pick)",
+      short: "Free auto",
+      group: "OpenRouter",
+      provider: "openrouter",
+      free: true,
+      tag: "Free",
+      desc: "OpenRouter picks a free model for each question, so answers vary. Its provider may keep what you send, and it can be busy.",
+      limit: "OpenRouter's free models have a daily limit the whole site shares. It can run out and come back the next day.",
       reasoning: false,
     });
   }
@@ -149,8 +163,10 @@
     return null;
   }
 
+  // The model a visitor with no choice of their own starts with: the admin's, else the free
+  // auto-pick (when the server has an OpenRouter key), else the first on the list.
   var DEFAULT = {
-    model: (find(MODELS, site.defaultModel) || MODELS[0]).id,
+    model: (find(MODELS, site.defaultModel) || find(MODELS, "openrouter/free") || MODELS[0]).id,
     effort: "low",
   };
 

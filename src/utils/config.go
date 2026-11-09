@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -24,6 +25,7 @@ import (
 //
 //	OPENREPL_ENV             dev or production (the default); see IsDev
 //	OPENREPL_ADMIN_EMAILS    comma-separated admin accounts; file: user.email
+//	OPENREPL_SESSION_DAYS    how long a sign-in lasts, 1 to 90 days (7 by default); see SessionLifetimeMillis
 //	OPENREPL_OPENAI_API_KEY  the OpenAI key as it is; file: user.OpenaiAPIKey, base64
 //	OPENREPL_OPENROUTER_API_KEY  the OpenRouter key as it is (env only); without it the
 //	                         OpenRouter models are not offered
@@ -47,6 +49,7 @@ import (
 const (
 	EnvMode              = "OPENREPL_ENV"
 	EnvAdminEmails       = "OPENREPL_ADMIN_EMAILS"
+	EnvSessionDays       = "OPENREPL_SESSION_DAYS"
 	EnvOpenAIKey         = "OPENREPL_OPENAI_API_KEY"
 	EnvOpenRouterKey     = "OPENREPL_OPENROUTER_API_KEY"
 	EnvRecaptchaSecret   = "OPENREPL_RECAPTCHA_SECRET"
@@ -183,6 +186,24 @@ func AdminEmails() []string {
 		return []string{e}
 	}
 	return nil
+}
+
+const (
+	defaultSessionDays = 7
+	maxSessionDays     = 90
+)
+
+// SessionLifetimeMillis is how long a sign-in lasts on this server, in milliseconds:
+// OPENREPL_SESSION_DAYS (1 to 90) when it is set to a valid number, else 7 days. It does not
+// follow the Firebase token, which lasts an hour and which the page does not hand over again.
+func SessionLifetimeMillis() int64 {
+	days := defaultSessionDays
+	if v := strings.TrimSpace(os.Getenv(EnvSessionDays)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= maxSessionDays {
+			days = n
+		}
+	}
+	return int64(days) * 24 * 3600 * 1000
 }
 
 // IsOwnerEmail reports whether email is one of the accounts configured in the
@@ -689,6 +710,7 @@ func configSummary(dev bool) string {
 	}
 	admins := AdminEmails()
 	item("admin emails", EnvAdminEmails, "user.email", strings.Join(admins, ","), len(admins))
+	fmt.Fprintf(&b, "; session: %d days", SessionLifetimeMillis()/(24*3600*1000))
 	item("openai key", EnvOpenAIKey, "user.OpenaiAPIKey", OpenAIKey(), 0)
 	item("openrouter key", EnvOpenRouterKey, "", OpenRouterKey(), 0)
 	item("cloudflare token", EnvCloudflareToken, "", CloudflareToken(), 0)
