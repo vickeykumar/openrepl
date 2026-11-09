@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"meters"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -38,9 +39,18 @@ func useEmulator(t *testing.T) {
 	t.Setenv("OPENREPL_FIRESTORE_PROJECT", fmt.Sprintf("proj-%d", time.Now().UnixNano()))
 	t.Setenv("OPENREPL_MONGODB_URI", "")
 	t.Setenv("OPENREPL_FIRESTORE_CREDENTIALS", "")
+	useReplicaDir(t)
 	ResetRemote()
 	Configure(true)
 	t.Cleanup(func() { Configure(false); ResetRemote() })
+}
+
+// useReplicaDir keeps the local copies of a test in a folder of its own, not in /opt/gotty.
+func useReplicaDir(t *testing.T) {
+	t.Helper()
+	old := replicaDir
+	replicaDir = t.TempDir()
+	t.Cleanup(func() { replicaDir = old })
 }
 
 func TestFirestoreStore(t *testing.T) {
@@ -71,6 +81,62 @@ func TestFirestoreStore(t *testing.T) {
 	}
 	if err := s.Delete([]byte("never-there")); err != ErrNotFound {
 		t.Fatalf("deleting a missing key: %v", err)
+	}
+}
+
+// With the replica on (the default) the records are copied when the database is opened and every read after
+// that is answered locally: no read of Firestore.
+func TestFirestoreReadsAreLocalAfterTheStartFill(t *testing.T) {
+	useEmulator(t)
+	path := filepath.Join(t.TempDir(), "things.db")
+	// records that are in the database before the server opens it
+	Configure(true)
+	first, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Store([]byte("a"), []byte("1"))
+	first.Store([]byte("b"), []byte("2"))
+	first.Close()
+	ResetRemote()
+	Configure(true)
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	infos := ReplicaStatus()
+	if len(infos) != 1 || infos[0].Mode != "full" || infos[0].Records != 2 {
+		t.Fatalf("replica status: %+v", infos)
+	}
+	reads := meters.DayValue(meters.FSReads)
+	for i := 0; i < 30; i++ {
+		if v, err := s.Fetch([]byte("a")); err != nil || string(v) != "1" {
+			t.Fatalf("fetch: %q %v", v, err)
+		}
+		n := 0
+		s.Each(func(k, v []byte) bool { n++; return true })
+		if n != 2 {
+			t.Fatalf("each: %d records", n)
+		}
+	}
+	if got := meters.DayValue(meters.FSReads); got != reads {
+		t.Errorf("60 reads made %d Firestore reads", got-reads)
+	}
+	// a write reaches Firestore: another opening of the database (a restart) has it
+	if err := s.Store([]byte("c"), []byte("3")); err != nil {
+		t.Fatal(err)
+	}
+	ResetRemote()
+	Configure(true)
+	again, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if v, err := again.Fetch([]byte("c")); err != nil || string(v) != "3" {
+		t.Errorf("after a restart: %q %v", v, err)
 	}
 }
 
@@ -140,6 +206,7 @@ func startInit(t *testing.T, mongoURI, firestoreHost string) {
 	t.Setenv("FIRESTORE_EMULATOR_HOST", firestoreHost)
 	t.Setenv("OPENREPL_FIRESTORE_CREDENTIALS", "")
 	t.Setenv("OPENREPL_FIRESTORE_PROJECT", "p")
+	useReplicaDir(t)
 	fastInit(t)
 	ResetRemote()
 	Configure(true)

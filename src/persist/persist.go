@@ -253,6 +253,7 @@ var giveUp = func(msg string) {
 // Init looks again. For tests.
 func ResetRemote() {
 	forgetChoice()
+	forgetReplicas()
 	mu.Lock()
 	if client != nil {
 		client.Disconnect(context.Background())
@@ -310,7 +311,7 @@ func open(path string) (Store, error) {
 		if err := s.copyOnce(path); err != nil {
 			return nil, err
 		}
-		return s, nil
+		return wrapReplica(path, s)
 	case backendMongo:
 	default:
 		return openUnqlite(path)
@@ -323,7 +324,7 @@ func open(path string) (Store, error) {
 	if err := m.copyOnce(path); err != nil {
 		return nil, err
 	}
-	return m, nil
+	return wrapReplica(path, m)
 }
 
 // ---- unqlite -------------------------------------------------------------------

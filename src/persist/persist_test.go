@@ -290,3 +290,74 @@ func TestAConfiguredDatabaseThatDoesNotAnswerStopsTheServerUnlessFilesAreAllowed
 		t.Errorf("a worker: %q", said)
 	}
 }
+
+// With a replica a server reads from its local copy: what another process writes to the database is not
+// seen until the next start, and what this server writes is in the database at once.
+func TestMongoReplicaReadsAreLocalAndWritesGoThrough(t *testing.T) {
+	uri := os.Getenv("OPENREPL_TEST_MONGODB_URI")
+	if uri == "" {
+		t.Skip("OPENREPL_TEST_MONGODB_URI is not set")
+	}
+	t.Setenv("OPENREPL_MONGODB_URI", uri)
+	t.Setenv("OPENREPL_MONGODB_DB", fmt.Sprintf("openrepl_test_%d", time.Now().UnixNano()))
+	useReplicaDir(t)
+	ResetRemote()
+	Configure(true)
+	t.Cleanup(func() {
+		mu.Lock()
+		if client != nil {
+			c, cancel := ctx()
+			client.Database(utils.MongoDBName()).Drop(c)
+			cancel()
+		}
+		mu.Unlock()
+		Configure(false)
+		ResetRemote()
+	})
+	path := filepath.Join(t.TempDir(), "things.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exercise(t, s) // a replica behaves as any other database
+	if infos := ReplicaStatus(); len(infos) != 1 || infos[0].Mode != "full" {
+		t.Fatalf("replica status: %+v", infos)
+	}
+	// another process writes the database directly
+	coll, err := collection(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := &mongoStore{coll: coll}
+	if err := other.Store([]byte("elsewhere"), []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Fetch([]byte("elsewhere")); err == nil {
+		t.Error("a read went to MongoDB: the copy should answer it")
+	}
+	// what this server wrote is in MongoDB
+	if v, err := other.Fetch([]byte("b")); err != nil || string(v) != "22" {
+		t.Errorf("a write did not reach MongoDB: %q %v", v, err)
+	}
+	// a restart fills the copy again and sees both
+	s.Close()
+	ResetRemote()
+	Configure(true)
+	again, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if v, err := again.Fetch([]byte("elsewhere")); err != nil || string(v) != "x" {
+		t.Errorf("after a restart: %q %v", v, err)
+	}
+}
+
+func TestTheReplicaBehavesLikeAnyOtherDatabase(t *testing.T) {
+	remote := newFakeRemote(nil)
+	r := newReplica("things", remote, localCopy(t), false)
+	if err := r.fill(); err != nil {
+		t.Fatal(err)
+	}
+	exercise(t, r)
+}

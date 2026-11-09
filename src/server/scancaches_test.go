@@ -1,6 +1,10 @@
 package server
 
-import "testing"
+import (
+	"persist"
+	"strings"
+	"testing"
+)
 
 // The lists are kept for a while in production (scancaches.go); the tests change data and look at
 // once, so a change shows on the next read.
@@ -69,5 +73,29 @@ func TestTheHealthPageWarnsBeforeFirestoreRunsOutOfItsFreeAllowance(t *testing.T
 		if got != c.want || detail == "" {
 			t.Errorf("%d reads, %d writes, %d deletes: %s (%q), want %s", c.reads, c.writes, c.deletes, got, detail, c.want)
 		}
+	}
+}
+
+func TestTheHealthPageSaysHowTheDatabasesAreRead(t *testing.T) {
+	status, detail := replicaCheck(nil)
+	if status != healthOK || detail == "" {
+		t.Errorf("nothing open: %s %q", status, detail)
+	}
+	full := []persist.ReplicaInfo{
+		{Name: "user_sessions", Mode: "full", Records: 130},
+		{Name: "blog", Mode: "full", Records: 8},
+		{Name: "snippets", Mode: "on demand"},
+	}
+	status, detail = replicaCheck(full)
+	if status != healthOK || !strings.Contains(detail, "user_sessions 130") || !strings.Contains(detail, "138 records") || !strings.Contains(detail, "kept on demand: snippets") {
+		t.Errorf("a replica: %s %q", status, detail)
+	}
+	status, detail = replicaCheck(append(full, persist.ReplicaInfo{Name: "feedback", Mode: "off"}))
+	if status != healthWarn || !strings.Contains(detail, "straight from the remote database") || !strings.Contains(detail, "feedback") {
+		t.Errorf("one read directly: %s %q", status, detail)
+	}
+	status, detail = replicaCheck([]persist.ReplicaInfo{{Name: "blog", Mode: "full", Records: 3, Broken: true}})
+	if status != healthWarn || !strings.Contains(detail, "could not be written") {
+		t.Errorf("a broken copy: %s %q", status, detail)
 	}
 }

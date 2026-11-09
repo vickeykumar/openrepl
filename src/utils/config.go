@@ -27,6 +27,8 @@ import (
 //	OPENREPL_ADMIN_EMAILS    comma-separated admin accounts; file: user.email
 //	OPENREPL_DB_FALLBACK     files lets a server whose MongoDB or Firestore does not answer start with local files; by
 //	                         default it keeps trying and then exits, see DBFallbackToFiles
+//	OPENREPL_REPLICA         off reads MongoDB or Firestore directly; by default the server keeps a local copy and
+//	                         reads from it (see ReplicaEnabled); OPENREPL_REPLICA_LAZY names the databases kept on demand
 //	OPENREPL_SESSION_DAYS    how long a sign-in lasts, 1 to 90 days (7 by default); see SessionLifetimeMillis
 //	OPENREPL_OPENAI_API_KEY  the OpenAI key as it is; file: user.OpenaiAPIKey, base64
 //	OPENREPL_OPENROUTER_API_KEY  the OpenRouter key as it is (env only); without it the
@@ -53,6 +55,8 @@ const (
 	EnvAdminEmails       = "OPENREPL_ADMIN_EMAILS"
 	EnvSessionDays       = "OPENREPL_SESSION_DAYS"
 	EnvDBFallback        = "OPENREPL_DB_FALLBACK"
+	EnvReplica           = "OPENREPL_REPLICA"
+	EnvReplicaLazy       = "OPENREPL_REPLICA_LAZY"
 	EnvOpenAIKey         = "OPENREPL_OPENAI_API_KEY"
 	EnvOpenRouterKey     = "OPENREPL_OPENROUTER_API_KEY"
 	EnvRecaptchaSecret   = "OPENREPL_RECAPTCHA_SECRET"
@@ -216,6 +220,29 @@ func SessionLifetimeMillis() int64 {
 // and a host that keeps the last working version running (Render) does so.
 func DBFallbackToFiles() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv(EnvDBFallback)), "files")
+}
+
+// ReplicaEnabled says whether a server whose databases are in MongoDB or Firestore keeps a local copy and
+// reads from it (persist/replica.go). On unless OPENREPL_REPLICA=off.
+func ReplicaEnabled() bool {
+	return !strings.EqualFold(strings.TrimSpace(os.Getenv(EnvReplica)), "off")
+}
+
+// ReplicaOnDemand says whether the local copy of the database name (no extension: "snippets") is not
+// filled at start but kept on demand: a record is read from the remote database the first time it is
+// asked for. OPENREPL_REPLICA_LAZY lists the names, comma separated ("none" for no one); by default the
+// shared snippets, of which there may be many and which are read one at a time.
+func ReplicaOnDemand(name string) bool {
+	list := strings.ToLower(strings.TrimSpace(os.Getenv(EnvReplicaLazy)))
+	if list == "" {
+		list = "snippets"
+	}
+	for _, n := range strings.Split(list, ",") {
+		if strings.TrimSpace(n) == strings.ToLower(name) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsOwnerEmail reports whether email is one of the accounts configured in the
@@ -723,6 +750,11 @@ func configSummary(dev bool) string {
 	admins := AdminEmails()
 	item("admin emails", EnvAdminEmails, "user.email", strings.Join(admins, ","), len(admins))
 	fmt.Fprintf(&b, "; session: %d days", SessionLifetimeMillis()/(24*3600*1000))
+	if ReplicaEnabled() {
+		fmt.Fprintf(&b, "; local replica of a remote database: on (on demand: %s)", map[bool]string{true: "none", false: "per OPENREPL_REPLICA_LAZY, default snippets"}[strings.EqualFold(strings.TrimSpace(os.Getenv(EnvReplicaLazy)), "none")])
+	} else {
+		fmt.Fprint(&b, "; local replica of a remote database: off")
+	}
 	item("openai key", EnvOpenAIKey, "user.OpenaiAPIKey", OpenAIKey(), 0)
 	item("openrouter key", EnvOpenRouterKey, "", OpenRouterKey(), 0)
 	item("cloudflare token", EnvCloudflareToken, "", CloudflareToken(), 0)
