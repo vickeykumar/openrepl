@@ -54,6 +54,10 @@ type archNode struct {
 	Rows   []archRow `json:"rows,omitempty"`
 	Series []int64   `json:"series,omitempty"` // a count for each of the last 30 minutes
 	View   string    `json:"view,omitempty"`   // the dashboard view with more
+	// Title and Sub replace the box's own name and its line below it, for a box that is something else now
+	// (the database files are a local copy of Firestore when that is the database)
+	Title string `json:"title,omitempty"`
+	Sub   string `json:"sub,omitempty"`
 }
 
 type archLink struct {
@@ -259,6 +263,54 @@ func (server *Server) archSlowRead() (health map[string]string, signIns int) {
 	return h, archSlow.signIns
 }
 
+// localCopyNode is the box of the database files. With the databases in files it is the disk they are on. With
+// MongoDB or Firestore the files are the server's local copy of the remote data (persist/replica.go) that every
+// read is answered from, so the box says that, with how many records each database copied at start; it says
+// "not used" only when the copy is switched off or none could be made, and warns when one could not be written.
+func localCopyNode(backend string, infos []persist.ReplicaInfo, diskStatus, diskText string) archNode {
+	n := archNode{ID: "store", Status: diskStatus, Text: diskText, View: "health"}
+	if backend == "" || backend == "unqlite" {
+		return n
+	}
+	var records, copies int
+	var broken, direct []string
+	for _, i := range infos {
+		switch {
+		case i.Broken && i.Mode != "off":
+			broken = append(broken, i.Name)
+		case i.Mode == "off":
+			direct = append(direct, i.Name)
+		default:
+			copies++
+			records += i.Records
+			value := fmt.Sprintf("%s records copied at start in %s", thousands(int64(i.Records)), i.Took.Round(time.Millisecond))
+			if i.Mode == "on demand" {
+				value = "kept on demand: a record is read the first time it is asked for"
+			}
+			n.Rows = append(n.Rows, archRow{Label: i.Name, Value: value})
+		}
+	}
+	switch {
+	case copies == 0:
+		n.Status, n.Text, n.Rows = archOff, "not used", nil
+		if len(direct) > 0 {
+			n.Text = "not used: " + strings.Join(direct, ", ") + " are read from " + storeTitle(backend)
+		}
+		return n
+	case len(broken) > 0:
+		n.Status, n.Text = archWarn, "the copy could not be written: "+strings.Join(broken, ", ")+"; those are read from "+storeTitle(backend)
+	default:
+		n.Text = fmt.Sprintf("%s records, reads are local · %s", thousands(int64(records)), diskText)
+		if len(direct) > 0 {
+			n.Status = worse(n.Status, archWarn)
+			n.Text += "; read from " + storeTitle(backend) + ": " + strings.Join(direct, ", ")
+		}
+	}
+	n.Title, n.Sub = "Local copy of "+strings.SplitN(storeTitle(backend), ",", 2)[0], "/opt/gotty/*.db"
+	n.Rows = append(n.Rows, archRow{Label: "Disk", Value: diskText, Status: diskStatus})
+	return n
+}
+
 // ---- the map ---------------------------------------------------------------------------
 
 func (server *Server) architecture() archReply {
@@ -387,9 +439,7 @@ func (server *Server) architecture() archReply {
 			storeStatus = archFail
 		}
 	}
-	if external {
-		storeStatus, storeText = archOff, "not used"
-	}
+	storeNode := localCopyNode(backend, persist.ReplicaStatus(), storeStatus, storeText)
 	extNode := archNode{ID: "external", Status: archOff, Text: "not set up"}
 	if external {
 		extNode = externalDBNode(archDBStats(), GetSiteSettings().DBCapacityMB, dbStatus)
@@ -466,7 +516,7 @@ func (server *Server) architecture() archReply {
 		add(archNode{ID: "workers", Status: ws, Text: fmt.Sprintf("%d of %d online", p.Counts.WorkersOnline, p.Counts.WorkersTotal), View: "workers"})
 	}
 	add(archNode{ID: "data", Status: dbStatus, Text: rate(dbOps.PerMinute(60)) + " ops/min · " + fmt.Sprintf("%d", dbErr.Sum(archWindow)) + " errors", Series: minutes(dbOps), View: "health"})
-	add(archNode{ID: "store", Status: storeStatus, Text: storeText, View: "health"})
+	add(storeNode)
 	add(extNode)
 	add(archNode{ID: "fb-db", Status: fire, Text: "state only", View: "health"})
 	add(archNode{ID: "fb-auth", Status: fire, Text: fmt.Sprintf("%d signed in today", signIns), View: "users"})
