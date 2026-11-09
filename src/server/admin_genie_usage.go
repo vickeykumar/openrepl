@@ -89,14 +89,18 @@ func addRow(total *usageUserRow, r usageUserRow) {
 	total.Partial = total.Partial || r.Partial
 }
 
-func buildGenieUsage(month bool) genieUsageReply {
+func buildGenieUsage(month bool, fresh bool) genieUsageReply {
 	g := GetSiteSettings().Genie
 	reply := genieUsageReply{Range: "all", Month: monthOf(tokenTotals.now()), Users: []usageUserRow{}, PricesSet: len(g.ModelPrices) > 0}
 	if month {
 		reply.Range = "month"
 	}
 	reply.Visitors = usageRowOf(tokenTotals.visitors(), month, g.ModelPrices)
-	for uid, rec := range tokenTotals.every() {
+	every := tokenTotals.every()
+	if fresh {
+		every = tokenTotals.everyFresh()
+	}
+	for uid, rec := range every {
 		row := usageRowOf(rec, month, g.ModelPrices)
 		if row.Answers == 0 {
 			continue
@@ -135,7 +139,7 @@ func (server *Server) handleAdminGenieUsage(w http.ResponseWriter, r *http.Reque
 		adminError(w, http.StatusMethodNotAllowed, "GET only")
 		return
 	}
-	reply := buildGenieUsage(r.URL.Query().Get("range") != "all")
+	reply := buildGenieUsage(r.URL.Query().Get("range") != "all", wantFresh(r.URL.Query()))
 	if r.URL.Query().Get("format") != "csv" {
 		w.Header().Set("Cache-Control", "no-store")
 		adminJSON(w, http.StatusOK, reply)

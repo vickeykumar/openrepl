@@ -290,6 +290,15 @@
     return h('a', { href: href, class: 'stat-link' }, card);
   }
 
+  // A button that reads the latest from the database. The dashboard keeps its big lists for a few
+  // minutes (a scan costs a read per record on Firestore), so these views do not refresh by
+  // themselves; load(true) asks the server for a new scan (at most one in half a minute).
+  function refreshButton(load) {
+    return h('button', { class: 'btn', type: 'button', text: 'Refresh', title: 'Read the latest from the database',
+      onclick: function () { load(true).then(function () { toast('Refreshed'); }, fail); } });
+  }
+  function freshPath(path, fresh) { return path + (fresh ? (path.indexOf('?') < 0 ? '?' : '&') + 'fresh=1' : ''); }
+
   function emptyState(text) { return h('div', { class: 'empty', text: text }); }
 
   function sortRows(rows, cols, sort) {
@@ -1524,7 +1533,7 @@
     root.appendChild(pageHead('Feedback', 'Messages from the feedback form on the site.'));
     var spamBtn = h('button', { class: 'btn danger', type: 'button', hidden: true, onclick: function () { removeSpam(); } });
     root.appendChild(h('div', { class: 'toolbar' }, filter, h('span', { class: 'grow' }), h('span', { class: 'sub', id: 'fb-count' }), spamBtn,
-      h('a', { class: 'btn', href: BASE + 'admin/feedback?format=csv', download: 'openrepl-feedback.csv', text: 'Export CSV' })));
+      refreshButton(load), h('a', { class: 'btn', href: BASE + 'admin/feedback?format=csv', download: 'openrepl-feedback.csv', text: 'Export CSV' })));
     root.appendChild(box);
 
     function setRead(f, read) {
@@ -1569,8 +1578,9 @@
       setUnread(data.unread);
     }
 
-    function refresh() { return api.get('admin/feedback').then(function (r) { data = r; draw(); }); }
-    return { root: root, refresh: refresh, poll: true };
+    function load(fresh) { return api.get(freshPath('admin/feedback', fresh)).then(function (r) { data = r; draw(); }); }
+    function refresh() { return load(false); }
+    return { root: root, refresh: refresh, poll: false };
   }
 
   // ---- snippets
@@ -1579,6 +1589,7 @@
     var root = h('div'), box = h('div');
     var data = null;
     root.appendChild(pageHead('Shared code', 'Snippets visitors saved with "Share code". Remove one that should not be public.'));
+    root.appendChild(h('div', { class: 'toolbar' }, h('span', { class: 'grow' }), refreshButton(load)));
     root.appendChild(box);
 
     function view(s) {
@@ -1606,14 +1617,15 @@
           h('button', { class: 'btn small danger', type: 'button', text: 'Delete', onclick: function () { remove(s); } })); } }
     ];
 
-    function refresh() {
-      return api.get('admin/snippets').then(function (r) {
+    function load(fresh) {
+      return api.get(freshPath('admin/snippets', fresh)).then(function (r) {
         data = r;
         if (r.off) { render(box, 'off', h('div', { class: 'callout', text: 'The snippet database is not open on this server, so sharing is off.' })); return; }
         render(box, JSON.stringify(r.snippets), table(cols, r.snippets, { empty: 'Nobody has shared code yet.' }));
       });
     }
-    return { root: root, refresh: refresh, poll: true };
+    function refresh() { return load(false); }
+    return { root: root, refresh: refresh, poll: false };
   }
 
   // ---- users
@@ -1629,7 +1641,7 @@
       h('option', { value: 'week', text: 'Signed in the last 7 days' }), h('option', { value: 'active7', text: 'Active in the last 7 days' }),
       h('option', { value: 'quiet', text: 'Not active in 30 days' }), h('option', { value: 'unrecorded', text: 'Sign-in not recorded' }));
     root.appendChild(pageHead('Users', 'Accounts that have signed in, and how long they spend on the site. Click a row for one person. Signing a user out ends their sessions; blocking also stops them signing in again.'));
-    root.appendChild(h('div', { class: 'toolbar' }, search, filter, h('span', { class: 'grow' }), h('span', { class: 'sub', id: 'users-count' })));
+    root.appendChild(h('div', { class: 'toolbar' }, search, filter, h('span', { class: 'grow' }), h('span', { class: 'sub', id: 'users-count' }), refreshButton(load)));
 
     // a time in milliseconds as the page tells times: "3h 5m ago", the exact time on hover; 0 is "not recorded"
     function stamp(ms, none) {
@@ -1700,8 +1712,8 @@
       $('users-count').textContent = plural(rows.length, 'account', 'accounts') + (rows.length !== data.users.length ? ' of ' + data.users.length : '');
       render(box, JSON.stringify([rows, sort]), table(cols, rows, { sort: sort, onSort: sortBy, onRow: userDrawer, empty: data.users.length ? 'No account matches.' : 'Nobody has signed in yet.' }));
     }
-    function refresh() {
-      return api.get('admin/users').then(function (r) {
+    function load(fresh) {
+      return api.get(freshPath('admin/users', fresh)).then(function (r) {
         // the usage numbers sit in a row of their own; the table sorts on them as they are
         r.users.forEach(function (u) {
           u.usage = u.usage || { bars: [] };
@@ -1710,7 +1722,8 @@
         data = r; draw();
       });
     }
-    return { root: root, refresh: refresh, poll: true };
+    function refresh() { return load(false); }
+    return { root: root, refresh: refresh, poll: false };
   }
 
   // one account's usage, in a side panel
@@ -1774,7 +1787,7 @@
       h('option', { value: '7', text: 'Last 7 days' }), h('option', { value: '30', text: 'Last 30 days', selected: true }), h('option', { value: '90', text: 'Last 90 days' }));
     rangeSel.value = '30';
     root.appendChild(pageHead('Site usage', 'How people use the site, signed in and as guests. Guests are counted, never listed. Time counts only while a tab is in front and the person is typing, clicking or scrolling.'));
-    root.appendChild(h('div', { class: 'toolbar' }, modeBox, rangeSel, h('span', { class: 'grow' })));
+    root.appendChild(h('div', { class: 'toolbar' }, modeBox, rangeSel, h('span', { class: 'grow' }), refreshButton(load)));
     root.appendChild(box);
 
     function nm(n) { return Number(n || 0).toLocaleString('en-US'); }
@@ -1830,8 +1843,9 @@
             ], r.cohorts, { empty: 'No accounts have joined yet.' }))));
       render(box, JSON.stringify([r, mode]), node);
     }
-    function refresh() { return api.get('admin/usage?days=' + days).then(function (r) { data = r; draw(); }); }
-    return { root: root, refresh: refresh, poll: true };
+    function load(fresh) { return api.get(freshPath('admin/usage?days=' + days, fresh)).then(function (r) { data = r; draw(); }); }
+    function refresh() { return load(false); }
+    return { root: root, refresh: refresh, poll: false };
   }
 
   // ---- health
@@ -1952,7 +1966,7 @@
       refresh();
     } }, h('option', { value: 'month', text: 'This month' }), h('option', { value: 'all', text: 'All time' }));
     root.appendChild(pageHead('Genie usage', 'The tokens each signed-in user has used, as the models report them, and what they cost.'));
-    root.appendChild(h('div', { class: 'toolbar' }, sel, h('span', { class: 'grow' }), csv));
+    root.appendChild(h('div', { class: 'toolbar' }, sel, h('span', { class: 'grow' }), refreshButton(load), csv));
     root.appendChild(box);
 
     function n(x) { return Number(x || 0).toLocaleString('en-US'); }
@@ -1984,8 +1998,9 @@
       render(box, JSON.stringify([r, range]), node);
     }
 
-    function refresh() { return api.get('admin/genie-usage?range=' + range).then(draw); }
-    return { root: root, refresh: refresh, poll: true };
+    function load(fresh) { return api.get(freshPath('admin/genie-usage?range=' + range, fresh)).then(draw); }
+    function refresh() { return load(false); }
+    return { root: root, refresh: refresh, poll: false };
   }
 
   // ---- Live map

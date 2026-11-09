@@ -25,6 +25,8 @@ import (
 //
 //	OPENREPL_ENV             dev or production (the default); see IsDev
 //	OPENREPL_ADMIN_EMAILS    comma-separated admin accounts; file: user.email
+//	OPENREPL_DB_FALLBACK     files lets a server whose MongoDB or Firestore does not answer start with local files; by
+//	                         default it keeps trying and then exits, see DBFallbackToFiles
 //	OPENREPL_SESSION_DAYS    how long a sign-in lasts, 1 to 90 days (7 by default); see SessionLifetimeMillis
 //	OPENREPL_OPENAI_API_KEY  the OpenAI key as it is; file: user.OpenaiAPIKey, base64
 //	OPENREPL_OPENROUTER_API_KEY  the OpenRouter key as it is (env only); without it the
@@ -50,6 +52,7 @@ const (
 	EnvMode              = "OPENREPL_ENV"
 	EnvAdminEmails       = "OPENREPL_ADMIN_EMAILS"
 	EnvSessionDays       = "OPENREPL_SESSION_DAYS"
+	EnvDBFallback        = "OPENREPL_DB_FALLBACK"
 	EnvOpenAIKey         = "OPENREPL_OPENAI_API_KEY"
 	EnvOpenRouterKey     = "OPENREPL_OPENROUTER_API_KEY"
 	EnvRecaptchaSecret   = "OPENREPL_RECAPTCHA_SECRET"
@@ -204,6 +207,15 @@ func SessionLifetimeMillis() int64 {
 		}
 	}
 	return int64(days) * 24 * 3600 * 1000
+}
+
+// DBFallbackToFiles says that a server whose MongoDB or Firestore is configured but does not answer may
+// start with the local files instead (OPENREPL_DB_FALLBACK=files). By default it may not: the files
+// of a server that keeps nothing between deploys are empty, so the site would come up without its
+// accounts, blog and settings, and look as if they were lost. The server keeps trying and then exits,
+// and a host that keeps the last working version running (Render) does so.
+func DBFallbackToFiles() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(EnvDBFallback)), "files")
 }
 
 // IsOwnerEmail reports whether email is one of the accounts configured in the

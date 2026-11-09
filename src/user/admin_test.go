@@ -250,3 +250,50 @@ func TestASessionLastsAsLongAsTheServerSaysNotAsLongAsTheFirebaseToken(t *testin
 		t.Errorf("the session has %d ms left, want about 7 days", left)
 	}
 }
+
+// A scan of the accounts is a read per account on Firestore, and the dashboard asks every few seconds:
+// the list is read once, and again only when an account changed (and the minimum time has passed) or an
+// admin asked for the latest.
+func TestTheAccountListIsScannedOnceUntilSomethingChanges(t *testing.T) {
+	open(t)
+	signIn(t, "uid-a", "ann@example.com", true)
+	before := accountsCache.Scans()
+	for i := 0; i < 50; i++ {
+		if list, err := ListAccounts(); err != nil || len(list) != 1 {
+			t.Fatalf("list: %v %v", list, err)
+		}
+	}
+	if got := accountsCache.Scans() - before; got != 1 {
+		t.Errorf("50 reads of the list made %d scans, want 1", got)
+	}
+	// a sign-in changes an account: the next list has it (the tests have no minimum time)
+	signIn(t, "uid-b", "bob@example.com", true)
+	if list, _ := ListAccounts(); len(list) != 2 {
+		t.Errorf("after a sign-in: %d accounts, want 2", len(list))
+	}
+	// a block is shown at once too
+	if err := SetBlocked("uid-b", true); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := ListAccounts()
+	blocked := 0
+	for _, a := range list {
+		if a.Blocked {
+			blocked++
+		}
+	}
+	if blocked != 1 {
+		t.Errorf("after a block: %d blocked accounts, want 1", blocked)
+	}
+	// the caller's copy is its own: sorting or editing it does not change the list for the next caller
+	list[0].Email = "changed@example.com"
+	if again, _ := ListAccounts(); again[0].Email == "changed@example.com" {
+		t.Error("the kept list was changed through a copy")
+	}
+	// Refresh (fresh) scans again
+	n := accountsCache.Scans()
+	ListAccountsFresh()
+	if accountsCache.Scans() != n+1 {
+		t.Errorf("a fresh list did not scan")
+	}
+}

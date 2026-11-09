@@ -44,6 +44,7 @@ func InitTokenDBHandle() {
 	defer tokensDBMu.Unlock()
 	var err error
 	tokens_db_handle, err = persist.Open(TOKENS_DB)
+	tokenTotals.scan.Reset()
 	if err != nil {
 		log.Println("ERROR: Error while creating the Genie usage DB handle : ", err.Error())
 		tokens_db_handle = nil // the totals then last until the server restarts
@@ -233,14 +234,22 @@ type visitTokens struct {
 }
 
 type tokenLedger struct {
+	// scan is the last read of every record of the database (every): five minutes old at most, since a
+	// scan costs a read for each user on Firestore. What this server counted since is added on top.
+	scan    utils.ScanCache[map[string]tokenRecord]
 	mu      sync.Mutex
 	records map[string]*tokenRecord // the database's records, as far as they were read or written
 	visits  map[string]*visitTokens
 	now     func() time.Time
 }
 
+// tokenScanMinInterval is the least time between two scans of the Genie usage records (tests set 0).
+var tokenScanMinInterval = 30 * time.Second
+
 func newTokenLedger() *tokenLedger {
-	return &tokenLedger{records: map[string]*tokenRecord{}, visits: map[string]*visitTokens{}, now: time.Now}
+	l := &tokenLedger{records: map[string]*tokenRecord{}, visits: map[string]*visitTokens{}, now: time.Now}
+	l.scan = utils.ScanCache[map[string]tokenRecord]{TTL: 5 * time.Minute, MinInterval: tokenScanMinInterval}
+	return l
 }
 
 var tokenTotals = newTokenLedger()
@@ -356,16 +365,24 @@ func (l *tokenLedger) visit(id string) totals {
 
 // every is each signed-in user's record (key without the prefix), from the
 // database and from what was counted since the server started.
-func (l *tokenLedger) every() map[string]tokenRecord {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	month := monthOf(l.now())
-	out := map[string]tokenRecord{}
+func (l *tokenLedger) every() map[string]tokenRecord { return l.everyAt(false) }
+
+// everyFresh is every after a new scan of the database, unless one was made a moment ago.
+func (l *tokenLedger) everyFresh() map[string]tokenRecord { return l.everyAt(true) }
+
+func (l *tokenLedger) everyAt(fresh bool) map[string]tokenRecord {
 	tokensDBMu.Lock()
-	h := tokens_db_handle
+	source := tokens_db_handle
 	tokensDBMu.Unlock()
-	if h != nil {
-		h.Each(func(k, v []byte) bool {
+	stored, _ := l.scan.GetFor(source, fresh, func() (map[string]tokenRecord, error) {
+		out := map[string]tokenRecord{}
+		tokensDBMu.Lock()
+		h := tokens_db_handle
+		tokensDBMu.Unlock()
+		if h == nil {
+			return out, nil
+		}
+		err := h.Each(func(k, v []byte) bool {
 			key := string(k)
 			if strings.HasPrefix(key, tokensUserPrefix) {
 				var r tokenRecord
@@ -375,6 +392,14 @@ func (l *tokenLedger) every() map[string]tokenRecord {
 			}
 			return true
 		})
+		return out, err
+	})
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	month := monthOf(l.now())
+	out := make(map[string]tokenRecord, len(stored))
+	for uid, r := range stored {
+		out[uid] = r
 	}
 	for key, r := range l.records {
 		if strings.HasPrefix(key, tokensUserPrefix) {

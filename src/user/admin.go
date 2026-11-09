@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"cachedb"
 	"utils"
@@ -77,6 +78,7 @@ func SetBlocked(uid string, blocked bool) error {
 	if err := db.Commit(); err != nil {
 		return err
 	}
+	invalidateAccountsNow()
 	blockedMu.Lock()
 	if blocked {
 		blockedSet[uid] = true
@@ -107,7 +109,9 @@ func SignOutEverywhere(uid string) error {
 	if err := db.Store([]byte(uid), data); err != nil {
 		return err
 	}
-	return db.Commit()
+	err = db.Commit()
+	invalidateAccountsNow()
+	return err
 }
 
 // Account is one row of the admin's list of users.
@@ -124,8 +128,40 @@ type Account struct {
 	SignIns     int   `json:"signIns"`
 }
 
-// ListAccounts returns every account, by email address.
+// The list of accounts is read by the dashboard every few seconds (the Users view, the live map,
+// Site usage), and each read of it is a scan of the whole user database, which on Firestore costs a
+// read for every account. So the list is kept for five minutes (ScanCache); a sign-in, a block or a
+// sign-out drops it, and a rescan then waits a minute at most.
+var accountsCache = &utils.ScanCache[[]Account]{TTL: 5 * time.Minute, MinInterval: time.Minute}
+
+// InvalidateAccounts says that an account changed (a sign-in, say), so the next list is read again, within
+// a minute.
+func InvalidateAccounts() { accountsCache.Invalidate() }
+
+// invalidateAccountsNow is for what an admin just did to an account (a block, a sign-out): the next list
+// is read at once, since the admin is looking at it.
+func invalidateAccountsNow() { accountsCache.InvalidateNow() }
+
+func copyAccounts(in []Account, err error) ([]Account, error) {
+	out := make([]Account, len(in))
+	copy(out, in)
+	return out, err
+}
+
+// ListAccounts returns every account, by email address, as it was at the last scan (at most five
+// minutes old, less when an account changed).
 func ListAccounts() ([]Account, error) {
+	return copyAccounts(accountsCache.Get(false, listAccountsScan))
+}
+
+// ListAccountsFresh is ListAccounts for an admin who asked for the latest: a new scan, unless one
+// was made in the last minute.
+func ListAccountsFresh() ([]Account, error) {
+	return copyAccounts(accountsCache.Get(true, listAccountsScan))
+}
+
+// listAccountsScan reads every account from the database.
+func listAccountsScan() ([]Account, error) {
 	db := GetUserDBHandle()
 	now := utils.GetUnixMilli()
 	out := []Account{}
@@ -167,6 +203,8 @@ func OpenSessionDB(path string) error {
 		return err
 	}
 	session_db_handle = db
+	accountsCache.Reset()
+	accountsCache.MinInterval = 0 // the tests change accounts and look at once
 	blockedMu.Lock()
 	blockedSet, blockedLoaded = map[string]bool{}, false
 	blockedMu.Unlock()

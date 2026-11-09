@@ -43,6 +43,7 @@ func NewBlogPost(name, title, desc, content string) *BlogPost {
 func InitBlogDBHandle() {
 	var err error
 	blog_db_handle, err = persist.Open(BLOG_DB)
+	blogScan.Reset()
 	if err != nil {
 		log.Println("ERROR: Error while creating blog DB handle : ", err.Error())
 		os.Exit(3)
@@ -79,6 +80,7 @@ func StoreBlogData(blog *BlogPost) error {
 	if err != nil {
 		log.Println("ERROR: Failed to commit the blog data to disk, error: ", err.Error())
 	}
+	blogScan.InvalidateNow()
 	knowledgeInvalidate()
 	return err
 }
@@ -89,13 +91,26 @@ func deleteBlogData(blogname string) error {
 		return err
 	}
 	err = blog_db_handle.Commit()
+	blogScan.InvalidateNow()
 	knowledgeInvalidate()
 	return err
 }
 
-func FetchBlogDataMap() (bloglistmap map[string]BlogPost) {
+// FetchBlogDataMap is every post, as of the last scan (scancaches.go): every visit to the blog page
+// asks for it, and each scan costs a read per post on Firestore. A post saved or deleted here shows
+// at once (a few seconds at most).
+func FetchBlogDataMap() map[string]BlogPost {
+	posts, _ := blogScan.GetFor(blog_db_handle, false, scanBlogs)
+	out := make(map[string]BlogPost, len(posts))
+	for k, v := range posts {
+		out[k] = v
+	}
+	return out
+}
+
+func scanBlogs() (bloglistmap map[string]BlogPost, err error) {
 	bloglistmap = make(map[string]BlogPost)
-	err := blog_db_handle.Each(func(key, value []byte) bool {
+	err = blog_db_handle.Each(func(key, value []byte) bool {
 		var blog BlogPost // a field missing from the record must not keep the last one's value
 		if err := json.Unmarshal(value, &blog); err != nil {
 			log.Println("ERROR: while unMarshalling for key: ", string(key), value, " Error: ", err)
@@ -107,7 +122,7 @@ func FetchBlogDataMap() (bloglistmap map[string]BlogPost) {
 	if err != nil {
 		log.Println("Error reading the blog records: ", err.Error())
 	}
-	return
+	return bloglistmap, err
 }
 
 // Define a template function to format the date

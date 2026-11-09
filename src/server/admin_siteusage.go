@@ -30,6 +30,9 @@ func (server *Server) handleAdminSiteUsage(w http.ResponseWriter, r *http.Reques
 		n = v
 	}
 	accounts, err := user.ListAccounts()
+	if wantFresh(r.URL.Query()) {
+		accounts, err = user.ListAccountsFresh()
+	}
 	if err != nil {
 		adminError(w, http.StatusInternalServerError, "Could not read the accounts.")
 		return

@@ -588,7 +588,7 @@ flowchart TB
 2. Otherwise **Firestore**, if `OPENREPL_FIRESTORE_CREDENTIALS` holds a service account key (or the emulator is set) and the project's Firestore answers. The server uses Firestore's REST API directly, with no client library.
 3. Otherwise **UnQLite files** under `/opt/gotty`, as the server has always done.
 
-Each backend is tried three times. A database that was asked for and did not answer is written to the log with the reason, the server goes on with the next choice, and the admin Health page shows a "Database choice" warning. Use MongoDB or Firestore on a host whose disk is wiped on every deploy (Render, for example): with files only, accounts, blog posts and settings are lost on each deploy.
+Each backend is tried in turn (MongoDB, then Firestore). A database that was asked for and does not answer is not replaced by empty local files: the server keeps trying for about three minutes and then exits with the reason in the log, so a host that keeps the last working version running (Render) goes on with it. Set `OPENREPL_DB_FALLBACK=files` to start with the files instead (the admin Health page then shows a "Database choice" warning). Use MongoDB or Firestore on a host whose disk is wiped on every deploy (Render, for example): with files only, accounts, blog posts and settings are lost on each deploy.
 
 **The databases.** With files, each is a file; with MongoDB or Firestore, each is a collection named after the file (`user_sessions.db` becomes `kv_user_sessions`).
 
@@ -638,6 +638,7 @@ The server-side settings come from environment variables, and gotty can load the
 
 | Variable | Meaning | Older file key |
 |---|---|---|
+| `OPENREPL_DB_FALLBACK` | `files` lets a server whose MongoDB or Firestore is configured but does not answer start with local files. Without it the server keeps trying for about three minutes and exits. | (empty) |
 | `OPENREPL_SESSION_DAYS` | How long a sign-in lasts, 1 to 90 days. Anything else uses the default. Signing a user out, or blocking them, from the dashboard still ends it at once. | 7 |
 | `OPENREPL_ADMIN_EMAILS` | Owner accounts, comma-separated. Owners are admins and the only ones who can add or remove other admins in the dashboard. With none set, nobody is an admin. | `user.email` |
 | `OPENREPL_OPENAI_API_KEY` | The OpenAI key, as it is (not base64). | `user.OpenaiAPIKey` (base64) |

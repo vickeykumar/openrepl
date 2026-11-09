@@ -135,6 +135,7 @@ func fakeFirestore(t *testing.T, failures int) (host string, requests *int) {
 
 func startInit(t *testing.T, mongoURI, firestoreHost string) {
 	t.Helper()
+	t.Setenv("OPENREPL_DB_FALLBACK", "files") // these tests are about the fallback; the default is to stop (persist_test.go)
 	t.Setenv("OPENREPL_MONGODB_URI", mongoURI)
 	t.Setenv("FIRESTORE_EMULATOR_HOST", firestoreHost)
 	t.Setenv("OPENREPL_FIRESTORE_CREDENTIALS", "")
