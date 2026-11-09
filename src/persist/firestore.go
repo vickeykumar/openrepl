@@ -557,22 +557,18 @@ func (s *firestoreStore) Each(fn func(key, value []byte) bool) error {
 	})
 }
 
-// copyOnce fills an empty collection from the unqlite file at path, as the
-// MongoDB store does.
-func (s *firestoreStore) copyOnce(path string) error {
+// isEmpty says whether the collection has no record (one read).
+func (s *firestoreStore) isEmpty() (bool, error) {
 	empty := true
-	if err := s.f.List(s.coll, 1, func(*Doc) bool { empty = false; return false }); err != nil {
-		return err
-	}
-	if !empty {
-		return nil
-	}
-	if _, err := os.Stat(path); err != nil {
-		return nil
-	}
+	err := s.f.List(s.coll, 1, func(*Doc) bool { empty = false; return false })
+	return empty, err
+}
+
+// importFile copies the records of the unqlite file at path into the collection, and says how many.
+func (s *firestoreStore) importFile(path string) (int, error) {
 	local, err := openUnqlite(path)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer local.Close()
 	docs := map[string]map[string]interface{}{}
@@ -580,14 +576,13 @@ func (s *firestoreStore) copyOnce(path string) error {
 		docs[docID(k)] = s.fields(append([]byte(nil), v...))
 		return true
 	}); err != nil {
-		return err
+		return 0, err
 	}
 	if len(docs) == 0 {
-		return nil
+		return 0, nil
 	}
 	if err := s.f.CommitAll(s.coll, docs); err != nil {
-		return err
+		return 0, err
 	}
-	logf("persist: copied %d records from %s into Firestore (done once; Firestore now holds them)", len(docs), path)
-	return nil
+	return len(docs), nil
 }

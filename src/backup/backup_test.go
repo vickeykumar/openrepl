@@ -155,8 +155,16 @@ func TestSourcesListWhatIsThereAndNothingElse(t *testing.T) {
 	if got := strings.Join(Sources(dir, ""), ","); got != "admin-audit.jsonl,admin-stats.json,blog.db,settings.json,user_sessions.db" {
 		t.Errorf("files mode: %s", got)
 	}
-	if got := strings.Join(Sources(dir, "firestore"), ","); got != "admin-audit.jsonl,admin-stats.json" {
+	// with a remote database the .db files are the local copy of it: backed up (a second copy of the remote
+	// data), but never restored, and the settings are not in a file
+	if got := strings.Join(Sources(dir, "firestore"), ","); got != "admin-audit.jsonl,admin-stats.json,blog.db,user_sessions.db" {
 		t.Errorf("remote mode: %s", got)
+	}
+	if got := strings.Join(RestoreFiles(dir, "firestore"), ","); got != "admin-audit.jsonl,admin-stats.json" {
+		t.Errorf("remote mode, what a restore puts back: %s", got)
+	}
+	if got := strings.Join(RestoreFiles(dir, ""), ","); got != "admin-audit.jsonl,admin-stats.json,blog.db,settings.json,user_sessions.db" {
+		t.Errorf("files mode, what a restore puts back: %s", got)
 	}
 	if got := Sources(t.TempDir(), ""); len(got) != 0 {
 		t.Errorf("an empty folder: %v", got)
@@ -432,6 +440,36 @@ func TestRestoreInFirestoreModeBringsBackOnlyTheAuditLogAndTheTotals(t *testing.
 	}
 	if _, err := os.Stat(filepath.Join(fresh, "user_sessions.db")); err == nil {
 		t.Error("a database came back although Firestore holds them")
+	}
+}
+
+// The copies of the remote data are in the backup (a second copy of what Firestore holds), and a copy on the
+// disk does not stop the small files from being restored.
+func TestABackupWithARemoteDatabaseHoldsTheLocalCopyAndRestoreIgnoresIt(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	src := serverDir(t)
+	b := newBackuper(t, src, f)
+	b.Remote = func() string { return "firestore" }
+	res, err := b.RunOnce(ctx, false)
+	if err != nil || !res.Uploaded {
+		t.Fatalf("backup: %+v %v", res, err)
+	}
+	// a disk that was wiped but already has a copy of the database in it (this run's start made it)
+	fresh := t.TempDir()
+	makeDB(t, filepath.Join(fresh, "blog.db"), 1)
+	r, err := restoreInto(t, f, fresh, "firestore")
+	if err != nil || r == nil || strings.Join(r.Files, ",") != "admin-audit.jsonl,admin-stats.json" {
+		t.Fatalf("restore: %+v %v", r, err)
+	}
+	if n := countDB(t, filepath.Join(fresh, "blog.db")); n != 1 {
+		t.Errorf("the copy on the disk was replaced: %d records", n)
+	}
+	// a server with no remote database that restores this backup gets the copies back: they are the data
+	// there (the settings were in the remote database, so they are not in it)
+	files := t.TempDir()
+	if r, err := restoreInto(t, f, files, ""); err != nil || r == nil || strings.Join(r.Files, ",") != "admin-audit.jsonl,admin-stats.json,blog.db,user_sessions.db" {
+		t.Errorf("files mode: %+v %v", r, err)
 	}
 }
 

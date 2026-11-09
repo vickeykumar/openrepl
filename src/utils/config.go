@@ -27,6 +27,8 @@ import (
 //	OPENREPL_ADMIN_EMAILS    comma-separated admin accounts; file: user.email
 //	OPENREPL_DB_FALLBACK     files lets a server whose MongoDB or Firestore does not answer start with local files; by
 //	                         default it keeps trying and then exits, see DBFallbackToFiles
+//	OPENREPL_DB_IMPORT       files copies the local database files into a MongoDB or Firestore collection that is empty (a move
+//	                         from files to a remote database); see DBImportFromFiles
 //	OPENREPL_REPLICA         off reads MongoDB or Firestore directly; by default the server keeps a local copy and
 //	                         reads from it (see ReplicaEnabled); OPENREPL_REPLICA_LAZY names the databases kept on demand
 //	OPENREPL_SESSION_DAYS    how long a sign-in lasts, 1 to 90 days (7 by default); see SessionLifetimeMillis
@@ -56,6 +58,7 @@ const (
 	EnvSessionDays       = "OPENREPL_SESSION_DAYS"
 	EnvDBFallback        = "OPENREPL_DB_FALLBACK"
 	EnvReplica           = "OPENREPL_REPLICA"
+	EnvDBImport          = "OPENREPL_DB_IMPORT"
 	EnvReplicaLazy       = "OPENREPL_REPLICA_LAZY"
 	EnvOpenAIKey         = "OPENREPL_OPENAI_API_KEY"
 	EnvOpenRouterKey     = "OPENREPL_OPENROUTER_API_KEY"
@@ -220,6 +223,15 @@ func SessionLifetimeMillis() int64 {
 // and a host that keeps the last working version running (Render) does so.
 func DBFallbackToFiles() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv(EnvDBFallback)), "files")
+}
+
+// DBImportFromFiles says that the local database files (/opt/gotty/*.db) may be copied into a MongoDB or
+// Firestore collection that is empty: OPENREPL_DB_IMPORT=files, for the one time a server moves from files
+// to a remote database. Without it a server never copies a file into the remote database, because with a
+// remote database the files are only a copy, rebuilt at every start, and a stale one must not replace the
+// remote data.
+func DBImportFromFiles() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(EnvDBImport)), "files")
 }
 
 // ReplicaEnabled says whether a server whose databases are in MongoDB or Firestore keeps a local copy and
