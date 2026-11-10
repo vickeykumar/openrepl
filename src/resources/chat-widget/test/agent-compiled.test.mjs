@@ -353,6 +353,28 @@ test("built: what is asked about every time is asked again after a session grant
   assert.match(t.log.asked[1], /\[Allow once\/Deny\]/);
 });
 
+test("built: Allow everything for this session allows every kind of question, but a delete and a closed tab are still asked about", async () => {
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "files_list" }, { type: "run" }, { type: "files_delete", path: "a.py" }], done: false },
+      { say: "", actions: [{ type: "finish" }], done: false },
+    ],
+    { answer: (title, buttons) => (buttons.includes("Allow everything for this session") ? "Allow everything for this session" : "Allow once") }
+  );
+  await t.done(t.runner.start("do it all"));
+  const r = t.results(1).step_results;
+  // (Run itself fails in the pretend page, which has no terminal: what counts is that it was allowed without a question)
+  assert.deepEqual(r.map((x) => x.type + ":" + x.status), ["files_list:done", "run:failed", "files_delete:done"]);
+  // one question answered with Allow all (the list), Run asked nothing, the delete asked on its own, without the Allow all link
+  assert.equal(t.log.asked.length, 2, t.log.asked.join(" | "));
+  assert.match(t.log.asked[0], /Allow everything for this session$/);
+  assert.match(t.log.asked[1], /\[Allow once\/Deny\] -> Allow once/);
+  // the task card says it, with a way back
+  const row = t.messages.querySelector(".cw-agent__allowing");
+  assert.ok(row, "no line says that everything is allowed");
+  assert.match(row.textContent, /Allowing everything for this session/);
+});
+
 test("built: Stop ends a task whose model is silent, and the box comes back", async () => {
   const t = setup([{ hang: true }]);
   const running = t.runner.start("wait for ever");

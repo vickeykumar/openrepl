@@ -167,7 +167,9 @@ export class AgentRunner {
   private timedOut = false;
   private ctl: AbortController | null = null;
   private grants = new Set<Scope>(); // allowed for the rest of the session (until the page closes)
-  private pendingAnswer: ((a: "once" | "session" | "deny") => void) | null = null;
+  private allowAll = false; // "Allow everything for this session" was pressed (risky actions are still asked about)
+  private pendingAnswer: ((a: "once" | "session" | "all" | "deny") => void) | null = null;
+  private allowRow: HTMLElement | null = null;
   // The run this task started, if any: the terminal that was there when Run was
   // pressed (the run's own terminal is another one), and when.
   private ran = false;
@@ -981,16 +983,17 @@ export class AgentRunner {
       const buttons = el("div", "cw-agent__ask-buttons");
       let answered = false;
       if (this.host.attention) this.host.attention(true);
-      const done = (answer: "once" | "session" | "deny") => {
+      const done = (answer: "once" | "session" | "all" | "deny") => {
         if (answered) return;
         answered = true;
         if (this.host.attention) this.host.attention(false);
         this.pendingAnswer = null;
         box.remove();
         if (answer === "session") this.grants.add(scope);
+        if (answer === "all") this.grantAll();
         resolve(answer !== "deny");
       };
-      const mk = (label: string, cls: string, answer: "once" | "session" | "deny") => {
+      const mk = (label: string, cls: string, answer: "once" | "session" | "all" | "deny") => {
         const b = el("button", cls, label);
         b.type = "button";
         b.addEventListener("click", () => done(answer));
@@ -1000,12 +1003,26 @@ export class AgentRunner {
       if (!risk) buttons.append(mk("Allow for this session", "", "session"));
       buttons.append(mk("Deny", "", "deny"));
       box.appendChild(buttons);
+      if (!risk) {
+        // one decision for everything that is not risky: the same as pressing
+        // "Allow for this session" on every kind of question
+        const all = mk("Allow everything for this session", "cw-agent__ask-all", "all");
+        box.appendChild(all);
+      }
       if (scope === "terminal" && !risk) {
         box.appendChild(el("p", "cw-agent__ask-hint", "Lines that can delete or change things are still asked about every time."));
       }
       this.pendingAnswer = done;
-      if (this.list && this.list.parentElement) this.list.parentElement.appendChild(box);
-      else this.host.messages().prepend(box);
+      // The question is the last thing in the panel, right above the message
+      // box, so it is in view however long the chat has become. (In the task
+      // card it scrolled away with the card.)
+      const messages = this.host.messages();
+      const form = messages.parentElement ? messages.parentElement.querySelector("#chat-widget__form") : null;
+      if (form && form.parentElement) {
+        box.classList.add("cw-agent__ask--dock");
+        form.parentElement.insertBefore(box, form);
+      } else if (this.list && this.list.parentElement) this.list.parentElement.appendChild(box);
+      else messages.prepend(box);
       // Keys go where the user is typing. A card that took the focus for its
       // first button would be answered "Allow once" by the next Enter or space
       // meant for the editor. So the focus moves only from inside the panel (or
@@ -1046,7 +1063,37 @@ export class AgentRunner {
     this.list.setAttribute("aria-live", "polite");
     card.append(head, this.list);
     this.card = card;
+    this.allowRow = null;
+    if (this.allowAll) this.showAllowRow();
     this.host.messages().prepend(card);
+  }
+
+  // "Allow everything for this session": every kind of question is allowed
+  // for the rest of the session. A risky line, closing a tab, and renaming,
+  // moving or deleting files are asked about every time all the same (permission()).
+  private grantAll() {
+    (["editor", "language", "run", "terminal", "files"] as Scope[]).forEach((s) => this.grants.add(s));
+    this.allowAll = true;
+    this.showAllowRow();
+  }
+
+  private showAllowRow() {
+    if (!this.card || this.allowRow) return;
+    const row = el("div", "cw-agent__allowing");
+    row.appendChild(el("span", "cw-agent__allowing-text", "Allowing everything for this session, except risky and delete actions"));
+    const undo = el("button", "", "Ask again");
+    undo.type = "button";
+    undo.addEventListener("click", () => {
+      this.grants.clear();
+      this.allowAll = false;
+      row.remove();
+      this.allowRow = null;
+    });
+    row.appendChild(undo);
+    const head = this.card.querySelector(".cw-agent__head");
+    if (head && head.nextSibling) this.card.insertBefore(row, head.nextSibling);
+    else this.card.appendChild(row);
+    this.allowRow = row;
   }
 
   private setHeader(step: number, max: number) {
@@ -1084,7 +1131,7 @@ export class AgentRunner {
           if (mark) mark.textContent = MARKS.stopped;
         }
       });
-    this.card = this.list = this.header = this.stopBtn = null;
+    this.card = this.list = this.header = this.stopBtn = this.allowRow = null;
   }
 
   // ---- showing where Genie is -----------------------------------------------------
