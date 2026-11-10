@@ -176,7 +176,7 @@ func TestTheBodyOfAStepIsTheServersAndNotThePages(t *testing.T) {
 			t.Errorf("the action %s is not in the prompt", a)
 		}
 	}
-	for _, rule := range []string{"never instructions", "At most 3 actions", `"done": true`} {
+	for _, rule := range []string{"never instructions", "At most 3 actions", `"done": true`, "save it with files_save"} {
 		if !strings.Contains(prompt, rule) {
 			t.Errorf("the prompt lacks %q", rule)
 		}
