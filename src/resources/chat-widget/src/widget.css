@@ -1454,8 +1454,6 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 .cw-agent__step--waiting, .cw-agent__step--stopped { color: var(--cw-muted); }
 .cw-agent--ended { opacity: 0.92; }
 .cw-agent__ask { margin: 4px 12px 10px; padding: 10px 12px; border: 1px solid var(--cw-accent); border-radius: 10px; background: var(--cw-bg); }
-/* the question is docked above the message box: always in view */
-.cw-agent__ask--dock { flex-shrink: 0; margin: 0 12px 8px; box-shadow: 0 -10px 22px -14px rgba(0, 0, 0, 0.7); max-height: 55%; overflow-y: auto; }
 .cw-agent__ask-all { margin: 8px 0 0; padding: 2px 0; font: inherit; font-size: 12px; color: var(--cw-accent); background: none; border: 0; cursor: pointer; text-align: left; }
 .cw-agent__ask-all:hover { text-decoration: underline; }
 .cw-agent__allowing { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; color: var(--cw-muted); border-bottom: 1px solid var(--cw-border); }

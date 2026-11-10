@@ -1013,16 +1013,8 @@ export class AgentRunner {
         box.appendChild(el("p", "cw-agent__ask-hint", "Lines that can delete or change things are still asked about every time."));
       }
       this.pendingAnswer = done;
-      // The question is the last thing in the panel, right above the message
-      // box, so it is in view however long the chat has become. (In the task
-      // card it scrolled away with the card.)
-      const messages = this.host.messages();
-      const form = messages.parentElement ? messages.parentElement.querySelector("#chat-widget__form") : null;
-      if (form && form.parentElement) {
-        box.classList.add("cw-agent__ask--dock");
-        form.parentElement.insertBefore(box, form);
-      } else if (this.list && this.list.parentElement) this.list.parentElement.appendChild(box);
-      else messages.prepend(box);
+      if (this.list && this.list.parentElement) this.list.parentElement.appendChild(box);
+      else this.host.messages().prepend(box);
       // Keys go where the user is typing. A card that took the focus for its
       // first button would be answered "Allow once" by the next Enter or space
       // meant for the editor. So the focus moves only from inside the panel (or
