@@ -244,6 +244,11 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 	var slave Slave
 	slave, err = server.factory.NewWithCommand(command, params)
 	if err != nil {
+		if startRefusedByParent(err, params) {
+			// a fork of a terminal that is not there: the page says so, not "could not start"
+			log.Printf("fork of terminal %d refused: %v", forkParent(params), err)
+			return errParentEnded
+		}
 		return errors.Wrapf(err, "failed to create backend")
 	}
 	defer slave.Close()

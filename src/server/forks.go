@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/url"
+	"strings"
 	"time"
 
 	"containers"
@@ -27,6 +28,13 @@ var parentEndedWait = 3 * time.Second
 
 // processAlive says whether a process exists (a variable so that tests can change it).
 var processAlive = containers.ProcessAlive
+
+// startRefusedByParent says whether a terminal could not start because it is a fork of a terminal that is
+// not there (any more): a page opened by the Fork button after the first terminal ended, or after a
+// restart of the server, whose jids are not the same after it.
+func startRefusedByParent(err error, params url.Values) bool {
+	return err != nil && forkParent(params) != -1 && strings.Contains(err.Error(), "invalid parent id")
+}
 
 // forkParent is the pid of the terminal a fork was made from, or -1 for a first terminal.
 func forkParent(params url.Values) int {
