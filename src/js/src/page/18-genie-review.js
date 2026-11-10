@@ -14,10 +14,9 @@
 // before the first accepted change, as long as the editor still holds what the
 // last accepted change left.
 
-import { makeHunks, locate, context } from "./lib-diff.mjs";
+import { makeHunks, locate } from "./lib-diff.mjs";
 
 const CONTEXT_LINES = 2;
-const SHOWN_LINES = 14; // lines of a hunk shown before "... more lines"
 
 let review = null; // the open proposal, if any
 let lastApplied = null; // the latest proposal that changed the editor, for undo()
@@ -80,6 +79,7 @@ function propose(newText, opts) {
     root: null,
     focused: false,
     mixed: false, // the user edited between accepted changes
+    expanded: {}, // folded stretches of unchanged lines the user opened
     onDone: typeof opts.onDone === "function" ? opts.onDone : null, // told once, when every change is decided or the review is closed
     told: false,
     offered: false, // the notice about what was applied has been shown
@@ -245,34 +245,53 @@ function closeReview() {
 
 // ---- drawing it -------------------------------------------------------------------
 
-function lineRows(parent, lines, mark, cls) {
-  lines.forEach((text) => {
-    const row = el("div", "genie-review__line " + cls);
-    row.appendChild(el("span", "genie-review__mark", mark));
-    row.appendChild(el("span", "genie-review__text", text === "" ? " " : text));
-    parent.appendChild(row);
-  });
+// One line of the diff: old line number, new line number, mark, text. A change
+// is shown whole, however long: the lines wrap instead of scrolling sideways, so
+// the buttons on its header are always in view.
+function diffLine(parent, oldNo, newNo, mark, text, cls) {
+  const row = el("div", "genie-review__line " + cls);
+  row.appendChild(el("span", "genie-review__no", oldNo === null ? "" : String(oldNo)));
+  row.appendChild(el("span", "genie-review__no", newNo === null ? "" : String(newNo)));
+  row.appendChild(el("span", "genie-review__mark", mark));
+  row.appendChild(el("span", "genie-review__text", text === "" ? " " : text));
+  parent.appendChild(row);
 }
 
-function limited(parent, lines, mark, cls) {
-  if (lines.length <= SHOWN_LINES) {
-    lineRows(parent, lines, mark, cls);
+// The lines the old text has from row `from` up to (not including) `to`, all
+// unchanged: the first and last CONTEXT_LINES of them, the rest folded behind a
+// row that opens them. `shift` is how far the proposal has moved the new line
+// numbers by then. keepHead / keepTail say which ends touch a change.
+function unchanged(r, parent, from, to, shift, key, keepHead, keepTail) {
+  const n = to - from;
+  if (n <= 0) return;
+  const head = keepHead ? CONTEXT_LINES : 0;
+  const tail = keepTail ? CONTEXT_LINES : 0;
+  const open = r.expanded[key] || n <= head + tail;
+  const show = (a, b) => {
+    for (let k = a; k < b; k++) diffLine(parent, k + 1, k + 1 + shift, " ", r.oldLines[k], "genie-review__line--ctx");
+  };
+  if (open) {
+    show(from, to);
     return;
   }
-  const head = Math.ceil(SHOWN_LINES / 2);
-  const tail = SHOWN_LINES - head;
-  lineRows(parent, lines.slice(0, head), mark, cls);
-  parent.appendChild(el("div", "genie-review__more", "… " + plural(lines.length - head - tail, "more line") + " …"));
-  lineRows(parent, lines.slice(lines.length - tail), mark, cls);
+  show(from, from + head);
+  const hidden = n - head - tail;
+  const more = button("Show " + plural(hidden, "unchanged line"), "genie-review__gap", () => {
+    r.expanded[key] = true;
+    render();
+  });
+  parent.appendChild(more);
+  show(to - tail, to);
 }
 
-function hunkView(r, index) {
+function hunkView(r, index, shift) {
   const x = r.hunks[index];
   const h = x.h;
   const box = el("div", "genie-review__hunk genie-review__hunk--" + x.state);
   const head = el("div", "genie-review__hunk-head");
   const what = h.del.length === 0 ? "adds " + plural(h.add.length, "line") : h.add.length === 0 ? "removes " + plural(h.del.length, "line") : "changes " + plural(h.del.length, "line");
-  head.appendChild(el("span", "genie-review__hunk-title", "Change " + (index + 1) + " of " + r.hunks.length + ": " + what));
+  head.appendChild(el("span", "genie-review__hunk-title", "Change " + (index + 1) + " of " + r.hunks.length + " \u00b7 " + what));
+  head.appendChild(el("span", "genie-review__range", "@@ -" + (h.oldStart + 1) + "," + h.del.length + " +" + (h.oldStart + 1 + shift) + "," + h.add.length + " @@"));
   if (x.state === "pending") {
     const a = button("Accept", "genie-review__btn--ok", () => acceptOne(index), "Accept change " + (index + 1));
     const rj = button("Reject", "", () => rejectOne(index), "Reject change " + (index + 1));
@@ -280,20 +299,39 @@ function hunkView(r, index) {
     head.appendChild(a);
     head.appendChild(rj);
   } else {
-    head.appendChild(el("span", "genie-review__state", x.state === "accepted" ? "Accepted" : "Rejected"));
+    head.appendChild(el("span", "genie-review__state genie-review__state--" + x.state, x.state === "accepted" ? "Accepted" : "Rejected"));
   }
   box.appendChild(head);
   if (x.stale && x.state === "pending") {
     box.appendChild(el("div", "genie-review__stale", "The code changed meanwhile, so this change cannot be applied. Reject it."));
   }
-  const ctx = context(r.oldLines, h, CONTEXT_LINES);
   const body = el("div", "genie-review__code");
-  lineRows(body, ctx.before, " ", "genie-review__line--ctx");
-  limited(body, h.del, "-", "genie-review__line--del");
-  limited(body, h.add, "+", "genie-review__line--add");
-  lineRows(body, ctx.after, " ", "genie-review__line--ctx");
+  h.del.forEach((t, k) => diffLine(body, h.oldStart + k + 1, null, "-", t, "genie-review__line--del"));
+  h.add.forEach((t, k) => diffLine(body, null, h.oldStart + shift + k + 1, "+", t, "genie-review__line--add"));
   box.appendChild(body);
   return box;
+}
+
+// The whole proposal as one diff: the unchanged lines around each change, the
+// changes between them, in file order.
+function diffView(r) {
+  const list = el("div", "genie-review__list");
+  const stretch = (from, to, shift, key, keepHead, keepTail) => {
+    if (to <= from) return;
+    const code = el("div", "genie-review__code");
+    unchanged(r, code, from, to, shift, key, keepHead, keepTail);
+    list.appendChild(code);
+  };
+  let shift = 0; // new row minus old row, from the changes before
+  let at = 0; // the old row the next unchanged stretch starts at
+  r.hunks.forEach((x, i) => {
+    stretch(at, x.h.oldStart, shift, "g" + i, i > 0, true);
+    list.appendChild(hunkView(r, i, shift));
+    shift += x.h.add.length - x.h.del.length;
+    at = x.h.oldStart + x.h.del.length;
+  });
+  stretch(at, r.oldLines.length, shift, "end", true, false);
+  return list;
 }
 
 function render() {
@@ -305,6 +343,9 @@ function render() {
     finish(r, false); // everything is decided: the panel goes away
     return;
   }
+  // the diff is drawn again after each decision: keep the place the user is at
+  const oldList = r.root ? r.root.querySelector(".genie-review__list") : null;
+  const scrollTop = oldList ? oldList.scrollTop : 0;
   if (r.root && r.root.parentNode) r.root.parentNode.removeChild(r.root);
 
   const root = el("div", "genie-review");
@@ -312,17 +353,19 @@ function render() {
   root.setAttribute("aria-label", "Changes proposed by Genie");
   root.tabIndex = -1;
 
+  const added = r.hunks.reduce((n, x) => n + x.h.add.length, 0);
+  const removed = r.hunks.reduce((n, x) => n + x.h.del.length, 0);
   const head = el("div", "genie-review__head");
-  head.appendChild(
-    el("span", "genie-review__title", r.title + " " + plural(r.hunks.length, "change") + (r.applied || pending !== r.hunks.length ? " (" + pending + " left)" : ""))
-  );
+  const title = el("span", "genie-review__title", r.title + " " + plural(r.hunks.length, "change") + (r.applied || pending !== r.hunks.length ? " (" + pending + " left)" : ""));
+  title.appendChild(el("span", "genie-review__sum genie-review__sum--add", " +" + added));
+  title.appendChild(el("span", "genie-review__sum genie-review__sum--del", " \u2212" + removed));
+  head.appendChild(title);
   head.appendChild(button("Accept all", "genie-review__btn--ok", acceptAll));
   head.appendChild(button("Reject all", "", rejectAll));
-  head.appendChild(button("×", "genie-review__close", closeReview, "Close the review"));
+  head.appendChild(button("\u00d7", "genie-review__close", closeReview, "Close the review"));
   root.appendChild(head);
 
-  const list = el("div", "genie-review__list");
-  r.hunks.forEach((x, i) => list.appendChild(hunkView(r, i)));
+  const list = diffView(r);
   root.appendChild(list);
 
   root.addEventListener("keydown", (ev) => {
@@ -337,6 +380,7 @@ function render() {
   });
   r.root = root;
   r.host.appendChild(root);
+  list.scrollTop = scrollTop; // only once it is in the page
   if (!r.focused) {
     // keyboard users land on the review once: Enter accepts, Esc rejects
     r.focused = true;
