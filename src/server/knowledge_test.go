@@ -126,6 +126,7 @@ func TestSearchFindsTheRightNoteForQuestionsAboutTheSite(t *testing.T) {
 		{"how do I make a link to my code", "code-links"},
 		{"how do I fork a REPL", "fork-a-repl"},
 		{"run a server and a client side by side", "fork-a-repl"},
+		{"why did my forked terminal close when the first terminal ended", "fork-a-repl"},
 		{"which languages are supported", "languages"},
 		{"is there a rust repl", "languages"},
 		{"how do I debug c code with gdb", "run-and-debug"},

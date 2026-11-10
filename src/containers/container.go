@@ -188,6 +188,10 @@ func isTracked(pid int) bool {
 	return ok
 }
 
+// ProcessAlive says whether a process with this pid exists on this host (a zombie that was not reaped yet
+// counts; it is gone once its parent has collected it).
+func ProcessAlive(pid int) bool { return processExists(pid) }
+
 func IsProcess(pid int) bool {
 	if isTracked(pid) {
 		return true

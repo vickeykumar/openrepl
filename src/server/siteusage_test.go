@@ -309,7 +309,8 @@ func TestBeatEndpoint(t *testing.T) {
 	if w := call("POST", "", `not json`); w.Code != http.StatusBadRequest {
 		t.Errorf("bad JSON: %d", w.Code)
 	}
-	d := s.days[time.Now().UTC().Format("2006-01-02")]
+	// the store of the test has a clock of its own (usageTest), so its day is not the real today
+	d := s.days[s.clock().UTC().Format("2006-01-02")]
 	if d == nil || d.GuestVisits != 1 || d.Devices["phone"] != 1 || d.Countries["IN"] != 1 || d.Sources["Bing"] != 1 {
 		t.Errorf("today = %+v", d)
 	}

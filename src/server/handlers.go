@@ -177,6 +177,9 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			closeReason = "cancelation"
 		case webtty.ErrSlaveClosed:
 			closeReason = server.factory.Name()
+		case errParentEnded:
+			// the terminal this one was forked from ended (forks.go); the page says so
+			closeReason = server.factory.Name() + ": parent ended"
 		case errSlaveKilled:
 			closeReason = server.factory.Name() + ": killed"
 		case errSessionEnded:
@@ -316,6 +319,15 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 	err = tty.Run(ctx)
 	if err == context.Canceled && r.Context().Err() != nil {
 		return errSessionEnded
+	}
+	if ppid := forkParent(params); ppid != -1 {
+		status := ""
+		if es, ok := slave.(interface{ ExitStatus() string }); ok {
+			status = es.ExitStatus()
+		}
+		if forkEnded(ppid, err, status) {
+			return errParentEnded
+		}
 	}
 	if err == webtty.ErrSlaveClosed {
 		// tell the browser when the program was killed (usually the memory limit)

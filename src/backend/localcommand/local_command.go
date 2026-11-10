@@ -207,6 +207,21 @@ func (lcmd *LocalCommand) ExitReason() string {
 	return ""
 }
 
+// ExitStatus is how the command ended as the system reports it ("signal: killed", "exit status 2"), and
+// "" when it ended cleanly or has not ended. It waits briefly for the process to be reaped, as ExitReason does.
+func (lcmd *LocalCommand) ExitStatus() string {
+	select {
+	case <-lcmd.ptyClosed:
+	case <-time.After(2 * time.Second):
+	}
+	lcmd.exitMu.Lock()
+	defer lcmd.exitMu.Unlock()
+	if lcmd.exitErr != nil {
+		return lcmd.exitErr.Error()
+	}
+	return ""
+}
+
 func (lcmd *LocalCommand) Read(p []byte) (n int, err error) {
 	return lcmd.pty.Read(p)
 }

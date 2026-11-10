@@ -204,6 +204,7 @@ Writes to the WebSocket are serialized by `writeMutex`, which lets the file brow
 | `connected` | | In `onOpen`. |
 | `closed` | `exited` | Code 1000, reason `local command`: the program ended. |
 | `closed` | `killed` | Code 1000, reason `local command: killed`: stopped by SIGKILL, usually the memory limit. |
+| `closed` | `parent` | Code 1000, reason `local command: parent ended`: a fork that ended because the terminal it was made from ended (see "Forks" below). |
 | `closed` | `failed` | The reason contains `failed to create backend`: the REPL could not start, for example a missing binary or a container that could not be created. |
 | `closed` | `timeout` | The reason mentions a timeout, for example the 60-minute write deadline. |
 | `closed` | `closed` | Code 1000, reason `client`: the server saw the client close it. |
@@ -211,6 +212,12 @@ Writes to the WebSocket are serialized by `writeMutex`, which lets the file brow
 | `closed` | `lost` | Anything else, such as a dropped network or a server restart. |
 
 `detail.compiled` is true for Run and Debug sessions.
+
+### Forks
+
+A fork is a terminal opened with the jid of another one in its arguments (an in-page tab, or a page opened with the Fork button, which has `?jid=` in its address): `localcommand` starts it with `nsenter -t<pid>`, which, on a host with sandboxes, joins the namespaces of that terminal. The first terminal is the root of its sandbox, so when it ends the system stops everything inside, forks included (observed: the fork's program ends with `signal: killed` at the moment the first terminal exits). On a host without sandboxes (an unprivileged container such as Render) nothing ties the fork to the first terminal, and it goes on.
+
+`server/forks.go`: when a fork ends, `forkEnded` writes one line to the log (`fork of terminal N ended: closed by …, program exit "…", first terminal gone: …`), and when the connection ended because the program was stopped or finished and the first terminal is gone (`containers.ProcessAlive`; a fork that was stopped waits up to 3 seconds for the first terminal's end to show) `processWSConn` returns `errParentEnded`, so the close reason is `local command: parent ended`. `webtty.ts` turns that into kind `parent`: the line "[This terminal was closed because the first terminal ended …]" in the terminal, and the banner "Closed with the first terminal" with a button to the first tab (`showTermBanner`, `11-terminal-state.js`). A fork killed for another reason keeps the memory-limit text. The first terminal has no close button, so there is nothing to confirm before it ends; instead, while a fork is open the tabs carry a "first" / "fork" label (`labelForkTabs`, a page opened by the Fork button labels its own tab "fork"), the footer says "forks end with the first terminal", and the first fork of a visit gets a one-time notice. Tests: `server/forks_test.go`, `e2e/tests/fork-labels.spec.js`; the end-to-end case (first terminal ends, fork is told) needs a host with sandboxes.
 
 When the page has a `#term-banner` and the stop gets a banner, `webtty.ts` no longer prints the generic "connection closed by remote host" (and "Resource unavailable") lines under it. The "[Program Exited]" and "[Program stopped: …killed…]" lines and the shared-session "[Primary Terminal is disconnected…]" line are still printed.
 

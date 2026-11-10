@@ -345,6 +345,9 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 } else if (notice) {
                     closeKind = "notice";
                     noticeText = notice[1];
+                } else if (closeEvent['code'] == 1000 && closeReason.match("parent ended")) {
+                    // a fork ends with the terminal it was made from (the server checked that it is gone)
+                    closeKind = "parent";
                 } else if (closeEvent['code'] == 1000 && closeReason.match("local command")) {
                     closeKind = closeReason.match("killed") ? "killed" : "exited";
                 } else if (closeReason.match("failed to create backend")) {
@@ -372,6 +375,8 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                             if (!bannerShown) {
                                 TermOutput("\r\n[" + noticeText + "]");
                             }
+                        } else if (closeKind == "parent") {
+                            TermOutput("\r\n[This terminal was closed because the first terminal ended. A fork ends with the terminal it was made from. Restart the first terminal, then open a new one.] Jobid: "+WebTTY.getjid());
                         } else if (closeKind == "killed") {
                             TermOutput("\r\n[Program stopped: it was killed, most likely by the memory limit] Jobid: "+WebTTY.getjid());
                         } else if (closeReason.match("local command")) {
