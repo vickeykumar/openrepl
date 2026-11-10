@@ -156,6 +156,16 @@ function showTermBanner(kind, compiled, notice) {
     tone = "warn";
     title = "Your execution node is away.";
     body = awayBannerBody(awayWaitMs());
+  } else if (kind === "parent") {
+    // A fork ends with the terminal it was made from (the server checked that the first one is gone).
+    tone = "warn";
+    title = "Closed with the first terminal.";
+    body = "A fork ends with the terminal it was made from. Restart the first terminal, then open a new one.";
+    action = "Go to the first terminal";
+    run = function () {
+      var first = document.querySelector("#terminal-tabs .tab");
+      if (first) first.click();
+    };
   } else if (kind === "notice") {
     // The site refused the terminal on purpose; the text is the admin's.
     tone = "warn";
@@ -178,6 +188,54 @@ function showTermBanner(kind, compiled, notice) {
   if (kind === "away") startAwayTimer();
 }
 
+// ---------------------------------------------------------------------------
+// Forks: the terminals after the first one join its sandbox and end with it (LLD 02, "Forks"). While one is
+// open the tabs say which is which, the footer says it, and the first fork of a visit gets a short notice.
+// ---------------------------------------------------------------------------
+function forkCount() {
+  return Math.max(0, document.querySelectorAll("#terminal-tabs .tab").length - 1);
+}
+window.forkCount = forkCount;
+
+// A page opened with the Fork button has a jid in its address: its own first terminal is a fork of the one
+// that opened it.
+function isForkWindow() {
+  return /[?&]jid=/.test(window.location.search);
+}
+
+function forkNote() {
+  if (isForkWindow()) return " · ends with the terminal it was forked from";
+  return forkCount() > 0 ? " · forks end with the first terminal" : "";
+}
+
+var FORK_TIPS = {
+  first: "The first terminal. The terminals forked from it end when it ends.",
+  fork: "A fork. It ends when the terminal it was made from ends."
+};
+
+function labelForkTabs() {
+  var tabs = document.querySelectorAll("#terminal-tabs .tab");
+  for (var i = 0; i < tabs.length; i++) {
+    var tab = tabs[i], role = (tabs.length < 2 && !isForkWindow()) ? "" : (i === 0 && !isForkWindow()) ? "first" : "fork";
+    if (role) {
+      tab.setAttribute("data-fork-role", role);
+      if (!tab.title || tab.__forkTip) { tab.title = FORK_TIPS[role]; tab.__forkTip = true; }
+    } else {
+      tab.removeAttribute("data-fork-role");
+      if (tab.__forkTip) { tab.removeAttribute("title"); tab.__forkTip = false; }
+    }
+  }
+}
+
+function noteFirstFork() {
+  if (forkCount() !== 1 || !window.notify) return;
+  try {
+    if (sessionStorage.getItem("fork-note")) return;
+    sessionStorage.setItem("fork-note", "1");
+  } catch (e) { /* storage blocked: the notice may come again, which does no harm */ }
+  window.notify("This terminal ends when the first terminal ends.", { type: "info", title: "Forked terminal" });
+}
+
 function updateTermFooter() {
   var f = document.getElementById("term-footer");
   var t = document.getElementById("term-footer-text");
@@ -189,15 +247,15 @@ function updateTermFooter() {
     var left = SESSION_MINUTES - Math.floor((Date.now() - elem.__ttyStartedAt) / 60000);
     left = Math.max(0, left);
     f.setAttribute("data-warn", left <= 5 ? "true" : "false");
-    t.textContent = "Connected · session ends in " + left + " min";
+    t.textContent = "Connected · session ends in " + left + " min" + forkNote();
   } else if (st === "connected") {
-    t.textContent = "Connected";
+    t.textContent = "Connected" + forkNote();
   } else if (st === "closed") {
     f.setAttribute("data-warn", "false");
     var k = elem.__ttyKind;
     var wait = k === "away" ? awayLeftMs(elem) : 0;
     t.textContent = wait > 0 ? "Node away · reconnect in " + clockText(wait)
-      : k === "exited" ? "Finished" : k === "killed" ? "Stopped" : k === "failed" ? "Could not start" : k === "notice" ? "Not available" : "Disconnected";
+      : k === "exited" ? "Finished" : k === "killed" ? "Stopped" : k === "failed" ? "Could not start" : k === "notice" ? "Not available" : k === "parent" ? "Closed with the first terminal" : "Disconnected";
   } else {
     t.textContent = "Connecting…";
   }
@@ -251,6 +309,16 @@ $(function () {
     }, 150);
   });
   setInterval(updateTermFooter, 30000);
+  // tabs come and go: say which is the first and which are forks
+  var tabsEl = document.getElementById("terminal-tabs");
+  if (tabsEl && window.MutationObserver) {
+    new MutationObserver(function () {
+      labelForkTabs();
+      updateTermFooter();
+      noteFirstFork();
+    }).observe(tabsEl, { childList: true });
+    labelForkTabs();
+  }
 });
 
 export {};  // an ES module: strict mode, bundled by webpack

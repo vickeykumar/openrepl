@@ -1198,6 +1198,18 @@ body.files-collapsed .files-panel { display: none; }
   font-weight: 500;
   background: var(--ink-750);
 }
+/* the first terminal and its forks (page/11-terminal-state.js): shown only while a fork is open */
+.ide-split .tab[data-fork-role] .tab-title::after {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-weight: 500;
+  border-radius: 99px;
+  background: var(--ink-700);
+  color: var(--muted-2);
+}
+.ide-split .tab[data-fork-role="first"] .tab-title::after { content: "first"; }
+.ide-split .tab[data-fork-role="fork"] .tab-title::after { content: "fork"; }
 .ide-split .close-tab {
   position: static;
   transform: none;
