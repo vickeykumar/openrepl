@@ -443,7 +443,9 @@ func TestVisitorHashHidesTheVisitor(t *testing.T) {
 	r := httptest.NewRequest("GET", "/ws", nil)
 	r.RemoteAddr = "203.0.113.9:1234"
 	h := visitorHash(r, "2026-10-02")
-	if strings.Contains(h, "203") || len(h) != 16 {
+	// 16 hex digits and nothing of the address: an address written out has dots. (Looking for "203" in the
+	// hash was a test that failed about once in 300 runs, since a random hash can contain those digits.)
+	if !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(h) || strings.Contains(h, "203.0.113.9") {
 		t.Errorf("hash = %q", h)
 	}
 	if h == visitorHash(r, "2026-10-03") {
