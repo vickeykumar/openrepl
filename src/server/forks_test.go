@@ -97,3 +97,20 @@ func TestEveryForkThatEndsLeavesOneLineInTheLog(t *testing.T) {
 		t.Error("an error was blamed on the first terminal")
 	}
 }
+
+func TestAForkRefusedBecauseItsFirstTerminalIsGoneIsTold(t *testing.T) {
+	refused := errors.New(`failed to start command ` + "`gomacro`" + ` due to invalid parent id: 374`)
+	fork := url.Values{"jid": {encoder.EncodePID(374)}}
+	if !startRefusedByParent(refused, fork) {
+		t.Error("a fork whose first terminal is gone must be told so")
+	}
+	if startRefusedByParent(refused, url.Values{}) {
+		t.Error("a first terminal has no parent to blame")
+	}
+	if startRefusedByParent(errors.New("executable file not found"), fork) {
+		t.Error("another reason for not starting is not the parent's doing")
+	}
+	if startRefusedByParent(nil, fork) {
+		t.Error("no error, nothing refused")
+	}
+}

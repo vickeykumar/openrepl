@@ -159,13 +159,26 @@ function showTermBanner(kind, compiled, notice) {
   } else if (kind === "parent") {
     // A fork ends with the terminal it was made from (the server checked that the first one is gone).
     tone = "warn";
-    title = "Closed with the first terminal.";
-    body = "A fork ends with the terminal it was made from. Restart the first terminal, then open a new one.";
-    action = "Go to the first terminal";
-    run = function () {
-      var first = document.querySelector("#terminal-tabs .tab");
-      if (first) first.click();
-    };
+    if (isForkWindow()) {
+      // a page opened by the Fork button: its jid names a terminal that is not there, and no restart brings it back
+      title = "The terminal this page was forked from has ended.";
+      body = "Close this window and use Fork again from a running terminal.";
+      action = "Close this window";
+      run = function () {
+        window.close();
+        setTimeout(function () {
+          if (window.notify) window.notify("This browser did not let the page close itself. Close this tab.", { type: "info" });
+        }, 400);
+      };
+    } else {
+      title = "Closed with the first terminal.";
+      body = "A fork ends with the terminal it was made from. Restart the first terminal, then open a new one.";
+      action = "Go to the first terminal";
+      run = function () {
+        var first = document.querySelector("#terminal-tabs .tab");
+        if (first) first.click();
+      };
+    }
   } else if (kind === "notice") {
     // The site refused the terminal on purpose; the text is the admin's.
     tone = "warn";
