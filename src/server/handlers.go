@@ -150,6 +150,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		
 		defer func() {
 			log.Println("close status: ", closeCode)
+			writeEndNotice(conn, closeCode, closeReason)
 			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode , closeReason), time.Now().Add(time.Second))
 			//wait for 1 sec deadline to write the buffers
 			time.Sleep(2*time.Second)

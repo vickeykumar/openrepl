@@ -20,6 +20,9 @@ export const msgSetWindowTitle = '3';
 export const msgSetPreferences = '4';
 export const msgSetReconnect = '5';
 export const msgEvent = '6';
+// Why the server is about to close the connection, as {code, reason}. The close frame carries the same, but a
+// proxy in front of the server (Render's edge) can hold it back for ~20 s or drop it, so it is also sent as a message.
+export const msgEnd = '7';
 
 export var sessionCookieObj = new Cookies.SessionCookie("Session");
 
@@ -224,6 +227,9 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
         };
 
         const setup = () => {
+            // Set when the end of this connection has been handled: the end notice and the close event both
+            // lead there, and whichever comes first does the work.
+            let ended = false;
             connection.onOpen(() => {
                 emitState("connected");
                 const termInfo = this.term.info();
@@ -319,6 +325,16 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         console.log("Enabling reconnect: " + autoReconnect + " seconds");
                         this.reconnect = autoReconnect;
                         break;
+                    case msgEnd:
+                        try {
+                            const end = JSON.parse(payload);
+                            onEnded({ code: end.code, reason: end.reason });
+                            // the socket itself may linger behind a slow proxy; let go of it
+                            connection.close();
+                        } catch(e) {
+                            console.log("bad end notice: ", payload, e);
+                        }
+                        break;
                     case msgEvent:
                         if (!this.firebaseref.isprimary) {
                             break; // no need to notify through secondary tabs
@@ -332,7 +348,11 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 }
             });
 
-            connection.onClose((closeEvent) => {
+            const onEnded = (closeEvent) => {
+                if (ended) {
+                    return;
+                }
+                ended = true;
                 clearInterval(pingTimer);
                 this.term.deactivate();
                 this.term.showMessage("Connection Closed", 2000);    // tune message timeout accordingly
@@ -431,7 +451,8 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                             TermOutput("\r\nResource"+jidstr+" unavailable, Please try again after some time.");
                         }
                 }
-	    });
+            };
+            connection.onClose(onEnded);
 
 
             emitState("connecting");
