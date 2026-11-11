@@ -20,6 +20,9 @@ export const msgSetWindowTitle = '3';
 export const msgSetPreferences = '4';
 export const msgSetReconnect = '5';
 export const msgEvent = '6';
+// Why the server is about to close the connection, as {code, reason}. The close frame carries the same, but a
+// proxy in front of the server (Render's edge) can hold it back for ~20 s or drop it, so it is also sent as a message.
+export const msgEnd = '7';
 
 export var sessionCookieObj = new Cookies.SessionCookie("Session");
 
@@ -192,6 +195,23 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
         let connection = this.connectionFactory.create();
         let pingTimer: number;
         let reconnectTimeout: number;
+        // The id this connection has in the cookie that counts the browser's terminals (cookie.ts); empty while
+        // it is not open. Every connection takes away its own entry, once, however it ends.
+        let connId = "";
+        const countOpen = () => {
+            sessionCookieObj.Close(connId);
+            connId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            sessionCookieObj.Open(connId);
+        };
+        const countClosed = () => {
+            sessionCookieObj.Close(connId);
+            connId = "";
+        };
+        // "pagehide" is the event a tab that is closed always gets. "unload" is not run by every browser and is
+        // blocked by a permissions policy on some pages, and one onbeforeunload handler is shared by every
+        // terminal of the page: a tab with three terminals left two counted.
+        const onPageHide = () => countClosed();
+        window.addEventListener("pagehide", onPageHide);
         // Set when this page closes the connection itself (Reconnect, language
         // switch, Run, closing a tab). Its close event arrives a moment later,
         // after the new connection has taken over the same terminal, so it
@@ -207,6 +227,9 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
         };
 
         const setup = () => {
+            // Set when the end of this connection has been handled: the end notice and the close event both
+            // lead there, and whichever comes first does the work.
+            let ended = false;
             connection.onOpen(() => {
                 emitState("connected");
                 const termInfo = this.term.info();
@@ -241,10 +264,11 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 );
 
                 pingTimer = setInterval(() => {
-                    connection.send(msgPing)
+                    connection.send(msgPing);
+                    sessionCookieObj.Touch(connId);
                 }, 30 * 1000);
 
-                sessionCookieObj.IncrementSessionCount();
+                countOpen();
                 this.term.addEventListener('slaveinputEvent', slaveInputhandler);
             });
 
@@ -301,6 +325,16 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         console.log("Enabling reconnect: " + autoReconnect + " seconds");
                         this.reconnect = autoReconnect;
                         break;
+                    case msgEnd:
+                        try {
+                            const end = JSON.parse(payload);
+                            onEnded({ code: end.code, reason: end.reason });
+                            // the socket itself may linger behind a slow proxy; let go of it
+                            connection.close();
+                        } catch(e) {
+                            console.log("bad end notice: ", payload, e);
+                        }
+                        break;
                     case msgEvent:
                         if (!this.firebaseref.isprimary) {
                             break; // no need to notify through secondary tabs
@@ -314,7 +348,11 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 }
             });
 
-            connection.onClose((closeEvent) => {
+            const onEnded = (closeEvent) => {
+                if (ended) {
+                    return;
+                }
+                ended = true;
                 clearInterval(pingTimer);
                 this.term.deactivate();
                 this.term.showMessage("Connection Closed", 2000);    // tune message timeout accordingly
@@ -325,7 +363,7 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         setup();
                     }, this.reconnect * 1000);
                 }
-                sessionCookieObj.DecrementSessionCount();
+                countClosed();
                 console.log("close event: ",closeEvent['code'],closeEvent['reason'], connection.isClosed());
                 const closeReason: string = closeEvent['reason'] || "";
                 let closeKind = "lost";
@@ -413,13 +451,9 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                             TermOutput("\r\nResource"+jidstr+" unavailable, Please try again after some time.");
                         }
                 }
-	    });
-
-
-            // when tab/window is closed
-            window.onbeforeunload = function() {
-                sessionCookieObj.DecrementSessionCount();
             };
+            connection.onClose(onEnded);
+
 
             emitState("connecting");
             connection.open();
@@ -428,7 +462,8 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
         setup();
         return (args: CloserArgs) => {
             console.log("closing connection in webtty")
-	        sessionCookieObj.DecrementSessionCount();
+            countClosed();
+            window.removeEventListener("pagehide", onPageHide);
             clearTimeout(reconnectTimeout);
             closedByPage = true;
             connection.close();

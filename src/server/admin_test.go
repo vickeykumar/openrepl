@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"webtty"
 	"testing"
 	"time"
 
@@ -306,11 +307,17 @@ func dialNotice(t *testing.T, url, path string, admin bool) (string, error) {
 	defer c.Close()
 	c.WriteMessage(websocket.TextMessage, []byte(`{}`)) // the page sends its init message first
 	c.SetReadDeadline(time.Now().Add(3 * time.Second))
-	_, _, err = c.ReadMessage()
-	if ce, ok := err.(*websocket.CloseError); ok {
-		return ce.Text, nil
+	// the reason comes twice: as an end notice message, then as the close frame
+	for {
+		_, m, err := c.ReadMessage()
+		if err == nil && len(m) > 0 && m[0] == webtty.End {
+			continue
+		}
+		if ce, ok := err.(*websocket.CloseError); ok {
+			return ce.Text, nil
+		}
+		return "", err
 	}
-	return "", err
 }
 
 func TestMaintenanceAndSwitchedOffLanguagesRefuseTerminals(t *testing.T) {

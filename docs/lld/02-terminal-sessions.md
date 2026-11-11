@@ -121,6 +121,7 @@ Transport: WebSocket **text** frames, subprotocol `webtty` (`webtty.Protocols`).
 | `'4'` | `SetPreferences` | JSON hterm preferences (from the config file). |
 | `'5'` | `SetReconnect` | JSON seconds (with `--reconnect`). |
 | `'6'` | `Event` | base64 JSON `filebrowser.Event` (LLD 04). This type was added by OpenREPL. |
+| `'7'` | `End` | JSON `{"code":1000,"reason":"..."}`: why the server is about to close. Added by OpenREPL (see "The end notice" below). |
 
 ### Init message and parameter merge
 
@@ -176,7 +177,7 @@ Writes to the WebSocket are serialized by `writeMutex`, which lets the file brow
 | Idle read deadline | `wsWrapper.Read` | 5 min per read. The client pings every 30 s, so only dead peers hit it. |
 | Hard session length | `processWSConn`: `conn.SetWriteDeadline(now + DEADLINE_MINUTES)` | 60 min. The deadline is set once, so the first write after 60 min fails and the session ends. |
 | Server admission | `generateHandleWS` + `counter` | Refused if `connections > --max-connection` **or** `Σ memLimit(MB) > --max-connection` (when non-zero). |
-| Client connections per browser | `js/src/cookie.ts` `maxconnections = 3` | Counted in the `Session` cookie (15 min expiry). |
+| Client connections per browser | `js/src/cookie.ts` `maxconnections = 3` | Counted in the `Session` cookie (15 min expiry): **one entry per open connection** (its id and when it last said it was alive; each ping refreshes it), not a number that is counted up and down. A connection takes away its own entry when it closes and on `pagehide`; an entry nobody refreshed for 2 minutes (`staleAfterMs`) no longer counts, so a missed cleanup cannot lock the browser out. (Before, a single `isSet` flag and one shared `onbeforeunload` left the count above zero after a tab with several terminals was closed, and the page showed "Maximum no of connections reached ... try after 15 Minutes".) |
 | Terminal tabs per page | `js/src/main.ts` `MAX_TABS = 5` | |
 | Graceful drain | `Server.Run` → `counter.wait()` | Waits for all sessions on shutdown. |
 | `--once`, `--timeout` | GoTTY semantics | Single client, and exit after an idle period with zero connections. |
@@ -193,6 +194,8 @@ Writes to the WebSocket are serialized by `writeMutex`, which lets the file brow
 `WebTTY.open()` (`webtty.ts`) sends the init JSON on open, wires resize, input and ping, decodes output, and parses the XML title to learn the `jid` (primary tab only). It forwards `Event` messages to the file browser handler and to Firebase. See LLD 06 for tabs and sharing.
 
 ### Close reasons and the `ttystate` event
+
+**The end notice.** The reason is also sent as an ordinary `End` message just before the close frame (`writeEndNotice`, in the handler's deferred close and in the two places that close a request at once: the gateway's "node is away" and the admin notices). The reason is that Render's edge was seen to hold a close frame back for about 20 seconds and then deliver a bare 1006, or to lose it, while ordinary messages passed at once: a program that ended, or a fork whose parent had ended, showed "Connection lost" instead of the reason. `webtty.ts` handles an `End` message with the same function as the close event (`onEnded`), once per connection, and then closes its end of the socket, so the page does not depend on the close frame arriving. A server that does not send the notice (an older worker) still works: the close event does the job as before.
 
 `generateHandleWS` puts the reason in the WebSocket close frame. When the command ends because it was killed with SIGKILL (which is how the memory cgroup stops it), `processWSConn` asks the slave for `ExitReason()` and returns `errSlaveKilled`, so the reason becomes `local command: killed` instead of `local command`. `LocalCommand` records what `cmd.Wait()` returned before it closes `ptyClosed`.
 

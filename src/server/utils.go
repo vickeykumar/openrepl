@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"encoding/xml"
 	"github.com/gorilla/websocket"
 	"log"
@@ -34,6 +35,23 @@ func InitCommands2DemoMap() {
 	log.Println("meta output: ", demos)
 	for _, demo := range demos.Demos {
 		utils.Commands2DemoMap[demo.Name] = demo
+	}
+}
+
+// writeEndNotice sends the close code and reason as an ordinary message, to be followed by the close frame.
+// A proxy in front of the server (Render's edge) can hold a close frame back for about 20 seconds or lose it,
+// and then the page only sees "connection lost (1006)" without knowing that the program ended or the fork's
+// parent is gone. An ordinary message is delivered like any output, so the page learns the reason from it.
+func writeEndNotice(conn *websocket.Conn, code int, reason string) {
+	body, err := json.Marshal(struct {
+		Code   int    `json:"code"`
+		Reason string `json:"reason"`
+	}{code, reason})
+	if err != nil {
+		return
+	}
+	if err := conn.WriteMessage(websocket.TextMessage, append([]byte{webtty.End}, body...)); err != nil {
+		log.Println("err while writing the end notice: ", err)
 	}
 }
 

@@ -327,6 +327,7 @@ func (server *Server) terminalNotice(w http.ResponseWriter, r *http.Request, ret
 		return true
 	}
 	defer conn.Close()
+	writeEndNotice(conn, websocket.CloseNormalClosure, gateway.AwayReason(retryIn))
 	conn.WriteControl(websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, gateway.AwayReason(retryIn)),
 		time.Now().Add(time.Second))

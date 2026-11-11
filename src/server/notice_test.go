@@ -37,9 +37,16 @@ func TestTerminalNoticeTellsThePageHowLongToWait(t *testing.T) {
 
 	c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, m, err := c.ReadMessage()
+	if err == nil && len(m) > 0 && m[0] == webtty.End {
+		// the end notice, sent first for proxies that hold a close frame back; same reason as the close
+		if !strings.Contains(string(m), "execution node is away: retry in 80s") {
+			t.Fatalf("end notice = %q", m)
+		}
+		_, m, err = c.ReadMessage()
+	}
 	ce, ok := err.(*websocket.CloseError)
 	if !ok {
-		t.Fatalf("the first thing the page gets must be the close, got message %q, error %v", m, err)
+		t.Fatalf("the page must get the close, got message %q, error %v", m, err)
 	}
 	if ce.Code != websocket.CloseNormalClosure || ce.Text != "execution node is away: retry in 80s" {
 		t.Fatalf("close = %d %q", ce.Code, ce.Text)

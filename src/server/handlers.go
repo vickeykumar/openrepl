@@ -148,11 +148,15 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 			return
 		}
 		
+		peer := newPeerEnd()
 		defer func() {
 			log.Println("close status: ", closeCode)
+			writeEndNotice(conn, closeCode, closeReason)
 			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode , closeReason), time.Now().Add(time.Second))
-			//wait for 1 sec deadline to write the buffers
-			time.Sleep(2*time.Second)
+			// Let the client answer the close before the connection goes, so it is not reset under it; but do not
+			// wait a fixed time: the answer usually comes in milliseconds, and a client that does not answer is
+			// let go after 2 s.
+			peer.waitForReply(conn, 2*time.Second)
 			conn.Close()
 		}()
 
@@ -170,7 +174,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 		)
 
 		log.Println("Connection upgraded successfully: ")
-		err = server.processWSConn(ctx, conn, r, command, req_payload)
+		err = server.processWSConn(ctx, conn, peer, r, command, req_payload)
 
 		switch err {
 		case ctx.Err():
@@ -197,7 +201,7 @@ func (server *Server) generateHandleWS(ctx context.Context, cancel context.Cance
 // process websocket connection for uid (user)
 // req_payload is initial payload carried by request
 // Note: Any time consuming API in this same routing will lead to performance issue with websocket
-func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r *http.Request, command string, req_payload map[string]string) error {
+func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, peer *peerEnd, r *http.Request, command string, req_payload map[string]string) error {
 	conn.SetWriteDeadline(time.Now().Add(utils.DEADLINE_MINUTES * time.Minute)) // only 15 min sessions for services are allowed
 
 	// An admin who ends the session cancels the request (gateway/terminals.go).
@@ -292,7 +296,7 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 		opts = append(opts, webtty.WithMasterPreferences(server.options.Preferences))
 	}
 
-	tty, err := webtty.New(&wsWrapper{conn}, slave, opts...)
+	tty, err := webtty.New(&wsWrapper{Conn: conn, peer: peer}, slave, opts...)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create webtty")
 	}
@@ -321,6 +325,7 @@ func (server *Server) processWSConn(ctx context.Context, conn *websocket.Conn, r
 
 
 	log.Println("running webtty: ")
+	peer.reading() // from here the terminal's own reader reads the connection, and sees the client's close
 	err = tty.Run(ctx)
 	if err == context.Canceled && r.Context().Err() != nil {
 		return errSessionEnded

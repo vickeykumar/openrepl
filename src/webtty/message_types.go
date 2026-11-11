@@ -30,4 +30,8 @@ const (
 	SetReconnect = '5'
 	// writes an event to terminal
 	Event = '6'
+	// Says why the connection is about to be closed: {"code":1000,"reason":"..."}. Sent as an ordinary
+	// message just before the close frame, because some proxies in front of the server keep a close frame
+	// back for many seconds or drop it, and the page must still learn why the terminal ended.
+	End = '7'
 )

@@ -133,6 +133,7 @@ func (server *Server) closeWithNotice(w http.ResponseWriter, r *http.Request, re
 		runes := []rune(msg)
 		msg = string(runes[:len(runes)-1])
 	}
+	writeEndNotice(conn, websocket.CloseNormalClosure, msg)
 	conn.WriteControl(websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, msg),
 		time.Now().Add(time.Second))
