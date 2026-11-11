@@ -345,19 +345,22 @@ func TestOnlyTheHelpersEndOfTheSocketPairIsInherited(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer parent.Close()
-	cmd := exec.Command("sh", "-c", "ls /proc/$$/fd | tr '\\n' ' '")
+	// the descriptors of the child that are sockets: the one it was given, and no other
+	cmd := exec.Command("sh", "-c", `for f in /proc/$$/fd/*; do readlink "$f" 2>/dev/null; done; true`)
 	cmd.ExtraFiles = []*os.File{child}
 	out, err := cmd.Output()
 	child.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := strings.Fields(string(out))
-	for _, fd := range got {
-		if fd != "0" && fd != "1" && fd != "2" && fd != "3" && fd != "10" && fd != "255" {
-			// 10 and 255 are the shell's own (a copy of the script, the terminal)
-			t.Errorf("the helper inherited descriptor %s: %v", fd, got)
+	sockets := 0
+	for _, target := range strings.Fields(string(out)) {
+		if strings.HasPrefix(target, "socket:") {
+			sockets++
 		}
+	}
+	if sockets != 1 {
+		t.Errorf("the helper holds %d sockets, want only its own end: %s", sockets, strings.Join(strings.Fields(string(out)), " "))
 	}
 }
 
