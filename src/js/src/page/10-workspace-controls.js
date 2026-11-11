@@ -74,6 +74,16 @@ $(function () {
     if (!$(e.target).closest(".run-split").length) closeRunMenu();
   });
 
+  // Ctrl+` shows or hides the terminal (as in VS Code). Caught before the terminal sees it, because a focused terminal
+  // would send it to the program.
+  document.addEventListener("keydown", function (e) {
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (e.code === "Backquote" || e.key === "`") && window.ToggleTerminal) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.ToggleTerminal();
+    }
+  }, true);
+
   // The app bar button opens the Genie panel pinned beside the IDE, and closes it again.
   $("#genie-button").on("click", function () {
     if (!window.ChatWidget) return;
