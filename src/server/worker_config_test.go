@@ -94,6 +94,9 @@ func dialTerminal(t *testing.T, url string) (reached bool, closeText string) {
 	c.WriteMessage(websocket.TextMessage, []byte(`{"Arguments":"","AuthToken":"","Payload":{}}`))
 	c.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, m, err := c.ReadMessage()
+	if err == nil && len(m) > 0 && m[0] == webtty.End {
+		_, m, err = c.ReadMessage() // the end notice comes before the close frame
+	}
 	if ce, ok := err.(*websocket.CloseError); ok {
 		return false, ce.Text
 	}
