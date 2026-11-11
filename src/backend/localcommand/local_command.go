@@ -209,6 +209,9 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 		lcmd.exitMu.Lock()
 		lcmd.exitErr = cmderr
 		lcmd.exitMu.Unlock()
+		// Closing the terminal (the deferred function above) throws away what the reader has not taken yet. A
+		// program that prints and exits at once, on a slow worker, would show nothing: let the reader finish.
+		drainPty(lcmd.pty, drainLimit)
 	}()
 
 	return lcmd, nil
