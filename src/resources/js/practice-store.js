@@ -296,9 +296,35 @@
     if (e.key === QKEY || e.key === SKEY) emit("external");
   });
 
+  // ---- the description in the editor ------------------------------------------
+
+  // The prompt asks the model to wrap the description at 100 characters, but a model often answers with one long
+  // line. Wrapped here, where the description is put in the editor, so a question saved earlier is wrapped too.
+  // Only a line longer than `width` is broken, at a space, and the lines it makes keep its indent (a list item
+  // keeps its bullet's width). A drawing (a line with | or +-- or box characters) and a line that is already
+  // short are left as they are; a word longer than `width` stays whole.
+  function wrapDescription(text, width) {
+    width = width || 100;
+    return String(text == null ? "" : text).split("\n").map(function (line) {
+      if (line.length <= width || /[|\u2500-\u257f]|\+--|--\+/.test(line)) return line;
+      var m = line.match(/^(\s*)((?:[-*\u2022]|\d+[.)])\s+)?/);
+      var indent = m[1];
+      var hang = indent + (m[2] ? m[2].replace(/\S/g, " ") : "");
+      var words = line.slice(m[0].length).split(/\s+/).filter(Boolean);
+      var out = [], cur = m[0];
+      words.forEach(function (w) {
+        if (cur.trim() && cur.length + 1 + w.length > width) { out.push(cur); cur = hang + w; }
+        else cur = (cur.trim() ? cur + " " : cur) + w;
+      });
+      if (cur.trim()) out.push(cur);
+      return out.join("\n");
+    }).join("\n");
+  }
+
   // ---- public API -------------------------------------------------------------
 
   window.PracticeStore = {
+    wrapDescription: wrapDescription,
     init: init,
     seed: seed,
     // resolves once the starter questions are in the list (or could not be loaded)
