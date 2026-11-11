@@ -128,7 +128,18 @@ jobs:
         CI: "true"
       run: |
         npm install --no-audit --no-fund
-        npx playwright install --with-deps chromium
+        # The runner's apt mirror (azure.archive.ubuntu.com) sometimes does not resolve, and then the system
+        # packages of the browser cannot be downloaded. Use the standard archive in that case, and try again
+        # a few times before giving up.
+        if ! getent hosts azure.archive.ubuntu.com > /dev/null; then
+          echo "azure.archive.ubuntu.com does not resolve: using archive.ubuntu.com"
+          sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g' /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null || true
+        fi
+        for attempt in 1 2 3; do
+          npx playwright install --with-deps chromium && break
+          if [ "$attempt" = 3 ]; then exit 1; fi
+          echo "browser install failed (attempt $attempt), trying again in 20 s"; sleep 20
+        done
         npx playwright test
     - name: Browser tests report
       if: always()

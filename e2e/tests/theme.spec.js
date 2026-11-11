@@ -51,6 +51,9 @@ test.describe("theme choice", () => {
 
   test("Escape closes the menu and gives the focus back to its button", async ({ page }) => {
     await page.goto("/");
+    // The terminal connects a little after the page loads and takes the keyboard focus when it does. If that happens
+    // while the menu is open, Escape goes to the terminal and the focus does not come back. Wait for it first.
+    await expect(page.locator("#term-footer-text")).toContainText("Connected", { timeout: 30000 });
     const button = page.locator("[data-theme-toggle]").first();
     await button.click();
     await expect(page.locator(".theme-menu")).toBeVisible();

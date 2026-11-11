@@ -12,8 +12,8 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.join(here, "..", "..", "resources", "js", "question-loader.js"), "utf8");
 
-function loaderPage() {
-  const window = {};
+function loaderPage(extra = {}) {
+  const window = Object.assign({}, extra);
   const ctx = { window, document: { querySelector: () => null, getElementById: () => null }, console: { error() {}, log() {}, warn() {} }, setTimeout, clearTimeout, AbortController, Promise };
   vm.createContext(ctx);
   vm.runInContext(source, ctx);
@@ -217,10 +217,80 @@ test("an empty answer says so, which model, and why as far as the reply told", (
   const fromProxy = QL.describeFailure({ kind: "empty", status: 502, serverMessage: "North mini code (free) sent back an empty answer: it used its whole answer budget before writing anything (a model that thinks first counts its thinking in it)" }, 60000, "North mini code (free)");
   assert.equal(fromProxy.title, "Genie (North mini code (free)) sent back an empty answer");
   assert.match(fromProxy.text, /^It used its whole answer budget before writing anything/);
-  assert.match(fromProxy.text, /pick another model in Genie's model menu\.$/);
+  assert.match(fromProxy.text, /choose another model\.$/);
   assert.equal(fromProxy.detail, "HTTP 502");
   const fromPage = QL.describeFailure({ kind: "empty", serverMessage: "it wrote nothing" }, 60000, "GPT-4o mini");
   assert.match(fromPage.text, /^It wrote nothing\. Try again/);
   assert.match(QL.describeFailure({ kind: "empty" }, 60000).text, /^It wrote nothing\. Try again/);
   assert.equal(QL.describeFailure({ kind: "empty" }, 60000).title, "Genie sent back an empty answer");
+});
+
+// ---- a way to another model from the failure card ----------------------------------------------
+
+test("the failures a model can cause say so, the others do not", () => {
+  const QL = loaderPage();
+  for (const kind of ["empty", "timeout", "format", "off", "server"]) {
+    assert.equal(QL.describeFailure(failure(kind), 60000).modelMatters, true, kind);
+  }
+  for (const kind of ["offline", "limit", "auth"]) {
+    assert.ok(!QL.describeFailure(failure(kind), 60000).modelMatters, kind);
+  }
+});
+
+test("the card offers a way to the model menu only where Genie can show it", async () => {
+  const noWidget = card();
+  loaderPage().load({ ui: noWidget, language: "C", work: async () => { throw failure("empty"); } });
+  await wait(10);
+  assert.equal(noWidget.last().s, "failed");
+  assert.equal(noWidget.last().h.chooseModel, undefined, "Genie is not there: no button");
+
+  const opened = [];
+  const QL = loaderPage({ ChatWidget: { openModels: () => opened.push("models") } });
+  const ui = card();
+  QL.load({ ui, language: "C", work: async () => { throw failure("empty"); } });
+  await wait(10);
+  assert.equal(typeof ui.last().h.chooseModel, "function");
+  ui.last().h.chooseModel();
+  assert.deepEqual(opened, ["models"]);
+});
+
+test("after another model is chosen the card says so, and Try again asks that one", async () => {
+  let name = "Model A";
+  const listeners = [];
+  const QL = loaderPage({
+    ChatWidget: { openModels() {} },
+    ModelChoice: { onChange: (fn) => listeners.push(fn) },
+  });
+  const ui = card();
+  const asked = [];
+  QL.load({ ui, language: "C", model: () => name, work: async () => { asked.push(name); throw failure("empty"); } });
+  await wait(10);
+  assert.match(ui.last().d.title, /Genie \(Model A\) sent back an empty answer/);
+  ui.last().h.chooseModel();
+  ui.last().h.chooseModel(); // asking twice listens once
+  assert.equal(listeners.length, 1);
+
+  name = "Model B";
+  listeners.forEach((fn) => fn());
+  assert.equal(ui.last().s, "failed");
+  assert.equal(ui.last().d.detail, "Now using Model B. Press Try again to ask it.");
+
+  ui.last().h.retry();
+  assert.match(ui.last().text, /^Genie \(Model B\) is writing/, "the new name is read at the new attempt");
+  await wait(10);
+  assert.deepEqual(asked, ["Model A", "Model B"]);
+});
+
+test("a model change while nothing has failed does not touch the card", async () => {
+  let name = "Model A";
+  const listeners = [];
+  const QL = loaderPage({ ChatWidget: { openModels() {} }, ModelChoice: { onChange: (fn) => listeners.push(fn) } });
+  const ui = card();
+  QL.load({ ui, language: "C", model: () => name, work: async () => { throw failure("empty"); } });
+  await wait(10);
+  ui.last().h.chooseModel();
+  ui.last().h.close();
+  const before = ui.log.length;
+  listeners.forEach((fn) => fn());
+  assert.equal(ui.log.length, before, "the card is closed: nothing is drawn");
 });

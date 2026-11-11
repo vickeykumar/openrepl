@@ -90,6 +90,7 @@
       case "timeout":
         return {
           title: "This is taking too long",
+          modelMatters: true,
           text: who + " didn't answer within " + Math.round((timeoutMs || settings.timeoutMs) / 1000) + " seconds, so your question wasn't loaded. The AI service may be busy right now. You can pick another model in Genie's model menu.",
           detail: ""
         };
@@ -110,6 +111,7 @@
       case "off":
         return {
           title: "Genie isn't available right now",
+          modelMatters: true,
           text: (err && (err.serverMessage || err.message)) || "It has been switched off for now. Try again later.",
           detail: status
         };
@@ -120,19 +122,22 @@
         why = why ? why.charAt(0).toUpperCase() + why.slice(1) + (/[.!?]$/.test(why) ? "" : ".") : "It wrote nothing.";
         return {
           title: who + " sent back an empty answer",
-          text: why + " Try again, or pick another model in Genie's model menu.",
+          modelMatters: true,
+          text: why + " Try again, or choose another model.",
           detail: status
         };
       }
       case "format":
         return {
           title: "Genie's answer couldn't be used",
+          modelMatters: true,
           text: "It answered, but not in a form a question could be built from. Trying again usually fixes it.",
           detail: ""
         };
       default:
         return {
           title: "The AI service had a problem",
+          modelMatters: true,
           text: "It answered with an error" + (status ? " (" + status + ")" : "") + ". Try again in a moment.",
           detail: (err && err.serverMessage && err.serverMessage.length <= 160) ? err.serverMessage : ""
         };
@@ -143,7 +148,7 @@
 
   function domUi() {
     var host = document.querySelector(".editor-body");
-    var root = null, ring, title, text, hint, primary, secondary;
+    var root = null, ring, title, text, hint, primary, choose, secondary;
 
     function build() {
       if (root || !host) return;
@@ -167,10 +172,13 @@
       primary = document.createElement("button");
       primary.type = "button";
       primary.className = "q-loading__btn q-loading__btn--primary";
+      choose = document.createElement("button");
+      choose.type = "button";
+      choose.className = "q-loading__btn q-loading__btn--accent";
       secondary = document.createElement("button");
       secondary.type = "button";
       secondary.className = "q-loading__btn";
-      actions.append(primary, secondary);
+      actions.append(primary, choose, secondary);
       card.append(ring, title, text, hint, actions);
       root.appendChild(card);
       host.appendChild(root);
@@ -188,7 +196,12 @@
       hint.textContent = o.hint || "";
       hint.hidden = !o.hint;
       primary.hidden = !o.primary;
+      choose.hidden = !o.choose;
       secondary.hidden = !o.secondary;
+      if (o.choose) {
+        choose.textContent = o.choose.label;
+        choose.onclick = o.choose.run;
+      }
       if (o.primary) {
         primary.textContent = o.primary.label;
         primary.onclick = o.primary.run;
@@ -221,6 +234,7 @@
           text: d.text,
           hint: d.detail,
           primary: { label: "Try again", run: h.retry },
+          choose: h.chooseModel && d.modelMatters ? { label: "Choose another model", run: h.chooseModel } : null,
           secondary: { label: "Close", run: h.close }
         });
       },
@@ -243,9 +257,13 @@
     var attempt = { dead: false, stop: function () {} };
     current = attempt;
     var what = opts.title ? "“" + opts.title + "”" : "your question";
-    // "Genie (GPT-6 Luna) is writing ...": the model that was chosen, so that a slow or failed answer can be put down to it
-    var who = "Genie" + (opts.model ? " (" + opts.model + ")" : "");
-    var loadingText = who + " is writing " + what + (opts.language ? " and a starter for " + opts.language : "") + ". This usually takes 5 to 20 seconds.";
+    // "Genie (GPT-6 Luna) is writing ...": the model that was chosen, so that a slow or failed answer can be put down to it.
+    // `model` may be a function: the visitor can choose another model while the failure card is up, and Try again then
+    // asks that one, so the name is read at each attempt.
+    function modelName() { return typeof opts.model === "function" ? opts.model() : opts.model; }
+    // the failure card that is up, for the model choice to add its line to
+    var shownFailure = null;
+    var watching = false;
 
     function finish() {
       if (current === attempt) current = null;
@@ -268,6 +286,9 @@
         attempt.stop("cancelled");
       };
 
+      shownFailure = null;
+      var who = "Genie" + (modelName() ? " (" + modelName() + ")" : "");
+      var loadingText = who + " is writing " + what + (opts.language ? " and a starter for " + opts.language : "") + ". This usually takes 5 to 20 seconds.";
       ui.loading({ title: "Getting your question ready…", text: loadingText, onCancel: cancel });
       slowTimer = setTimeout(function () {
         if (!over) ui.slow({ title: "Getting your question ready…", text: loadingText, onCancel: cancel });
@@ -306,14 +327,35 @@
             err.kind = "timeout";
           }
           console.error("question: couldn't load", err);
-          ui.failed(describeFailure(err, timeoutMs, opts.model), {
+          var failure = describeFailure(err, timeoutMs, modelName());
+          var handlers = {
             retry: function () { if (!attempt.dead) run(); },
             close: function () {
+              shownFailure = null;
               finish();
               ui.hide();
               if (opts.onGiveUp) opts.onGiveUp("failed");
             }
-          });
+          };
+          // a way to another model, where Genie can show its model menu (the card stays; Try again asks the new one)
+          if (window.ChatWidget && typeof window.ChatWidget.openModels === "function") {
+            handlers.chooseModel = function () {
+              if (!watching && window.ModelChoice && typeof window.ModelChoice.onChange === "function") {
+                watching = true;
+                window.ModelChoice.onChange(function () {
+                  if (!shownFailure || attempt.dead) return;
+                  var now = modelName();
+                  var again = {};
+                  for (var k in shownFailure.failure) again[k] = shownFailure.failure[k];
+                  again.detail = now ? "Now using " + now + ". Press Try again to ask it." : "";
+                  ui.failed(again, shownFailure.handlers);
+                });
+              }
+              window.ChatWidget.openModels();
+            };
+          }
+          shownFailure = { failure: failure, handlers: handlers };
+          ui.failed(failure, handlers);
         }
       );
     }

@@ -896,7 +896,7 @@ Breakpoint 1, main () at main.c:5
             // A description that is not there (yet) says so, instead of "null".
             function showQuestionInEditor(question, selectedLanguage, language_template) {
               const header = question.name+"\n\nDifficulty Level: "+ question.difficulty+ "\n\nProblem Description:\n"+
-                (question.description || "(The description is not loaded yet. Pick the language again, or reload the page, to try again.)");
+                (question.description ? PracticeStore.wrapDescription(question.description, 100) : "(The description is not loaded yet. Pick the language again, or reload the page, to try again.)");
               if (language_template) {
                 updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+header+"\n"+language_template.multiline_comment_end+"\n"+
                   language_template.multiline_comment_start+"\n"+question.delimeter+"\n"+language_template.multiline_comment_end+"\n"+language_template.template+"\n\n\n\n", true);
@@ -932,8 +932,10 @@ Breakpoint 1, main () at main.c:5
               // Genie writes the missing parts. The editor is covered by a card that says so until they are there; if it
               // fails or takes too long, the card says why and the editor gets the question without the starter code.
               // the model that writes it is the one chosen in Genie's model menu (js/model-choice.js)
-              const choice = window.ModelChoice ? ModelChoice.get() : null;
-              const model = choice ? (ModelChoice.models.find(m => m.id === choice.model) || {}).name : "";
+              const model = () => {
+                const choice = window.ModelChoice ? ModelChoice.get() : null;
+                return choice ? (ModelChoice.models.find(m => m.id === choice.model) || {}).name : "";
+              };
               QuestionLoader.load({
                 title: newQuestion.name,
                 language: selectedLanguage,
@@ -1109,7 +1111,7 @@ Breakpoint 1, main () at main.c:5
                       let language_template = newQuestion.code_templates[selectedLanguage];
                       // update editor content
                       if (language_template) {
-                        updateEditorContent(language_template, language_template.multiline_comment_start+"\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ newQuestion.description+"\n"+language_template.multiline_comment_end+"\n"+language_template.multiline_comment_start+"\n"+newQuestion.delimeter+"\n"+language_template.multiline_comment_end+"\n"+
+                        updateEditorContent(language_template, language_template.multiline_comment_start+"\n"+newQuestion.name+"\n\nDifficulty Level: "+ newQuestion.difficulty+ "\n\nProblem Description:\n"+ PracticeStore.wrapDescription(newQuestion.description, 100)+"\n"+language_template.multiline_comment_end+"\n"+language_template.multiline_comment_start+"\n"+newQuestion.delimeter+"\n"+language_template.multiline_comment_end+"\n"+
                         language_template.template+"\n\n\n\n", true);
                       } else {
                         fetchLanguageTmplAndSetEditorcode(newQuestion.nameHyphenated, selectedLanguage);
