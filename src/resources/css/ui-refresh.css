@@ -1111,6 +1111,7 @@ body.files-collapsed .files-panel { display: none; }
 .q-loading__btn:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 .q-loading__btn--primary { color: var(--on-accent-color, #15151C); background: var(--accent-color); border-color: var(--accent-color); font-weight: 600; }
 .q-loading__btn--primary:hover { background: var(--accent-color); filter: brightness(1.08); }
+.q-loading__btn--accent { color: var(--accent-color); border-color: var(--accent-color); font-weight: 500; }
 @keyframes q-loading-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .q-loading__ring { animation-duration: 3s; } }
 .editor-status {

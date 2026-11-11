@@ -1925,6 +1925,16 @@ function close() {
 // pin: the app bar's Genie button opens the panel pinned beside the IDE (where
 // there is room for it; otherwise it floats as before). The floating "Ask Genie"
 // button leaves the pin as it is.
+// Opens the panel (pinned beside the IDE when it can be, as the app bar button does) with the model menu open, for
+// a page that tells the visitor to choose another model (the failure card of a question, js/question-loader.js).
+function openModels() {
+  if (!isOpen()) {
+    if (canDock() && !pinnedPref) setPinned(true);
+    open();
+  }
+  setSettingsOpen(true);
+}
+
 function toggle(e?: Event, opts?: { pin?: boolean }) {
   if (isOpen()) {
     close();
@@ -2798,7 +2808,7 @@ function busy(): boolean {
   return agentRunner.running || genieBusy();
 }
 
-const ChatWidget = { open, close, toggle, config, init, ask, busy, addContext };
+const ChatWidget = { open, close, toggle, openModels, config, init, ask, busy, addContext };
 (window as any).ChatWidget = ChatWidget;
 declare global {
   interface Window {
