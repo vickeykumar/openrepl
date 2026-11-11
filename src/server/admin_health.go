@@ -210,6 +210,18 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	default:
 		add("Filesystem sandbox", healthWarn, "not available: "+ll.Reason+". REPLs can read the files of the server and of other users")
 	}
+	// the private network of a workspace, for a REPL that has no kernel network namespace of its own
+	ne := containers.NetEmuStatus()
+	switch {
+	case ne.Active:
+		add("Network isolation", healthOK, ne.Reason)
+	case ne.Mode == utils.NetIsolationRequire:
+		add("Network isolation", healthFail, "required (OPENREPL_NET_ISOLATION=require) but not available: "+ne.Reason+"; no REPL starts")
+	case ne.Mode == utils.NetIsolationOff:
+		add("Network isolation", healthWarn, ne.Reason+": REPLs without a namespace of their own share one network, so a port can be used by one user only and users can reach each other's servers")
+	default:
+		add("Network isolation", healthWarn, "not available: "+ne.Reason+". REPLs without a namespace of their own share one network")
+	}
 	if _, err := os.Stat(os.TempDir()); err == nil {
 		checks = append(checks, diskCheck("Disk space for /tmp", os.TempDir()))
 	}

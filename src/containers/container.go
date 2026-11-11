@@ -110,6 +110,8 @@ func InitContainers() {
 	log.Println("INFO: CAP_SYS_ADMIN available:", HasCAPSysAdmin)
 	// the filesystem sandbox does not depend on the cgroups below
 	InitLandlock()
+	// the network emulation needs the same helper
+	InitNetEmu()
 	if err := initCgroupV2(); err != nil {
 		log.Println("ERROR: unable to initialize cgroup v2 sandboxing:", err)
 		return

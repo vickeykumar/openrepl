@@ -1,0 +1,117 @@
+//go:build linux
+
+package netemu
+
+import (
+	"bytes"
+	"fmt"
+	"net"
+	"os"
+	"os/exec"
+	"strings"
+	"syscall"
+	"time"
+)
+
+// ProbeFlag is the helper's flag that makes it run the self test instead of a program.
+const ProbeFlag = "--net-probe"
+
+// Probe finds out, at start, whether the emulation works on this host: it runs the helper's self test under a
+// real supervisor, the way a REPL runs. It is not enough that the kernel has the features: a host can refuse
+// the permission checks (a container profile that blocks pidfd_getfd, a ptrace policy).
+func Probe(helper string) error {
+	pair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		return err
+	}
+	parent := os.NewFile(uintptr(pair[0]), "netemu-parent")
+	child := os.NewFile(uintptr(pair[1]), "netemu-child")
+	cmd := exec.Command(helper, ProbeFlag)
+	cmd.ExtraFiles = []*os.File{child}
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &out
+	if err := cmd.Start(); err != nil {
+		parent.Close()
+		child.Close()
+		return err
+	}
+	child.Close()
+	Attach(parent, "probe", cmd.Process.Pid)
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("the self test failed: %v %s", err, strings.TrimSpace(out.String()))
+		}
+		return nil
+	case <-time.After(10 * time.Second):
+		cmd.Process.Kill()
+		<-done
+		return fmt.Errorf("the self test did not finish: %s", strings.TrimSpace(out.String()))
+	}
+}
+
+// SelfTest runs inside the helper, after Install: a TCP exchange and a UDP exchange on the loopback, and a
+// connect to an address outside that must be refused.
+func SelfTest() error {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return fmt.Errorf("listen: %v", err)
+	}
+	defer l.Close()
+	go func() {
+		c, err := l.Accept()
+		if err != nil {
+			return
+		}
+		buf := make([]byte, 4)
+		if _, err := c.Read(buf); err == nil {
+			c.Write(buf)
+		}
+		c.Close()
+	}()
+	c, err := net.DialTimeout("tcp", l.Addr().String(), 3*time.Second)
+	if err != nil {
+		return fmt.Errorf("connect: %v", err)
+	}
+	c.SetDeadline(time.Now().Add(3 * time.Second))
+	if _, err := c.Write([]byte("ping")); err != nil {
+		return fmt.Errorf("write: %v", err)
+	}
+	reply := make([]byte, 4)
+	if _, err := c.Read(reply); err != nil || string(reply) != "ping" {
+		return fmt.Errorf("read: %v %q", err, reply)
+	}
+	c.Close()
+
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		return fmt.Errorf("udp listen: %v", err)
+	}
+	defer pc.Close()
+	go func() {
+		b := make([]byte, 16)
+		n, from, err := pc.ReadFrom(b)
+		if err == nil {
+			pc.WriteTo(b[:n], from)
+		}
+	}()
+	uc, err := net.Dial("udp", pc.LocalAddr().String())
+	if err != nil {
+		return fmt.Errorf("udp dial: %v", err)
+	}
+	defer uc.Close()
+	uc.SetDeadline(time.Now().Add(3 * time.Second))
+	uc.Write([]byte("hi"))
+	ub := make([]byte, 16)
+	if n, err := uc.Read(ub); err != nil || string(ub[:n]) != "hi" {
+		return fmt.Errorf("udp exchange: %v %q", err, ub)
+	}
+
+	if c, err := net.DialTimeout("tcp", "192.0.2.1:80", 2*time.Second); err == nil {
+		c.Close()
+		return fmt.Errorf("a connection outside the workspace was allowed")
+	}
+	return nil
+}

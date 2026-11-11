@@ -122,3 +122,15 @@ func TestTmpKeepKeepsTheWorkspacesFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestTheNetworkIsolationModeIsReadFromTheEnvironment(t *testing.T) {
+	for value, want := range map[string]string{
+		"": NetIsolationAuto, "auto": NetIsolationAuto, "ON": NetIsolationAuto, "off": NetIsolationOff, "0": NetIsolationOff,
+		"require": NetIsolationRequire, "Required": NetIsolationRequire, "nonsense": NetIsolationAuto,
+	} {
+		t.Setenv(EnvNetIsolation, value)
+		if got := NetIsolationMode(); got != want {
+			t.Errorf("%q: %s, want %s", value, got, want)
+		}
+	}
+}

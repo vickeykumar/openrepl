@@ -120,24 +120,34 @@ func LandlockCheck() error {
 	return nil
 }
 
-// wrapWithLandlock makes a command run under the policy of the workspace: the
-// helper applies it and then runs the command. With no workspace, or no
-// sandbox on this server, the command is returned as it is.
+// wrapWithLandlock makes a command run under the policy of the workspace and, where it has no kernel network
+// namespace of its own (scopeSignals: the same condition), in the private network of the workspace: the
+// helper applies both and then runs the command. With no workspace, or neither on this server, the command is
+// returned as it is.
 func wrapWithLandlock(command []string, workspace string, debug, scopeSignals bool) []string {
 	if workspace == "" || len(command) == 0 {
 		return command
 	}
 	info := LandlockStatus()
-	if !info.Active {
+	net := scopeSignals && NetEmuActive()
+	if !info.Active && !net {
 		return command
 	}
-	wrapped := []string{info.Helper, "--workspace", workspace, "--home-root", strings.TrimSuffix(utils.HOME_DIR, "/"),
-		"--max-file-mb", strconv.Itoa(utils.WorkspaceQuotaMB)}
-	if scopeSignals && info.Scope {
-		wrapped = append(wrapped, "--scope-signals")
+	var wrapped []string
+	if info.Active {
+		wrapped = []string{info.Helper, "--workspace", workspace, "--home-root", strings.TrimSuffix(utils.HOME_DIR, "/"),
+			"--max-file-mb", strconv.Itoa(utils.WorkspaceQuotaMB)}
+		if scopeSignals && info.Scope {
+			wrapped = append(wrapped, "--scope-signals")
+		}
+		if debug {
+			wrapped = append(wrapped, "--debug")
+		}
+	} else {
+		wrapped = []string{NetEmuStatus().Helper, "--no-landlock"}
 	}
-	if debug {
-		wrapped = append(wrapped, "--debug")
+	if net {
+		wrapped = append(wrapped, "--net-emulation")
 	}
 	return append(append(wrapped, "--"), command...)
 }

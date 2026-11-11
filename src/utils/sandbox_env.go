@@ -22,6 +22,11 @@ const (
 	// where the kernel has Landlock, else a visible status and no sandbox), off,
 	// or require (a REPL does not start without it).
 	EnvLandlock = "OPENREPL_LANDLOCK"
+	// EnvNetIsolation is the mode of the network emulation (LLD 16): a REPL that has no kernel namespaces of
+	// its own gets a private network of its workspace, built with seccomp, so that every user may use the same
+	// ports and cannot reach another user's servers or the outside. auto (the default: on where it works,
+	// found out at start), off, or require (a REPL without it does not start).
+	EnvNetIsolation = "OPENREPL_NET_ISOLATION"
 	// EnvTmpMaxAge, a duration such as 1h, is how long a file may stay in /tmp
 	// before the server deletes it. Unset or 0 means never. The Docker image sets it.
 	EnvTmpMaxAge = "OPENREPL_TMP_MAX_AGE"
@@ -99,6 +104,28 @@ func LandlockMode() string {
 	default:
 		log.Printf("ERROR: %s=%q is not auto, off or require; using auto", EnvLandlock, v)
 		return LandlockAuto
+	}
+}
+
+// Modes of the network emulation (the same words as the filesystem sandbox).
+const (
+	NetIsolationAuto    = "auto"
+	NetIsolationOff     = "off"
+	NetIsolationRequire = "require"
+)
+
+// NetIsolationMode is OPENREPL_NET_ISOLATION: auto, off or require. Anything else (and nothing) is auto.
+func NetIsolationMode() string {
+	switch v := strings.ToLower(strings.TrimSpace(os.Getenv(EnvNetIsolation))); v {
+	case NetIsolationOff, "0", "false", "no":
+		return NetIsolationOff
+	case NetIsolationRequire, "required":
+		return NetIsolationRequire
+	case "", NetIsolationAuto, "on", "1", "true", "yes":
+		return NetIsolationAuto
+	default:
+		log.Printf("ERROR: %s=%q is not auto, off or require; using auto", EnvNetIsolation, v)
+		return NetIsolationAuto
 	}
 }
 
