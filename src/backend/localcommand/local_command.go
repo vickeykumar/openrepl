@@ -9,6 +9,7 @@ import (
 	"unsafe"
 	"io/ioutil"
 	"containers"
+	"netemu"
 	"github.com/kr/pty"
 	"github.com/pkg/errors"
 	"log"
@@ -74,6 +75,9 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 		if err := containers.LandlockCheck(); err != nil {
 			return nil, err
 		}
+		if err := containers.NetEmuCheck(); err != nil {
+			return nil, err
+		}
 	}
 	// the command depends on the workspace: under the filesystem sandbox the helper that applies its
 	// policy runs it. exec.Command, so that a program that is not found is told so when it starts.
@@ -81,6 +85,17 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	commandArgs := containers.GetCommandArgsIn(command, argv, ppid, params, dir)
 	cmd = exec.Command(commandArgs[0], commandArgs[1:]...)
 	cmd.Dir = dir
+	// the network emulation (LLD 16): the helper tells this process, over a socket it has as descriptor 3,
+	// where to send the notifications of the REPL's network calls
+	var netParent, netChild *os.File
+	if containers.WantsNetSocket(commandArgs) {
+		var nerr error
+		netParent, netChild, nerr = netemu.NewSocketPair()
+		if nerr != nil {
+			return nil, errors.Wrap(nerr, "failed to start the network emulation")
+		}
+		cmd.ExtraFiles = []*os.File{netChild}
+	}
 	if command == "bash" {
 		ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0644)
 	}
@@ -125,7 +140,15 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	pty, err := pty.Start(command, cmd, ppid, params)
 	if err != nil {
 		// todo close cmd?
+		if netParent != nil {
+			netParent.Close()
+			netChild.Close()
+		}
 		return nil, errors.Wrapf(err, "failed to start command `%s`", command)
+	}
+	if netParent != nil {
+		netChild.Close()
+		netemu.Attach(netParent, dir, cmd.Process.Pid)
 	}
 	ptyClosed := make(chan struct{})
 
@@ -186,6 +209,9 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 		lcmd.exitMu.Lock()
 		lcmd.exitErr = cmderr
 		lcmd.exitMu.Unlock()
+		// Closing the terminal (the deferred function above) throws away what the reader has not taken yet. A
+		// program that prints and exits at once, on a slow worker, would show nothing: let the reader finish.
+		drainPty(lcmd.pty, drainLimit)
 	}()
 
 	return lcmd, nil

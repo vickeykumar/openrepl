@@ -105,6 +105,10 @@ type Config struct {
 	// LanguageDefault for the requester, for example an admin, who is let
 	// through a switched off language. Optional: no rules.
 	NodeLanguage func(w http.ResponseWriter, r *http.Request, node, rel string) LanguageRule
+	// NodeWeight returns the share of new sessions an admin set for a node from
+	// the dashboard, if any: it wins over the weight the node was started with.
+	// Optional: no overrides.
+	NodeWeight func(id string) (int, bool)
 	// RefuseTerminal answers a terminal's WebSocket request by closing it with a
 	// reason the page shows. It reports whether it handled the response.
 	// Optional: without it the answer is a plain 503.
@@ -146,9 +150,10 @@ type Router struct {
 	homeOf   func(Identity) string
 	notice   func(http.ResponseWriter, *http.Request, time.Duration) bool
 
-	nodeLanguage func(http.ResponseWriter, *http.Request, string, string) LanguageRule
-	refuseTerm   func(http.ResponseWriter, *http.Request, string) bool
-	localPtrace  string
+	nodeLanguage   func(http.ResponseWriter, *http.Request, string, string) LanguageRule
+	weightOverride func(id string) (int, bool)
+	refuseTerm     func(http.ResponseWriter, *http.Request, string) bool
+	localPtrace    string
 
 	userLabel func(uid string) string
 	syncInfo  func(backendID string) (SyncInfo, bool)
@@ -193,6 +198,7 @@ func NewRouter(cfg Config) *Router {
 	if isEntry == nil {
 		isEntry = func(string) bool { return false }
 	}
+	cfg.Local.WeightOverride = cfg.NodeWeight
 	local := NewLocalBackend(cfg.Site, cfg.Local)
 	registryTTL := cfg.GuestTTL
 	if cfg.HomeOf != nil {
@@ -218,9 +224,10 @@ func NewRouter(cfg Config) *Router {
 		homeOf:   cfg.HomeOf,
 		notice:   cfg.TerminalNotice,
 
-		nodeLanguage: cfg.NodeLanguage,
-		refuseTerm:   cfg.RefuseTerminal,
-		localPtrace:  cfg.Local.Ptrace,
+		nodeLanguage:   cfg.NodeLanguage,
+		weightOverride: cfg.NodeWeight,
+		refuseTerm:     cfg.RefuseTerminal,
+		localPtrace:    cfg.Local.Ptrace,
 
 		userLabel: cfg.UserLabel,
 		syncInfo:  cfg.SyncInfo,

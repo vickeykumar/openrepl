@@ -65,6 +65,7 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 			Capacity: func() (int64, int64) {
 				return int64(counter.weight()), int64(server.options.MaxConnection)
 			},
+			Active: func() int64 { return int64(counter.count()) },
 		},
 		Pins: userPins{},
 		Terminal: func(rel string) (string, int64, bool) {
@@ -89,6 +90,7 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 
 	cfg.TerminalNotice = server.terminalNotice
 	cfg.NodeLanguage = server.nodeLanguageRule
+	cfg.NodeWeight = func(id string) (int, bool) { return GetSiteSettings().NodeWeight(id) }
 	cfg.RefuseTerminal = server.refuseTerminal
 	cfg.UserLabel = func(uid string) string {
 		if up, err := user.FetchUserProfileData(uid); err == nil {
@@ -388,6 +390,10 @@ func (server *Server) handleGatewayAdmin(w http.ResponseWriter, r *http.Request)
 	rel := strings.Trim(strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, server.admin.prefix), "admin/"), "/")
 	if parts := strings.Split(rel, "/"); len(parts) == 3 && parts[0] == "workers" && parts[2] == "languages" {
 		server.handleNodeLanguages(w, r, parts[1])
+		return
+	} else if len(parts) == 3 && parts[0] == "workers" && parts[2] == "weight" {
+		// the same for the weights: /admin/workers/<id>/weight
+		server.handleNodeWeight(w, r, parts[1])
 		return
 	}
 	server.gatewayAdmin.ServeHTTP(w, r)

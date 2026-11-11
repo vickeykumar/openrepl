@@ -22,6 +22,7 @@ What runs on a pull request, and how to run the same checks yourself, is in [Con
 | 12 | [Workspace synchronization](lld/12-workspace-sync.md) | Implemented (flag `--workspace-sync`): a copy of each home on the gateway and on its owning node, two-way sync over the tunnel, base record, reconcile on reconnect, `SYNCING` state, gateway fallback for file requests, guest expiry, copy on placement |
 | 13 | [Admin dashboard](lld/13-admin-dashboard.md) | Implemented: `/admin`, its JSON API and who may use it, site settings (announcement, maintenance, languages, Genie), accounts and moderation, ending and moving sessions, health, usage numbers, log viewer, audit log |
 | 14 | [Filesystem sandbox (Landlock)](lld/14-landlock-repl-isolation.md) | Implemented: a Landlock policy on each REPL (its workspace, the system read-only, `/tmp`), the static helper that applies it, modes `auto`/`off`/`require`, the configurable workspaces folder, the `/tmp` cleaner, what it does not cover |
+| 16 | [Network emulation](lld/16-network-emulation.md) | Implemented: a private network per workspace for REPLs without kernel namespaces (seccomp user notification, abstract unix sockets), same ports for every user, no reach to other workspaces or the outside, the start-up probe, modes `auto`/`off`/`require`, what it does not do |
 
 ## Source map
 

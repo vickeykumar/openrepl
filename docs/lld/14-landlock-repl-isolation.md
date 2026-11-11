@@ -109,3 +109,7 @@ python3 -c "import ctypes;print(ctypes.CDLL(None).syscall(444,None,0,1))"
 
 - [LLD 03: Sandboxing and resource limits](03-sandboxing-and-resources.md)
 - [Linux Landlock userspace API](https://docs.kernel.org/userspace-api/landlock.html)
+
+## Related: the network
+
+A REPL that has no kernel network namespace of its own also gets a private network of its workspace, applied by the same helper (`--net-emulation`): LLD 16.

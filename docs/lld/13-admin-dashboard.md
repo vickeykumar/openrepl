@@ -174,6 +174,8 @@ On the Live map the **job scheduler** node sits in the gotty process panel: its 
 
 ### Languages per node
 
+**Weights per node.** In *Workers* the weight of a node is a button (and a row in the node's drawer). It opens a dialog with the number, the share of new sessions every node would have before and after, and a link back to the node's own weight; a node set to 0 or a change that moves more than half of the shares asks for a second confirmation, and a change that leaves no node taking sessions is refused (`server/node_weights.go`, `editWeight` in `admin.js`; LLD 11 for how the gateway uses it).
+
 The site-wide switch turns a language off for everybody. The Languages card in a node's drawer (*Workers*, then the node) decides per node, for every language that has a terminal (JavaScript runs in the browser and is not listed): **Default** follows what the node declares (`--worker-languages`; a node that did not list its languages runs everything), **Off** refuses new terminals of it although the node can run it, **On** takes it although the node did not declare it, for a language installed after the worker started. Open terminals keep running. The choices are saved with the site settings (`SiteSettings.NodeLanguages`, node id to `{off, on}`), by `/admin/workers/<id>/languages` only: the Settings page does not send them and keeps what is stored. They are audited ("worker pi-1: rappel switched off").
 
 How a choice takes effect (`server/node_languages.go`, `admin_node_languages.go`):
