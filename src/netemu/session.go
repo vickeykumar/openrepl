@@ -60,16 +60,24 @@ type Session struct {
 // started are gone. It takes ownership of sock.
 func Attach(sock *os.File, workspace string, pid int) {
 	go func() {
-		lfd, err := fetchFD(sock, pid)
-		sock.Close()
-		if err != nil {
-			if debug {
-				log.Printf("netemu: %v", err)
-			}
-			return
+		if err := attach(sock, workspace, pid, nil); err != nil {
+			log.Printf("netemu: a REPL's network could not be set up: %v", err)
 		}
-		newSession(WorkspaceID(workspace), lfd).serve()
 	}()
+}
+
+// attach is Attach in the foreground. ready, if not nil, is told (once) whether the session started, and why not.
+func attach(sock *os.File, workspace string, pid int, ready chan<- error) error {
+	lfd, err := fetchFD(sock, pid)
+	sock.Close()
+	if ready != nil {
+		ready <- err
+	}
+	if err != nil {
+		return err
+	}
+	newSession(WorkspaceID(workspace), lfd).serve()
+	return nil
 }
 
 func newSession(id string, lfd int) *Session {

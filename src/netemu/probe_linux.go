@@ -36,19 +36,44 @@ func Probe(helper string) error {
 		return err
 	}
 	child.Close()
-	Attach(parent, "probe", cmd.Process.Pid)
+	// what the server side says about taking over the helper's notification descriptor
+	ready := make(chan error, 1)
+	go attach(parent, "probe", cmd.Process.Pid, ready)
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	select {
 	case err := <-done:
 		if err != nil {
-			return fmt.Errorf("the self test failed: %v %s", err, strings.TrimSpace(out.String()))
+			return fmt.Errorf("the self test failed: %v %s%s", err, strings.TrimSpace(out.String()), attachNote(ready))
 		}
 		return nil
 	case <-time.After(10 * time.Second):
-		cmd.Process.Kill()
-		<-done
-		return fmt.Errorf("the self test did not finish: %s", strings.TrimSpace(out.String()))
+		// a Go program that is sent SIGQUIT prints where each of its goroutines is: that says where it is stuck
+		cmd.Process.Signal(syscall.SIGQUIT)
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			cmd.Process.Kill()
+			<-done
+		}
+		text := strings.TrimSpace(out.String())
+		if len(text) > 2500 {
+			text = text[:2500] + " ..."
+		}
+		return fmt.Errorf("the self test did not finish (helper %s): %s%s", helper, text, attachNote(ready))
+	}
+}
+
+// attachNote says how the server's side of the exchange with the helper went, if it has finished.
+func attachNote(ready <-chan error) string {
+	select {
+	case err := <-ready:
+		if err != nil {
+			return " [server: " + err.Error() + "]"
+		}
+		return " [server: took the notification descriptor]"
+	default:
+		return " [server: still waiting for the helper to announce its notification descriptor]"
 	}
 }
 
