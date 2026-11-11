@@ -20,12 +20,12 @@ const ProbeFlag = "--net-probe"
 // real supervisor, the way a REPL runs. It is not enough that the kernel has the features: a host can refuse
 // the permission checks (a container profile that blocks pidfd_getfd, a ptrace policy).
 func Probe(helper string) error {
-	pair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+	// the same socket pair a REPL gets: close-on-exec, so that only descriptor 3 reaches the helper (a helper that
+	// held the server's end too would never see it close)
+	parent, child, err := NewSocketPair()
 	if err != nil {
 		return err
 	}
-	parent := os.NewFile(uintptr(pair[0]), "netemu-parent")
-	child := os.NewFile(uintptr(pair[1]), "netemu-child")
 	cmd := exec.Command(helper, ProbeFlag)
 	cmd.ExtraFiles = []*os.File{child}
 	var out bytes.Buffer

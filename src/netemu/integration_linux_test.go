@@ -323,6 +323,44 @@ func skipUnlessItWorks(t *testing.T) {
 	}
 }
 
+// The helper must see only its own end of the socket pair, as descriptor 3: if it also held the server's end, it
+// would wait for ever for the server to close it. (A descriptor number that happens to be 3 hides this.)
+func TestOnlyTheHelpersEndOfTheSocketPairIsInherited(t *testing.T) {
+	// take the low descriptors, so that the pair gets high numbers as it does in the server
+	var keep []*os.File
+	for i := 0; i < 8; i++ {
+		f, err := os.Open("/dev/null")
+		if err != nil {
+			t.Fatal(err)
+		}
+		keep = append(keep, f)
+	}
+	defer func() {
+		for _, f := range keep {
+			f.Close()
+		}
+	}()
+	parent, child, err := NewSocketPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parent.Close()
+	cmd := exec.Command("sh", "-c", "ls /proc/$$/fd | tr '\\n' ' '")
+	cmd.ExtraFiles = []*os.File{child}
+	out, err := cmd.Output()
+	child.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Fields(string(out))
+	for _, fd := range got {
+		if fd != "0" && fd != "1" && fd != "2" && fd != "3" && fd != "10" && fd != "255" {
+			// 10 and 255 are the shell's own (a copy of the script, the terminal)
+			t.Errorf("the helper inherited descriptor %s: %v", fd, got)
+		}
+	}
+}
+
 func TestTwoWorkspacesUseTheSamePorts(t *testing.T) {
 	skipUnlessItWorks(t)
 	var wg sync.WaitGroup
