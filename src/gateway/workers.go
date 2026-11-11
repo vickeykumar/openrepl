@@ -9,11 +9,12 @@ import "tunnel"
 func (rt *Router) BindTunnel(cfg *tunnel.ServerConfig) {
 	cfg.OnOnline = func(w *tunnel.Worker) {
 		rt.AddBackend(NewRemoteBackend(RemoteConfig{
-			ID:          w.ID(),
-			Dial:        w.Dial,
-			StripPrefix: rt.prefix,
-			Weight:      w.Info().Weight,
-			Languages:   w.Info().Languages,
+			ID:             w.ID(),
+			Dial:           w.Dial,
+			StripPrefix:    rt.prefix,
+			Weight:         w.Info().Weight,
+			WeightOverride: rt.weightOverride,
+			Languages:      w.Info().Languages,
 			Capacity: func() (int64, int64) {
 				return w.Used(), w.Info().Capacity
 			},

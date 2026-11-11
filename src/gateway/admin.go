@@ -13,12 +13,16 @@ import (
 // WorkerInfo is one row of GET /admin/workers. The local backend is listed
 // too, with the worker-only fields left empty.
 type WorkerInfo struct {
-	ID       string `json:"id"`
-	State    string `json:"state"`
-	Weight   int    `json:"weight"`
-	UsedMB   int64  `json:"usedMB"`
-	MaxMB    int64  `json:"maxMB"` // 0 means no limit
-	Sessions int    `json:"sessions"`
+	ID     string `json:"id"`
+	State  string `json:"state"`
+	Weight int    `json:"weight"`
+	// ConfiguredWeight is the weight the node was started with, and WeightSet
+	// says that an admin set another from the dashboard (Weight is that one).
+	ConfiguredWeight int   `json:"configuredWeight"`
+	WeightSet        bool  `json:"weightSet"`
+	UsedMB           int64 `json:"usedMB"`
+	MaxMB            int64 `json:"maxMB"` // 0 means no limit
+	Sessions         int   `json:"sessions"`
 
 	// Picked is how many sessions the weighted random choice has given this
 	// node since the gateway started, PickedPercent its share of all such
@@ -207,8 +211,13 @@ func (rt *Router) sessionAction(w http.ResponseWriter, r *http.Request, key, act
 
 func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
 	sessions := map[string]int{}
+	// The terminals each node has open, as the gateway counts them: every
+	// terminal of a session goes through it. A node can know of more (a
+	// terminal opened on its own port), so the larger number is shown.
+	terminals := map[string]int64{}
 	for _, ec := range rt.registry.Snapshot() {
 		sessions[ec.BackendID]++
+		terminals[ec.BackendID] += int64(rt.terminalsOf(ec.Key))
 	}
 	backends := rt.Backends()
 	// The shares nodes should get by weight: among those that take new
@@ -224,16 +233,27 @@ func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
 	for _, b := range backends {
 		used, max := b.Capacity()
 		info := WorkerInfo{
-			ID:       b.ID(),
-			State:    b.State().String(),
-			Weight:   b.Weight(),
-			UsedMB:   used,
-			MaxMB:    max,
-			Sessions: sessions[b.ID()],
-			Picked:   picks[b.ID()],
+			ID:               b.ID(),
+			State:            b.State().String(),
+			Weight:           b.Weight(),
+			ConfiguredWeight: b.Weight(),
+			UsedMB:           used,
+			MaxMB:            max,
+			Sessions:         sessions[b.ID()],
+			Picked:           picks[b.ID()],
 		}
 		if total > 0 {
 			info.PickedPercent = percent(float64(info.Picked), float64(total))
+		}
+		info.Terminals = terminals[b.ID()]
+		if a, ok := b.(interface{ Active() int64 }); ok && a.Active() > info.Terminals {
+			info.Terminals = a.Active()
+		}
+		if cw, ok := b.(interface{ ConfiguredWeight() int }); ok {
+			info.ConfiguredWeight = cw.ConfiguredWeight()
+		}
+		if ov, ok := b.(interface{ WeightOverride() (int, bool) }); ok {
+			_, info.WeightSet = ov.WeightOverride()
 		}
 		if b.State() == Online && b.Weight() > 0 {
 			info.WeightPercent = percent(float64(b.Weight()), float64(weightSum))
@@ -241,7 +261,9 @@ func (rt *Router) workerInfo(ts *tunnel.Server) []WorkerInfo {
 		if ts != nil {
 			if tw := ts.Worker(b.ID()); tw != nil {
 				reg := tw.Info()
-				info.Terminals = tw.Active()
+				if tw.Active() > info.Terminals {
+					info.Terminals = tw.Active()
+				}
 				info.Languages = reg.Languages
 				info.Ptrace = reg.Ptrace
 				info.RemoteAddr = tw.RemoteAddr()

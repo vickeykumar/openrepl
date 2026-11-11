@@ -55,8 +55,14 @@ type Backend interface {
 type LocalConfig struct {
 	// Weight is the gateway's share of new sessions; 0 makes it routing-only.
 	Weight int
+	// WeightOverride, when it answers true, is the share an admin set from the
+	// dashboard: it is used instead of Weight. Optional.
+	WeightOverride func(id string) (int, bool)
 	// Capacity reports the gateway's own load. Optional.
 	Capacity func() (used, max int64)
+	// Active reports how many terminals are open on the gateway itself, for
+	// the admin API. Optional.
+	Active func() int64
 	// Ptrace is what the gateway's host answers about tracing programs (see
 	// tunnel.RegisterRequest.Ptrace), for the admin API. Optional.
 	Ptrace string
@@ -88,9 +94,34 @@ func NewLocalBackend(handler http.Handler, cfg LocalConfig) *LocalBackend {
 	return &LocalBackend{handler: handler, cfg: cfg}
 }
 
-func (b *LocalBackend) ID() string              { return LocalID }
-func (b *LocalBackend) State() State            { return Online }
-func (b *LocalBackend) Weight() int             { return b.cfg.Weight }
+func (b *LocalBackend) ID() string   { return LocalID }
+func (b *LocalBackend) State() State { return Online }
+func (b *LocalBackend) Weight() int {
+	if w, ok := b.WeightOverride(); ok {
+		return w
+	}
+	return b.cfg.Weight
+}
+
+// Active is how many terminals are open on the gateway itself.
+func (b *LocalBackend) Active() int64 {
+	if b.cfg.Active == nil {
+		return 0
+	}
+	return b.cfg.Active()
+}
+
+// ConfiguredWeight is the weight the gateway was started with (--local-weight).
+func (b *LocalBackend) ConfiguredWeight() int { return b.cfg.Weight }
+
+// WeightOverride is the weight an admin set from the dashboard, if one is set.
+func (b *LocalBackend) WeightOverride() (int, bool) {
+	if b.cfg.WeightOverride == nil {
+		return 0, false
+	}
+	return b.cfg.WeightOverride(LocalID)
+}
+
 func (b *LocalBackend) HasLanguage(string) bool { return true }
 
 func (b *LocalBackend) Capacity() (used, max int64) {

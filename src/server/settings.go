@@ -52,6 +52,11 @@ type SiteSettings struct {
 	// node_languages.go. The Settings page does not send them; /admin/workers
 	// changes them.
 	NodeLanguages map[string]NodeLanguages `json:"nodeLanguages,omitempty"`
+	// NodeWeights are the shares of new sessions an admin set for single nodes
+	// from the dashboard, instead of the ones the nodes started with. See
+	// node_weights.go. The Settings page does not send them; /admin/workers
+	// changes them.
+	NodeWeights map[string]int `json:"nodeWeights,omitempty"`
 	// DBCapacityMB is how much room the remote database has, in megabytes (an
 	// Atlas free cluster has 512), for the live map's "used of total". 0: not
 	// set, and the map uses the disk size MongoDB reports, if it does.
@@ -208,6 +213,12 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 		return s, err
 	}
 	s.NodeLanguages = nodes
+
+	weights, err := normalizeNodeWeights(s.NodeWeights)
+	if err != nil {
+		return s, err
+	}
+	s.NodeWeights = weights
 
 	for name, v := range map[string]float64{"guest": s.Genie.GuestPerMinute, "signed-in": s.Genie.UserPerMinute} {
 		if v < 0 || v > maxGenieRate {
@@ -685,6 +696,7 @@ func (server *Server) handleAdminSettings(rw http.ResponseWriter, req *http.Requ
 			s.Genie.CustomModels = before.Genie.CustomModels // a page from before the list existed does not send it
 		}
 		s.NodeLanguages = before.NodeLanguages // nor the languages of single nodes; /admin/workers does
+		s.NodeWeights = before.NodeWeights     // nor their weights
 		if err := SaveSiteSettings(s, base); err != nil {
 			if _, bad := s.normalize(); bad != nil {
 				adminError(rw, http.StatusBadRequest, bad.Error())

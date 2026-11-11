@@ -631,6 +631,105 @@
 
   // ---- workers
 
+  // The largest weight the server accepts (server/node_weights.go maxNodeWeight).
+  var MAX_NODE_WEIGHT = 1000;
+
+  // nodeShares is what each node's share of new sessions would be with the weight of one of them changed: the
+  // nodes that are online and have a weight above 0 share them out, as the gateway's pool does. weights maps a
+  // node id to the weight to use instead of its own.
+  function nodeShares(workers, weights) {
+    var sum = 0, rows = [];
+    workers.forEach(function (n) {
+      var wt = weights && weights[n.id] !== undefined ? weights[n.id] : n.weight;
+      var takes = n.state === 'ONLINE' && wt > 0;
+      if (takes) sum += wt;
+      rows.push({ id: n.id, weight: wt, takes: takes });
+    });
+    rows.forEach(function (r) { r.percent = r.takes && sum ? Math.round(1000 * r.weight / sum) / 10 : 0; });
+    return { rows: rows, sum: sum };
+  }
+
+  // editWeight opens the dialog that changes the weight of a node. It resolves when it is done (saved, reset or
+  // cancelled).
+  function editWeight(node, workers) {
+    var name = node.id === 'local' ? 'the gateway' : node.id;
+    var input = h('input', { type: 'number', class: 'field weight-input', min: '0', max: String(MAX_NODE_WEIGHT), step: '1', value: String(node.weight), 'aria-label': 'New weight of ' + name });
+    var preview = h('div', { class: 'weight-preview' });
+    var note = h('div', { class: 'sub weight-note' });
+    function current() {
+      var raw = input.value.trim();
+      var n = Number(raw);
+      return raw !== '' && isFinite(n) && Math.floor(n) === n && n >= 0 && n <= MAX_NODE_WEIGHT ? n : null;
+    }
+    function bar(pct) { return h('div', { class: 'bar', vars: { '--p': pct } }, h('i')); }
+    function update() {
+      var n = current();
+      preview.textContent = '';
+      if (n === null) { note.textContent = 'A whole number from 0 to ' + MAX_NODE_WEIGHT + '.'; return; }
+      var before = nodeShares(workers, null), after = nodeShares(workers, (function () { var o = {}; o[node.id] = n; return o; })());
+      if (!after.sum) { note.textContent = 'No node would take new sessions with this weight. Keep at least one online node above 0.'; return; }
+      note.textContent = n === node.weight ? 'The weight is not changed.' : '';
+      preview.appendChild(h('div', { class: 'sub', text: 'Share of new sessions, before and after' }));
+      after.rows.forEach(function (r, i) {
+        var b = before.rows[i];
+        preview.appendChild(h('div', { class: 'weight-row' + (r.id === node.id ? ' me' : '') },
+          h('span', { class: 'weight-name', text: r.id === 'local' ? 'gateway' : r.id }),
+          bar(r.percent),
+          h('span', { class: 'weight-pct', text: (b.takes ? b.percent + '%' : 'none') + ' → ' + (r.takes ? r.percent + '%' : 'none') })));
+      });
+    }
+    input.oninput = update;
+    var reset = null;
+    if (node.weightSet) {
+      reset = h('button', { class: 'btn small', type: 'button', text: 'Back to its own (' + node.configuredWeight + ')',
+        onclick: function () {
+          api.post('admin/workers/' + encodeURIComponent(node.id) + '/weight', { weight: null }).then(function () {
+            toast(name + ' uses its own weight (' + node.configuredWeight + ') again.');
+            $('dialog').close();
+            refreshCurrent();
+          }, fail);
+        } });
+    }
+    var content = h('div', null,
+      h('div', { class: 'weight-edit' }, h('label', { for: 'weight-input', text: 'New weight' }), input,
+        h('span', { class: 'sub', text: 'now ' + node.weight + (node.weightSet ? ', set here' : '') + ' · its own is ' + node.configuredWeight })),
+      note, preview, reset ? h('div', { class: 'actions' }, reset) : null);
+    input.id = 'weight-input';
+    update();
+    return ask({
+      title: 'Change the weight of ' + name,
+      body: 'New sessions are shared out in proportion to the weights. A change applies to the next new session; sessions that are running stay where they are.',
+      content: content,
+      confirm: 'Save weight',
+      validate: function () {
+        var n = current();
+        if (n === null) return 'The weight must be a whole number from 0 to ' + MAX_NODE_WEIGHT + '.';
+        if (n === node.weight) return 'The weight is not changed.';
+        if (!nodeShares(workers, (function () { var o = {}; o[node.id] = n; return o; })()).sum) return 'No node would take new sessions with this weight.';
+        return '';
+      }
+    }).then(function (yes) {
+      if (!yes) return null;
+      var n = current();
+      // a big step is confirmed: the node goes to 0, or more than half of the share moves
+      var before = nodeShares(workers, null), after = nodeShares(workers, (function () { var o = {}; o[node.id] = n; return o; })());
+      var moved = 0;
+      after.rows.forEach(function (r, i) { moved += Math.abs(r.percent - before.rows[i].percent); });
+      var risky = n === 0 || moved / 2 > 50;
+      var go = risky ? ask({
+        title: 'Change the weight of ' + name + '?',
+        body: n === 0 ? name + ' will take no new sessions (it keeps the ones it has).' : 'This moves more than half of the new sessions to other nodes.',
+        confirm: 'Change it'
+      }) : Promise.resolve(true);
+      return go.then(function (ok) {
+        if (!ok) return null;
+        return api.post('admin/workers/' + encodeURIComponent(node.id) + '/weight', { weight: n }).then(function () {
+          toast('The weight of ' + name + ' is ' + n + '.');
+        }, fail);
+      });
+    });
+  }
+
   function drainOrUndrain(w) {
     var action = w.state === 'DRAINING' ? 'undrain' : 'drain';
     return api.post('admin/workers/' + encodeURIComponent(w.id) + '/' + action).then(function () {
@@ -723,13 +822,22 @@
     root.appendChild(box);
     root.appendChild(addBox);
 
+    // the weight is a button that opens the dialog (a click on the row opens the drawer, so it must not reach it)
+    function weightCell(w) {
+      return h('div', { class: 'weight-cell' },
+        h('button', { class: 'btn small', type: 'button', title: 'Change the weight of this node',
+          onclick: function (e) { e.stopPropagation(); editWeight(w, data.workers).then(refreshCurrent); } }, String(w.weight) + ' \u270E'),
+        w.weightSet ? pill('set here', 'info') : null,
+        w.weightSet ? h('div', { class: 'sub', text: 'its own: ' + w.configuredWeight }) : null);
+    }
+
     var cols = [
       { key: 'id', label: 'Node', sort: function (w) { return w.id; }, cell: function (w) {
         return h('div', null, h('b', { text: w.id === 'local' ? 'gateway (local)' : w.id }),
           h('div', { class: 'sub', text: w.id === 'local' ? 'runs sessions itself' : (w.version || '') }),
           ptraceBad(w.ptrace) ? pill('no ptrace', 'warn') : null); } },
       { key: 'state', label: 'State', sort: function (w) { return w.state; }, cell: function (w) { return pill(w.state.toLowerCase(), stateTone(w.state)); } },
-      { key: 'weight', label: 'Weight', num: true, sort: function (w) { return w.weight; }, cell: function (w) { return String(w.weight); } },
+      { key: 'weight', label: 'Weight', num: true, sort: function (w) { return w.weight; }, cell: function (w) { return weightCell(w); } },
       { key: 'mem', label: 'Memory', sort: function (w) { return w.usedMB; }, cell: function (w) { return usageBar(w.usedMB, w.maxMB); } },
       { key: 'terminals', label: 'Terminals', num: true, sort: function (w) { return w.terminals || 0; }, cell: function (w) { return String(w.terminals || 0); } },
       { key: 'sessions', label: 'Sessions', num: true, sort: function (w) { return w.sessions; }, cell: function (w) { return String(w.sessions); } },
@@ -737,7 +845,7 @@
         return h('div', null, h('b', { text: w.picked + ' · ' + w.pickedPercent + '%' }),
           h('div', { class: 'sub', text: w.weightPercent ? 'target ' + w.weightPercent + '%' : 'no new sessions' })); } },
       { key: 'actions', label: '', cell: function (w) {
-        if (w.id === 'local') return h('span', { class: 'sub', text: 'set with --local-weight' });
+        if (w.id === 'local') return h('span', { class: 'sub', text: 'own weight: --local-weight' });
         return h('div', { class: 'actions' },
           h('button', { class: 'btn small', type: 'button', text: w.state === 'DRAINING' ? 'Undrain' : 'Drain',
             title: w.state === 'DRAINING' ? 'Take new sessions again' : 'Keep its sessions, send it no new ones',
@@ -779,7 +887,9 @@
         w.id === 'local' ? null : h('button', { class: 'btn small', type: 'button', text: 'Reconnect', onclick: function () { reconnectWorker(w).then(refreshCurrent); } })));
       d.appendChild(h('h3', { text: 'Node' }));
       d.appendChild(kv([
-        ['Weight', String(w.weight)],
+        ['Weight', h('span', null, String(w.weight), ' ', w.weightSet ? pill('set here', 'info') : null, ' ',
+          h('button', { class: 'btn small', type: 'button', text: 'Change', onclick: function () { editWeight(w, data.workers).then(refreshCurrent); } }),
+          w.weightSet ? h('span', { class: 'sub', text: ' its own is ' + w.configuredWeight }) : null)],
         w.version ? ['Version', w.version] : null,
         w.os ? ['System', w.os + ' / ' + w.arch] : null,
         w.remoteAddr ? ['Address', mono(w.remoteAddr)] : null,

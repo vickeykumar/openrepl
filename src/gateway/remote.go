@@ -37,8 +37,12 @@ type RemoteConfig struct {
 	// StripPrefix is the gateway's URL prefix. The worker mounts its routes
 	// at "/", so the prefix is removed from forwarded paths.
 	StripPrefix string
-	// Weight is the worker's share of new sessions.
+	// Weight is the worker's share of new sessions, as the worker announced it.
 	Weight int
+	// WeightOverride, when it answers true, is the share an admin set from the
+	// dashboard: it is used instead of Weight and survives the worker
+	// connecting again. Optional.
+	WeightOverride func(id string) (int, bool)
 	// Capacity returns the load the worker last reported and its budget.
 	Capacity func() (used, max int64)
 	// Languages lists the REPL commands the worker can run; empty means all.
@@ -136,7 +140,23 @@ func (b *RemoteBackend) State() State {
 	return b.cfg.State()
 }
 
-func (b *RemoteBackend) Weight() int { return b.cfg.Weight }
+func (b *RemoteBackend) Weight() int {
+	if w, ok := b.WeightOverride(); ok {
+		return w
+	}
+	return b.cfg.Weight
+}
+
+// ConfiguredWeight is the weight the worker announced (--worker-weight).
+func (b *RemoteBackend) ConfiguredWeight() int { return b.cfg.Weight }
+
+// WeightOverride is the weight an admin set from the dashboard, if one is set.
+func (b *RemoteBackend) WeightOverride() (int, bool) {
+	if b.cfg.WeightOverride == nil {
+		return 0, false
+	}
+	return b.cfg.WeightOverride(b.cfg.ID)
+}
 
 // Capacity returns the larger of the worker's reported load and the load
 // this gateway has forwarded to it.

@@ -629,3 +629,15 @@ dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top
 .am-narrow .am-panel, .am-narrow .am-pname, .am-narrow .am-link, .am-narrow .am-linklabel { display: none; }
 .am-narrow .am-node { position: static; width: auto !important; height: auto !important; }
 .am-narrow .am-node::before { content: attr(data-group); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: #B9B7C4; }
+
+/* ---- the weight of a node (admin.js: editWeight) ---------------------- */
+.weight-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.weight-edit { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.weight-edit label { color: var(--muted); }
+.weight-input { width: 90px; text-align: center; }
+.weight-note { margin: 4px 0 8px; min-height: 18px; }
+.weight-preview { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.weight-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 120px; gap: 10px; align-items: center; font-size: 13px; }
+.weight-row.me .weight-name { font-weight: 600; }
+.weight-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weight-pct { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
