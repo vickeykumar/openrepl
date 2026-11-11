@@ -32,5 +32,8 @@ test("a second terminal makes the tabs say which is the first and which is a for
 test("a page opened by the Fork button labels its own tab as a fork", async ({ page }) => {
   await page.goto("/python?jid=abcd");
   await expect(tabs(page).first()).toHaveAttribute("data-fork-role", "fork");
-  await expect(page.locator("#term-footer-text")).toContainText("forked from");
+  // The terminal it was forked from (abcd) does not exist, and the server says so as soon as the page connects,
+  // so the footer may already be on its last words: "forked from" while it is open, "Closed with the first
+  // terminal" once the parent is found to be gone. Both are the footer of a fork.
+  await expect(page.locator("#term-footer-text")).toContainText(/forked from|Closed with the first terminal/);
 });
