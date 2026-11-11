@@ -176,7 +176,7 @@ Writes to the WebSocket are serialized by `writeMutex`, which lets the file brow
 | Idle read deadline | `wsWrapper.Read` | 5 min per read. The client pings every 30 s, so only dead peers hit it. |
 | Hard session length | `processWSConn`: `conn.SetWriteDeadline(now + DEADLINE_MINUTES)` | 60 min. The deadline is set once, so the first write after 60 min fails and the session ends. |
 | Server admission | `generateHandleWS` + `counter` | Refused if `connections > --max-connection` **or** `Σ memLimit(MB) > --max-connection` (when non-zero). |
-| Client connections per browser | `js/src/cookie.ts` `maxconnections = 3` | Counted in the `Session` cookie (15 min expiry). |
+| Client connections per browser | `js/src/cookie.ts` `maxconnections = 3` | Counted in the `Session` cookie (15 min expiry): **one entry per open connection** (its id and when it last said it was alive; each ping refreshes it), not a number that is counted up and down. A connection takes away its own entry when it closes and on `pagehide`; an entry nobody refreshed for 2 minutes (`staleAfterMs`) no longer counts, so a missed cleanup cannot lock the browser out. (Before, a single `isSet` flag and one shared `onbeforeunload` left the count above zero after a tab with several terminals was closed, and the page showed "Maximum no of connections reached ... try after 15 Minutes".) |
 | Terminal tabs per page | `js/src/main.ts` `MAX_TABS = 5` | |
 | Graceful drain | `Server.Run` → `counter.wait()` | Waits for all sessions on shutdown. |
 | `--once`, `--timeout` | GoTTY semantics | Single client, and exit after an idle period with zero connections. |

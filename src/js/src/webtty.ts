@@ -192,6 +192,23 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
         let connection = this.connectionFactory.create();
         let pingTimer: number;
         let reconnectTimeout: number;
+        // The id this connection has in the cookie that counts the browser's terminals (cookie.ts); empty while
+        // it is not open. Every connection takes away its own entry, once, however it ends.
+        let connId = "";
+        const countOpen = () => {
+            sessionCookieObj.Close(connId);
+            connId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            sessionCookieObj.Open(connId);
+        };
+        const countClosed = () => {
+            sessionCookieObj.Close(connId);
+            connId = "";
+        };
+        // "pagehide" is the event a tab that is closed always gets. "unload" is not run by every browser and is
+        // blocked by a permissions policy on some pages, and one onbeforeunload handler is shared by every
+        // terminal of the page: a tab with three terminals left two counted.
+        const onPageHide = () => countClosed();
+        window.addEventListener("pagehide", onPageHide);
         // Set when this page closes the connection itself (Reconnect, language
         // switch, Run, closing a tab). Its close event arrives a moment later,
         // after the new connection has taken over the same terminal, so it
@@ -241,10 +258,11 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                 );
 
                 pingTimer = setInterval(() => {
-                    connection.send(msgPing)
+                    connection.send(msgPing);
+                    sessionCookieObj.Touch(connId);
                 }, 30 * 1000);
 
-                sessionCookieObj.IncrementSessionCount();
+                countOpen();
                 this.term.addEventListener('slaveinputEvent', slaveInputhandler);
             });
 
@@ -325,7 +343,7 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                         setup();
                     }, this.reconnect * 1000);
                 }
-                sessionCookieObj.DecrementSessionCount();
+                countClosed();
                 console.log("close event: ",closeEvent['code'],closeEvent['reason'], connection.isClosed());
                 const closeReason: string = closeEvent['reason'] || "";
                 let closeKind = "lost";
@@ -416,11 +434,6 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
 	    });
 
 
-            // when tab/window is closed
-            window.onbeforeunload = function() {
-                sessionCookieObj.DecrementSessionCount();
-            };
-
             emitState("connecting");
             connection.open();
         }
@@ -428,7 +441,8 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
         setup();
         return (args: CloserArgs) => {
             console.log("closing connection in webtty")
-	        sessionCookieObj.DecrementSessionCount();
+            countClosed();
+            window.removeEventListener("pagehide", onPageHide);
             clearTimeout(reconnectTimeout);
             closedByPage = true;
             connection.close();
