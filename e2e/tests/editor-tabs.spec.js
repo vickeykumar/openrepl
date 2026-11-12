@@ -194,3 +194,70 @@ test("a binary file is not opened in the shared editor, and its tab does not sta
   await expect(tabs(page)).toHaveCount(0);
   expect(await page.evaluate(() => window.editor.env.editor.getValue())).not.toContain("ELF");
 });
+
+// A text file over the editor's limit opens read-only in a viewer, in pieces. The server's answers are faked here (a
+// real 17 MB file would only slow the test): the plain load says "too large", the pieces come from the offset.
+async function fakeBigFile(page, size) {
+  const seen = { saves: 0 };
+  await page.route(/q=save/, (route) => { seen.saves++; route.continue(); });
+  await page.route(/q=load.*tab1-/, (route) => {
+    const q = new URL(route.request().url()).searchParams;
+    if (q.get("offset") === null) {
+      return route.fulfill({ status: 413, headers: { "X-File-Size": String(size) }, body: "file too large" });
+    }
+    const offset = Math.min(Number(q.get("offset")), size);
+    const text = `piece at ${offset}\n`;
+    return route.fulfill({
+      status: 200,
+      headers: { "X-File-Size": String(size), "X-Chunk-Offset": String(offset), "X-Chunk-Length": String(text.length), "Content-Type": "text/plain" },
+      body: Buffer.from(text).toString("base64"),
+    });
+  });
+  return seen;
+}
+
+async function reopenFirstFile(page) {
+  const anchor = await makeFile(page, fname(1));
+  await anchor.click();
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveAttribute("aria-selected", "true");
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+}
+
+test("text over the editor's limit opens read-only in pieces, and nothing is written or shared", async ({ page }) => {
+  await ready(page);
+  await reopenFirstFile(page);
+  const seen = await fakeBigFile(page, 3000000);
+  await tabs(page).filter({ hasText: fname(1) }).click();
+  const viewer = page.locator("#large-viewer");
+  await expect(viewer).toBeVisible();
+  await expect(viewer.locator(".lv__text")).toContainText("piece at 0");
+  await expect(viewer.locator(".lv__range")).toContainText("3,000,000");
+  await expect(tabs(page)).toHaveCount(0); // no tab: it is not in the editor
+  await viewer.getByRole("button", { name: "Next" }).click();
+  await expect(viewer.locator(".lv__text")).toContainText("piece at 1048576");
+  await viewer.getByRole("button", { name: "End" }).click();
+  await expect(viewer.locator(".lv__text")).toContainText("piece at 1951424");
+  await expect(viewer.getByRole("button", { name: "Next" })).toBeDisabled();
+  await viewer.getByRole("button", { name: "Start" }).click();
+  await expect(viewer.getByRole("button", { name: "Previous" })).toBeDisabled();
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).not.toContain("piece at");
+  await viewer.getByRole("button", { name: "Close" }).click();
+  await expect(viewer).toBeHidden();
+  expect(seen.saves).toBe(0);
+});
+
+test("the viewer's Terminal button types a command into the terminal and does not run it", async ({ page }) => {
+  await ready(page);
+  await reopenFirstFile(page);
+  await fakeBigFile(page, 3000000);
+  await tabs(page).filter({ hasText: fname(1) }).click();
+  const viewer = page.locator("#large-viewer");
+  await expect(viewer).toBeVisible();
+  await viewer.getByRole("button", { name: "Terminal" }).click();
+  await expect
+    .poll(async () => (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " "))
+    .toContain("less '");
+  const shown = (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " ");
+  expect(shown).toContain(fname(1));
+});

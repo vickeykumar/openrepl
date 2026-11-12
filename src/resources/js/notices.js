@@ -4,6 +4,7 @@
  *   notify("Saved main.py", { type: "success" });
  *   notify("words.csv is over 20 MB.", { type: "error", title: "Upload failed" });
  *   notify("Applied 2 changes.", { type: "success", action: { label: "Undo", onClick: undo } });
+ *   notify("big.log was not opened.", { actions: [{ label: "Download", onClick: a }, { label: "Terminal", onClick: b }] });
  * type: "info" (default), "success" or "error". Errors stay until dismissed
  * or for 10 seconds; the others go after 4 seconds.
  */
@@ -56,16 +57,17 @@
     body.appendChild(m);
     n.appendChild(body);
 
-    // opts.action = { label, onClick }: one button next to the message, for
-    // something the person may want to do about it (Undo)
-    var action = null;
-    if (opts.action && typeof opts.action.onClick === "function") {
-      action = document.createElement("button");
-      action.type = "button";
-      action.className = "notice__action";
-      text(action, opts.action.label || "Undo");
-      n.appendChild(action);
-    }
+    // opts.action = { label, onClick }: one button next to the message, for something the person may want to do about
+    // it (Undo). opts.actions = [ ... ] the same, for several.
+    var actionList = (opts.actions || (opts.action ? [opts.action] : [])).filter(function (a) { return a && typeof a.onClick === "function"; });
+    var actionButtons = actionList.map(function (a) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "notice__action";
+      text(button, a.label || "Undo");
+      n.appendChild(button);
+      return button;
+    });
 
     var close = document.createElement("button");
     close.type = "button";
@@ -85,12 +87,12 @@
       setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, 250);
     }
     close.addEventListener("click", dismiss);
-    if (action) {
-      action.addEventListener("click", function () {
+    actionButtons.forEach(function (button, i) {
+      button.addEventListener("click", function () {
         dismiss();
-        opts.action.onClick();
+        actionList[i].onClick();
       });
-    }
+    });
     var ms = opts.timeout != null ? opts.timeout : (type === "error" ? 10000 : 4000);
     if (ms > 0) timer = setTimeout(dismiss, ms);
     return dismiss;

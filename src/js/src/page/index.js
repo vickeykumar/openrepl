@@ -9,6 +9,7 @@ import "./05-auth";
 import "./06-editor";
 import "./22-editor-tabs"; // before the Files panel, which tells it about the tree
 import "./23-tab-lanes";
+import "./24-large-file-viewer";
 import "./07-file-browser";
 import "./08-genie-nudge";
 import "./09-hero";

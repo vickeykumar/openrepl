@@ -4078,3 +4078,54 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 [data-theme="light"] .site-footer .request-form input[type="text"],
 [data-theme="light"] .site-footer .request-form input[type="email"],
 [data-theme="light"] .site-footer .request-form textarea { color: #16151A; background: #FFFFFF; border-color: #D9D6CF; }
+
+/* The read-only view of a file the editor does not take (24-large-file-viewer.js): over the editor, not shared */
+.large-viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--paper);
+  background: var(--ink-950);
+}
+.large-viewer[hidden] { display: none; }
+.lv__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ink-700);
+}
+.lv__name { font: 500 13px var(--font-code); color: var(--paper); }
+.lv__range { font-size: 12.5px; color: var(--muted-2); }
+.lv__spacer { flex: 1 1 auto; }
+.lv__btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: inherit;
+  color: #B9B7C4;
+  background: var(--ink-800);
+  border: 1px solid var(--ink-600);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.lv__btn:hover:not(:disabled),
+.lv__btn:focus-visible { color: var(--paper); background: var(--ink-700); }
+.lv__btn:disabled { opacity: 0.4; cursor: default; }
+.lv__note { padding: 6px 12px; font-size: 12.5px; color: var(--muted-2); border-bottom: 1px solid var(--ink-700); }
+.lv__text {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 10px 14px;
+  overflow: auto;
+  font: 400 13px/1.5 var(--font-code);
+  white-space: pre;
+  tab-size: 4;
+  color: var(--paper);
+}

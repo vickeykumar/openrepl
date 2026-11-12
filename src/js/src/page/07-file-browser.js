@@ -219,13 +219,22 @@
     return !!tree && String(tree.get_selected()[0]) === String(id);
   }
 
+  // A file the editor does not take: its tab goes (nothing is written), then text opens in the read-only viewer and a
+  // binary file gets a notice with Download and the terminal.
+  function NotForTheEditor(id, size, binary) {
+    if (window.EditorTabs) window.EditorTabs.refused(id);
+    if (!window.LargeFileViewer) return;
+    if (binary) window.LargeFileViewer.notOpenedBinary(id);
+    else window.LargeFileViewer.open(id, size);
+  }
+
   function LoadSelectedNodeFromFile(newSelectedNodeId, errcallback=null) {
     // load the new selected file
         let type =  $('#file-browser').jstree(true).get_node(newSelectedNodeId).type;
         if (loadRequest) { loadRequest.abort(); loadRequest = null; }
         if (type === "file") {
           var request = $.ajax({
-            url: preprocessurl("/ws_filebrowser?q=load&filepath="+newSelectedNodeId),
+            url: preprocessurl("/ws_filebrowser?q=load&max="+MAX_EDITOR_TEXT+"&filepath="+newSelectedNodeId),
             method: "GET"
           });
           loadRequest = request;
@@ -235,29 +244,14 @@
             // Handle successful response
             var decodedResponse = atob(data);
             // The editor is one document shared through Firebase, and a whole-file change is one write there (16 MB
-            // at most, "Write too large"). A binary file is no text to edit either: saving it again would damage it.
-            var why = null;
+            // at most, "Write too large"). Text over that opens read-only in the large-file viewer instead (24-);
+            // a binary file is no text to edit: saving it again would damage it.
             if (isMaster()) {
               // the size counts as Firebase sees it: quotes, line ends and non-ASCII characters grow when encoded
               var big = decodedResponse.length > MAX_EDITOR_TEXT ||
                 (decodedResponse.length > MAX_EDITOR_TEXT / 2 && JSON.stringify(decodedResponse).length > MAX_EDITOR_TEXT);
-              if (big) why = "is " + (decodedResponse.length / 1048576).toFixed(1) + " MB. The editor opens files up to " + (MAX_EDITOR_TEXT / 1048576) + " MB, because it is shared with everyone in the session. Use Download in the notice, or read it in the terminal: less " + newSelectedNodeId;
-              else if (decodedResponse.indexOf("\u0000") >= 0) why = "is a binary file, which the editor cannot show or save safely. Use Download in the notice, or look at it in the terminal: xxd " + newSelectedNodeId + " | less";
-            }
-            if (why) {
-              // Download: the file itself as a zip, the same as Download in the file's menu (the editor bar's Download
-              // saves the editor's text, which is not this file)
-              var refusedId = String(newSelectedNodeId);
-              notify(refusedId.split("/").pop() + " " + why, {
-                type: "warning", title: "Not opened", timeout: 15000,
-                action: { label: "Download", onClick: function () {
-                  var link = document.createElement("a");
-                  link.href = preprocessurl("/ws_filebrowser?q=zip&filepath=" + refusedId);
-                  link.click();
-                } }
-              });
-              if (window.EditorTabs) window.EditorTabs.refused(String(newSelectedNodeId));
-              return;
+              if (big) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length, false); return; }
+              if (decodedResponse.indexOf("\u0000") >= 0) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length, true); return; }
             }
             updateEditorContent("", decodedResponse, true);
             if (window.EditorTabs) window.EditorTabs.loaded(String(newSelectedNodeId), decodedResponse);
@@ -265,6 +259,12 @@
           }); request.fail(function(xhr, status, error) {
             if (loadRequest === request) loadRequest = null;
             if (status === "abort" || !StillSelected(newSelectedNodeId)) return; // replaced by a newer choice
+            if (xhr.status === 413) {
+              // the server did not send a file over the editor's limit (max= below): nothing was read
+              // for a viewer of the session nothing is done: the shared editor shows what the owner's editor shows
+              if (isMaster()) NotForTheEditor(String(newSelectedNodeId), parseInt(xhr.getResponseHeader("X-File-Size"), 10) || 0, false);
+              return;
+            }
             // Handle error
             console.log("Failed to load file: "+newSelectedNodeId, status, error);
             if (typeof(errcallback)==="function") {
@@ -833,6 +833,7 @@
           // the open files (22-editor-tabs.js): the file left keeps its text, the chosen one becomes a tab, and its text
           // is put back from memory when it has been open before (then it is not read from the server)
           var restoredFromTab = false;
+          if (window.LargeFileViewer) window.LargeFileViewer.close(); // another file was chosen
           if (window.EditorTabs && newSelectedNodeId!==undefined && newSelectedNodeId!="") {
             window.EditorTabs.beforeSwitch(String(newSelectedNodeId));
             restoredFromTab = window.EditorTabs.selected(String(newSelectedNodeId), !!alreadyOpen);

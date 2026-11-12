@@ -124,7 +124,7 @@ When a directory is created (for example by unzipping), the watcher walks the ne
 | Method and query | Body | Result |
 |---|---|---|
 | `GET` | n/a | `TreeNode` JSON of `filepath` (jstree `core.data`). |
-| `GET ?q=load&filepath=F` | n/a | base64 of file F (`text/plain`). |
+| `GET ?q=load&filepath=F` | n/a | base64 of file F (`text/plain`), with `X-File-Size`. `&max=N`: a file over N bytes is not read, the answer is 413 (the editor passes its limit). `&offset=O&length=L`: only that piece (at most 4 MB; `X-Chunk-Offset`, `X-Chunk-Length`), for the read-only viewer of big files. Package `fileload`. |
 | `GET ?q=zip&filepath=D` | n/a | `application/zip` stream of D (`Writezip`). |
 | `GET ?q=usage` | n/a | `{usedMB, limitMB, guest, deleteAfterMinutes}` for the workspace card in the Files panel. |
 | `POST ?q=save&filepath=F` | base64 content | Writes F. |
