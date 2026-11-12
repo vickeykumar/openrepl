@@ -44,7 +44,10 @@ const REPLS = [
   { name: "jq", path: "/jq", prompt: /jq>>/, inputs: ['{"a":6}', ".a * 7"], answer: /(^|\s)42(\s|$)/m },
   // rappel assembles what is typed for the host: arm64 on an arm64 server, x86-64 otherwise. It shows the
   // registers after the line (a wide line that the terminal wraps, so the text is read unwrapped)
-  { name: "Assembly (rappel)", path: "/assembly", prompt: /^>/m, anyOf: ["mov x0, 42", "mov rax, 42"], answer: /(x0|rax)=0*2a\b/, unwrap: true },
+  // The server runs on the machine of the test (the CI image is started on the same runner), so its architecture is
+  // the test's: the line that fits it goes first. Typing the other one first gave rappel an instruction it cannot
+  // assemble, and the REPL then did not answer the right one (0 of 20 runs on amd64).
+  { name: "Assembly (rappel)", path: "/assembly", prompt: /^>/m, anyOf: process.arch === "arm64" ? ["mov x0, 42", "mov rax, 42"] : ["mov rax, 42", "mov x0, 42"], answer: /(x0|rax)=0*2a\b/, unwrap: true },
   // cling is in C mode here, which does not print the value of an expression: print it
   { name: "C and C++ (cling)", path: "/c", prompt: /\[cling\]/, inputs: ["#include <stdio.h>", 'printf("%d\\n", 6 * 7);'], answer: /(^|\s)42(\s|$)/m },
 ];
