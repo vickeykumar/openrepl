@@ -212,20 +212,23 @@
 
   // The read in flight. Choosing another file quickly must not let a late answer land in the editor: the editor names its
   // content after the file selected NOW, so an old answer would be shown, and later saved, as the new file.
-  var MAX_EDITOR_TEXT = 16 * 1024 * 1024; // Firebase refuses a write over 16 MB (counted on the encoded text)
+  // The largest file the editor opens: the admin's setting (site_settings.maxEditorFileMB, 1 to 16 MB), else 16, which is
+  // also the most: Firebase refuses a write over 16 MB (counted on the encoded text).
+  function maxEditorText() {
+    var mb = window.site_settings && Number(window.site_settings.maxEditorFileMB);
+    return (mb >= 1 && mb <= 16 ? mb : 16) * 1024 * 1024;
+  }
   var loadRequest = null;
   function StillSelected(id) {
     var tree = $('#file-browser').jstree(true);
     return !!tree && String(tree.get_selected()[0]) === String(id);
   }
 
-  // A file the editor does not take: its tab goes (nothing is written), then text opens in the read-only viewer and a
-  // binary file gets a notice with Download and the terminal.
-  function NotForTheEditor(id, size, binary) {
+  // A file the editor does not take (over its limit, or binary): its tab goes (nothing is written), then it opens in the
+  // read-only viewer, which shows a binary file as hex (24-large-file-viewer.js decides from the first piece).
+  function NotForTheEditor(id, size) {
     if (window.EditorTabs) window.EditorTabs.refused(id);
-    if (!window.LargeFileViewer) return;
-    if (binary) window.LargeFileViewer.notOpenedBinary(id);
-    else window.LargeFileViewer.open(id, size);
+    if (window.LargeFileViewer) window.LargeFileViewer.open(id, size);
   }
 
   function LoadSelectedNodeFromFile(newSelectedNodeId, errcallback=null) {
@@ -241,7 +244,7 @@
             if (loadRequest === request) loadRequest = null;
             return !StillSelected(newSelectedNodeId); // another file was chosen meanwhile
           };
-          fetch(preprocessurl("/ws_filebrowser?q=load&enc=raw&max="+MAX_EDITOR_TEXT+"&filepath="+encodeURIComponent(newSelectedNodeId)), { signal: request.signal, credentials: "same-origin" })
+          fetch(preprocessurl("/ws_filebrowser?q=load&enc=raw&max="+maxEditorText()+"&filepath="+encodeURIComponent(newSelectedNodeId)), { signal: request.signal, credentials: "same-origin" })
             .then(function (res) {
               if (res.status === 413) return { tooLarge: parseInt(res.headers.get("X-File-Size"), 10) || 0 };
               if (!res.ok) return res.text().then(function (t) { throw new Error(t || res.statusText); });
@@ -252,7 +255,7 @@
               if (got.tooLarge !== undefined) {
                 // the server did not send a file over the editor's limit (max=): nothing was read. A viewer of the
                 // session does nothing: the shared editor shows what the owner's editor shows
-                if (isMaster()) NotForTheEditor(String(newSelectedNodeId), got.tooLarge, false);
+                if (isMaster()) NotForTheEditor(String(newSelectedNodeId), got.tooLarge);
                 return;
               }
               var decodedResponse = bytesToBinaryString(got.bytes);
@@ -261,10 +264,12 @@
               // a binary file is no text to edit: saving it again would damage it.
               if (isMaster()) {
                 // the size counts as Firebase sees it: quotes, line ends and non-ASCII characters grow when encoded
-                var big = decodedResponse.length > MAX_EDITOR_TEXT ||
-                  (decodedResponse.length > MAX_EDITOR_TEXT / 2 && JSON.stringify(decodedResponse).length > MAX_EDITOR_TEXT);
-                if (big) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length, false); return; }
-                if (decodedResponse.indexOf("\u0000") >= 0) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length, true); return; }
+                // over the set limit, or (whatever the limit) too big for one Firebase write once encoded
+                var FIREBASE_WRITE = 16 * 1024 * 1024;
+                var big = decodedResponse.length > maxEditorText() ||
+                  (decodedResponse.length > FIREBASE_WRITE / 2 && JSON.stringify(decodedResponse).length > FIREBASE_WRITE);
+                if (big) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length); return; }
+                if (decodedResponse.indexOf("\u0000") >= 0) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length); return; }
               }
               updateEditorContent("", decodedResponse, true);
               if (window.EditorTabs) window.EditorTabs.loaded(String(newSelectedNodeId), decodedResponse);

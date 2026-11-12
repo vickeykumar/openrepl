@@ -1,18 +1,23 @@
 // Files the editor does not take, and what to do with them.
 //
 // The editor is one document shared through Firebase and has a hard limit on what it can carry (07-file-browser.js,
-// MAX_EDITOR_TEXT). Text over that limit opens here instead: a read-only view, in pieces, that only the person who
+// maxEditorText(), the admin's setting up to 16 MB). Text over that limit opens here instead: a read-only view, in pieces, that only the person who
 // chose the file sees. Nothing in it is shared, saved or written to the server; it reads the file a piece at a time
-// (q=load&offset=&length=, package fileload), so a big file is never read whole. A binary file is not opened at all
-// (the editor would damage it when saving): the notice offers Download and the terminal.
-// Also here: the two actions of those notices, Download (the file as a zip, like the file's menu) and "Terminal"
-// (a command typed into the active terminal, not run).
+// (q=load&offset=&length=, package fileload), so a big file is never read whole. A binary file opens here too, as a hex
+// dump (offset, bytes, text), in smaller pieces: the editor would damage it when saving, and the shared editor cannot
+// carry it, but looking at it is safe.
+// Also here: Download (the file as a zip, like the file's menu) and "Terminal" (a command typed into the active
+// terminal when it is a shell, else copied; never run).
+import { hexDump } from "./lib-hexdump.mjs";
 
 var CHUNK = 1024 * 1024;
+var HEX_CHUNK = 256 * 1024; // a hex dump is five times the size of its bytes, so its pieces are smaller
 var el = null;
+var hexMode = false; // the file is binary: shown as a hex dump
 var view = null;   // { path, size, offset, length }
 var seq = 0;       // the newest read; an older answer is dropped
 
+function chunk() { return hexMode ? HEX_CHUNK : CHUNK; }
 function say(text, opts) { if (window.notify) window.notify(text, opts || {}); }
 function nameOf(path) { return String(path).split("/").pop(); }
 
@@ -38,20 +43,11 @@ function typeInTerminal(command) {
   }
 }
 
-function lessCommand(path) { return "less " + shellQuote(path); }
-function hexCommand(path) { return "xxd " + shellQuote(path) + " | less"; }
+// The terminal image has no less and no xxd, but it has more and od (a hex dump with the text beside it).
+function moreCommand(path) { return "more " + shellQuote(path); }
+function hexCommand(path) { return "od -A x -t x1z " + shellQuote(path) + " | more"; }
 
 function mb(bytes) { return (bytes / 1048576).toFixed(1) + " MB"; }
-
-function notOpenedBinary(path) {
-  say(nameOf(path) + " is a binary file. The editor cannot show or save it safely.", {
-    type: "info", title: "Not opened", timeout: 15000,
-    actions: [
-      { label: "Download", onClick: function () { download(path); } },
-      { label: "Terminal", onClick: function () { typeInTerminal(hexCommand(path)); } }
-    ]
-  });
-}
 
 // ---- the viewer ------------------------------------------------------------------------------------------------------
 
@@ -82,10 +78,10 @@ function build() {
   var spacer = document.createElement("span"); spacer.className = "lv__spacer";
   bar.appendChild(name); bar.appendChild(range); bar.appendChild(spacer);
   bar.appendChild(button("Start", "start", function () { go(0); }));
-  bar.appendChild(button("Previous", "prev", function () { go(view.offset - CHUNK); }));
-  bar.appendChild(button("Next", "next", function () { go(view.offset + CHUNK); }));
-  bar.appendChild(button("End", "end", function () { go(view.size - CHUNK); }));
-  bar.appendChild(button("Terminal", "terminal", function () { typeInTerminal(lessCommand(view.path)); }));
+  bar.appendChild(button("Previous", "prev", function () { go(view.offset - chunk()); }));
+  bar.appendChild(button("Next", "next", function () { go(view.offset + chunk()); }));
+  bar.appendChild(button("End", "end", function () { go(view.size - chunk()); }));
+  bar.appendChild(button("Terminal", "terminal", function () { typeInTerminal(hexMode ? hexCommand(view.path) : moreCommand(view.path)); }));
   bar.appendChild(button("Download", "download", function () { download(view.path); }));
   bar.appendChild(button("Close", "close", close));
   var note = document.createElement("div");
@@ -108,9 +104,12 @@ function hasNul(bytes) {
 function draw(bytes) {
   var text = el.querySelector(".lv__text");
   // a piece is cut at a byte, so a character at an edge can be cut: it shows as a replacement mark
-  text.textContent = new TextDecoder("utf-8").decode(bytes);
+  text.textContent = hexMode ? hexDump(bytes, view.offset) : new TextDecoder("utf-8").decode(bytes);
   text.scrollTop = 0;
-  el.querySelector(".lv__name").textContent = nameOf(view.path);
+  el.querySelector(".lv__note").textContent = hexMode
+    ? "Binary file, shown as hex: the offset, the bytes, then the text. Read-only. Only you see this: nothing here is shared, saved or changed."
+    : "Read-only. Only you see this: nothing here is shared, saved or changed. It is shown in pieces.";
+  el.querySelector(".lv__name").textContent = nameOf(view.path) + (hexMode ? " (hex)" : "");
   el.querySelector(".lv__name").title = view.path;
   var from = view.offset, to = view.offset + view.length;
   el.querySelector(".lv__range").textContent = (view.length ? from.toLocaleString() + " to " + to.toLocaleString() : "no bytes") + " of " + view.size.toLocaleString() + " bytes (" + mb(view.size) + ")";
@@ -127,8 +126,9 @@ function go(offset, first) {
   var path = first ? first.path : view.path;
   var size = first ? first.size : view.size;
   offset = Math.max(0, Math.min(offset, Math.max(0, size - 1)));
+  if (hexMode) offset -= offset % 16; // a line of the dump starts at a multiple of 16
   var mine = ++seq;
-  var url = "/ws_filebrowser?q=load&enc=raw&filepath=" + encodeURIComponent(path) + "&offset=" + offset + "&length=" + CHUNK;
+  var url = "/ws_filebrowser?q=load&enc=raw&filepath=" + encodeURIComponent(path) + "&offset=" + offset + "&length=" + (first ? CHUNK : chunk());
   fetch(preprocessurl(url), { credentials: "same-origin" })
     .then(function (res) {
       if (!res.ok) return res.text().then(function (t) { throw new Error(t || res.statusText); });
@@ -137,7 +137,8 @@ function go(offset, first) {
     .then(function (got) {
       if (mine !== seq) return; // a newer choice was made
       var bytes = got.bytes;
-      if (first && hasNul(bytes)) { close(); notOpenedBinary(path); return; }
+      // the first piece decides how the file is shown: a zero byte in it means binary, shown as hex (a smaller piece of it)
+      if (first) { hexMode = hasNul(bytes); if (hexMode) bytes = bytes.subarray(0, HEX_CHUNK); }
       var total = parseInt(got.headers.get("X-File-Size"), 10);
       view = { path: path, size: isFinite(total) ? total : size, offset: parseInt(got.headers.get("X-Chunk-Offset"), 10) || 0, length: bytes.length };
       el.hidden = false;
@@ -154,6 +155,7 @@ function go(offset, first) {
 function open(path, size) {
   if (!build()) return;
   view = null;
+  hexMode = false;
   go(0, { path: String(path), size: size || CHUNK });
 }
 
@@ -167,9 +169,8 @@ window.LargeFileViewer = {
   open: open,
   close: close,
   isOpen: function () { return !!view; },
-  notOpenedBinary: notOpenedBinary,
   typeInTerminal: typeInTerminal,
-  lessCommand: lessCommand,
+  moreCommand: moreCommand,
   hexCommand: hexCommand,
   shellQuote: shellQuote
 };

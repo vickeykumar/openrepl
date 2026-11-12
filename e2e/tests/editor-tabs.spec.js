@@ -179,7 +179,7 @@ test("closing a tab that was only opened writes nothing to the server, whatever 
   expect(saves).toEqual([]);
 });
 
-test("a binary file is not opened in the shared editor, and its tab does not stay", async ({ page }) => {
+test("a binary file is not opened in the shared editor: it opens read-only as a hex dump, and its tab does not stay", async ({ page }) => {
   await ready(page);
   const anchor = await makeFile(page, fname(1));
   await anchor.click();
@@ -191,6 +191,11 @@ test("a binary file is not opened in the shared editor, and its tab does not sta
   await page.reload();
   await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
   await tabs(page).filter({ hasText: fname(1) }).click();
+  const viewer = page.locator("#large-viewer");
+  await expect(viewer).toBeVisible();
+  await expect(viewer.locator(".lv__name")).toContainText("(hex)");
+  await expect(viewer.locator(".lv__text")).toContainText("00000000  45 4c 46 00 01 62 69 6e");
+  await expect(viewer.locator(".lv__text")).toContainText("|ELF..binary|");
   await expect(tabs(page)).toHaveCount(0);
   expect(await page.evaluate(() => window.editor.env.editor.getValue())).not.toContain("ELF");
 });
@@ -259,7 +264,7 @@ test("the viewer's Terminal button types a command into the terminal and does no
   await viewer.getByRole("button", { name: "Terminal" }).click();
   await expect
     .poll(async () => (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " "))
-    .toContain("less '");
+    .toContain("more '");
   const shown = (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " ");
   expect(shown).toContain(fname(1));
 });
@@ -275,4 +280,11 @@ test("bytes become the same text the editor has always held, for any byte and an
     return window.bytesToBinaryString(new Uint8Array([97, 233, 255, 0])) === "aéÿ\u0000" ? "ok" : "small";
   });
   expect(ok).toBe("ok");
+});
+
+test("the page is told the largest file the editor opens, from 1 to 16 MB", async ({ page }) => {
+  await ready(page);
+  const mb = await page.evaluate(() => window.site_settings && window.site_settings.maxEditorFileMB);
+  expect(mb).toBeGreaterThanOrEqual(1);
+  expect(mb).toBeLessThanOrEqual(16);
 });
