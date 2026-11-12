@@ -108,8 +108,16 @@ function saveText(path, text, then) {
 var persistTimer = 0;
 function persist() {
   if (!master()) return;
+  persistList(); // the list is small: at once, so that a reload right after opening a file still finds its tab
   clearTimeout(persistTimer);
   persistTimer = setTimeout(persistNow, PERSIST_WAIT);
+}
+function persistList() {
+  if (!master() || !home()) return;
+  try {
+    var list = JSON.stringify({ tabs: state.tabs, active: state.active });
+    if (list !== lastListJson) { localStorage.setItem(key("editor-tabs"), list); lastListJson = list; }
+  } catch (e) { /* storage may be full or blocked */ }
 }
 // localStorage is written on the page's own thread, so only what changed is written: the list when it changed, and the
 // drafts only of tabs whose text differs from the last time (a draft can be 500 KB, and typing changes it all the time,
@@ -120,8 +128,7 @@ var lastDraftsJson = "";
 function persistNow() {
   if (!master() || !home()) return;
   try {
-    var list = JSON.stringify({ tabs: state.tabs, active: state.active });
-    if (list !== lastListJson) { localStorage.setItem(key("editor-tabs"), list); lastListJson = list; }
+    persistList();
     var drafts = {};
     state.tabs.forEach(function (p) {
       var text = textOf(p);

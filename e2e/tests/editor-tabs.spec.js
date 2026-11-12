@@ -206,7 +206,8 @@ async function fakeBigFile(page, size) {
       return route.fulfill({ status: 413, headers: { "X-File-Size": String(size) }, body: "file too large" });
     }
     const offset = Math.min(Number(q.get("offset")), size);
-    const text = `piece at ${offset}\n`;
+    // as long as the real server's piece: up to 1 MB, and shorter at the end of the file
+    const text = `piece at ${offset}\n`.padEnd(Math.min(1048576, size - offset), " ");
     return route.fulfill({
       status: 200,
       headers: { "X-File-Size": String(size), "X-Chunk-Offset": String(offset), "X-Chunk-Length": String(text.length), "Content-Type": "application/octet-stream" },
@@ -222,6 +223,7 @@ async function reopenFirstFile(page) {
   await expect(tabs(page).filter({ hasText: fname(1) })).toHaveAttribute("aria-selected", "true");
   await page.reload();
   await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+  await waitForTerminalReady(page);
 }
 
 test("text over the editor's limit opens read-only in pieces, and nothing is written or shared", async ({ page }) => {
