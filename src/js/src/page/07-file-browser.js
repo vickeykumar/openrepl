@@ -910,7 +910,9 @@
           // the open files (22-editor-tabs.js): the file left keeps its text, the chosen one becomes a tab, and its text
           // is put back from memory when it has been open before (then it is not read from the server)
           var restoredFromTab = false;
-          if (window.LargeFileViewer) window.LargeFileViewer.close(); // another file was chosen
+          // another file was chosen. The file the viewer shows, chosen again, keeps it: the shared selection can come back
+          // a moment late with the file that was chosen first, after the viewer has opened
+          if (window.LargeFileViewer) window.LargeFileViewer.closeUnlessFor(String(newSelectedNodeId));
           if (window.EditorTabs && newSelectedNodeId!==undefined && newSelectedNodeId!="") {
             window.EditorTabs.beforeSwitch(String(newSelectedNodeId));
             restoredFromTab = window.EditorTabs.selected(String(newSelectedNodeId), !!alreadyOpen);

@@ -193,8 +193,7 @@ test("a binary file is not opened in the shared editor: it opens read-only as a 
   // The file was just written, and the page may have read it again and closed its tab already (it is binary now), so
   // the tab is not relied on: the file is chosen in the tree, as a click on it does.
   await page.evaluate((p) => window.FileSearch.go(p), file);
-  const viewer = page.locator("#large-viewer");
-  await expect(viewer).toBeVisible();
+  const viewer = await expectViewer(page);
   await expect(viewer.locator(".lv__name")).toContainText("(hex)");
   await expect(viewer.locator(".lv__text")).toContainText("00000000  45 4c 46 00 01 62 69 6e");
   await expect(viewer.locator(".lv__text")).toContainText("|ELF..binary|");
@@ -228,6 +227,27 @@ async function fakeBigFile(page, size) {
   return seen;
 }
 
+// The viewer is expected to open. When it does not, the failure says what the page showed instead (the notices, whether the
+// viewer was built, and the selection), so that a failure on a machine that cannot be reached is not a mystery.
+async function expectViewer(page) {
+  const viewer = page.locator("#large-viewer");
+  try {
+    await expect(viewer).toBeVisible({ timeout: 15000 });
+  } catch (e) {
+    const seen = await page.evaluate(() => ({
+      built: !!document.getElementById("large-viewer"),
+      hidden: document.getElementById("large-viewer") ? document.getElementById("large-viewer").hidden : null,
+      isOpen: window.LargeFileViewer ? window.LargeFileViewer.isOpen() : null,
+      notices: [...document.querySelectorAll(".notice")].map((n) => n.textContent.trim().slice(0, 120)),
+      selected: window.jQuery ? $("#file-browser").jstree(true).get_selected() : null,
+      file: window.editor && window.editor.env ? window.editor.env.filename : null,
+      tabs: window.EditorTabs ? window.EditorTabs.state() : null,
+    }));
+    throw new Error("the viewer did not open: " + JSON.stringify(seen));
+  }
+  return viewer;
+}
+
 async function reopenFirstFile(page) {
   const anchor = await makeFile(page, fname(1));
   await anchor.click();
@@ -242,8 +262,7 @@ test("text over the editor's limit opens read-only in pieces, and nothing is wri
   await reopenFirstFile(page);
   const seen = await fakeBigFile(page, 3000000);
   await tabs(page).filter({ hasText: fname(1) }).click();
-  const viewer = page.locator("#large-viewer");
-  await expect(viewer).toBeVisible();
+  const viewer = await expectViewer(page);
   await expect(viewer.locator(".lv__text")).toContainText("piece at 0");
   await expect(viewer.locator(".lv__range")).toContainText("3,000,000");
   await expect(tabs(page)).toHaveCount(0); // no tab: it is not in the editor
@@ -265,8 +284,7 @@ test("the viewer's Terminal button types a command into the terminal and does no
   await reopenFirstFile(page);
   await fakeBigFile(page, 3000000);
   await tabs(page).filter({ hasText: fname(1) }).click();
-  const viewer = page.locator("#large-viewer");
-  await expect(viewer).toBeVisible();
+  const viewer = await expectViewer(page);
   await viewer.getByRole("button", { name: "Terminal" }).click();
   await expect
     .poll(async () => (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " "))

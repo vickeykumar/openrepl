@@ -155,19 +155,31 @@ function go(offset, first) {
 function open(path, size) {
   if (!build()) return;
   view = null;
+  current = String(path);
   hexMode = false;
   go(0, { path: String(path), size: size || CHUNK });
+}
+
+// The file the viewer shows or is about to show (it is known before the first piece has come)
+var current = null;
+
+// A file is chosen in the tree: the viewer closes, unless it is the file the viewer is about
+function closeUnlessFor(path) {
+  if (current && String(path) === current) return;
+  close();
 }
 
 function close() {
   seq++;
   view = null;
+  current = null;
   if (el) el.hidden = true;
 }
 
 window.LargeFileViewer = {
   open: open,
   close: close,
+  closeUnlessFor: closeUnlessFor,
   isOpen: function () { return !!view; },
   typeInTerminal: typeInTerminal,
   moreCommand: moreCommand,
