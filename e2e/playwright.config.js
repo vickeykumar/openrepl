@@ -6,7 +6,7 @@ module.exports = defineConfig({
   testDir: "./tests",
   timeout: 90 * 1000,
   expect: { timeout: 15 * 1000 },
-  retries: process.env.CI ? 1 : 0,
+  retries: process.env.CI ? 2 : 0, // two re-runs: a real bug fails all three, a timing flake rarely does
   workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }], ["./flaky-reporter.js"]] : [["list"]],
   use: {

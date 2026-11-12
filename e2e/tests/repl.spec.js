@@ -63,10 +63,12 @@ for (const repl of REPLS) {
     if (repl.anyOf) {
       // the line to type depends on the server (assembly of arm64 or x86-64): the first that is answered
       let answered = false;
-      for (const line of repl.anyOf) {
+      // The line that fits the server goes twice: a keystroke typed while rappel is still starting is lost (3 of 20 runs
+      // on arm64 got no answer to the right line), and a line it can assemble is harmless to repeat.
+      for (const line of [repl.anyOf[0], ...repl.anyOf]) {
         await type(page, line);
         try {
-          await waitForTerminal(page, repl.answer, "", repl.unwrap, 8 * 1000);
+          await waitForTerminal(page, repl.answer, "", repl.unwrap, 12 * 1000);
           answered = true;
           break;
         } catch (e) {}

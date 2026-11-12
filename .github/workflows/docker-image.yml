@@ -1,7 +1,7 @@
 # The Docker image: built on every pull request to master (as before), then started
 # and checked from the outside: a smoke test (scripts/ci/smoke.sh) and the browser
 # tests (e2e/, Playwright). Both must pass. What the browser tests found is in the
-# job and in the "playwright-report" artifact of the run.
+# job and in the "playwright-report" artifact of the run (the "browser" job, which runs after "build").
 name: Docker Image CI
 
 on:
@@ -117,6 +117,41 @@ jobs:
       run: |
         docker exec openrepl bash -c '(sh -c "sleep 1 & exit 0"); sleep 10; z=$(ps -eo pid,ppid,stat,comm | awk "\$3 ~ /^Z/ && \$2 == 1"); if [ -n "$z" ]; then echo "defunct processes left under PID 1:"; echo "$z"; exit 1; fi; echo "no defunct process under PID 1"'
 
+
+  # The browser tests are their own job (they need the image of the job above, which is rebuilt here from the layer cache that
+  # job has just filled, in a minute or two): a flaky browser test can then be run again alone ("Re-run failed jobs"),
+  # without building the image and running the checks above once more.
+  browser:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: docker/setup-buildx-action@v3
+    - name: Build the Docker image (from the cache of the job above)
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: Dockerfile
+        platforms: linux/${{ matrix.arch }}
+        load: true
+        tags: openrepl:${{ matrix.arch }}
+        cache-from: type=gha,scope=linux-${{ matrix.arch }}
+    - name: Start the image
+      run: |
+        docker run -d --name openrepl --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw --privileged \
+          -p 8080:8080 openrepl:${{ matrix.arch }} -p 8080
+        for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:8080/ && exit 0; sleep 2; done
+        echo "the server did not answer in 2 minutes"; docker logs openrepl 2>&1 | tail -n 50; exit 1
     - uses: actions/setup-node@v4
       with:
         node-version: 20

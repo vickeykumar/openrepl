@@ -105,7 +105,7 @@ test("Clear change marks removes the colors", async ({ page }) => {
   const file = `clear${stamp}.txt`;
   await make(page, file, "file");
   await expect(anchor(page, file)).toHaveClass(/fm-new/);
-  await page.keyboard.press("Control+Shift+P");
+  await page.keyboard.press("ControlOrMeta+Shift+P");
   await page.locator("#palette .palette__item", { hasText: "Clear change marks" }).click();
   await expect(anchor(page, file)).not.toHaveClass(/fm-new/);
   await expect(anchor(page, file)).not.toHaveAttribute("data-fm", /.+/);
