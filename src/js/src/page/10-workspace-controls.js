@@ -74,7 +74,7 @@ $(function () {
     if (!$(e.target).closest(".run-split").length) closeRunMenu();
   });
 
-  // Ctrl+` shows or hides the terminal (as in VS Code). Caught before the terminal sees it, because a focused terminal
+  // Ctrl+` shows or hides the terminal (the usual way in code editors). Caught before the terminal sees it, because a focused terminal
   // would send it to the program.
   // On the window, in the capture phase, so that it runs before anything the terminal or another script adds on the
   // document; the key is matched by its code, its character or its key code, whichever the browser reports.
@@ -106,7 +106,7 @@ $(function () {
   $("#files-collapse").on("click", function () { setFilesPanel(false); });
   var saved = null;
   try { saved = localStorage.getItem("files-panel"); } catch (e) {}
-  if (saved === "closed" || (saved === null && window.innerWidth < 1100)) setFilesPanel(false);
+  if (saved === "closed" || (saved === null && window.innerWidth < 800)) setFilesPanel(false);
 
   $("#download-workspace-button").on("click", function () {
     var tree = $("#file-browser").jstree && $("#file-browser").jstree(true);

@@ -9,13 +9,19 @@ export function emptyState() {
 }
 
 // Opening a file: an open one is only shown (no second tab, and its place does not change); a new one joins on the
-// right, and past MAX_TABS the oldest leaves.
-export function openTab(state, path, max = MAX_TABS) {
+// right, and past MAX_TABS the oldest leaves. `dirty` (a function path -> boolean, optional): the oldest tab WITHOUT
+// unsaved changes leaves first, so that nothing has to be asked; the oldest of all only when every one has changes.
+export function openTab(state, path, max = MAX_TABS, dirty = null) {
   if (!path) return { tabs: state.tabs.slice(), active: state.active, dropped: [] };
   if (state.tabs.includes(path)) return { tabs: state.tabs.slice(), active: path, dropped: [] };
   const tabs = state.tabs.concat(path);
   const dropped = [];
-  while (tabs.length > max) dropped.push(tabs.shift());
+  while (tabs.length > max) {
+    // never the file that was just opened (the last one)
+    let i = dirty ? tabs.findIndex((p, k) => k < tabs.length - 1 && !dirty(p)) : -1;
+    if (i < 0) i = 0;
+    dropped.push(tabs.splice(i, 1)[0]);
+  }
   return { tabs, active: path, dropped };
 }
 

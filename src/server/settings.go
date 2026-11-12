@@ -61,6 +61,10 @@ type SiteSettings struct {
 	// Atlas free cluster has 512), for the live map's "used of total". 0: not
 	// set, and the map uses the disk size MongoDB reports, if it does.
 	DBCapacityMB int `json:"dbCapacityMB"`
+	// MaxEditorFileMB is the largest file the editor opens, in megabytes. The editor is one document shared through
+	// Firebase, which refuses a write over 16 MB, so 16 is also the most; 0 means that built-in 16. A bigger text file
+	// opens read-only in the viewer (page/24-large-file-viewer.js) instead.
+	MaxEditorFileMB int `json:"maxEditorFileMB"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
 	// Admins are the accounts added in the dashboard, lower case, besides the
@@ -170,6 +174,9 @@ var languagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.+-]{0,19}$`)
 // normalize cleans up settings from an untrusted source and says what is
 // wrong with them, if anything.
 func (s SiteSettings) normalize() (SiteSettings, error) {
+	if s.MaxEditorFileMB != 0 && (s.MaxEditorFileMB < minEditorFileMB || s.MaxEditorFileMB > maxEditorFileMB) {
+		return s, fmt.Errorf("the largest file the editor opens must be between %d and %d MB (or empty)", minEditorFileMB, maxEditorFileMB)
+	}
 	if s.DBCapacityMB != 0 && (s.DBCapacityMB < minDBCapacityMB || s.DBCapacityMB > maxDBCapacityMB) {
 		return s, fmt.Errorf("the database capacity must be between %d and %d MB (or empty)", minDBCapacityMB, maxDBCapacityMB)
 	}
@@ -408,6 +415,8 @@ type publicSettings struct {
 	Maintenance       Maintenance  `json:"maintenance"`
 	DisabledLanguages []string     `json:"disabledLanguages"`
 	GenieDisabled     bool         `json:"genieDisabled"`
+	// the largest file the editor opens, in MB (the effective number: 16 when none is set)
+	MaxEditorFileMB int `json:"maxEditorFileMB"`
 	// the models that are switched off, and the one visitors start with (empty:
 	// the built-in choice); model-choice.js reads them
 	DisabledModels []string `json:"disabledModels"`
@@ -462,6 +471,7 @@ const (
 	minHistory, maxHistory             = 6, 50
 	maxPricePerMillion                 = 10000
 	minDBCapacityMB, maxDBCapacityMB   = 10, 100000000
+	minEditorFileMB, maxEditorFileMB   = 1, 16 // 16: the most Firebase takes in one write
 	minAttachItems, maxAttachItems     = 1, 20
 	minAttachChars, maxAttachChars     = 500, 50000
 	minAttachTotal, maxAttachTotal     = 2000, 100000
@@ -550,6 +560,14 @@ func (g *GenieSettings) normalizeNumbers() error {
 	return nil
 }
 
+// maxEditorFileMB is the limit in force: the one set, or the built-in 16.
+func (s SiteSettings) maxEditorFileMB() int {
+	if s.MaxEditorFileMB < minEditorFileMB || s.MaxEditorFileMB > maxEditorFileMB {
+		return maxEditorFileMB
+	}
+	return s.MaxEditorFileMB
+}
+
 func (s SiteSettings) public() publicSettings {
 	langs := s.DisabledLanguages
 	if langs == nil {
@@ -565,6 +583,7 @@ func (s SiteSettings) public() publicSettings {
 		Maintenance:       s.Maintenance,
 		DisabledLanguages: langs,
 		GenieDisabled:     s.Genie.Disabled,
+		MaxEditorFileMB:   s.maxEditorFileMB(),
 		DisabledModels:    models,
 		CustomModels:      s.Genie.publicCustomModels(),
 		DefaultModel:      s.Genie.DefaultModel,
@@ -775,6 +794,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.DBCapacityMB != b.DBCapacityMB {
 		out = append(out, "database capacity changed")
+	}
+	if a.maxEditorFileMB() != b.maxEditorFileMB() {
+		out = append(out, fmt.Sprintf("largest editor file %d MB", b.maxEditorFileMB()))
 	}
 	if ga, gb := a.Genie, b.Genie; ga.context() != gb.context() || ga.OpenRouterTimeoutSec != gb.OpenRouterTimeoutSec ||
 		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || fmt.Sprint(ga.ModelPrices) != fmt.Sprint(gb.ModelPrices) || ga.ShowCostToUsers != gb.ShowCostToUsers || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {

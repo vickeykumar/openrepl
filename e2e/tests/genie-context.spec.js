@@ -61,7 +61,7 @@ test("selected code is added with Ctrl+Shift+L, with its lines", async ({ page }
     ed.selectAll();
     ed.focus();
   });
-  await page.keyboard.press("Control+Shift+L");
+  await page.keyboard.press("ControlOrMeta+Shift+L");
   await expect(chips(page)).toHaveCount(1);
   await expect(chips(page).first()).toContainText("1–2");
 });

@@ -19,8 +19,10 @@ var baseline = {};         // path -> the text of the file as loaded or last sav
 var lastSaved = {};        // path -> when this page last saved it (its own write comes back as a server event)
 var sharedRef = null;      // firebase: file-browser/<id>/tabs
 var warned = {};           // path -> true once told "changed outside"
+var shown = null;          // the file whose text the editor really holds (null: none yet, or a load is under way)
 var ignoreStash = null;    // a tab being closed: its text is not kept again on the switch it causes
 var lane = null;
+var lastSig = "";          // what the strip last drew, to skip a redraw that would look the same
 var lastRevealed = null;  // the file whose tab was last brought into view
 var MAX_DRAFT = 500 * 1024;
 
@@ -43,11 +45,18 @@ function currentText() { var e = aceEditor(); return e ? e.getValue() : ""; }
 
 // Does the tab hold text that is not in the file? The shown tab is compared with what the editor has now, the others
 // with what was kept. A tab whose text came back from a draft has a baseline of null: it differs from any text.
+// The text a tab holds: the editor's, only while the editor really holds that file (a tab that was just clicked still
+// shows the previous file's text until its own text has come: that is not its text), else the kept copy.
+function textOf(path) {
+  if (path === shown) return currentText();
+  return stash[path] ? stash[path].text : undefined;
+}
+
 function isDirty(path) {
   if (!path) return false;
   var base = baseline[path];
   if (base === undefined) return false; // never read or saved here: not known to differ
-  var text = path === state.active ? currentText() : stash[path] ? stash[path].text : undefined;
+  var text = textOf(path);
   return text !== undefined && text !== base;
 }
 
@@ -55,7 +64,14 @@ function stashCurrent(path) {
   var e = aceEditor();
   if (!e || !path) return;
   var pos = e.getCursorPosition();
-  stash[path] = { text: e.getValue(), row: pos.row, col: pos.column, top: e.getSession().getScrollTop() };
+  var session = e.getSession();
+  var um = session.getUndoManager();
+  stash[path] = { text: e.getValue(), row: pos.row, col: pos.column, top: session.getScrollTop(), undoManager: um };
+  // The undo history of this file stays with it (the manager is kept in the stash), and the editor is given a blank one for
+  // the file that comes next: the text that replaces this one is not an edit of this file, and must not become a step in
+  // its history. (Ace's toJSON and fromJSON of the undo manager are empty in the version in use, so the manager itself is
+  // what is kept; a manager only holds steps that fit the text the file had when it was left, which is what comes back.)
+  try { session.setUndoManager(new (Object.getPrototypeOf(um).constructor)()); } catch (err) { /* no undo manager */ }
 }
 
 // Puts a tab's kept text back into the editor (owner only). False when there is none: the file is then read from the
@@ -68,6 +84,8 @@ function restoreFromStash(path) {
   if (e) {
     e.moveCursorTo(held.row, held.col);
     e.getSession().setScrollTop(held.top);
+    // the file's own undo history comes back: Ctrl+Z takes back what was typed in this file, and nothing of another
+    if (held.undoManager) { try { e.getSession().setUndoManager(held.undoManager); } catch (err) { /* keep the blank one */ } }
   }
   return true;
 }
@@ -85,6 +103,7 @@ function saveText(path, text, then) {
     baseline[path] = text;
     lastSaved[path] = Date.now();
     delete warned[path];
+    if (window.FileMarks) window.FileMarks.event("write", path);
     persist();
     render();
     if (then) then(true);
@@ -99,19 +118,37 @@ function saveText(path, text, then) {
 var persistTimer = 0;
 function persist() {
   if (!master()) return;
+  persistList(); // the list is small: at once, so that a reload right after opening a file still finds its tab
   clearTimeout(persistTimer);
-  persistTimer = setTimeout(persistNow, 400);
+  persistTimer = setTimeout(persistNow, PERSIST_WAIT);
 }
-function persistNow() {
-  if (!master() || !home()) return;
+function persistList() {
+  if (!master() || !home() || !restored) return;
   try {
-    localStorage.setItem(key("editor-tabs"), JSON.stringify({ tabs: state.tabs, active: state.active }));
+    var list = JSON.stringify({ tabs: state.tabs, active: state.active });
+    if (list !== lastListJson) { localStorage.setItem(key("editor-tabs"), list); lastListJson = list; }
+  } catch (e) { /* storage may be full or blocked */ }
+}
+// localStorage is written on the page's own thread, so only what changed is written: the list when it changed, and the
+// drafts only of tabs whose text differs from the last time (a draft can be 500 KB, and typing changes it all the time,
+// so it waits for a pause of PERSIST_WAIT).
+var PERSIST_WAIT = 1500;
+var lastListJson = "";
+// Nothing is written to localStorage before the saved list has been read back (treeReady). The tree can select a file
+// while it loads, before that; writing then would replace the saved list with that one file.
+var restored = false;
+var lastDraftsJson = "";
+function persistNow() {
+  if (!master() || !home() || !restored) return;
+  try {
+    persistList();
     var drafts = {};
     state.tabs.forEach(function (p) {
-      var held = p === state.active ? { text: currentText() } : stash[p];
-      if (held && baseline[p] !== undefined && held.text !== baseline[p] && held.text.length <= MAX_DRAFT) drafts[p] = held.text;
+      var text = textOf(p);
+      if (text !== undefined && baseline[p] !== undefined && text !== baseline[p] && text.length <= MAX_DRAFT) drafts[p] = text;
     });
-    localStorage.setItem(key("editor-drafts"), JSON.stringify(drafts));
+    var json = JSON.stringify(drafts);
+    if (json !== lastDraftsJson) { localStorage.setItem(key("editor-drafts"), json); lastDraftsJson = json; }
   } catch (e) { /* storage may be full or blocked: the tabs still work */ }
 }
 window.addEventListener("pagehide", function () { persistNow(); });
@@ -142,14 +179,22 @@ function render() {
   if (header) header.classList.toggle("has-tabs", view.tabs.length > 0);
   var labels = tabLabels(view.tabs);
   var canClose = master();
-  lane.textContent = "";
-  view.tabs.forEach(function (path, i) {
+  // whether each tab has unsaved text, worked out once (it reads the whole editor text for the shown tab)
+  var dirty = view.tabs.map(function (path) { return canClose && isDirty(path); });
+  // the mark of each file (changed or new in this session), for the color of its name
+  var marked = view.tabs.map(function (path) { return window.FileMarks ? window.FileMarks.status(path) : ""; });
+  // typing redraws this often: when nothing it shows has changed, the strip is left alone (no new elements, no layout)
+  var sig = JSON.stringify([view.tabs, view.active, dirty, marked, canClose]);
+  var redraw = sig !== lastSig || !lane.firstChild !== !view.tabs.length;
+  lastSig = sig;
+  if (redraw) lane.textContent = "";
+  if (redraw) view.tabs.forEach(function (path, i) {
     var active = path === view.active;
     var tab = document.createElement("div");
-    tab.className = "etab" + (active ? " active" : "");
+    tab.className = "etab" + (active ? " active" : "") + (marked[i] ? " etab--" + marked[i] : "");
     tab.setAttribute("role", "tab");
     tab.setAttribute("aria-selected", active ? "true" : "false");
-    tab.setAttribute("aria-label", labels[i] + (master() && isDirty(path) ? ", unsaved changes" : ""));
+    tab.setAttribute("aria-label", labels[i] + (marked[i] ? ", " + marked[i] : "") + (dirty[i] ? ", unsaved changes" : ""));
     tab.tabIndex = active ? 0 : -1;
     tab.dataset.path = path;
     tab.title = path;
@@ -157,7 +202,7 @@ function render() {
     name.className = "etab__name";
     name.textContent = labels[i];
     tab.appendChild(name);
-    if (master() && isDirty(path)) {
+    if (dirty[i]) {
       var dot = document.createElement("span");
       dot.className = "etab__dot";
       tab.appendChild(dot);
@@ -180,6 +225,9 @@ function render() {
     lastRevealed = view.active;
     window.TabLane.reveal(lane, on);
   }
+  // the Files panel shows the same unsaved dots: it is told that the strip changed
+  if (window.FileMarks) window.FileMarks.refresh();
+  if (window.Unsaved) window.Unsaved.refresh(); // and the bar, and the dot in the title of the browser tab
 }
 
 function laneEvents() {
@@ -224,9 +272,10 @@ function activate(path) {
   t.select_node(path);
 }
 
-function closeByUser(path) {
-  if (!master()) return;
-  var finish = function () {
+// Takes a tab out without writing anything: the neighbour is shown (or the empty buffer). keepSelection: with no
+// neighbour the file stays chosen in the tree (a file that opens in the viewer is still the one the person chose; letting
+// go of it made the shared selection come back with it, which read it again, in a loop).
+function closeNow(path, keepSelection) {
     var wasActive = state.active === path;
     ignoreStash = wasActive ? path : null;
     var r = closeTab(state, path);
@@ -236,28 +285,38 @@ function closeByUser(path) {
     delete warned[path];
     if (wasActive) {
       if (state.active) activate(state.active);
-      else clearEditor();
+      else clearEditor(keepSelection);
     }
     ignoreStash = null;
     persist();
     render();
     publish();
-  };
-  if (isDirty(path)) {
-    if (path === state.active) stashCurrent(path);
-    saveText(path, stash[path] ? stash[path].text : currentText(), function (ok) { if (ok) finish(); });
+}
+
+// Only a tab with changes is written, and only when the user closes it; an unchanged tab never touches the server.
+function closeByUser(path) {
+  if (!master()) return;
+  var text = textOf(path);
+  if (isDirty(path) && text !== undefined) {
+    // a tab with unsaved changes asks (28-unsaved.js): Save, Don't save, or Cancel (the tab stays)
+    if (!window.Unsaved) { saveText(path, text, function (ok) { if (ok) closeNow(path); }); return; }
+    window.Unsaved.askClose(path).then(function (choice) {
+      if (choice === "save") saveText(path, textOf(path), function (ok) { if (ok) closeNow(path); });
+      else if (choice === "discard") closeNow(path);
+    });
   } else {
-    finish();
+    closeNow(path);
   }
 }
 
 // no tab is left: the editor is an empty "untitled" buffer
-function clearEditor() {
+function clearEditor(keepSelection) {
   var t = tree();
-  if (t) t.deselect_all(true);
+  if (t && !keepSelection) t.deselect_all(true);
   var e = aceEditor();
   if (e) e.setValue("", -1);
   if (window["editor"] && window["editor"].env) window["editor"].env.filename = "";
+  shown = null;
   if (window.updateEditorFileChip) window.updateEditorFileChip();
 }
 
@@ -278,17 +337,23 @@ var api = {
     var t = tree();
     state = restoreState(saved.list, function (p) { return isFile(p); });
     var recovered = [];
+    var recoveredPaths = [];
     state.tabs.forEach(function (p) {
       if (typeof saved.drafts[p] === "string") {
         stash[p] = { text: saved.drafts[p], row: 0, col: 0, top: 0 };
         baseline[p] = null;
         recovered.push(nameOf(p));
+        recoveredPaths.push(p);
       }
     });
-    if (recovered.length) say("Recovered unsaved changes in " + recovered.join(", ") + ". They are marked with a dot; Save keeps them.", "info");
+    // the bar of 28-unsaved.js offers Save all, Review and Discard all for what came back
+    if (recoveredPaths.length && window.Unsaved) window.Unsaved.recovered(recoveredPaths);
+    else if (recovered.length) say("Recovered unsaved changes in " + recovered.join(", ") + ". They are marked with a dot; Save keeps them.", "info");
     // what the tree shows selected right now is what the editor shows
     var sel = t ? t.get_selected()[0] : null;
     if (sel && isFile(sel)) state = openTab(state, sel);
+    restored = true;
+    persist(); // what was chosen before the tree was ready was not written (the guard above): write it now
     render();
     publish();
     if (e && !e.__tabsBound) {
@@ -304,8 +369,10 @@ var api = {
   // Before the editor leaves a file (the tree's selection changed): keep its text.
   beforeSwitch: function (next) {
     if (!master()) return;
-    var old = window["editor"] && window["editor"].env ? window["editor"].env.filename : "";
+    // the file the editor really holds, not the one named by env.filename (which can already be the next one)
+    var old = shown;
     if (old && old !== next && old !== ignoreStash && state.tabs.indexOf(old) >= 0) stashCurrent(old);
+    if (old && old !== next) shown = null; // the editor holds nothing of the next file until its text is put in
   },
 
   // A file was selected: it becomes a tab. Returns true when its text was put back from memory (the caller then does
@@ -313,18 +380,26 @@ var api = {
   selected: function (path, alreadyShown) {
     if (!isFile(path)) return false;
     if (master()) {
-      var r = openTab(state, path);
+      // the oldest tab without unsaved changes leaves first; one with changes only when every tab has (then it is asked about)
+      var r = openTab(state, path, MAX_TABS, isDirty);
       state = { tabs: r.tabs, active: r.active };
       r.dropped.forEach(function (p) {
         if (isDirty(p)) {
           var text = stash[p] ? stash[p].text : "";
-          if (text) saveText(p, text, function (ok) { if (ok) say("Closed " + nameOf(p) + " (saved)", "info"); });
+          if (text && window.Unsaved) {
+            window.Unsaved.askDropped(p).then(function (choice) {
+              if (choice === "save") saveText(p, text, function (ok) { if (ok) say("Closed " + nameOf(p) + " (saved)", "info"); });
+            });
+          } else if (text) {
+            saveText(p, text, function (ok) { if (ok) say("Closed " + nameOf(p) + " (saved)", "info"); });
+          }
         }
         delete stash[p];
         delete baseline[p];
         delete warned[p];
       });
       var restored = alreadyShown ? true : restoreFromStash(path);
+      if (restored && !alreadyShown) shown = path;
       persist();
       render();
       publish();
@@ -336,14 +411,29 @@ var api = {
 
   loaded: function (path, text) {
     if (!master()) return;
-    baseline[path] = text;
+    shown = path;
+    // what the editor holds, not what was sent: the editor may write the text a little differently (line ends, odd
+    // bytes), and a file that was only opened must not look changed
+    // text that came back from the browser copy after a reload (baseline null) must not be thrown away when the file's
+    // own reading finishes after it: the server text is the baseline, and the recovered text goes back into the editor
+    var recoveredHere = baseline[path] === null && stash[path] ? stash[path] : null;
+    baseline[path] = currentText();
+    if (recoveredHere && recoveredHere.text !== baseline[path]) restoreFromStash(path);
     delete stash[path];
     render();
+  },
+
+  // The file was not opened (binary, or too large for the shared editor): its tab goes, nothing is written.
+  refused: function (path) {
+    if (!master() || state.tabs.indexOf(path) < 0) return;
+    if (shown === path) shown = null;
+    closeNow(path, true);
   },
 
   saved: function (path, text) {
     baseline[path] = text;
     lastSaved[path] = Date.now();
+    if (window.FileMarks) window.FileMarks.event("write", path);
     delete stash[path];
     delete warned[path];
     persist();
@@ -377,6 +467,7 @@ var api = {
       });
     };
     move(stash); move(baseline); move(lastSaved);
+    if (shown === from || (shown && shown.indexOf(from + "/") === 0)) shown = to + shown.slice(from.length);
     if (master()) {
       var r = renamePath(state, from, to);
       state = { tabs: r.tabs, active: r.active };
@@ -393,6 +484,7 @@ var api = {
       var r = removePath(state, path);
       state = { tabs: r.tabs, active: wasActive ? null : r.active };
       r.dropped.forEach(function (p) { delete stash[p]; delete baseline[p]; delete warned[p]; });
+      if (shown && (shown === path || shown.indexOf(path + "/") === 0)) shown = null;
       persist();
       publish();
     }
@@ -416,6 +508,26 @@ var api = {
 
   // for tests and for other page code
   state: function () { return { tabs: state.tabs.slice(), active: state.active }; },
+  shown: function () { return shown; },
+  // write one file with the text the tab holds; then(true) when it was written (28-unsaved.js: Save all)
+  saveFile: function (path, then) {
+    var text = textOf(path);
+    if (text === undefined || !isDirty(path)) { if (then) then(true); return; }
+    saveText(path, text, then);
+  },
+  // give up the unsaved text of a tab: the file is read from the server again when it is shown (now, if it is shown)
+  discard: function (path) {
+    delete stash[path];
+    delete baseline[path];
+    delete warned[path];
+    if (path === shown && window.ReloadFileIntoEditor) window.ReloadFileIntoEditor(path);
+    persist();
+    render();
+  },
+  // for the colors of the Files panel (26-file-marks.js): has this file unsaved text, and which files have
+  dirty: function (path) { return master() && state.tabs.indexOf(path) >= 0 && isDirty(path); },
+  dirtyPaths: function () { return master() ? state.tabs.filter(function (p) { return isDirty(p); }) : []; },
+  redraw: function () { render(); },
   max: MAX_TABS
 };
 window.EditorTabs = api;

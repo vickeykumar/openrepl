@@ -85,6 +85,10 @@ function updateEditorContent(cmd="", content="/* Welcome to openrepl! */", force
         if (isMaster()) {
           //master (-1 puts the cursor at the start instead of selecting everything)
           editor.env.editor.setValue(content, -1);
+          // Replacing the text is not an edit of the file that is shown now: Ace would keep it as an undo step, and Ctrl+Z
+          // after a switch would bring the text of the file that was shown before into this one. A new file starts with
+          // no history (the editor's undo history of one file is not kept while another is shown).
+          try { editor.env.editor.session.getUndoManager().reset(); } catch (e) { /* the editor has no undo manager */ }
         } else {
           //its a slave preserve the content
           content = editor.env.editor.getValue();

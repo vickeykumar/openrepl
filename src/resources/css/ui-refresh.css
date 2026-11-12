@@ -3019,6 +3019,10 @@ body .palette__search input:focus-visible { outline: none !important; }
 .palette__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette__keys { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .palette__tag { flex-shrink: 0; font-size: 12px; color: var(--muted-3); }
+.palette__dir { flex-shrink: 1; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--muted-3); }
+.palette__item--file .palette__label { flex: 0 1 auto; }
+.palette__item--file .palette__dir { margin-right: auto; }
+.palette__hit { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 .palette__then { font-size: 12px; color: var(--muted-3); }
 .palette__empty { margin: 0; padding: 24px 16px; text-align: center; color: var(--muted-2); }
 .palette__empty[hidden] { display: none; }
@@ -3714,6 +3718,7 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .ctx-i-pencil { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4'/%3E%3C/svg%3E"); }
 .ctx-i-trash { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6'/%3E%3C/svg%3E"); }
 .ctx-i-cut { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.1 7.9L20 19 M8.1 16.1L20 5'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.1 7.9L20 19 M8.1 16.1L20 5'/%3E%3C/svg%3E"); }
+.ctx-i-path { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'/%3E%3C/svg%3E"); }
 .ctx-i-copy { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 8h11v12H8z M5 16V4h11'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 8h11v12H8z M5 16V4h11'/%3E%3C/svg%3E"); }
 .ctx-i-paste { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4h6v3H9z M7 5H5v16h14V5h-2'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4h6v3H9z M7 5H5v16h14V5h-2'/%3E%3C/svg%3E"); }
 .ctx-i-save { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 4h12l3 3v13H5z M8 4v5h7V4 M8 20v-6h8v6'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 4h12l3 3v13H5z M8 4v5h7V4 M8 20v-6h8v6'/%3E%3C/svg%3E"); }
@@ -4078,3 +4083,94 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 [data-theme="light"] .site-footer .request-form input[type="text"],
 [data-theme="light"] .site-footer .request-form input[type="email"],
 [data-theme="light"] .site-footer .request-form textarea { color: #16151A; background: #FFFFFF; border-color: #D9D6CF; }
+
+/* The read-only view of a file the editor does not take (24-large-file-viewer.js): over the editor, not shared */
+.large-viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--paper);
+  background: var(--ink-950);
+}
+.large-viewer[hidden] { display: none; }
+.lv__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ink-700);
+}
+.lv__name { font: 500 13px var(--font-code); color: var(--paper); }
+.lv__range { font-size: 12.5px; color: var(--muted-2); }
+.lv__spacer { flex: 1 1 auto; }
+.lv__btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: inherit;
+  color: #B9B7C4;
+  background: var(--ink-800);
+  border: 1px solid var(--ink-600);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.lv__btn:hover:not(:disabled),
+.lv__btn:focus-visible { color: var(--paper); background: var(--ink-700); }
+.lv__btn:disabled { opacity: 0.4; cursor: default; }
+.lv__note { padding: 6px 12px; font-size: 12.5px; color: var(--muted-2); border-bottom: 1px solid var(--ink-700); }
+.lv__text {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 10px 14px;
+  overflow: auto;
+  font: 400 13px/1.5 var(--font-code);
+  white-space: pre;
+  tab-size: 4;
+  color: var(--paper);
+}
+
+/* Changed and new files (page/26-file-marks.js): the name takes a color, a letter or a dot follows it, and the same
+   colors are on the tabs. The IDE theme sets --fm-modified and --fm-new for its own panels (lib-ide-theme.mjs). */
+:root { --fm-modified: #e2c08d; --fm-new: #73c991; }
+/* !important: the IDE theme sets the name color of every row with a longer selector (and for a selected or hovered row) */
+.files-panel .jstree-default .jstree-anchor.fm-modified,
+.files-panel .jstree-default .jstree-anchor.fm-modified:hover { color: var(--fm-modified) !important; }
+.files-panel .jstree-default .jstree-anchor.fm-new,
+.files-panel .jstree-default .jstree-anchor.fm-new:hover { color: var(--fm-new) !important; }
+.files-panel .jstree-default .jstree-anchor[data-fm]::after {
+  content: attr(data-fm);
+  margin-left: 8px;
+  font: 500 11.5px var(--font-code);
+  letter-spacing: 0.02em;
+}
+.etab--modified .etab__name { color: var(--fm-modified) !important; }
+.etab--new .etab__name { color: var(--fm-new) !important; }
+
+/* Unsaved changes (page/28-unsaved.js): the question when a changed tab is closed, and the bar above the editor */
+.unsaved-backdrop { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.5); }
+.unsaved-backdrop[hidden] { display: none; }
+.unsaved-dialog { width: min(440px, calc(100vw - 32px)); padding: 18px 20px; color: var(--paper); background: var(--ink-800); border: 1px solid var(--ink-600); border-radius: 14px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45); }
+.unsaved-dialog h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+.unsaved-dialog p { margin: 0 0 16px; font-size: 13.5px; line-height: 1.5; color: var(--muted-1); }
+.unsaved-dialog p.unsaved-dialog__hint { margin: 12px 0 0; font-size: 12px; color: var(--muted-2); }
+.unsaved-dialog__buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.unsaved-dialog__btn { padding: 7px 14px; font: inherit; font-size: 13.5px; color: var(--paper); background: transparent; border: 1px solid var(--ink-600); border-radius: 8px; cursor: pointer; }
+.unsaved-dialog__btn:hover, .unsaved-dialog__btn:focus-visible { background: var(--ink-700); }
+.unsaved-dialog__btn.is-primary { font-weight: 600; color: var(--on-accent-color, #0b0b0e); background: var(--accent-color); border-color: var(--accent-color); }
+.unsaved-bar { flex-shrink: 0; padding: 8px 12px; font-size: 13px; color: var(--paper); background: rgba(245, 195, 122, 0.12); border-bottom: 1px solid rgba(245, 195, 122, 0.45); }
+.unsaved-bar[hidden] { display: none; }
+.unsaved-bar__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.unsaved-bar__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fm-modified, #e2c08d); flex-shrink: 0; }
+.unsaved-bar__text { flex: 1 1 14rem; min-width: 0; }
+.unsaved-bar__btn { padding: 4px 10px; font: inherit; font-size: 12.5px; color: var(--paper); background: transparent; border: 1px solid var(--ink-600); border-radius: 7px; cursor: pointer; }
+.unsaved-bar__btn:hover, .unsaved-bar__btn:focus-visible { background: var(--ink-700); }
+.unsaved-bar__btn.is-primary { font-weight: 600; color: var(--accent-color); border-color: var(--accent-color); }
+.unsaved-bar__list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.unsaved-bar__item { display: flex; align-items: center; gap: 8px; }
+.unsaved-bar__item span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); }

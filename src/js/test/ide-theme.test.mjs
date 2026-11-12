@@ -182,3 +182,17 @@ test("Monokai's own colours make a complete palette, for a first visit that pick
   assert.ok(p.term && p.genie, "terminal and Genie colours too");
   assert.ok(contrast(parseColor(p.text), parseColor(p.surface)) >= 7);
 });
+
+test("the colors of changed and new files read on the files panel, the editor surface and the tab bar of any theme", () => {
+  for (const theme of [monokai, solarizedLight]) {
+    const palette = derivePalette(theme);
+    const css = paletteCss(palette);
+    for (const name of ["--fm-modified", "--fm-new"]) {
+      const m = new RegExp(name + ": (#[0-9a-fA-F]{6});").exec(css);
+      assert.ok(m, name + " is set");
+      for (const bg of [palette.files, palette.surface, palette.chrome]) {
+        assert.ok(contrast(parseColor(m[1]), parseColor(bg)) >= 4.5, `${name} ${m[1]} on ${bg}`);
+      }
+    }
+  }
+});

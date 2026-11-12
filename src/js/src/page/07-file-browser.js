@@ -210,26 +210,109 @@
     return (nodeid === sel[0]);
   }
 
+  // The read in flight. Choosing another file quickly must not let a late answer land in the editor: the editor names its
+  // content after the file selected NOW, so an old answer would be shown, and later saved, as the new file.
+  // The largest file the editor opens: the admin's setting (site_settings.maxEditorFileMB, 1 to 16 MB), else 16, which is
+  // also the most: Firebase refuses a write over 16 MB (counted on the encoded text).
+  function maxEditorText() {
+    var mb = window.site_settings && Number(window.site_settings.maxEditorFileMB);
+    return (mb >= 1 && mb <= 16 ? mb : 16) * 1024 * 1024;
+  }
+  var loadRequest = null;
+  function StillSelected(id) {
+    var tree = $('#file-browser').jstree(true);
+    return !!tree && String(tree.get_selected()[0]) === String(id);
+  }
+
+  // Copy path / Copy relative path of the nodes of the Files panel to the clipboard, one per line.
+  function RelativeToHome(path) {
+    var home = String(window.homedir || "");
+    if (path === home) return ".";
+    return home && path.indexOf(home + "/") === 0 ? path.slice(home.length + 1) : path;
+  }
+  function CopyPaths(paths, relative) {
+    var text = paths.map(function (p) { return relative ? RelativeToHome(p) : p; }).join("\n");
+    var what = (relative ? "relative path" : "path") + (paths.length > 1 ? "s" : "");
+    var done = function () { notify("Copied the " + what + ".", { type: "success", timeout: 2500 }); };
+    var fallback = function () {
+      // no clipboard API (an insecure page, or a refusal): the old way, through a field that is selected
+      var field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(field);
+      field.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(field);
+      if (ok) done(); else notify("Could not copy. The " + what + " is: " + text, { type: "info", timeout: 12000 });
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  }
+
+  // read a file into the editor again (a tab's unsaved text was given up: 22-editor-tabs.js discard)
+  window.ReloadFileIntoEditor = function (id) { LoadSelectedNodeFromFile(String(id)); };
+
+  // A file the editor does not take (over its limit, or binary): its tab goes (nothing is written), then it opens in the
+  // read-only viewer, which shows a binary file as hex (24-large-file-viewer.js decides from the first piece).
+  function NotForTheEditor(id, size) {
+    if (window.EditorTabs) window.EditorTabs.refused(id);
+    if (window.LargeFileViewer) window.LargeFileViewer.open(id, size);
+  }
+
   function LoadSelectedNodeFromFile(newSelectedNodeId, errcallback=null) {
     // load the new selected file
         let type =  $('#file-browser').jstree(true).get_node(newSelectedNodeId).type;
+        if (loadRequest) { loadRequest.abort(); loadRequest = null; } // an AbortController
         if (type === "file") {
-          $.ajax({
-            url: preprocessurl("/ws_filebrowser?q=load&filepath="+newSelectedNodeId),
-            method: "GET"
-          }).done(function(data) {
-            // Handle successful response
-            var decodedResponse = atob(data);
-            updateEditorContent("", decodedResponse, true);
-            if (window.EditorTabs) window.EditorTabs.loaded(String(newSelectedNodeId), decodedResponse);
-            console.log("File Loaded successfully: "+newSelectedNodeId);
-          }).fail(function(xhr, status, error) {
-            // Handle error
-            console.log("Failed to load file: "+newSelectedNodeId, status, error);
-            if (typeof(errcallback)==="function") {
-              errcallback();
-            }
-          });
+          // the bytes themselves (enc=raw), which the server gzips when it pays: the browser undoes that, and a file
+          // that has not changed is answered with an empty 304 by the browser's own cache
+          var request = new AbortController();
+          loadRequest = request;
+          var stale = function () {
+            if (loadRequest === request) loadRequest = null;
+            return !StillSelected(newSelectedNodeId); // another file was chosen meanwhile
+          };
+          fetch(preprocessurl("/ws_filebrowser?q=load&enc=raw&max="+maxEditorText()+"&filepath="+encodeURIComponent(newSelectedNodeId)), { signal: request.signal, credentials: "same-origin" })
+            .then(function (res) {
+              if (res.status === 413) return { tooLarge: parseInt(res.headers.get("X-File-Size"), 10) || 0 };
+              if (!res.ok) return res.text().then(function (t) { throw new Error(t || res.statusText); });
+              return res.arrayBuffer().then(function (buf) { return { bytes: new Uint8Array(buf) }; });
+            })
+            .then(function (got) {
+              if (stale()) { console.log("File load dropped, another file is selected now: "+newSelectedNodeId); return; }
+              if (got.tooLarge !== undefined) {
+                // the server did not send a file over the editor's limit (max=): nothing was read. A viewer of the
+                // session does nothing: the shared editor shows what the owner's editor shows
+                if (isMaster()) NotForTheEditor(String(newSelectedNodeId), got.tooLarge);
+                return;
+              }
+              var decodedResponse = bytesToBinaryString(got.bytes);
+              // The editor is one document shared through Firebase, and a whole-file change is one write there (16 MB
+              // at most, "Write too large"). Text over that opens read-only in the large-file viewer instead (24-);
+              // a binary file is no text to edit: saving it again would damage it.
+              if (isMaster()) {
+                // the size counts as Firebase sees it: quotes, line ends and non-ASCII characters grow when encoded
+                // over the set limit, or (whatever the limit) too big for one Firebase write once encoded
+                var FIREBASE_WRITE = 16 * 1024 * 1024;
+                var big = decodedResponse.length > maxEditorText() ||
+                  (decodedResponse.length > FIREBASE_WRITE / 2 && JSON.stringify(decodedResponse).length > FIREBASE_WRITE);
+                if (big) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length); return; }
+                if (decodedResponse.indexOf("\u0000") >= 0) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length); return; }
+              }
+              updateEditorContent("", decodedResponse, true);
+              if (window.EditorTabs) window.EditorTabs.loaded(String(newSelectedNodeId), decodedResponse);
+              console.log("File Loaded successfully: "+newSelectedNodeId);
+            }, function (error) { // only the read failing: a fault in the code above is not a failed read
+              if (error && error.name === "AbortError") return; // replaced by a newer choice
+              if (stale()) return;
+              // Handle error
+              console.log("Failed to load file: "+newSelectedNodeId, error);
+              if (typeof(errcallback)==="function") {
+                errcallback();
+              }
+            });
         } else {
           // folder type, clear filename
           let editor = window["editor"];
@@ -285,6 +368,7 @@
       switch(eventdata.Op) {
         case eventOp.Create:
           console.log("Create recieved for: ", eventdata.Name);
+          if (window.FileMarks && eventdata.type === "file") window.FileMarks.event("create", eventdata.Name); // a new file, in the colors
           let parentnode = eventdata.Name.split('/').slice(0, -1).join('/');
           let nodename = eventdata.Name.split('/').slice(-1).join('/');
           $('#file-browser').jstree(true).create_node(parentnode, preprocessnodedata({ "id" : eventdata.Name, "text" : nodename, "type": eventdata.type }), "last", function(){
@@ -293,6 +377,7 @@
           break;
         case eventOp.Write:
           console.log("Write recieved for: ", eventdata.Name);
+          if (window.FileMarks) window.FileMarks.event("write", eventdata.Name); // a changed file, in the colors
           // the open files (22-editor-tabs.js): this page's own save coming back, or a file with unsaved changes in
           // a tab, is not read into the editor again
           if (window.EditorTabs && window.EditorTabs.write(eventdata.Name)) {
@@ -315,6 +400,7 @@
           break;
         case eventOp.Remove:
           console.log("Remove recieved for: ", eventdata.Name);
+          if (window.FileMarks) window.FileMarks.event("remove", eventdata.Name);
           $('#file-browser').jstree(true).delete_node(eventdata.Name, function() {
               console.log("Node with id " + eventdata.Name + " is deleted.");
           });
@@ -651,6 +737,33 @@
                   }
                 }
             };
+            // Copy path and Copy relative path: the node, or all the selected ones (one per line) when it is one of them.
+            // The path is the one the terminal sees; the relative one is under the workspace ("." for the workspace).
+            var pathsOf = function (data) {
+              var ref = $.jstree.reference(data.reference);
+              var sel = ref.get_selected().slice();
+              if (sel.indexOf($globalitemnode.id) < 0) { sel = [$globalitemnode.id]; }
+              return sel.map(String);
+            };
+            items.copypath = {
+              "label": "Copy path",
+              "icon": "ctx-i ctx-i-path",
+              "separator_before": true,
+              "action": function (data) { CopyPaths(pathsOf(data), false); }
+            };
+            items.copyrelpath = {
+              "label": "Copy relative path",
+              "icon": "ctx-i ctx-i-path",
+              "action": function (data) { CopyPaths(pathsOf(data), true); }
+            };
+            // the marks of changed and new files (26-file-marks.js), when there are any
+            if (window.FileMarks && window.FileMarks.count() > 0) {
+              items.clearmarks = {
+                "label": "Clear change marks",
+                "icon": "ctx-i ctx-i-check",
+                "action": function () { window.FileMarks.clear(); }
+              };
+            }
             // Add to Genie chat: the node, or all the selected ones when it is one of them
             items.genie = {
               "label": "Add to Genie chat",
@@ -674,7 +787,7 @@
               items.create.submenu = { "create_file": created.create_file, "create_folder": created.create_folder };
             }
             var menu = {};
-            ["create", "rename", "cut", "copy", "paste", "genie", "save", "download", "delete"].forEach(function (name) {
+            ["create", "rename", "cut", "copy", "paste", "copypath", "copyrelpath", "clearmarks", "genie", "save", "download", "delete"].forEach(function (name) {
               if (items[name]) { menu[name] = items[name]; }
             });
             return menu;
@@ -684,10 +797,18 @@
       }).on('ready.jstree', function() {
           if (window.EditorTabs) {
             // the open files follow a rename or a move (the tree changes the id) and a delete
-            $('#file-browser').on('set_id.jstree', function (ev, d) { window.EditorTabs.renamed(String(d.old), String(d.new)); });
-            $('#file-browser').on('delete_node.jstree', function (ev, d) { window.EditorTabs.removed(String(d.node.id)); });
+            $('#file-browser').on('set_id.jstree', function (ev, d) { window.EditorTabs.renamed(String(d.old), String(d.new)); if (window.FileMarks) window.FileMarks.renamed(String(d.old), String(d.new)); });
+            $('#file-browser').on('delete_node.jstree', function (ev, d) { window.EditorTabs.removed(String(d.node.id)); if (window.FileMarks) window.FileMarks.event("remove", String(d.node.id)); });
             window.EditorTabs.treeReady();
           }
+          if (window.FileMarks) window.FileMarks.attach(); // the colors of changed files follow the rows as they are drawn
+          // The workspace folder is open when the panel is first shown, so that its files and folders are there to see.
+          // (The tree's own saved state lasts under a second, STATE_TTL, so it does not decide this.)
+          (function () {
+            var t = $('#file-browser').jstree(true);
+            var rootId = t && t.get_node('#') && t.get_node('#').children[0];
+            if (rootId && !t.is_open(rootId)) t.open_node(rootId);
+          })();
           // Add custom row after jstree has finished rendering
           $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
 
@@ -792,6 +913,9 @@
           // the open files (22-editor-tabs.js): the file left keeps its text, the chosen one becomes a tab, and its text
           // is put back from memory when it has been open before (then it is not read from the server)
           var restoredFromTab = false;
+          // another file was chosen. The file the viewer shows, chosen again, keeps it: the shared selection can come back
+          // a moment late with the file that was chosen first, after the viewer has opened
+          if (window.LargeFileViewer) window.LargeFileViewer.closeUnlessFor(String(newSelectedNodeId));
           if (window.EditorTabs && newSelectedNodeId!==undefined && newSelectedNodeId!="") {
             window.EditorTabs.beforeSwitch(String(newSelectedNodeId));
             restoredFromTab = window.EditorTabs.selected(String(newSelectedNodeId), !!alreadyOpen);

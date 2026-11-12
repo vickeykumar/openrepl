@@ -21,6 +21,7 @@ import (
 	"gateway"
 	"webtty"
 	"filebrowser"
+	"fileload"
 	"meters"
 	"utils"
 	"cookie"
@@ -577,18 +578,8 @@ func (server *Server) handleFileBrowser(rw http.ResponseWriter, req *http.Reques
 				http.Error(rw, path+" is not a Valid file", http.StatusBadRequest)
 				return
 			}
-			content, err := ioutil.ReadFile(path)
-		    if err != nil {
-		        http.Error(rw, err.Error(), http.StatusInternalServerError)
-		        return
-		    }
-
-		    // encode the content in base64
-		    encoded := base64.StdEncoding.EncodeToString(content)
-
-		    // set the response header and write the encoded content
-		    rw.Header().Set("Content-Type", "text/plain")
-		    fmt.Fprintf(rw, encoded)
+			// the file as base64; a size limit (max=) or a piece (offset=, length=) can be asked for (package fileload)
+			fileload.Serve(rw, req, path)
 		} else if query == "zip" {
 			parentDir := filepath.Dir(homedir)	// get parent of homedir
 			filename := strings.TrimPrefix(path, parentDir+"/")

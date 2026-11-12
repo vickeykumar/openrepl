@@ -112,3 +112,303 @@ test("with no room the strip scrolls and the buttons beside it stay", async ({ p
   const box = await tools.boundingBox();
   expect(box.x + box.width).toBeLessThanOrEqual(820);
 });
+
+// The bug this guards: choosing files quickly let a late answer of the server land in the editor under the name of the
+// file chosen last; closing that tab then saved the wrong text into the file.
+test("choosing files quickly never puts one file's text in another, and closing saves nothing wrong", async ({ page }) => {
+  await ready(page);
+  const anchors = await openFiles(page, 3);
+  const paths = await page.evaluate(() => window.EditorTabs.state().tabs);
+  expect(paths).toHaveLength(3);
+  // give each file its own text, saved to the server
+  for (let i = 0; i < 3; i++) {
+    await anchors[i].click();
+    await expect(tabs(page).filter({ hasText: fname(i + 1) })).toHaveAttribute("aria-selected", "true");
+    await page.evaluate(async (text) => {
+      window.editor.env.editor.setValue(text, -1);
+      window.SaveSelectedNodeToFile(window.editor.env.filename);
+    }, "text of file " + (i + 1));
+    await expect(tabs(page).filter({ hasText: fname(i + 1) }).locator(".etab__dot")).toHaveCount(0);
+  }
+  // reload: the tabs come back, but their text has to be read from the server again
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+  await expect(tabs(page)).toHaveCount(3);
+  // the first file's answer comes late, the second's at once
+  await page.route(/q=load.*tab1-/, async (route) => {
+    await new Promise((r) => setTimeout(r, 2500));
+    try { await route.continue(); } catch (e) { /* the page gave the request up: fine */ }
+  });
+  await tabs(page).filter({ hasText: fname(1) }).click();
+  await tabs(page).filter({ hasText: fname(2) }).click();
+  await expect.poll(() => page.evaluate(() => window.editor.env.editor.getValue())).toBe("text of file 2");
+  await page.waitForTimeout(3000); // the late answer has come (or was given up) by now
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).toBe("text of file 2");
+  expect(await page.evaluate(() => window.editor.env.filename)).toContain(fname(2));
+  await tabs(page).filter({ hasText: fname(2) }).locator(".etab__x").click();
+  await expect(tabs(page)).toHaveCount(2);
+  // every file on the server still has its own text
+  for (let i = 1; i <= 3; i++) {
+    const got = await page.evaluate(async (path) => {
+      return atob(await $.ajax({ url: preprocessurl("/ws_filebrowser?q=load&filepath=" + path), method: "GET" }));
+    }, paths[i - 1]);
+    expect(got, "file " + i).toBe("text of file " + i);
+  }
+});
+
+test("closing a tab that was only opened writes nothing to the server, whatever the file holds", async ({ page }) => {
+  await ready(page);
+  const anchor = await makeFile(page, fname(1));
+  // odd line ends and a high character: the editor may write them differently from the file
+  await anchor.click();
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveAttribute("aria-selected", "true");
+  const file = await page.evaluate(() => window.EditorTabs.state().tabs[0]);
+  await page.evaluate(
+    (p) => $.ajax({ url: preprocessurl("/ws_filebrowser?q=save&filepath=" + p), method: "POST", processData: false, data: btoa("a\r\nb\rc\ndé"), contentType: "application/octet-stream" }),
+    file
+  );
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+  const saves = [];
+  page.on("request", (r) => { if (/q=save/.test(r.url())) saves.push(r.url()); });
+  await tabs(page).filter({ hasText: fname(1) }).click();
+  await expect.poll(() => page.evaluate(() => window.editor.env.filename)).toContain(fname(1));
+  await expect(tabs(page).filter({ hasText: fname(1) }).locator(".etab__dot")).toHaveCount(0);
+  await tabs(page).filter({ hasText: fname(1) }).locator(".etab__x").click();
+  await expect(tabs(page)).toHaveCount(0);
+  expect(saves).toEqual([]);
+});
+
+test("a binary file is not opened in the shared editor: it opens read-only as a hex dump, and its tab does not stay", async ({ page }) => {
+  await ready(page);
+  const anchor = await makeFile(page, fname(1));
+  await anchor.click();
+  const file = await page.evaluate(() => window.EditorTabs.state().tabs[0]);
+  await page.evaluate(
+    (p) => $.ajax({ url: preprocessurl("/ws_filebrowser?q=save&filepath=" + p), method: "POST", processData: false, data: btoa("ELF\u0000\u0001binary"), contentType: "application/octet-stream" }),
+    file
+  );
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+  // The file was just written, and the page may have read it again and closed its tab already (it is binary now), so
+  // the tab is not relied on: the file is chosen in the tree, as a click on it does.
+  await page.evaluate((p) => window.FileSearch.go(p), file);
+  const viewer = await expectViewer(page);
+  await expect(viewer.locator(".lv__name")).toContainText("(hex)");
+  await expect(viewer.locator(".lv__text")).toContainText("00000000  45 4c 46 00 01 62 69 6e");
+  await expect(viewer.locator(".lv__text")).toContainText("|ELF..binary|");
+  await expect(tabs(page)).toHaveCount(0);
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).not.toContain("ELF");
+});
+
+// A text file over the editor's limit opens read-only in a viewer, in pieces. The server's answers are faked here (a
+// real 17 MB file would only slow the test): the plain load says "too large", the pieces come from the offset.
+async function fakeBigFile(page, size) {
+  const seen = { saves: 0 };
+  await page.route(/q=save/, (route) => { seen.saves++; route.continue(); });
+  await page.route(/q=load.*tab1-/, (route) => {
+    const q = new URL(route.request().url()).searchParams;
+    if (q.get("offset") === null) {
+      return route.fulfill({ status: 413, headers: { "X-File-Size": String(size) }, body: "file too large" });
+    }
+    const offset = Math.min(Number(q.get("offset")), size);
+    // as long as the real server's piece: up to 1 MB, and shorter at the end of the file
+    const text = `piece at ${offset}\n`.padEnd(Math.min(1048576, size - offset), " ");
+    return route.fulfill({
+      status: 200,
+      headers: { "X-File-Size": String(size), "X-Chunk-Offset": String(offset), "X-Chunk-Length": String(text.length), "Content-Type": "application/octet-stream" },
+      body: Buffer.from(text),
+    });
+  });
+  // After a reload the page may select the file it had open on its own, and read it before this fake was in place (the
+  // shared selection comes back from Firebase a moment after the page loads). Clicking a tab that is already selected
+  // reads nothing, so the selection is let go of first.
+  // (and the editor is told it holds no file: a file it already holds is not read again)
+  await page.evaluate(() => {
+    window.editor.env.filename = "";
+    $("#file-browser").jstree(true).deselect_all(true);
+  });
+  return seen;
+}
+
+// The viewer is expected to open. When it does not, the failure says what the page showed instead (the notices, whether the
+// viewer was built, and the selection), so that a failure on a machine that cannot be reached is not a mystery.
+async function expectViewer(page) {
+  const viewer = page.locator("#large-viewer");
+  try {
+    await expect(viewer).toBeVisible({ timeout: 15000 });
+  } catch (e) {
+    const seen = await page.evaluate(() => ({
+      built: !!document.getElementById("large-viewer"),
+      hidden: document.getElementById("large-viewer") ? document.getElementById("large-viewer").hidden : null,
+      isOpen: window.LargeFileViewer ? window.LargeFileViewer.isOpen() : null,
+      notices: [...document.querySelectorAll(".notice")].map((n) => n.textContent.trim().slice(0, 120)),
+      selected: window.jQuery ? $("#file-browser").jstree(true).get_selected() : null,
+      file: window.editor && window.editor.env ? window.editor.env.filename : null,
+      tabs: window.EditorTabs ? window.EditorTabs.state() : null,
+    }));
+    throw new Error("the viewer did not open: " + JSON.stringify(seen));
+  }
+  return viewer;
+}
+
+// What the page does with a file that is over the editor's limit (07-file-browser.js, NotForTheEditor): its tab goes and the
+// viewer opens. It is done here directly. Going through a click on a tab and a read that the test answers with "too large"
+// depends on the page not having read the file before the answer was in place, and on a shared selection that comes back
+// from Firebase at a time of its own: on a machine that is slow it came out differently from run to run.
+async function openInViewer(page, size) {
+  await page.evaluate((n) => {
+    const file = window.EditorTabs.state().tabs[0];
+    window.EditorTabs.refused(file);
+    window.LargeFileViewer.open(file, n);
+  }, size);
+}
+
+async function reopenFirstFile(page) {
+  const anchor = await makeFile(page, fname(1));
+  await anchor.click();
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveAttribute("aria-selected", "true");
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+  await waitForTerminalReady(page);
+}
+
+test("text over the editor's limit opens read-only in pieces, and nothing is written or shared", async ({ page }) => {
+  await ready(page);
+  await reopenFirstFile(page);
+  const seen = await fakeBigFile(page, 3000000);
+  await openInViewer(page, 3000000);
+  const viewer = await expectViewer(page);
+  await expect(viewer.locator(".lv__text")).toContainText("piece at 0");
+  await expect(viewer.locator(".lv__range")).toContainText("3,000,000");
+  await expect(tabs(page)).toHaveCount(0); // no tab: it is not in the editor
+  await viewer.getByRole("button", { name: "Next" }).click();
+  await expect(viewer.locator(".lv__text")).toContainText("piece at 1048576");
+  await viewer.getByRole("button", { name: "End" }).click();
+  await expect(viewer.locator(".lv__text")).toContainText("piece at 1951424");
+  await expect(viewer.getByRole("button", { name: "Next" })).toBeDisabled();
+  await viewer.getByRole("button", { name: "Start" }).click();
+  await expect(viewer.getByRole("button", { name: "Previous" })).toBeDisabled();
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).not.toContain("piece at");
+  await viewer.getByRole("button", { name: "Close" }).click();
+  await expect(viewer).toBeHidden();
+  expect(seen.saves).toBe(0);
+});
+
+test("the viewer's Terminal button types a command into the terminal and does not run it", async ({ page }) => {
+  await ready(page);
+  await reopenFirstFile(page);
+  await fakeBigFile(page, 3000000);
+  await openInViewer(page, 3000000);
+  const viewer = await expectViewer(page);
+  await viewer.getByRole("button", { name: "Terminal" }).click();
+  await expect
+    .poll(async () => (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " "))
+    .toContain("more '");
+  // a long path wraps at the width of the terminal: the screen text breaks it into lines
+  const shown = (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " ").replace(/\n/g, "");
+  expect(shown).toContain(fname(1));
+});
+
+test("bytes become the same text the editor has always held, for any byte and any length", async ({ page }) => {
+  await ready(page);
+  const ok = await page.evaluate(() => {
+    const bytes = new Uint8Array(20000);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = i % 256;
+    const text = window.bytesToBinaryString(bytes);
+    if (text.length !== 20000) return "length " + text.length;
+    for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) !== i % 256) return "byte " + i;
+    return window.bytesToBinaryString(new Uint8Array([97, 233, 255, 0])) === "aéÿ\u0000" ? "ok" : "small";
+  });
+  expect(ok).toBe("ok");
+});
+
+test("the page is told the largest file the editor opens, from 1 to 16 MB", async ({ page }) => {
+  await ready(page);
+  const mb = await page.evaluate(() => window.site_settings && window.site_settings.maxEditorFileMB);
+  expect(mb).toBeGreaterThanOrEqual(1);
+  expect(mb).toBeLessThanOrEqual(16);
+});
+
+// The site gzips its responses. A file of many kilobytes has to arrive as itself: once it arrived as gzip bytes, which
+// the page took for a binary file.
+test("a text file of many kilobytes opens with its own text", async ({ page }) => {
+  await ready(page);
+  const anchor = await makeFile(page, fname(1));
+  await anchor.click();
+  const file = await page.evaluate(() => window.EditorTabs.state().tabs[0]);
+  const text = Array.from({ length: 1500 }, (_, i) => `line ${i}: 2026-11-12 INFO request id=${i * 7} took=${i % 90}ms`).join("\n");
+  await page.evaluate(
+    ([p, t]) => $.ajax({ url: preprocessurl("/ws_filebrowser?q=save&filepath=" + p), method: "POST", processData: false, data: btoa(t), contentType: "application/octet-stream" }),
+    [file, text]
+  );
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+  await tabs(page).filter({ hasText: fname(1) }).click();
+  await expect.poll(() => page.evaluate(() => window.editor.env.editor.getValue()), { timeout: 15000 }).toBe(text);
+  await expect(page.locator("#large-viewer")).toBeHidden();
+});
+
+// All files shared one undo history: after a switch, Ctrl+Z brought the text of the file that was shown before into the
+// file that is shown now (and a save or a close then wrote it there).
+test("undo after switching files does not bring back another file's text, and undo in a file still works", async ({ page }) => {
+  await ready(page);
+  const anchors = await openFiles(page, 2);
+  await anchors[0].click();
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveAttribute("aria-selected", "true");
+  await page.evaluate(() => window.editor.env.editor.insert("typed in the first file"));
+  await anchors[1].click();
+  await expect(tabs(page).filter({ hasText: fname(2) })).toHaveAttribute("aria-selected", "true");
+  const shown = await page.evaluate(() => window.editor.env.editor.getValue());
+  expect(shown).not.toContain("typed in the first file");
+  // however many times undo is asked for, the second file keeps its own text
+  await page.evaluate(() => { for (let i = 0; i < 5; i++) window.editor.env.editor.undo(); });
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).toBe(shown);
+  // undo in the file that is shown still takes back what is typed in it
+  await page.evaluate(() => window.editor.env.editor.insert("abc"));
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).toBe(shown + "abc");
+  await page.evaluate(() => window.editor.env.editor.undo());
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).toBe(shown);
+});
+
+// Each tab keeps its own undo history while another is shown, and takes it back when it is shown again.
+test("each tab keeps its own undo history across switches", async ({ page }) => {
+  await ready(page);
+  const anchors = await openFiles(page, 2);
+  const ed = (fn, arg) => page.evaluate(fn, arg);
+  const value = () => page.evaluate(() => window.editor.env.editor.getValue());
+  const type = async (text) => {
+    await page.evaluate((t) => { const e = window.editor.env.editor; e.session.getUndoManager().startNewGroup(); e.insert(t); }, text);
+  };
+  const show = async (i) => {
+    await anchors[i].click();
+    await expect(tabs(page).filter({ hasText: fname(i + 1) })).toHaveAttribute("aria-selected", "true");
+  };
+  await show(0);
+  await type("a");
+  await type("b");
+  await show(1);
+  await type("x");
+  await type("y");
+  expect(await value()).toBe("xy");
+  // back to the first: its text, and its own two steps of history
+  await show(0);
+  expect(await value()).toBe("ab");
+  await ed(() => window.editor.env.editor.undo());
+  expect(await value()).toBe("a");
+  await ed(() => window.editor.env.editor.undo());
+  expect(await value()).toBe("");
+  await ed(() => { for (let i = 0; i < 3; i++) window.editor.env.editor.undo(); });
+  expect(await value()).toBe(""); // nothing of the other file
+  // the second file still has its history, and redo works in the first
+  await ed(() => window.editor.env.editor.redo());
+  expect(await value()).toBe("a");
+  await show(1);
+  expect(await value()).toBe("xy");
+  await ed(() => window.editor.env.editor.undo());
+  expect(await value()).toBe("x");
+  // a file that is only looked at has no history to undo into the previous file's text
+  await show(0);
+  await ed(() => { for (let i = 0; i < 4; i++) window.editor.env.editor.undo(); });
+  expect(await value()).toBe("");
+});

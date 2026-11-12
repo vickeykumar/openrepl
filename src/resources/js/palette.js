@@ -2,6 +2,8 @@
  * Command palette and keyboard shortcuts (T14).
  *
  *   Ctrl/Cmd + Shift + P   open the palette from anywhere, the editor and terminal included
+ *   Ctrl/Cmd + Shift + O   "Go to file": the same palette in its second mode, which lists the workspace's files
+ *                          (page/25-file-search.js); typing ">" there goes back to the commands
  *   Ctrl/Cmd + K           open the palette outside the editor and terminal (they use Ctrl+K)
  *   Ctrl + `               move between the editor and the terminal
  *   ?                      list the shortcuts (outside text fields)
@@ -21,6 +23,7 @@
   var root = null, input = null, listEl = null, emptyEl = null, statusEl = null, titleEl = null;
   var searchRow = null, shortcutsEl = null, footEl = null;
   var items = [], shown = [], active = 0, returnFocus = null, mode = "commands";
+  var fileList = null; // the workspace's files, read once when "Go to file" opens
 
   function byId(id) { return document.getElementById(id); }
   function hasWorkspace() { return !!byId("workspace"); }
@@ -125,6 +128,7 @@
 
       add("Editor", "Focus the editor", focusEditor, { keys: ["Ctrl", "`"], words: "go to code" });
       add("Editor", "Save the open file", saveFile, { keys: [MOD, "S"], words: "write" });
+      if (window.Unsaved && window.Unsaved.count() > 0) add("Editor", "Save all files", function () { window.Unsaved.saveAll(); }, { keys: [MOD, "Alt", "S"], words: "write every changed unsaved tabs" });
       add("Editor", "Download the editor code", call("DownloadEditor"), { words: "export save as" });
       add("Editor", editorShown() ? "Hide the editor" : "Show the editor", call("ToggleEditor"), { words: "toggle layout" });
       var rot = byId("rotate-button-label");
@@ -135,6 +139,8 @@
       add("Editor", max ? "Restore the workspace" : "Maximize the workspace", call("ToggleFunction"), { keys: max ? ["Esc"] : null, words: "fullscreen full screen" });
 
       var filesOpen = !document.body.classList.contains("files-collapsed");
+      if (window.FileMarks && window.FileMarks.count() > 0) add("Files", "Clear change marks", function () { window.FileMarks.clear(); }, { words: "colors changed new modified reset" });
+      if (window.FileSearch) add("Files", "Go to file\u2026", function () { open("files"); }, { keys: [MOD, SHIFT, "O"], words: "find open search quick file name jump" });
       add("Files", filesOpen ? "Hide files" : "Show files", call("setFilesPanel", !filesOpen), { words: "panel tree sidebar" });
       add("Files", "Upload a file", clickId("upload-button"), { words: "import add" });
       add("Files", "Download the workspace as a zip", clickId("download-workspace-button"), { words: "export archive" });
@@ -173,7 +179,29 @@
   }
 
   // ---- search ---------------------------------------------------------------
+  // the files, for "Go to file": the open tabs and the rest when nothing is typed, else the best matches
+  function fileItems(query) {
+    if (!window.FileSearch) return [];
+    return window.FileSearch.search(query, fileList).map(function (r) {
+      return {
+        group: r.file.open ? "Open tabs" : "Files", label: r.file.name, dir: r.file.dir, indices: r.indices, open: r.file.open, file: true,
+        run: function () { window.FileSearch.go(r.file.path); }
+      };
+    });
+  }
+
+  // the name with the letters that matched underlined
+  function hitHtml(name, indices) {
+    if (!indices || !indices.length) return esc(name);
+    var at = {};
+    indices.forEach(function (i) { at[i] = true; });
+    var out = "";
+    for (var i = 0; i < name.length; i++) out += at[i] ? '<span class="palette__hit">' + esc(name.charAt(i)) + "</span>" : esc(name.charAt(i));
+    return out;
+  }
+
   function filter(query) {
+    if (mode === "files") return fileItems(query);
     var q = query.trim().toLowerCase();
     if (!q) return items.slice();
     var words = q.split(/\s+/);
@@ -204,7 +232,13 @@
         openGroup = true;
         lastGroup = it.group;
       }
-      var right = it.keys ? kbd(it.keys) : (grouped ? "" : '<span class="palette__tag">' + esc(it.group) + "</span>");
+      var right = it.keys ? kbd(it.keys) : (grouped ? "" : '<span class="palette__tag">' + esc(it.file ? (it.open ? "open tab" : "") : it.group) + "</span>");
+      if (it.file) {
+        html += '<div class="palette__item palette__item--file" role="option" id="palette-opt-' + i + '" data-i="' + i + '" aria-selected="false">' +
+          '<span class="palette__label">' + hitHtml(it.label, it.indices) + "</span>" +
+          '<span class="palette__dir">' + esc(it.dir) + "</span>" + right + "</div>";
+        return;
+      }
       html += '<div class="palette__item" role="option" id="palette-opt-' + i + '" data-i="' + i + '" aria-selected="false">' +
         '<span class="palette__label">' + esc(it.label) + "</span>" + right + "</div>";
     });
@@ -212,7 +246,8 @@
     listEl.innerHTML = html;
     emptyEl.hidden = shown.length > 0;
     listEl.hidden = shown.length === 0;
-    statusEl.textContent = shown.length === 1 ? "1 command" : shown.length + " commands";
+    var noun = mode === "files" ? "file" : "command";
+    statusEl.textContent = shown.length === 1 ? "1 " + noun : shown.length + " " + noun + "s";
     setActive(0);
   }
 
@@ -243,9 +278,11 @@
     ["Run the editor code", [MOD, "↵"]],
     ["Debug the editor code", [SHIFT, MOD, "↵"]],
     ["Open commands, from anywhere", [MOD, SHIFT, "P"]],
+    ["Go to a file by name, from anywhere", [MOD, SHIFT, "O"]],
     ["Open commands, outside the editor and terminal", [MOD, "K"]],
     ["Move between the editor and the terminal", ["Ctrl", "`"]],
     ["Save the open file, in the editor", [MOD, "S"]],
+    ["Save all changed files", [MOD, "Alt", "S"]],
     ["Leave the editor or terminal", ["Esc", "then", "Tab"]],
     ["Restore a maximized workspace", ["Esc"]],
     ["Show this list, outside text fields", ["?"]]
@@ -284,7 +321,7 @@
         '<div class="palette__list" id="palette-list" role="listbox" aria-label="Commands"></div>' +
         '<p class="palette__empty" id="palette-empty" hidden>No matching commands.</p>' +
         '<div class="palette__shortcuts" id="palette-shortcuts" hidden></div>' +
-        '<div class="palette__foot" id="palette-foot" aria-hidden="true"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> run</span><span><kbd>Esc</kbd> close</span></div>' +
+        '<div class="palette__foot" id="palette-foot" aria-hidden="true"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span id="palette-foot-act"><kbd>↵</kbd> run</span><span><kbd>Esc</kbd> close</span></div>' +
         '<p class="visually-hidden" id="palette-status" aria-live="polite"></p>' +
       "</div>";
     document.body.appendChild(root);
@@ -297,8 +334,17 @@
     shortcutsEl = byId("palette-shortcuts");
     footEl = byId("palette-foot");
 
-    input.addEventListener("input", render);
+    input.addEventListener("input", function () {
+      // in "Go to file", a first ">" goes to the commands, with the rest as the search (the usual way in code editors)
+      if (mode === "files" && input.value.charAt(0) === ">") {
+        var rest = input.value.slice(1);
+        setMode("commands");
+        input.value = rest;
+      }
+      render();
+    });
     input.addEventListener("keydown", function (e) {
+      if (e.key === "Backspace" && mode === "files" && input.value === "") { e.preventDefault(); setMode("commands"); return; }
       if (e.key === "ArrowDown") { e.preventDefault(); setActive(active + 1); }
       else if (e.key === "ArrowUp") { e.preventDefault(); setActive(active - 1); }
       else if (e.key === "PageDown") { e.preventDefault(); setActive(Math.min(active + 8, shown.length - 1)); }
@@ -326,7 +372,15 @@
     byId("palette-shortcuts-head").hidden = !sc;
     shortcutsEl.hidden = !sc;
     footEl.hidden = sc;
-    titleEl.textContent = sc ? "Keyboard shortcuts" : "Commands";
+    titleEl.textContent = sc ? "Keyboard shortcuts" : m === "files" ? "Go to file" : "Commands";
+    if (!sc) {
+      var files = m === "files";
+      input.placeholder = files ? "Go to file by name (type > for commands)" : "Type a command or a language";
+      input.setAttribute("aria-label", files ? "Search files by name" : "Search commands");
+      listEl.setAttribute("aria-label", files ? "Files" : "Commands");
+      emptyEl.textContent = files ? "No matching files." : "No matching commands.";
+      byId("palette-foot-act").innerHTML = files ? "<kbd>↵</kbd> open" : "<kbd>↵</kbd> run";
+    }
     if (sc) {
       listEl.hidden = true;
       emptyEl.hidden = true;
@@ -334,7 +388,8 @@
       renderShortcuts();
       byId("palette-close").focus();
     } else {
-      items = buildCommands();
+      items = m === "files" ? [] : buildCommands();
+      if (m === "files") fileList = window.FileSearch ? window.FileSearch.files() : [];
       input.value = "";
       render();
       input.focus();
@@ -384,8 +439,18 @@
     var mod = MAC ? e.metaKey : e.ctrlKey;
     var isP = e.code === "KeyP" || e.key === "p" || e.key === "P";
     var isK = e.code === "KeyK" || e.key === "k" || e.key === "K";
+    var isO = e.code === "KeyO" || e.key === "o" || e.key === "O";
 
     if (isOpen()) {
+      // the two modes: each shortcut closes its own mode and switches from the other
+      if (mod && e.shiftKey && !e.altKey && (isO || isP) && mode !== "shortcuts") {
+        e.preventDefault();
+        e.stopPropagation();
+        var want = isO ? "files" : "commands";
+        if (mode === want) close(true);
+        else if (want !== "files" || hasWorkspace()) setMode(want);
+        return;
+      }
       if (e.key === "Escape" || (mod && !e.altKey && ((e.shiftKey && isP) || (!e.shiftKey && isK)))) {
         e.preventDefault();
         e.stopPropagation();
@@ -401,6 +466,12 @@
       e.preventDefault();
       e.stopPropagation();
       open("commands");
+      return;
+    }
+    if (mod && e.shiftKey && !e.altKey && isO && hasWorkspace()) {
+      e.preventDefault();
+      e.stopPropagation();
+      open("files");
       return;
     }
     if (mod && !e.shiftKey && !e.altKey && isK && !inCodeArea(e.target)) {
@@ -430,6 +501,18 @@
     b.setAttribute("aria-keyshortcuts", MAC ? "Meta+K Meta+Shift+P" : "Control+K Control+Shift+P");
     b.addEventListener("click", function () { open("commands"); });
   }
+  // the search button of the Files panel
+  function initFilesButton() {
+    var b = byId("filesearch-button");
+    if (!b) return;
+    var label = "Go to file by name (" + (MAC ? "⇧⌘O" : "Ctrl+Shift+O") + ")";
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.setAttribute("aria-keyshortcuts", MAC ? "Meta+Shift+O" : "Control+Shift+O");
+    b.addEventListener("click", function () { open("files"); });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initFilesButton);
+  else initFilesButton();
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initButton);
   else initButton();
 

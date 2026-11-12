@@ -30,10 +30,10 @@ test.describe("terminal hide and show", () => {
   });
 
   test("Ctrl+` toggles it", async ({ page }) => {
-    await page.keyboard.press("Control+Backquote");
+    await page.keyboard.press("ControlOrMeta+Backquote");
     await expect(terminal(page)).toBeHidden();
     await expect(bar(page)).toBeVisible();
-    await page.keyboard.press("Control+Backquote");
+    await page.keyboard.press("ControlOrMeta+Backquote");
     await expect(terminal(page)).toBeVisible();
   });
 
