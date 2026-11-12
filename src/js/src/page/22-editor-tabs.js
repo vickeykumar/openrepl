@@ -21,6 +21,7 @@ var sharedRef = null;      // firebase: file-browser/<id>/tabs
 var warned = {};           // path -> true once told "changed outside"
 var ignoreStash = null;    // a tab being closed: its text is not kept again on the switch it causes
 var lane = null;
+var lastRevealed = null;  // the file whose tab was last brought into view
 var MAX_DRAFT = 500 * 1024;
 
 function master() { return typeof isMaster === "function" ? isMaster() : true; }
@@ -172,8 +173,13 @@ function render() {
     }
     lane.appendChild(tab);
   });
+  // the shown tab is brought into view when the shown file changes, not on every redraw (a redraw happens while the
+  // user types, and must not pull a lane they scrolled away)
   var on = lane.querySelector(".etab.active");
-  if (on && window.TabLane) window.TabLane.reveal(lane, on);
+  if (on && view.active !== lastRevealed && window.TabLane) {
+    lastRevealed = view.active;
+    window.TabLane.reveal(lane, on);
+  }
 }
 
 function laneEvents() {

@@ -31,9 +31,16 @@ function enhance(lane, activeSelector) {
   }, { passive: false });
   lane.addEventListener("scroll", function () { edges(lane); }, { passive: true });
   if (window.MutationObserver) {
+    // The shown tab is brought into view when IT changes, and not on every change of the lane: edges() sets classes on
+    // the lane itself, and reacting to those pulled the lane back to the shown tab whenever the user scrolled away
+    // from it (scrolling to the first tab jumped back to the last).
+    var lastShown = null;
     new MutationObserver(function () {
       var on = lane.querySelector(activeSelector);
-      if (on) reveal(lane, on);
+      if (on && on !== lastShown) {
+        lastShown = on;
+        reveal(lane, on);
+      }
       edges(lane);
     }).observe(lane, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
   }
