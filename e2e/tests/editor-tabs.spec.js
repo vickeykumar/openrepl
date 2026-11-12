@@ -190,7 +190,9 @@ test("a binary file is not opened in the shared editor: it opens read-only as a 
   );
   await page.reload();
   await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
-  await tabs(page).filter({ hasText: fname(1) }).click();
+  // The file was just written, and the page may have read it again and closed its tab already (it is binary now), so
+  // the tab is not relied on: the file is chosen in the tree, as a click on it does.
+  await page.evaluate((p) => window.FileSearch.go(p), file);
   const viewer = page.locator("#large-viewer");
   await expect(viewer).toBeVisible();
   await expect(viewer.locator(".lv__name")).toContainText("(hex)");
