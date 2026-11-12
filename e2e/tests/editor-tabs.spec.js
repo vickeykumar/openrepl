@@ -288,3 +288,22 @@ test("the page is told the largest file the editor opens, from 1 to 16 MB", asyn
   expect(mb).toBeGreaterThanOrEqual(1);
   expect(mb).toBeLessThanOrEqual(16);
 });
+
+// The site gzips its responses. A file of many kilobytes has to arrive as itself: once it arrived as gzip bytes, which
+// the page took for a binary file.
+test("a text file of many kilobytes opens with its own text", async ({ page }) => {
+  await ready(page);
+  const anchor = await makeFile(page, fname(1));
+  await anchor.click();
+  const file = await page.evaluate(() => window.EditorTabs.state().tabs[0]);
+  const text = Array.from({ length: 1500 }, (_, i) => `line ${i}: 2026-11-12 INFO request id=${i * 7} took=${i % 90}ms`).join("\n");
+  await page.evaluate(
+    ([p, t]) => $.ajax({ url: preprocessurl("/ws_filebrowser?q=save&filepath=" + p), method: "POST", processData: false, data: btoa(t), contentType: "application/octet-stream" }),
+    [file, text]
+  );
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+  await tabs(page).filter({ hasText: fname(1) }).click();
+  await expect.poll(() => page.evaluate(() => window.editor.env.editor.getValue()), { timeout: 15000 }).toBe(text);
+  await expect(page.locator("#large-viewer")).toBeHidden();
+});

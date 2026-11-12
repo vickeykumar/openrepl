@@ -8,13 +8,13 @@
 //   - length=<bytes> (and offset=<bytes>): a piece of the file, for the read-only viewer of big files. The piece is
 //     at most MaxChunk bytes; X-File-Size, X-Chunk-Offset and X-Chunk-Length say where it is.
 //
-// The body is base64 text (the original form), or with enc=raw the bytes themselves (application/octet-stream) which
-// are gzip-compressed when the browser accepts it and there is enough to gain: base64 makes a file a third bigger, and
-// text compresses to a fraction of its size. The browser undoes the gzip by itself.
+// The body is base64 text (the original form), or with enc=raw the bytes themselves (application/octet-stream):
+// base64 makes a file a third bigger. Compression is not done here: the whole site is behind a gzip handler
+// (server.go, gziphandler) that compresses every response of this size and kind when the browser accepts it, and
+// compressing here too made a body gzipped twice, which the browser undid once, handing the page gzip bytes.
 package fileload
 
 import (
-	"compress/gzip"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -26,9 +26,6 @@ import (
 
 // MaxChunk is the most one request reads with length=.
 const MaxChunk = 4 << 20
-
-// Bodies shorter than this are not compressed: the saving is nothing and the header costs more.
-const minGzip = 1024
 
 // Every answer carries an ETag made of the file's modification time and size, and "Cache-Control: no-cache", which
 // lets a browser keep the answer but makes it ask the server before using it again. A file that has not changed is
@@ -143,23 +140,5 @@ func write(rw http.ResponseWriter, req *http.Request, b []byte) {
 		return
 	}
 	rw.Header().Set("Content-Type", "application/octet-stream")
-	rw.Header().Add("Vary", "Accept-Encoding")
-	if len(b) >= minGzip && acceptsGzip(req) {
-		rw.Header().Set("Content-Encoding", "gzip")
-		zw, _ := gzip.NewWriterLevel(rw, gzip.BestSpeed)
-		zw.Write(b)
-		zw.Close()
-		return
-	}
 	rw.Write(b)
-}
-
-func acceptsGzip(req *http.Request) bool {
-	for _, part := range strings.Split(req.Header.Get("Accept-Encoding"), ",") {
-		name := strings.TrimSpace(strings.SplitN(part, ";", 2)[0])
-		if strings.EqualFold(name, "gzip") && !strings.Contains(part, "q=0") {
-			return true
-		}
-	}
-	return false
 }

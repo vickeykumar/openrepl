@@ -2,7 +2,6 @@ package fileload
 
 import (
 	"bytes"
-	"compress/gzip"
 	"encoding/base64"
 	"io"
 	"net/http"
@@ -12,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/NYTimes/gziphandler"
 )
 
 func get(t *testing.T, path, query string, header ...string) *httptest.ResponseRecorder {
@@ -163,36 +164,44 @@ func TestATooLargeFileIsRefusedEvenWhenTheBrowserHoldsATag(t *testing.T) {
 	}
 }
 
-func TestRawIsTheBytesThemselvesAndGzippedWhenItPaysAndIsAccepted(t *testing.T) {
-	small := file(t, "hello")
-	rec := get(t, small, "q=load&enc=raw", "Accept-Encoding", "gzip")
-	if rec.Body.String() != "hello" || rec.Header().Get("Content-Encoding") != "" || rec.Header().Get("Content-Type") != "application/octet-stream" {
-		t.Errorf("a small file is sent as it is: %q %v", rec.Body.String(), rec.Header())
-	}
-
+func TestRawIsTheBytesThemselvesAndIsNeverCompressedHere(t *testing.T) {
 	text := strings.Repeat("a line of a log file\n", 500)
-	big := file(t, text)
-	rec = get(t, big, "q=load&enc=raw", "Accept-Encoding", "gzip, br")
-	if rec.Header().Get("Content-Encoding") != "gzip" || !strings.Contains(rec.Header().Get("Vary"), "Accept-Encoding") {
-		t.Fatalf("not compressed: %v", rec.Header())
+	for _, content := range []string{"hello", text} {
+		rec := get(t, file(t, content), "q=load&enc=raw", "Accept-Encoding", "gzip, br")
+		if rec.Body.String() != content || rec.Header().Get("Content-Encoding") != "" || rec.Header().Get("Content-Type") != "application/octet-stream" {
+			t.Errorf("%d bytes: got %d bytes, encoding %q, type %q", len(content), rec.Body.Len(), rec.Header().Get("Content-Encoding"), rec.Header().Get("Content-Type"))
+		}
 	}
-	if rec.Body.Len() >= len(text)/4 {
-		t.Errorf("compressed to %d of %d bytes", rec.Body.Len(), len(text))
-	}
-	zr, err := gzip.NewReader(bytes.NewReader(rec.Body.Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, _ := io.ReadAll(zr)
-	if string(out) != text {
-		t.Error("the compressed bytes do not give the file back")
-	}
+}
 
-	// a browser that does not accept it, or refuses it, gets the bytes
-	for _, accept := range []string{"", "br", "gzip;q=0"} {
-		r := get(t, big, "q=load&enc=raw", "Accept-Encoding", accept)
-		if r.Header().Get("Content-Encoding") != "" || r.Body.String() != text {
-			t.Errorf("Accept-Encoding %q: got %q encoding", accept, r.Header().Get("Content-Encoding"))
+// The site is served behind a gzip handler (server.go). The page reads the bytes of a load as the file, so what comes
+// out of that handler, once the browser has undone the gzip, must be the file: not gzip bytes a second time (a file
+// over a kilobyte was shown as binary, because a gzip stream has zero bytes in it).
+func TestTheBytesThroughTheSitesGzipHandlerAreTheFile(t *testing.T) {
+	text := strings.Repeat("2026-11-12T08:14:05Z INFO request id=12291 path=/api/run took=527ms\n", 4000)
+	p := file(t, text)
+	srv := httptest.NewServer(gziphandler.GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		req.ParseForm()
+		Serve(rw, req, p)
+	})))
+	defer srv.Close()
+	for _, query := range []string{"q=load&enc=raw", "q=load&enc=raw&offset=0&length=100000", "q=load&enc=raw&max=99999999"} {
+		resp, err := http.Get(srv.URL + "/?" + query) // the client asks for gzip and undoes it, as a browser does
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		want := text
+		if strings.Contains(query, "length=") {
+			want = text[:100000]
+		}
+		if string(body) != want {
+			head := body
+			if len(head) > 8 {
+				head = head[:8]
+			}
+			t.Errorf("%s: the body is not the file (%d bytes, starts % x)", query, len(body), head)
 		}
 	}
 }
