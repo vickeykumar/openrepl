@@ -232,9 +232,8 @@ function activate(path) {
   t.select_node(path);
 }
 
-function closeByUser(path) {
-  if (!master()) return;
-  var finish = function () {
+// Takes a tab out without writing anything: the neighbour is shown (or the empty buffer).
+function closeNow(path) {
     var wasActive = state.active === path;
     ignoreStash = wasActive ? path : null;
     var r = closeTab(state, path);
@@ -250,12 +249,16 @@ function closeByUser(path) {
     persist();
     render();
     publish();
-  };
+}
+
+// Only a tab with changes is written, and only when the user closes it; an unchanged tab never touches the server.
+function closeByUser(path) {
+  if (!master()) return;
   var text = textOf(path);
   if (isDirty(path) && text !== undefined) {
-    saveText(path, text, function (ok) { if (ok) finish(); });
+    saveText(path, text, function (ok) { if (ok) closeNow(path); });
   } else {
-    finish();
+    closeNow(path);
   }
 }
 
@@ -349,9 +352,18 @@ var api = {
   loaded: function (path, text) {
     if (!master()) return;
     shown = path;
-    baseline[path] = text;
+    // what the editor holds, not what was sent: the editor may write the text a little differently (line ends, odd
+    // bytes), and a file that was only opened must not look changed
+    baseline[path] = currentText();
     delete stash[path];
     render();
+  },
+
+  // The file was not opened (binary, or too large for the shared editor): its tab goes, nothing is written.
+  refused: function (path) {
+    if (!master() || state.tabs.indexOf(path) < 0) return;
+    if (shown === path) shown = null;
+    closeNow(path);
   },
 
   saved: function (path, text) {

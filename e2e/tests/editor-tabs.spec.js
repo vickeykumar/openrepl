@@ -155,3 +155,42 @@ test("choosing files quickly never puts one file's text in another, and closing 
     expect(got, "file " + i).toBe("text of file " + i);
   }
 });
+
+test("closing a tab that was only opened writes nothing to the server, whatever the file holds", async ({ page }) => {
+  await ready(page);
+  const anchor = await makeFile(page, fname(1));
+  // odd line ends and a high character: the editor may write them differently from the file
+  await anchor.click();
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveAttribute("aria-selected", "true");
+  const file = await page.evaluate(() => window.EditorTabs.state().tabs[0]);
+  await page.evaluate(
+    (p) => $.ajax({ url: preprocessurl("/ws_filebrowser?q=save&filepath=" + p), method: "POST", processData: false, data: btoa("a\r\nb\rc\ndé"), contentType: "application/octet-stream" }),
+    file
+  );
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+  const saves = [];
+  page.on("request", (r) => { if (/q=save/.test(r.url())) saves.push(r.url()); });
+  await tabs(page).filter({ hasText: fname(1) }).click();
+  await expect.poll(() => page.evaluate(() => window.editor.env.filename)).toContain(fname(1));
+  await expect(tabs(page).filter({ hasText: fname(1) }).locator(".etab__dot")).toHaveCount(0);
+  await tabs(page).filter({ hasText: fname(1) }).locator(".etab__x").click();
+  await expect(tabs(page)).toHaveCount(0);
+  expect(saves).toEqual([]);
+});
+
+test("a binary file is not opened in the shared editor, and its tab does not stay", async ({ page }) => {
+  await ready(page);
+  const anchor = await makeFile(page, fname(1));
+  await anchor.click();
+  const file = await page.evaluate(() => window.EditorTabs.state().tabs[0]);
+  await page.evaluate(
+    (p) => $.ajax({ url: preprocessurl("/ws_filebrowser?q=save&filepath=" + p), method: "POST", processData: false, data: btoa("ELF\u0000\u0001binary"), contentType: "application/octet-stream" }),
+    file
+  );
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+  await tabs(page).filter({ hasText: fname(1) }).click();
+  await expect(tabs(page)).toHaveCount(0);
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).not.toContain("ELF");
+});

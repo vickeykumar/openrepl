@@ -212,6 +212,7 @@
 
   // The read in flight. Choosing another file quickly must not let a late answer land in the editor: the editor names its
   // content after the file selected NOW, so an old answer would be shown, and later saved, as the new file.
+  var MAX_EDITOR_TEXT = 1024 * 1024;
   var loadRequest = null;
   function StillSelected(id) {
     var tree = $('#file-browser').jstree(true);
@@ -233,6 +234,16 @@
             if (!StillSelected(newSelectedNodeId)) { console.log("File load dropped, another file is selected now: "+newSelectedNodeId); return; }
             // Handle successful response
             var decodedResponse = atob(data);
+            // The editor is one document shared through Firebase, and a whole-file change is one write there (16 MB
+            // at most, "Write too large"). A binary file is no text to edit either: saving it again would damage it.
+            var why = null;
+            if (isMaster() && decodedResponse.length > MAX_EDITOR_TEXT) why = "is too large for the editor (" + (decodedResponse.length / 1048576).toFixed(1) + " MB)";
+            else if (isMaster() && decodedResponse.indexOf("\u0000") >= 0) why = "is a binary file";
+            if (why) {
+              notify(String(newSelectedNodeId).split("/").pop() + " " + why + ", so it was not opened.", { type: "warning", title: "Not opened" });
+              if (window.EditorTabs) window.EditorTabs.refused(String(newSelectedNodeId));
+              return;
+            }
             updateEditorContent("", decodedResponse, true);
             if (window.EditorTabs) window.EditorTabs.loaded(String(newSelectedNodeId), decodedResponse);
             console.log("File Loaded successfully: "+newSelectedNodeId);
