@@ -365,6 +365,7 @@
       switch(eventdata.Op) {
         case eventOp.Create:
           console.log("Create recieved for: ", eventdata.Name);
+          if (window.FileMarks && eventdata.type === "file") window.FileMarks.event("create", eventdata.Name); // a new file, in the colors
           let parentnode = eventdata.Name.split('/').slice(0, -1).join('/');
           let nodename = eventdata.Name.split('/').slice(-1).join('/');
           $('#file-browser').jstree(true).create_node(parentnode, preprocessnodedata({ "id" : eventdata.Name, "text" : nodename, "type": eventdata.type }), "last", function(){
@@ -373,6 +374,7 @@
           break;
         case eventOp.Write:
           console.log("Write recieved for: ", eventdata.Name);
+          if (window.FileMarks) window.FileMarks.event("write", eventdata.Name); // a changed file, in the colors
           // the open files (22-editor-tabs.js): this page's own save coming back, or a file with unsaved changes in
           // a tab, is not read into the editor again
           if (window.EditorTabs && window.EditorTabs.write(eventdata.Name)) {
@@ -395,6 +397,7 @@
           break;
         case eventOp.Remove:
           console.log("Remove recieved for: ", eventdata.Name);
+          if (window.FileMarks) window.FileMarks.event("remove", eventdata.Name);
           $('#file-browser').jstree(true).delete_node(eventdata.Name, function() {
               console.log("Node with id " + eventdata.Name + " is deleted.");
           });
@@ -750,6 +753,14 @@
               "icon": "ctx-i ctx-i-path",
               "action": function (data) { CopyPaths(pathsOf(data), true); }
             };
+            // the marks of changed and new files (26-file-marks.js), when there are any
+            if (window.FileMarks && window.FileMarks.count() > 0) {
+              items.clearmarks = {
+                "label": "Clear change marks",
+                "icon": "ctx-i ctx-i-check",
+                "action": function () { window.FileMarks.clear(); }
+              };
+            }
             // Add to Genie chat: the node, or all the selected ones when it is one of them
             items.genie = {
               "label": "Add to Genie chat",
@@ -773,7 +784,7 @@
               items.create.submenu = { "create_file": created.create_file, "create_folder": created.create_folder };
             }
             var menu = {};
-            ["create", "rename", "cut", "copy", "paste", "copypath", "copyrelpath", "genie", "save", "download", "delete"].forEach(function (name) {
+            ["create", "rename", "cut", "copy", "paste", "copypath", "copyrelpath", "clearmarks", "genie", "save", "download", "delete"].forEach(function (name) {
               if (items[name]) { menu[name] = items[name]; }
             });
             return menu;
@@ -783,10 +794,18 @@
       }).on('ready.jstree', function() {
           if (window.EditorTabs) {
             // the open files follow a rename or a move (the tree changes the id) and a delete
-            $('#file-browser').on('set_id.jstree', function (ev, d) { window.EditorTabs.renamed(String(d.old), String(d.new)); });
-            $('#file-browser').on('delete_node.jstree', function (ev, d) { window.EditorTabs.removed(String(d.node.id)); });
+            $('#file-browser').on('set_id.jstree', function (ev, d) { window.EditorTabs.renamed(String(d.old), String(d.new)); if (window.FileMarks) window.FileMarks.renamed(String(d.old), String(d.new)); });
+            $('#file-browser').on('delete_node.jstree', function (ev, d) { window.EditorTabs.removed(String(d.node.id)); if (window.FileMarks) window.FileMarks.event("remove", String(d.node.id)); });
             window.EditorTabs.treeReady();
           }
+          if (window.FileMarks) window.FileMarks.attach(); // the colors of changed files follow the rows as they are drawn
+          // The workspace folder is open when the panel is first shown, so that its files and folders are there to see.
+          // (The tree's own saved state lasts under a second, STATE_TTL, so it does not decide this.)
+          (function () {
+            var t = $('#file-browser').jstree(true);
+            var rootId = t && t.get_node('#') && t.get_node('#').children[0];
+            if (rootId && !t.is_open(rootId)) t.open_node(rootId);
+          })();
           // Add custom row after jstree has finished rendering
           $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
 

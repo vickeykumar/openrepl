@@ -11,6 +11,7 @@ import "./22-editor-tabs"; // before the Files panel, which tells it about the t
 import "./23-tab-lanes";
 import "./24-large-file-viewer";
 import "./25-file-search";
+import "./26-file-marks";
 import "./07-file-browser";
 import "./08-genie-nudge";
 import "./09-hero";

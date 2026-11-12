@@ -138,6 +138,7 @@
       add("Editor", max ? "Restore the workspace" : "Maximize the workspace", call("ToggleFunction"), { keys: max ? ["Esc"] : null, words: "fullscreen full screen" });
 
       var filesOpen = !document.body.classList.contains("files-collapsed");
+      if (window.FileMarks && window.FileMarks.count() > 0) add("Files", "Clear change marks", function () { window.FileMarks.clear(); }, { words: "colors changed new modified reset" });
       if (window.FileSearch) add("Files", "Go to file\u2026", function () { open("files"); }, { keys: [MOD, SHIFT, "O"], words: "find open search quick file name jump" });
       add("Files", filesOpen ? "Hide files" : "Show files", call("setFilesPanel", !filesOpen), { words: "panel tree sidebar" });
       add("Files", "Upload a file", clickId("upload-button"), { words: "import add" });
@@ -332,7 +333,7 @@
     footEl = byId("palette-foot");
 
     input.addEventListener("input", function () {
-      // in "Go to file", a first ">" goes to the commands, with the rest as the search (as in VS Code)
+      // in "Go to file", a first ">" goes to the commands, with the rest as the search (the usual way in code editors)
       if (mode === "files" && input.value.charAt(0) === ">") {
         var rest = input.value.slice(1);
         setMode("commands");

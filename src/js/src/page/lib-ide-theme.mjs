@@ -9,7 +9,7 @@
 //   edge     every 1px border and divider: darker again
 //
 // Dark themes darken by 18 / 35 / 60 %, light themes by 3 / 6 / 16 %, the way
-// editors like VS Code do, so a light theme gets a pale bar and a soft border.
+// code editors usually do, so a light theme gets a pale bar and a soft border.
 
 const BLACK = [0, 0, 0];
 const WHITE = [255, 255, 255];
@@ -257,7 +257,12 @@ export const THEMED_SCOPE =
 export function paletteCss(p) {
   const dark = p.dark;
   const mixHex = (a, b, t) => toHex(mix(parseColor(a), parseColor(b), t));
+  // the names of changed and new files (Files panel and tabs): amber and green, a shade that reads on this theme's
+  // panels (the same hue, moved toward white or black until it does)
+  const markColor = (hex) => toHex([p.files, p.surface, p.chrome].reduce((c, bg) => ensureContrast(c, parseColor(bg), 4.5), parseColor(hex)));
   const ink = {
+    "--fm-modified": markColor(dark ? "#e2c08d" : "#895503"),
+    "--fm-new": markColor(dark ? "#73c991" : "#4f6f0a"),
     "--ink-950": p.edge,
     "--ink-900": p.files,
     "--ink-850": p.chrome,

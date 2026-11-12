@@ -4134,3 +4134,20 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
   tab-size: 4;
   color: var(--paper);
 }
+
+/* Changed and new files (page/26-file-marks.js): the name takes a color, a letter or a dot follows it, and the same
+   colors are on the tabs. The IDE theme sets --fm-modified and --fm-new for its own panels (lib-ide-theme.mjs). */
+:root { --fm-modified: #e2c08d; --fm-new: #73c991; }
+/* !important: the IDE theme sets the name color of every row with a longer selector (and for a selected or hovered row) */
+.files-panel .jstree-default .jstree-anchor.fm-modified,
+.files-panel .jstree-default .jstree-anchor.fm-modified:hover { color: var(--fm-modified) !important; }
+.files-panel .jstree-default .jstree-anchor.fm-new,
+.files-panel .jstree-default .jstree-anchor.fm-new:hover { color: var(--fm-new) !important; }
+.files-panel .jstree-default .jstree-anchor[data-fm]::after {
+  content: attr(data-fm);
+  margin-left: 8px;
+  font: 500 11.5px var(--font-code);
+  letter-spacing: 0.02em;
+}
+.etab--modified .etab__name { color: var(--fm-modified) !important; }
+.etab--new .etab__name { color: var(--fm-new) !important; }

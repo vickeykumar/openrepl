@@ -94,6 +94,7 @@ function saveText(path, text, then) {
     baseline[path] = text;
     lastSaved[path] = Date.now();
     delete warned[path];
+    if (window.FileMarks) window.FileMarks.event("write", path);
     persist();
     render();
     if (then) then(true);
@@ -171,18 +172,20 @@ function render() {
   var canClose = master();
   // whether each tab has unsaved text, worked out once (it reads the whole editor text for the shown tab)
   var dirty = view.tabs.map(function (path) { return canClose && isDirty(path); });
+  // the mark of each file (changed or new in this session), for the color of its name
+  var marked = view.tabs.map(function (path) { return window.FileMarks ? window.FileMarks.status(path) : ""; });
   // typing redraws this often: when nothing it shows has changed, the strip is left alone (no new elements, no layout)
-  var sig = JSON.stringify([view.tabs, view.active, dirty, canClose]);
+  var sig = JSON.stringify([view.tabs, view.active, dirty, marked, canClose]);
   var redraw = sig !== lastSig || !lane.firstChild !== !view.tabs.length;
   lastSig = sig;
   if (redraw) lane.textContent = "";
   if (redraw) view.tabs.forEach(function (path, i) {
     var active = path === view.active;
     var tab = document.createElement("div");
-    tab.className = "etab" + (active ? " active" : "");
+    tab.className = "etab" + (active ? " active" : "") + (marked[i] ? " etab--" + marked[i] : "");
     tab.setAttribute("role", "tab");
     tab.setAttribute("aria-selected", active ? "true" : "false");
-    tab.setAttribute("aria-label", labels[i] + (dirty[i] ? ", unsaved changes" : ""));
+    tab.setAttribute("aria-label", labels[i] + (marked[i] ? ", " + marked[i] : "") + (dirty[i] ? ", unsaved changes" : ""));
     tab.tabIndex = active ? 0 : -1;
     tab.dataset.path = path;
     tab.title = path;
@@ -213,6 +216,8 @@ function render() {
     lastRevealed = view.active;
     window.TabLane.reveal(lane, on);
   }
+  // the Files panel shows the same unsaved dots: it is told that the strip changed
+  if (window.FileMarks) window.FileMarks.refresh();
 }
 
 function laneEvents() {
@@ -396,6 +401,7 @@ var api = {
   saved: function (path, text) {
     baseline[path] = text;
     lastSaved[path] = Date.now();
+    if (window.FileMarks) window.FileMarks.event("write", path);
     delete stash[path];
     delete warned[path];
     persist();
@@ -471,6 +477,10 @@ var api = {
   // for tests and for other page code
   state: function () { return { tabs: state.tabs.slice(), active: state.active }; },
   shown: function () { return shown; },
+  // for the colors of the Files panel (26-file-marks.js): has this file unsaved text, and which files have
+  dirty: function (path) { return master() && state.tabs.indexOf(path) >= 0 && isDirty(path); },
+  dirtyPaths: function () { return master() ? state.tabs.filter(function (p) { return isDirty(p); }) : []; },
+  redraw: function () { render(); },
   max: MAX_TABS
 };
 window.EditorTabs = api;
