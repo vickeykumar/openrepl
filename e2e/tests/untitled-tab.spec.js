@@ -25,6 +25,8 @@ async function openFile(page, i) {
   await expect(anchor).toBeVisible();
   await anchor.click();
   await expect(fileTab(page, i)).toHaveAttribute("aria-selected", "true");
+  // the file has been read (its text is the baseline of the dot): typing before that would count as the file's own text
+  await page.waitForFunction((n) => (window.EditorTabs.shown() || "").endsWith("/" + n), fname(i));
 }
 
 const editorText = (page) => page.evaluate(() => window.editor.env.editor.getValue());
@@ -114,4 +116,30 @@ test("closing the untitled tab with text asks Save, Don't save, Cancel; empty, i
   await dialog(page).getByRole("button", { name: "Don't save" }).click();
   await expect(untitled(page)).toHaveCount(0);
   await expect(fileTab(page, 3)).toHaveAttribute("aria-selected", "true"); // the neighbour is shown
+});
+test("the untitled text comes back after a reload, with the recovery bar", async ({ page }) => {
+  await ready(page);
+  await openFile(page, 4);
+  await plus(page).click();
+  await type(page, "survives a reload");
+  await expect(untitled(page).locator(".etab__dot")).toBeVisible();
+  page.once("dialog", (d) => d.accept());
+  await page.evaluate(() => location.reload());
+  await page.waitForFunction(() => window.EditorTabs && window.Unsaved && window.FileBrowser && window.FileBrowser.ready());
+  await expect(untitled(page)).toHaveCount(1);
+  await expect(page.locator("#unsaved-bar")).toContainText("back in");
+  await untitled(page).click();
+  expect(await editorText(page)).toBe("survives a reload");
+});
+
+test("the Files panel and the published tab list never see the untitled tab as a file", async ({ page }) => {
+  await ready(page);
+  await openFile(page, 5);
+  await plus(page).click();
+  await type(page, "x");
+  const names = await page.evaluate(() => [...document.querySelectorAll("#file-browser .jstree-anchor")].map((a) => a.textContent.trim()));
+  expect(names.some((n) => n.startsWith("untitled"))).toBe(false);
+  // the owner's tab list (what viewers get) keeps files only
+  const state = await page.evaluate(() => window.EditorTabs.state().tabs);
+  expect(state.includes("untitled:")).toBe(true); // the owner's own list has it
 });

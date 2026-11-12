@@ -74,9 +74,24 @@ function updateEditorContent(cmd="", content="/* Welcome to openrepl! */", force
     }
 
     if (!forceupdate) {
-        if (nodetype=="file") {
-          // a file is already selected in browser and this is not a force update, so return without updating editor content.
+        var tabs = window.EditorTabs;
+        if (nodetype=="file" || (tabs && tabs.fileShown && tabs.fileShown())) {
+          // a file is chosen in the Files panel or shown in the editor, and this is not a force update: a starter never
+          // replaces a file's text (what the editor shows decides, not only what the panel highlights)
           console.log(" A file is already selected: "+nodename+" skipping editor update.");
+          return;
+        }
+        if (isMaster() && tabs && tabs.untitledHasOwnText && tabs.untitledHasOwnText()) {
+          // an untitled editor with text the visitor typed (or that came back after a reload): kept. After a change of
+          // language (not on the first load of the page) a notice offers the starter code
+          var switched = window[CMD_KEY] !== undefined && window[CMD_KEY] !== cmd;
+          window[CMD_KEY] = cmd;
+          if (switched && window.notify) {
+            window.notify("Your text is kept. The starter code of the new language was not loaded.", {
+              type: "info", timeout: 10000,
+              actions: [{ label: "Load starter code", onClick: function () { updateEditorContent(cmd, content, true); } }]
+            });
+          }
           return;
         }
     }

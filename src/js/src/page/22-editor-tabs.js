@@ -674,6 +674,16 @@ var api = {
   untitledShown: function () { return master() && shown === UNTITLED; },
   // the file whose text the editor holds ("" for an untitled buffer or nothing)
   fileShown: function () { return shown && !isUntitled(shown) ? shown : ""; },
+  // Does the untitled editor hold text of the visitor's own: typed, or recovered after a reload (not a starter or a question
+  // that the page put there)? The untitled tab is compared with what the page put in it; an editor with no tab at all
+  // (nothing open) with the last text the page put in.
+  untitledHasOwnText: function () {
+    if (!master()) return false;
+    if (shown === UNTITLED) return isDirty(UNTITLED);
+    var t = tree();
+    if (!shown && !(t && t.get_selected().length)) return ownText(currentText());
+    return false;
+  },
   // the page put text into the untitled editor itself (a starter, a question): that is not a change of the visitor's
   programmatic: function (text) {
     if (!master() || shown !== UNTITLED) return;
