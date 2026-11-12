@@ -2,6 +2,7 @@
 // in the terminal bar gives the editor the whole window, a slim bar shows it again, Ctrl+` does both, Run brings the
 // terminal back, and the choice is kept for the next visit. Designed in docs/preview-pane-design.md (board 2).
 const { test, expect } = require("@playwright/test");
+const { waitForTerminalReady } = require("./helpers");
 
 const terminal = (page) => page.locator("#terminal-div");
 const bar = (page) => page.locator("#term-collapsed");
@@ -9,8 +10,8 @@ const bar = (page) => page.locator("#term-collapsed");
 test.describe("terminal hide and show", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    // wait for the terminal to be connected: it takes the keyboard focus a little after the page loads
-    await expect(page.locator("#term-footer-text")).toContainText("Connected", { timeout: 30000 });
+    // wait for the terminal to be connected and to have the focus: it takes it a little after the page loads
+    await waitForTerminalReady(page);
   });
 
   test("Hide gives the editor the window, and Show brings the terminal back", async ({ page }) => {

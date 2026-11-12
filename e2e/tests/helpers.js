@@ -38,4 +38,18 @@ async function setTheme(page, choice) {
   await page.evaluate((c) => window.setThemeChoice(c), choice);
 }
 
-module.exports = { parseRgb, luminance, backgroundLuminance, setTheme };
+// Waits until the home page's terminal says Connected, and has had the time to take the keyboard focus. The terminal
+// connects a little after the page loads and takes the focus when it does; a test that types, presses a shortcut or
+// opens a menu before that can have its focus taken away in the middle (this made the theme menu, the Genie
+// Ctrl+Shift+L and the terminal shortcut tests fail on a slow runner). Every test that uses the keyboard on the
+// home page starts with this.
+async function waitForTerminalReady(page) {
+  const { expect } = require("@playwright/test");
+  await expect(page.locator("#term-footer-text")).toContainText("Connected", { timeout: 30 * 1000 });
+  // the focus moves to the terminal just after it connects: give it until it has, but do not insist
+  await page
+    .waitForFunction(() => !!(document.activeElement && document.activeElement.closest && document.activeElement.closest(".xterm")), null, { timeout: 3000 })
+    .catch(() => {});
+}
+
+module.exports = { parseRgb, luminance, backgroundLuminance, setTheme, waitForTerminalReady };

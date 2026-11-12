@@ -2,6 +2,7 @@
 // message box (chat-widget/src/attach.ts, js/src/page/07-file-browser.js and 19-genie-actions.js).
 // Nothing here sends a message: what Genie is told is covered by the widget's unit tests.
 const { test, expect } = require("@playwright/test");
+const { waitForTerminalReady } = require("./helpers");
 
 // the page, with the editor and the Genie widget ready
 async function ready(page) {
@@ -20,6 +21,9 @@ async function ready(page) {
   // The Ace instance exists before its first Firebase snapshot is applied. Wait for the
   // editor's startup loader to finish so that snapshot cannot overwrite test content.
   await expect(page.locator("#loader")).toBeHidden();
+  // The terminal connects a little after the page loads and takes the keyboard focus. A test that focuses the editor
+  // and then presses a shortcut must not have the focus taken in between.
+  await waitForTerminalReady(page);
 }
 
 // a file in the guest's workspace, shown in the Files panel

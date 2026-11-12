@@ -8,7 +8,7 @@ module.exports = defineConfig({
   expect: { timeout: 15 * 1000 },
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
-  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }], ["./flaky-reporter.js"]] : [["list"]],
   use: {
     baseURL: process.env.BASE_URL || "http://localhost:8080",
     trace: "retain-on-failure",
