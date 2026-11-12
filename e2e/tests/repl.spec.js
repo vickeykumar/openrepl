@@ -68,7 +68,10 @@ for (const repl of REPLS) {
           break;
         } catch (e) {}
       }
-      expect(answered, `${repl.name}: no answer to ${repl.anyOf.join(" or ")}`).toBe(true);
+      // when there is no answer, the message says what the terminal showed (the last lines), so that a run on a server
+      // that cannot be reached from here still tells why
+      const seen = answered ? "" : (await terminalText(page)).trim().split("\n").slice(-12).join(" | ");
+      expect(answered, `${repl.name}: no answer to ${repl.anyOf.join(" or ")}. The terminal showed: ${seen}`).toBe(true);
       return;
     }
     for (const line of repl.inputs) await type(page, line);

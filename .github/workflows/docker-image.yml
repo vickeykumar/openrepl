@@ -156,6 +156,8 @@ jobs:
         passed=$(grep -Eo '[0-9]+ passed' /tmp/rappel-x20.txt | tail -1)
         failed=$(grep -Eo '[0-9]+ failed' /tmp/rappel-x20.txt | tail -1)
         echo "### rappel REPL test x20 on $(uname -m): ${passed:-0 passed}, ${failed:-0 failed}" | tee -a "$GITHUB_STEP_SUMMARY"
+        # what the terminal showed in the first failure
+        grep -m1 "The terminal showed" /tmp/rappel-x20.txt | cut -c1-600 | tee -a "$GITHUB_STEP_SUMMARY" || true
     - name: Browser tests report
       if: always()
       uses: actions/upload-artifact@v4
