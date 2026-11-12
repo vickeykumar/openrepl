@@ -215,7 +215,28 @@ function becomeFile(path, text) {
   publish();
 }
 
+// A collaborator names the file on their own page (the same checks); the owner's page makes it, writes its own copy of the
+// untitled text and turns the tab into that file (the close_requests handler in attachShared, action "saveas"). `close`: the
+// tab is closed when it has been saved (the collaborator closed it and chose Save).
+function saveUntitledRemote(close, then) {
+  function go(value, note) {
+    if (!window.Unsaved || !window.Unsaved.askName) { say("An untitled file cannot be saved here.", "error"); if (then) then(false); return; }
+    window.Unsaved.askName(value, note).then(function (name) {
+      if (name === null) { if (then) then(false); return; }
+      var bad = badName(name);
+      if (bad) { go(name, bad); return; }
+      takeLock(UNTITLED, "collab").then(function (got) {
+        if (!got) { say("The untitled file is already being saved by the other person.", "info"); if (then) then(false); return; }
+        try { browserRef.child("close_requests").push({ path: UNTITLED, action: "saveas", name: name, close: !!close, ts: Date.now() }); } catch (e) { /* Firebase is optional here */ }
+        if (then) then(true);
+      });
+    });
+  }
+  go(defaultName(), "");
+}
+
 function saveUntitled(then) {
+  if (!master()) { saveUntitledRemote(false, then); return; }
   var text = textOf(UNTITLED);
   if (text === undefined) { if (then) then(true); return; }
   saveAsNew(text, function (ok, path) {
@@ -550,8 +571,14 @@ function requestClose(path, action) {
 function closeRemote(path) {
   var changed = sharedDirty.indexOf(path) >= 0;
   if (!changed) { requestClose(path, "close"); return Promise.resolve(true); }
-  if (isUntitled(path)) { say("Only the person who started the session can close an untitled tab that has changes.", "info"); return Promise.resolve(false); }
   if (!window.Unsaved || !window.Unsaved.askShared) { requestClose(path, "close"); return Promise.resolve(true); }
+  if (isUntitled(path)) {
+    // an untitled tab with changes: Save asks for a name here (the owner's page makes the file and closes the tab); Cancel keeps it
+    return window.Unsaved.askShared(path).then(function (choice) {
+      if (choice !== "save") return false;
+      return new Promise(function (resolve) { saveUntitledRemote(true, resolve); });
+    });
+  }
   return takeLock(path, "collab").then(function (got) {
     if (!got) { say(nameOf(path) + " is already being closed by the other person.", "info"); return false; }
     return window.Unsaved.askShared(path).then(function (choice) {
@@ -589,9 +616,7 @@ function tabMenuItems(path) {
       cut: off("Cut", "ctx-i-cut", { shortcut_label: mod + "X" }),
       copy: off("Copy", "ctx-i-copy", { shortcut_label: mod + "C" }),
       paste: off("Paste", "ctx-i-paste", { shortcut_label: mod + "V", separator_after: true }),
-      save: master()
-        ? { label: "Save", icon: "ctx-i ctx-i-save", shortcut_label: mod + "S", action: function () { saveUntitled(); } }
-        : off("Save", "ctx-i-save", { shortcut_label: mod + "S" }), // the owner's buffer: only the owner names it
+      save: { label: "Save", icon: "ctx-i ctx-i-save", shortcut_label: mod + "S", action: function () { saveUntitled(); } },
       download: { label: "Download", icon: "ctx-i ctx-i-download", action: function () { if (typeof window.DownloadEditor === "function") window.DownloadEditor(); } },
       delete: off("Delete", "ctx-i-trash", { separator_after: true }),
       copypath: off("Copy path", "ctx-i-path"),
@@ -832,6 +857,24 @@ var api = {
         if (!v || typeof v.path !== "string" || Date.now() - (v.ts || 0) > 60 * 1000) return;
         chain = chain.then(function () {
           if (state.tabs.indexOf(v.path) < 0) { releaseLock(); return false; }
+          if (v.action === "saveas" && isUntitled(v.path)) {
+            // a collaborator named the untitled file: make it, write this page's text to it, and turn (or close) the tab
+            var bad = typeof v.name === "string" ? badName(v.name) : "No name.";
+            if (bad) { releaseLock(); say("The untitled file could not be saved for the collaborator: " + bad, "warning"); return false; }
+            say("A collaborator is saving the untitled file as " + v.name + ".", "info");
+            return new Promise(function (resolve) {
+              var text = textOf(UNTITLED);
+              Promise.resolve(window.FileBrowser.create(v.name, "file")).then(function (made) {
+                if (!made || !made.ok) { releaseLock(); say("The file " + v.name + " could not be made.", "warning"); resolve(false); return; }
+                var file = home() + "/" + v.name;
+                saveText(file, text === undefined ? "" : text, function (ok) {
+                  releaseLock();
+                  if (ok) { becomeFile(file, text === undefined ? "" : text); if (v.close) closeNow(file); }
+                  resolve(!!ok);
+                });
+              });
+            });
+          }
           if (v.action === "save" && !isUntitled(v.path)) {
             // the collaborator answered the question on their page: write the file from this page's text, then close
             say("A collaborator is saving and closing " + nameOf(v.path) + ".", "info");
@@ -898,7 +941,7 @@ var api = {
   // the untitled tab (a buffer that is saved with a name): shown, saved, and whether it is what the editor holds
   showUntitled: showUntitled,
   saveUntitled: saveUntitled,
-  untitledShown: function () { return master() && shown === UNTITLED; },
+  untitledShown: function () { return master() ? shown === UNTITLED : sharedActive === UNTITLED; },
   // the file whose text the editor holds ("" for an untitled buffer or nothing)
   fileShown: function () { return shown && !isUntitled(shown) ? shown : ""; },
   // Does the untitled editor hold text of the visitor's own: typed, or recovered after a reload (not a starter or a question

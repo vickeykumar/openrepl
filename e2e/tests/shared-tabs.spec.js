@@ -104,7 +104,7 @@ test("a collaborator's click on the untitled tab, or on +, makes the owner show 
   }
 });
 
-test("a collaborator's tab menu has the Files menu for the file and the Close items (they ask the owner); the untitled tab's has Download and Close", async ({ browser }) => {
+test("a collaborator's tab menu has the Files menu for the file and the Close items (they ask the owner); the untitled tab's has Save, Download and Close", async ({ browser }) => {
   const owner = await ownerPage(browser);
   const viewer = await viewerPage(browser, owner);
   try {
@@ -119,8 +119,8 @@ test("a collaborator's tab menu has the Files menu for the file and the Close it
     await viewer.page.keyboard.press("Escape");
     await openMenu(viewer.page, untitled(viewer.page));
     expect(await off(viewer.page, "Download")).toBe(false);
-    for (const label of ["Save", "Rename", "Delete"]) expect(await off(viewer.page, label), label).toBe(true);
-    expect(await off(viewer.page, "Close"), "Close").toBe(false);
+    for (const label of ["Rename", "Delete"]) expect(await off(viewer.page, label), label).toBe(true);
+    for (const label of ["Save", "Close"]) expect(await off(viewer.page, label), label).toBe(false);
     await viewer.page.keyboard.press("Escape");
   } finally {
     await owner.ctx.close();
@@ -190,6 +190,78 @@ test("one person is asked at a time: while the owner is asked about a tab, a col
     await expect(viewer.page.locator(".unsaved-dialog")).toBeHidden();
     await odialog.getByRole("button", { name: "Cancel" }).click();
     await expect(fileTab(owner.page, 8)).toHaveCount(1);
+  } finally {
+    await owner.ctx.close();
+    await viewer.ctx.close();
+  }
+});
+
+test("a collaborator saves the owner's untitled text as a file: they name it, the owner's page makes it and the tab becomes that file", async ({ browser }) => {
+  const owner = await ownerPage(browser);
+  const viewer = await viewerPage(browser, owner);
+  try {
+    await openFile(owner.page, 9);
+    await owner.page.locator("#new-untitled").click();
+    await owner.page.evaluate(() => window.editor.env.editor.setValue("scratch of the owner", -1));
+    await expect(untitled(viewer.page)).toHaveCount(1, { timeout: 20 * 1000 });
+    await expect(untitled(viewer.page)).toHaveAttribute("aria-selected", "true", { timeout: 20 * 1000 });
+    await expect(untitled(viewer.page).locator(".etab__dot")).toBeVisible({ timeout: 20 * 1000 });
+    // the menu's Save, on the collaborator's page
+    await openMenu(viewer.page, untitled(viewer.page));
+    await item(viewer.page, "Save").click();
+    const vdialog = viewer.page.locator(".unsaved-dialog");
+    await expect(vdialog.locator("h2")).toHaveText("Save the untitled file as", { timeout: 20 * 1000 });
+    // a name that exists is refused on the collaborator's page, before anything is sent
+    await vdialog.locator("input").fill(fname(9));
+    await vdialog.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(vdialog).toContainText("exists already");
+    const name = `collab-${stamp}.txt`;
+    await vdialog.locator("input").fill(name);
+    await vdialog.getByRole("button", { name: "Save", exact: true }).click();
+    // the owner's page: the tab is that file now, with the text, saved
+    const tab = tabs(owner.page).filter({ hasText: name });
+    await expect(tab).toHaveCount(1, { timeout: 20 * 1000 });
+    await expect(untitled(owner.page)).toHaveCount(0);
+    await expect(tab.locator(".etab__dot")).toHaveCount(0);
+    expect(await owner.page.evaluate(() => window.editor.env.editor.getValue())).toBe("scratch of the owner");
+    const got = await owner.page.evaluate(async (n) => atob(await $.ajax({ url: preprocessurl("/ws_filebrowser?q=load&filepath=" + window.homedir + "/" + n), method: "GET" })), name);
+    expect(got).toBe("scratch of the owner");
+    // and the collaborator sees the tab as that file
+    await expect(tabs(viewer.page).filter({ hasText: name })).toHaveCount(1, { timeout: 20 * 1000 });
+    await expect(untitled(viewer.page)).toHaveCount(0, { timeout: 20 * 1000 });
+  } finally {
+    await owner.ctx.close();
+    await viewer.ctx.close();
+  }
+});
+
+test("a collaborator closing the owner's untitled tab with text is asked Save or Cancel; Save asks for a name, saves and closes it", async ({ browser }) => {
+  const owner = await ownerPage(browser);
+  const viewer = await viewerPage(browser, owner);
+  try {
+    await openFile(owner.page, 10);
+    await owner.page.locator("#new-untitled").click();
+    await owner.page.evaluate(() => window.editor.env.editor.setValue("text to keep", -1));
+    await expect(untitled(viewer.page).locator(".etab__dot")).toBeVisible({ timeout: 20 * 1000 });
+    await untitled(viewer.page).locator(".etab__x").click();
+    const vdialog = viewer.page.locator(".unsaved-dialog");
+    await expect(vdialog).toContainText("unsaved changes of the person who started the session", { timeout: 20 * 1000 });
+    await expect(vdialog.getByRole("button", { name: "Don't save" })).toHaveCount(0);
+    await vdialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(untitled(owner.page)).toHaveCount(1);
+    await untitled(viewer.page).locator(".etab__x").click();
+    await expect(vdialog).toContainText("unsaved changes of the person who started the session", { timeout: 20 * 1000 });
+    await vdialog.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(vdialog.locator("h2")).toHaveText("Save the untitled file as", { timeout: 20 * 1000 });
+    const name = `collab-close-${stamp}.txt`;
+    await vdialog.locator("input").fill(name);
+    await vdialog.getByRole("button", { name: "Save", exact: true }).click();
+    // saved by the owner's page, and the tab is gone for both
+    await expect(untitled(owner.page)).toHaveCount(0, { timeout: 20 * 1000 });
+    await expect(tabs(owner.page).filter({ hasText: name })).toHaveCount(0);
+    const got = await owner.page.evaluate(async (n) => atob(await $.ajax({ url: preprocessurl("/ws_filebrowser?q=load&filepath=" + window.homedir + "/" + n), method: "GET" })), name);
+    expect(got).toBe("text to keep");
+    await expect(untitled(viewer.page)).toHaveCount(0, { timeout: 20 * 1000 });
   } finally {
     await owner.ctx.close();
     await viewer.ctx.close();
