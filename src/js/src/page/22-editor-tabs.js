@@ -262,8 +262,10 @@ function activate(path) {
   t.select_node(path);
 }
 
-// Takes a tab out without writing anything: the neighbour is shown (or the empty buffer).
-function closeNow(path) {
+// Takes a tab out without writing anything: the neighbour is shown (or the empty buffer). keepSelection: with no
+// neighbour the file stays chosen in the tree (a file that opens in the viewer is still the one the person chose; letting
+// go of it made the shared selection come back with it, which read it again, in a loop).
+function closeNow(path, keepSelection) {
     var wasActive = state.active === path;
     ignoreStash = wasActive ? path : null;
     var r = closeTab(state, path);
@@ -273,7 +275,7 @@ function closeNow(path) {
     delete warned[path];
     if (wasActive) {
       if (state.active) activate(state.active);
-      else clearEditor();
+      else clearEditor(keepSelection);
     }
     ignoreStash = null;
     persist();
@@ -293,9 +295,9 @@ function closeByUser(path) {
 }
 
 // no tab is left: the editor is an empty "untitled" buffer
-function clearEditor() {
+function clearEditor(keepSelection) {
   var t = tree();
-  if (t) t.deselect_all(true);
+  if (t && !keepSelection) t.deselect_all(true);
   var e = aceEditor();
   if (e) e.setValue("", -1);
   if (window["editor"] && window["editor"].env) window["editor"].env.filename = "";
@@ -395,7 +397,7 @@ var api = {
   refused: function (path) {
     if (!master() || state.tabs.indexOf(path) < 0) return;
     if (shown === path) shown = null;
-    closeNow(path);
+    closeNow(path, true);
   },
 
   saved: function (path, text) {

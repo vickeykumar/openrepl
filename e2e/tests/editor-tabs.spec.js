@@ -223,7 +223,11 @@ async function fakeBigFile(page, size) {
   // After a reload the page may select the file it had open on its own, and read it before this fake was in place (the
   // shared selection comes back from Firebase a moment after the page loads). Clicking a tab that is already selected
   // reads nothing, so the selection is let go of first.
-  await page.evaluate(() => $("#file-browser").jstree(true).deselect_all(true));
+  // (and the editor is told it holds no file: a file it already holds is not read again)
+  await page.evaluate(() => {
+    window.editor.env.filename = "";
+    $("#file-browser").jstree(true).deselect_all(true);
+  });
   return seen;
 }
 
