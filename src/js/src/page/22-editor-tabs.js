@@ -113,7 +113,7 @@ function persist() {
   persistTimer = setTimeout(persistNow, PERSIST_WAIT);
 }
 function persistList() {
-  if (!master() || !home()) return;
+  if (!master() || !home() || !restored) return;
   try {
     var list = JSON.stringify({ tabs: state.tabs, active: state.active });
     if (list !== lastListJson) { localStorage.setItem(key("editor-tabs"), list); lastListJson = list; }
@@ -124,9 +124,12 @@ function persistList() {
 // so it waits for a pause of PERSIST_WAIT).
 var PERSIST_WAIT = 1500;
 var lastListJson = "";
+// Nothing is written to localStorage before the saved list has been read back (treeReady). The tree can select a file
+// while it loads, before that; writing then would replace the saved list with that one file.
+var restored = false;
 var lastDraftsJson = "";
 function persistNow() {
-  if (!master() || !home()) return;
+  if (!master() || !home() || !restored) return;
   try {
     persistList();
     var drafts = {};
@@ -323,6 +326,7 @@ var api = {
     // what the tree shows selected right now is what the editor shows
     var sel = t ? t.get_selected()[0] : null;
     if (sel && isFile(sel)) state = openTab(state, sel);
+    restored = true;
     render();
     publish();
     if (e && !e.__tabsBound) {
