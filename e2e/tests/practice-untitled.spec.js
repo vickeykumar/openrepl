@@ -44,22 +44,32 @@ const type = (page, text) => page.evaluate((t) => window.editor.env.editor.setVa
 const otherLanguage = (page, not) => page.evaluate((n) => [...document.querySelectorAll("#optionlist option")].map((o) => o.value).find((v) => v !== n && ["python", "go", "javascript"].includes(v)), not);
 const currentLanguage = (page) => page.evaluate(() => document.getElementById("optionlist").value);
 
-test("with a file shown, a language change opens an untitled tab for the question and leaves the file alone", async ({ page }) => {
+test("with a file chosen, a language change brings no question: the file is left alone and no untitled tab opens", async ({ page }) => {
   await practice(page);
   await openFile(page, 1);
   await type(page, "my file, not a question");
   const lang = await otherLanguage(page, await currentLanguage(page));
   await page.evaluate((v) => window.pickLanguage(v), lang);
-  // the question comes into an untitled tab
-  await expect(untitled(page)).toHaveCount(1, { timeout: 30 * 1000 });
-  await expect.poll(() => editorText(page), { timeout: 30 * 1000 }).toContain("Two Sum " + stamp);
-  expect(await page.evaluate(() => window.editor.env.filename)).toBe("");
-  // the question is not the visitor's own text: no dot on the untitled tab
-  await expect(untitled(page).locator(".etab__dot")).toHaveCount(0);
-  // the file keeps its tab and its text
-  await fileTab(page, 1).click();
-  await expect(fileTab(page, 1)).toHaveAttribute("aria-selected", "true");
+  // a question would have come within about 5 seconds
+  await page.waitForTimeout(8000);
   expect(await editorText(page)).toBe("my file, not a question");
+  await expect(untitled(page)).toHaveCount(0);
+});
+
+test("choosing a file changes the language by its extension and brings no question", async ({ page }) => {
+  await practice(page);
+  const name = `ext-${stamp}.py`;
+  const made = await page.evaluate((n) => window.FileBrowser.create(n, "file"), name);
+  expect(made.ok, JSON.stringify(made)).toBe(true);
+  await page.locator("#file-browser .jstree-anchor", { hasText: name }).click();
+  await page.waitForFunction((n) => (window.EditorTabs.shown() || "").endsWith("/" + n), name);
+  // the language follows the extension, as it always did (page/07-file-browser.js changelangbyselectednode does this when the
+  // shared selection comes back from Firebase, which a test server may not reach: the same event is sent here)
+  await page.evaluate(() => { const s = document.getElementById("select-lang"); s.value = "python"; s.dispatchEvent(new CustomEvent("change", { detail: { silent: true } })); });
+  await expect.poll(() => currentLanguage(page), { timeout: 20 * 1000 }).toBe("python");
+  await page.waitForTimeout(8000);
+  expect(await editorText(page)).toBe("");
+  await expect(untitled(page)).toHaveCount(0);
 });
 
 test("text typed from scratch in the untitled editor is asked about before a question replaces it; Cancel keeps it", async ({ page }) => {
@@ -85,6 +95,7 @@ test("text typed from scratch in the untitled editor is asked about before a que
 test("a solution written on top of a question is not asked about when the language changes", async ({ page }) => {
   await practice(page);
   await openFile(page, 3);
+  await page.locator("#new-untitled").click(); // a question comes only into an untitled editor
   const first = await otherLanguage(page, await currentLanguage(page));
   await page.evaluate((v) => window.pickLanguage(v), first);
   await expect.poll(() => editorText(page), { timeout: 30 * 1000 }).toContain("Two Sum " + stamp);

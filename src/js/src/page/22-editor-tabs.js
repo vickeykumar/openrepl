@@ -727,15 +727,22 @@ var api = {
     persist();
     render();
   },
-  // The practice page is about to write a question into the editor. A file's text must never be replaced by it: when a file
-  // is shown, an untitled tab is opened and takes the question. Text typed from scratch in the untitled editor is asked
-  // about first (Save / Don't save / Cancel, the question of closing a changed tab); a solution written on top of an
-  // earlier question is not asked about, since the page keeps it for that question and language. Resolves true when the
-  // question may be written, false when the visitor cancelled.
+  // Is a file chosen in the Files panel or shown in the editor (not the untitled editor)? The practice page writes a question
+  // only into an untitled editor: choosing a file may change the language (by its extension) but never brings a question.
+  fileChosen: function () {
+    if (!master()) return false;
+    var t = tree();
+    var sel = t ? t.get_selected()[0] : null;
+    return !!((shown && !isUntitled(shown)) || (sel && isFile(sel)));
+  },
+  // The practice page is about to write a question into the editor. Only an untitled editor takes one: it resolves "file"
+  // when a file is chosen or shown (nothing is written). Text typed from scratch in the untitled editor is asked about
+  // first (Save / Don't save / Cancel, the question of closing a changed tab); a solution written on top of an earlier
+  // question is not asked about, since the page keeps it for that question and language. Resolves true when the question
+  // may be written, false when the visitor cancelled.
   prepareGenerated: function () {
     if (!master()) return Promise.resolve(true);
-    var fileOpen = shown && !isUntitled(shown) && state.tabs.indexOf(shown) >= 0;
-    if (fileOpen) showUntitled();
+    if (api.fileChosen()) return Promise.resolve("file");
     var own = api.untitledHasOwnText() && (baseline[UNTITLED] === undefined || baseline[UNTITLED] === "" || baseline[UNTITLED] === null);
     if (!own || !window.Unsaved) return Promise.resolve(true);
     var text = currentText();

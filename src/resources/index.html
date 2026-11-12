@@ -913,12 +913,12 @@ Breakpoint 1, main () at main.c:5
                   updateEditorContent(selectedLanguage, "/*\n"+header+"\n*/\n\n\n\n", true);
                 }
               };
-              // The question never goes into a file's editor: an untitled tab takes it (page/22-editor-tabs.js). Text typed
-              // from scratch in the untitled editor is asked about first; cancelled, the question is not written.
+              // The question goes only into an untitled editor (page/22-editor-tabs.js): with a file chosen or shown nothing is
+              // written. Text typed from scratch in the untitled editor is asked about first; cancelled, it is not written.
               if (window.EditorTabs && EditorTabs.prepareGenerated) {
                 EditorTabs.prepareGenerated().then((ok) => {
-                  if (ok) write();
-                  else notify("Your text is kept and the question was not loaded. Pick the language again to load it.", { type: "info" });
+                  if (ok === true) write();
+                  else if (ok === false) notify("Your text is kept and the question was not loaded. Pick the language again to load it.", { type: "info" });
                 });
               } else {
                 write();
@@ -1007,7 +1007,11 @@ Breakpoint 1, main () at main.c:5
                 function loadnewquestion() {
                   console.log("latest Question Name:", nameHyphenatedlatest);
                   let selectedLanguage = $("#optionlist option:selected").text();
-                  fetchLanguageTmplAndSetEditorcode(nameHyphenatedlatest, selectedLanguage);
+                  // Choosing a file changes the language by its extension, as everywhere; it does not bring a question. Only
+                  // a change of language in an untitled editor does.
+                  if (!(window.EditorTabs && EditorTabs.fileChosen && EditorTabs.fileChosen())) {
+                    fetchLanguageTmplAndSetEditorcode(nameHyphenatedlatest, selectedLanguage);
+                  }
 
                   // load completed status whenever a new question gets loaded
                   let newQuestion = PracticeStore.find(nameHyphenatedlatest);
