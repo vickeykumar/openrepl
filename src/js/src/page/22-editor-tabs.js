@@ -469,8 +469,11 @@ function activate(path) {
   if (!t || !path || !t.get_node(path)) return;
   // A collaborator's tree can still have this file selected while the owner shows another tab (the untitled one): choosing the
   // tab must then still reach the owner, so the selection is made again (a change of selection is what is shared).
-  if (t.get_selected()[0] === path && (master() || !sharedActive || sharedActive === path)) return;
-  t.deselect_all(true);
+  var same = t.get_selected()[0] === path;
+  if (same && (master() || !sharedActive || sharedActive === path)) return;
+  // When the file is selected already, the deselect must not be silent: the tree's change tracking has to see it leave, or the
+  // select that follows is not a change and nothing is shared (the same reason as in showUntitled)
+  t.deselect_all(!same);
   t.select_node(path);
 }
 
