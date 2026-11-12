@@ -212,7 +212,7 @@
 
   // The read in flight. Choosing another file quickly must not let a late answer land in the editor: the editor names its
   // content after the file selected NOW, so an old answer would be shown, and later saved, as the new file.
-  var MAX_EDITOR_TEXT = 1024 * 1024;
+  var MAX_EDITOR_TEXT = 16 * 1024 * 1024; // Firebase refuses a write over 16 MB (counted on the encoded text)
   var loadRequest = null;
   function StillSelected(id) {
     var tree = $('#file-browser').jstree(true);
@@ -237,10 +237,25 @@
             // The editor is one document shared through Firebase, and a whole-file change is one write there (16 MB
             // at most, "Write too large"). A binary file is no text to edit either: saving it again would damage it.
             var why = null;
-            if (isMaster() && decodedResponse.length > MAX_EDITOR_TEXT) why = "is too large for the editor (" + (decodedResponse.length / 1048576).toFixed(1) + " MB)";
-            else if (isMaster() && decodedResponse.indexOf("\u0000") >= 0) why = "is a binary file";
+            if (isMaster()) {
+              // the size counts as Firebase sees it: quotes, line ends and non-ASCII characters grow when encoded
+              var big = decodedResponse.length > MAX_EDITOR_TEXT ||
+                (decodedResponse.length > MAX_EDITOR_TEXT / 2 && JSON.stringify(decodedResponse).length > MAX_EDITOR_TEXT);
+              if (big) why = "is " + (decodedResponse.length / 1048576).toFixed(1) + " MB. The editor opens files up to " + (MAX_EDITOR_TEXT / 1048576) + " MB, because it is shared with everyone in the session. Use Download in the notice, or read it in the terminal: less " + newSelectedNodeId;
+              else if (decodedResponse.indexOf("\u0000") >= 0) why = "is a binary file, which the editor cannot show or save safely. Use Download in the notice, or look at it in the terminal: xxd " + newSelectedNodeId + " | less";
+            }
             if (why) {
-              notify(String(newSelectedNodeId).split("/").pop() + " " + why + ", so it was not opened.", { type: "warning", title: "Not opened" });
+              // Download: the file itself as a zip, the same as Download in the file's menu (the editor bar's Download
+              // saves the editor's text, which is not this file)
+              var refusedId = String(newSelectedNodeId);
+              notify(refusedId.split("/").pop() + " " + why, {
+                type: "warning", title: "Not opened", timeout: 15000,
+                action: { label: "Download", onClick: function () {
+                  var link = document.createElement("a");
+                  link.href = preprocessurl("/ws_filebrowser?q=zip&filepath=" + refusedId);
+                  link.click();
+                } }
+              });
               if (window.EditorTabs) window.EditorTabs.refused(String(newSelectedNodeId));
               return;
             }

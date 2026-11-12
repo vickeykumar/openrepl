@@ -22,6 +22,7 @@ var warned = {};           // path -> true once told "changed outside"
 var shown = null;          // the file whose text the editor really holds (null: none yet, or a load is under way)
 var ignoreStash = null;    // a tab being closed: its text is not kept again on the switch it causes
 var lane = null;
+var lastSig = "";          // what the strip last drew, to skip a redraw that would look the same
 var lastRevealed = null;  // the file whose tab was last brought into view
 var MAX_DRAFT = 500 * 1024;
 
@@ -108,18 +109,26 @@ var persistTimer = 0;
 function persist() {
   if (!master()) return;
   clearTimeout(persistTimer);
-  persistTimer = setTimeout(persistNow, 400);
+  persistTimer = setTimeout(persistNow, PERSIST_WAIT);
 }
+// localStorage is written on the page's own thread, so only what changed is written: the list when it changed, and the
+// drafts only of tabs whose text differs from the last time (a draft can be 500 KB, and typing changes it all the time,
+// so it waits for a pause of PERSIST_WAIT).
+var PERSIST_WAIT = 1500;
+var lastListJson = "";
+var lastDraftsJson = "";
 function persistNow() {
   if (!master() || !home()) return;
   try {
-    localStorage.setItem(key("editor-tabs"), JSON.stringify({ tabs: state.tabs, active: state.active }));
+    var list = JSON.stringify({ tabs: state.tabs, active: state.active });
+    if (list !== lastListJson) { localStorage.setItem(key("editor-tabs"), list); lastListJson = list; }
     var drafts = {};
     state.tabs.forEach(function (p) {
-      var held = p === state.active ? { text: currentText() } : stash[p];
-      if (held && baseline[p] !== undefined && held.text !== baseline[p] && held.text.length <= MAX_DRAFT) drafts[p] = held.text;
+      var text = textOf(p);
+      if (text !== undefined && baseline[p] !== undefined && text !== baseline[p] && text.length <= MAX_DRAFT) drafts[p] = text;
     });
-    localStorage.setItem(key("editor-drafts"), JSON.stringify(drafts));
+    var json = JSON.stringify(drafts);
+    if (json !== lastDraftsJson) { localStorage.setItem(key("editor-drafts"), json); lastDraftsJson = json; }
   } catch (e) { /* storage may be full or blocked: the tabs still work */ }
 }
 window.addEventListener("pagehide", function () { persistNow(); });
@@ -150,14 +159,20 @@ function render() {
   if (header) header.classList.toggle("has-tabs", view.tabs.length > 0);
   var labels = tabLabels(view.tabs);
   var canClose = master();
-  lane.textContent = "";
-  view.tabs.forEach(function (path, i) {
+  // whether each tab has unsaved text, worked out once (it reads the whole editor text for the shown tab)
+  var dirty = view.tabs.map(function (path) { return canClose && isDirty(path); });
+  // typing redraws this often: when nothing it shows has changed, the strip is left alone (no new elements, no layout)
+  var sig = JSON.stringify([view.tabs, view.active, dirty, canClose]);
+  var redraw = sig !== lastSig || !lane.firstChild !== !view.tabs.length;
+  lastSig = sig;
+  if (redraw) lane.textContent = "";
+  if (redraw) view.tabs.forEach(function (path, i) {
     var active = path === view.active;
     var tab = document.createElement("div");
     tab.className = "etab" + (active ? " active" : "");
     tab.setAttribute("role", "tab");
     tab.setAttribute("aria-selected", active ? "true" : "false");
-    tab.setAttribute("aria-label", labels[i] + (master() && isDirty(path) ? ", unsaved changes" : ""));
+    tab.setAttribute("aria-label", labels[i] + (dirty[i] ? ", unsaved changes" : ""));
     tab.tabIndex = active ? 0 : -1;
     tab.dataset.path = path;
     tab.title = path;
@@ -165,7 +180,7 @@ function render() {
     name.className = "etab__name";
     name.textContent = labels[i];
     tab.appendChild(name);
-    if (master() && isDirty(path)) {
+    if (dirty[i]) {
       var dot = document.createElement("span");
       dot.className = "etab__dot";
       tab.appendChild(dot);
