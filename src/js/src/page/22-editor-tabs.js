@@ -467,7 +467,9 @@ function activate(path) {
   untitledAt = 0; // a file was chosen
   var t = tree();
   if (!t || !path || !t.get_node(path)) return;
-  if (t.get_selected()[0] === path) return;
+  // A collaborator's tree can still have this file selected while the owner shows another tab (the untitled one): choosing the
+  // tab must then still reach the owner, so the selection is made again (a change of selection is what is shared).
+  if (t.get_selected()[0] === path && (master() || !sharedActive || sharedActive === path)) return;
   t.deselect_all(true);
   t.select_node(path);
 }
@@ -869,7 +871,9 @@ var api = {
                 var file = home() + "/" + v.name;
                 saveText(file, text === undefined ? "" : text, function (ok) {
                   releaseLock();
-                  if (ok) { becomeFile(file, text === undefined ? "" : text); if (v.close) closeNow(file); }
+                  // closing: the file is written and the untitled tab goes (it is not turned into a tab that is closed at once:
+                  // choosing the new file in the tree would bring its tab back); saving: the tab becomes that file
+                  if (ok) { if (v.close) closeNow(UNTITLED); else becomeFile(file, text === undefined ? "" : text); }
                   resolve(!!ok);
                 });
               });
