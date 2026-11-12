@@ -389,6 +389,12 @@ function laneEvents() {
     if (e.target.closest(".etab__x")) closeByUser(tab.dataset.path);
     else activate(tab.dataset.path);
   });
+  lane.addEventListener("contextmenu", function (e) {
+    var tab = e.target.closest && e.target.closest(".etab");
+    if (!tab || !master()) return; // a viewer sees the owner's tabs: no menu
+    e.preventDefault();
+    openTabMenu(tab.dataset.path, e.clientX, e.clientY);
+  });
   lane.addEventListener("auxclick", function (e) {
     var tab = e.target.closest && e.target.closest(".etab");
     if (tab && e.button === 1 && master()) { e.preventDefault(); closeByUser(tab.dataset.path); }
@@ -403,6 +409,12 @@ function laneEvents() {
     else if (e.key === "ArrowLeft") to = tabs[Math.max(i - 1, 0)];
     else if (e.key === "Home") to = tabs[0];
     else if (e.key === "End") to = tabs[tabs.length - 1];
+    else if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && master()) {
+      e.preventDefault();
+      var box = tab.getBoundingClientRect();
+      openTabMenu(tab.dataset.path, box.left + 8, box.bottom);
+      return;
+    }
     else if ((e.key === "Delete" || e.key === "Backspace") && master()) { e.preventDefault(); closeByUser(tab.dataset.path); return; }
     else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(tab.dataset.path); return; }
     if (to) { e.preventDefault(); to.focus(); activate(to.dataset.path); }
@@ -464,21 +476,106 @@ function dropTabs(dropped) {
 }
 
 // Only a tab with changes is written, and only when the user closes it; an unchanged tab never touches the server.
-function closeByUser(path) {
-  if (!master()) return;
-  var text = textOf(path);
-  if (isDirty(path) && text !== undefined) {
-    // a tab with unsaved changes asks (28-unsaved.js): Save, Don't save, or Cancel (the tab stays)
-    if (!window.Unsaved) { if (!isUntitled(path)) saveText(path, text, function (ok) { if (ok) closeNow(path); }); return; }
-    window.Unsaved.askClose(path).then(function (choice) {
-      if (choice === "save") {
-        if (isUntitled(path)) saveUntitled(function (ok, saved) { if (ok) closeNow(saved); });
-        else saveText(path, textOf(path), function (ok) { if (ok) closeNow(path); });
-      } else if (choice === "discard") closeNow(path);
-    });
+// Resolves true when the tab was closed, false when it stayed (Cancel, or a save that failed).
+function closeAsk(path) {
+  return new Promise(function (resolve) {
+    if (!master()) { resolve(false); return; }
+    var text = textOf(path);
+    if (isDirty(path) && text !== undefined) {
+      // a tab with unsaved changes asks (28-unsaved.js): Save, Don't save, or Cancel (the tab stays)
+      if (!window.Unsaved) {
+        if (isUntitled(path)) { resolve(false); return; }
+        saveText(path, text, function (ok) { if (ok) closeNow(path); resolve(!!ok); });
+        return;
+      }
+      window.Unsaved.askClose(path).then(function (choice) {
+        if (choice === "save") {
+          if (isUntitled(path)) saveUntitled(function (ok, saved) { if (ok) closeNow(saved); resolve(!!ok); });
+          else saveText(path, textOf(path), function (ok) { if (ok) closeNow(path); resolve(!!ok); });
+        } else if (choice === "discard") { closeNow(path); resolve(true); }
+        else resolve(false);
+      });
+    } else {
+      closeNow(path);
+      resolve(true);
+    }
+  });
+}
+function closeByUser(path) { closeAsk(path); }
+
+// Closes the tabs one after another (a tab with changes asks); the first Cancel stops the rest.
+function closeMany(paths) {
+  return paths.reduce(function (chain, path) {
+    return chain.then(function (go) { return go ? closeAsk(path) : false; });
+  }, Promise.resolve(true));
+}
+
+// ---- the right-click menu of a tab -------------------------------------------------------------------------------------
+// The Files panel's own menu (07-file-browser.js builds it for a file), with what does not apply to a tab greyed out, and
+// three items of the tab at the bottom. The untitled tab has no file: the same list with only Save (it asks for a name),
+// Download (the text as a file) and the three Close items on. Designed in the "Practice DSA" canvas, board 5.
+
+function tabMenuItems(path) {
+  var items;
+  var t = tree();
+  var mod = /Mac|iP(hone|ad)/.test(navigator.platform) ? "\u2318" : "Ctrl+";
+  if (isUntitled(path)) {
+    var off = function (label, icon, extra) { return $.extend({ label: label, icon: "ctx-i " + icon, _disabled: true }, extra || {}); };
+    items = {
+      rename: off("Rename", "ctx-i-pencil"),
+      cut: off("Cut", "ctx-i-cut", { shortcut_label: mod + "X" }),
+      copy: off("Copy", "ctx-i-copy", { shortcut_label: mod + "C" }),
+      paste: off("Paste", "ctx-i-paste", { shortcut_label: mod + "V", separator_after: true }),
+      save: { label: "Save", icon: "ctx-i ctx-i-save", shortcut_label: mod + "S", action: function () { saveUntitled(); } },
+      download: { label: "Download", icon: "ctx-i ctx-i-download", action: function () { if (typeof window.DownloadEditor === "function") window.DownloadEditor(); } },
+      delete: off("Delete", "ctx-i-trash", { separator_after: true }),
+      copypath: off("Copy path", "ctx-i-path"),
+      copyrelpath: off("Copy relative path", "ctx-i-path"),
+      genie: off("Add to Genie chat", "ctx-i-genie")
+    };
   } else {
-    closeNow(path);
+    var fn = t && t.settings.contextmenu.items;
+    var node = t && t.get_node(path);
+    items = typeof fn === "function" && node ? fn.call(t, node, function () {}) : null;
+    if (!items) return null;
+    if (items.paste) items.paste._disabled = true; // a tab is not a folder
   }
+  items.tab_close = { label: "Close", separator_before: true, action: function () { closeAsk(path); } };
+  items.tab_close_others = {
+    label: "Close others",
+    _disabled: state.tabs.filter(function (p) { return p !== path; }).length === 0,
+    action: function () { closeMany(state.tabs.filter(function (p) { return p !== path; })); }
+  };
+  items.tab_close_all = {
+    label: "Close all",
+    action: function () { closeMany(state.tabs.filter(function (p) { return p !== path; }).concat(state.tabs.indexOf(path) >= 0 ? [path] : [])); }
+  };
+  return items;
+}
+
+function showTabMenu(items, x, y) {
+  var t = tree();
+  // the same look as the Files panel's menu
+  $(document).one("context_show.vakata", function (e, data) {
+    $(data.element).addClass("jstree-contextmenu jstree-" + (t ? t.get_theme() : "default") + "-contextmenu");
+  });
+  $.vakata.context.show($("#file-browser"), { x: x, y: y }, items);
+}
+
+// The tab is shown first (the items act on the file in the editor: it must have its text there before a Save), then the menu.
+function openTabMenu(path, x, y) {
+  if (!master() || !window.jQuery || !$.vakata || !$.vakata.context) return;
+  if (isUntitled(path)) showUntitled(); else activate(path);
+  var tries = 0;
+  (function wait() {
+    var ready = isUntitled(path) ? shown === UNTITLED : shown === path;
+    if (ready || ++tries > 60) {
+      var items = tabMenuItems(path);
+      if (items) showTabMenu(items, x, y);
+      return;
+    }
+    setTimeout(wait, 50);
+  })();
 }
 
 // no tab is left: the editor is an empty "untitled" buffer
