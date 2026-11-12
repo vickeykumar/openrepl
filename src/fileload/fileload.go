@@ -32,8 +32,15 @@ const MaxChunk = 4 << 20
 // then answered with an empty 304 and nothing is read or sent; the browser's cache fills in the body, so the page
 // needs no code for it. A file that was written since has another tag and is sent in full. The tag is weak (W/): it
 // says "the same file", not "the same bytes on the wire".
+//
+// The tag starts with the version of how a load is answered (tagVersion). A browser that kept an answer from an earlier
+// build asks with that build's tag, and a tag with another version never matches: it gets the file again. (This was
+// needed once: an answer that had been compressed twice stayed in browsers, and the same tag kept bringing it back as
+// "not modified" after the server was fixed.) Change it whenever the bytes sent for the same file change.
+const tagVersion = "2"
+
 func etagOf(info os.FileInfo) string {
-	return fmt.Sprintf(`W/"%x-%x"`, info.ModTime().UnixNano(), info.Size())
+	return fmt.Sprintf(`W/"%s-%x-%x"`, tagVersion, info.ModTime().UnixNano(), info.Size())
 }
 
 func notModified(req *http.Request, etag string) bool {

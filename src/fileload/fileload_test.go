@@ -3,6 +3,7 @@ package fileload
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -223,5 +224,20 @@ func TestWithoutRawTheAnswerIsStillBase64(t *testing.T) {
 	rec := get(t, file(t, strings.Repeat("z", 5000)), "q=load", "Accept-Encoding", "gzip")
 	if rec.Header().Get("Content-Encoding") != "" || rec.Header().Get("Content-Type") != "text/plain" || decoded(t, rec) != strings.Repeat("z", 5000) {
 		t.Errorf("the original form changed: %v", rec.Header())
+	}
+}
+
+// An answer kept by a browser from an earlier build (another tag format) must not come back as "not modified": it was
+// once a body compressed twice.
+func TestATagFromAnEarlierBuildBringsTheFileAgain(t *testing.T) {
+	p := file(t, "hello")
+	info, _ := os.Stat(p)
+	old := fmt.Sprintf(`W/"%x-%x"`, info.ModTime().UnixNano(), info.Size()) // the format before tagVersion
+	rec := get(t, p, "q=load", "If-None-Match", old)
+	if rec.Code != 200 || decoded(t, rec) != "hello" {
+		t.Errorf("an old-format tag: %d %q", rec.Code, rec.Body.String())
+	}
+	if get(t, p, "q=load", "If-None-Match", rec.Header().Get("ETag")).Code != http.StatusNotModified {
+		t.Error("the current tag must still give 304")
 	}
 }
