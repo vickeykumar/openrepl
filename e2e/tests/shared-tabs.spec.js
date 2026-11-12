@@ -41,6 +41,19 @@ const fileTab = (page, i) => tabs(page).filter({ hasText: fname(i) });
 const untitled = (page) => page.locator("#editor-tabs .etab--untitled");
 const menu = (page) => page.locator("ul.vakata-context:visible");
 const item = (page, label) => menu(page).locator("li", { hasText: new RegExp("^\\s*" + label + "\\s*(\\u2318|Ctrl)?") }).first();
+// a collaborator's click on a tab also selects it, and the owner's answer comes back through Firebase while the menu opens:
+// the menu is opened again if that closed it
+async function openMenu(page, tab) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await tab.click({ button: "right" });
+    try {
+      await menu(page).waitFor({ state: "visible", timeout: 4000 });
+      await page.waitForTimeout(1500); // the echo is over
+      if (await menu(page).isVisible()) return;
+    } catch (e) { /* again */ }
+  }
+  await expect(menu(page)).toBeVisible();
+}
 const off = async (page, label) => ((await item(page, label).getAttribute("class")) || "").includes("vakata-contextmenu-disabled");
 
 test("a collaborator sees the owner's tabs and the untitled one, gets the +, and follows the owner's shown tab", async ({ browser }) => {
@@ -99,14 +112,12 @@ test("a collaborator's tab menu has the Files menu for the file and the Close it
     await owner.page.locator("#new-untitled").click();
     await expect(fileTab(viewer.page, 4)).toHaveCount(1, { timeout: 20 * 1000 });
     await expect(untitled(viewer.page)).toHaveCount(1);
-    await fileTab(viewer.page, 4).click({ button: "right" });
-    await expect(menu(viewer.page)).toBeVisible();
+    await openMenu(viewer.page, fileTab(viewer.page, 4));
     for (const label of ["Rename", "Save", "Download", "Copy path"]) expect(await off(viewer.page, label), label).toBe(false);
     expect(await off(viewer.page, "Paste"), "Paste").toBe(true);
     for (const label of ["Close", "Close others", "Close all"]) expect(await off(viewer.page, label), label).toBe(false); // they ask the owner
     await viewer.page.keyboard.press("Escape");
-    await untitled(viewer.page).click({ button: "right" });
-    await expect(menu(viewer.page)).toBeVisible();
+    await openMenu(viewer.page, untitled(viewer.page));
     expect(await off(viewer.page, "Download")).toBe(false);
     for (const label of ["Save", "Rename", "Delete"]) expect(await off(viewer.page, label), label).toBe(true);
     expect(await off(viewer.page, "Close"), "Close").toBe(false);
@@ -131,17 +142,54 @@ test("a collaborator's close button asks the owner to close the tab, with the us
     await fileTab(viewer.page, 5).locator(".etab__x").click({ force: true });
     await expect(fileTab(owner.page, 5)).toHaveCount(0, { timeout: 20 * 1000 });
     await expect(fileTab(viewer.page, 5)).toHaveCount(0, { timeout: 20 * 1000 });
-    // a tab with changes: the owner's page asks
+    // a tab with changes: the collaborator sees the dot, and is the one who is asked (Save or Cancel, no Don't save)
     await openFile(owner.page, 7);
+    await owner.page.waitForTimeout(800); // the file has been read: its text is the baseline of the dot
     await owner.page.evaluate(() => window.editor.env.editor.setValue("owner's unsaved text", -1));
     await expect(fileTab(owner.page, 7).locator(".etab__dot")).toBeVisible();
-    await expect(fileTab(viewer.page, 7)).toHaveCount(1, { timeout: 20 * 1000 });
+    await expect(fileTab(viewer.page, 7).locator(".etab__dot")).toBeVisible({ timeout: 20 * 1000 });
     await fileTab(viewer.page, 7).locator(".etab__x").click({ force: true });
-    const dialog = owner.page.locator(".unsaved-dialog");
-    await expect(dialog).toBeVisible({ timeout: 20 * 1000 });
-    await dialog.getByRole("button", { name: "Don't save" }).click();
-    await expect(fileTab(owner.page, 7)).toHaveCount(0);
+    const vdialog = viewer.page.locator(".unsaved-dialog");
+    await expect(vdialog).toBeVisible({ timeout: 20 * 1000 });
+    await expect(vdialog).toContainText("unsaved changes of the person who started the session");
+    await expect(vdialog.getByRole("button", { name: "Don't save" })).toHaveCount(0);
+    // the owner's page shows a notice, not the question
+    await expect(owner.page.locator(".notice", { hasText: "A collaborator is closing" })).toBeVisible({ timeout: 20 * 1000 });
+    await expect(owner.page.locator(".unsaved-backdrop")).toBeHidden();
+    // Cancel: nothing happens
+    await vdialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(fileTab(owner.page, 7)).toHaveCount(1);
+    // Save: the owner's page writes its text and closes the tab
+    await fileTab(viewer.page, 7).locator(".etab__x").click({ force: true });
+    await expect(vdialog).toBeVisible({ timeout: 20 * 1000 });
+    await vdialog.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(fileTab(owner.page, 7)).toHaveCount(0, { timeout: 20 * 1000 });
     await expect(fileTab(viewer.page, 7)).toHaveCount(0, { timeout: 20 * 1000 });
+    const saved = await owner.page.evaluate(async (n) => atob(await $.ajax({ url: preprocessurl("/ws_filebrowser?q=load&filepath=" + window.homedir + "/" + n), method: "GET" })), fname(7));
+    expect(saved).toBe("owner's unsaved text");
+  } finally {
+    await owner.ctx.close();
+    await viewer.ctx.close();
+  }
+});
+
+test("one person is asked at a time: while the owner is asked about a tab, a collaborator's close is told so", async ({ browser }) => {
+  const owner = await ownerPage(browser);
+  const viewer = await viewerPage(browser, owner);
+  try {
+    await openFile(owner.page, 8);
+    await owner.page.waitForTimeout(800); // the file has been read: its text is the baseline of the dot
+    await owner.page.evaluate(() => window.editor.env.editor.setValue("owner's text", -1));
+    await expect(fileTab(owner.page, 8).locator(".etab__dot")).toBeVisible();
+    await expect(fileTab(viewer.page, 8).locator(".etab__dot")).toBeVisible({ timeout: 20 * 1000 });
+    await fileTab(owner.page, 8).locator(".etab__x").click();
+    const odialog = owner.page.locator(".unsaved-dialog");
+    await expect(odialog).toBeVisible();
+    await fileTab(viewer.page, 8).locator(".etab__x").click({ force: true });
+    await expect(viewer.page.locator(".notice", { hasText: "already being closed" })).toBeVisible({ timeout: 20 * 1000 });
+    await expect(viewer.page.locator(".unsaved-dialog")).toBeHidden();
+    await odialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(fileTab(owner.page, 8)).toHaveCount(1);
   } finally {
     await owner.ctx.close();
     await viewer.ctx.close();

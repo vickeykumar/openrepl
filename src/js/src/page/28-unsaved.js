@@ -128,6 +128,17 @@ function askClose(path) {
   });
 }
 
+// a collaborator closes the owner's tab that has unsaved changes: "save" or "cancel" (dropping them is the owner's to decide)
+function askShared(path) {
+  return ask({
+    title: "Save the changes to " + nameOf(path) + "?",
+    body: "These are unsaved changes of the person who started the session. Save writes them to the file and closes the tab.",
+    hint: "Enter saves. Esc cancels, and the tab stays.",
+    buttons: [{ id: "cancel", label: "Cancel" }, { id: "save", label: "Save", primary: true }],
+    cancel: "cancel"
+  });
+}
+
 // a sixth file pushes a changed tab out (every tab has changes): "save" or "discard"
 function askDropped(path) {
   return ask({
@@ -317,6 +328,7 @@ function init() {
 window.Unsaved = {
   askClose: askClose,
   askDropped: askDropped,
+  askShared: askShared,
   askName: askName,
   saveAll: saveAll,
   recovered: setRecovered,

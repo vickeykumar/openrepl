@@ -14,6 +14,8 @@ import { MAX_TABS, UNTITLED, emptyState, openTab, closeTab, renamePath, removePa
 
 var state = emptyState(); // the owner's list: { tabs, active }
 var sharedList = [];       // a viewer's copy of it (Firebase)
+var sharedDirty = [];      // the tabs the owner has unsaved changes in, as the owner published them (a viewer's dots)
+var lastDirtyJson = "";   // the owner: the dirty tabs last published
 var sharedActive = null;   // the tab the owner shows, as the owner published it (a file's path, or the untitled key)
 var stash = {};            // path -> { text, row, col, top }: what the editor held when the tab was left
 var baseline = {};         // path -> the text of the file as loaded or last saved
@@ -326,7 +328,12 @@ function render() {
   if (header) header.classList.toggle("has-tabs", view.tabs.length > 0);
   var labels = tabLabels(view.tabs);
   // whether each tab has unsaved text, worked out once (it reads the whole editor text for the shown tab)
-  var dirty = view.tabs.map(function (path) { return canClose && isDirty(path); });
+  var dirty = view.tabs.map(function (path) { return canClose ? isDirty(path) : sharedDirty.indexOf(path) >= 0; });
+  // the owner tells the collaborators which tabs have changes, when that set changes (not on every key)
+  if (canClose) {
+    var dj = JSON.stringify(state.tabs.filter(function (p, i) { return view.tabs.indexOf(p) >= 0 && dirty[view.tabs.indexOf(p)]; }));
+    if (dj !== lastDirtyJson) { lastDirtyJson = dj; publish(); }
+  }
   // the mark of each file (changed or new in this session), for the color of its name
   var marked = view.tabs.map(function (path) { return window.FileMarks ? window.FileMarks.status(path) : ""; });
   // typing redraws this often: when nothing it shows has changed, the strip is left alone (no new elements, no layout)
@@ -497,12 +504,16 @@ function closeAsk(path) {
         saveText(path, text, function (ok) { if (ok) closeNow(path); resolve(!!ok); });
         return;
       }
-      window.Unsaved.askClose(path).then(function (choice) {
-        if (choice === "save") {
-          if (isUntitled(path)) saveUntitled(function (ok, saved) { if (ok) closeNow(saved); resolve(!!ok); });
-          else saveText(path, textOf(path), function (ok) { if (ok) closeNow(path); resolve(!!ok); });
-        } else if (choice === "discard") { closeNow(path); resolve(true); }
-        else resolve(false);
+      // one person is asked at a time: a collaborator who is closing this tab holds the lock
+      takeLock(path, "owner").then(function (got) {
+        if (!got) { say("A collaborator is closing " + nameOf(path) + ".", "info"); resolve(false); return; }
+        window.Unsaved.askClose(path).then(function (choice) {
+          if (choice === "save") {
+            if (isUntitled(path)) saveUntitled(function (ok, saved) { releaseLock(); if (ok) closeNow(saved); resolve(!!ok); });
+            else saveText(path, textOf(path), function (ok) { releaseLock(); if (ok) closeNow(path); resolve(!!ok); });
+          } else if (choice === "discard") { releaseLock(); closeNow(path); resolve(true); }
+          else { releaseLock(); resolve(false); }
+        });
       });
     } else {
       closeNow(path);
@@ -510,13 +521,48 @@ function closeAsk(path) {
     }
   });
 }
+// One person at a time is asked about a tab with changes: the lock is a Firebase node (file-browser/<id>/closing) taken in a
+// transaction by whoever clicked first, the owner or a collaborator, and let go when the question is answered (it also
+// ends by itself after two minutes).
+function takeLock(path, by) {
+  return new Promise(function (resolve) {
+    if (!browserRef) { resolve(true); return; }
+    try {
+      browserRef.child("closing").transaction(function (cur) {
+        if (cur && cur.path && Date.now() - (cur.ts || 0) < 120000 && !(cur.by === by && cur.path === path)) return; // someone else holds it
+        return { path: path, by: by, ts: Date.now() };
+      }, function (err, committed) { resolve(!err && !!committed); }, false);
+    } catch (e) { resolve(true); }
+  });
+}
+function releaseLock() {
+  try { if (browserRef) browserRef.child("closing").remove(); } catch (e) { /* Firebase is optional here */ }
+}
+
 // A collaborator cannot close the owner's tab itself: it asks the owner's page (Firebase file-browser/<id>/close_requests, one
-// child for each request), which closes it with the usual question when the tab has changes.
-function requestClose(path) {
-  try { if (browserRef) browserRef.child("close_requests").push({ path: path, ts: Date.now() }); } catch (e) { /* Firebase is optional here */ }
+// child for each request). "close": a tab without changes. "save": the collaborator was asked and chose Save: the owner's page
+// writes the file from its own copy of the text and closes the tab, without a question of its own.
+function requestClose(path, action) {
+  try { if (browserRef) browserRef.child("close_requests").push({ path: path, action: action || "close", ts: Date.now() }); } catch (e) { /* Firebase is optional here */ }
+}
+// The collaborator who clicks is asked first, for a tab with changes (Save or Cancel: dropping the owner's changes is the
+// owner's to decide). Resolves true when a request was sent.
+function closeRemote(path) {
+  var changed = sharedDirty.indexOf(path) >= 0;
+  if (!changed) { requestClose(path, "close"); return Promise.resolve(true); }
+  if (isUntitled(path)) { say("Only the person who started the session can close an untitled tab that has changes.", "info"); return Promise.resolve(false); }
+  if (!window.Unsaved || !window.Unsaved.askShared) { requestClose(path, "close"); return Promise.resolve(true); }
+  return takeLock(path, "collab").then(function (got) {
+    if (!got) { say(nameOf(path) + " is already being closed by the other person.", "info"); return false; }
+    return window.Unsaved.askShared(path).then(function (choice) {
+      if (choice === "save") { requestClose(path, "save"); return true; }
+      releaseLock();
+      return false;
+    });
+  });
 }
 function closeByUser(path) {
-  if (!master()) { requestClose(path); return; }
+  if (!master()) { closeRemote(path); return; }
   closeAsk(path);
 }
 
@@ -562,7 +608,10 @@ function tabMenuItems(path) {
   // a collaborator's Close items ask the owner's page, like the close button
   var all = master() ? state.tabs : sharedList;
   var others = all.filter(function (p) { return p !== path; });
-  var closeThese = function (paths) { if (master()) closeMany(paths); else paths.forEach(requestClose); };
+  var closeThese = function (paths) {
+    if (master()) { closeMany(paths); return; }
+    paths.reduce(function (chain, p) { return chain.then(function (go) { return go ? closeRemote(p) : false; }); }, Promise.resolve(true));
+  };
   items.tab_close = { label: "Close", separator_before: true, action: function () { closeByUser(path); } };
   items.tab_close_others = { label: "Close others", _disabled: others.length === 0, action: function () { closeThese(others); } };
   items.tab_close_all = { label: "Close all", action: function () { closeThese(others.concat(all.indexOf(path) >= 0 ? [path] : [])); } };
@@ -608,7 +657,7 @@ function clearEditor(keepSelection) {
 
 function publish() {
   if (!sharedRef || !master()) return;
-  try { sharedRef.set({ tabs: state.tabs, active: state.active, ts: Date.now() }); } catch (e) { /* Firebase is optional here */ }
+  try { sharedRef.set({ tabs: state.tabs, active: state.active, dirty: state.tabs.filter(function (p) { return isDirty(p); }), ts: Date.now() }); } catch (e) { /* Firebase is optional here */ }
 }
 
 // ---- what 07-file-browser.js and 02-layout.js tell it --------------------------------------------------------------------
@@ -781,7 +830,23 @@ var api = {
         var v = snap.val();
         try { snap.ref.remove(); } catch (e) { /* the request is handled anyway */ }
         if (!v || typeof v.path !== "string" || Date.now() - (v.ts || 0) > 60 * 1000) return;
-        chain = chain.then(function () { return state.tabs.indexOf(v.path) >= 0 ? closeAsk(v.path) : false; });
+        chain = chain.then(function () {
+          if (state.tabs.indexOf(v.path) < 0) { releaseLock(); return false; }
+          if (v.action === "save" && !isUntitled(v.path)) {
+            // the collaborator answered the question on their page: write the file from this page's text, then close
+            say("A collaborator is saving and closing " + nameOf(v.path) + ".", "info");
+            return new Promise(function (resolve) {
+              saveText(v.path, textOf(v.path), function (ok) { releaseLock(); if (ok) closeNow(v.path); resolve(!!ok); });
+            });
+          }
+          return closeAsk(v.path);
+        });
+      });
+      // a collaborator is being asked about a tab: this page says so (it shows no dialog of its own)
+      var told = 0;
+      ref.child("closing").on("value", function (snap) {
+        var c = snap.val();
+        if (c && c.by === "collab" && c.ts !== told && Date.now() - (c.ts || 0) < 120000) { told = c.ts; say("A collaborator is closing " + nameOf(c.path) + ".", "info"); }
       });
     }
     if (!master()) {
@@ -789,6 +854,7 @@ var api = {
         var v = snap.val();
         sharedList = v && Array.isArray(v.tabs) ? v.tabs.filter(function (p) { return typeof p === "string"; }) : [];
         sharedActive = v && typeof v.active === "string" ? v.active : null;
+        sharedDirty = v && Array.isArray(v.dirty) ? v.dirty.filter(function (p) { return typeof p === "string"; }) : [];
         render();
       });
     }
