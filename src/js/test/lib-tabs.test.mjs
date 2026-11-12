@@ -2,7 +2,7 @@
 // shown, closing picks a neighbour, rename and delete follow the tree, a saved list is checked against what exists.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MAX_TABS, emptyState, openTab, closeTab, renamePath, removePath, restoreState, tabLabels } from "../src/page/lib-tabs.mjs";
+import { MAX_TABS, emptyState, openTab, closeTab, renamePath, removePath, restoreState, tabLabels, UNTITLED } from "../src/page/lib-tabs.mjs";
 
 const open = (paths) => paths.reduce((s, p) => openTab(s, p), emptyState());
 
@@ -113,4 +113,18 @@ test("a saved list is checked: repeats, files that are gone, and too many", () =
 test("two open files with the same name show their folder", () => {
   assert.deepEqual(tabLabels(["/h/src/main.c", "/h/lib/main.c", "/h/notes.txt"]), ["src/main.c", "lib/main.c", "notes.txt"]);
   assert.deepEqual(tabLabels(["/h/a.c"]), ["a.c"]);
+});
+
+test("the untitled tab is a tab like the others: labelled, dropped first when it has no text, never named like a path", () => {
+  assert.deepEqual(tabLabels(["/h/a.c", UNTITLED, "/h/untitled"]), ["a.c", "untitled", "h/untitled"]);
+  assert.equal(UNTITLED.startsWith("/"), false);
+  // the untitled tab with no text goes first when a sixth file comes
+  let s = openTab(open(["/1", UNTITLED, "/3", "/4", "/5"]), "/6", MAX_TABS, (p) => p !== UNTITLED);
+  assert.deepEqual(s.dropped, [UNTITLED], "the tab without changes leaves first, and the untitled one has none");
+  // closing the untitled tab shows its neighbour
+  const c = closeTab(open(["/a", UNTITLED, "/b"]), UNTITLED);
+  assert.deepEqual(c.tabs, ["/a", "/b"]);
+  // a saved untitled file takes its place in the strip
+  const r = renamePath(open(["/a", UNTITLED, "/b"]), UNTITLED, "/h/main.c");
+  assert.deepEqual(r.tabs, ["/a", "/h/main.c", "/b"]);
 });

@@ -100,6 +100,7 @@ function updateEditorContent(cmd="", content="/* Welcome to openrepl! */", force
         }
     }
     window[CONTENT_KEY] = content; 
+    if (nodetype !== "file" && window.EditorTabs && window.EditorTabs.programmatic) window.EditorTabs.programmatic(content);
     if (cmd !== "") {
       window[CMD_KEY] = cmd;
     }

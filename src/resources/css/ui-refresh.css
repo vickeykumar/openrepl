@@ -4174,3 +4174,10 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .unsaved-bar__list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .unsaved-bar__item { display: flex; align-items: center; gap: 8px; }
 .unsaved-bar__item span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); }
+
+/* the untitled tab and the + above the editor (page/22-editor-tabs.js) */
+.etab--untitled .etab__name { font-style: italic; }
+#new-untitled { flex-shrink: 0; }
+#new-untitled[hidden] { display: none; }
+.unsaved-dialog__input { box-sizing: border-box; width: 100%; margin: 12px 0 0; padding: 8px 10px; font: 400 13.5px var(--font-code); color: var(--paper); background: var(--ink-900); border: 1px solid var(--ink-600); border-radius: 8px; }
+.unsaved-dialog__input:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 1px; }
