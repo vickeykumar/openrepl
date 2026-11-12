@@ -1,7 +1,7 @@
 // The Light, Dark and System theme (src/resources/js/theme.js and the light-theme block at
 // the end of css/ui-refresh.css). Light means the whole page is light, dark the whole page.
 const { test, expect } = require("@playwright/test");
-const { backgroundLuminance, setTheme } = require("./helpers");
+const { backgroundLuminance, setTheme, waitForTerminalReady } = require("./helpers");
 
 const BANDS = ["#header-nav", ".hero", ".workspace", ".band--dark", ".site-footer"];
 
@@ -53,7 +53,7 @@ test.describe("theme choice", () => {
     await page.goto("/");
     // The terminal connects a little after the page loads and takes the keyboard focus when it does. If that happens
     // while the menu is open, Escape goes to the terminal and the focus does not come back. Wait for it first.
-    await expect(page.locator("#term-footer-text")).toContainText("Connected", { timeout: 30000 });
+    await waitForTerminalReady(page);
     const button = page.locator("[data-theme-toggle]").first();
     await button.click();
     await expect(page.locator(".theme-menu")).toBeVisible();

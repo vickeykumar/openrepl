@@ -465,6 +465,11 @@
           <span class="editor-status__spacer"></span>
           <span class="editor-status__pos" id="editor-cursor" aria-live="off">Ln 1, Col 1</span>
         </div>
+        <div class="term-collapsed" id="term-collapsed" hidden>
+          <span class="term-collapsed__label">Terminal</span>
+          <span class="term-collapsed__hint">running &middot; Run shows it</span>
+          <button type="button" class="ide-btn" id="show-terminal-button" onclick="ShowTerminal();" title="Show the terminal (Ctrl+`)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg><span>Show</span><kbd>Ctrl+`</kbd></button>
+        </div>
       </div>
       <div class="terminal-div" id="terminal-div">
         <div class="terminal-tabs" id="terminal-tabs" role="group" aria-label="Terminals">
@@ -472,6 +477,7 @@
             <button class="add-tab" id="add-tab" data-tip-name="New tab" onclick="gotty.addTab()" aria-label="New terminal tab" title="New terminal tab (up to 5)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14 M5 12h14"></path></svg></button>
             <div class="terminal-tabs__actions">
               <button type="button" class="ide-btn" id="show-editor-button" data-tip-name="Show editor" data-tip-desc="Bring the editor back beside the terminal." onclick="ToggleEditor();" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg><span>Show editor</span></button>
+              <button type="button" class="ide-btn" id="hide-terminal-button" data-tip-name="Hide terminal" data-tip-desc="Give the editor the whole window. Run brings the terminal back." onclick="ToggleTerminal();" title="Hide the terminal (Ctrl+`)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg><span>Hide</span></button>
               <button type="button" class="ide-btn" id="redo-button" data-tip-name="Reconnect" onclick="ToggleReconnect();" title="Start a fresh REPL in this tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7"></path></svg><span>Reconnect</span></button>
             </div>
         </div>
@@ -786,6 +792,7 @@ Breakpoint 1, main () at main.c:5
     <script src="./js/scribbler.js"></script>
     <script>
       ToggleEditor();
+      RestoreTerminalHidden();
       LoadOptionFromUrl();
       // The intro tour starts only from "Getting started" (T3).
     </script>

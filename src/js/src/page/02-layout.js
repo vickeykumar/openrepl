@@ -13,6 +13,10 @@ window.syncEditorLayoutUI = syncEditorLayoutUI;
 window.ToggleRotateEditor = ToggleRotateEditor;
 window.SetEditorDirection = SetEditorDirection;
 window.ToggleReconnect = ToggleReconnect;
+window.HideTerminal = HideTerminal;
+window.ShowTerminal = ShowTerminal;
+window.ToggleTerminal = ToggleTerminal;
+window.RestoreTerminalHidden = RestoreTerminalHidden;
 
 function ToggleFunction() {
     // Maximize or restore the workspace: the app bar, files, editor and terminals.
@@ -143,6 +147,19 @@ function ToggleEditor() {
       }
       
     }
+    if (termHidden) {
+      // the terminal is hidden and the editor is asked to hide: the terminal comes back and the editor goes
+      termHidden = false;
+      var termBack = get("#terminal-div");
+      if (termBack) termBack.style.display = "";
+      saveTermHidden(false);
+      var ideGone = get("#ide");
+      if (ideGone) ideGone.style.display = "none";
+      var editorToggle = get("#editor-button");
+      if (editorToggle) editorToggle.classList.toggle("toggle-accent-color");
+      syncEditorLayoutUI();
+      return;
+    }
     var TermElement = get("#terminal-div");
     var ideElement =  get("#ide");
     var editorbtn = get("#editor-button");
@@ -200,7 +217,7 @@ function ToggleEditor() {
 // Reflects the editor state (shown or hidden, side by side or stacked) in the
 // workspace controls. Called after every ToggleEditor/ToggleRotateEditor.
 function syncEditorLayoutUI() {
-    var hidden = einst === null;
+    var hidden = einst === null && !termHidden;
     var split = get("#ide-split");
     if (split) split.classList.toggle("is-vertical", direction === 'vertical');
     var showBtn = get("#show-editor-button");
@@ -208,6 +225,11 @@ function syncEditorLayoutUI() {
     var rot = get("#rotate-button-label");
     if (rot) rot.textContent = direction === 'vertical' ? "Side by side" : "Stacked";
     document.body.classList.toggle("editor-hidden", hidden);
+    document.body.classList.toggle("terminal-hidden", termHidden);
+    var hideBtn = get("#hide-terminal-button");
+    if (hideBtn) hideBtn.hidden = hidden; // with the editor hidden there is nothing to give the room to
+    var collapsed = get("#term-collapsed");
+    if (collapsed) collapsed.hidden = !termHidden;
     setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 50);
 }
 // The layout the user chose last time ('horizontal' or 'vertical'), kept in localStorage so the next visit starts in it.
@@ -221,6 +243,44 @@ function savedEditorLayout() {
 function saveEditorLayout(dir) {
   try { localStorage.setItem(EDITOR_LAYOUT_KEY, dir); } catch (e) {}
 }
+// The terminal hidden (the editor has the whole window), kept in localStorage so the next visit starts the same way.
+// The terminal and its shell stay alive while it is hidden. Run shows it again (03-run-and-files.js).
+var TERM_HIDDEN_KEY = "terminal-hidden";
+var termHidden = false;
+function saveTermHidden(on) {
+  try { localStorage.setItem(TERM_HIDDEN_KEY, on ? "1" : "0"); } catch (e) {}
+}
+function HideTerminal() {
+  // einst is null while the editor is hidden: then the terminal is all there is
+  if (ismob() || termHidden || einst === null) return;
+  einst.destroy();
+  einst = null;
+  termHidden = true;
+  var term = get("#terminal-div");
+  if (term) term.style.display = "none";
+  saveTermHidden(true);
+  syncEditorLayoutUI();
+}
+function ShowTerminal() {
+  if (!termHidden) return;
+  termHidden = false;
+  var term = get("#terminal-div");
+  if (term) term.style.display = "";
+  saveTermHidden(false);
+  ToggleEditor(); // the editor is showing and there is no split: this builds it again
+  var editorbtn = get("#editor-button");
+  if (editorbtn) editorbtn.classList.toggle("toggle-accent-color"); // ToggleEditor flipped it; the editor was showing all along
+}
+function ToggleTerminal() {
+  if (termHidden) ShowTerminal(); else HideTerminal();
+}
+// Called once, after the first ToggleEditor of the page.
+function RestoreTerminalHidden() {
+  var saved = null;
+  try { saved = localStorage.getItem(TERM_HIDDEN_KEY); } catch (e) {}
+  if (saved === "1") HideTerminal();
+}
+
 // Set while the page, not the user, changes the layout (Genie pinned beside the IDE): that is not a choice to keep.
 var layoutByPage = false;
 
@@ -242,6 +302,11 @@ function ToggleRotateEditor() {
     }
   }
   if (!layoutByPage && !ismob()) saveEditorLayout(direction);
+  if (termHidden) {
+    // nothing to rebuild while the terminal is hidden: the new direction is used when it comes back
+    syncEditorLayoutUI();
+    return;
+  }
   if (einst) {
     einst.destroy();
     einst = null; // destroy and reset splitter
