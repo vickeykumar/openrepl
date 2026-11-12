@@ -27,18 +27,20 @@ test("the workspace folder is open when the page loads", async ({ page }) => {
   await expect(anchor(page, `open${stamp}.txt`)).toBeVisible(); // a file of the workspace, with no click on the folder
 });
 
-test("the Files panel starts open from 800 px wide and hidden below it, until the visitor chooses", async ({ page }) => {
+test("the Files panel starts open on a window wider than 800 px, a saved choice wins, and a phone has it in a drawer", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 800 });
   await page.goto("/");
   await expect(page.locator("body")).not.toHaveClass(/files-collapsed/);
+  // a choice already made wins over the width
+  await page.evaluate(() => localStorage.setItem("files-panel", "closed"));
+  await page.reload();
+  await expect(page.locator("body")).toHaveClass(/files-collapsed/);
+  // up to 800 px the page is in its phone layout, where the files are in a drawer (13-mobile.js)
   await page.evaluate(() => localStorage.removeItem("files-panel"));
   await page.setViewportSize({ width: 700, height: 800 });
   await page.reload();
+  await expect(page.locator("body")).toHaveClass(/is-mobile/);
   await expect(page.locator("body")).toHaveClass(/files-collapsed/);
-  // a choice already made wins over the width
-  await page.evaluate(() => localStorage.setItem("files-panel", "open"));
-  await page.reload();
-  await expect(page.locator("body")).not.toHaveClass(/files-collapsed/);
 });
 
 test("a new file is green with U, a saved one amber with M, unsaved edits add a dot, and the folders above show it", async ({ page }) => {
