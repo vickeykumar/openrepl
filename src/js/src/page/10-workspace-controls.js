@@ -78,16 +78,11 @@ $(function () {
   // would send it to the program.
   // On the window, in the capture phase, so that it runs before anything the terminal or another script adds on the
   // document; the key is matched by its code, its character or its key code, whichever the browser reports.
-  var termKeyAt = 0;
   window.addEventListener("keydown", function (e) {
     var isBackquote = e.code === "Backquote" || e.key === "`" || e.keyCode === 192;
     if (!isBackquote || !e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || e.repeat || !window.ToggleTerminal) return;
     e.preventDefault();
     e.stopPropagation();
-    // one press is one toggle, even if the key event is seen twice
-    var now = Date.now();
-    if (now - termKeyAt < 150) return;
-    termKeyAt = now;
     window.ToggleTerminal();
   }, true);
 
