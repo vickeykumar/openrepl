@@ -265,7 +265,8 @@ test("the viewer's Terminal button types a command into the terminal and does no
   await expect
     .poll(async () => (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " "))
     .toContain("more '");
-  const shown = (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " ");
+  // a long path wraps at the width of the terminal: the screen text breaks it into lines
+  const shown = (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " ").replace(/\n/g, "");
   expect(shown).toContain(fname(1));
 });
 

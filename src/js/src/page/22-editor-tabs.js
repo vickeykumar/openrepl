@@ -327,6 +327,7 @@ var api = {
     var sel = t ? t.get_selected()[0] : null;
     if (sel && isFile(sel)) state = openTab(state, sel);
     restored = true;
+    persist(); // what was chosen before the tree was ready was not written (the guard above): write it now
     render();
     publish();
     if (e && !e.__tabsBound) {
