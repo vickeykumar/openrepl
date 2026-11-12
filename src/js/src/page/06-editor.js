@@ -178,6 +178,10 @@ $(function() {
             name: 'Save',
             bindKey: {win: 'Ctrl-S',  mac: 'Command-S'},
             exec: function(editor) {
+              if (window.EditorTabs && window.EditorTabs.untitledShown && window.EditorTabs.untitledShown()) {
+                window.EditorTabs.saveUntitled(); // an untitled tab is saved with a name (22-editor-tabs.js)
+                return;
+              }
               if ((editor.env.filename) && $('#file-browser').jstree(true).is_selected(editor.env.filename)) {
                 SaveSelectedNodeToFile(editor.env.filename, function(){
                   // in case of failure refresh the tree to fetch from server

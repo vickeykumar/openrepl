@@ -3,6 +3,9 @@
 // state, plus `dropped`, the paths that left the list because of the call.
 
 export const MAX_TABS = 5;
+// The key of the one untitled tab: a buffer that is not a file of the workspace until it is saved with a name. No path
+// looks like it (paths are absolute).
+export const UNTITLED = "untitled:";
 
 export function emptyState() {
   return { tabs: [], active: null, dropped: [] };
@@ -74,9 +77,9 @@ export function restoreState(saved, exists, max = MAX_TABS) {
 
 // What a tab says: the file name, and the folder too when two open files have the same name.
 export function tabLabels(tabs) {
-  const names = tabs.map((p) => p.split("/").pop());
+  const names = tabs.map((p) => (p === UNTITLED ? "untitled" : p.split("/").pop()));
   return tabs.map((p, i) => {
-    if (names.filter((n) => n === names[i]).length < 2) return names[i];
+    if (p === UNTITLED || names.filter((n) => n === names[i]).length < 2) return names[i];
     const parts = p.split("/");
     return parts.length > 1 ? parts[parts.length - 2] + "/" + names[i] : names[i];
   });

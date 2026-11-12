@@ -4174,3 +4174,13 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .unsaved-bar__list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .unsaved-bar__item { display: flex; align-items: center; gap: 8px; }
 .unsaved-bar__item span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); }
+
+/* the untitled tab and the + above the editor (page/22-editor-tabs.js) */
+.etab--untitled .etab__name { font-style: italic; }
+/* the + is pinned at the right of the strip: the shown tab is brought into view left of it (page/23-tab-lanes.js, reveal) */
+.editor-header .editor-tabs { --tabs-pinned-w: 40px; }
+.etab-add { flex: 0 0 auto; position: sticky; right: 0; display: flex; align-items: center; justify-content: center; width: 40px; padding: 0; color: var(--muted-2); background: var(--ink-900); border: 0; cursor: pointer; }
+.etab-add:hover, .etab-add:focus-visible { color: var(--paper); background: var(--ink-800); }
+.etab-add:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
+.unsaved-dialog__input { box-sizing: border-box; width: 100%; margin: 12px 0 0; padding: 8px 10px; font: 400 13.5px var(--font-code); color: var(--paper); background: var(--ink-900); border: 1px solid var(--ink-600); border-radius: 8px; }
+.unsaved-dialog__input:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 1px; }

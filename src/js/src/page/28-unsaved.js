@@ -19,7 +19,7 @@ var applying = false;       // the title is being set by this part
 
 function tabs() { return window.EditorTabs; }
 function dirtyList() { return tabs() && tabs().dirtyPaths ? tabs().dirtyPaths() : []; }
-function nameOf(p) { return String(p).split("/").pop(); }
+function nameOf(p) { return p === "untitled:" ? "untitled" : String(p).split("/").pop(); }
 function say(text, type) { if (window.notify) window.notify(text, { type: type || "info", timeout: 3500 }); }
 
 // ---- the question -----------------------------------------------------------------------------------------------------
@@ -33,13 +33,14 @@ function build() {
   dialog.hidden = true;
   dialog.innerHTML =
     '<div class="unsaved-dialog" role="alertdialog" aria-modal="true" aria-labelledby="unsaved-title" aria-describedby="unsaved-body">' +
-    '<h2 id="unsaved-title"></h2><p id="unsaved-body"></p><div class="unsaved-dialog__buttons" id="unsaved-buttons"></div>' +
+    '<h2 id="unsaved-title"></h2><p id="unsaved-body"></p><div id="unsaved-field"></div><div class="unsaved-dialog__buttons" id="unsaved-buttons"></div>' +
     '<p class="unsaved-dialog__hint" id="unsaved-hint"></p></div>';
   document.body.appendChild(dialog);
   return dialog;
 }
 
-// ask({ title, body, hint, buttons: [{ id, label, primary }], cancel: id }) -> a promise of the id chosen
+// ask({ title, body, hint, buttons: [{ id, label, primary }], cancel: id, input: { value, label } }) -> a promise of the id
+// chosen; with an input, of { id, value }
 function ask(o) {
   return new Promise(function (resolve) {
     var d = build();
@@ -47,6 +48,19 @@ function ask(o) {
     d.querySelector("#unsaved-title").textContent = o.title;
     d.querySelector("#unsaved-body").textContent = o.body;
     d.querySelector("#unsaved-hint").textContent = o.hint || "";
+    var field = d.querySelector("#unsaved-field");
+    field.textContent = "";
+    var input = null;
+    if (o.input) {
+      input = document.createElement("input");
+      input.type = "text";
+      input.className = "unsaved-dialog__input";
+      input.value = o.input.value || "";
+      input.spellcheck = false;
+      input.autocomplete = "off";
+      input.setAttribute("aria-label", o.input.label || "Name");
+      field.appendChild(input);
+    }
     var row = d.querySelector("#unsaved-buttons");
     row.textContent = "";
     var primary = null;
@@ -54,7 +68,7 @@ function ask(o) {
       d.hidden = true;
       document.removeEventListener("keydown", onKey, true);
       if (returnFocus && returnFocus.focus && document.contains(returnFocus)) { try { returnFocus.focus({ preventScroll: true }); } catch (e) {} }
-      resolve(id);
+      resolve(input ? { id: id, value: input.value } : id);
     };
     function onKey(e) {
       if (e.key === "Escape" && o.cancel) { e.preventDefault(); e.stopPropagation(); finish(o.cancel); }
@@ -80,8 +94,27 @@ function ask(o) {
     });
     d.hidden = false;
     document.addEventListener("keydown", onKey, true);
-    (primary || row.querySelector("button")).focus();
+    if (input) {
+      input.focus();
+      var dot = input.value.lastIndexOf(".");
+      input.setSelectionRange(0, dot > 0 ? dot : input.value.length); // the name is selected, not its extension
+    } else {
+      (primary || row.querySelector("button")).focus();
+    }
   });
+}
+
+// the name for an untitled file that is being saved: the name, or null when it was cancelled. `note` says what was wrong
+// with the last one.
+function askName(value, note) {
+  return ask({
+    title: "Save the untitled file as",
+    body: note || "In your workspace folder. Pick another name if you like.",
+    hint: "Enter saves. Esc cancels.",
+    input: { value: value, label: "File name" },
+    buttons: [{ id: "cancel", label: "Cancel" }, { id: "save", label: "Save", primary: true }],
+    cancel: "cancel"
+  }).then(function (r) { return r.id === "save" ? String(r.value).trim() : null; });
 }
 
 // a changed tab is being closed: "save", "discard" or "cancel"
@@ -91,6 +124,17 @@ function askClose(path) {
     body: "Your changes will be lost if you do not save them. The file is saved to your workspace.",
     hint: "Enter saves. Esc cancels, and the tab stays.",
     buttons: [{ id: "discard", label: "Don't save" }, { id: "cancel", label: "Cancel" }, { id: "save", label: "Save", primary: true }],
+    cancel: "cancel"
+  });
+}
+
+// a collaborator closes the owner's tab that has unsaved changes: "save" or "cancel" (dropping them is the owner's to decide)
+function askShared(path) {
+  return ask({
+    title: "Save the changes to " + nameOf(path) + "?",
+    body: "These are unsaved changes of the person who started the session. Save writes them to the file and closes the tab.",
+    hint: "Enter saves. Esc cancels, and the tab stays.",
+    buttons: [{ id: "cancel", label: "Cancel" }, { id: "save", label: "Save", primary: true }],
     cancel: "cancel"
   });
 }
@@ -284,6 +328,8 @@ function init() {
 window.Unsaved = {
   askClose: askClose,
   askDropped: askDropped,
+  askShared: askShared,
+  askName: askName,
   saveAll: saveAll,
   recovered: setRecovered,
   refresh: refresh,

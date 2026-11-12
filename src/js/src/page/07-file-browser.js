@@ -850,6 +850,9 @@
                 $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
                 applying_select = false;
                 lang_change_scheduled = false;
+                // the tree chose its file again (a change of language reloads it and restores the selection): when the
+                // untitled tab was just shown, it still is (22-editor-tabs.js)
+                if (window.EditorTabs && window.EditorTabs.treeRefreshed) window.EditorTabs.treeRefreshed();
           // call your custom function here
         }).on("move_node.jstree copy_node.jstree", function (e, data) {
           var op = eventOp.Rename;  // move
@@ -955,6 +958,12 @@
                 changelangbyselectednode(); 
                 //check if we can update the new language for new selection
                 return;
+            }
+            if (nodeid === "untitled:") {
+              // a request to show the owner's untitled tab (22-editor-tabs.js): the owner shows it, a viewer's own tree is left
+              if (isMaster() && window.EditorTabs && window.EditorTabs.showUntitled) window.EditorTabs.showUntitled();
+              applying_select = false;
+              return;
             }
             if (nodeid) {
               console.log("new node selected: ", nodeid);

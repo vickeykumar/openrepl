@@ -133,7 +133,7 @@ test("choosing files quickly never puts one file's text in another, and closing 
   // reload: the tabs come back, but their text has to be read from the server again
   await page.reload();
   await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
-  await expect(tabs(page)).toHaveCount(3);
+  await expect(tabs(page).filter({ hasText: /^tab/ })).toHaveCount(3); // the three files (the editor is an untitled buffer too, drawn as a fourth tab)
   // the first file's answer comes late, the second's at once
   await page.route(/q=load.*tab1-/, async (route) => {
     await new Promise((r) => setTimeout(r, 2500));
@@ -175,7 +175,7 @@ test("closing a tab that was only opened writes nothing to the server, whatever 
   await expect.poll(() => page.evaluate(() => window.editor.env.filename)).toContain(fname(1));
   await expect(tabs(page).filter({ hasText: fname(1) }).locator(".etab__dot")).toHaveCount(0);
   await tabs(page).filter({ hasText: fname(1) }).locator(".etab__x").click();
-  await expect(tabs(page)).toHaveCount(0);
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveCount(0); // the editor is an untitled buffer then, drawn as an untitled tab
   expect(saves).toEqual([]);
 });
 
@@ -197,7 +197,7 @@ test("a binary file is not opened in the shared editor: it opens read-only as a 
   await expect(viewer.locator(".lv__name")).toContainText("(hex)");
   await expect(viewer.locator(".lv__text")).toContainText("00000000  45 4c 46 00 01 62 69 6e");
   await expect(viewer.locator(".lv__text")).toContainText("|ELF..binary|");
-  await expect(tabs(page)).toHaveCount(0);
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveCount(0); // (an untitled tab may be drawn)
   expect(await page.evaluate(() => window.editor.env.editor.getValue())).not.toContain("ELF");
 });
 
@@ -281,7 +281,7 @@ test("text over the editor's limit opens read-only in pieces, and nothing is wri
   const viewer = await expectViewer(page);
   await expect(viewer.locator(".lv__text")).toContainText("piece at 0");
   await expect(viewer.locator(".lv__range")).toContainText("3,000,000");
-  await expect(tabs(page)).toHaveCount(0); // no tab: it is not in the editor
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveCount(0); // no tab for the file: it is not in the editor (an untitled tab may be drawn)
   await viewer.getByRole("button", { name: "Next" }).click();
   await expect(viewer.locator(".lv__text")).toContainText("piece at 1048576");
   await viewer.getByRole("button", { name: "End" }).click();

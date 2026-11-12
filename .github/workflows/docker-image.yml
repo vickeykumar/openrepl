@@ -2,6 +2,13 @@
 # and checked from the outside: a smoke test (scripts/ci/smoke.sh) and the browser
 # tests (e2e/, Playwright). Both must pass. What the browser tests found is in the
 # job and in the "playwright-report" artifact of the run (the "browser" job, which runs after "build").
+#
+# Two ways to wait less for a fix of a test:
+#  - A push that changes only tests or docs (e2e/, docs/, *.md) skips the "build" job: the image is the same, and the
+#    "browser" job rebuilds it from the layer cache the last run left. "changes" decides it from what the push itself changed
+#    (not from the whole pull request).
+#  - "Run workflow" (workflow_dispatch) takes "tests_grep": only the browser tests whose title matches it run, so a flaky test
+#    is tried again alone, with the code of the branch, in the time of the image rebuild.
 name: Docker Image CI
 
 on:
@@ -10,6 +17,12 @@ on:
   pull_request:
     branches: [ "master" ]
   workflow_dispatch:
+    inputs:
+      tests_grep:
+        description: "Run only the browser tests whose title matches this (a regular expression, for example: editor-tabs). Empty: all of them, and the image checks."
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: docker-${{ github.workflow }}-${{ github.ref }}
@@ -20,7 +33,43 @@ permissions:
 
 jobs:
 
+  # Does this push change the image? Not when it changes only tests or docs, or when a run is asked for a few tests only.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      image: ${{ steps.what.outputs.image }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: What did this push change
+      id: what
+      env:
+        EVENT: ${{ github.event_name }}
+        BEFORE: ${{ github.event.before }}
+        AFTER: ${{ github.sha }}
+        GREP: ${{ github.event.inputs.tests_grep }}
+      run: |
+        image=true
+        if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$GREP" ]; then
+          image=false
+          echo "a run for some tests only: the image checks are skipped"
+        elif [ "$EVENT" = "pull_request" ] && [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+          # what the push added to the branch: the files it changed
+          files=$(git diff --name-only "$BEFORE" "$AFTER")
+          echo "changed by this push:"; echo "$files"
+          others=$(echo "$files" | grep -vE '^(e2e/|docs/|[^/]+\.md$)' || true)
+          if [ -n "$files" ] && [ -z "$others" ]; then
+            image=false
+            echo "only tests or docs: the image checks are skipped"
+          fi
+        fi
+        echo "image=$image" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -122,7 +171,9 @@ jobs:
   # job has just filled, in a minute or two): a flaky browser test can then be run again alone ("Re-run failed jobs"),
   # without building the image and running the checks above once more.
   browser:
-    needs: build
+    needs: [changes, build]
+    # the build job may have been skipped on purpose (see "changes"); a failed or cancelled one stops this one
+    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
@@ -161,6 +212,7 @@ jobs:
       env:
         BASE_URL: http://localhost:8080
         CI: "true"
+        TESTS_GREP: ${{ github.event.inputs.tests_grep }}
       run: |
         npm install --no-audit --no-fund
         # The runner's apt mirror (azure.archive.ubuntu.com) sometimes does not resolve, and then the system
@@ -175,12 +227,14 @@ jobs:
           if [ "$attempt" = 3 ]; then exit 1; fi
           echo "browser install failed (attempt $attempt), trying again in 20 s"; sleep 20
         done
-        npx playwright test
+        args=()
+        if [ -n "$TESTS_GREP" ]; then args+=(-g "$TESTS_GREP"); echo "only the tests that match: $TESTS_GREP"; fi
+        npx playwright test "${args[@]}"
     - name: Measure the rappel REPL test (20 runs, no retries)
       # A measurement, to tell a test that fails now and then from one that fails often: the Assembly (rappel) REPL
       # test failed on amd64 in most runs of 2026-11-11 and 12. Its result does not fail the job; it is written to the
       # job summary. Remove this step when the question is answered.
-      if: always() && steps.e2e.outcome != 'skipped'
+      if: always() && steps.e2e.outcome != 'skipped' && github.event.inputs.tests_grep == ''
       continue-on-error: true
       working-directory: e2e
       env:
