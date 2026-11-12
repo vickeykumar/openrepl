@@ -7,6 +7,8 @@ import "./03-run-and-files";
 import "./04-repl-demo";
 import "./05-auth";
 import "./06-editor";
+import "./22-editor-tabs"; // before the Files panel, which tells it about the tree
+import "./23-tab-lanes";
 import "./07-file-browser";
 import "./08-genie-nudge";
 import "./09-hero";
