@@ -141,6 +141,21 @@ jobs:
           echo "browser install failed (attempt $attempt), trying again in 20 s"; sleep 20
         done
         npx playwright test
+    - name: Measure the rappel REPL test (20 runs, no retries)
+      # A measurement, to tell a test that fails now and then from one that fails often: the Assembly (rappel) REPL
+      # test failed on amd64 in most runs of 2026-11-11 and 12. Its result does not fail the job; it is written to the
+      # job summary. Remove this step when the question is answered.
+      if: always() && steps.e2e.outcome != 'skipped'
+      continue-on-error: true
+      working-directory: e2e
+      env:
+        BASE_URL: http://localhost:8080
+        CI: "true"
+      run: |
+        npx playwright test tests/repl.spec.js -g "Assembly \(rappel\)" --repeat-each=20 --retries=0 --reporter=line > /tmp/rappel-x20.txt 2>&1 || true
+        passed=$(grep -Eo '[0-9]+ passed' /tmp/rappel-x20.txt | tail -1)
+        failed=$(grep -Eo '[0-9]+ failed' /tmp/rappel-x20.txt | tail -1)
+        echo "### rappel REPL test x20 on $(uname -m): ${passed:-0 passed}, ${failed:-0 failed}" | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Browser tests report
       if: always()
       uses: actions/upload-artifact@v4
