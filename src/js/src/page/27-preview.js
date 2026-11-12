@@ -81,7 +81,7 @@ function offer(ports) {
   var port = fresh[0];
   fresh.forEach(function (p) { seenPorts[p] = true; });
   window.notify("Your program is listening on port " + port + ".", {
-    type: "info", title: "Preview", timeout: 20000,
+    type: "info", title: "Preview", timeout: 0, // stays until it is answered
     actions: [
       { label: "Open preview", onClick: function () { openPort(port); } },
       { label: "Not now", onClick: function () {} },
@@ -337,7 +337,15 @@ function init() {
   // workspace is asked every 20 seconds while the page is in view and the pane is closed (a short answer, read from the
   // server's own tables; nothing else is asked of the server for this)
   askPorts();
-  setInterval(function () { if (!open && !document.hidden && !disabled()) askPorts().then(offer); }, 20000);
+  setInterval(function () { if (!open && !document.hidden && !disabled()) askPorts().then(offer); }, 8000);
+  // the terminal printed where a program listens: ask at once, and again after a moment (it may still be starting)
+  var hintTimers = [];
+  window.addEventListener("terminal-port-hint", function () {
+    if (open || disabled() || hintTimers.length) return;
+    hintTimers = [300, 2500].map(function (ms) {
+      return setTimeout(function () { hintTimers = []; if (!open && !disabled()) askPorts().then(offer); }, ms);
+    });
+  });
   document.addEventListener("visibilitychange", function () { if (!document.hidden && !open && !disabled()) askPorts().then(offer); });
   // the button follows the file in the editor
   var timer = setInterval(function () {

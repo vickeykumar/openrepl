@@ -182,6 +182,17 @@ test("a program that starts listening is offered in a notice, and Open preview s
   await expect(page.locator(".notice", { hasText: "listening on port 5066" })).toHaveCount(0);
 });
 
+test("a program that starts listening is offered within seconds by itself, and the notice stays until it is answered", async ({ page }) => {
+  await ready(page);
+  await needsPrivateNetwork(page);
+  await startServer(page, 5067);
+  // nothing asks for it: the page looks every 8 seconds (the program here prints nothing, so the terminal hint does not help)
+  const notice = page.locator(".notice", { hasText: "listening on port 5067" });
+  await expect(notice).toBeVisible({ timeout: 15 * 1000 });
+  await page.waitForTimeout(6000);
+  await expect(notice).toBeVisible();
+});
+
 test("the pane lists how to start a program, and Type it puts the command in the terminal", async ({ page }) => {
   await ready(page);
   await page.evaluate(() => window.Preview.open()); // nothing to show yet, so the list of ports is what it opens with
