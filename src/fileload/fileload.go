@@ -11,14 +11,36 @@ package fileload
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // MaxChunk is the most one request reads with length=.
 const MaxChunk = 4 << 20
+
+// Every answer carries an ETag made of the file's modification time and size, and "Cache-Control: no-cache", which
+// lets a browser keep the answer but makes it ask the server before using it again. A file that has not changed is
+// then answered with an empty 304 and nothing is read or sent; the browser's cache fills in the body, so the page
+// needs no code for it. A file that was written since has another tag and is sent in full. The tag is weak (W/): it
+// says "the same file", not "the same bytes on the wire".
+func etagOf(info os.FileInfo) string {
+	return fmt.Sprintf(`W/"%x-%x"`, info.ModTime().UnixNano(), info.Size())
+}
+
+func notModified(req *http.Request, etag string) bool {
+	have := strings.TrimPrefix(etag, "W/")
+	for _, tag := range strings.Split(req.Header.Get("If-None-Match"), ",") {
+		tag = strings.TrimSpace(tag)
+		if tag == "*" || strings.TrimPrefix(tag, "W/") == have {
+			return true
+		}
+	}
+	return false
+}
 
 // Serve writes the answer for the file at path (the caller has checked that the path is allowed). req.Form must be
 // parsed.
@@ -34,6 +56,7 @@ func Serve(rw http.ResponseWriter, req *http.Request, path string) {
 	}
 	size := info.Size()
 	rw.Header().Set("X-File-Size", strconv.FormatInt(size, 10))
+	etag := etagOf(info)
 
 	if l := req.Form.Get("length"); l != "" {
 		length, err := strconv.ParseInt(l, 10, 64)
@@ -57,6 +80,14 @@ func Serve(rw http.ResponseWriter, req *http.Request, path string) {
 		if offset+length > size {
 			length = size - offset
 		}
+		rw.Header().Set("ETag", etag)
+		rw.Header().Set("Cache-Control", "private, no-cache")
+		rw.Header().Set("X-Chunk-Offset", strconv.FormatInt(offset, 10))
+		rw.Header().Set("X-Chunk-Length", strconv.FormatInt(length, 10))
+		if notModified(req, etag) {
+			rw.WriteHeader(http.StatusNotModified)
+			return
+		}
 		buf := make([]byte, length)
 		if length > 0 {
 			f, err := os.Open(path)
@@ -72,7 +103,6 @@ func Serve(rw http.ResponseWriter, req *http.Request, path string) {
 			}
 			buf = buf[:n]
 		}
-		rw.Header().Set("X-Chunk-Offset", strconv.FormatInt(offset, 10))
 		rw.Header().Set("X-Chunk-Length", strconv.Itoa(len(buf)))
 		write(rw, buf)
 		return
@@ -83,6 +113,12 @@ func Serve(rw http.ResponseWriter, req *http.Request, path string) {
 			http.Error(rw, "file too large", http.StatusRequestEntityTooLarge)
 			return
 		}
+	}
+	rw.Header().Set("ETag", etag)
+	rw.Header().Set("Cache-Control", "private, no-cache")
+	if notModified(req, etag) {
+		rw.WriteHeader(http.StatusNotModified)
+		return
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {

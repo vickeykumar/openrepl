@@ -11,9 +11,12 @@ import (
 	"testing"
 )
 
-func get(t *testing.T, path, query string) *httptest.ResponseRecorder {
+func get(t *testing.T, path, query string, header ...string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest("GET", "/ws_filebrowser?"+query, nil)
+	for i := 0; i+1 < len(header); i += 2 {
+		req.Header.Set(header[i], header[i+1])
+	}
 	req.Form, _ = url.ParseQuery(query)
 	rec := httptest.NewRecorder()
 	Serve(rec, req, path)
@@ -107,5 +110,52 @@ func TestAPieceIsCappedAndBadNumbersAreRefused(t *testing.T) {
 func TestAFolderIsNotAFile(t *testing.T) {
 	if rec := get(t, t.TempDir(), "q=load"); rec.Code != http.StatusBadRequest {
 		t.Errorf("got %d", rec.Code)
+	}
+}
+
+func TestAnUnchangedFileIsAnsweredWithNothingAndAChangedOneInFull(t *testing.T) {
+	p := file(t, "hello")
+	first := get(t, p, "q=load")
+	tag := first.Header().Get("ETag")
+	if tag == "" || !strings.Contains(first.Header().Get("Cache-Control"), "no-cache") {
+		t.Fatalf("no tag or no revalidation: %q %q", tag, first.Header().Get("Cache-Control"))
+	}
+	again := get(t, p, "q=load", "If-None-Match", tag)
+	if again.Code != http.StatusNotModified || again.Body.Len() != 0 {
+		t.Fatalf("an unchanged file: %d, %d bytes", again.Code, again.Body.Len())
+	}
+	if get(t, p, "q=load", "If-None-Match", `W/"other"`).Code != 200 {
+		t.Error("another tag must get the file")
+	}
+	if get(t, p, "q=load", "If-None-Match", `"x", `+tag).Code != http.StatusNotModified {
+		t.Error("a tag in a list was not found")
+	}
+	// the file is written: its tag changes (a later time and another size)
+	if err := os.WriteFile(p, []byte("hello, changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	later := get(t, p, "q=load", "If-None-Match", tag)
+	if later.Code != 200 || decoded(t, later) != "hello, changed" {
+		t.Errorf("a changed file: %d %q", later.Code, later.Body.String())
+	}
+}
+
+func TestAPieceHasItsOwnNotModifiedAnswerWithTheSameHeaders(t *testing.T) {
+	p := file(t, "0123456789")
+	tag := get(t, p, "q=load&offset=2&length=3").Header().Get("ETag")
+	rec := get(t, p, "q=load&offset=2&length=3", "If-None-Match", tag)
+	if rec.Code != http.StatusNotModified || rec.Body.Len() != 0 {
+		t.Fatalf("got %d with %d bytes", rec.Code, rec.Body.Len())
+	}
+	if rec.Header().Get("X-Chunk-Offset") != "2" || rec.Header().Get("X-Chunk-Length") != "3" {
+		t.Errorf("headers %v", rec.Header())
+	}
+}
+
+func TestATooLargeFileIsRefusedEvenWhenTheBrowserHoldsATag(t *testing.T) {
+	p := file(t, strings.Repeat("x", 100))
+	tag := get(t, p, "q=load").Header().Get("ETag")
+	if rec := get(t, p, "q=load&max=50", "If-None-Match", tag); rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("got %d, want 413", rec.Code)
 	}
 }
