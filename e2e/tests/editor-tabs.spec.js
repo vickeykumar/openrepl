@@ -348,3 +348,25 @@ test("a text file of many kilobytes opens with its own text", async ({ page }) =
   await expect.poll(() => page.evaluate(() => window.editor.env.editor.getValue()), { timeout: 15000 }).toBe(text);
   await expect(page.locator("#large-viewer")).toBeHidden();
 });
+
+// All files shared one undo history: after a switch, Ctrl+Z brought the text of the file that was shown before into the
+// file that is shown now (and a save or a close then wrote it there).
+test("undo after switching files does not bring back another file's text, and undo in a file still works", async ({ page }) => {
+  await ready(page);
+  const anchors = await openFiles(page, 2);
+  await anchors[0].click();
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveAttribute("aria-selected", "true");
+  await page.evaluate(() => window.editor.env.editor.insert("typed in the first file"));
+  await anchors[1].click();
+  await expect(tabs(page).filter({ hasText: fname(2) })).toHaveAttribute("aria-selected", "true");
+  const shown = await page.evaluate(() => window.editor.env.editor.getValue());
+  expect(shown).not.toContain("typed in the first file");
+  // however many times undo is asked for, the second file keeps its own text
+  await page.evaluate(() => { for (let i = 0; i < 5; i++) window.editor.env.editor.undo(); });
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).toBe(shown);
+  // undo in the file that is shown still takes back what is typed in it
+  await page.evaluate(() => window.editor.env.editor.insert("abc"));
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).toBe(shown + "abc");
+  await page.evaluate(() => window.editor.env.editor.undo());
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).toBe(shown);
+});
