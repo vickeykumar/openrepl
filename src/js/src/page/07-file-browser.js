@@ -224,6 +224,33 @@
     return !!tree && String(tree.get_selected()[0]) === String(id);
   }
 
+  // Copy path / Copy relative path of the nodes of the Files panel to the clipboard, one per line.
+  function RelativeToHome(path) {
+    var home = String(window.homedir || "");
+    if (path === home) return ".";
+    return home && path.indexOf(home + "/") === 0 ? path.slice(home.length + 1) : path;
+  }
+  function CopyPaths(paths, relative) {
+    var text = paths.map(function (p) { return relative ? RelativeToHome(p) : p; }).join("\n");
+    var what = (relative ? "relative path" : "path") + (paths.length > 1 ? "s" : "");
+    var done = function () { notify("Copied the " + what + ".", { type: "success", timeout: 2500 }); };
+    var fallback = function () {
+      // no clipboard API (an insecure page, or a refusal): the old way, through a field that is selected
+      var field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(field);
+      field.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(field);
+      if (ok) done(); else notify("Could not copy. The " + what + " is: " + text, { type: "info", timeout: 12000 });
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  }
+
   // A file the editor does not take (over its limit, or binary): its tab goes (nothing is written), then it opens in the
   // read-only viewer, which shows a binary file as hex (24-large-file-viewer.js decides from the first piece).
   function NotForTheEditor(id, size) {
@@ -704,6 +731,25 @@
                   }
                 }
             };
+            // Copy path and Copy relative path: the node, or all the selected ones (one per line) when it is one of them.
+            // The path is the one the terminal sees; the relative one is under the workspace ("." for the workspace).
+            var pathsOf = function (data) {
+              var ref = $.jstree.reference(data.reference);
+              var sel = ref.get_selected().slice();
+              if (sel.indexOf($globalitemnode.id) < 0) { sel = [$globalitemnode.id]; }
+              return sel.map(String);
+            };
+            items.copypath = {
+              "label": "Copy path",
+              "icon": "ctx-i ctx-i-path",
+              "separator_before": true,
+              "action": function (data) { CopyPaths(pathsOf(data), false); }
+            };
+            items.copyrelpath = {
+              "label": "Copy relative path",
+              "icon": "ctx-i ctx-i-path",
+              "action": function (data) { CopyPaths(pathsOf(data), true); }
+            };
             // Add to Genie chat: the node, or all the selected ones when it is one of them
             items.genie = {
               "label": "Add to Genie chat",
@@ -727,7 +773,7 @@
               items.create.submenu = { "create_file": created.create_file, "create_folder": created.create_folder };
             }
             var menu = {};
-            ["create", "rename", "cut", "copy", "paste", "genie", "save", "download", "delete"].forEach(function (name) {
+            ["create", "rename", "cut", "copy", "paste", "copypath", "copyrelpath", "genie", "save", "download", "delete"].forEach(function (name) {
               if (items[name]) { menu[name] = items[name]; }
             });
             return menu;
