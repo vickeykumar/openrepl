@@ -959,6 +959,12 @@
                 //check if we can update the new language for new selection
                 return;
             }
+            if (nodeid === "untitled:") {
+              // a request to show the owner's untitled tab (22-editor-tabs.js): the owner shows it, a viewer's own tree is left
+              if (isMaster() && window.EditorTabs && window.EditorTabs.showUntitled) window.EditorTabs.showUntitled();
+              applying_select = false;
+              return;
+            }
             if (nodeid) {
               console.log("new node selected: ", nodeid);
               // deselect the node and select node with node id

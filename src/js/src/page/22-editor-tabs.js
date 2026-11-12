@@ -14,6 +14,7 @@ import { MAX_TABS, UNTITLED, emptyState, openTab, closeTab, renamePath, removePa
 
 var state = emptyState(); // the owner's list: { tabs, active }
 var sharedList = [];       // a viewer's copy of it (Firebase)
+var sharedActive = null;   // the tab the owner shows, as the owner published it (a file's path, or the untitled key)
 var stash = {};            // path -> { text, row, col, top }: what the editor held when the tab was left
 var baseline = {};         // path -> the text of the file as loaded or last saved
 var lastSaved = {};        // path -> when this page last saved it (its own write comes back as a server event)
@@ -104,8 +105,14 @@ var typed = false;
 
 function hasUntitled() { return state.tabs.indexOf(UNTITLED) >= 0; }
 
+// A viewer of a shared session cannot show the untitled tab itself (it is the owner's buffer): it asks, through the shared
+// selection, the way it asks for a file. 07-file-browser.js hands the request to the owner's page.
+function requestUntitled() {
+  try { if (browserRef) browserRef.update({ selected_node: UNTITLED }); } catch (e) { /* Firebase is optional here */ }
+}
+
 function showUntitled() {
-  if (!master()) return;
+  if (!master()) { requestUntitled(); return; }
   var e = aceEditor();
   if (!e) return;
   untitledAt = Date.now();
@@ -299,7 +306,9 @@ function viewList() {
   if (master()) return { tabs: state.tabs, active: state.active };
   var t = tree();
   var sel = t ? t.get_selected()[0] : null;
-  return { tabs: sharedList, active: sel || null };
+  // the owner's shown tab (also the untitled one, which has no file to select); before it is known, the viewer's selection
+  var active = sharedActive && sharedList.indexOf(sharedActive) >= 0 ? sharedActive : sel || null;
+  return { tabs: sharedList, active: active };
 }
 
 function render() {
@@ -322,7 +331,7 @@ function render() {
   var marked = view.tabs.map(function (path) { return window.FileMarks ? window.FileMarks.status(path) : ""; });
   // typing redraws this often: when nothing it shows has changed, the strip is left alone (no new elements, no layout)
   var sig = JSON.stringify([view.tabs, view.active, dirty, marked, canClose, virtual]);
-  var redraw = sig !== lastSig || !lane.firstChild !== !(view.tabs.length || canClose);
+  var redraw = sig !== lastSig || !lane.firstChild;
   lastSig = sig;
   if (redraw) lane.textContent = "";
   if (redraw) view.tabs.forEach(function (path, i) {
@@ -356,7 +365,7 @@ function render() {
     lane.appendChild(tab);
   });
   // the + after the last tab (the owner's editor only: a viewer sees the owner's)
-  if (redraw && canClose) {
+  if (redraw) {
     var add = document.createElement("button");
     add.type = "button";
     add.id = "new-untitled";
@@ -391,7 +400,7 @@ function laneEvents() {
   });
   lane.addEventListener("contextmenu", function (e) {
     var tab = e.target.closest && e.target.closest(".etab");
-    if (!tab || !master()) return; // a viewer sees the owner's tabs: no menu
+    if (!tab) return;
     e.preventDefault();
     openTabMenu(tab.dataset.path, e.clientX, e.clientY);
   });
@@ -409,7 +418,7 @@ function laneEvents() {
     else if (e.key === "ArrowLeft") to = tabs[Math.max(i - 1, 0)];
     else if (e.key === "Home") to = tabs[0];
     else if (e.key === "End") to = tabs[tabs.length - 1];
-    else if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && master()) {
+    else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
       e.preventDefault();
       var box = tab.getBoundingClientRect();
       openTabMenu(tab.dataset.path, box.left + 8, box.bottom);
@@ -426,7 +435,7 @@ function laneEvents() {
 // A tab was chosen: select its file in the tree. The tree's own handler (07-file-browser.js, "changed.jstree") keeps
 // the old text, shows this one, and tells everyone through Firebase.
 function activate(path) {
-  if (isUntitled(path)) { showUntitled(); return; }
+  if (isUntitled(path)) { showUntitled(); return; } // (a viewer asks the owner to show it)
   untitledAt = 0; // a file was chosen
   var t = tree();
   if (!t || !path || !t.get_node(path)) return;
@@ -526,7 +535,9 @@ function tabMenuItems(path) {
       cut: off("Cut", "ctx-i-cut", { shortcut_label: mod + "X" }),
       copy: off("Copy", "ctx-i-copy", { shortcut_label: mod + "C" }),
       paste: off("Paste", "ctx-i-paste", { shortcut_label: mod + "V", separator_after: true }),
-      save: { label: "Save", icon: "ctx-i ctx-i-save", shortcut_label: mod + "S", action: function () { saveUntitled(); } },
+      save: master()
+        ? { label: "Save", icon: "ctx-i ctx-i-save", shortcut_label: mod + "S", action: function () { saveUntitled(); } }
+        : off("Save", "ctx-i-save", { shortcut_label: mod + "S" }), // the owner's buffer: only the owner names it
       download: { label: "Download", icon: "ctx-i ctx-i-download", action: function () { if (typeof window.DownloadEditor === "function") window.DownloadEditor(); } },
       delete: off("Delete", "ctx-i-trash", { separator_after: true }),
       copypath: off("Copy path", "ctx-i-path"),
@@ -540,14 +551,17 @@ function tabMenuItems(path) {
     if (!items) return null;
     if (items.paste) items.paste._disabled = true; // a tab is not a folder
   }
-  items.tab_close = { label: "Close", separator_before: true, action: function () { closeAsk(path); } };
+  // only the owner closes tabs (as the close buttons: a viewer's menu has the items, off)
+  var owner = master();
+  items.tab_close = { label: "Close", separator_before: true, _disabled: !owner, action: function () { closeAsk(path); } };
   items.tab_close_others = {
     label: "Close others",
-    _disabled: state.tabs.filter(function (p) { return p !== path; }).length === 0,
+    _disabled: !owner || state.tabs.filter(function (p) { return p !== path; }).length === 0,
     action: function () { closeMany(state.tabs.filter(function (p) { return p !== path; })); }
   };
   items.tab_close_all = {
     label: "Close all",
+    _disabled: !owner,
     action: function () { closeMany(state.tabs.filter(function (p) { return p !== path; }).concat(state.tabs.indexOf(path) >= 0 ? [path] : [])); }
   };
   return items;
@@ -564,11 +578,12 @@ function showTabMenu(items, x, y) {
 
 // The tab is shown first (the items act on the file in the editor: it must have its text there before a Save), then the menu.
 function openTabMenu(path, x, y) {
-  if (!master() || !window.jQuery || !$.vakata || !$.vakata.context) return;
+  if (!window.jQuery || !$.vakata || !$.vakata.context) return;
   if (isUntitled(path)) showUntitled(); else activate(path);
   var tries = 0;
   (function wait() {
-    var ready = isUntitled(path) ? shown === UNTITLED : shown === path;
+    // a viewer's editor is the owner's: there is nothing of its own to wait for
+    var ready = !master() || (isUntitled(path) ? shown === UNTITLED : shown === path);
     if (ready || ++tries > 60) {
       var items = tabMenuItems(path);
       if (items) showTabMenu(items, x, y);
@@ -591,7 +606,7 @@ function clearEditor(keepSelection) {
 
 function publish() {
   if (!sharedRef || !master()) return;
-  try { sharedRef.set({ tabs: state.tabs.filter(function (p) { return !isUntitled(p); }), ts: Date.now() }); } catch (e) { /* Firebase is optional here */ }
+  try { sharedRef.set({ tabs: state.tabs, active: state.active, ts: Date.now() }); } catch (e) { /* Firebase is optional here */ }
 }
 
 // ---- what 07-file-browser.js and 02-layout.js tell it --------------------------------------------------------------------
@@ -760,6 +775,7 @@ var api = {
       sharedRef.on("value", function (snap) {
         var v = snap.val();
         sharedList = v && Array.isArray(v.tabs) ? v.tabs.filter(function (p) { return typeof p === "string"; }) : [];
+        sharedActive = v && typeof v.active === "string" ? v.active : null;
         render();
       });
     }
