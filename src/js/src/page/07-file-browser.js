@@ -174,6 +174,8 @@
   var browserslist = firebase.database().ref("file-browser"); 
   // Get the current browser reference
   var thisbrowser = browserslist.child(browserId);
+  // the open files above the editor are shared through the same node as the selected file (22-editor-tabs.js)
+  if (window.EditorTabs) window.EditorTabs.attachShared(thisbrowser);
 
 
   function preprocessnodedata(node) {
@@ -219,6 +221,7 @@
             // Handle successful response
             var decodedResponse = atob(data);
             updateEditorContent("", decodedResponse, true);
+            if (window.EditorTabs) window.EditorTabs.loaded(String(newSelectedNodeId), decodedResponse);
             console.log("File Loaded successfully: "+newSelectedNodeId);
           }).fail(function(xhr, status, error) {
             // Handle error
@@ -290,6 +293,11 @@
           break;
         case eventOp.Write:
           console.log("Write recieved for: ", eventdata.Name);
+          // the open files (22-editor-tabs.js): this page's own save coming back, or a file with unsaved changes in
+          // a tab, is not read into the editor again
+          if (window.EditorTabs && window.EditorTabs.write(eventdata.Name)) {
+            break;
+          }
           if (IsNodeSelected(eventdata.Name)) {
             if (lastreciever!==eventdata.Name) {
               lastreciever = eventdata.Name;  // update the recievername
@@ -674,6 +682,12 @@
       },
 
       }).on('ready.jstree', function() {
+          if (window.EditorTabs) {
+            // the open files follow a rename or a move (the tree changes the id) and a delete
+            $('#file-browser').on('set_id.jstree', function (ev, d) { window.EditorTabs.renamed(String(d.old), String(d.new)); });
+            $('#file-browser').on('delete_node.jstree', function (ev, d) { window.EditorTabs.removed(String(d.node.id)); });
+            window.EditorTabs.treeReady();
+          }
           // Add custom row after jstree has finished rendering
           $('#file-browser>ul').prepend('<div class="main-menu-bar" id="main-menu-bar"><i class="fa fa-files-o"></i><i class="fa fa-close" ></i></div>');
 
@@ -775,13 +789,20 @@
           // save: renaming any file wiped unsaved work in the open one.
           var alreadyOpen = window["editor"] && window["editor"].env && window["editor"].env.filename &&
             String(newSelectedNodeId) === String(window["editor"].env.filename);
+          // the open files (22-editor-tabs.js): the file left keeps its text, the chosen one becomes a tab, and its text
+          // is put back from memory when it has been open before (then it is not read from the server)
+          var restoredFromTab = false;
+          if (window.EditorTabs && newSelectedNodeId!==undefined && newSelectedNodeId!="") {
+            window.EditorTabs.beforeSwitch(String(newSelectedNodeId));
+            restoredFromTab = window.EditorTabs.selected(String(newSelectedNodeId), !!alreadyOpen);
+          }
           if (newSelectedNodeId!==undefined && newSelectedNodeId!="" && alreadyOpen) {
             applying_select = true;
             thisbrowser.update({
                 selected_node: newSelectedNodeId
             });
           } else if (newSelectedNodeId!==undefined && newSelectedNodeId!="") {
-              LoadSelectedNodeFromFile(newSelectedNodeId, function(){
+              if (!restoredFromTab) LoadSelectedNodeFromFile(newSelectedNodeId, function(){
                 // in case of failure deselect all to avoid confusion and refresh the tree
                 $('#file-browser').jstree(true).deselect_all(true);
                 $('#file-browser').jstree(true).refresh();
@@ -792,6 +813,7 @@
                 selected_node: newSelectedNodeId
             });
           }
+          if (window.EditorTabs) window.EditorTabs.selectionChanged();
           
         }).on('open_node.jstree', function (e, data) {
             data.instance.set_type(data.node,'f-open');

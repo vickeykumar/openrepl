@@ -116,7 +116,8 @@ function SaveSelectedNodeToFile(oldSelectedNodeId, errcallback=null) {
     // save the old file if its a file
     let type =  $('#file-browser').jstree(true).get_node(oldSelectedNodeId).type;
     if (type === "file") {
-      var base64EncodedString=btoa(GetEditorContent());
+      var savedText = GetEditorContent();
+      var base64EncodedString=btoa(savedText);
       $.ajax({
         url: preprocessurl("/ws_filebrowser?q=save&filepath="+oldSelectedNodeId),
         method: "POST",
@@ -126,6 +127,7 @@ function SaveSelectedNodeToFile(oldSelectedNodeId, errcallback=null) {
       }).done(function(data) {
         // Handle successful response
         console.log("File Saved successfully: "+oldSelectedNodeId);
+        if (window.EditorTabs) window.EditorTabs.saved(String(oldSelectedNodeId), savedText); // the open files: it is not changed now
       }).fail(function(xhr, status, error) {
         // Handle error
         console.log("Failed to save file: "+oldSelectedNodeId, status, error);
