@@ -19,6 +19,7 @@ var baseline = {};         // path -> the text of the file as loaded or last sav
 var lastSaved = {};        // path -> when this page last saved it (its own write comes back as a server event)
 var sharedRef = null;      // firebase: file-browser/<id>/tabs
 var warned = {};           // path -> true once told "changed outside"
+var shown = null;          // the file whose text the editor really holds (null: none yet, or a load is under way)
 var ignoreStash = null;    // a tab being closed: its text is not kept again on the switch it causes
 var lane = null;
 var lastRevealed = null;  // the file whose tab was last brought into view
@@ -43,11 +44,18 @@ function currentText() { var e = aceEditor(); return e ? e.getValue() : ""; }
 
 // Does the tab hold text that is not in the file? The shown tab is compared with what the editor has now, the others
 // with what was kept. A tab whose text came back from a draft has a baseline of null: it differs from any text.
+// The text a tab holds: the editor's, only while the editor really holds that file (a tab that was just clicked still
+// shows the previous file's text until its own text has come: that is not its text), else the kept copy.
+function textOf(path) {
+  if (path === shown) return currentText();
+  return stash[path] ? stash[path].text : undefined;
+}
+
 function isDirty(path) {
   if (!path) return false;
   var base = baseline[path];
   if (base === undefined) return false; // never read or saved here: not known to differ
-  var text = path === state.active ? currentText() : stash[path] ? stash[path].text : undefined;
+  var text = textOf(path);
   return text !== undefined && text !== base;
 }
 
@@ -243,9 +251,9 @@ function closeByUser(path) {
     render();
     publish();
   };
-  if (isDirty(path)) {
-    if (path === state.active) stashCurrent(path);
-    saveText(path, stash[path] ? stash[path].text : currentText(), function (ok) { if (ok) finish(); });
+  var text = textOf(path);
+  if (isDirty(path) && text !== undefined) {
+    saveText(path, text, function (ok) { if (ok) finish(); });
   } else {
     finish();
   }
@@ -258,6 +266,7 @@ function clearEditor() {
   var e = aceEditor();
   if (e) e.setValue("", -1);
   if (window["editor"] && window["editor"].env) window["editor"].env.filename = "";
+  shown = null;
   if (window.updateEditorFileChip) window.updateEditorFileChip();
 }
 
@@ -304,8 +313,10 @@ var api = {
   // Before the editor leaves a file (the tree's selection changed): keep its text.
   beforeSwitch: function (next) {
     if (!master()) return;
-    var old = window["editor"] && window["editor"].env ? window["editor"].env.filename : "";
+    // the file the editor really holds, not the one named by env.filename (which can already be the next one)
+    var old = shown;
     if (old && old !== next && old !== ignoreStash && state.tabs.indexOf(old) >= 0) stashCurrent(old);
+    if (old && old !== next) shown = null; // the editor holds nothing of the next file until its text is put in
   },
 
   // A file was selected: it becomes a tab. Returns true when its text was put back from memory (the caller then does
@@ -325,6 +336,7 @@ var api = {
         delete warned[p];
       });
       var restored = alreadyShown ? true : restoreFromStash(path);
+      if (restored && !alreadyShown) shown = path;
       persist();
       render();
       publish();
@@ -336,6 +348,7 @@ var api = {
 
   loaded: function (path, text) {
     if (!master()) return;
+    shown = path;
     baseline[path] = text;
     delete stash[path];
     render();
@@ -377,6 +390,7 @@ var api = {
       });
     };
     move(stash); move(baseline); move(lastSaved);
+    if (shown === from || (shown && shown.indexOf(from + "/") === 0)) shown = to + shown.slice(from.length);
     if (master()) {
       var r = renamePath(state, from, to);
       state = { tabs: r.tabs, active: r.active };
@@ -393,6 +407,7 @@ var api = {
       var r = removePath(state, path);
       state = { tabs: r.tabs, active: wasActive ? null : r.active };
       r.dropped.forEach(function (p) { delete stash[p]; delete baseline[p]; delete warned[p]; });
+      if (shown && (shown === path || shown.indexOf(path + "/") === 0)) shown = null;
       persist();
       publish();
     }
@@ -416,6 +431,7 @@ var api = {
 
   // for tests and for other page code
   state: function () { return { tabs: state.tabs.slice(), active: state.active }; },
+  shown: function () { return shown; },
   max: MAX_TABS
 };
 window.EditorTabs = api;

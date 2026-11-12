@@ -112,3 +112,46 @@ test("with no room the strip scrolls and the buttons beside it stay", async ({ p
   const box = await tools.boundingBox();
   expect(box.x + box.width).toBeLessThanOrEqual(820);
 });
+
+// The bug this guards: choosing files quickly let a late answer of the server land in the editor under the name of the
+// file chosen last; closing that tab then saved the wrong text into the file.
+test("choosing files quickly never puts one file's text in another, and closing saves nothing wrong", async ({ page }) => {
+  await ready(page);
+  const anchors = await openFiles(page, 3);
+  const paths = await page.evaluate(() => window.EditorTabs.state().tabs);
+  expect(paths).toHaveLength(3);
+  // give each file its own text, saved to the server
+  for (let i = 0; i < 3; i++) {
+    await anchors[i].click();
+    await expect(tabs(page).filter({ hasText: fname(i + 1) })).toHaveAttribute("aria-selected", "true");
+    await page.evaluate(async (text) => {
+      window.editor.env.editor.setValue(text, -1);
+      window.SaveSelectedNodeToFile(window.editor.env.filename);
+    }, "text of file " + (i + 1));
+    await expect(tabs(page).filter({ hasText: fname(i + 1) }).locator(".etab__dot")).toHaveCount(0);
+  }
+  // reload: the tabs come back, but their text has to be read from the server again
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
+  await expect(tabs(page)).toHaveCount(3);
+  // the first file's answer comes late, the second's at once
+  await page.route(/q=load.*tab1-/, async (route) => {
+    await new Promise((r) => setTimeout(r, 2500));
+    try { await route.continue(); } catch (e) { /* the page gave the request up: fine */ }
+  });
+  await tabs(page).filter({ hasText: fname(1) }).click();
+  await tabs(page).filter({ hasText: fname(2) }).click();
+  await expect.poll(() => page.evaluate(() => window.editor.env.editor.getValue())).toBe("text of file 2");
+  await page.waitForTimeout(3000); // the late answer has come (or was given up) by now
+  expect(await page.evaluate(() => window.editor.env.editor.getValue())).toBe("text of file 2");
+  expect(await page.evaluate(() => window.editor.env.filename)).toContain(fname(2));
+  await tabs(page).filter({ hasText: fname(2) }).locator(".etab__x").click();
+  await expect(tabs(page)).toHaveCount(2);
+  // every file on the server still has its own text
+  for (let i = 1; i <= 3; i++) {
+    const got = await page.evaluate(async (path) => {
+      return atob(await $.ajax({ url: preprocessurl("/ws_filebrowser?q=load&filepath=" + path), method: "GET" }));
+    }, paths[i - 1]);
+    expect(got, "file " + i).toBe("text of file " + i);
+  }
+});

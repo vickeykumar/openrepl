@@ -210,20 +210,35 @@
     return (nodeid === sel[0]);
   }
 
+  // The read in flight. Choosing another file quickly must not let a late answer land in the editor: the editor names its
+  // content after the file selected NOW, so an old answer would be shown, and later saved, as the new file.
+  var loadRequest = null;
+  function StillSelected(id) {
+    var tree = $('#file-browser').jstree(true);
+    return !!tree && String(tree.get_selected()[0]) === String(id);
+  }
+
   function LoadSelectedNodeFromFile(newSelectedNodeId, errcallback=null) {
     // load the new selected file
         let type =  $('#file-browser').jstree(true).get_node(newSelectedNodeId).type;
+        if (loadRequest) { loadRequest.abort(); loadRequest = null; }
         if (type === "file") {
-          $.ajax({
+          var request = $.ajax({
             url: preprocessurl("/ws_filebrowser?q=load&filepath="+newSelectedNodeId),
             method: "GET"
-          }).done(function(data) {
+          });
+          loadRequest = request;
+          request.done(function(data) {
+            if (loadRequest === request) loadRequest = null;
+            if (!StillSelected(newSelectedNodeId)) { console.log("File load dropped, another file is selected now: "+newSelectedNodeId); return; }
             // Handle successful response
             var decodedResponse = atob(data);
             updateEditorContent("", decodedResponse, true);
             if (window.EditorTabs) window.EditorTabs.loaded(String(newSelectedNodeId), decodedResponse);
             console.log("File Loaded successfully: "+newSelectedNodeId);
-          }).fail(function(xhr, status, error) {
+          }); request.fail(function(xhr, status, error) {
+            if (loadRequest === request) loadRequest = null;
+            if (status === "abort" || !StillSelected(newSelectedNodeId)) return; // replaced by a newer choice
             // Handle error
             console.log("Failed to load file: "+newSelectedNodeId, status, error);
             if (typeof(errcallback)==="function") {
