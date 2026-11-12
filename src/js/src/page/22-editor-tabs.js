@@ -64,7 +64,14 @@ function stashCurrent(path) {
   var e = aceEditor();
   if (!e || !path) return;
   var pos = e.getCursorPosition();
-  stash[path] = { text: e.getValue(), row: pos.row, col: pos.column, top: e.getSession().getScrollTop() };
+  var session = e.getSession();
+  var um = session.getUndoManager();
+  stash[path] = { text: e.getValue(), row: pos.row, col: pos.column, top: session.getScrollTop(), undoManager: um };
+  // The undo history of this file stays with it (the manager is kept in the stash), and the editor is given a blank one for
+  // the file that comes next: the text that replaces this one is not an edit of this file, and must not become a step in
+  // its history. (Ace's toJSON and fromJSON of the undo manager are empty in the version in use, so the manager itself is
+  // what is kept; a manager only holds steps that fit the text the file had when it was left, which is what comes back.)
+  try { session.setUndoManager(new (Object.getPrototypeOf(um).constructor)()); } catch (err) { /* no undo manager */ }
 }
 
 // Puts a tab's kept text back into the editor (owner only). False when there is none: the file is then read from the
@@ -77,6 +84,8 @@ function restoreFromStash(path) {
   if (e) {
     e.moveCursorTo(held.row, held.col);
     e.getSession().setScrollTop(held.top);
+    // the file's own undo history comes back: Ctrl+Z takes back what was typed in this file, and nothing of another
+    if (held.undoManager) { try { e.getSession().setUndoManager(held.undoManager); } catch (err) { /* keep the blank one */ } }
   }
   return true;
 }

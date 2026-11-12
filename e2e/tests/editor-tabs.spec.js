@@ -370,3 +370,45 @@ test("undo after switching files does not bring back another file's text, and un
   await page.evaluate(() => window.editor.env.editor.undo());
   expect(await page.evaluate(() => window.editor.env.editor.getValue())).toBe(shown);
 });
+
+// Each tab keeps its own undo history while another is shown, and takes it back when it is shown again.
+test("each tab keeps its own undo history across switches", async ({ page }) => {
+  await ready(page);
+  const anchors = await openFiles(page, 2);
+  const ed = (fn, arg) => page.evaluate(fn, arg);
+  const value = () => page.evaluate(() => window.editor.env.editor.getValue());
+  const type = async (text) => {
+    await page.evaluate((t) => { const e = window.editor.env.editor; e.session.getUndoManager().startNewGroup(); e.insert(t); }, text);
+  };
+  const show = async (i) => {
+    await anchors[i].click();
+    await expect(tabs(page).filter({ hasText: fname(i + 1) })).toHaveAttribute("aria-selected", "true");
+  };
+  await show(0);
+  await type("a");
+  await type("b");
+  await show(1);
+  await type("x");
+  await type("y");
+  expect(await value()).toBe("xy");
+  // back to the first: its text, and its own two steps of history
+  await show(0);
+  expect(await value()).toBe("ab");
+  await ed(() => window.editor.env.editor.undo());
+  expect(await value()).toBe("a");
+  await ed(() => window.editor.env.editor.undo());
+  expect(await value()).toBe("");
+  await ed(() => { for (let i = 0; i < 3; i++) window.editor.env.editor.undo(); });
+  expect(await value()).toBe(""); // nothing of the other file
+  // the second file still has its history, and redo works in the first
+  await ed(() => window.editor.env.editor.redo());
+  expect(await value()).toBe("a");
+  await show(1);
+  expect(await value()).toBe("xy");
+  await ed(() => window.editor.env.editor.undo());
+  expect(await value()).toBe("x");
+  // a file that is only looked at has no history to undo into the previous file's text
+  await show(0);
+  await ed(() => { for (let i = 0; i < 4; i++) window.editor.env.editor.undo(); });
+  expect(await value()).toBe("");
+});
