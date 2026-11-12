@@ -414,7 +414,11 @@ var api = {
     shown = path;
     // what the editor holds, not what was sent: the editor may write the text a little differently (line ends, odd
     // bytes), and a file that was only opened must not look changed
+    // text that came back from the browser copy after a reload (baseline null) must not be thrown away when the file's
+    // own reading finishes after it: the server text is the baseline, and the recovered text goes back into the editor
+    var recoveredHere = baseline[path] === null && stash[path] ? stash[path] : null;
     baseline[path] = currentText();
+    if (recoveredHere && recoveredHere.text !== baseline[path]) restoreFromStash(path);
     delete stash[path];
     render();
   },
