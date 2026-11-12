@@ -374,6 +374,7 @@
           <span class="file-chip" id="editor-filename" data-tip-name="File" title="File in the editor">untitled</span>
           <div class="editor-tabs" id="editor-tabs" role="tablist" aria-label="Open files"></div>
           <div class="editor-header__tools" role="toolbar" aria-label="Editor and layout">
+            <button type="button" class="ide-btn" id="preview-button" data-tip-name="Preview" data-tip-desc="See a web page or a program of yours next to the editor." title="Preview" hidden><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span>Preview</span><span class="preview-dot" id="preview-dot" aria-hidden="true" hidden></span></button>
             <span class="toolbar-sep" aria-hidden="true"></span>
             <button type="button" class="ide-btn" id="rotate-button" onclick="ToggleRotateEditor();" title="Switch between side by side and stacked"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 12h18"></path></svg><span id="rotate-button-label">Stacked</span></button>
             <button type="button" class="ide-btn" id="editor-button" data-tip-name="Hide editor" onclick="ToggleEditor();" title="Hide the editor and show only the terminal"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M12 4v16 M7 10l2 2-2 2"></path></svg><span>Hide editor</span></button>
@@ -498,6 +499,45 @@
           <button type="button" data-key="right" aria-label="Cursor right">→</button>
         </div>
         <div class="term-footer" id="term-footer"><span class="term-footer__dot" aria-hidden="true"></span><span id="term-footer-text">Connecting…</span></div>
+        <!-- The Preview pane (page/27-preview.js): in the terminal's place while it is open. The frame is sandboxed and
+             has no origin of its own, so it cannot act as this page. -->
+        <div class="preview-pane" id="preview-pane" role="region" aria-label="Preview" hidden>
+          <div class="preview-bar">
+            <button type="button" class="ide-btn ide-btn--icon" id="preview-reload" title="Reload the preview" aria-label="Reload the preview"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7"/></svg></button>
+            <div class="preview-address" id="preview-address" aria-live="polite"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span id="preview-address-text">Preview</span></div>
+            <button type="button" class="ide-btn" id="preview-ports-button" aria-haspopup="true" aria-expanded="false" aria-controls="preview-ports" title="Programs of this workspace that listen on a port">Ports</button>
+            <label class="visually-hidden" for="preview-size">Size of the page</label>
+            <select class="status-select preview-size" id="preview-size" title="Size of the page">
+              <option value="fit">Fit</option>
+              <option value="phone">Phone 390 x 844</option>
+              <option value="tablet">Tablet 768 x 1024</option>
+              <option value="laptop">Laptop 1280 x 800</option>
+            </select>
+            <button type="button" class="ide-btn ide-btn--icon" id="preview-newtab" title="Open in a new tab" aria-label="Open the preview in a new tab"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
+            <button type="button" class="ide-btn" id="preview-terminal" title="Close the preview and show the terminal">Terminal</button>
+            <button type="button" class="ide-btn ide-btn--icon" id="preview-close" title="Close the preview" aria-label="Close the preview"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
+          </div>
+          <div class="preview-ports" id="preview-ports" hidden>
+            <div class="preview-ports__title" id="preview-ports-title">Open now</div>
+            <div class="preview-ports__list" id="preview-ports-list" role="list"></div>
+            <form class="preview-ports__other" id="preview-ports-form">
+              <label for="preview-port-input">Other port</label>
+              <input type="number" id="preview-port-input" min="1024" max="65535" step="1" inputmode="numeric" placeholder="5000">
+              <button type="submit" class="ide-btn">Open</button>
+            </form>
+            <button type="button" class="ide-btn" id="preview-file-button" hidden>Preview the open file</button>
+            <details class="preview-ports__howto">
+              <summary>How to start a program</summary>
+              <p>A program must listen on a port from 1024 up. These are examples: check the options of your framework.</p>
+              <div id="preview-howto" class="preview-ports__howto-list"></div>
+            </details>
+          </div>
+          <div class="preview-note" id="preview-note">This page runs in a sandbox and is not part of OpenREPL.</div>
+          <div class="preview-stage" id="preview-stage">
+            <div class="preview-device" id="preview-device"><iframe class="preview-frame" id="preview-frame" title="Preview" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads" referrerpolicy="no-referrer"></iframe></div>
+            <div class="preview-message" id="preview-message" role="status" hidden></div>
+          </div>
+        </div>
       </div>
       </div>
       <!-- Genie, when it is pinned beside the IDE (chat-widget/src/index.ts: pin) -->

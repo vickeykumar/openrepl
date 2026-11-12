@@ -46,3 +46,18 @@ func TestAChangedLimitIsInTheAuditLog(t *testing.T) {
 		t.Errorf("16 is the same as none: %v", got)
 	}
 }
+
+// The Preview pane has an off switch for everyone and one for guests (settings.go), and the page is told.
+func TestThePreviewCanBeSwitchedOffForEveryoneOrForGuests(t *testing.T) {
+	if (SiteSettings{}).public().PreviewOff || (SiteSettings{}).public().PreviewGuestsOff {
+		t.Error("the preview is off by default")
+	}
+	p := (SiteSettings{PreviewGuestsOff: true}).public()
+	if p.PreviewOff || !p.PreviewGuestsOff {
+		t.Errorf("guests off: %+v", p)
+	}
+	changes := strings.Join(settingsChanges(SiteSettings{}, SiteSettings{PreviewOff: true, PreviewGuestsOff: true}), "|")
+	if !strings.Contains(changes, "preview off") || !strings.Contains(changes, "preview for guests off") {
+		t.Errorf("changes: %s", changes)
+	}
+}

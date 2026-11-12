@@ -318,6 +318,9 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.HandleFunc(pathPrefix+"chat/usage", handleChatUsage)
 	siteMux.HandleFunc(pathPrefix+"knowledge/", handleKnowledgeAt(pathPrefix))
 	siteMux.HandleFunc(pathPrefix+"ws_filebrowser", server.handleFileBrowser)
+	siteMux.HandleFunc(pathPrefix+"preview_token", server.handlePreviewToken)
+	siteMux.HandleFunc(pathPrefix+"preview_ports", server.handlePreviewPorts)
+	siteMux.HandleFunc(pathPrefix+"preview/", server.handlePreview)
 	siteMux.HandleFunc(pathPrefix+"upload_file", server.handleFileUpload)
 
 	siteMux.Handle(pathPrefix+"js/", http.StripPrefix(pathPrefix, staticFileHandler))

@@ -756,6 +756,14 @@
               "icon": "ctx-i ctx-i-path",
               "action": function (data) { CopyPaths(pathsOf(data), true); }
             };
+            // a web page of the workspace opens in the Preview pane (27-preview.js)
+            if (window.Preview && $globalitemnode.type === 'file' && window.Preview.canPreview($globalitemnode.id)) {
+              items.preview = {
+                "label": "Open preview",
+                "icon": "ctx-i ctx-i-eye",
+                "action": function () { window.Preview.open(String($globalitemnode.id)); }
+              };
+            }
             // the marks of changed and new files (26-file-marks.js), when there are any
             if (window.FileMarks && window.FileMarks.count() > 0) {
               items.clearmarks = {
@@ -787,7 +795,7 @@
               items.create.submenu = { "create_file": created.create_file, "create_folder": created.create_folder };
             }
             var menu = {};
-            ["create", "rename", "cut", "copy", "paste", "copypath", "copyrelpath", "clearmarks", "genie", "save", "download", "delete"].forEach(function (name) {
+            ["create", "rename", "cut", "copy", "paste", "preview", "copypath", "copyrelpath", "clearmarks", "genie", "save", "download", "delete"].forEach(function (name) {
               if (items[name]) { menu[name] = items[name]; }
             });
             return menu;

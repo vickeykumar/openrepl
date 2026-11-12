@@ -60,10 +60,15 @@ function StartTour() {
 }
 
 function CompileandRun() {
+    // An .html file is shown, not run: the Preview pane opens (27-preview.js)
+    if (window.Preview && window.Preview.runs()) { window.Preview.open(); return; }
     // The execution node is away and the countdown is running (11-terminal-state.js).
     if (window.awayWaitMs && window.awayWaitMs() > 0) return;
-    // the result is shown in the terminal: bring it back if it was hidden (before the terminals are looked at below)
+    // the result is shown in the terminal: the Preview pane, which has its place, closes; and a hidden terminal comes back
+    if (window.Preview && window.Preview.isOpen()) window.Preview.close();
     if (window.ShowTerminal) window.ShowTerminal();
+    // a program that starts listening on a port within seconds is offered in the Preview pane (27-preview.js)
+    if (window.Preview) window.Preview.watchAfterRun();
     const termdiv = get("#terminal-div");
     if(termdiv) {
         const allterm = getAll(".terminal.active", termdiv);
