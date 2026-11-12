@@ -93,3 +93,28 @@ test("hidden files and a folder's contents that are hidden are not offered", asy
     test.info().annotations.push({ type: "note", description: "the page did not allow making a hidden file here: " + made.error });
   }
 });
+
+test("a file in nested folders is found by its name, by a folder's name, and by a path", async ({ page }) => {
+  await ready(page);
+  const top = `nest${stamp}`;
+  for (const [p, kind] of [[top, "folder"], [`${top}/src`, "folder"], [`${top}/src/main`, "folder"], [`${top}/src/main/Util${stamp}.java`, "file"], [`${top}/src/app${stamp}.py`, "file"]]) {
+    const made = await page.evaluate(([rel, k]) => window.FileBrowser.create(rel, k), [p, kind]);
+    expect(made.ok, `${p}: ${JSON.stringify(made)}`).toBe(true);
+  }
+  const find = async (query) => {
+    await page.keyboard.press("Control+Shift+O");
+    await input(page).fill(query);
+    const found = await options(page).allTextContents();
+    await page.keyboard.press("Escape");
+    return found.join(" | ");
+  };
+  expect(await find(`util${stamp}`)).toContain(`Util${stamp}.java`);
+  expect(await find(`${top}/src/util`)).toContain(`Util${stamp}.java`); // a path
+  expect(await find(`src/app${stamp}`)).toContain(`app${stamp}.py`);
+  expect(await find(`main util`)).toContain(`Util${stamp}.java`); // a folder, then the name
+  // and Enter opens it
+  await page.keyboard.press("Control+Shift+O");
+  await input(page).fill(`util${stamp}`);
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#editor-tabs .etab", { hasText: `Util${stamp}.java` })).toHaveAttribute("aria-selected", "true");
+});

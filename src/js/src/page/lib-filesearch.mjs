@@ -14,29 +14,43 @@ const isBoundary = (name, i) => {
   return prev === prev.toLowerCase() && prev !== prev.toUpperCase() && name[i] !== name[i].toLowerCase();
 };
 
-// Where the letters of `q` sit in `text`, in order (not next to each other), or null. A whole run of the text is taken
-// when there is one; else each letter prefers the start of a word (after . _ - or a capital) within reach.
+// Where the letters of `q` sit in `text`, in order (not next to each other), or null. The best placing is found, not the
+// first: a letter that starts a word (after . _ - / or a capital) and letters that sit together score higher, and a
+// placing that needs a later letter is never given up for a nicer early one (srcapp in "src/app.py").
 function subsequence(text, q) {
   const t = text.toLowerCase();
+  const n = t.length;
+  const m = q.length;
+  if (!m || m > n) return m ? null : [];
   const at = t.indexOf(q);
-  if (at >= 0) return Array.from({ length: q.length }, (_, k) => at + k);
-  const out = [];
-  let from = 0;
-  for (const ch of q) {
-    let found = -1;
-    let firstAny = -1;
-    for (let i = from; i < t.length; i++) {
-      if (t[i] !== ch) continue;
-      if (firstAny < 0) firstAny = i;
-      if (isBoundary(text, i)) { found = i; break; }
-      // a letter that is not at a word start is taken only when no word start is near (within 6 letters)
-      if (i - firstAny > 6) break;
+  if (at >= 0) return Array.from({ length: m }, (_, k) => at + k);
+  const NEG = -1e9;
+  // best[i][j]: the best score of placing q[0..i] with q[i] at text[j]; from[i][j]: where q[i-1] was
+  const best = [];
+  const from = [];
+  for (let i = 0; i < m; i++) {
+    best.push(new Array(n).fill(NEG));
+    from.push(new Array(n).fill(-1));
+    let run = NEG; // the best of best[i-1][k] for k < j - 1
+    let runAt = -1;
+    for (let j = 0; j < n; j++) {
+      if (i > 0 && j >= 2 && best[i - 1][j - 2] > run) { run = best[i - 1][j - 2]; runAt = j - 2; }
+      if (t[j] !== q[i]) continue;
+      const here = 1 + (isBoundary(text, j) ? 8 : 0);
+      if (i === 0) { best[i][j] = here - Math.min(j, 20) * 0.1; continue; }
+      let prev = NEG;
+      let prevAt = -1;
+      if (j >= 1 && best[i - 1][j - 1] > NEG) { prev = best[i - 1][j - 1] + 10; prevAt = j - 1; } // next to the one before
+      if (run > prev) { prev = run; prevAt = runAt; }
+      if (prev > NEG) { best[i][j] = prev + here; from[i][j] = prevAt; }
     }
-    if (found < 0) found = firstAny;
-    if (found < 0) return null;
-    out.push(found);
-    from = found + 1;
   }
+  let end = -1;
+  let top = NEG;
+  for (let j = 0; j < n; j++) if (best[m - 1][j] > top) { top = best[m - 1][j]; end = j; }
+  if (end < 0) return null;
+  const out = new Array(m);
+  for (let i = m - 1, j = end; i >= 0; i--) { out[i] = j; j = from[i][j]; }
   return out;
 }
 

@@ -42,6 +42,25 @@ test("a match on the start of words beats the same letters scattered", () => {
   assert.equal(names(searchFiles(files, "pd")).at(-1), "pxxxxxxxxdxxx.c");
 });
 
+test("a path with folders finds a file nested deep, however the letters are spread", () => {
+  const files = [f("/h/proj/src/main/java/com/acme/Util.java"), f("/h/proj/src/app.py"), f("/h/proj/README.md")];
+  const dirs = (q) => searchFiles(files.map((x) => ({ ...x, dir: x.dir.replace("/h/", "") })), q).map((x) => x.file.name);
+  assert.deepEqual(dirs("proj/src/Util"), ["Util.java"]);
+  assert.deepEqual(dirs("srcapp"), ["app.py"], "the letters of src then app, across the folder and the name");
+  assert.deepEqual(dirs("acme"), ["Util.java"]);
+  assert.deepEqual(dirs("java"), ["Util.java"]);
+  assert.deepEqual(dirs("proj/src/").sort(), ["Util.java", "app.py"], "both files are under proj/src");
+});
+
+test("a letter is never used up so that the letters after it cannot be placed", () => {
+  // the p of "app" must not jump to the later word start (.py) and leave nothing for the second p
+  const [hit] = searchFiles([f("/h/app.py")], "app");
+  assert.deepEqual(hit.indices, [0, 1, 2]);
+  assert.deepEqual(names(searchFiles([f("/h/xapp.py")], "app")), ["xapp.py"]);
+  assert.deepEqual(names(searchFiles([f("/h/a_p_p.py")], "app")), ["a_p_p.py"]);
+  assert.deepEqual(names(searchFiles([f("/h/zpa.py")], "app")), [], "the letters must keep their order");
+});
+
 test("an open file comes before a closed one with the same match", () => {
   const files = [f("/w/a/util.go"), f("/w/b/util.go", true)];
   assert.equal(searchFiles(files, "util")[0].file.path, "/w/b/util.go");
