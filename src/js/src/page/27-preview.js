@@ -22,8 +22,25 @@ var watchTimers = [];
 
 function el(id) { return document.getElementById(id); }
 function home() { return String(window.homedir || ""); }
-function fileOf() { var e = window["editor"]; return e && e.env && e.env.filename ? String(e.env.filename) : ""; }
+function fileOf() {
+  // a picture or a PDF is not in the editor: the card of the viewer holds it (24-large-file-viewer.js)
+  var m = window.LargeFileViewer && window.LargeFileViewer.mediaPath ? window.LargeFileViewer.mediaPath() : "";
+  if (m) return m;
+  var e = window["editor"];
+  return e && e.env && e.env.filename ? String(e.env.filename) : "";
+}
 function isHtml(path) { return /\.html?$/i.test(String(path || "")); }
+// What a file of the workspace is shown as: a page (.html), Markdown rendered by the server, a picture, or a PDF
+// (the browser's own viewer). Anything else has no Preview.
+function previewKind(path) {
+  var p = String(path || "");
+  if (isHtml(p)) return "html";
+  if (/\.(md|markdown)$/i.test(p)) return "md";
+  if (/\.(png|jpe?g|gif|webp|bmp|ico|svg)$/i.test(p)) return "image";
+  if (/\.pdf$/i.test(p)) return "pdf";
+  return "";
+}
+function canShow(path) { return !!previewKind(path); }
 function disabled() { return !!(window.site_settings && window.site_settings.previewOff); }
 
 // ---- the address of the frame -----------------------------------------------------------------------------------------
@@ -52,7 +69,10 @@ function getToken() {
 }
 
 function urlFor(t, tok) {
-  if (t.kind === "f") return "/preview/" + tok + "/f/" + encodePath(relative(t.path));
+  if (t.kind === "f") {
+    var how = previewKind(t.path);
+    return "/preview/" + tok + "/f/" + encodePath(relative(t.path)) + (how === "md" || how === "image" ? "?render=" + how : "");
+  }
   if (t.kind === "p") return "/preview/" + tok + "/p/" + t.port + "/";
   return "";
 }
@@ -153,7 +173,7 @@ function renderPorts() {
     b.addEventListener("click", function () { openPort(p); togglePorts(false); });
     list.appendChild(b);
   });
-  if (fileBtn) fileBtn.hidden = !isHtml(fileOf());
+  if (fileBtn) fileBtn.hidden = !canShow(fileOf());
 }
 
 function togglePorts(force) {
@@ -215,7 +235,7 @@ function applySize() {
 
 function load() {
   if (!target) return;
-  var frame = el("preview-frame");
+  var frame = frameFor(target);
   message("");
   getToken().then(function (tok) {
     var url = urlFor(target, tok);
@@ -226,9 +246,23 @@ function load() {
   });
 }
 
+// A PDF is shown by the browser's own viewer, which does not work in a sandboxed frame: it has a frame of its own
+// (a PDF is sent as a PDF and nothing else, so nothing in it can run as a page).
+function frameFor(t) {
+  var pdf = !!t && t.kind === "f" && previewKind(t.path) === "pdf";
+  var page = el("preview-frame");
+  var viewer = el("preview-pdf-frame");
+  if (viewer) viewer.hidden = !pdf;
+  if (page) page.hidden = pdf;
+  var frame = pdf ? viewer : page;
+  var other = pdf ? page : viewer;
+  if (other) { other.removeAttribute("src"); other.removeAttribute("data-url"); }
+  return frame;
+}
+
 function reload() {
   if (!open || !target) return;
-  var frame = el("preview-frame");
+  var frame = frameFor(target);
   var url = frame.getAttribute("data-url");
   if (!url) { load(); return; }
   // a token that has ended gets a new address
@@ -240,7 +274,7 @@ function syncButton() {
   var b = el("preview-button");
   if (!b) return;
   // for an .html file, or while a program of the workspace listens on a port
-  b.hidden = disabled() || !(isHtml(fileOf()) || knownPorts.length > 0 || open);
+  b.hidden = disabled() || !(canShow(fileOf()) || knownPorts.length > 0 || open);
   b.setAttribute("aria-pressed", open ? "true" : "false");
   var dot = el("preview-dot");
   if (dot) dot.hidden = knownPorts.length === 0;
@@ -250,7 +284,7 @@ function syncButton() {
 function openPane(path) {
   if (disabled()) return;
   var file = path || fileOf();
-  if (isHtml(file)) return show({ kind: "f", path: String(file) });
+  if (canShow(file)) return show({ kind: "f", path: String(file) });
   // no page to show: a program that listens is, else the list of ports
   if (knownPorts.length) return show({ kind: "p", port: knownPorts[0] });
   show(null);
@@ -274,7 +308,7 @@ function show(t) {
   term.classList.add("is-previewing");
   setAddress();
   applySize();
-  if (target) load(); else message("<strong>Nothing to show yet.</strong><br>Run a program that listens on a port, or open an .html file.", null);
+  if (target) load(); else message("<strong>Nothing to show yet.</strong><br>Run a program that listens on a port, or open an .html or Markdown file, a picture or a PDF.", null);
   syncButton();
   setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50);
 }
@@ -287,8 +321,10 @@ function closePane() {
   if (pane) pane.hidden = true;
   togglePorts(false);
   if (term) term.classList.remove("is-previewing");
-  var frame = el("preview-frame");
-  if (frame) { frame.removeAttribute("src"); frame.removeAttribute("data-url"); }
+  ["preview-frame", "preview-pdf-frame"].forEach(function (id) {
+    var frame = el(id);
+    if (frame) { frame.removeAttribute("src"); frame.removeAttribute("data-url"); }
+  });
   syncButton();
   // the terminal draws itself again at its size
   setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50);
@@ -319,7 +355,7 @@ function init() {
   }
   b.addEventListener("click", function () { if (open) closePane(); else openPane(); });
   el("preview-ports-button").addEventListener("click", function () { togglePorts(); });
-  el("preview-file-button").addEventListener("click", function () { var f = fileOf(); if (isHtml(f)) { show({ kind: "f", path: f }); togglePorts(false); } });
+  el("preview-file-button").addEventListener("click", function () { var f = fileOf(); if (canShow(f)) { show({ kind: "f", path: f }); togglePorts(false); } });
   el("preview-ports-form").addEventListener("submit", function (e) {
     e.preventDefault();
     var n = parseInt(el("preview-port-input").value, 10);
@@ -365,7 +401,7 @@ window.Preview = {
   changed: changed,
   // Run on an .html file shows the page instead of starting a program
   runs: function () { return !disabled() && isHtml(fileOf()); },
-  canPreview: function (path) { return !disabled() && isHtml(path); },
+  canPreview: function (path) { return !disabled() && canShow(path); },
   openPort: openPort,
   watchAfterRun: watchAfterRun,
   refresh: function () { return askPorts().then(function (p) { offer(p); return p; }); },

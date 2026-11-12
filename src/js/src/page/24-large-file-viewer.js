@@ -90,7 +90,17 @@ function build() {
   var text = document.createElement("pre");
   text.className = "lv__text";
   text.tabIndex = 0;
-  el.appendChild(bar); el.appendChild(note); el.appendChild(text);
+  // the card of a picture or a PDF (openMedia): shown instead of the bar and the text
+  var card = document.createElement("div");
+  card.className = "lv__media";
+  var cardTitle = document.createElement("div"); cardTitle.className = "lv__media-title";
+  var cardNote = document.createElement("div"); cardNote.className = "lv__media-note";
+  var cardButtons = document.createElement("div"); cardButtons.className = "lv__media-buttons";
+  cardButtons.appendChild(button("Open in Preview", "media-preview", function () { if (window.Preview && media) window.Preview.open(media.path); }));
+  cardButtons.appendChild(button("View as hex", "media-hex", function () { if (media) { var p = media.path; open(p, media.size); } }));
+  cardButtons.appendChild(button("Download", "media-download", function () { if (media) download(media.path); }));
+  card.appendChild(cardTitle); card.appendChild(cardNote); card.appendChild(cardButtons);
+  el.appendChild(bar); el.appendChild(note); el.appendChild(text); el.appendChild(card);
   el.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.preventDefault(); close(); } });
   body.appendChild(el);
   return el;
@@ -151,9 +161,33 @@ function go(offset, first) {
     });
 }
 
+// A picture or a PDF (07-file-browser.js decides from the name, and reads nothing): a card that says what it is and
+// offers the Preview, the hex view and Download. The Preview opens on its own where it can show the file.
+var media = null; // { path, kind, size }
+function openMedia(path, kind) {
+  if (!build()) return;
+  seq++;
+  view = null;
+  current = String(path);
+  media = { path: String(path), kind: kind, size: 0 };
+  var label = kind === "pdf" ? "a PDF" : "an image";
+  el.querySelector(".lv__media-title").textContent = nameOf(path) + " is " + label;
+  el.querySelector(".lv__media-title").title = String(path);
+  el.querySelector(".lv__media-note").textContent = "It cannot be edited here, and nothing is written to it. The Preview shows it.";
+  el.classList.add("lv--media");
+  el.hidden = false;
+  var ready = !!(window.Preview && window.Preview.canPreview && window.Preview.canPreview(path));
+  el.querySelector('[data-lv="media-preview"]').hidden = !ready;
+  if (ready) window.Preview.open(path);
+  var first = el.querySelector(ready ? '[data-lv="media-hex"]' : '[data-lv="media-download"]');
+  if (first) first.focus();
+}
+
 // Opens a file the editor does not take. size: its size in bytes, when known.
 function open(path, size) {
   if (!build()) return;
+  el.classList.remove("lv--media");
+  media = null;
   view = null;
   current = String(path);
   hexMode = false;
@@ -172,15 +206,18 @@ function closeUnlessFor(path) {
 function close() {
   seq++;
   view = null;
+  media = null;
   current = null;
-  if (el) el.hidden = true;
+  if (el) { el.hidden = true; el.classList.remove("lv--media"); }
 }
 
 window.LargeFileViewer = {
   open: open,
+  openMedia: openMedia,
   close: close,
   closeUnlessFor: closeUnlessFor,
-  isOpen: function () { return !!view; },
+  isOpen: function () { return !!view || !!media; },
+  mediaPath: function () { return media ? media.path : ""; },
   typeInTerminal: typeInTerminal,
   moreCommand: moreCommand,
   hexCommand: hexCommand,

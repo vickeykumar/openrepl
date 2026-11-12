@@ -105,14 +105,38 @@ Token 2 hours; ports 1024 to 65535; request body 10 MB; answer headers within 30
 8 MB; cookie jar bounds; no preview where the machine's network is shared. Not built: a limit of requests per minute or of
 open connections per workspace.
 
-## 6. What is not built, and what is not tested
+## 6. File types besides .html (added 2026-11-12)
+
+The Preview button shows for `.html`, Markdown (`.md`, `.markdown`), pictures (`.png .jpg .jpeg .gif .webp .bmp .ico .svg`) and
+`.pdf`; `previewKind` in `27-preview.js` decides from the name. The route is the one of a file (`/preview/<token>/f/<path>`)
+with a parameter: `?render=md` is the file as a page the server writes (`livepreview/render.go`), `?render=image` a page that
+shows the picture. A PDF has no parameter.
+
+- **Markdown** is rendered by the server (no library: headings, paragraphs, emphasis, code, quotes, lists, tables, rules,
+  links, pictures). Every character is escaped first, so a tag in the file is shown as text; a link goes only to http, https,
+  mailto, an anchor or a path of the workspace (a path to a Markdown file keeps `?render=md`), a picture only to http, https
+  or a path; and the page carries `sandbox allow-popups allow-downloads; default-src 'none'; style-src 'unsafe-inline'; img-src ...`,
+  so nothing runs even if the renderer had a hole. A file over 2 MB (`MaxMarkdown`) is refused with a message. Code blocks are
+  plain, in a box; nested lists are shown flat.
+- **Pictures** are drawn by a small page with no script (`ImagePage`): fit to the pane, a click (a checkbox and its label) for its
+  own size. A vector picture is an `<img>`, so a script in it never runs.
+- **PDF** is sent as `application/pdf` with `nosniff` and without the sandbox header, in a frame of its own
+  (`#preview-pdf-frame`, no `sandbox` attribute): the browser's PDF viewer does not work in a sandboxed frame, and a PDF is not a
+  page. The viewer itself was not tested (headless Chromium has none); the headers and the frame are.
+- **The language list** (`#select-lang`) has Markdown (a real editor mode) and a group "Shown, not edited" with Image and PDF,
+  disabled, which only a file sets (`changelangbyselectednode` in `07-file-browser.js`; `06-editor.js` ignores them, so nothing
+  is sent to the editor or the session). Opening a picture (not an `.svg`, which is text) or a PDF reads nothing: the viewer shows a
+  card (`openMedia` in `24-large-file-viewer.js`) with Open in Preview (the Preview opens on its own), View as hex and Download. The
+  Preview button follows the file the card shows (`fileOf`).
+
+## 7. What is not built, and what is not tested
 
 - **Gateway and workers (LLD 11).** A preview request carries no cookie, so the gateway cannot find the worker that runs
   the session. The token should name the worker; it does not yet. On a gateway the preview works only for sessions the
   gateway itself runs.
 - **Case 1 (a namespace of its own)** is tested by `netns_linux_test.go`, which makes a namespace with `unshare -n`, starts a server in it, reads its port from `/proc/<pid>/net/tcp` and reaches it with `DialIn` (it runs as root only and is skipped otherwise, so CI, which runs the Go tests as an ordinary user, skips it; it passed in the privileged dev container). The browser tests ran where the network emulation is active (case 2): the REPL in the privileged dev container and in the CI image uses it.
 - Not built from the design's extras: Console and Requests tabs, the divider, back and forward, tabs in the pane,
-  Markdown, image and PDF previews, the phone layout, keyboard shortcuts (Ctrl+Shift+V is "paste as text" in browsers and
+  the phone layout, keyboard shortcuts (Ctrl+Shift+V is "paste as text" in browsers and
   must be chosen again), a first-use hint, a pop-out window.
 - The browser checks of design item 8 (Flask, Express and Vite in Chrome, Firefox and Safari) were not done; the tests ran
   in Chromium only, with `python3 -m http.server`.

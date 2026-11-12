@@ -76,8 +76,18 @@
       'rs': 'rust',
       'sql': 'sql',
       'ts': 'typescript',
-      'asm': 'assembly_x86'
+      'asm': 'assembly_x86',
+      'md': 'markdown',
+      'markdown': 'markdown'
   };
+  // Pictures and PDFs are shown, not edited (24-large-file-viewer.js, openMedia): the file sets the list to "Image" or
+  // "PDF". An .svg is text and stays in the editor.
+  const mediaext = { 'png': 'image', 'jpg': 'image', 'jpeg': 'image', 'gif': 'image', 'webp': 'image', 'bmp': 'image', 'ico': 'image', 'pdf': 'pdf' };
+  function mediaKind(path) {
+    var ext = String(path || '').split('.').pop().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(mediaext, ext) ? mediaext[ext] : '';
+  }
+  window.MediaKind = mediaKind;
   const imageext = ['jpg', 'jpeg', 'gif', 'png', 'bmp', 'webp', 'svg', 'ico'];
   const archiveext = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'];
   const audioext = ['mp3', 'wav', 'wma', 'aac', 'flac', 'm4a', 'ogg', 'opus'];
@@ -265,6 +275,12 @@
     // load the new selected file
         let type =  $('#file-browser').jstree(true).get_node(newSelectedNodeId).type;
         if (loadRequest) { loadRequest.abort(); loadRequest = null; } // an AbortController
+        if (type === "file" && isMaster() && mediaKind(newSelectedNodeId) && window.LargeFileViewer && window.LargeFileViewer.openMedia) {
+          // a picture or a PDF is not text: nothing is read here, the card offers the Preview (and the hex view)
+          if (window.EditorTabs) window.EditorTabs.refused(String(newSelectedNodeId));
+          window.LargeFileViewer.openMedia(String(newSelectedNodeId), mediaKind(newSelectedNodeId));
+          return;
+        }
         if (type === "file") {
           // the bytes themselves (enc=raw), which the server gzips when it pays: the browser undoes that, and a file
           // that has not changed is answered with an empty 304 by the browser's own cache
@@ -339,7 +355,10 @@
       }
     }
     var ext = filename.split('.').pop().toLowerCase();
-    if (filetype == "file" && ext in codeext2menuoption) {
+    if (filetype == "file" && mediaKind(filename)) {
+      lang_selector.value = mediaKind(filename); // shown, not edited: the list says so (06-editor.js does nothing for it)
+      lang_selector.dispatchEvent(new CustomEvent('change', { detail: { silent: true } }));
+    } else if (filetype == "file" && ext in codeext2menuoption) {
       if (lang_selector.value !== codeext2menuoption[ext]) {
         console.log("editor language detected: ",codeext2menuoption[ext]);
         lang_selector.value = codeext2menuoption[ext];
@@ -359,6 +378,10 @@
         }
 
       }
+    } else if (filetype == "file" && (lang_selector.value === "image" || lang_selector.value === "pdf")) {
+      // the file before was a picture or a PDF and this one has no known language: the list does not keep saying so
+      lang_selector.value = "text";
+      lang_selector.dispatchEvent(new CustomEvent('change', { detail: { silent: true } }));
     }
   }
 
@@ -1340,10 +1363,13 @@
         t.select_node(r.node.id);
         showNode(r.node);
         var waited = 0;
-        while (filename() !== r.node.id && waited < OPEN_WAIT_MS) {
+        // a picture or a PDF opens as a card of the viewer, not in the editor: that is open too
+        var shownAsCard = function () { return !!(window.LargeFileViewer && window.LargeFileViewer.mediaPath && window.LargeFileViewer.mediaPath() === r.node.id); };
+        while (filename() !== r.node.id && !shownAsCard() && waited < OPEN_WAIT_MS) {
           await sleep(100);
           waited += 100;
         }
+        if (shownAsCard()) return { ok: true, detail: "it is shown as a picture or a PDF, not in the editor" };
         if (filename() !== r.node.id) return fail(rel + " did not load into the editor");
         return { ok: true };
       },

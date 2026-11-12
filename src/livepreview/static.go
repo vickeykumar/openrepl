@@ -1,6 +1,7 @@
 package livepreview
 
 import (
+	"io"
 	"mime"
 	"net/http"
 	"os"
@@ -94,5 +95,50 @@ func ServeFile(rw http.ResponseWriter, req *http.Request, home, rel string) {
 		return
 	}
 	defer f.Close()
+	switch req.URL.Query().Get("render") {
+	case "md":
+		serveMarkdown(rw, req, f, info, filepath.Base(resolved))
+		return
+	case "image":
+		servePage(rw, req, ImagePage(filepath.Base(resolved)), "img-src 'self'")
+		return
+	}
+	if strings.EqualFold(filepath.Ext(resolved), ".pdf") {
+		// A PDF is not a page: it is sent as a PDF and cannot be anything else (nosniff), so the browser's own viewer
+		// can show it; its viewer does not work under the sandbox policy, which a PDF has no use for.
+		rw.Header().Del("Content-Security-Policy")
+		rw.Header().Set("Content-Type", "application/pdf")
+		rw.Header().Set("Content-Disposition", "inline")
+	}
 	http.ServeContent(rw, req, filepath.Base(resolved), info.ModTime(), f)
+}
+
+// MaxMarkdown is the largest Markdown file that is rendered (a larger one is shown as the plain text it is).
+const MaxMarkdown = 2 << 20
+
+// pagePolicy is for a page the server wrote: no script, nothing but its own style, and the pictures it is given.
+func pagePolicy(img string) string {
+	return "sandbox allow-popups allow-downloads; default-src 'none'; style-src 'unsafe-inline'; " + img
+}
+
+func servePage(rw http.ResponseWriter, req *http.Request, body, img string) {
+	rw.Header().Set("Content-Security-Policy", pagePolicy(img))
+	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if req.Method == http.MethodHead {
+		return
+	}
+	rw.Write([]byte(body))
+}
+
+func serveMarkdown(rw http.ResponseWriter, req *http.Request, f *os.File, info os.FileInfo, name string) {
+	if info.Size() > MaxMarkdown {
+		http.Error(rw, "this file is too large to render: open it in the editor", http.StatusRequestEntityTooLarge)
+		return
+	}
+	data := make([]byte, info.Size())
+	if _, err := io.ReadFull(f, data); err != nil {
+		http.Error(rw, "the file could not be read", http.StatusInternalServerError)
+		return
+	}
+	servePage(rw, req, RenderMarkdown(string(data), name), "img-src 'self' https: http:")
 }
