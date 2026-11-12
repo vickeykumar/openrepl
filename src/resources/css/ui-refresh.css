@@ -4177,7 +4177,8 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 
 /* the untitled tab and the + above the editor (page/22-editor-tabs.js) */
 .etab--untitled .etab__name { font-style: italic; }
-#new-untitled { flex-shrink: 0; }
-#new-untitled[hidden] { display: none; }
+.etab-add { flex: 0 0 auto; position: sticky; right: 0; display: flex; align-items: center; justify-content: center; width: 40px; padding: 0; color: var(--muted-2); background: var(--ink-900); border: 0; cursor: pointer; }
+.etab-add:hover, .etab-add:focus-visible { color: var(--paper); background: var(--ink-800); }
+.etab-add:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
 .unsaved-dialog__input { box-sizing: border-box; width: 100%; margin: 12px 0 0; padding: 8px 10px; font: 400 13.5px var(--font-code); color: var(--paper); background: var(--ink-900); border: 1px solid var(--ink-600); border-radius: 8px; }
 .unsaved-dialog__input:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 1px; }

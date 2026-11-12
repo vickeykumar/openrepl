@@ -133,7 +133,7 @@ test("choosing files quickly never puts one file's text in another, and closing 
   // reload: the tabs come back, but their text has to be read from the server again
   await page.reload();
   await page.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
-  await expect(tabs(page)).toHaveCount(3);
+  await expect(tabs(page).filter({ hasText: /^tab/ })).toHaveCount(3); // the three files (the editor is an untitled buffer too, drawn as a fourth tab)
   // the first file's answer comes late, the second's at once
   await page.route(/q=load.*tab1-/, async (route) => {
     await new Promise((r) => setTimeout(r, 2500));
@@ -175,7 +175,7 @@ test("closing a tab that was only opened writes nothing to the server, whatever 
   await expect.poll(() => page.evaluate(() => window.editor.env.filename)).toContain(fname(1));
   await expect(tabs(page).filter({ hasText: fname(1) }).locator(".etab__dot")).toHaveCount(0);
   await tabs(page).filter({ hasText: fname(1) }).locator(".etab__x").click();
-  await expect(tabs(page)).toHaveCount(0);
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveCount(0); // the editor is an untitled buffer then, drawn as an untitled tab
   expect(saves).toEqual([]);
 });
 

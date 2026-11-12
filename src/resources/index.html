@@ -373,7 +373,6 @@
         <div class="editor-header">
           <span class="file-chip" id="editor-filename" data-tip-name="File" title="File in the editor">untitled</span>
           <div class="editor-tabs" id="editor-tabs" role="tablist" aria-label="Open files"></div>
-          <button type="button" class="ide-btn ide-btn--icon" id="new-untitled" data-tip-name="New untitled file" title="New untitled file" aria-label="New untitled file" hidden><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
           <div class="editor-header__tools" role="toolbar" aria-label="Editor and layout">
             <span class="toolbar-sep" aria-hidden="true"></span>
             <button type="button" class="ide-btn" id="rotate-button" onclick="ToggleRotateEditor();" title="Switch between side by side and stacked"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 12h18"></path></svg><span id="rotate-button-label">Stacked</span></button>
@@ -906,11 +905,23 @@ Breakpoint 1, main () at main.c:5
             function showQuestionInEditor(question, selectedLanguage, language_template) {
               const header = question.name+"\n\nDifficulty Level: "+ question.difficulty+ "\n\nProblem Description:\n"+
                 (question.description ? PracticeStore.wrapDescription(question.description, 100) : "(The description is not loaded yet. Pick the language again, or reload the page, to try again.)");
-              if (language_template) {
-                updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+header+"\n"+language_template.multiline_comment_end+"\n"+
-                  language_template.multiline_comment_start+"\n"+question.delimeter+"\n"+language_template.multiline_comment_end+"\n"+language_template.template+"\n\n\n\n", true);
+              const write = () => {
+                if (language_template) {
+                  updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+header+"\n"+language_template.multiline_comment_end+"\n"+
+                    language_template.multiline_comment_start+"\n"+question.delimeter+"\n"+language_template.multiline_comment_end+"\n"+language_template.template+"\n\n\n\n", true);
+                } else {
+                  updateEditorContent(selectedLanguage, "/*\n"+header+"\n*/\n\n\n\n", true);
+                }
+              };
+              // The question never goes into a file's editor: an untitled tab takes it (page/22-editor-tabs.js). Text typed
+              // from scratch in the untitled editor is asked about first; cancelled, the question is not written.
+              if (window.EditorTabs && EditorTabs.prepareGenerated) {
+                EditorTabs.prepareGenerated().then((ok) => {
+                  if (ok) write();
+                  else notify("Your text is kept and the question was not loaded. Pick the language again to load it.", { type: "info" });
+                });
               } else {
-                updateEditorContent(selectedLanguage, "/*\n"+header+"\n*/\n\n\n\n", true);
+                write();
               }
             }
 

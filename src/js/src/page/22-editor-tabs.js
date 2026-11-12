@@ -18,6 +18,8 @@ var stash = {};            // path -> { text, row, col, top }: what the editor h
 var baseline = {};         // path -> the text of the file as loaded or last saved
 var lastSaved = {};        // path -> when this page last saved it (its own write comes back as a server event)
 var sharedRef = null;      // firebase: file-browser/<id>/tabs
+var untitledAt = 0;        // when the untitled tab was last shown by the visitor (or the page), 0 once a file was chosen after it
+var browserRef = null;     // firebase: file-browser/<id> (the same node as selected_node)
 var warned = {};           // path -> true once told "changed outside"
 var shown = null;          // the file whose text the editor really holds (null: none yet, or a load is under way)
 var ignoreStash = null;    // a tab being closed: its text is not kept again on the switch it causes
@@ -96,8 +98,9 @@ function restoreFromStash(path) {
 // with a name (saveAsNew) and then becomes that file's tab. Its text is kept like any tab's (stash, and a draft in
 // localStorage), and nothing is written to the server until it is saved.
 
-// the text the editor shows came from the page itself (a starter, a question), not from the visitor
-function ownText(text) { return text !== undefined && text !== "" && text !== window[window.CONTENT_KEY || "editorContent"]; }
+// Has the visitor typed (or pasted, deleted ...) in the editor since the page last put text in it? Only commands the visitor
+// runs count: text the page sets (a starter, a question, a file) is not typed.
+var typed = false;
 
 function hasUntitled() { return state.tabs.indexOf(UNTITLED) >= 0; }
 
@@ -105,6 +108,7 @@ function showUntitled() {
   if (!master()) return;
   var e = aceEditor();
   if (!e) return;
+  untitledAt = Date.now();
   if (shown === UNTITLED) { e.focus(); return; }
   var t = tree();
   var fileOpen = shown && state.tabs.indexOf(shown) >= 0;
@@ -114,7 +118,7 @@ function showUntitled() {
   if (implicit) {
     // the editor already is an untitled buffer (nothing is open): the tab is that buffer
     stash[UNTITLED] = { text: e.getValue(), row: 0, col: 0, top: 0 };
-    baseline[UNTITLED] = ownText(e.getValue()) ? "" : e.getValue();
+    baseline[UNTITLED] = typed ? "" : e.getValue();
   } else if (!hasUntitled()) {
     stash[UNTITLED] = { text: "", row: 0, col: 0, top: 0 };
     baseline[UNTITLED] = "";
@@ -124,6 +128,9 @@ function showUntitled() {
   dropTabs(r.dropped);
   // not silent: the tree's change tracking must see the file leave, or choosing the same file again later is not a change
   if (t) t.deselect_all();
+  // the shared selection says no file either: a later "value" event of selected_node (the Files panel refreshes when the
+  // language changes) would otherwise choose the file again and bring its text back over the untitled one
+  try { if (browserRef) browserRef.update({ selected_node: "" }); } catch (e) { /* Firebase is optional here */ }
   restoreFromStash(UNTITLED);
   shown = UNTITLED;
   if (window["editor"] && window["editor"].env) window["editor"].env.filename = "";
@@ -300,18 +307,22 @@ function render() {
   if (!lane) return;
   var view = viewList();
   var header = lane.parentNode;
+  var canClose = master();
+  // With no file shown and nothing chosen in the Files panel (the page has just loaded, or the last tab was closed) the editor
+  // is an untitled buffer: it is drawn as an untitled tab after the others (it becomes a real one when it is chosen), and
+  // the + stands next to it.
+  var t0 = tree();
+  var virtual = canClose && !shown && view.tabs.indexOf(UNTITLED) < 0 && !(t0 && t0.get_selected().length) && !(window.LargeFileViewer && window.LargeFileViewer.isOpen && window.LargeFileViewer.isOpen());
+  if (virtual) view = { tabs: view.tabs.concat(UNTITLED), active: UNTITLED };
   if (header) header.classList.toggle("has-tabs", view.tabs.length > 0);
   var labels = tabLabels(view.tabs);
-  var canClose = master();
-  var plus = document.getElementById("new-untitled");
-  if (plus) plus.hidden = !canClose; // the owner's editor only: a viewer sees the owner's
   // whether each tab has unsaved text, worked out once (it reads the whole editor text for the shown tab)
   var dirty = view.tabs.map(function (path) { return canClose && isDirty(path); });
   // the mark of each file (changed or new in this session), for the color of its name
   var marked = view.tabs.map(function (path) { return window.FileMarks ? window.FileMarks.status(path) : ""; });
   // typing redraws this often: when nothing it shows has changed, the strip is left alone (no new elements, no layout)
-  var sig = JSON.stringify([view.tabs, view.active, dirty, marked, canClose]);
-  var redraw = sig !== lastSig || !lane.firstChild !== !view.tabs.length;
+  var sig = JSON.stringify([view.tabs, view.active, dirty, marked, canClose, virtual]);
+  var redraw = sig !== lastSig || !lane.firstChild !== !(view.tabs.length || canClose);
   lastSig = sig;
   if (redraw) lane.textContent = "";
   if (redraw) view.tabs.forEach(function (path, i) {
@@ -333,7 +344,7 @@ function render() {
       dot.className = "etab__dot";
       tab.appendChild(dot);
     }
-    if (canClose) {
+    if (canClose && !(virtual && isUntitled(path))) {
       var x = document.createElement("button");
       x.type = "button";
       x.className = "etab__x";
@@ -344,6 +355,17 @@ function render() {
     }
     lane.appendChild(tab);
   });
+  // the + after the last tab (the owner's editor only: a viewer sees the owner's)
+  if (redraw && canClose) {
+    var add = document.createElement("button");
+    add.type = "button";
+    add.id = "new-untitled";
+    add.className = "etab-add";
+    add.setAttribute("aria-label", "New untitled file");
+    add.title = "New untitled file";
+    add.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+    lane.appendChild(add);
+  }
   // the shown tab is brought into view when the shown file changes, not on every redraw (a redraw happens while the
   // user types, and must not pull a lane they scrolled away)
   var on = lane.querySelector(".etab.active");
@@ -360,9 +382,8 @@ function laneEvents() {
   lane = document.getElementById("editor-tabs");
   if (!lane || lane.dataset.ready) return;
   lane.dataset.ready = "1";
-  var plus = document.getElementById("new-untitled");
-  if (plus) plus.addEventListener("click", function () { showUntitled(); });
   lane.addEventListener("click", function (e) {
+    if (e.target.closest && e.target.closest("#new-untitled")) { showUntitled(); return; }
     var tab = e.target.closest && e.target.closest(".etab");
     if (!tab) return;
     if (e.target.closest(".etab__x")) closeByUser(tab.dataset.path);
@@ -394,6 +415,7 @@ function laneEvents() {
 // the old text, shows this one, and tells everyone through Firebase.
 function activate(path) {
   if (isUntitled(path)) { showUntitled(); return; }
+  untitledAt = 0; // a file was chosen
   var t = tree();
   if (!t || !path || !t.get_node(path)) return;
   if (t.get_selected()[0] === path) return;
@@ -481,6 +503,8 @@ var api = {
   // The tree is ready: take the saved list and drafts of this workspace back.
   treeReady: function () {
     laneEvents();
+    var tr = tree();
+    if (tr && window.jQuery) $("#file-browser").on("activate_node.jstree", function () { untitledAt = 0; }); // a click or Enter on a file
     var e = aceEditor();
     if (!master()) { render(); return; }
     var saved = readSaved();
@@ -510,6 +534,8 @@ var api = {
     publish();
     if (e && !e.__tabsBound) {
       e.__tabsBound = true;
+      // a command of the visitor that changes the text (not the page's own setValue)
+      e.commands.on("afterExec", function (ev) { if (ev && ev.command && !ev.command.readOnly) typed = true; });
       var timer = 0;
       e.on("change", function () {
         clearTimeout(timer);
@@ -630,8 +656,9 @@ var api = {
   },
 
   // Firebase: file-browser/<id> (the same node as selected_node)
-  attachShared: function (browserRef) {
-    sharedRef = browserRef.child("tabs");
+  attachShared: function (ref) {
+    browserRef = ref;
+    sharedRef = ref.child("tabs");
     if (!master()) {
       sharedRef.on("value", function (snap) {
         var v = snap.val();
@@ -639,6 +666,14 @@ var api = {
         render();
       });
     }
+  },
+
+  // The Files panel was reloaded and chose its file again (a change of language does it, and its restored selection comes
+  // back after the page showed the untitled tab): within a few seconds of the untitled tab being shown, it is shown again.
+  treeRefreshed: function () {
+    if (!master() || shown === UNTITLED || !untitledAt || Date.now() - untitledAt > 4000) return;
+    var t = tree();
+    if (t && t.get_selected().length) showUntitled();
   },
 
   // a viewer's tree selection changed: the strip's shown tab follows
@@ -681,15 +716,38 @@ var api = {
     if (!master()) return false;
     if (shown === UNTITLED) return isDirty(UNTITLED);
     var t = tree();
-    if (!shown && !(t && t.get_selected().length)) return ownText(currentText());
+    if (!shown && !(t && t.get_selected().length)) return typed && currentText() !== "";
     return false;
   },
   // the page put text into the untitled editor itself (a starter, a question): that is not a change of the visitor's
   programmatic: function (text) {
+    typed = false;
     if (!master() || shown !== UNTITLED) return;
     baseline[UNTITLED] = text;
     persist();
     render();
+  },
+  // The practice page is about to write a question into the editor. A file's text must never be replaced by it: when a file
+  // is shown, an untitled tab is opened and takes the question. Text typed from scratch in the untitled editor is asked
+  // about first (Save / Don't save / Cancel, the question of closing a changed tab); a solution written on top of an
+  // earlier question is not asked about, since the page keeps it for that question and language. Resolves true when the
+  // question may be written, false when the visitor cancelled.
+  prepareGenerated: function () {
+    if (!master()) return Promise.resolve(true);
+    var fileOpen = shown && !isUntitled(shown) && state.tabs.indexOf(shown) >= 0;
+    if (fileOpen) showUntitled();
+    var own = api.untitledHasOwnText() && (baseline[UNTITLED] === undefined || baseline[UNTITLED] === "" || baseline[UNTITLED] === null);
+    if (!own || !window.Unsaved) return Promise.resolve(true);
+    var text = currentText();
+    return window.Unsaved.askClose(UNTITLED).then(function (choice) {
+      if (choice === "cancel") return false;
+      if (choice !== "save") return true;
+      return new Promise(function (resolve) {
+        // saved, the tab is that file's now: a new untitled one takes the question
+        if (shown === UNTITLED) saveUntitled(function (ok) { if (ok) showUntitled(); resolve(!!ok); });
+        else saveAsNew(text, function (ok) { resolve(!!ok); });
+      });
+    });
   },
   max: MAX_TABS
 };

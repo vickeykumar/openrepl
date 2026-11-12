@@ -143,3 +143,39 @@ test("the Files panel and the published tab list never see the untitled tab as a
   const state = await page.evaluate(() => window.EditorTabs.state().tabs);
   expect(state.includes("untitled:")).toBe(true); // the owner's own list has it
 });
+
+test("with nothing open the editor is an untitled tab with the + next to it; with files open the + follows the last tab", async ({ page }) => {
+  await ready(page);
+  // no file is chosen: the buffer in the editor is shown as an untitled tab, and the + stands right after it
+  await expect(untitled(page)).toHaveCount(1);
+  await expect(untitled(page)).toHaveAttribute("aria-selected", "true");
+  await expect(untitled(page).locator(".etab__x")).toHaveCount(0); // nothing to close yet
+  const right = async (loc) => (await loc.boundingBox()).x + (await loc.boundingBox()).width;
+  const gap = async () => Math.abs((await plus(page).boundingBox()).x - (await right(untitled(page))));
+  expect(await gap()).toBeLessThan(3);
+  // a file opens: the untitled one gives way, the + is after the file's tab
+  await openFile(page, 6);
+  await expect(untitled(page)).toHaveCount(0);
+  const last = tabs(page).last();
+  expect(Math.abs((await plus(page).boundingBox()).x - (await right(last)))).toBeLessThan(3);
+  // the + opens a real untitled tab; when the strip is full the + stays in view at its right end
+  await plus(page).click();
+  await expect(untitled(page)).toHaveCount(1);
+  await expect(plus(page)).toBeInViewport();
+});
+
+test("after a reload with nothing chosen in the Files panel, an untitled tab is shown and the starter code loads into it", async ({ page }) => {
+  await ready(page);
+  await openFile(page, 7);
+  await page.reload();
+  await page.waitForFunction(() => window.EditorTabs && window.Unsaved && window.FileBrowser && window.FileBrowser.ready());
+  const chosen = await page.evaluate(() => $("#file-browser").jstree(true).get_selected().length);
+  test.skip(chosen > 0, "the Files panel chose a file again: there is no untitled editor to see");
+  // the file's tab is there (kept from before) and the editor is an untitled buffer, drawn as an untitled tab
+  await expect(fileTab(page, 7)).toHaveCount(1);
+  await expect(untitled(page)).toHaveCount(1);
+  await expect(untitled(page)).toHaveAttribute("aria-selected", "true");
+  await expect(plus(page)).toBeVisible();
+  // the starter code of the language in the list comes in by itself, as it does on a first visit
+  await expect.poll(async () => (await editorText(page)).length, { timeout: 30 * 1000 }).toBeGreaterThan(80);
+});
