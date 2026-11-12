@@ -222,7 +222,7 @@ jobs:
         echo '{"rules":{".read":true,".write":true}}' > "$RUNNER_TEMP/database.rules.json"
         printf '{"database":{"rules":"%s"},"emulators":{"database":{"host":"127.0.0.1","port":9000}}}' "$RUNNER_TEMP/database.rules.json" > "$RUNNER_TEMP/firebase.json"
         nohup firebase emulators:start --only database --project demo-openrepl --config "$RUNNER_TEMP/firebase.json" > "$RUNNER_TEMP/emulator.log" 2>&1 &
-        for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:9000/ && echo "the emulator answers" && exit 0; sleep 2; done
+        for i in $(seq 1 60); do curl -fsS -o /dev/null "http://127.0.0.1:9000/.json?ns=demo-openrepl" && echo "the emulator answers" && exit 0; sleep 2; done
         echo "the emulator did not answer in 2 minutes"; tail -n 40 "$RUNNER_TEMP/emulator.log"; exit 1
     - name: Browser tests (Playwright)
       id: e2e
