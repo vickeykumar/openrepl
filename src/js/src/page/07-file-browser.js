@@ -251,6 +251,9 @@
     else fallback();
   }
 
+  // read a file into the editor again (a tab's unsaved text was given up: 22-editor-tabs.js discard)
+  window.ReloadFileIntoEditor = function (id) { LoadSelectedNodeFromFile(String(id)); };
+
   // A file the editor does not take (over its limit, or binary): its tab goes (nothing is written), then it opens in the
   // read-only viewer, which shows a binary file as hex (24-large-file-viewer.js decides from the first piece).
   function NotForTheEditor(id, size) {

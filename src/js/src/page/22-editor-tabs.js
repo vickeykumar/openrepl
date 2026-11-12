@@ -227,6 +227,7 @@ function render() {
   }
   // the Files panel shows the same unsaved dots: it is told that the strip changed
   if (window.FileMarks) window.FileMarks.refresh();
+  if (window.Unsaved) window.Unsaved.refresh(); // and the bar, and the dot in the title of the browser tab
 }
 
 function laneEvents() {
@@ -297,7 +298,12 @@ function closeByUser(path) {
   if (!master()) return;
   var text = textOf(path);
   if (isDirty(path) && text !== undefined) {
-    saveText(path, text, function (ok) { if (ok) closeNow(path); });
+    // a tab with unsaved changes asks (28-unsaved.js): Save, Don't save, or Cancel (the tab stays)
+    if (!window.Unsaved) { saveText(path, text, function (ok) { if (ok) closeNow(path); }); return; }
+    window.Unsaved.askClose(path).then(function (choice) {
+      if (choice === "save") saveText(path, textOf(path), function (ok) { if (ok) closeNow(path); });
+      else if (choice === "discard") closeNow(path);
+    });
   } else {
     closeNow(path);
   }
@@ -331,14 +337,18 @@ var api = {
     var t = tree();
     state = restoreState(saved.list, function (p) { return isFile(p); });
     var recovered = [];
+    var recoveredPaths = [];
     state.tabs.forEach(function (p) {
       if (typeof saved.drafts[p] === "string") {
         stash[p] = { text: saved.drafts[p], row: 0, col: 0, top: 0 };
         baseline[p] = null;
         recovered.push(nameOf(p));
+        recoveredPaths.push(p);
       }
     });
-    if (recovered.length) say("Recovered unsaved changes in " + recovered.join(", ") + ". They are marked with a dot; Save keeps them.", "info");
+    // the bar of 28-unsaved.js offers Save all, Review and Discard all for what came back
+    if (recoveredPaths.length && window.Unsaved) window.Unsaved.recovered(recoveredPaths);
+    else if (recovered.length) say("Recovered unsaved changes in " + recovered.join(", ") + ". They are marked with a dot; Save keeps them.", "info");
     // what the tree shows selected right now is what the editor shows
     var sel = t ? t.get_selected()[0] : null;
     if (sel && isFile(sel)) state = openTab(state, sel);
@@ -370,12 +380,19 @@ var api = {
   selected: function (path, alreadyShown) {
     if (!isFile(path)) return false;
     if (master()) {
-      var r = openTab(state, path);
+      // the oldest tab without unsaved changes leaves first; one with changes only when every tab has (then it is asked about)
+      var r = openTab(state, path, MAX_TABS, isDirty);
       state = { tabs: r.tabs, active: r.active };
       r.dropped.forEach(function (p) {
         if (isDirty(p)) {
           var text = stash[p] ? stash[p].text : "";
-          if (text) saveText(p, text, function (ok) { if (ok) say("Closed " + nameOf(p) + " (saved)", "info"); });
+          if (text && window.Unsaved) {
+            window.Unsaved.askDropped(p).then(function (choice) {
+              if (choice === "save") saveText(p, text, function (ok) { if (ok) say("Closed " + nameOf(p) + " (saved)", "info"); });
+            });
+          } else if (text) {
+            saveText(p, text, function (ok) { if (ok) say("Closed " + nameOf(p) + " (saved)", "info"); });
+          }
         }
         delete stash[p];
         delete baseline[p];
@@ -488,6 +505,21 @@ var api = {
   // for tests and for other page code
   state: function () { return { tabs: state.tabs.slice(), active: state.active }; },
   shown: function () { return shown; },
+  // write one file with the text the tab holds; then(true) when it was written (28-unsaved.js: Save all)
+  saveFile: function (path, then) {
+    var text = textOf(path);
+    if (text === undefined || !isDirty(path)) { if (then) then(true); return; }
+    saveText(path, text, then);
+  },
+  // give up the unsaved text of a tab: the file is read from the server again when it is shown (now, if it is shown)
+  discard: function (path) {
+    delete stash[path];
+    delete baseline[path];
+    delete warned[path];
+    if (path === shown && window.ReloadFileIntoEditor) window.ReloadFileIntoEditor(path);
+    persist();
+    render();
+  },
   // for the colors of the Files panel (26-file-marks.js): has this file unsaved text, and which files have
   dirty: function (path) { return master() && state.tabs.indexOf(path) >= 0 && isDirty(path); },
   dirtyPaths: function () { return master() ? state.tabs.filter(function (p) { return isDirty(p); }) : []; },

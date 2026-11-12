@@ -38,6 +38,19 @@ test("showing an old tab does not make it newer: the oldest to open is still the
   assert.deepEqual(s.dropped, ["/1"], "it was opened first, so it leaves first");
 });
 
+test("the sixth file drops the oldest tab that has no unsaved changes, and the oldest of all only when every one has", () => {
+  const s = open(["/1", "/2", "/3", "/4", "/5"]);
+  const dirty = (p) => p === "/1" || p === "/2";
+  const r = openTab(s, "/6", 5, dirty);
+  assert.deepEqual(r.dropped, ["/3"], "/1 and /2 are changed, so /3 goes");
+  assert.deepEqual(r.tabs, ["/1", "/2", "/4", "/5", "/6"]);
+  const all = openTab(s, "/6", 5, () => true);
+  assert.deepEqual(all.dropped, ["/1"], "every tab is changed: the oldest goes (and is asked about)");
+  assert.deepEqual(openTab(s, "/6", 5, () => false).dropped, ["/1"], "none changed: the oldest, as before");
+  // the file just opened is never the one that leaves, however changed the others are
+  assert.ok(!openTab(s, "/6", 5, (p) => p !== "/6").dropped.includes("/6"));
+});
+
 test("an empty path opens nothing", () => {
   const s = openTab(emptyState(), "");
   assert.deepEqual(s.tabs, []);

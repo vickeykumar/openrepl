@@ -128,6 +128,7 @@
 
       add("Editor", "Focus the editor", focusEditor, { keys: ["Ctrl", "`"], words: "go to code" });
       add("Editor", "Save the open file", saveFile, { keys: [MOD, "S"], words: "write" });
+      if (window.Unsaved && window.Unsaved.count() > 0) add("Editor", "Save all files", function () { window.Unsaved.saveAll(); }, { keys: [MOD, "Alt", "S"], words: "write every changed unsaved tabs" });
       add("Editor", "Download the editor code", call("DownloadEditor"), { words: "export save as" });
       add("Editor", editorShown() ? "Hide the editor" : "Show the editor", call("ToggleEditor"), { words: "toggle layout" });
       var rot = byId("rotate-button-label");
@@ -281,6 +282,7 @@
     ["Open commands, outside the editor and terminal", [MOD, "K"]],
     ["Move between the editor and the terminal", ["Ctrl", "`"]],
     ["Save the open file, in the editor", [MOD, "S"]],
+    ["Save all changed files", [MOD, "Alt", "S"]],
     ["Leave the editor or terminal", ["Esc", "then", "Tab"]],
     ["Restore a maximized workspace", ["Esc"]],
     ["Show this list, outside text fields", ["?"]]
