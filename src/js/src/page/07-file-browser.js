@@ -231,46 +231,53 @@
   function LoadSelectedNodeFromFile(newSelectedNodeId, errcallback=null) {
     // load the new selected file
         let type =  $('#file-browser').jstree(true).get_node(newSelectedNodeId).type;
-        if (loadRequest) { loadRequest.abort(); loadRequest = null; }
+        if (loadRequest) { loadRequest.abort(); loadRequest = null; } // an AbortController
         if (type === "file") {
-          var request = $.ajax({
-            url: preprocessurl("/ws_filebrowser?q=load&max="+MAX_EDITOR_TEXT+"&filepath="+newSelectedNodeId),
-            method: "GET"
-          });
+          // the bytes themselves (enc=raw), which the server gzips when it pays: the browser undoes that, and a file
+          // that has not changed is answered with an empty 304 by the browser's own cache
+          var request = new AbortController();
           loadRequest = request;
-          request.done(function(data) {
+          var stale = function () {
             if (loadRequest === request) loadRequest = null;
-            if (!StillSelected(newSelectedNodeId)) { console.log("File load dropped, another file is selected now: "+newSelectedNodeId); return; }
-            // Handle successful response
-            var decodedResponse = atob(data);
-            // The editor is one document shared through Firebase, and a whole-file change is one write there (16 MB
-            // at most, "Write too large"). Text over that opens read-only in the large-file viewer instead (24-);
-            // a binary file is no text to edit: saving it again would damage it.
-            if (isMaster()) {
-              // the size counts as Firebase sees it: quotes, line ends and non-ASCII characters grow when encoded
-              var big = decodedResponse.length > MAX_EDITOR_TEXT ||
-                (decodedResponse.length > MAX_EDITOR_TEXT / 2 && JSON.stringify(decodedResponse).length > MAX_EDITOR_TEXT);
-              if (big) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length, false); return; }
-              if (decodedResponse.indexOf("\u0000") >= 0) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length, true); return; }
-            }
-            updateEditorContent("", decodedResponse, true);
-            if (window.EditorTabs) window.EditorTabs.loaded(String(newSelectedNodeId), decodedResponse);
-            console.log("File Loaded successfully: "+newSelectedNodeId);
-          }); request.fail(function(xhr, status, error) {
-            if (loadRequest === request) loadRequest = null;
-            if (status === "abort" || !StillSelected(newSelectedNodeId)) return; // replaced by a newer choice
-            if (xhr.status === 413) {
-              // the server did not send a file over the editor's limit (max= below): nothing was read
-              // for a viewer of the session nothing is done: the shared editor shows what the owner's editor shows
-              if (isMaster()) NotForTheEditor(String(newSelectedNodeId), parseInt(xhr.getResponseHeader("X-File-Size"), 10) || 0, false);
-              return;
-            }
-            // Handle error
-            console.log("Failed to load file: "+newSelectedNodeId, status, error);
-            if (typeof(errcallback)==="function") {
-              errcallback();
-            }
-          });
+            return !StillSelected(newSelectedNodeId); // another file was chosen meanwhile
+          };
+          fetch(preprocessurl("/ws_filebrowser?q=load&enc=raw&max="+MAX_EDITOR_TEXT+"&filepath="+encodeURIComponent(newSelectedNodeId)), { signal: request.signal, credentials: "same-origin" })
+            .then(function (res) {
+              if (res.status === 413) return { tooLarge: parseInt(res.headers.get("X-File-Size"), 10) || 0 };
+              if (!res.ok) return res.text().then(function (t) { throw new Error(t || res.statusText); });
+              return res.arrayBuffer().then(function (buf) { return { bytes: new Uint8Array(buf) }; });
+            })
+            .then(function (got) {
+              if (stale()) { console.log("File load dropped, another file is selected now: "+newSelectedNodeId); return; }
+              if (got.tooLarge !== undefined) {
+                // the server did not send a file over the editor's limit (max=): nothing was read. A viewer of the
+                // session does nothing: the shared editor shows what the owner's editor shows
+                if (isMaster()) NotForTheEditor(String(newSelectedNodeId), got.tooLarge, false);
+                return;
+              }
+              var decodedResponse = bytesToBinaryString(got.bytes);
+              // The editor is one document shared through Firebase, and a whole-file change is one write there (16 MB
+              // at most, "Write too large"). Text over that opens read-only in the large-file viewer instead (24-);
+              // a binary file is no text to edit: saving it again would damage it.
+              if (isMaster()) {
+                // the size counts as Firebase sees it: quotes, line ends and non-ASCII characters grow when encoded
+                var big = decodedResponse.length > MAX_EDITOR_TEXT ||
+                  (decodedResponse.length > MAX_EDITOR_TEXT / 2 && JSON.stringify(decodedResponse).length > MAX_EDITOR_TEXT);
+                if (big) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length, false); return; }
+                if (decodedResponse.indexOf("\u0000") >= 0) { NotForTheEditor(String(newSelectedNodeId), decodedResponse.length, true); return; }
+              }
+              updateEditorContent("", decodedResponse, true);
+              if (window.EditorTabs) window.EditorTabs.loaded(String(newSelectedNodeId), decodedResponse);
+              console.log("File Loaded successfully: "+newSelectedNodeId);
+            }, function (error) { // only the read failing: a fault in the code above is not a failed read
+              if (error && error.name === "AbortError") return; // replaced by a newer choice
+              if (stale()) return;
+              // Handle error
+              console.log("Failed to load file: "+newSelectedNodeId, error);
+              if (typeof(errcallback)==="function") {
+                errcallback();
+              }
+            });
         } else {
           // folder type, clear filename
           let editor = window["editor"];

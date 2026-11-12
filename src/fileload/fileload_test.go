@@ -1,7 +1,10 @@
 package fileload
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/base64"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -157,5 +160,59 @@ func TestATooLargeFileIsRefusedEvenWhenTheBrowserHoldsATag(t *testing.T) {
 	tag := get(t, p, "q=load").Header().Get("ETag")
 	if rec := get(t, p, "q=load&max=50", "If-None-Match", tag); rec.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("got %d, want 413", rec.Code)
+	}
+}
+
+func TestRawIsTheBytesThemselvesAndGzippedWhenItPaysAndIsAccepted(t *testing.T) {
+	small := file(t, "hello")
+	rec := get(t, small, "q=load&enc=raw", "Accept-Encoding", "gzip")
+	if rec.Body.String() != "hello" || rec.Header().Get("Content-Encoding") != "" || rec.Header().Get("Content-Type") != "application/octet-stream" {
+		t.Errorf("a small file is sent as it is: %q %v", rec.Body.String(), rec.Header())
+	}
+
+	text := strings.Repeat("a line of a log file\n", 500)
+	big := file(t, text)
+	rec = get(t, big, "q=load&enc=raw", "Accept-Encoding", "gzip, br")
+	if rec.Header().Get("Content-Encoding") != "gzip" || !strings.Contains(rec.Header().Get("Vary"), "Accept-Encoding") {
+		t.Fatalf("not compressed: %v", rec.Header())
+	}
+	if rec.Body.Len() >= len(text)/4 {
+		t.Errorf("compressed to %d of %d bytes", rec.Body.Len(), len(text))
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(rec.Body.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(zr)
+	if string(out) != text {
+		t.Error("the compressed bytes do not give the file back")
+	}
+
+	// a browser that does not accept it, or refuses it, gets the bytes
+	for _, accept := range []string{"", "br", "gzip;q=0"} {
+		r := get(t, big, "q=load&enc=raw", "Accept-Encoding", accept)
+		if r.Header().Get("Content-Encoding") != "" || r.Body.String() != text {
+			t.Errorf("Accept-Encoding %q: got %q encoding", accept, r.Header().Get("Content-Encoding"))
+		}
+	}
+}
+
+func TestRawKeepsEveryByteOfABinaryFileAndPiecesWork(t *testing.T) {
+	data := []byte{0, 1, 2, 255, 254, '\r', '\n', 0}
+	p := filepath.Join(t.TempDir(), "bin")
+	os.WriteFile(p, data, 0o644)
+	if rec := get(t, p, "q=load&enc=raw"); !bytes.Equal(rec.Body.Bytes(), data) {
+		t.Errorf("whole file: %v", rec.Body.Bytes())
+	}
+	rec := get(t, p, "q=load&enc=raw&offset=3&length=3")
+	if !bytes.Equal(rec.Body.Bytes(), data[3:6]) || rec.Header().Get("X-Chunk-Length") != "3" {
+		t.Errorf("piece: %v %v", rec.Body.Bytes(), rec.Header())
+	}
+}
+
+func TestWithoutRawTheAnswerIsStillBase64(t *testing.T) {
+	rec := get(t, file(t, strings.Repeat("z", 5000)), "q=load", "Accept-Encoding", "gzip")
+	if rec.Header().Get("Content-Encoding") != "" || rec.Header().Get("Content-Type") != "text/plain" || decoded(t, rec) != strings.Repeat("z", 5000) {
+		t.Errorf("the original form changed: %v", rec.Header())
 	}
 }

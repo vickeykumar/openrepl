@@ -100,13 +100,6 @@ function build() {
   return el;
 }
 
-function decode(base64) {
-  var raw = atob(base64);
-  var bytes = new Uint8Array(raw.length);
-  for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-  return bytes;
-}
-
 function hasNul(bytes) {
   for (var i = 0; i < bytes.length; i++) if (bytes[i] === 0) return true;
   return false;
@@ -135,23 +128,26 @@ function go(offset, first) {
   var size = first ? first.size : view.size;
   offset = Math.max(0, Math.min(offset, Math.max(0, size - 1)));
   var mine = ++seq;
-  $.ajax({
-    url: preprocessurl("/ws_filebrowser?q=load&filepath=" + path + "&offset=" + offset + "&length=" + CHUNK),
-    method: "GET"
-  }).done(function (data, status, xhr) {
-    if (mine !== seq) return; // a newer choice was made
-    var bytes = decode(data);
-    if (first && hasNul(bytes)) { close(); notOpenedBinary(path); return; }
-    var total = parseInt(xhr.getResponseHeader("X-File-Size"), 10);
-    view = { path: path, size: isFinite(total) ? total : size, offset: parseInt(xhr.getResponseHeader("X-Chunk-Offset"), 10) || 0, length: bytes.length };
-    el.hidden = false;
-    draw(bytes);
-    if (first) { var next = el.querySelector('[data-lv="next"]'); (next && !next.disabled ? next : el.querySelector('[data-lv="close"]')).focus(); }
-  }).fail(function (xhr) {
-    if (mine !== seq) return;
-    close();
-    say("Couldn't read " + nameOf(path) + ". " + (xhr.responseText || "Please try again."), { type: "error" });
-  });
+  var url = "/ws_filebrowser?q=load&enc=raw&filepath=" + encodeURIComponent(path) + "&offset=" + offset + "&length=" + CHUNK;
+  fetch(preprocessurl(url), { credentials: "same-origin" })
+    .then(function (res) {
+      if (!res.ok) return res.text().then(function (t) { throw new Error(t || res.statusText); });
+      return res.arrayBuffer().then(function (buf) { return { bytes: new Uint8Array(buf), headers: res.headers }; });
+    })
+    .then(function (got) {
+      if (mine !== seq) return; // a newer choice was made
+      var bytes = got.bytes;
+      if (first && hasNul(bytes)) { close(); notOpenedBinary(path); return; }
+      var total = parseInt(got.headers.get("X-File-Size"), 10);
+      view = { path: path, size: isFinite(total) ? total : size, offset: parseInt(got.headers.get("X-Chunk-Offset"), 10) || 0, length: bytes.length };
+      el.hidden = false;
+      draw(bytes);
+      if (first) { var next = el.querySelector('[data-lv="next"]'); (next && !next.disabled ? next : el.querySelector('[data-lv="close"]')).focus(); }
+    }, function (error) {
+      if (mine !== seq) return;
+      close();
+      say("Couldn't read " + nameOf(path) + ". " + (error && error.message ? error.message : "Please try again."), { type: "error" });
+    });
 }
 
 // Opens a file the editor does not take. size: its size in bytes, when known.

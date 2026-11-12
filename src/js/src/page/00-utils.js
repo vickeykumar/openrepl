@@ -22,6 +22,14 @@ window.getAll = function (selector, scope) {
 window.CONTENT_KEY = "editorContent";
 window.CMD_KEY = "command";
 window.MAX_FILESIZE = 20 * 1024 * 1024;
+
+// Bytes as a "binary string" (one character per byte, 0 to 255): the form the editor and the save have always used
+// for a file's text, so that a file opened and saved comes back byte for byte.
+window.bytesToBinaryString = function (bytes) {
+  var parts = [];
+  for (var i = 0; i < bytes.length; i += 8192) parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)));
+  return parts.join("");
+};
 window.HOME_DIR_KEY = "homedir";
 // "OpenREPL Dark" editor theme: the colours of the IDE mockup (near-black
 // background, coral keywords, blue functions, green strings, amber numbers).

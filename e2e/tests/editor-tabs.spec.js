@@ -209,8 +209,8 @@ async function fakeBigFile(page, size) {
     const text = `piece at ${offset}\n`;
     return route.fulfill({
       status: 200,
-      headers: { "X-File-Size": String(size), "X-Chunk-Offset": String(offset), "X-Chunk-Length": String(text.length), "Content-Type": "text/plain" },
-      body: Buffer.from(text).toString("base64"),
+      headers: { "X-File-Size": String(size), "X-Chunk-Offset": String(offset), "X-Chunk-Length": String(text.length), "Content-Type": "application/octet-stream" },
+      body: Buffer.from(text),
     });
   });
   return seen;
@@ -260,4 +260,17 @@ test("the viewer's Terminal button types a command into the terminal and does no
     .toContain("less '");
   const shown = (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " ");
   expect(shown).toContain(fname(1));
+});
+
+test("bytes become the same text the editor has always held, for any byte and any length", async ({ page }) => {
+  await ready(page);
+  const ok = await page.evaluate(() => {
+    const bytes = new Uint8Array(20000);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = i % 256;
+    const text = window.bytesToBinaryString(bytes);
+    if (text.length !== 20000) return "length " + text.length;
+    for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) !== i % 256) return "byte " + i;
+    return window.bytesToBinaryString(new Uint8Array([97, 233, 255, 0])) === "aéÿ\u0000" ? "ok" : "small";
+  });
+  expect(ok).toBe("ok");
 });
