@@ -44,13 +44,19 @@ const item = (page, label) => menu(page).locator("li", { hasText: new RegExp("^\
 // a collaborator's click on a tab also selects it, and the owner's answer comes back through Firebase while the menu opens:
 // the menu is opened again if that closed it
 async function openMenu(page, tab) {
-  for (let attempt = 0; attempt < 4; attempt++) {
+  // the tab is chosen first (a click), and the strip is left to settle: a right-click on a tab that is not the shown one chooses it,
+  // and the owner's answer (a new tab list through Firebase) redraws the strip and closes a menu that opened meanwhile
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true", { timeout: 20 * 1000 });
+  await page.waitForTimeout(2500);
+  for (let attempt = 0; attempt < 5; attempt++) {
     await tab.click({ button: "right" });
     try {
       await menu(page).waitFor({ state: "visible", timeout: 4000 });
-      await page.waitForTimeout(1500); // the echo is over
+      await page.waitForTimeout(1500);
       if (await menu(page).isVisible()) return;
     } catch (e) { /* again */ }
+    await page.waitForTimeout(1500);
   }
   await expect(menu(page)).toBeVisible();
 }

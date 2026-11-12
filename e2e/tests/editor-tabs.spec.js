@@ -197,7 +197,7 @@ test("a binary file is not opened in the shared editor: it opens read-only as a 
   await expect(viewer.locator(".lv__name")).toContainText("(hex)");
   await expect(viewer.locator(".lv__text")).toContainText("00000000  45 4c 46 00 01 62 69 6e");
   await expect(viewer.locator(".lv__text")).toContainText("|ELF..binary|");
-  await expect(tabs(page)).toHaveCount(0);
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveCount(0); // (an untitled tab may be drawn)
   expect(await page.evaluate(() => window.editor.env.editor.getValue())).not.toContain("ELF");
 });
 
@@ -281,7 +281,7 @@ test("text over the editor's limit opens read-only in pieces, and nothing is wri
   const viewer = await expectViewer(page);
   await expect(viewer.locator(".lv__text")).toContainText("piece at 0");
   await expect(viewer.locator(".lv__range")).toContainText("3,000,000");
-  await expect(tabs(page)).toHaveCount(0); // no tab: it is not in the editor
+  await expect(tabs(page).filter({ hasText: fname(1) })).toHaveCount(0); // no tab for the file: it is not in the editor (an untitled tab may be drawn)
   await viewer.getByRole("button", { name: "Next" }).click();
   await expect(viewer.locator(".lv__text")).toContainText("piece at 1048576");
   await viewer.getByRole("button", { name: "End" }).click();
