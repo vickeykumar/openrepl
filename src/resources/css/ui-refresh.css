@@ -4177,6 +4177,8 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 
 /* the untitled tab and the + above the editor (page/22-editor-tabs.js) */
 .etab--untitled .etab__name { font-style: italic; }
+/* the + is pinned at the right of the strip: the shown tab is brought into view left of it (page/23-tab-lanes.js, reveal) */
+.editor-header .editor-tabs { --tabs-pinned-w: 40px; }
 .etab-add { flex: 0 0 auto; position: sticky; right: 0; display: flex; align-items: center; justify-content: center; width: 40px; padding: 0; color: var(--muted-2); background: var(--ink-900); border: 0; cursor: pointer; }
 .etab-add:hover, .etab-add:focus-visible { color: var(--paper); background: var(--ink-800); }
 .etab-add:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }

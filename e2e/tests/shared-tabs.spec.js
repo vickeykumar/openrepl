@@ -91,7 +91,7 @@ test("a collaborator's click on the untitled tab, or on +, makes the owner show 
   }
 });
 
-test("a collaborator's tab menu has the Files menu for the file and the Close items off; the untitled tab's has Download only", async ({ browser }) => {
+test("a collaborator's tab menu has the Files menu for the file and the Close items (they ask the owner); the untitled tab's has Download and Close", async ({ browser }) => {
   const owner = await ownerPage(browser);
   const viewer = await viewerPage(browser, owner);
   try {
@@ -102,13 +102,46 @@ test("a collaborator's tab menu has the Files menu for the file and the Close it
     await fileTab(viewer.page, 4).click({ button: "right" });
     await expect(menu(viewer.page)).toBeVisible();
     for (const label of ["Rename", "Save", "Download", "Copy path"]) expect(await off(viewer.page, label), label).toBe(false);
-    for (const label of ["Close", "Close others", "Close all", "Paste"]) expect(await off(viewer.page, label), label).toBe(true);
+    expect(await off(viewer.page, "Paste"), "Paste").toBe(true);
+    for (const label of ["Close", "Close others", "Close all"]) expect(await off(viewer.page, label), label).toBe(false); // they ask the owner
     await viewer.page.keyboard.press("Escape");
     await untitled(viewer.page).click({ button: "right" });
     await expect(menu(viewer.page)).toBeVisible();
     expect(await off(viewer.page, "Download")).toBe(false);
-    for (const label of ["Save", "Rename", "Delete", "Close"]) expect(await off(viewer.page, label), label).toBe(true);
+    for (const label of ["Save", "Rename", "Delete"]) expect(await off(viewer.page, label), label).toBe(true);
+    expect(await off(viewer.page, "Close"), "Close").toBe(false);
     await viewer.page.keyboard.press("Escape");
+  } finally {
+    await owner.ctx.close();
+    await viewer.ctx.close();
+  }
+});
+
+test("a collaborator's close button asks the owner to close the tab, with the usual question when it has changes", async ({ browser }) => {
+  const owner = await ownerPage(browser);
+  const viewer = await viewerPage(browser, owner);
+  try {
+    await openFile(owner.page, 5);
+    await openFile(owner.page, 6);
+    await expect(fileTab(viewer.page, 5)).toHaveCount(1, { timeout: 20 * 1000 });
+    await expect(fileTab(viewer.page, 6)).toHaveCount(1);
+    // the collaborator sees the close buttons
+    await expect(fileTab(viewer.page, 5).locator(".etab__x")).toHaveCount(1);
+    // an unchanged tab: closed on the owner's page, and so on the collaborator's
+    await fileTab(viewer.page, 5).locator(".etab__x").click({ force: true });
+    await expect(fileTab(owner.page, 5)).toHaveCount(0, { timeout: 20 * 1000 });
+    await expect(fileTab(viewer.page, 5)).toHaveCount(0, { timeout: 20 * 1000 });
+    // a tab with changes: the owner's page asks
+    await openFile(owner.page, 7);
+    await owner.page.evaluate(() => window.editor.env.editor.setValue("owner's unsaved text", -1));
+    await expect(fileTab(owner.page, 7).locator(".etab__dot")).toBeVisible();
+    await expect(fileTab(viewer.page, 7)).toHaveCount(1, { timeout: 20 * 1000 });
+    await fileTab(viewer.page, 7).locator(".etab__x").click({ force: true });
+    const dialog = owner.page.locator(".unsaved-dialog");
+    await expect(dialog).toBeVisible({ timeout: 20 * 1000 });
+    await dialog.getByRole("button", { name: "Don't save" }).click();
+    await expect(fileTab(owner.page, 7)).toHaveCount(0);
+    await expect(fileTab(viewer.page, 7)).toHaveCount(0, { timeout: 20 * 1000 });
   } finally {
     await owner.ctx.close();
     await viewer.ctx.close();

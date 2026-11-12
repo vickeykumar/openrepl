@@ -353,7 +353,7 @@ function render() {
       dot.className = "etab__dot";
       tab.appendChild(dot);
     }
-    if (canClose && !(virtual && isUntitled(path))) {
+    if (!(virtual && isUntitled(path))) {
       var x = document.createElement("button");
       x.type = "button";
       x.className = "etab__x";
@@ -406,7 +406,7 @@ function laneEvents() {
   });
   lane.addEventListener("auxclick", function (e) {
     var tab = e.target.closest && e.target.closest(".etab");
-    if (tab && e.button === 1 && master()) { e.preventDefault(); closeByUser(tab.dataset.path); }
+    if (tab && e.button === 1) { e.preventDefault(); closeByUser(tab.dataset.path); }
   });
   lane.addEventListener("keydown", function (e) {
     var tab = e.target.closest && e.target.closest(".etab");
@@ -424,7 +424,7 @@ function laneEvents() {
       openTabMenu(tab.dataset.path, box.left + 8, box.bottom);
       return;
     }
-    else if ((e.key === "Delete" || e.key === "Backspace") && master()) { e.preventDefault(); closeByUser(tab.dataset.path); return; }
+    else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); closeByUser(tab.dataset.path); return; }
     else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(tab.dataset.path); return; }
     if (to) { e.preventDefault(); to.focus(); activate(to.dataset.path); }
   });
@@ -510,7 +510,15 @@ function closeAsk(path) {
     }
   });
 }
-function closeByUser(path) { closeAsk(path); }
+// A collaborator cannot close the owner's tab itself: it asks the owner's page (Firebase file-browser/<id>/close_requests, one
+// child for each request), which closes it with the usual question when the tab has changes.
+function requestClose(path) {
+  try { if (browserRef) browserRef.child("close_requests").push({ path: path, ts: Date.now() }); } catch (e) { /* Firebase is optional here */ }
+}
+function closeByUser(path) {
+  if (!master()) { requestClose(path); return; }
+  closeAsk(path);
+}
 
 // Closes the tabs one after another (a tab with changes asks); the first Cancel stops the rest.
 function closeMany(paths) {
@@ -551,19 +559,13 @@ function tabMenuItems(path) {
     if (!items) return null;
     if (items.paste) items.paste._disabled = true; // a tab is not a folder
   }
-  // only the owner closes tabs (as the close buttons: a viewer's menu has the items, off)
-  var owner = master();
-  items.tab_close = { label: "Close", separator_before: true, _disabled: !owner, action: function () { closeAsk(path); } };
-  items.tab_close_others = {
-    label: "Close others",
-    _disabled: !owner || state.tabs.filter(function (p) { return p !== path; }).length === 0,
-    action: function () { closeMany(state.tabs.filter(function (p) { return p !== path; })); }
-  };
-  items.tab_close_all = {
-    label: "Close all",
-    _disabled: !owner,
-    action: function () { closeMany(state.tabs.filter(function (p) { return p !== path; }).concat(state.tabs.indexOf(path) >= 0 ? [path] : [])); }
-  };
+  // a collaborator's Close items ask the owner's page, like the close button
+  var all = master() ? state.tabs : sharedList;
+  var others = all.filter(function (p) { return p !== path; });
+  var closeThese = function (paths) { if (master()) closeMany(paths); else paths.forEach(requestClose); };
+  items.tab_close = { label: "Close", separator_before: true, action: function () { closeByUser(path); } };
+  items.tab_close_others = { label: "Close others", _disabled: others.length === 0, action: function () { closeThese(others); } };
+  items.tab_close_all = { label: "Close all", action: function () { closeThese(others.concat(all.indexOf(path) >= 0 ? [path] : [])); } };
   return items;
 }
 
@@ -771,6 +773,17 @@ var api = {
   attachShared: function (ref) {
     browserRef = ref;
     sharedRef = ref.child("tabs");
+    if (master()) {
+      // a collaborator's close buttons: the owner's page closes the tab (a tab with changes asks, on this page), one request
+      // after another
+      var chain = Promise.resolve();
+      ref.child("close_requests").on("child_added", function (snap) {
+        var v = snap.val();
+        try { snap.ref.remove(); } catch (e) { /* the request is handled anyway */ }
+        if (!v || typeof v.path !== "string" || Date.now() - (v.ts || 0) > 60 * 1000) return;
+        chain = chain.then(function () { return state.tabs.indexOf(v.path) >= 0 ? closeAsk(v.path) : false; });
+      });
+    }
     if (!master()) {
       sharedRef.on("value", function (snap) {
         var v = snap.val();
