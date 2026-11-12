@@ -221,6 +221,19 @@ func readMem(pid uint32, addr uint64, n int) ([]byte, error) {
 	return b, err
 }
 
+// putMem writes to the REPL's memory for the call n, and only while that call is still the one waiting. A signal can
+// cancel the call (a Go program is sent many, to preempt its goroutines); the thread then goes on, and its stack and
+// heap hold something else at those addresses. An answer written there afterwards corrupts them, and the REPL
+// crashes much later, somewhere else (the stress test of 1500 short connections did, on a return address). The check
+// comes right before the write, as the kernel's documentation asks of anything that touches the target's memory on
+// behalf of a notification.
+func (s *Session) putMem(n *notif, addr uint64, b []byte) error {
+	if !s.valid(n.id) {
+		return syscall.ENOENT
+	}
+	return writeMem(n.pid, addr, b)
+}
+
 func writeMem(pid uint32, addr uint64, b []byte) error {
 	f, err := os.OpenFile("/proc/"+strconv.Itoa(int(pid))+"/mem", os.O_WRONLY, 0)
 	if err != nil {
@@ -400,24 +413,24 @@ func (s *Session) wait(fd int, events int16, id uint64) bool {
 }
 
 // putAddr writes sa to the REPL's addr / addrlen pair as the kernel does: truncated, with the full size reported.
-func putAddr(pid uint32, addrPtr, lenPtr uint64, sa []byte) syscall.Errno {
-	lb, err := readMem(pid, lenPtr, 4)
+func (s *Session) putAddr(n *notif, addrPtr, lenPtr uint64, sa []byte) syscall.Errno {
+	lb, err := readMem(n.pid, lenPtr, 4)
 	if err != nil {
 		return syscall.EFAULT
 	}
-	n := len(sa)
-	if have := int(int32(binary.LittleEndian.Uint32(lb))); have < n {
-		n = have
+	cut := len(sa)
+	if have := int(int32(binary.LittleEndian.Uint32(lb))); have < cut {
+		cut = have
 	}
-	if n < 0 {
-		n = 0
+	if cut < 0 {
+		cut = 0
 	}
-	if n > 0 && writeMem(pid, addrPtr, sa[:n]) != nil {
+	if cut > 0 && s.putMem(n, addrPtr, sa[:cut]) != nil {
 		return syscall.EFAULT
 	}
 	out := make([]byte, 4)
 	binary.LittleEndian.PutUint32(out, uint32(len(sa)))
-	if writeMem(pid, lenPtr, out) != nil {
+	if s.putMem(n, lenPtr, out) != nil {
 		return syscall.EFAULT
 	}
 	return 0
@@ -605,7 +618,7 @@ func (s *Session) hGetName(n *notif) result {
 			return fail(syscall.ENOTCONN)
 		}
 	}
-	if e := putAddr(n.pid, n.args[1], n.args[2], out); e != 0 {
+	if e := s.putAddr(n, n.args[1], n.args[2], out); e != 0 {
 		return fail(e)
 	}
 	return ok(0)
@@ -652,7 +665,7 @@ func (s *Session) hAccept(n *notif) result {
 	s.setInfo(nfd, sockInfo{family: i.family})
 	if n.args[1] != 0 {
 		if out, found := s.addrOf(i, peer, true); found && named {
-			if e := putAddr(n.pid, n.args[1], n.args[2], out); e != 0 {
+			if e := s.putAddr(n, n.args[1], n.args[2], out); e != 0 {
 				s.keep(ino, nfd, peer, named)
 				return fail(e)
 			}
@@ -752,15 +765,15 @@ func (s *Session) hRecvfrom(n *notif) result {
 	if err != nil {
 		return fail(errnoOf(err))
 	}
-	if got > 0 && writeMem(n.pid, n.args[1], buf[:got]) != nil {
+	if got > 0 && s.putMem(n, n.args[1], buf[:got]) != nil {
 		return fail(syscall.EFAULT)
 	}
 	if named {
 		if out, found := s.addrOf(i, from, true); found {
-			putAddr(n.pid, n.args[4], n.args[5], out)
+			s.putAddr(n, n.args[4], n.args[5], out)
 		}
 	} else {
-		writeMem(n.pid, n.args[5], []byte{0, 0, 0, 0})
+		s.putMem(n, n.args[5], []byte{0, 0, 0, 0})
 	}
 	return ok(int64(got))
 }
@@ -886,7 +899,7 @@ func (s *Session) hRecvmsg(n *notif) result {
 		if k > len(rest) {
 			k = len(rest)
 		}
-		if k > 0 && writeMem(n.pid, v[0], rest[:k]) != nil {
+		if k > 0 && s.putMem(n, v[0], rest[:k]) != nil {
 			return fail(syscall.EFAULT)
 		}
 		rest = rest[k:]
@@ -898,16 +911,16 @@ func (s *Session) hRecvmsg(n *notif) result {
 		}
 		have := int(u32(hdr, msgNameLen))
 		if len(out) > have {
-			writeMem(n.pid, namePtr, out[:have])
+			s.putMem(n, namePtr, out[:have])
 		} else if len(out) > 0 {
-			writeMem(n.pid, namePtr, out)
+			s.putMem(n, namePtr, out)
 		}
 		b := make([]byte, 4)
 		binary.LittleEndian.PutUint32(b, uint32(len(out)))
-		writeMem(n.pid, n.args[1]+msgNameLen, b)
+		s.putMem(n, n.args[1]+msgNameLen, b)
 	}
-	writeMem(n.pid, n.args[1]+msgControlLen, make([]byte, 8))
-	writeMem(n.pid, n.args[1]+msgFlags, make([]byte, 4))
+	s.putMem(n, n.args[1]+msgControlLen, make([]byte, 8))
+	s.putMem(n, n.args[1]+msgFlags, make([]byte, 4))
 	return ok(int64(got))
 }
 
@@ -938,8 +951,8 @@ func (s *Session) hSockopt(n *notif) result {
 		return ok(0) // IP, IPv6, TCP and UDP options mean nothing here
 	}
 	if n.args[3] != 0 && n.args[4] != 0 {
-		writeMem(n.pid, n.args[3], []byte{0, 0, 0, 0})
-		writeMem(n.pid, n.args[4], []byte{4, 0, 0, 0})
+		s.putMem(n, n.args[3], []byte{0, 0, 0, 0})
+		s.putMem(n, n.args[4], []byte{4, 0, 0, 0})
 	}
 	return ok(0)
 }
