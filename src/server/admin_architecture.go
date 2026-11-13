@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"homesnap"
 	"meters"
 	"persist"
 	"user"
@@ -518,6 +519,8 @@ func (server *Server) architecture() archReply {
 	add(archNode{ID: "data", Status: dbStatus, Text: rate(dbOps.PerMinute(60)) + " ops/min · " + fmt.Sprintf("%d", dbErr.Sum(archWindow)) + " errors", Series: minutes(dbOps), View: "health"})
 	add(storeNode)
 	add(extNode)
+	objNode := objectStorageNode()
+	add(objNode)
 	add(archNode{ID: "fb-db", Status: fire, Text: "state only", View: "health"})
 	add(archNode{ID: "fb-auth", Status: fire, Text: fmt.Sprintf("%d signed in today", signIns), View: "users"})
 	r.Nodes = append(r.Nodes, hostNodes...)
@@ -532,6 +535,9 @@ func (server *Server) architecture() archReply {
 	link("persist-store", level(dbOps.PerMinute(60)))
 	link("chat-llm", level(chatRate))
 	r.Links = append(r.Links, archLink{ID: "browser-firebase", Level: archState, Status: fire})
+	if objNode.Status != archOff {
+		r.Links = append(r.Links, archLink{ID: "persist-objstore", Level: archState, Status: objNode.Status})
+	}
 	if p.Counts.WorkersTotal > 0 || server.options.Mode == ModeGateway {
 		link("exec-workers", termLevel)
 	}
@@ -680,6 +686,44 @@ func externalDBNode(st persist.Stats, capacityMB int, base string) archNode {
 		}
 	default:
 		n.Text = st.Backend
+	}
+	return n
+}
+
+// objectStorageNode is the box of the object store (S3, R2, B2) in the Persistence panel: whether the bucket answers, when the
+// last backup was made, and the workspace snapshots. It is off when no object store is set up.
+func objectStorageNode() archNode {
+	n := archNode{ID: "objstore", Status: archOff, Text: "not set up", View: "health"}
+	if !utils.S3Enabled() {
+		if utils.S3Endpoint() != "" || utils.S3Bucket() != "" || utils.S3AccessKey() != "" || utils.S3SecretKey() != "" {
+			n.Status, n.Text = archWarn, "set up in part"
+		}
+		return n
+	}
+	to := map[string]string{healthOK: archOK, healthWarn: archWarn, healthFail: archFail}
+	storage := objectStorageHealth()
+	n.Status = to[storage.status]
+	if n.Status == "" {
+		n.Status = archWarn
+	}
+	n.Rows = append(n.Rows, archRow{Label: "Bucket", Value: storage.detail, Status: n.Status})
+	bst, bdetail := backupHealth()
+	n.Rows = append(n.Rows, archRow{Label: "Backups", Value: bdetail, Status: to[bst]})
+	n.Status = worse(n.Status, to[bst])
+	if homesnap.Default.Enabled() {
+		hst, hdetail := homesHealth()
+		n.Rows = append(n.Rows, archRow{Label: "Workspace snapshots", Value: hdetail, Status: to[hst]})
+		n.Rows = append(n.Rows, archRow{Label: "Snapshot every", Value: homesnap.Default.CurrentInterval().String(), Status: ""})
+		n.Status = worse(n.Status, to[hst])
+	}
+	st := homesnap.Default.Status()
+	switch {
+	case n.Status == archFail:
+		n.Text = "the bucket or a backup failed"
+	case !st.LastRun.IsZero():
+		n.Text = fmt.Sprintf("%d homes followed · last round %s ago", st.Homes, shortDuration(time.Since(st.LastRun)))
+	default:
+		n.Text = "bucket answers"
 	}
 	return n
 }

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"homesnap"
 	"persist"
 	"utils"
 )
@@ -140,6 +141,7 @@ func applySettings(s SiteSettings, version int64, fromStore bool) {
 	utils.SetGenieRates(s.Genie.GuestPerMinute, s.Genie.UserPerMinute)
 	applyKeyOverrides(s.Secrets)
 	utils.SetExtraAdmins(s.Admins)
+	homesnap.Default.SetInterval(s.snapshotInterval())
 }
 
 // syncSettingsOnce reads the store and brings the copy in memory up to date.

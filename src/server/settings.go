@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"utils"
@@ -65,6 +66,9 @@ type SiteSettings struct {
 	// Firebase, which refuses a write over 16 MB, so 16 is also the most; 0 means that built-in 16. A bigger text file
 	// opens read-only in the viewer (page/24-large-file-viewer.js) instead.
 	MaxEditorFileMB int `json:"maxEditorFileMB"`
+	// SnapshotIntervalMinutes is how often the workspaces of signed-in users that changed are snapshotted to the object
+	// store (package homesnap), from 1 to 60; 0 means the built-in 5. Only the newest 3 snapshots of a home are kept.
+	SnapshotIntervalMinutes int `json:"snapshotIntervalMinutes"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
 	// Admins are the accounts added in the dashboard, lower case, besides the
@@ -176,6 +180,9 @@ var languagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.+-]{0,19}$`)
 func (s SiteSettings) normalize() (SiteSettings, error) {
 	if s.MaxEditorFileMB != 0 && (s.MaxEditorFileMB < minEditorFileMB || s.MaxEditorFileMB > maxEditorFileMB) {
 		return s, fmt.Errorf("the largest file the editor opens must be between %d and %d MB (or empty)", minEditorFileMB, maxEditorFileMB)
+	}
+	if s.SnapshotIntervalMinutes != 0 && (s.SnapshotIntervalMinutes < minSnapshotMinutes || s.SnapshotIntervalMinutes > maxSnapshotMinutes) {
+		return s, fmt.Errorf("the time between workspace snapshots must be between %d and %d minutes (or empty)", minSnapshotMinutes, maxSnapshotMinutes)
 	}
 	if s.DBCapacityMB != 0 && (s.DBCapacityMB < minDBCapacityMB || s.DBCapacityMB > maxDBCapacityMB) {
 		return s, fmt.Errorf("the database capacity must be between %d and %d MB (or empty)", minDBCapacityMB, maxDBCapacityMB)
@@ -558,6 +565,17 @@ func (g *GenieSettings) normalizeNumbers() error {
 	}
 	g.OpenRouterHosts = hosts
 	return nil
+}
+
+// the time between two rounds of workspace snapshots, in minutes
+const minSnapshotMinutes, maxSnapshotMinutes = 1, 60
+
+// snapshotInterval is the time between two rounds of workspace snapshots in force: the one set, or 0 (the built-in 5 minutes).
+func (s SiteSettings) snapshotInterval() time.Duration {
+	if s.SnapshotIntervalMinutes < minSnapshotMinutes || s.SnapshotIntervalMinutes > maxSnapshotMinutes {
+		return 0
+	}
+	return time.Duration(s.SnapshotIntervalMinutes) * time.Minute
 }
 
 // maxEditorFileMB is the limit in force: the one set, or the built-in 16.

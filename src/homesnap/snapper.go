@@ -41,6 +41,9 @@ const (
 	// a home that has no snapshot is not asked about again for this long
 	noSnapshotFor = 10 * time.Minute
 	timeLayout    = "20060102T150405Z"
+	// a restore that failed with an error is tried again at the next request, at most this often, and this many times
+	restoreRetryAfter = time.Minute
+	maxRestoreTries   = 10
 )
 
 // ErrConflict is what SnapshotHome answers when another writer advanced the home's pointer meanwhile.
@@ -74,12 +77,14 @@ type Snapper struct {
 	// beforePointer is for tests: it runs after the archive is uploaded and before the pointer is written
 	beforePointer func(home string)
 
-	mu      sync.Mutex
-	enabled bool
-	writer  string
-	homes   map[string]*homeState
-	started bool
-	status  Status
+	mu       sync.Mutex
+	interval time.Duration // set from the admin dashboard; 0: Interval
+	wake     chan struct{} // a new interval is to be used now (made by Start)
+	enabled  bool
+	writer   string
+	homes    map[string]*homeState
+	started  bool
+	status   Status
 }
 
 type homeState struct {
@@ -87,9 +92,14 @@ type homeState struct {
 	generation  int64     // the last one this process knows
 	noSnapshot  time.Time // asked at this time and there was none
 	busy        bool
-	touched     bool   // Touch has looked at its folder
-	changing    int    // rounds in a row in which the home was still changing
-	lastNote    string // why the last round did not snapshot it ("" when it did)
+	touched     bool      // Touch has looked at its folder, and the restore (if one was due) has answered
+	pending     bool      // Touch has begun, the restore has not answered: no snapshot of the folder is made yet
+	restoring   bool      // a restore is under way for this home (Touch)
+	tries       int       // restores of this home that failed with an error
+	retryAt     time.Time // not before this time is a failed restore tried again
+	changing    int       // rounds in a row in which the home was still changing
+	lastNote    string    // why the last round did not snapshot it ("" when it did)
+	lastRestore time.Time // the last time a snapshot was got back by the user
 }
 
 // Status is what the dashboard shows.
@@ -113,6 +123,36 @@ var Default = &Snapper{
 	Name:   utils.BackupName,
 	Client: objstore.Default,
 	Now:    time.Now,
+}
+
+// SetInterval sets how often the homes that changed are snapshotted (0: the built-in Interval). It is used from the next
+// round on; a job that is waiting is told to wait for the new time instead.
+func (s *Snapper) SetInterval(d time.Duration) {
+	if d < 0 {
+		d = 0
+	}
+	s.mu.Lock()
+	changed := s.interval != d
+	s.interval = d
+	wake := s.wake
+	s.mu.Unlock()
+	if changed && wake != nil {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// CurrentInterval is the time between two rounds in force.
+func (s *Snapper) CurrentInterval() time.Duration {
+	s.mu.Lock()
+	d := s.interval
+	s.mu.Unlock()
+	if d <= 0 {
+		return Interval
+	}
+	return d
 }
 
 func (s *Snapper) now() time.Time {
@@ -252,6 +292,12 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 		s.mu.Unlock()
 		return Result{Note: "unchanged"}, nil
 	}
+	if st.pending {
+		// the folder has not been looked at for a restore yet (or the restore failed and will be tried again): what is on
+		// the disk now may be a fresh home, and a snapshot of it would take the place of the good one
+		s.mu.Unlock()
+		return s.noted(home, Result{Note: "waiting for its restore"}), nil
+	}
 	prevGen := st.generation
 	st.busy = true
 	s.mu.Unlock()
@@ -287,11 +333,24 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 		s.fail(err)
 		return Result{}, err
 	}
-	// the writer is in the name: two writers that reach the same generation in the same second do not
-	// overwrite each other
-	key := s.prefix(home) + fmt.Sprintf("%010d-%s-%s.tar.gz", gen, m.CreatedAt.Format(timeLayout), sum([]byte(s.writerID()))[:6])
+	// one file for each UTC day, overwritten by every snapshot of that day (so it holds the end of the day, and the store's
+	// own versions hold the day's history)
+	key := s.dayKey(home)
 	hash := sum(archive)
-	if err := c.Put(ctx, key, archive, "application/gzip", map[string]string{"sha256": hash, "generation": fmt.Sprint(gen)}); err != nil {
+	meta := map[string]string{"sha256": hash, "generation": fmt.Sprint(gen), "created": m.CreatedAt.UTC().Format(time.RFC3339)}
+	// another writer (an overlapping deploy) that already wrote a newer snapshot of this day is not overwritten
+	if cur, herr := c.Head(ctx, key); herr == nil {
+		var have int64
+		fmt.Sscan(cur.Meta["generation"], &have)
+		if have >= gen {
+			s.fail(ErrConflict)
+			return Result{}, ErrConflict
+		}
+	} else if !errors.Is(herr, objstore.ErrNotFound) {
+		s.fail(herr)
+		return Result{}, herr
+	}
+	if err := c.Put(ctx, key, archive, "application/gzip", meta); err != nil {
 		s.fail(err)
 		return Result{}, fmt.Errorf("uploading the snapshot: %w", err)
 	}
@@ -301,7 +360,6 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 	// the pointer moves only if nobody else moved it since it was read
 	now, nerr := s.readLatest(ctx, c, home)
 	if (nerr == nil && now.Generation != latest.Generation) || (nerr != nil && !errors.Is(nerr, objstore.ErrNotFound)) || (errors.Is(nerr, objstore.ErrNotFound) && lerr == nil) {
-		c.Delete(ctx, key)
 		if nerr != nil && !errors.Is(nerr, objstore.ErrNotFound) {
 			s.fail(nerr)
 			return Result{}, nerr
@@ -342,31 +400,6 @@ func (s *Snapper) noted(home string, r Result) Result {
 	return r
 }
 
-// prune keeps the newest Keep snapshots of a home and deletes the rest. A listing that fails deletes nothing.
-func (s *Snapper) prune(ctx context.Context, c *objstore.Client, home, protect string) int {
-	objs, err := c.List(ctx, s.prefix(home))
-	if err != nil {
-		return 0
-	}
-	var snaps []string
-	for _, o := range objs {
-		if strings.HasSuffix(o.Key, ".tar.gz") {
-			snaps = append(snaps, o.Key)
-		}
-	}
-	sort.Sort(sort.Reverse(sort.StringSlice(snaps))) // the generation is the start of the name: newest first
-	deleted := 0
-	for i, k := range snaps {
-		if i < Keep || k == protect {
-			continue
-		}
-		if c.Delete(ctx, k) == nil {
-			deleted++
-		}
-	}
-	return deleted
-}
-
 // Touch tells the snapshotter that a signed-in user's home is in use: it is snapshotted from now on, and if
 // its folder is missing it is restored first (this blocks for as long as the restore takes, at most a minute).
 func (s *Snapper) Touch(home string) {
@@ -375,24 +408,58 @@ func (s *Snapper) Touch(home string) {
 	}
 	s.mu.Lock()
 	st := s.state(home)
-	seen := st.touched
-	st.touched = true
-	s.mu.Unlock()
-	if seen {
-		return // the folder was looked at when it was first used: this is called on every request
+	if st.touched || st.restoring || (!st.retryAt.IsZero() && s.now().Before(st.retryAt)) {
+		s.mu.Unlock()
+		return // looked at already (this is called on every request), or under way, or a failed one is not tried again yet
 	}
+	st.restoring, st.pending = true, true
+	s.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	if _, err := s.Ensure(ctx, home); err != nil {
-		log.Printf("homesnap: restoring %s: %v", home, err)
+	_, err := s.Ensure(ctx, home)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st.restoring = false
+	if err != nil {
+		// not answered: the next request tries again, so that a timeout of the object store right after a deploy does not leave
+		// the home without its files for good
+		st.tries++
+		if st.tries >= maxRestoreTries {
+			st.touched, st.pending = true, false
+			log.Printf("homesnap: restoring %s failed %d times, giving up for this process: %v", home, st.tries, err)
+			return
+		}
+		st.retryAt = s.now().Add(restoreRetryAfter)
+		log.Printf("homesnap: restoring %s: %v (try %d of %d, again at the next request after %s)", home, err, st.tries, maxRestoreTries, st.retryAt.Format("15:04:05"))
+		return
 	}
+	st.touched, st.pending, st.tries = true, false, 0
 }
 
 // ---- restore ---------------------------------------------------------------------------------------
 
-// Ensure puts a home back from its newest good snapshot when its folder is missing or empty, and says whether
-// it did. A home that is there is left alone. A home with no snapshot is not asked about again for ten
-// minutes.
+// ErrBusy is what Ensure answers when the home is being snapshotted or restored just now: it has not looked.
+var ErrBusy = errors.New("homesnap: the home is busy")
+
+// madeByTheServer says that a folder holds nothing a user made: it is empty, or every name in it begins with a dot
+// (.bashrc that a terminal writes, the histories of the REPLs, .tmp). Such a home is a new one, and the snapshot of
+// the user's files is put back into it.
+func madeByTheServer(dir string) bool {
+	entries, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return os.IsNotExist(err)
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".") {
+			return false
+		}
+	}
+	return true
+}
+
+// Ensure puts a home back from its newest good snapshot when its folder is missing, empty, or holds only what the
+// server makes itself, and says whether it did. A home with a file of the user's is left alone. A home with no
+// snapshot is not asked about again for ten minutes.
 func (s *Snapper) Ensure(ctx context.Context, home string) (bool, error) {
 	if !IsKept(home) {
 		return false, nil
@@ -402,12 +469,16 @@ func (s *Snapper) Ensure(ctx context.Context, home string) (bool, error) {
 		return false, nil
 	}
 	dir := s.dir(home)
-	if entries, err := ioutil.ReadDir(dir); err == nil && len(entries) > 0 {
+	if !madeByTheServer(dir) {
 		return false, nil
 	}
 	s.mu.Lock()
 	st := s.state(home)
-	if st.busy || (!st.noSnapshot.IsZero() && s.now().Sub(st.noSnapshot) < noSnapshotFor) {
+	if st.busy {
+		s.mu.Unlock()
+		return false, ErrBusy
+	}
+	if !st.noSnapshot.IsZero() && s.now().Sub(st.noSnapshot) < noSnapshotFor {
 		s.mu.Unlock()
 		return false, nil
 	}
@@ -437,8 +508,7 @@ func (s *Snapper) Ensure(ctx context.Context, home string) (bool, error) {
 		os.RemoveAll(tmp)
 		return false, err
 	}
-	os.Remove(dir) // an empty folder in the way
-	if err := os.Rename(tmp, dir); err != nil {
+	if err := mergeInto(tmp, dir); err != nil {
 		os.RemoveAll(tmp)
 		return false, err
 	}
@@ -450,52 +520,6 @@ func (s *Snapper) Ensure(ctx context.Context, home string) (bool, error) {
 	s.mu.Unlock()
 	log.Printf("homesnap: %s was restored from its snapshot of %s (generation %d)", home, latest.CreatedAt.Format(time.RFC3339), latest.Generation)
 	return true, nil
-}
-
-// newestValid is the snapshot latest.json names if it is whole, else the newest of the others that is (three
-// are tried); nil when the home has none.
-func (s *Snapper) newestValid(ctx context.Context, c *objstore.Client, home string) ([]byte, Latest, error) {
-	tried := map[string]bool{}
-	l, err := s.readLatest(ctx, c, home)
-	if err == nil {
-		tried[l.Key] = true
-		if data, _, gerr := c.Get(ctx, l.Key); gerr == nil && sum(data) == l.SHA256 {
-			return data, l, nil
-		}
-		log.Printf("homesnap: %s is missing or damaged, looking for an older one", l.Key)
-	} else if !errors.Is(err, objstore.ErrNotFound) {
-		return nil, l, err
-	}
-	objs, err := c.List(ctx, s.prefix(home))
-	if err != nil {
-		return nil, l, err
-	}
-	var snaps []string
-	for _, o := range objs {
-		if strings.HasSuffix(o.Key, ".tar.gz") && !tried[o.Key] {
-			snaps = append(snaps, o.Key)
-		}
-	}
-	sort.Sort(sort.Reverse(sort.StringSlice(snaps)))
-	if len(snaps) > 3 {
-		snaps = snaps[:3]
-	}
-	for _, k := range snaps {
-		data, obj, gerr := c.Get(ctx, k)
-		if gerr != nil {
-			continue
-		}
-		if want := obj.Meta["sha256"]; want != "" && want != sum(data) {
-			continue
-		}
-		var gen int64
-		fmt.Sscan(k[strings.LastIndex(k, "/")+1:], &gen)
-		return data, Latest{Generation: gen, Key: k, SHA256: sum(data), Size: int64(len(data))}, nil
-	}
-	if len(tried) > 0 || len(snaps) > 0 {
-		return nil, l, errors.New("homesnap: none of the newest snapshots could be used")
-	}
-	return nil, l, nil
 }
 
 // ---- the job ---------------------------------------------------------------------------------------
@@ -570,20 +594,34 @@ func (s *Snapper) Start() (stop func()) {
 		utils.Jobs.RegisterOff("home-snapshots", "Workspace snapshots", what, "no object store is set up (OPENREPL_S3_*)")
 		return func() {}
 	}
-	report := utils.Jobs.Register("home-snapshots", "Workspace snapshots", what, Interval)
+	report := utils.Jobs.Register("home-snapshots", "Workspace snapshots", what, s.CurrentInterval())
 	done := make(chan struct{})
+	wake := make(chan struct{}, 1)
+	s.mu.Lock()
+	s.wake = wake
+	s.mu.Unlock()
 	go func() {
-		t := time.NewTicker(Interval)
-		defer t.Stop()
+		timer := time.NewTimer(s.CurrentInterval())
+		defer timer.Stop()
 		for {
 			select {
-			case <-t.C:
+			case <-timer.C:
 				report.Run(func() (string, error) {
 					ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 					defer cancel()
 					round, err := s.SnapshotAll(ctx)
 					return round.String(), err
 				})
+				timer.Reset(s.CurrentInterval())
+			case <-wake:
+				// the interval was changed in the dashboard: the wait starts again with the new time
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(s.CurrentInterval())
 			case <-done:
 				return
 			}
@@ -621,4 +659,28 @@ func (s *Snapper) Final(timeout time.Duration) {
 	if made > 0 {
 		log.Printf("homesnap: %d workspaces were snapshotted at the stop", made)
 	}
+}
+
+// mergeInto puts the entries of src (a folder that was extracted whole) into dst, which may hold the files the server made
+// itself: an entry that is in both takes the snapshot's version, an entry only in dst stays. A dst that is not there is
+// simply replaced by src (one rename, as before).
+func mergeInto(src, dst string) error {
+	if entries, err := ioutil.ReadDir(dst); err != nil || len(entries) == 0 {
+		os.Remove(dst) // an empty folder in the way
+		return os.Rename(src, dst)
+	}
+	entries, err := ioutil.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		to := filepath.Join(dst, e.Name())
+		if err := os.RemoveAll(to); err != nil {
+			return err
+		}
+		if err := os.Rename(filepath.Join(src, e.Name()), to); err != nil {
+			return err
+		}
+	}
+	return os.RemoveAll(src)
 }

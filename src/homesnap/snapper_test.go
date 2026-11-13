@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -78,7 +79,7 @@ func TestAHomeIsSnapshottedAndComesBackWhole(t *testing.T) {
 		t.Fatalf("snapshot: %+v %v", res, err)
 	}
 	keys := f.Stored()
-	if len(keys) != 2 || !strings.Contains(keys[0], "pfx/homes/prod/anna0123/0000000001-") || !strings.HasSuffix(keys[1], "/latest.json") {
+	if len(keys) != 2 || !strings.Contains(keys[0], "pfx/homes/prod/anna0123/anna0123-"+time.Now().UTC().Format("2006-01-02")+".tar.gz") || !strings.HasSuffix(keys[1], "/latest.json") {
 		t.Fatalf("stored: %v", keys)
 	}
 
@@ -160,7 +161,12 @@ func TestOnlyTheNewestThreeSnapshotsAreKept(t *testing.T) {
 	defer f.Close()
 	s, base := newSnapper(t, f)
 	dir := makeHome(t, base, "anna0123")
+	clock := time.Now().UTC()
+	s.Now = func() time.Time { return clock }
+	var days []string
 	for i := 0; i < 6; i++ {
+		days = append(days, clock.Add(24*time.Hour).Format("2006-01-02"))
+		clock = clock.Add(24 * time.Hour)
 		write(t, filepath.Join(dir, "main.c"), fmt.Sprint("version ", i), time.Minute)
 		if res, err := s.SnapshotHome(ctx, "anna0123", false); err != nil || !res.Made {
 			t.Fatalf("%d: %+v %v", i, res, err)
@@ -169,10 +175,10 @@ func TestOnlyTheNewestThreeSnapshotsAreKept(t *testing.T) {
 	var snaps []string
 	for _, k := range f.Stored() {
 		if strings.HasSuffix(k, ".tar.gz") {
-			snaps = append(snaps, k[strings.LastIndex(k, "/")+1:][:10])
+			snaps = append(snaps, k[strings.LastIndex(k, "/")+1:])
 		}
 	}
-	if strings.Join(snaps, ",") != "0000000004,0000000005,0000000006" {
+	if strings.Join(snaps, ",") != "anna0123-"+days[3]+".tar.gz,anna0123-"+days[4]+".tar.gz,anna0123-"+days[5]+".tar.gz" {
 		t.Errorf("snapshots left: %v", snaps)
 	}
 }
@@ -212,31 +218,47 @@ func TestAnotherWriterThatGotThereFirstWinsAndNothingIsCorrupted(t *testing.T) {
 	a.writer = "this-instance"
 
 	write(t, filepath.Join(dir, "main.c"), "written through a", time.Minute)
-	// b makes its snapshot between a's upload and a's pointer
+	// the other instance moves the pointer between a's upload and a's pointer
 	a.beforePointer = func(home string) {
 		a.beforePointer = nil
-		if res, err := b.SnapshotHome(ctx, home, true); err != nil || !res.Made {
-			t.Errorf("b: %+v %v", res, err)
+		cl, _ := objstore.New(f.Config())
+		raw, _ := json.Marshal(Latest{Generation: 2, Key: a.dayKey(home), Writer: "other-instance"})
+		if err := cl.Put(ctx, a.prefix(home)+"latest.json", raw, "application/json", nil); err != nil {
+			t.Errorf("b: %v", err)
 		}
 	}
 	_, err := a.SnapshotHome(ctx, "anna0123", false)
 	if err != ErrConflict {
 		t.Fatalf("a: %v", err)
 	}
-	// the pointer is b's, and a's archive is gone
+	// the pointer is the other's, and a did not move it
 	cl, _ := objstore.New(f.Config())
 	l, err := b.readLatest(ctx, cl, "anna0123")
 	if err != nil || l.Writer != "other-instance" || l.Generation != 2 {
 		t.Fatalf("latest: %+v %v", l, err)
 	}
-	var gens []string
-	for _, k := range f.Stored() {
-		if strings.HasSuffix(k, ".tar.gz") {
-			gens = append(gens, k[strings.LastIndex(k, "/")+1:][:10])
-		}
+}
+
+// a day's file that an instance with a newer generation wrote is not overwritten by an older one
+func TestADaysFileOfANewerGenerationIsNotOverwritten(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	a, base := newSnapper(t, f)
+	makeHome(t, base, "anna0123")
+	if res, err := a.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made {
+		t.Fatal(res, err)
 	}
-	if strings.Join(gens, ",") != "0000000001,0000000002" {
-		t.Errorf("archives: %v", gens)
+	cl, _ := objstore.New(f.Config())
+	key := a.dayKey("anna0123")
+	cl.Put(ctx, key, []byte("newer"), "application/gzip", map[string]string{"generation": "99"})
+	a.mu.Lock()
+	a.state("anna0123").generation = 0
+	a.mu.Unlock()
+	if _, err := a.SnapshotHome(ctx, "anna0123", true); err != ErrConflict {
+		t.Fatalf("overwrote: %v", err)
+	}
+	if b, _ := f.Object("pfx/" + key); string(b) != "newer" {
+		t.Errorf("the file was changed: %q", b)
 	}
 }
 
@@ -245,11 +267,15 @@ func TestADamagedLatestSnapshotFallsBackToTheOlderOne(t *testing.T) {
 	defer f.Close()
 	s, base := newSnapper(t, f)
 	dir := makeHome(t, base, "anna0123")
+	clock := time.Now().UTC()
+	s.Now = func() time.Time { return clock }
 	s.SnapshotHome(ctx, "anna0123", false)
+	clock = clock.Add(24 * time.Hour)
+	second := clock.Format("2006-01-02")
 	write(t, filepath.Join(dir, "main.c"), "second version", time.Minute)
 	s.SnapshotHome(ctx, "anna0123", false)
 	for _, k := range f.Stored() {
-		if strings.Contains(k, "/0000000002-") {
+		if strings.HasSuffix(k, ".tar.gz") && strings.Contains(k, second) {
 			f.Set(k, []byte("damaged"), time.Now())
 		}
 	}
@@ -457,5 +483,178 @@ func TestAHomeThatNeverRestsIsSnapshottedAfterAFewRounds(t *testing.T) {
 		if round > maxWaitRounds && r.Made != 1 {
 			t.Fatalf("round %d: %+v", round, r)
 		}
+	}
+}
+
+// A fresh home has what the server makes itself (.bashrc that a terminal writes, the histories of the REPLs, .tmp): that is no
+// reason to leave the user's files in the bucket.
+func TestAHomeWithOnlyWhatTheServerMakesIsRestoredAndKeepsThose(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	os.RemoveAll(dir)
+	write(t, filepath.Join(dir, ".bashrc"), "PS1='$ '", time.Second)
+	write(t, filepath.Join(dir, ".tmp", "x"), "scratch", time.Second)
+
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	s2.Touch("anna0123")
+	if b, err := os.ReadFile(filepath.Join(dir, "main.c")); err != nil || string(b) != "int main(){}" {
+		t.Fatalf("the files were not put back: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "src", "util", "a.py")); err != nil || string(b) != "print(1)" {
+		t.Errorf("a file in a folder: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, ".bashrc")); err != nil || string(b) != "PS1='$ '" {
+		t.Errorf("a file the server made, that the snapshot does not have, is gone: %q %v", b, err)
+	}
+	if s2.Status().Restores != 1 {
+		t.Errorf("status: %+v", s2.Status())
+	}
+}
+
+func TestAFileThatIsInTheSnapshotAndInTheFolderTakesTheSnapshotsVersion(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	write(t, filepath.Join(dir, ".bashrc"), "from the snapshot", time.Hour)
+	if res, err := s.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made { // forced: the folder has just been changed
+		t.Fatalf("%+v %v", res, err)
+	}
+	os.RemoveAll(dir)
+	write(t, filepath.Join(dir, ".bashrc"), "fresh", time.Second)
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	s2.Touch("anna0123")
+	if b, _ := os.ReadFile(filepath.Join(dir, ".bashrc")); string(b) != "from the snapshot" {
+		t.Errorf(".bashrc is %q", b)
+	}
+}
+
+func TestAHomeWithAFileOfTheUserIsNotRestoredOver(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	os.RemoveAll(dir)
+	write(t, filepath.Join(dir, ".bashrc"), "fresh", time.Second)
+	write(t, filepath.Join(dir, "notes.txt"), "work of today", time.Second)
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	s2.Touch("anna0123")
+	if _, err := os.Stat(filepath.Join(dir, "main.c")); err == nil {
+		t.Error("a home with a file of the user's was restored over")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "notes.txt")); string(b) != "work of today" {
+		t.Errorf("notes.txt is %q", b)
+	}
+}
+
+// One failed attempt must not be the last: a timeout of the object store right after a deploy left the home without its files
+// for good, and its next snapshot took the place of the good one.
+func TestARestoreThatFailsIsTriedAgainAndNoSnapshotIsMadeBeforeItAnswers(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	os.RemoveAll(dir)
+	write(t, filepath.Join(dir, ".bashrc"), "fresh", time.Hour)
+
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	clock := time.Now()
+	s2.Now = func() time.Time { return clock }
+	f.FailNext(50)
+	s2.Touch("anna0123") // the store does not answer
+	if _, err := os.Stat(filepath.Join(dir, "main.c")); err == nil {
+		t.Fatal("restored although the store did not answer")
+	}
+	// the home is not snapshotted while its restore has not answered: that would put a fresh folder in the place of the good one
+	before := strings.Join(f.Stored(), ",")
+	f.FailNext(0)
+	if res, err := s2.SnapshotHome(ctx, "anna0123", true); err != nil || res.Made || res.Note != "waiting for its restore" {
+		t.Fatalf("a snapshot was made, or not refused in words: %+v %v", res, err)
+	}
+	if strings.Join(f.Stored(), ",") != before {
+		t.Errorf("the bucket changed: %v", f.Stored())
+	}
+	// at once the next request does not try again (not more often than once a minute)
+	s2.Touch("anna0123")
+	if _, err := os.Stat(filepath.Join(dir, "main.c")); err == nil {
+		t.Error("tried again before the time")
+	}
+	// later it does, and the files come back
+	clock = clock.Add(restoreRetryAfter + time.Second)
+	s2.Touch("anna0123")
+	if b, err := os.ReadFile(filepath.Join(dir, "main.c")); err != nil || string(b) != "int main(){}" {
+		t.Fatalf("not restored at the next request: %q %v", b, err)
+	}
+	// and from then on it snapshots as usual
+	write(t, filepath.Join(dir, "new.txt"), "x", time.Minute)
+	if res, err := s2.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made {
+		t.Errorf("no snapshot after the restore: %+v %v", res, err)
+	}
+}
+
+func TestARestoreThatKeepsFailingIsGivenUpAfterTenTries(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	os.RemoveAll(dir)
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	clock := time.Now()
+	s2.Now = func() time.Time { return clock }
+	f.FailNext(100000)
+	for i := 0; i < maxRestoreTries+3; i++ {
+		s2.Touch("anna0123")
+		clock = clock.Add(restoreRetryAfter + time.Second)
+	}
+	s2.mu.Lock()
+	st := s2.state("anna0123")
+	tries, pending, touched := st.tries, st.pending, st.touched
+	s2.mu.Unlock()
+	if tries != maxRestoreTries || pending || !touched {
+		t.Errorf("tries %d, pending %v, touched %v", tries, pending, touched)
+	}
+}
+
+func TestTheIntervalIsSetFromTheDashboardAndTheJobWaitsForTheNewTime(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, _ := newSnapper(t, f)
+	if s.CurrentInterval() != Interval {
+		t.Errorf("the built-in time: %v", s.CurrentInterval())
+	}
+	s.SetInterval(2 * time.Minute)
+	if s.CurrentInterval() != 2*time.Minute {
+		t.Errorf("set: %v", s.CurrentInterval())
+	}
+	s.SetInterval(0)
+	if s.CurrentInterval() != Interval {
+		t.Errorf("0 is the built-in time: %v", s.CurrentInterval())
+	}
+	// the job: a home that changes is snapshotted at the next round, and a new interval makes the job wait for it afresh
+	dir := makeHome(t, s.Base(), "anna0123")
+	s.Touch("anna0123")
+	s.SetInterval(150 * time.Millisecond)
+	stop := s.Start()
+	defer stop()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(f.Stored()) > 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(f.Stored()) == 0 {
+		t.Fatalf("no snapshot at the short interval (%v)", dir)
 	}
 }
