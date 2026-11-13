@@ -420,3 +420,25 @@ test("the Genie agent's preview actions open and read the pane", async ({ page }
   expect(out.last.join(" ")).toContain("bad thing");
   expect(await page.evaluate(() => window.Preview.openPath("x/notes.txt"))).toBe(false); // not a page that can be shown
 });
+
+test("a file name typed in the address bar opens that page, beside the one shown; a file that is no page says so", async ({ page }) => {
+  await ready(page);
+  const d = `ty${Date.now().toString(36)}`;
+  await page.evaluate(async (d) => {
+    await window.FileBrowser.create(d, "folder");
+    for (const n of ["one.html", "two.html", "style.css"]) await window.FileBrowser.create(d + "/" + n, "file");
+    const put = (n, t) => $.ajax({ url: preprocessurl("/ws_filebrowser?q=save&filepath=" + window.homedir + "/" + d + "/" + n), method: "POST", processData: false, data: btoa(t), contentType: "application/octet-stream" });
+    await put("one.html", "<h1>one</h1>"); await put("two.html", "<h1 id='h'>two</h1>"); await put("style.css", "h1{color:red}");
+  }, d);
+  await page.evaluate((d) => window.Preview.openPath(window.homedir + "/" + d + "/one.html"), d);
+  await page.locator("#preview-address").click();
+  await expect(page.locator("#preview-address-input")).toBeFocused();
+  await page.locator("#preview-address-input").fill("two.html");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#preview-address-text")).toContainText("two.html");
+  await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("two");
+  await page.locator("#preview-address").click();
+  await page.locator("#preview-address-input").fill("style.css");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#preview-message")).toContainText("style.css cannot be shown in the Preview");
+});

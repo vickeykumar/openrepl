@@ -468,9 +468,12 @@ function goTyped(raw) {
   if (!text) return;
   var m = /^(?:https?:\/\/)?(?:(?:127\.0\.0\.1|localhost):)?(\d{4,5})(\/.*)?$/.exec(text);
   if (m && +m[1] >= 1024 && +m[1] <= 65535) { show({ kind: "p", port: +m[1], sub: m[2] || "/" }); return; }
-  var path = text.charAt(0) === "/" && text.indexOf(home()) === 0 ? text : home() + "/" + text.replace(/^\/+/, "");
+  // a name without a folder is looked for beside the page that is shown, else in the home folder
+  var base = home();
+  if (target && target.kind === "f") base = target.path.slice(0, target.path.lastIndexOf("/"));
+  var path = text.charAt(0) === "/" && text.indexOf(home()) === 0 ? text : base + "/" + text.replace(/^\/+/, "");
   if (canShow(path)) show({ kind: "f", path: path });
-  else message("<strong>Nothing to show at that address.</strong><br>Type a file of your workspace, or a port such as 5000 or 5000/api.", null);
+  else message("<strong>" + esc(text) + " cannot be shown in the Preview.</strong><br>It shows .html and Markdown pages, pictures and PDF files, or a program by its port, such as 5000 or 5000/api.", null);
 }
 
 function goBack() { var tb = tab(); if (!tb || tb.idx <= 0) return; tb.idx--; goHist(tb); }
