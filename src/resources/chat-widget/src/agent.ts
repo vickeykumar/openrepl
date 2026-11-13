@@ -35,6 +35,10 @@ import {
   parseStep,
   resultsMessage,
   riskOf,
+  recapOf,
+  memoryLine,
+  memoryOf,
+  MEMORY_TASKS,
   shellWordOf,
   SHELL_REPLS,
   runPhase,
@@ -71,7 +75,7 @@ export interface FilesHost {
 }
 
 // A task while it runs, and how a step of it leaves the loop.
-type TaskState = { messages: Msg[]; token: string; badAnswers: number; max: number };
+type TaskState = { messages: Msg[]; token: string; badAnswers: number; max: number; says: string[] };
 type StepOutcome = "next" | "finished" | "end";
 
 // What the panel shows of a task: its send button is a stop button while one
@@ -240,6 +244,12 @@ export class AgentRunner {
   private header: HTMLElement | null = null;
   private stopBtn: HTMLButtonElement | null = null;
 
+  // What the last task was and how far it got, told to the next one: a task starts with the editor, the terminal and the
+  // user's words, so "continue" would mean nothing to it. Page only; the model is told it is data.
+  private recap = "";
+  private lastTaskLine = "";
+  private past: string[] = []; // a line for each task before the last, oldest first (agent-protocol.ts, memoryLine)
+
   constructor(private host: AgentHost, private onState: (state: AgentState) => void) {}
 
   // ---- the task ----------------------------------------------------------------
@@ -253,6 +263,8 @@ export class AgentRunner {
     this.ctl = new AbortController();
     this.ran = false;
     let finished = false;
+    let lastTask: TaskState | null = null;
+    let lastText = "";
     // Everything that can fail is inside the try: whatever happens, the finally
     // gives the box back. A task that dies before it starts must not leave the
     // send button disabled.
@@ -260,11 +272,14 @@ export class AgentRunner {
       await this.host.userSaid(task);
       this.drawCard(); // after the message it belongs to: the newest is shown last
       const task_: TaskState = {
-        messages: [{ role: "user", content: `[user-${this.host.uid()}] ${task}${attached ? "\n\n" + attached : ""}` }],
+        messages: [{ role: "user", content: `[user-${this.host.uid()}] ${task}${attached ? "\n\n" + attached : ""}${this.recap ? "\n\n" + this.recap : ""}` }],
         token: "",
         badAnswers: 0,
         max: this.host.maxSteps(),
+        says: [],
       };
+      lastTask = task_;
+      lastText = task;
       // No `break` or `continue` in a loop that awaits, here or anywhere in the
       // widget: the build tool (microbundle rewrites async functions into promise
       // chains) has dropped a `continue` and emitted an undeclared helper for a
@@ -288,6 +303,12 @@ export class AgentRunner {
       // Stop is the user's own doing; anything else that did not finish (an
       // error, a timeout, a second unreadable answer) is a failure
       const outcome = finished ? "done" : this.stopped && !this.timedOut ? "stopped" : "failed";
+      if (lastTask) {
+        const prior = this.lastTaskLine;
+        if (prior) this.past = [...this.past, prior].slice(-(MEMORY_TASKS - 1));
+        this.lastTaskLine = memoryLine(lastText, lastTask, finished, this.stopped);
+        this.recap = memoryOf(recapOf(lastText, lastTask, finished, this.stopped), this.past);
+      }
       try {
         this.host.thinking(false);
         this.endCard(finished);
@@ -344,6 +365,7 @@ export class AgentRunner {
     }
     const step = parsed.step;
     t.messages.push({ role: "assistant", content: res.content });
+    if (step.say) t.says.push(step.say);
     if (step.say) await this.host.genieSaid(step.say, res.context);
     const results: StepResult[] = [];
     for (let i = 0; i < step.actions.length && !this.stopped; i++) {
