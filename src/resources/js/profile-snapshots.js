@@ -263,8 +263,9 @@
     }).then(function (res) {
       closeDialog(back);
       var l = label(s);
-      if (mode === "folder") say("Done: " + res.files + " files are in the folder " + res.folder + " in your workspace. Open the editor to see them.", "ok");
-      else say("Done: your workspace is " + l.short + ".", "ok");
+      var note = res.forced ? " This snapshot did not match its own file list, so its files were restored as they are in it: look them over." : "";
+      if (mode === "folder") say("Done: " + res.files + " files are in the folder " + res.folder + " in your workspace. Open the editor to see them." + note, "ok");
+      else say("Done: your workspace is " + l.short + "." + note, "ok");
       return load(true);
     }, function (err) {
       closeDialog(back);

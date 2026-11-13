@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -148,6 +150,7 @@ func (s *Snapper) newestValid(ctx context.Context, c *objstore.Client, home stri
 		cands = cands[:Keep]
 	}
 	tried := 0
+	var forced *forcedCandidate
 	for _, o := range cands {
 		tried++
 		data, obj, gerr := c.Get(ctx, o.key)
@@ -161,6 +164,15 @@ func (s *Snapper) newestValid(ctx context.Context, c *objstore.Client, home stri
 				continue
 			}
 		}
+		// the archive must also be a whole snapshot (every file as the manifest says): one that is not is passed over for
+		// the next, as a damaged one is; otherwise it would fail every restore of the home and shut the older ones out
+		if verr := s.verify(data); verr != nil {
+			log.Printf("homesnap: %s does not match its manifest (%v), looking for an older one", o.key, verr)
+			if forced == nil {
+				forced = &forcedCandidate{data: data, obj: obj, o: o}
+			}
+			continue
+		}
 		gen := o.gen
 		created := o.at
 		if obj != nil {
@@ -173,8 +185,40 @@ func (s *Snapper) newestValid(ctx context.Context, c *objstore.Client, home stri
 		}
 		return data, Latest{Generation: gen, Key: o.key, SHA256: sum(data), Size: int64(len(data)), CreatedAt: created}, nil
 	}
+	if forced != nil {
+		// every snapshot that could be read fails the check against its manifest: the newest of them is used as it is, rather
+		// than leave the home without its files
+		gen, created := forced.o.gen, forced.o.at
+		if forced.obj != nil {
+			if g := forced.obj.Meta["generation"]; g != "" {
+				fmt.Sscan(g, &gen)
+			}
+			if t, terr := time.Parse(time.RFC3339, forced.obj.Meta["created"]); terr == nil {
+				created = t
+			}
+		}
+		log.Printf("homesnap: no snapshot of %s matches its manifest: restoring the newest, %s, as it is", home, forced.o.key)
+		return forced.data, Latest{Generation: gen, Key: forced.o.key, SHA256: sum(forced.data), Size: int64(len(forced.data)), CreatedAt: created, Forced: true}, nil
+	}
 	if tried > 0 {
 		return nil, Latest{}, errors.New("homesnap: none of the newest snapshots could be used")
 	}
 	return nil, Latest{}, nil
+}
+
+type forcedCandidate struct {
+	data []byte
+	obj  *objstore.Object
+	o    object
+}
+
+// verify reads an archive as a restore would, into a folder that is removed at once.
+func (s *Snapper) verify(archive []byte) error {
+	if err := os.MkdirAll(s.Base(), 0777); err != nil {
+		return err
+	}
+	tmp := filepath.Join(s.Base(), fmt.Sprintf(".verify-%d", s.now().UnixNano()))
+	defer os.RemoveAll(tmp)
+	_, err := Extract(archive, tmp)
+	return err
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -657,4 +658,128 @@ func TestTheIntervalIsSetFromTheDashboardAndTheJobWaitsForTheNewTime(t *testing.
 	if len(f.Stored()) == 0 {
 		t.Fatalf("no snapshot at the short interval (%v)", dir)
 	}
+}
+
+// a snapshot whose files do not match its manifest (its hash as a whole is right) is passed over for the next one
+func TestASnapshotThatDoesNotMatchItsManifestIsPassedOverForAnOlderOne(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	good, _, err := Build(dir, "anna0123", 1, "w", time.Now().Add(-48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the same snapshot with the content of one file changed and the manifest left as it was
+	var bad bytes.Buffer
+	gz, _ := gzip.NewReader(bytes.NewReader(good))
+	tr := tar.NewReader(gz)
+	gw := gzip.NewWriter(&bad)
+	tw := tar.NewWriter(gw)
+	for {
+		h, err := tr.Next()
+		if err != nil {
+			break
+		}
+		data, _ := ioutil.ReadAll(tr)
+		if h.Name == "main.c" {
+			data = []byte("not what the manifest says")
+			h.Size = int64(len(data))
+		}
+		tw.WriteHeader(h)
+		tw.Write(data)
+	}
+	tw.Close()
+	gw.Close()
+	cl, _ := objstore.New(f.Config())
+	cl.Put(ctx, s.prefix("anna0123")+"0000000001-20261111T100000Z-aa.tar.gz", good, "application/gzip", map[string]string{"sha256": sum(good)})
+	cl.Put(ctx, s.prefix("anna0123")+"0000000002-20261112T100000Z-aa.tar.gz", bad.Bytes(), "application/gzip", map[string]string{"sha256": sum(bad.Bytes())})
+	os.RemoveAll(dir)
+	if restored, err := s.Ensure(ctx, "anna0123"); err != nil || !restored {
+		t.Fatalf("%v %v", restored, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "main.c")); string(b) != "int main(){}" {
+		t.Errorf("main.c: %q", b)
+	}
+}
+
+// when every snapshot fails the check against its manifest, the newest is restored as it is
+func TestWhenNoSnapshotMatchesItsManifestTheNewestIsRestoredAsItIs(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	good, _, _ := Build(dir, "anna0123", 1, "w", time.Now())
+	var bad bytes.Buffer
+	gz, _ := gzip.NewReader(bytes.NewReader(good))
+	tr := tar.NewReader(gz)
+	gw := gzip.NewWriter(&bad)
+	tw := tar.NewWriter(gw)
+	for {
+		h, err := tr.Next()
+		if err != nil {
+			break
+		}
+		data, _ := ioutil.ReadAll(tr)
+		if h.Name == "main.c" {
+			data = []byte("changed after the manifest")
+			h.Size = int64(len(data))
+		}
+		tw.WriteHeader(h)
+		tw.Write(data)
+	}
+	tw.Close()
+	gw.Close()
+	cl, _ := objstore.New(f.Config())
+	cl.Put(ctx, s.prefix("anna0123")+"0000000001-20261111T100000Z-aa.tar.gz", bad.Bytes(), "application/gzip", map[string]string{"sha256": sum(bad.Bytes())})
+	os.RemoveAll(dir)
+	if restored, err := s.Ensure(ctx, "anna0123"); err != nil || !restored {
+		t.Fatalf("%v %v", restored, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "main.c")); string(b) != "changed after the manifest" {
+		t.Errorf("main.c: %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "src/util/a.py")); string(b) != "print(1)" {
+		t.Errorf("the other files: %q", b)
+	}
+}
+
+// a snapshot the user picks that does not match its manifest is restored as it is, and the answer says so
+func TestAPickedSnapshotThatDoesNotMatchItsManifestIsRestoredAsItIsAndSaysSo(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	good, _, _ := Build(dir, "anna0123", 1, "w", time.Now())
+	var bad bytes.Buffer
+	gz, _ := gzip.NewReader(bytes.NewReader(good))
+	tr := tar.NewReader(gz)
+	gw := gzip.NewWriter(&bad)
+	tw := tar.NewWriter(gw)
+	for {
+		h, err := tr.Next()
+		if err != nil {
+			break
+		}
+		data, _ := ioutil.ReadAll(tr)
+		if h.Name == "main.c" {
+			data = []byte("changed after the manifest")
+			h.Size = int64(len(data))
+		}
+		tw.WriteHeader(h)
+		tw.Write(data)
+	}
+	tw.Close()
+	gw.Close()
+	cl, _ := objstore.New(f.Config())
+	cl.Put(ctx, s.prefix("anna0123")+"0000000001-20261111T100000Z-aa.tar.gz", bad.Bytes(), "application/gzip", map[string]string{"sha256": sum(bad.Bytes())})
+	res, err := s.Restore(ctx, "anna0123", "g:1", "replace")
+	if err != nil || !res.Forced || res.Files < 2 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "main.c")); string(b) != "changed after the manifest" {
+		t.Errorf("main.c: %q", b)
+	}
+	// a file that is not a snapshot at all is refused in words
+	cl.Put(ctx, s.prefix("anna0123")+"0000000002-20261112T100000Z-aa.tar.gz", []byte("junk"), "application/gzip", nil)
 }

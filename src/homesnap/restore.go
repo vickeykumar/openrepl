@@ -9,10 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"objstore"
@@ -24,6 +24,8 @@ import (
 var (
 	// ErrNotAvailable is what these calls answer on a node that keeps no snapshots (no object store, or a worker).
 	ErrNotAvailable = errors.New("homesnap: this server keeps no snapshots")
+	// ErrBadSnapshot is what Restore answers when the snapshot cannot be read as a snapshot at all (not its manifest only).
+	ErrBadSnapshot = errors.New("homesnap: the snapshot cannot be read")
 	// ErrNoSuchSnapshot is what they answer for a generation that is not in the bucket (it may have been pruned).
 	ErrNoSuchSnapshot = errors.New("homesnap: that snapshot is no longer there")
 	// ErrTooSoon is what a restore answers when another was done for the same home less than a minute ago.
@@ -216,6 +218,8 @@ type RestoreResult struct {
 	Mode   string `json:"mode"`
 	Folder string `json:"folder,omitempty"` // "folder": the name of the new folder
 	Files  int    `json:"files"`
+	// Forced says that the snapshot did not match its manifest, and its files were restored as they are in it.
+	Forced bool `json:"forced,omitempty"`
 }
 
 // Restore gets a snapshot back. mode "folder": its files are put in a new folder of the home, beside what is there, and
@@ -248,15 +252,23 @@ func (s *Snapper) Restore(ctx context.Context, home, id, mode string) (RestoreRe
 	}
 	dir := s.dir(home)
 	tmp := filepath.Join(s.Base(), fmt.Sprintf(".restore-%s-%d", home, s.now().UnixNano()))
-	m, err := Extract(archive, tmp)
-	if err != nil {
-		return res, err
+	_, err = Extract(archive, tmp)
+	if errors.Is(err, errManifest) {
+		// the files are the user's own and the user chose this snapshot: what is in it is restored, and the answer says so
+		log.Printf("homesnap: the snapshot %s of %s does not match its manifest (%v): restoring it as it is", id, home, err)
+		_, err = extractForced(archive, tmp)
+		res.Forced = err == nil
 	}
-	for _, e := range m.Entries {
-		if !strings.HasSuffix(e.Path, "/") {
+	if err != nil {
+		os.RemoveAll(tmp)
+		return res, fmt.Errorf("%w: %v", ErrBadSnapshot, err)
+	}
+	filepath.Walk(tmp, func(path string, fi os.FileInfo, werr error) error {
+		if werr == nil && fi.Mode().IsRegular() {
 			res.Files++
 		}
-	}
+		return nil
+	})
 	switch mode {
 	case "folder":
 		if err := os.MkdirAll(dir, 0755); err != nil {

@@ -57,6 +57,7 @@ type Latest struct {
 	Size       int64     `json:"size"`
 	Writer     string    `json:"writer"`
 	CreatedAt  time.Time `json:"createdAt"`
+	Forced     bool      `json:"-"` // read as it is, because no snapshot matched its manifest
 }
 
 var homeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
@@ -500,7 +501,11 @@ func (s *Snapper) Ensure(ctx context.Context, home string) (bool, error) {
 	// written into a folder of its own and moved into place, so that a restore that stops leaves no home
 	// that looks whole
 	tmp := filepath.Join(s.Base(), fmt.Sprintf(".restore-%s-%d", home, s.now().UnixNano()))
-	if _, err := Extract(archive, tmp); err != nil {
+	extractor := Extract
+	if latest.Forced {
+		extractor = extractForced
+	}
+	if _, err := extractor(archive, tmp); err != nil {
 		s.fail(err)
 		return false, err
 	}
