@@ -37,6 +37,9 @@ function scrollToWorkspace(focusTerminal) {
 function pickLanguage(value) {
   var sel = document.getElementById("optionlist");
   if (!sel) return;
+  // HTML and CSS are not languages of the terminal (29-web-language.js)
+  if (window.WebLanguage && window.WebLanguage.has(value)) { window.WebLanguage.choose(value); syncLangChips(); scrollToWorkspace(true); return; }
+  if (window.WebLanguage) window.WebLanguage.clear();
   if (sel.value !== value) {
     sel.value = value;
     sel.dispatchEvent(new Event("change"));

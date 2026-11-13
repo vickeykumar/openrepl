@@ -70,6 +70,7 @@ function propose(newText, opts) {
     doc: doc,
     host: host,
     title: opts.title || "Genie proposes",
+    agent: !!opts.agent, // a change the agent proposes: its card offers "apply later changes without asking"
     oldLines: made.oldLines,
     hunks: made.hunks.map((h) => ({ h: h, state: "pending", stale: false, row: 0 })),
     drift: 0, // how far the user's own typing has moved the lines since the proposal
@@ -360,10 +361,26 @@ function render() {
   title.appendChild(el("span", "genie-review__sum genie-review__sum--add", " +" + added));
   title.appendChild(el("span", "genie-review__sum genie-review__sum--del", " \u2212" + removed));
   head.appendChild(title);
-  head.appendChild(button("Accept all", "genie-review__btn--ok", acceptAll));
+  // the agent's changes: "Accept all" can also switch the review off for the rest of the session (the changes then go in at once, with an Undo)
+  let autoBox = null;
+  if (r.agent && window.GenieAgent && window.GenieAgent.canAutoApply()) {
+    autoBox = el("input");
+    autoBox.type = "checkbox";
+    autoBox.id = "genie-review-auto";
+  }
+  head.appendChild(button("Accept all", "genie-review__btn--ok", function () {
+    if (autoBox && autoBox.checked) window.GenieAgent.enableAutoApply();
+    acceptAll();
+  }));
   head.appendChild(button("Reject all", "", rejectAll));
   head.appendChild(button("\u00d7", "genie-review__close", closeReview, "Close the review"));
   root.appendChild(head);
+  if (autoBox) {
+    const opt = el("label", "genie-review__auto");
+    opt.appendChild(autoBox);
+    opt.appendChild(el("span", "", "Accept all, and apply Genie's later changes without asking, for this session. Each change can be undone."));
+    root.appendChild(opt);
+  }
 
   const list = diffView(r);
   root.appendChild(list);
@@ -455,6 +472,37 @@ function proposeAsync(newText, opts) {
   });
 }
 
+// For the agent mode when the user allowed changes without a review: the text goes into the editor at once. {total} is the number of
+// changes the review would have shown, and undo() puts the text from before back (false, with a notice, when the code has changed since).
+function applyDirect(what) {
+  const ed = aceEditor();
+  if (!ed) return { total: 0, accepted: 0, rejected: 0, error: "the editor is not available" };
+  closeReview();
+  const doc = ed.getSession().getDocument();
+  const base = doc.getValue();
+  const target = what && what.insert !== undefined ? textWithInserted(ed, what.insert) : String((what && what.text) || "");
+  const made = makeHunks(base, target);
+  if (made.hunks.length === 0) return { total: 0, accepted: 0, rejected: 0 };
+  doc.setValue(target);
+  ed.clearSelection();
+  const total = made.hunks.length;
+  return {
+    total: total,
+    accepted: total,
+    rejected: 0,
+    undo: function () {
+      if (doc.getValue() !== target) {
+        notify("The code changed since Genie's changes, so they cannot be undone as one step. Use Ctrl+Z.", { type: "info" });
+        return false;
+      }
+      doc.setValue(base);
+      ed.clearSelection();
+      notify("Undid " + plural(total, "change") + " from Genie.", { type: "info" });
+      return true;
+    },
+  };
+}
+
 function proposeInsertAsync(code, opts) {
   const ed = aceEditor();
   if (!ed) return Promise.resolve({ total: 0, accepted: 0, rejected: 0, closed: true, error: "the editor is not available" });
@@ -465,6 +513,7 @@ function proposeInsertAsync(code, opts) {
 window.GenieReview = {
   proposeAsync: proposeAsync,
   proposeInsertAsync: proposeInsertAsync,
+  applyDirect: applyDirect,
   isOpen: function () {
     return !!review;
   },

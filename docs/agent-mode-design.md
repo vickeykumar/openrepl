@@ -91,3 +91,36 @@ Three scopes: `editor` (write or insert), `run` (Run and Debug) and, in step 3, 
 - **Permission.** A `terminal` scope with the same three answers. The prompt shows the exact line in a code box, as text. "Allow for this session" lets non-risky lines go without a prompt; they are still shown, in the step list, as they are typed, and the card says risky lines are still asked about.
 - **Risky lines** (`riskOf`, a list of patterns tested in `agent-protocol.test.ts`): deleting (`rm`, `rmdir`, `shred`, `find -delete`), changing disks, permissions, users or the system (`sudo`, `chmod -R`, `mkfs`, `dd`, `shutdown`, `kill`), the network and installing software (`curl`, `wget`, `ssh`, `pip install`, `npm install`, `apt`), losing work in git (`reset --hard`, `clean`, `push`), running built or piped text (`eval`, `| sh`, `$(...)`, backticks, `base64 -d`), system paths (`/etc`, `/dev`, `~/.`, `../`), SQL that deletes, and the same things in Python, Node, Ruby and Go (`os.remove`, `shutil`, `subprocess`, `fs.rmSync`, `exec.Command`, `open(..., 'w')`). The list is wider than needed: a wrong guess costs a click, a miss costs a file. A risky line is asked about every time, even with a session grant, and only "Allow once" or "Deny" are offered. It is a help for the person reading the prompt, not a lock; the sandbox of the user's own session is the lock.
 - **Injection.** Terminal text is data: the model's instructions say so, every typed line needs the user's yes (or a session grant for non-risky lines), and a task has at most 8 steps.
+
+## Remembering the user's answers for the session (built 2026-11-13)
+
+Designed on the canvas "Genie agent: remember my answers for the session" (claude.ai/artifact/BoU9Xp9b1wxFcSnMJwESu3), approved by the owner the same
+day. The state is `Permissions` in `chat-widget/src/agent-protocol.ts` (pure, tested in `test/agent-permissions.test.ts`); the cards, the badge and
+its menu are in `agent.ts`; the review's choice and `applyDirect` are in `js/src/page/18-genie-review.js`.
+
+- **Everyday level.** A card has Allow once, Allow for this session (one kind, as before), Deny, and "Allow everything for this session…", which
+  shows what it covers and what is still asked, and takes effect on a second click. Everything covers the editor, language, Run, safe terminal lines,
+  files and the Preview. The editor's changes are then applied at once (`GenieReview.applyDirect`) with an Undo on the step's line and in the
+  badge menu (the last 10). The review card of an agent change also has "Accept all, and apply Genie's later changes without asking".
+- **Badge.** In the Genie panel's header (`#chat-widget__auto`): "Auto for this session" or "Auto: n of 6", with a menu (a switch for each kind, the
+  editor's "without a review", Permissions…, Stop auto mode). Red "Risky allowed · n min left" while the riskier level is on.
+- **Riskier level (Permissions card).** Off by default; chosen kind by kind (risky terminal lines, delete, rename/move/paste after a cut, close a tab),
+  typed phrase "allow risky", for 30 minutes, 1 hour or until the page closes. A delete it allows moves the item to a `Trash` folder at the top of the
+  workspace (under a new name when the Trash has that name). Never lifted by any level (`hardBlockOf`): hidden items, anything outside the workspace
+  or with `..`, sudo, su, commands that wipe the home folder or the system, emptying the Trash. Those are still asked.
+- **Kept in the page only**: not saved, not sent, not shared; a reload starts again (there is no "clear chat" in the panel yet, so the lifetime is the
+  page's).
+- **Admin** (Settings, Genie card): "Allow everything for a session" (`agentAutoOff`) and "Allow riskier things for a while" (`agentRiskyOff`); they
+  reach the page in `site_settings`. Off leaves the card for every kind and the review of every change.
+- **Not built**: a saved "always" across reloads (a later step with its own Settings page); an Undo for a delete other than moving it back from the
+  Trash; hardBlockOf looks at the words of a line and is a floor, not a sandbox.
+
+## The bash action (2026-11-13)
+
+`{"type":"bash","command":"...","timeout_seconds":30}` runs `bash -c` in the workspace and returns exit code, output and time. Design canvas: claude.ai/artifact/Fh1F5Qf79BnhKwbTCeM3mX.
+
+- Server: `server/agent_shell.go` (`POST /agent_bash`, execution-bound in the gateway), `agent_shell_linux.go` (`runShell`: `containers.GetCommandArgsIn` with the landlock helper and net emulation, the bash REPL's cgroup, no stdin, own session, the group is killed on timeout or when the page aborts). Signed-in owner only (not a collaborator, not a guest); refused when agent mode or `GenieSettings.AgentShellOff` is off. 30 s default, 120 s most, 4000 characters, 60 a minute per user, one at a time per workspace (a second waits 5 s). Output: first and last 32 KB kept, the middle cut and said so. The log line has the workspace, exit code and time, never the output.
+- Page: scope `shell` ("Run commands"), a kind of its own in the permissions. The command is in `Action.text`, so `riskOf` and `hardBlockOf` judge it as a terminal line: risky commands are asked every time, `sudo` and anything outside the workspace never skipped. The step line folds the output; the model gets the last 4000 characters and the exit code. Stop aborts the request, which kills the command.
+- Prompt: use it only for what other actions cannot do; a long-running program (a server, a REPL, a watcher, a long build) is started with `set_language` "Bash" and `terminal_type`, so the user sees it and can stop it.
+- Not done: outside network for installs (a separate admin decision).
+- Page guard (2026-11-13): a `terminal_type` line that starts like a shell command (`shellWordOf` in `agent-protocol.ts`: curl, ls, git, `go run`, `node x.js` ...) is refused before any card when the REPL in use is not a shell (`SHELL_REPLS`), with a result that tells the model to use `bash` or a Bash tab. Lines of the language itself (`ls = [1]`, `cat.speak()`, `go f()`) are not matched.

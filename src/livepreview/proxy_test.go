@@ -297,3 +297,53 @@ func TestAProgramsHTMLGetsStorageForItsPort(t *testing.T) {
 		t.Errorf("the program's page has no storage: %.300s", body)
 	}
 }
+
+// A plain-text answer for a frame is a light page (the browser's own text page is white on white under a dark editor);
+// a fetch and a request for its own tab get the text itself.
+func TestPlainTextForAFrameIsALightPage(t *testing.T) {
+	hook := HTMLHookWith("/preview/x/p/1230", nil, "")
+	mk := func(dest, ct string) *http.Response {
+		req := httptest.NewRequest("GET", "/", nil)
+		if dest != "" {
+			req.Header.Set("Sec-Fetch-Dest", dest)
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {ct}}, Body: io.NopCloser(strings.NewReader("Hello <b>x</b>\n")), Request: req}
+	}
+	res := mk("iframe", "text/plain; charset=utf-8")
+	if err := hook(res); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(res.Body)
+	if !strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") || !strings.Contains(string(b), "Hello &lt;b&gt;x&lt;/b&gt;") || !strings.Contains(string(b), "color-scheme") {
+		t.Errorf("frame: %s %q", res.Header.Get("Content-Type"), b)
+	}
+	for _, dest := range []string{"", "empty", "document", "script"} {
+		res := mk(dest, "text/plain")
+		hook(res)
+		b, _ := io.ReadAll(res.Body)
+		if res.Header.Get("Content-Type") != "text/plain" || string(b) != "Hello <b>x</b>\n" {
+			t.Errorf("%q was changed: %s %q", dest, res.Header.Get("Content-Type"), b)
+		}
+	}
+}
+
+func TestPreflightAndOwnAddresses(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("OPTIONS", "/api", nil)
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "content-type, x-token")
+	if !Preflight(rec, req) || rec.Code != http.StatusNoContent || !strings.Contains(rec.Header().Get("Access-Control-Allow-Methods"), "DELETE") || rec.Header().Get("Access-Control-Allow-Headers") != "content-type, x-token" {
+		t.Errorf("preflight: %d %v", rec.Code, rec.Header())
+	}
+	if Preflight(httptest.NewRecorder(), httptest.NewRequest("OPTIONS", "/api", nil)) || Preflight(httptest.NewRecorder(), httptest.NewRequest("GET", "/api", nil)) {
+		t.Error("a request that is not a preflight was answered as one")
+	}
+	for in, want := range map[string]string{"http://127.0.0.1:5000/x?a=1": "/x?a=1", "http://localhost:5000/": "/", "http://0.0.0.0:5000": "/", "http://localhost:5000?q=1": "/?q=1"} {
+		if got, ok := ownAddress(in, 5000); !ok || got != want {
+			t.Errorf("ownAddress(%q) = %q %v", in, got, ok)
+		}
+	}
+	if _, ok := ownAddress("http://localhost:50001/", 5000); ok {
+		t.Error("another port was taken for the program's")
+	}
+}

@@ -1299,6 +1299,10 @@ body.files-collapsed .files-panel { display: none; }
   border-right: 1px solid var(--ink-700);
   cursor: pointer;
 }
+.etab__icon { flex-shrink: 0; font-size: 12px; opacity: 0.8; }
+.etab.active .etab__icon { opacity: 1; }
+.etab--modified .etab__icon { color: var(--fm-modified); }
+.etab--new .etab__icon { color: var(--fm-new); }
 .etab__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .etab:hover { color: var(--paper); background: var(--ink-800); }
 .etab.active {
@@ -4342,3 +4346,7 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .terminal-div.is-previewing.with-drawer > .terminal.active { flex: 1 1 40%; min-height: 6rem; }
 
 .mobile-view[hidden] { display: none; }
+
+/* "Accept all, and apply Genie's later changes without asking" under the head of the agent's review */
+.genie-review__auto { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 14px; font-size: 12.5px; line-height: 1.45; color: var(--muted-1); background: var(--ink-850); border-bottom: 1px solid var(--ink-700); cursor: pointer; }
+.genie-review__auto input { margin-top: 3px; accent-color: var(--accent-color, #C8F04A); }

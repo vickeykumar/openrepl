@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"livepreview"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -359,5 +361,32 @@ func TestTunnelPathBypassesRouting(t *testing.T) {
 	rec := do(rt, "GET", "/abc/api/tunnel", nil)
 	if hits != 1 || rt.Registry().Len() != 0 || len(rec.Result().Cookies()) != 0 {
 		t.Fatalf("hits=%d registry=%d", hits, rt.Registry().Len())
+	}
+}
+
+// The frame of the Preview carries no cookie: its requests go to the worker that runs the workspace the token names,
+// where the program is. A workspace of the gateway's own, or of no worker, is answered by the gateway.
+func TestPreviewRequestsFollowTheWorkspaceOfTheirToken(t *testing.T) {
+	site := &recorder{}
+	a, b := &named{id: "worker-a"}, &named{id: "worker-b"}
+	rt := newTestRouter(site, "/", &countingPicker{id: "worker-a"})
+	rt.AddBackend(a)
+	rt.AddBackend(b)
+	rt.Routes().Set(RouteHome, "/home/openrepl/guest-1", "worker-b")
+	rt.Routes().Set(RouteHome, "/home/openrepl/guest-2", LocalID)
+	tok := func(home string) string {
+		t, _ := livepreview.NewToken("secret", home, time.Now(), time.Hour)
+		return t
+	}
+	do(rt, "GET", "/preview/"+tok("/home/openrepl/guest-1")+"/p/1230/", nil)
+	do(rt, "GET", "/preview/"+tok("/home/openrepl/guest-1")+"/p/1230/app.js", nil)
+	if b.hits != 2 || a.hits != 0 || len(site.paths) != 0 {
+		t.Fatalf("a=%d b=%d site=%v", a.hits, b.hits, site.paths)
+	}
+	do(rt, "GET", "/preview/"+tok("/home/openrepl/guest-2")+"/p/1230/", nil)     // the gateway's own
+	do(rt, "GET", "/preview/"+tok("/home/openrepl/nobody")+"/f/index.html", nil) // no worker knows it
+	do(rt, "GET", "/preview/garbage/f/x", nil)
+	if len(site.paths) != 3 || a.hits != 0 || b.hits != 2 {
+		t.Fatalf("a=%d b=%d site=%v", a.hits, b.hits, site.paths)
 	}
 }

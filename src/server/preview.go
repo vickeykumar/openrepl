@@ -21,6 +21,10 @@ import (
 // The Preview pane (docs/preview-pane-design.md). The pane's frame is sandboxed and has no origin, so none of the
 // visitor's cookies reach the route it loads: what names the workspace is a token in the address (package preview).
 
+// previewTokenLife is how long a preview link works: the admin's setting for guests or for signed-in users (Settings, Preview),
+// or the built-in 1 hour and 12 hours.
+func previewTokenLife(s SiteSettings, guest bool) time.Duration { return s.previewLinkLife(guest) }
+
 // viewerID is the random id a pane makes for itself, kept to letters and digits and 32 of them (it ends in a token).
 func viewerID(v string) string {
 	out := make([]byte, 0, 32)
@@ -68,7 +72,8 @@ func (server *Server) handlePreviewToken(rw http.ResponseWriter, req *http.Reque
 		http.Error(rw, why, http.StatusForbidden)
 		return
 	}
-	token, err := livepreview.NewViewerToken(utils.Secret(), homedir, viewerID(req.Form.Get("v")), time.Now(), livepreview.TokenLife)
+	life := previewTokenLife(GetSiteSettings(), uid == "")
+	token, err := livepreview.NewViewerToken(utils.Secret(), homedir, viewerID(req.Form.Get("v")), time.Now(), life)
 	if err != nil {
 		http.Error(rw, "the preview is not available on this server", http.StatusServiceUnavailable)
 		return
@@ -77,7 +82,7 @@ func (server *Server) handlePreviewToken(rw http.ResponseWriter, req *http.Reque
 	rw.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(rw).Encode(map[string]interface{}{
 		"token":   token,
-		"expires": time.Now().Add(livepreview.TokenLife).Unix(),
+		"expires": time.Now().Add(life).Unix(),
 	})
 }
 
@@ -175,16 +180,41 @@ var errNoIsolation = errors.New("a program can be previewed only where each work
 // the server, or of another visitor, would then be reachable).
 func previewDialer(home string) livepreview.Dialer {
 	return func(ctx context.Context, port int) (net.Conn, error) {
-		pid := livepreview.FindPID(home)
-		if pid == 0 {
+		pids := livepreview.FindPIDs(home)
+		if len(pids) == 0 {
 			return nil, livepreview.ErrNoProgram
 		}
-		if !livepreview.SameNetwork(pid) {
-			return livepreview.DialIn(fmt.Sprintf("/proc/%d/ns/net", pid), port, 10*time.Second)
+		// each REPL of a workspace may have a network of its own: the program is in the one that listens on the port
+		var lastErr error
+		own := false
+		admin := false // a REPL with no sandbox at all (an admin's) listens on the machine's real network
+		for _, pid := range pids {
+			if livepreview.SameNetwork(pid) {
+				own = true
+				if containers.NetEmuActive() && livepreview.Unsandboxed(pid) {
+					admin = true
+				}
+				continue
+			}
+			c, err := livepreview.DialIn(fmt.Sprintf("/proc/%d/ns/net", pid), port, 10*time.Second)
+			if err == nil {
+				return c, nil
+			}
+			lastErr = err
+		}
+		if lastErr != nil && !own {
+			return nil, lastErr
+		}
+		if admin {
+			var d net.Dialer
+			return d.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		}
 		if containers.NetEmuActive() {
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", netemu.Name(netemu.WorkspaceID(home), "t", uint16(port)))
+		}
+		if lastErr != nil {
+			return nil, lastErr
 		}
 		return nil, errNoIsolation
 	}
@@ -192,19 +222,31 @@ func previewDialer(home string) livepreview.Dialer {
 
 // previewPorts lists the ports a workspace's programs listen on, from the sockets of its own network.
 func previewPorts(home string) []int {
-	pid := livepreview.FindPID(home)
-	if pid == 0 {
+	pids := livepreview.FindPIDs(home)
+	if len(pids) == 0 {
 		return []int{}
 	}
-	if !livepreview.SameNetwork(pid) {
+	var all []int
+	shared := false
+	for _, pid := range pids {
+		if livepreview.SameNetwork(pid) {
+			shared = true
+			// an admin's REPL has no sandbox: its sockets are the machine's own
+			if !(containers.NetEmuActive() && livepreview.Unsandboxed(pid)) {
+				continue
+			}
+		}
 		base := fmt.Sprintf("/proc/%d/net/", pid)
-		all := append(livepreview.ParseTCP(livepreview.ReadProc(base+"tcp")), livepreview.ParseTCP(livepreview.ReadProc(base+"tcp6"))...)
+		all = append(all, livepreview.ParseTCP(livepreview.ReadProc(base+"tcp"))...)
+		all = append(all, livepreview.ParseTCP(livepreview.ReadProc(base+"tcp6"))...)
+	}
+	if !shared {
 		return uniqueSorted(all)
 	}
 	if containers.NetEmuActive() {
 		// the names of the workspace's TCP sockets all start "@openrepl-ne/<workspace>/t/", then the port
 		prefix := strings.TrimSuffix(netemu.Name(netemu.WorkspaceID(home), "t", 0), "0")
-		return livepreview.ParseUnixAbstract(livepreview.ReadProc("/proc/net/unix"), prefix)
+		return uniqueSorted(append(all, livepreview.ParseUnixAbstract(livepreview.ReadProc("/proc/net/unix"), prefix)...))
 	}
 	return []int{}
 }

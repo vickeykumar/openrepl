@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"livepreview"
 	"trusted"
 )
 
@@ -361,7 +362,7 @@ func IsExecutionBound(rel string) bool {
 	// The preview's token and port list name the workspace of the session, so they are asked of the node that runs it,
 	// like the file browser: from the site alone they would answer for the workspace of the cookie, which is another one
 	// when the cookie was renewed after the page opened.
-	return rel == "ws" || strings.HasPrefix(rel, "ws_") || rel == "upload_file" || rel == "preview_token" || rel == "preview_ports" || rel == "preview_cookies"
+	return rel == "ws" || strings.HasPrefix(rel, "ws_") || rel == "upload_file" || rel == "preview_token" || rel == "preview_ports" || rel == "preview_cookies" || rel == "agent_bash"
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -378,6 +379,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rt.site.ServeHTTP(w, r)
 	case IsExecutionBound(rel):
 		rt.execute(w, r)
+	case strings.HasPrefix(rel, "preview/") && rt.servePreview(w, r, rel):
 	case rt.isEntry(rel):
 		// Assign the session before the page loads so the parallel requests
 		// the page makes afterwards all find the same backend.
@@ -393,6 +395,29 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		rt.site.ServeHTTP(w, r)
 	}
+}
+
+// servePreview passes a request of the Preview (/preview/<token>/...) to the worker that runs the workspace the token names,
+// where the program is: the frame carries no cookie, so the token is all there is to say whose it is. The worker checks the
+// token itself. It reports false when the workspace is the gateway's own (or unknown), and the gateway answers as before.
+func (rt *Router) servePreview(w http.ResponseWriter, r *http.Request, rel string) bool {
+	parts := strings.SplitN(strings.TrimPrefix(rel, "preview/"), "/", 2)
+	home := livepreview.UnverifiedHome(parts[0])
+	if home == "" {
+		return false
+	}
+	id, ok := rt.routes.Lookup(RouteHome, home)
+	if !ok || id == LocalID {
+		return false
+	}
+	b, found := rt.Backend(id)
+	if !found || b.State() == Offline {
+		return false
+	}
+	if err := b.Serve(w, r); err != nil {
+		log.Printf("gateway: backend %s: %v", b.ID(), err)
+	}
+	return true
 }
 
 func (rt *Router) execute(w http.ResponseWriter, r *http.Request) {

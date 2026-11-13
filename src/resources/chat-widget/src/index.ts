@@ -754,6 +754,19 @@ const agentRunner = new AgentRunner(
     modelFields: () => MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }),
     ideContext: () => getcurrentIDECode(),
     terminalText: () => fetchTerminalOutput(120),
+    runCommand: async (command: string, seconds: number, signal: AbortSignal) => {
+      const pp = (window as any).preprocessurl;
+      const res = await fetch(typeof pp === "function" ? pp("/agent_bash") : "/agent_bash", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command, timeout_seconds: seconds }),
+        signal,
+      });
+      if (!res.ok) return { status: res.status, message: (await res.text()).trim().slice(0, 200) };
+      const j = await res.json();
+      return { status: 200, ...j };
+    },
     terminal: () => activeTerminal(),
     terminalType: (data: string) => {
       const term = activeTerminal();
@@ -883,6 +896,11 @@ const agentRunner = new AgentRunner(
     renderActivity();
   }
 );
+// The review card of the editor's changes (js/src/page/18-genie-review.js) offers "apply later changes without asking" through this
+(window as any).GenieAgent = {
+  canAutoApply: () => agentRunner.canAutoApply(),
+  enableAutoApply: () => agentRunner.enableAutoApply(),
+};
 
 // ---- pinned beside the IDE -------------------------------------------------------
 // The pin button docks the panel in the workspace row (#genie-dock, index.html),

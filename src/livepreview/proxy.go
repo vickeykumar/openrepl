@@ -117,6 +117,9 @@ const MaxBody = 10 << 20
 // with the sandbox headers and without anything the program sets that could undo them.
 func Proxy(rw http.ResponseWriter, req *http.Request, rest string, o Options) {
 	SandboxHeaders(rw.Header())
+	if Preflight(rw, req) {
+		return
+	}
 	key := fmt.Sprintf("%s|%s|%d", o.Home, o.Viewer, o.Port)
 	target := fmt.Sprintf("127.0.0.1:%d", o.Port)
 	req.Body = http.MaxBytesReader(rw, req.Body, MaxBody)
@@ -157,8 +160,8 @@ func Proxy(rw http.ResponseWriter, req *http.Request, rest string, o Options) {
 			// a redirect to a path of the program stays in the preview
 			if loc := res.Header.Get("Location"); strings.HasPrefix(loc, "/") && !strings.HasPrefix(loc, "//") {
 				res.Header.Set("Location", o.Prefix+loc)
-			} else if strings.HasPrefix(loc, "http://"+target+"/") {
-				res.Header.Set("Location", o.Prefix+strings.TrimPrefix(loc, "http://"+target))
+			} else if rest, ok := ownAddress(loc, o.Port); ok {
+				res.Header.Set("Location", o.Prefix+rest)
 			}
 			// the headers of the sandbox win over anything the program says about them
 			h := http.Header{}

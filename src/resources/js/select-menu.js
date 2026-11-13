@@ -33,8 +33,9 @@
       out.push({
         value: option.value,
         label: String(option.text != null ? option.text : option.textContent || "").trim(),
-        badge: option.getAttribute("data-ext") || "",
+        badge: option.getAttribute("data-ext") || option.getAttribute("data-web-ext") || "",
         swatch: option.getAttribute("data-swatch") || "",
+        web: option.getAttribute("data-web") === "1",
         group: group || "",
         disabled: !!option.disabled,
         index: out.length
@@ -173,6 +174,11 @@
     var searchable = items.length > SEARCH_MIN;
 
     function selectedItem() {
+      // a choice that is not the select's own (HTML and CSS in the language picker: the select keeps the terminal's language)
+      var ov = select.__menuOverride;
+      if (ov && ov.base === nativeValue.get.call(select)) {
+        for (var j = 0; j < items.length; j++) if (items[j].value === ov.value) return items[j];
+      }
       var i = nativeIndex.get.call(select);
       for (var k = 0; k < items.length; k++) if (items[k].index === i) return items[k];
       return null;
@@ -296,6 +302,13 @@
 
     function choose(item) {
       if (!item || item.disabled) return;
+      // an option of the web group is not set in the select: the page says what it means (29-web-language.js)
+      if (item.web && window.WebLanguage) {
+        close(true);
+        window.WebLanguage.choose(item.value);
+        return;
+      }
+      if (select.__menuOverride) { select.__menuOverride = null; refresh(); }
       var changed = nativeValue.get.call(select) !== item.value;
       close(true);
       if (changed) {

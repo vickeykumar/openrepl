@@ -24,6 +24,10 @@ import {
   scopeDetail,
   scopeOf,
   scopeQuestion,
+  hardBlockOf,
+  riskKindOf,
+  shellWordOf,
+  SHELL_REPLS,
 } from "../src/agent-protocol.ts";
 
 const ok = (content: string) => {
@@ -110,6 +114,7 @@ test("the list of actions is the one in the server's prompt", () => {
     "terminal_new_tab",
     "terminal_select_tab",
     "terminal_close_tab",
+    "bash",
     "files_list",
     "files_open",
     "files_new",
@@ -303,7 +308,7 @@ test("risky lines are found; everyday ones are not", () => {
   ];
   for (const line of risky) assert.notEqual(riskOf(line), "", "should be risky: " + line);
   const fine = [
-    "ls", "ls -la", "pwd", "cd src", "cat main.c", "echo hello", "python3 main.py", "gcc main.c -o main && ./main", "make", "./a.out", "go run main.go", "node app.js",
+    "ls", "ls -la", "pwd", "cd src", "cat main.c", "echo hello", "python3 main.py", "gcc main.c -o main && ./main", "make", "./a.out", "go run main.go",
     "print(1 + 1)", "2 + 2", "import math", "math.sqrt(2)", "x = [1, 2, 3]", "len(x)", "def f(a): return a * 2", "SELECT * FROM users;", ".tables", "head -n 5 data.csv", "grep -n foo main.c",
     "wc -l main.c", "git status", "git log --oneline", "git diff", "printf '%d\\n' 5", "y", "42", "Alice", "which python3", "man ls", "tree",
     // a ">" that is not a redirect into a file
@@ -502,4 +507,35 @@ test("preview actions: a port or a path, never both, and the permission is asked
   assert.equal(scopeQuestion("preview"), "Genie wants to use the Preview");
   assert.match(scopeDetail("preview", { type: "preview_open", port: 5000 }), /port 5000/);
   assert.match(describe({ type: "preview_open", path: "a.html" }), /a\.html/);
+});
+
+test("bash: parsing, limits, scope, risk", () => {
+  const r = ok('{"say":"x","actions":[{"type":"bash","command":"grep -rn TODO src | head -20","timeout_seconds":500}]}');
+  assert.deepEqual(r.actions, [{ type: "bash", text: "grep -rn TODO src | head -20", timeoutSeconds: 120 }]);
+  assert.equal(ok('{"actions":[{"type":"bash","command":"ls"}]}').actions[0].timeoutSeconds, 30);
+  assert.equal(ok('{"actions":[{"type":"bash","command":"ls","timeout_seconds":0}]}').actions[0].timeoutSeconds, 1);
+  assert.equal(ok('{"actions":[{"type":"bash","command":"a\\nb"}]}').actions.length, 1); // several lines are plain text
+  for (const bad of ['{"type":"bash"}', '{"type":"bash","command":"  "}', '{"type":"bash","command":5}', '{"type":"bash","command":"a\\u0007b"}', '{"type":"bash","command":"' + "x".repeat(4001) + '"}']) {
+    const s = ok('{"actions":[' + bad + "]}");
+    assert.equal(s.actions.length, 0, bad.slice(0, 40));
+    assert.equal(s.dropped.length, 1);
+  }
+  const a = { type: "bash" as const, text: "ls -la", timeoutSeconds: 30 };
+  assert.equal(scopeOf(a), "shell");
+  assert.equal(describe(a), "bash: ls -la");
+  assert.match(scopeDetail("shell", a), /own shell.*30 seconds.*terminal is not touched/);
+  assert.equal(riskKindOf(a), null);
+  assert.equal(riskKindOf({ ...a, text: "rm -r build" }), "terminal");
+  assert.match(hardBlockOf({ ...a, text: "sudo apt install x" }), /sudo/);
+  assert.match(hardBlockOf({ ...a, text: "cp x /etc/y" }), /outside/);
+});
+
+test("a shell command typed into a language's REPL is recognised, the language's own lines are not", () => {
+  for (const line of ["curl -I http://127.0.0.1:8000", "curl http://127.0.0.1:8000/style.css", "ls -la", "ls", "pwd", "cd src", "cat style.css", "git status", "mkdir -p a/b", "python3 server.py", "pip install requests", "go run main.go", "node app.js", "echo hello", "node app.js", "go build ./...", "gcc -o a a.c", "  grep -rn TODO .  "]) {
+    assert.notEqual(shellWordOf(line), "", line);
+  }
+  for (const line of ["ls = [1, 2]", "cat.speak()", "git(5)", "print('curl x')", "x = curl", "go = 5", "node", "go", "go func() { f() }()", "go worker(ch)", "node = 3", "java = 1", "echo", "cd = 3", "make_it(2)", "for ls in a:", "curl(", "lst = ls -1", "def cat():", "cat = Cat('a')"]) {
+    assert.equal(shellWordOf(line), "", line);
+  }
+  assert.ok(SHELL_REPLS.includes("bash") && !SHELL_REPLS.includes("python"));
 });

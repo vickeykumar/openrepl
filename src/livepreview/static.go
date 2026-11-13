@@ -130,6 +130,16 @@ func ServeFileWith(rw http.ResponseWriter, req *http.Request, home, rel string, 
 		}
 		f.Seek(0, io.SeekStart)
 	}
+	if plainFile(req, resolved) && info.Size() <= MaxBridged {
+		if text, err := io.ReadAll(f); err == nil {
+			out := PlainPage(text)
+			rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+			rw.Header().Set("Content-Length", strconv.Itoa(len(out)))
+			rw.Write(out)
+			return
+		}
+		f.Seek(0, io.SeekStart)
+	}
 	http.ServeContent(rw, req, filepath.Base(resolved), info.ModTime(), f)
 }
 

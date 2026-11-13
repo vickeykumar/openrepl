@@ -1100,6 +1100,8 @@
         dbCapacityMB: int(form.dbCap.value),
         maxEditorFileMB: int(form.maxFile.value),
         snapshotIntervalMinutes: int(form.snapEvery.value),
+        previewLinkGuestMinutes: int(form.previewLifeGuest.value),
+        previewLinkUserMinutes: int(form.previewLifeUser.value),
         previewOff: !form.previewOn.checked,
         previewGuestsOff: !form.previewGuests.checked,
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
@@ -1115,6 +1117,7 @@
           openRouterHosts: hostsOf(form.host1.value, form.host2.value),
           modelPrices: pricesOf(), showCostToUsers: form.showCost.checked,
           agentDisabled: !form.agentOn.checked, agentOnPractice: form.agentPractice.checked,
+          agentAutoOff: !form.agentAuto.checked, agentRiskyOff: !form.agentRisky.checked, agentShellOff: !form.agentShell.checked,
           agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value) }
       };
     }
@@ -1157,6 +1160,8 @@
         dbCapacityMB: s.dbCapacityMB || 0,
         maxEditorFileMB: s.maxEditorFileMB || 0,
         snapshotIntervalMinutes: s.snapshotIntervalMinutes || 0,
+        previewLinkGuestMinutes: s.previewLinkGuestMinutes || 0,
+        previewLinkUserMinutes: s.previewLinkUserMinutes || 0,
         previewOff: !!s.previewOff,
         previewGuestsOff: !!s.previewGuestsOff,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
@@ -1171,6 +1176,7 @@
           openRouterHosts: (s.genie.openRouterHosts || []).slice(),
           modelPrices: pricesClean(s.genie.modelPrices), showCostToUsers: !!s.genie.showCostToUsers,
           agentDisabled: !!s.genie.agentDisabled, agentOnPractice: !!s.genie.agentOnPractice,
+          agentAutoOff: !!s.genie.agentAutoOff, agentRiskyOff: !!s.genie.agentRiskyOff, agentShellOff: !!s.genie.agentShellOff,
           agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0 } };
     }
     function isDirty() { return !!form && !!form.ready && JSON.stringify(snapshot()) !== JSON.stringify(clean(saved)); }
@@ -1200,6 +1206,12 @@
       form.snapEvery = h('input', { type: 'number', class: 'field', id: 'f-snap-every', min: '1', max: '60', step: '1', placeholder: '5', 'aria-label': 'Minutes between workspace snapshots' });
       form.snapEvery.value = settings.snapshotIntervalMinutes || '';
       form.snapEvery.style.maxWidth = '9rem';
+      form.previewLifeGuest = h('input', { type: 'number', class: 'field', id: 'f-preview-life-guest', min: '10', max: '1440', step: '1', placeholder: '60', 'aria-label': 'Minutes a preview link works for guests', oninput: update });
+      form.previewLifeGuest.value = settings.previewLinkGuestMinutes || '';
+      form.previewLifeGuest.style.maxWidth = '9rem';
+      form.previewLifeUser = h('input', { type: 'number', class: 'field', id: 'f-preview-life-user', min: '10', max: '1440', step: '1', placeholder: '180', 'aria-label': 'Minutes a preview link works for signed-in users', oninput: update });
+      form.previewLifeUser.value = settings.previewLinkUserMinutes || '';
+      form.previewLifeUser.style.maxWidth = '9rem';
       form.colour = colour.input; form.maint = maint.input; form.genie = genie.input;
       // the Preview pane (pages written by visitors, shown on this site's domain): off for all, or for guests only
       var previewOn = toggle('f-preview', !settings.previewOff, 'Preview available');
@@ -1208,7 +1220,11 @@
       // agent mode: on for signed-in users unless switched off here, and off on the practice page unless allowed
       var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
       var agentPractice = toggle('f-agent-practice', !!settings.genie.agentOnPractice, 'Agent mode on the practice page');
-      form.agentOn = agentOn.input; form.agentPractice = agentPractice.input;
+      var agentAuto = toggle('f-agent-auto', !settings.genie.agentAutoOff, 'Allow everything for a session');
+      var agentRisky = toggle('f-agent-risky', !settings.genie.agentRiskyOff, 'Allow riskier things for a while');
+      var agentShell = toggle('f-agent-shell', !settings.genie.agentShellOff, 'Agent: run commands');
+      form.agentShell = agentShell.input;
+      form.agentOn = agentOn.input; form.agentPractice = agentPractice.input; form.agentAuto = agentAuto.input; form.agentRisky = agentRisky.input;
       // what the models cost: dollars for a million tokens sent and written, by model
       var showCost = toggle('f-show-cost', !!settings.genie.showCostToUsers, 'Show the cost to users');
       form.showCost = showCost.input;
@@ -1424,7 +1440,7 @@
         maintMsg.disabled = !maint.input.checked;
         guest.disabled = user.disabled = !genie.input.checked;
         // the agent's options only matter while it is on
-        agentPractice.input.disabled = form.agentTasks.disabled = form.agentSteps.disabled = !agentOn.input.checked;
+        agentAuto.input.disabled = agentRisky.input.disabled = agentShell.input.disabled = agentPractice.input.disabled = form.agentTasks.disabled = form.agentSteps.disabled = !agentOn.input.checked;
         // the second host only matters when a first one is chosen, and is another one
         form.host2.disabled = !form.host1.value;
         Array.prototype.forEach.call(form.host2.options, function (o) { o.disabled = !!o.value && o.value === form.host1.value; });
@@ -1603,7 +1619,9 @@
           row('Minutes between snapshots', 'From 1 to 60. Leave it empty for 5. The change is used at once by the running job.', form.snapEvery) ]),
         card('Preview', 'The Preview pane shows a web page or program that a visitor wrote, in a sandbox on this site. Switch it off here if it is abused: the button disappears and the server refuses new previews.', [
           row('Preview is available', null, previewOn.node),
-          row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node) ]),
+          row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node),
+          row('Minutes a preview link works for guests', 'From 10 to 1440 (a day). Leave it empty for 60 (1 hour). A pane gets a new link by itself before the old one ends; a link opened in a tab of its own, or copied, stops at its end. A change applies to links made after it.', form.previewLifeGuest),
+          row('Minutes a preview link works for signed-in users', 'From 10 to 1440. Leave it empty for 180 (3 hours).', form.previewLifeUser) ]),
         card('Languages', 'Untick a language that is broken. The picker greys it out and its terminals refuse to start with a message; terminals that are already open keep running. Admins can still start it, to test a fix.', langGrid),
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),
@@ -1641,6 +1659,9 @@
           row('Show the cost to users', 'Off by default: users see the tokens they used. On adds their cost to the usage details.', showCost.node) ]),
         card('Agent mode', 'Genie works on a task in steps: it writes in the editor and runs the code, after the user allowed each kind of action and reviewed the changes. Only signed-in users have it, and it is on unless you switch it off here. Each task costs a user one request, like a chat message, however many steps it has.', [
           row('Agent mode', 'Shows the Chat | Agent switch in the Genie panel for signed-in users. Chat stays the default.', agentOn.node),
+          row('Allow everything for a session', 'On: a user can answer one card with "Allow everything for this session", and the editor\'s changes then go in without a review (each can be undone). Off: a card for every kind of action, and every change is reviewed. Allowing one kind for the session stays.', agentAuto.node),
+          row('Agent: run commands', 'On: Genie can run a command (bash -c) in a signed-in owner\'s workspace, after the user allowed it, in the same sandbox as the terminal, for at most 120 seconds, with no input and no outside network. Each command is logged (workspace, exit code), not its output. Off: the server refuses every command.', agentShell.node),
+          row('Allow riskier things for a while', 'On: a user can, on purpose (typing a phrase), let Genie do risky terminal lines, delete to a Trash folder, rename and move, and close terminal tabs for 30 minutes or an hour. Hidden files, anything outside the workspace and sudo are never allowed. Off: those are asked about every time.', agentRisky.node),
           row('On the practice page', 'Off by default: the practice page is for solving questions with an interviewer.', agentPractice.node),
           row('Tasks per hour', 'How many tasks a signed-in user may start in an hour (admins have no limit). Counted on this server and reset when it restarts.', form.agentTasks),
           row('Steps per task', 'How many times Genie may answer in one task, at most 8.', form.agentSteps) ]),

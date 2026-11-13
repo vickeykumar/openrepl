@@ -69,6 +69,11 @@ type SiteSettings struct {
 	// SnapshotIntervalMinutes is how often the workspaces of signed-in users that changed are snapshotted to the object
 	// store (package homesnap), from 1 to 60; 0 means the built-in 5. Only the newest 3 snapshots of a home are kept.
 	SnapshotIntervalMinutes int `json:"snapshotIntervalMinutes"`
+	// PreviewLinkGuestMinutes and PreviewLinkUserMinutes are how long the address of a preview (its token) works for a guest and for
+	// a signed-in user, in minutes, from 10 to 1440; 0 means the built-in 60 (guest) and 180 (signed in: 3 hours). The pane asks
+	// for a new one before it ends; a link opened in a tab of its own ends with it.
+	PreviewLinkGuestMinutes int `json:"previewLinkGuestMinutes"`
+	PreviewLinkUserMinutes  int `json:"previewLinkUserMinutes"`
 	// PreviewOff switches the Preview pane off for everyone, and PreviewGuestsOff for visitors who are not signed in:
 	// the pane shows pages written by visitors on this site's domain, so abuse can be stopped here without a deploy.
 	PreviewOff       bool `json:"previewOff"`
@@ -155,7 +160,14 @@ type GenieSettings struct {
 	AgentDisabled     bool `json:"agentDisabled"`
 	AgentOnPractice   bool `json:"agentOnPractice"`
 	AgentTasksPerHour int  `json:"agentTasksPerHour"`
-	AgentMaxSteps     int  `json:"agentMaxSteps"`
+	// AgentAutoOff keeps the card for every kind of action: no "Allow everything for this session", and the editor's changes are
+	// always reviewed. AgentRiskyOff takes away only the level that lets the user allow riskier things (risky terminal lines,
+	// deleting, renaming and moving, closing tabs) for a while. Allowing one kind for the session stays.
+	AgentAutoOff  bool `json:"agentAutoOff"`
+	AgentRiskyOff bool `json:"agentRiskyOff"`
+	// AgentShellOff takes away the agent's "bash" action: the server refuses a command (agent_shell.go).
+	AgentShellOff bool `json:"agentShellOff"`
+	AgentMaxSteps int  `json:"agentMaxSteps"`
 }
 
 // ModelDisabled reports whether an admin switched the model off (a model an admin
@@ -187,6 +199,11 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	}
 	if s.SnapshotIntervalMinutes != 0 && (s.SnapshotIntervalMinutes < minSnapshotMinutes || s.SnapshotIntervalMinutes > maxSnapshotMinutes) {
 		return s, fmt.Errorf("the time between workspace snapshots must be between %d and %d minutes (or empty)", minSnapshotMinutes, maxSnapshotMinutes)
+	}
+	for name, m := range map[string]int{"guests": s.PreviewLinkGuestMinutes, "signed-in users": s.PreviewLinkUserMinutes} {
+		if m != 0 && (m < minPreviewLinkMinutes || m > maxPreviewLinkMinutes) {
+			return s, fmt.Errorf("the time a preview link works for %s must be between %d and %d minutes (or empty)", name, minPreviewLinkMinutes, maxPreviewLinkMinutes)
+		}
 	}
 	if s.DBCapacityMB != 0 && (s.DBCapacityMB < minDBCapacityMB || s.DBCapacityMB > maxDBCapacityMB) {
 		return s, fmt.Errorf("the database capacity must be between %d and %d MB (or empty)", minDBCapacityMB, maxDBCapacityMB)
@@ -444,6 +461,8 @@ type publicSettings struct {
 	// agent mode: whether the panel offers it (to signed-in users; the server
 	// decides), whether on the practice page, and the steps of a task
 	AgentEnabled    bool `json:"agentEnabled"`
+	AgentAutoOff    bool `json:"agentAutoOff"`
+	AgentRiskyOff   bool `json:"agentRiskyOff"`
 	AgentOnPractice bool `json:"agentOnPractice"`
 	AgentMaxSteps   int  `json:"agentMaxSteps"`
 }
@@ -585,6 +604,26 @@ func (s SiteSettings) snapshotInterval() time.Duration {
 	return time.Duration(s.SnapshotIntervalMinutes) * time.Minute
 }
 
+// the time a preview link works, in minutes: the least and the most the admin may set, and what it is when nothing is set
+const (
+	minPreviewLinkMinutes      = 10
+	maxPreviewLinkMinutes      = 1440
+	defaultPreviewLinkGuest    = 60  // a guest: 1 hour
+	defaultPreviewLinkSignedIn = 180 // a signed-in user: 3 hours
+)
+
+// previewLinkLife is how long a preview link works in force for a guest or a signed-in user: the one set, or the built-in time.
+func (s SiteSettings) previewLinkLife(guest bool) time.Duration {
+	m, def := s.PreviewLinkUserMinutes, defaultPreviewLinkSignedIn
+	if guest {
+		m, def = s.PreviewLinkGuestMinutes, defaultPreviewLinkGuest
+	}
+	if m < minPreviewLinkMinutes || m > maxPreviewLinkMinutes {
+		m = def
+	}
+	return time.Duration(m) * time.Minute
+}
+
 // maxEditorFileMB is the limit in force: the one set, or the built-in 16.
 func (s SiteSettings) maxEditorFileMB() int {
 	if s.MaxEditorFileMB < minEditorFileMB || s.MaxEditorFileMB > maxEditorFileMB {
@@ -617,6 +656,8 @@ func (s SiteSettings) public() publicSettings {
 		FeaturedModels:    append([]string{}, s.Genie.FeaturedModels...),
 		GenieContext:      s.Genie.context(),
 		AgentEnabled:      !s.Genie.AgentDisabled && !s.Genie.Disabled,
+		AgentAutoOff:      s.Genie.AgentAutoOff,
+		AgentRiskyOff:     s.Genie.AgentRiskyOff,
 		AgentOnPractice:   s.Genie.AgentOnPractice,
 		AgentMaxSteps:     s.Genie.agentMaxSteps(),
 	}
@@ -828,6 +869,12 @@ func settingsChanges(a, b SiteSettings) []string {
 	if a.PreviewGuestsOff != b.PreviewGuestsOff {
 		out = append(out, "preview for guests "+onoff(!b.PreviewGuestsOff))
 	}
+	if a.previewLinkLife(true) != b.previewLinkLife(true) {
+		out = append(out, fmt.Sprintf("preview link works %d minutes for guests", int(b.previewLinkLife(true).Minutes())))
+	}
+	if a.previewLinkLife(false) != b.previewLinkLife(false) {
+		out = append(out, fmt.Sprintf("preview link works %d minutes for signed-in users", int(b.previewLinkLife(false).Minutes())))
+	}
 	if a.maxEditorFileMB() != b.maxEditorFileMB() {
 		out = append(out, fmt.Sprintf("largest editor file %d MB", b.maxEditorFileMB()))
 	}
@@ -837,6 +884,15 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.Genie.AgentDisabled != b.Genie.AgentDisabled {
 		out = append(out, "agent mode "+onoff(!b.Genie.AgentDisabled))
+	}
+	if a.Genie.AgentAutoOff != b.Genie.AgentAutoOff {
+		out = append(out, "agent: allow everything for a session "+onoff(!b.Genie.AgentAutoOff))
+	}
+	if a.Genie.AgentShellOff != b.Genie.AgentShellOff {
+		out = append(out, "agent: run commands "+onoff(!b.Genie.AgentShellOff))
+	}
+	if a.Genie.AgentRiskyOff != b.Genie.AgentRiskyOff {
+		out = append(out, "agent: allowing riskier things for a while "+onoff(!b.Genie.AgentRiskyOff))
 	}
 	if a.Genie.AgentOnPractice != b.Genie.AgentOnPractice {
 		out = append(out, "agent mode on the practice page "+onoff(b.Genie.AgentOnPractice))

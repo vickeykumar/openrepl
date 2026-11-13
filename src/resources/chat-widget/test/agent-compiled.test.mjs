@@ -350,7 +350,118 @@ test("built: what is asked about every time is asked again after a session grant
   // the list was allowed for the session; the delete still asked, with no session button; the missing file and tab 1 asked nothing
   assert.equal(t.log.asked.length, 2, t.log.asked.join(" | "));
   assert.match(t.log.asked[0], /Allow once\/Allow for this session\/Deny/);
-  assert.match(t.log.asked[1], /\[Allow once\/Deny\]/);
+  assert.match(t.log.asked[1], /\[Allow once\/Deny\//);
+  assert.doesNotMatch(t.log.asked[1], /Allow for this session|Allow everything/); // a risky action cannot be allowed for the session
+});
+
+test("built: Allow everything asks to confirm once, and then nothing else is asked about, except what is always asked", async () => {
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "files_list" }, { type: "terminal_type", text: "echo hi" }, { type: "run" }], done: false },
+      { say: "", actions: [{ type: "files_delete", path: "a.py" }], done: true },
+    ],
+    {
+      answer: (title, buttons) =>
+        buttons.includes("Allow everything") ? "Allow everything" : buttons.includes("Allow everything for this session…") ? "Allow everything for this session…" : "Allow once",
+    }
+  );
+  await t.done(t.runner.start("do it"));
+  // the first action: one card, answered in two clicks (the choice, then its confirmation); then only the delete, a risky one, asks again
+  assert.equal(t.log.asked.length, 3, t.log.asked.join(" | "));
+  assert.match(t.log.asked[0], /-> Allow everything for this session…$/);
+  assert.match(t.log.asked[1], /-> Allow everything$/);
+  assert.match(t.log.asked[2], /-> Allow once$/);
+  assert.match(t.log.asked[2], /\[Allow once\/Deny\//); // a risky action has no session button
+  assert.equal(t.log.removed, true);
+});
+
+test("built: when the user allowed risky deletes for a while, the delete is moved to the Trash and nothing is asked; a hidden file is still asked", async () => {
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "files_delete", path: "a.py" }], done: false },
+      { say: "", actions: [], done: true },
+    ],
+    { answer: () => "Allow once" }
+  );
+  t.runner.perms.allowRisky(["delete"], 30);
+  t.runner.perms.grantEverything();
+  await t.done(t.runner.start("clean up"));
+  assert.equal(t.log.removed, undefined, "the file was deleted for good instead of moved to the Trash");
+  assert.equal((t.log.asked || []).length, 0, "a card was shown: " + (t.log.asked || []).join(" | "));
+  const r = t.results(1).step_results[0];
+  assert.equal(r.status, "done");
+  assert.match(r.detail, /Trash/);
+  assert.match(t.steps().join(" "), /risky, allowed by you/);
+});
+
+test("built: the editor's changes go in without a review when everything is allowed, with an Undo on the line", async () => {
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "editor_write", text: "print(1)\n" }], done: false },
+      { say: "", actions: [], done: true },
+    ],
+    { answer: () => "Allow once" }
+  );
+  let undone = 0;
+  globalThis.window.GenieReview = {
+    applyDirect: () => ({ total: 2, accepted: 2, rejected: 0, undo: () => (undone++, true) }),
+    proposeAsync: async () => {
+      throw new Error("the review was shown although changes are allowed without one");
+    },
+  };
+  t.runner.perms.grantEverything();
+  await t.done(t.runner.start("write it"));
+  const r = t.results(1).step_results[0];
+  assert.equal(r.status, "accepted");
+  assert.equal(r.accepted, 2);
+  assert.equal((t.log.asked || []).length, 0);
+  const undo = t.messages.querySelectorAll(".cw-agent__step-btn");
+  assert.equal(undo.length, 1);
+  undo[0].click();
+  assert.equal(undone, 1);
+  assert.equal(t.runner.perms.undoable().length, 0); // undone on the line, so the badge menu does not list it any more
+});
+
+test("built: a language that is a mode of the editor (HTML, CSS) is set as the mode, with the terminal left alone, and an unknown one lists both", async () => {
+  const sel = (id, options, value) => ({
+    id,
+    options,
+    value,
+    changed: 0,
+    dispatchEvent(e) {
+      if (e.type === "change") this.changed++;
+      return true;
+    },
+  });
+  const picker = sel("optionlist", [{ value: "c", text: "C" }, { value: "python", text: "Python" }], "python");
+  const mode = sel("select-lang", [{ value: "css", text: "CSS" }, { value: "html", text: "HTML" }, { value: "javascript", text: "JavaScript" }, { value: "image", text: "Image", disabled: true }], "text");
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "set_language", language: "HTML" }], done: false },
+      { say: "", actions: [{ type: "set_language", language: "COBOL" }], done: false },
+      { say: "", actions: [], done: true },
+    ],
+    { answer: () => "Allow once" }
+  );
+  globalThis.document.getElementById = (id) => (id === "optionlist" ? picker : id === "select-lang" ? mode : null);
+  try {
+    await t.done(t.runner.start("make a web page"));
+  } finally {
+    globalThis.document.getElementById = () => null;
+  }
+  const r1 = t.results(1).step_results[0];
+  assert.equal(r1.status, "done");
+  assert.match(r1.detail, /mode is HTML/);
+  assert.match(r1.detail, /preview_open/);
+  assert.equal(mode.value, "html");
+  assert.equal(mode.changed, 1);
+  assert.equal(picker.value, "python", "the terminal's language was changed");
+  assert.equal(picker.changed, 0);
+  const r2 = t.results(2).step_results[0];
+  assert.equal(r2.status, "failed");
+  assert.match(r2.detail, /the picker has: C, Python/);
+  assert.match(r2.detail, /editor's modes are: CSS, HTML, JavaScript/);
+  assert.doesNotMatch(r2.detail, /Image/); // a mode that cannot be chosen is not offered
 });
 
 test("built: Stop ends a task whose model is silent, and the box comes back", async () => {

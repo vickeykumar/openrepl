@@ -56,7 +56,11 @@
       <link rel="stylesheet" href="./css/ui-refresh.css">
       <!-- Page speed (T16): Font Awesome no longer blocks the first paint; FirebaseUI (sign-in), intro.js (tour)
            and reCAPTCHA load the first time they are used (loadScriptOnce in scribbler.js). -->
-      <script src="https://kit.fontawesome.com/f54540db67.js" crossorigin="anonymous" defer></script>
+      <!-- Font Awesome Free 6.5.1, from this site (css/fa): the file and folder icons of the Files panel and the buttons. A kit script from
+           kit.fontawesome.com was used before and answers 403 now, which left the Files panel without its icons. v4-shims keeps the
+           old names (fa-files-o, fa-trash-o, fa-close, fa-github ...). Licence: Icons CC BY 4.0, fonts SIL OFL 1.1, code MIT. -->
+      <link rel="stylesheet" href="./css/fa/css/all.min.css">
+      <link rel="stylesheet" href="./css/fa/css/v4-shims.min.css">
       <script>if (location.pathname.indexOf("/practice") === 0) document.documentElement.classList.add("is-practice");</script>
       <script src="./js/theme.js"></script>
       <script src="./js/usage-beat.js" defer></script>
@@ -293,6 +297,11 @@
           <option value="evcxr" data-ext=".rs" data-editor="rust">Rust</option>
           <option value="sqlite3" data-ext=".sql" data-editor="sql">SQLite</option>
           <option value="rappel" data-ext=".asm" data-editor="assembly_x86">Assembly x86</option>
+          <!-- not languages of the terminal: choosing one sets the editor's mode and makes Run show the page in the Preview (js/src/page/29-web-language.js) -->
+          <optgroup label="Web (shown in the Preview)">
+            <option value="html" data-web="1" data-web-ext=".html">HTML</option>
+            <option value="css" data-web="1" data-web-ext=".css">CSS</option>
+          </optgroup>
         </select><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
         </div>
         <div class="mobile-views" role="tablist" aria-label="Show">

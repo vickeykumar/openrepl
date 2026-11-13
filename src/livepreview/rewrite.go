@@ -18,8 +18,54 @@ import (
 // maxRewrite is the largest HTML page that is read to be rewritten; a bigger one is passed on as it is.
 const maxRewrite = 8 << 20
 
-var attrRe = regexp.MustCompile(`(?i)\s(?:src|href|action|poster|data|formaction)\s*=\s*["']/`)
+var attrRe = regexp.MustCompile(`(?i)\s(?:src|href|action|poster|data|formaction)\s*=\s*["']?/`)
 var headRe = regexp.MustCompile(`(?i)<head[^>]*>`)
+
+var (
+	cssURLRe    = regexp.MustCompile(`(?i)(url\(\s*["']?)/`)
+	cssImportRe = regexp.MustCompile(`(?i)(@import\s+["'])/`)
+	styleRe     = regexp.MustCompile(`(?is)(<style[^>]*>)(.*?)(</style>)`)
+	styleAttrRe = regexp.MustCompile(`(?i)(\sstyle\s*=\s*")([^"]*)(")`)
+	srcsetRe    = regexp.MustCompile(`(?i)(\ssrcset\s*=\s*")([^"]*)(")`)
+	refreshRe   = regexp.MustCompile(`(?i)(<meta[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*content\s*=\s*["'][^"']*?url\s*=\s*)/`)
+)
+
+// RewriteCSS puts prefix on the absolute addresses of a style sheet: url(/img/x.png) and @import "/base.css" ("//host/x" stays).
+func RewriteCSS(css []byte, prefix string) []byte {
+	out := replaceRoot(cssURLRe, css, prefix)
+	return replaceRoot(cssImportRe, out, prefix)
+}
+
+// replaceRoot puts prefix after the match of re (which ends with the "/" of an absolute address) unless it is "//host" or
+// already has the prefix.
+func replaceRoot(re *regexp.Regexp, in []byte, prefix string) []byte {
+	var buf bytes.Buffer
+	last := 0
+	for _, m := range re.FindAllIndex(in, -1) {
+		slash := m[1] - 1
+		rest := in[slash:]
+		if len(rest) > 1 && rest[1] == '/' || bytes.HasPrefix(rest, []byte(prefix+"/")) {
+			continue
+		}
+		buf.Write(in[last:slash])
+		buf.WriteString(prefix)
+		last = slash
+	}
+	buf.Write(in[last:])
+	return buf.Bytes()
+}
+
+// rewriteSrcset puts prefix on each address of a srcset that is absolute ("/a.png 1x, /b.png 2x").
+func rewriteSrcset(v, prefix string) string {
+	parts := strings.Split(v, ",")
+	for i, p := range parts {
+		t := strings.TrimLeft(p, " \t\r\n")
+		if strings.HasPrefix(t, "/") && !strings.HasPrefix(t, "//") && !strings.HasPrefix(t, prefix+"/") {
+			parts[i] = p[:len(p)-len(t)] + prefix + t
+		}
+	}
+	return strings.Join(parts, ",")
+}
 
 // RewriteHTML puts prefix on the absolute links of page (src, href, action, ...: "/x" becomes prefix+"/x", while "//host/x",
 // "#x", "x" and "http://..." stay) and adds the script of layer two at the top of the head.
@@ -39,6 +85,20 @@ func RewriteHTML(page []byte, prefix string) []byte {
 	}
 	buf.Write(page[last:])
 	out := buf.Bytes()
+	// the style sheets inside the page, a srcset, and a refresh of a meta
+	out = styleRe.ReplaceAllFunc(out, func(m []byte) []byte {
+		g := styleRe.FindSubmatch(m)
+		return append(append(append([]byte{}, g[1]...), RewriteCSS(g[2], prefix)...), g[3]...)
+	})
+	out = styleAttrRe.ReplaceAllFunc(out, func(m []byte) []byte {
+		g := styleAttrRe.FindSubmatch(m)
+		return append(append(append([]byte{}, g[1]...), RewriteCSS(g[2], prefix)...), g[3]...)
+	})
+	out = srcsetRe.ReplaceAllFunc(out, func(m []byte) []byte {
+		g := srcsetRe.FindSubmatch(m)
+		return append(append(append([]byte{}, g[1]...), []byte(rewriteSrcset(string(g[2]), prefix))...), g[3]...)
+	})
+	out = replaceRoot(refreshRe, out, prefix)
 	script := []byte(clientScript(prefix))
 	if loc := headRe.FindIndex(out); loc != nil {
 		return append(append(append([]byte{}, out[:loc[1]]...), script...), out[loc[1]:]...)
@@ -78,6 +138,12 @@ func HTMLHook(prefix string) func(*http.Response) error { return HTMLHookWith(pr
 // HTMLHookWith is HTMLHook for a page that also gets the storage of st, for scope.
 func HTMLHookWith(prefix string, st *StorageInfo, scope string) func(*http.Response) error {
 	return func(res *http.Response) error {
+		if done, err := wrapPlain(res); done || err != nil {
+			return err
+		}
+		if strings.HasPrefix(strings.ToLower(res.Header.Get("Content-Type")), "text/css") && res.StatusCode != http.StatusPartialContent {
+			return rewriteBody(res, func(b []byte) []byte { return RewriteCSS(b, prefix) })
+		}
 		if !strings.HasPrefix(strings.ToLower(res.Header.Get("Content-Type")), "text/html") || res.StatusCode == http.StatusSwitchingProtocols {
 			return nil
 		}
@@ -167,4 +233,30 @@ func jsString(s string) string {
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+// rewriteBody replaces the body of an answer with f of it, when it is small enough to be read; a larger one goes on as it is.
+func rewriteBody(res *http.Response, f func([]byte) []byte) error {
+	if n, err := strconv.Atoi(res.Header.Get("Content-Length")); err == nil && n > maxRewrite {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxRewrite+1))
+	if err != nil {
+		return err
+	}
+	if len(body) > maxRewrite {
+		res.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(body), res.Body), res.Body}
+		return nil
+	}
+	res.Body.Close()
+	out := f(body)
+	res.Body = io.NopCloser(bytes.NewReader(out))
+	res.ContentLength = int64(len(out))
+	res.Header.Set("Content-Length", strconv.Itoa(len(out)))
+	res.Header.Del("Content-Encoding")
+	res.Header.Del("Etag")
+	return nil
 }

@@ -21,6 +21,7 @@ export const ACTIONS = [
   "terminal_new_tab",
   "terminal_select_tab",
   "terminal_close_tab",
+  "bash",
   "files_list",
   "files_open",
   "files_new",
@@ -45,6 +46,9 @@ export const MAX_TEXT = 200000; // characters of code in one action
 export const MAX_SAY = 600; // characters shown to the user for a step
 export const MAX_OUTPUT = 4000; // characters of terminal output sent back
 export const MAX_TERMINAL_TEXT = 500; // characters of the line Genie types in the terminal
+export const MAX_COMMAND = 4000; // characters of a bash command
+export const MAX_COMMAND_SECONDS = 120; // the longest a bash command may run
+export const DEFAULT_COMMAND_SECONDS = 30;
 export const MAX_TABS = 5; // terminal tabs the page allows (js/src/main.ts)
 export const MAX_PATH = 400; // characters of a path in the Files panel, relative to the home directory
 export const MAX_NAME = 100; // characters of one name in it
@@ -58,6 +62,7 @@ export interface Action {
   to?: string; // files_move: the folder it goes into
   name?: string; // files_rename: the new name, one segment
   kind?: "file" | "folder"; // files_new
+  timeoutSeconds?: number; // bash: 1 to MAX_COMMAND_SECONDS; the command itself is in "text"
   waitSeconds?: number; // read_output and terminal_type, 1 to 20
   port?: number; // preview_open: a port of the workspace, 1024 to 65535
 }
@@ -85,7 +90,7 @@ export interface StepResult {
 // Switching the language is a kind of its own: it is not a change the user
 // reviews, the page puts the language's starter code in the editor and starts
 // the terminal again.
-export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview";
+export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview" | "shell";
 
 export function scopeOf(a: Action): Scope | null {
   switch (a.type) {
@@ -100,6 +105,9 @@ export function scopeOf(a: Action): Scope | null {
     case "run":
     case "debug":
       return "run";
+    // a command in its own shell: not the terminal of the page
+    case "bash":
+      return "shell";
     case "terminal_type":
     case "terminal_interrupt":
     case "terminal_reconnect":
@@ -197,6 +205,7 @@ export function scopeQuestion(scope: Scope): string {
   if (scope === "terminal") return "Genie wants to use your terminal";
   if (scope === "files") return "Genie wants to use your files";
   if (scope === "preview") return "Genie wants to use the Preview";
+  if (scope === "shell") return "Genie wants to run a command in your workspace";
   return "Genie wants to run your code";
 }
 
@@ -235,6 +244,9 @@ export function scopeDetail(scope: Scope, a: Action, openFile: string = ""): str
       default:
         return "It will delete " + a.path + " for good, and everything in it if it is a folder.";
     }
+  }
+  if (scope === "shell") {
+    return "It runs once, in its own shell in your workspace folder, with no input and a limit of " + (a.timeoutSeconds || DEFAULT_COMMAND_SECONDS) + " seconds. Your terminal is not touched.";
   }
   if (scope === "preview") {
     if (a.type === "preview_close") return "It will close the Preview pane. Nothing is stopped: a program that runs keeps running.";
@@ -306,6 +318,32 @@ const RISKS: [RegExp, string][] = [
   [/\b(child_process|exec[Ss]ync|spawn[Ss]ync|Runtime\.getRuntime|ProcessBuilder|os\/exec|exec\.Command|system\s*\(|popen\s*\()/, "runs other programs"],
   [/\b(ioutil|os)\.(Remove\w*|WriteFile|Create|Rename|Chmod|Chown)\b/, "deletes or writes files"],
 ];
+
+// The words a shell command starts with. A line that starts like one, typed in the REPL of a language (Python, Go, Node ...),
+// is a syntax error or something else than was meant: the model meant a shell. A line of the language itself that starts
+// with such a word ("ls = [1, 2]", "cat.speak()", "git(5)") is not one: after the word comes a space and then an option,
+// a path, an address or a plain word, never "=", "(", "." or an operator; "pwd" and "ls" alone count.
+const SHELL_WORDS =
+  "curl|wget|ls|cd|cat|git|mkdir|rmdir|rm|mv|cp|touch|chmod|chown|grep|egrep|sudo|pip3?|apt(?:-get)?|npm|npx|yarn|ps|kill|pkill|tar|unzip|zip|head|tail|wc|which|whoami|echo|pwd|find|sed|awk|sort|diff|make|python3?";
+const SHELL_LINE = new RegExp("^(" + SHELL_WORDS + ")(?:\\s+(?:-|[\\w./~$\\\"'@:*]).*|\\s*)$");
+const SHELL_TOOLS = /^(go\s+(run|build|test|mod|get|install|fmt|vet|version)\b|node\s+\S+\.(m|c)?js\b|java\s+(-jar\s|\S+\.java\b)|javac\s+\S+|gcc\s+-?\S+|g\+\+\s+-?\S+)/;
+const SHELL_BARE = /^(ls|pwd|whoami|ps|make)$/;
+
+// the shell word a line starts with, "" when it does not look like a shell command
+export function shellWordOf(line: string): string {
+  const t = String(line || "").trim();
+  const tool = SHELL_TOOLS.exec(t);
+  if (tool) return tool[1].split(/\s/)[0];
+  const m = SHELL_LINE.exec(t);
+  if (!m) return "";
+  // the word alone is a command only for a few; "go" or "node" alone is the language's own (a name in Python)
+  if (t === m[1] && !SHELL_BARE.test(t)) return "";
+  // "go run x.go" and "node x.js" are shell lines; "go = 5" has no match above (the "=" is not a start)
+  return m[1];
+}
+
+// The terminals that are shells: a shell line is typed there without question.
+export const SHELL_REPLS = ["bash", "sh", "zsh", "dash"];
 
 // riskOf says why a line is risky, or "" when nothing in it is. It looks at the
 // whole line, so a danger after a semicolon or in a pipe is found too.
@@ -485,6 +523,21 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
         }
         break;
       }
+      case "bash": {
+        // a command: plain text, may span lines (a here-document, a pipeline), no other control characters
+        const cmd = typeof a.command === "string" ? a.command.replace(/[\r\n]+$/, "") : null;
+        if (cmd === null || cmd.trim() === "") {
+          dropped.push('bash left out: it needs "command"');
+        } else if (/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(cmd)) {
+          dropped.push("bash left out: the command has to be plain text (no control characters)");
+        } else if (cmd.length > MAX_COMMAND) {
+          dropped.push(`bash left out: the command is longer than ${MAX_COMMAND} characters`);
+        } else {
+          const t = typeof a.timeout_seconds === "number" && isFinite(a.timeout_seconds) ? Math.round(a.timeout_seconds) : DEFAULT_COMMAND_SECONDS;
+          actions.push({ type, text: cmd, timeoutSeconds: Math.min(MAX_COMMAND_SECONDS, Math.max(1, t)) });
+        }
+        break;
+      }
       case "terminal_new_tab":
         if (a.language !== undefined && (typeof a.language !== "string" || a.language.length > 40)) {
           dropped.push("terminal_new_tab left out: language has to be a language name");
@@ -595,6 +648,8 @@ export function describe(a: Action): string {
       return "Pressing Debug";
     case "terminal_type":
       return "Typing in the terminal: " + (a.text || "");
+    case "bash":
+      return "bash: " + (a.text || "").split("\n")[0].slice(0, 120);
     case "terminal_interrupt":
       return "Pressing Ctrl+C in the terminal";
     case "terminal_reconnect":
@@ -671,4 +726,238 @@ export function findLanguage(options: { value: string; text: string }[], name: s
     if (o.text.trim().toLowerCase().startsWith(n) && n.length >= 2) return o.value;
   }
   return null;
+}
+
+// ===== What the user has allowed, and the limits that nothing lifts (agent permissions) =====
+// What the user has allowed Genie's agent for the rest of the session, and the limits that nothing lifts. No DOM in here: node
+// runs it in test/ (node --test test/). Designed in the "Genie agent: remember my answers for the session" canvas.
+//
+// Three levels:
+//  1. Ask each time (the default): a card for each kind of action, as before.
+//  2. Everyday things for this session: one kind ("Allow for this session") or all of them ("Allow everything for this
+//     session"). The editor's changes are then applied without a review (and can be undone).
+//  3. Riskier things, chosen one kind at a time and for a while (30 minutes, or until the page closes): risky terminal lines,
+//     deleting (to the Trash), renaming and moving, closing a terminal tab. Never lifted, whatever is allowed: hidden files,
+//     anything outside the workspace, sudo, commands that wipe the home folder or the system, changes to the permissions
+//     themselves. Those are still asked about.
+// Everything is kept in the page only: not saved, not sent, not shared with a collaborator; a reload starts again.
+
+export const EVERYDAY_SCOPES: Scope[] = ["editor", "language", "run", "terminal", "files", "preview", "shell"];
+
+export const SCOPE_LABELS: Record<Scope, string> = {
+  editor: "Editor changes",
+  language: "Language switches",
+  run: "Run and Debug",
+  terminal: "Terminal (safe lines)",
+  files: "Files (open, create, save)",
+  preview: "Preview (open, reload, close)",
+  shell: "Run commands (safe ones)",
+};
+
+export type RiskKind = "terminal" | "delete" | "move" | "tab";
+export const RISK_KINDS: RiskKind[] = ["terminal", "delete", "move", "tab"];
+export const RISK_LABELS: Record<RiskKind, { label: string; hint: string }> = {
+  terminal: { label: "Risky terminal lines", hint: "for example rm, mv, chmod, git reset, a pipe into sh" },
+  delete: { label: "Delete files and folders", hint: "moved to a Trash folder first, so they can be restored" },
+  move: { label: "Rename, move and paste after a cut", hint: "" },
+  tab: { label: "Close terminal tabs", hint: "stops what is running in them" },
+};
+
+// the phrase that has to be typed to allow riskier things
+export const RISK_PHRASE = "allow risky";
+export const RISK_MINUTES = [30, 60, 0]; // 0 is "until the page closes"
+export const UNDO_LIMIT = 10;
+export const TRASH = "Trash";
+
+// the kind of risk an action carries, "" when it is an everyday one. A terminal line is risky when riskOf says so.
+export function riskKindOf(a: Action): RiskKind | null {
+  switch (a.type) {
+    case "terminal_type":
+    case "bash":
+      return riskOf(a.text || "") ? "terminal" : null;
+    case "terminal_close_tab":
+      return "tab";
+    case "files_delete":
+      return "delete";
+    case "files_rename":
+    case "files_move":
+    case "files_paste":
+      return "move";
+    default:
+      return null;
+  }
+}
+
+const HOME_OK = /^(\/home\/openrepl\/|\/tmp\/|\.\/|~\/|\$HOME\/)/;
+const SENSITIVE = /^(rm|mv|cp|chmod|chown|ln|truncate|shred|find|rsync|tee|dd|touch|mkdir|rmdir|unlink)$/;
+
+// why nothing lifts the ask for this action, "" when it can be allowed. Looks at the words of a terminal line, and at the path of
+// a file action. It is a floor, not the whole check: riskOf still sends a line to the user.
+export function hardBlockOf(a: Action): string {
+  if (a.type === "terminal_type" || a.type === "bash") {
+    const line = String(a.text || "");
+    if (/(^|[\s;&|(])sudo(\s|$)/.test(line)) return "it uses sudo";
+    if (/(^|[\s;&|(])(su|doas)(\s|$)/.test(line)) return "it switches user";
+    if (/\bmkfs(\.|\s)|\bdd\s+[^|;&]*\bif=|:\(\)\s*\{|>\s*\/dev\/(sd|nvme|disk|hd)/.test(line)) return "it can wipe a disk or hang the machine";
+    if (/\brm\s+(-[a-zA-Z]+\s+)*-[a-zA-Z]*[rR][a-zA-Z]*\s+(--no-preserve-root\s+)?(\/|~|\$HOME|\.\.?|\*)(\s|$|\/\*)/.test(line)) return "it removes the home folder, the system or everything here";
+    if (/\bchmod\s+(-[a-zA-Z]+\s+)*-[a-zA-Z]*R[a-zA-Z]*\s+\S+\s+(\/|~)(\s|$)/.test(line)) return "it changes the permissions of the whole system or home folder";
+    // a command that changes files, aimed outside the workspace, at a parent folder or at a hidden file
+    const words = line.split(/[\s;&|()]+/).filter(Boolean);
+    let sensitive = false;
+    for (const w of words) {
+      if (SENSITIVE.test(w)) {
+        sensitive = true;
+        continue;
+      }
+      if (!sensitive || w.startsWith("-")) continue;
+      if (/(^|\/)\.\.(\/|$)/.test(w)) return "it reaches outside the workspace (..)";
+      if (w.startsWith("/") && !HOME_OK.test(w)) return "it reaches outside the workspace";
+      if (/^~(?!\/)/.test(w)) return "it reaches outside the workspace";
+      const base = w.replace(/\/+$/, "").split("/").pop() || "";
+      if (base.startsWith(".") && base !== "." && base !== "..") return "it touches a hidden file";
+    }
+    return "";
+  }
+  if (a.type === "files_delete" && typeof a.path === "string" && (a.path === TRASH || a.path.startsWith(TRASH + "/"))) return "it empties the Trash";
+  if (a.type.startsWith("files_")) {
+    for (const p of [a.path, a.to, a.name]) {
+      if (typeof p !== "string" || p === "") continue;
+      if (p.split("/").some((seg) => seg.startsWith(".") && seg !== "." && seg !== "..")) return "it touches a hidden file";
+    }
+  }
+  return "";
+}
+
+export interface SitePolicy {
+  autoOff?: boolean; // the admin switched "allow everything" and the auto-apply of changes off
+  riskyOff?: boolean; // the admin switched the riskier level off
+}
+
+export interface UndoItem {
+  label: string; // "Applied 2 changes to vk.py"
+  undo: () => boolean; // puts it back; false when it cannot (the code changed since)
+  done: boolean;
+}
+
+export class Permissions {
+  private grants = new Set<Scope>();
+  private apply = false; // the editor's changes go in without a review
+  private risky = new Set<RiskKind>();
+  private riskyEnd = 0; // when the riskier level ends (ms), Infinity for "until the page closes", 0 for off
+  private undoStack: UndoItem[] = [];
+  private policy: () => SitePolicy;
+  private clock: () => number;
+  constructor(policy: () => SitePolicy = () => ({}), clock: () => number = () => Date.now()) {
+    this.policy = policy;
+    this.clock = clock;
+  }
+
+  // ---- the everyday level
+  grant(scope: Scope): void {
+    this.grants.add(scope);
+  }
+  has(scope: Scope): boolean {
+    return this.grants.has(scope);
+  }
+  revoke(scope: Scope): void {
+    this.grants.delete(scope);
+    if (scope === "editor") this.apply = false;
+  }
+  everythingAllowed(): boolean {
+    return !this.policy().autoOff;
+  }
+  grantEverything(): boolean {
+    if (!this.everythingAllowed()) return false;
+    for (const s of EVERYDAY_SCOPES) this.grants.add(s);
+    this.apply = true;
+    return true;
+  }
+  grants_(): Scope[] {
+    return EVERYDAY_SCOPES.filter((s) => this.grants.has(s));
+  }
+  // the editor's changes are applied at once, without the review
+  autoApply(): boolean {
+    return this.apply && this.grants.has("editor") && !this.policy().autoOff;
+  }
+  setAutoApply(on: boolean): boolean {
+    if (on && this.policy().autoOff) return false;
+    this.apply = on;
+    if (on) this.grants.add("editor");
+    return true;
+  }
+  stopAuto(): void {
+    this.grants.clear();
+    this.apply = false;
+    this.risky.clear();
+    this.riskyEnd = 0;
+  }
+  auto(): boolean {
+    return this.grants.size > 0 || this.apply || this.riskyOn();
+  }
+
+  // ---- the riskier level
+  riskyAvailable(): boolean {
+    return !this.policy().riskyOff;
+  }
+  // allow some kinds, for `minutes` (0: until the page closes)
+  allowRisky(kinds: RiskKind[], minutes: number): boolean {
+    if (!this.riskyAvailable() || kinds.length === 0) return false;
+    this.risky = new Set(kinds);
+    this.riskyEnd = minutes > 0 ? this.clock() + minutes * 60000 : Infinity;
+    return true;
+  }
+  stopRisky(): void {
+    this.risky.clear();
+    this.riskyEnd = 0;
+  }
+  riskyOn(): boolean {
+    return this.risky.size > 0 && this.riskyEnd > this.clock() && this.riskyAvailable();
+  }
+  riskyKinds(): RiskKind[] {
+    return this.riskyOn() ? RISK_KINDS.filter((k) => this.risky.has(k)) : [];
+  }
+  // whole minutes left, 0 when it ends with the page or is off
+  riskyMinutesLeft(): number {
+    if (!this.riskyOn() || this.riskyEnd === Infinity) return 0;
+    return Math.max(1, Math.ceil((this.riskyEnd - this.clock()) / 60000));
+  }
+  riskyUntilClose(): boolean {
+    return this.riskyOn() && this.riskyEnd === Infinity;
+  }
+
+  // ---- the decision: may this action go without a card?
+  //   "ask"  a card is shown
+  //   "auto" it goes: the everyday level allows it
+  //   "risky" it goes: the riskier level allows it, and the chat says so
+  // everyday: the caller has judged the action not risky (a paste of a copy, say): only the everyday level is looked at
+  decide(a: Action, everyday: boolean = false): "ask" | "auto" | "risky" {
+    const kind = everyday ? null : riskKindOf(a);
+    if (kind) {
+      if (this.riskyOn() && this.risky.has(kind) && hardBlockOf(a) === "") return "risky";
+      return "ask";
+    }
+    // a file action that the everyday level would allow still never touches a hidden file without a card
+    if (a.type.startsWith("files_") && hardBlockOf(a) !== "") return "ask";
+    const scope = scopeOf(a);
+    return scope && this.grants.has(scope) ? "auto" : "ask";
+  }
+
+  // ---- undo of the editor's changes that went in without a review (the last UNDO_LIMIT)
+  pushUndo(item: UndoItem): void {
+    this.undoStack.push(item);
+    while (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
+  }
+  undoable(): UndoItem[] {
+    return this.undoStack.filter((u) => !u.done);
+  }
+  undoLast(): UndoItem | null {
+    for (let i = this.undoStack.length - 1; i >= 0; i--) {
+      const u = this.undoStack[i];
+      if (!u.done) {
+        if (u.undo()) u.done = true;
+        return u;
+      }
+    }
+    return null;
+  }
 }
