@@ -35,6 +35,8 @@ import {
   parseStep,
   resultsMessage,
   riskOf,
+  shellWordOf,
+  SHELL_REPLS,
   runPhase,
   scopeDetail,
   scopeOf,
@@ -460,6 +462,16 @@ export class AgentRunner {
       const why = this.closeProblem(a);
       if (why) {
         line.set("failed", describe(a) + ": not possible");
+        return { type: a.type, status: "failed", detail: why };
+      }
+    }
+    if (a.type === "terminal_type") {
+      const word = shellWordOf(a.text || "");
+      const repl = (this.host.repl ? this.host.repl() : "").toLowerCase();
+      if (word && repl && SHELL_REPLS.indexOf(repl) < 0) {
+        const why =
+          'the terminal is the ' + (repl || "language") + ' REPL, not a shell, so "' + word + '" cannot run there; use the bash action for a shell command, or open a Bash tab (terminal_new_tab with "Bash") and type it there';
+        line.set("failed", describe(a) + ": not a shell here");
         return { type: a.type, status: "failed", detail: why };
       }
     }

@@ -26,6 +26,8 @@ import {
   scopeQuestion,
   hardBlockOf,
   riskKindOf,
+  shellWordOf,
+  SHELL_REPLS,
 } from "../src/agent-protocol.ts";
 
 const ok = (content: string) => {
@@ -306,7 +308,7 @@ test("risky lines are found; everyday ones are not", () => {
   ];
   for (const line of risky) assert.notEqual(riskOf(line), "", "should be risky: " + line);
   const fine = [
-    "ls", "ls -la", "pwd", "cd src", "cat main.c", "echo hello", "python3 main.py", "gcc main.c -o main && ./main", "make", "./a.out", "go run main.go", "node app.js",
+    "ls", "ls -la", "pwd", "cd src", "cat main.c", "echo hello", "python3 main.py", "gcc main.c -o main && ./main", "make", "./a.out", "go run main.go",
     "print(1 + 1)", "2 + 2", "import math", "math.sqrt(2)", "x = [1, 2, 3]", "len(x)", "def f(a): return a * 2", "SELECT * FROM users;", ".tables", "head -n 5 data.csv", "grep -n foo main.c",
     "wc -l main.c", "git status", "git log --oneline", "git diff", "printf '%d\\n' 5", "y", "42", "Alice", "which python3", "man ls", "tree",
     // a ">" that is not a redirect into a file
@@ -526,4 +528,14 @@ test("bash: parsing, limits, scope, risk", () => {
   assert.equal(riskKindOf({ ...a, text: "rm -r build" }), "terminal");
   assert.match(hardBlockOf({ ...a, text: "sudo apt install x" }), /sudo/);
   assert.match(hardBlockOf({ ...a, text: "cp x /etc/y" }), /outside/);
+});
+
+test("a shell command typed into a language's REPL is recognised, the language's own lines are not", () => {
+  for (const line of ["curl -I http://127.0.0.1:8000", "curl http://127.0.0.1:8000/style.css", "ls -la", "ls", "pwd", "cd src", "cat style.css", "git status", "mkdir -p a/b", "python3 server.py", "pip install requests", "go run main.go", "node app.js", "echo hello", "node app.js", "go build ./...", "gcc -o a a.c", "  grep -rn TODO .  "]) {
+    assert.notEqual(shellWordOf(line), "", line);
+  }
+  for (const line of ["ls = [1, 2]", "cat.speak()", "git(5)", "print('curl x')", "x = curl", "go = 5", "node", "go", "go func() { f() }()", "go worker(ch)", "node = 3", "java = 1", "echo", "cd = 3", "make_it(2)", "for ls in a:", "curl(", "lst = ls -1", "def cat():", "cat = Cat('a')"]) {
+    assert.equal(shellWordOf(line), "", line);
+  }
+  assert.ok(SHELL_REPLS.includes("bash") && !SHELL_REPLS.includes("python"));
 });

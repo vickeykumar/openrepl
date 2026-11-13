@@ -319,6 +319,32 @@ const RISKS: [RegExp, string][] = [
   [/\b(ioutil|os)\.(Remove\w*|WriteFile|Create|Rename|Chmod|Chown)\b/, "deletes or writes files"],
 ];
 
+// The words a shell command starts with. A line that starts like one, typed in the REPL of a language (Python, Go, Node ...),
+// is a syntax error or something else than was meant: the model meant a shell. A line of the language itself that starts
+// with such a word ("ls = [1, 2]", "cat.speak()", "git(5)") is not one: after the word comes a space and then an option,
+// a path, an address or a plain word, never "=", "(", "." or an operator; "pwd" and "ls" alone count.
+const SHELL_WORDS =
+  "curl|wget|ls|cd|cat|git|mkdir|rmdir|rm|mv|cp|touch|chmod|chown|grep|egrep|sudo|pip3?|apt(?:-get)?|npm|npx|yarn|ps|kill|pkill|tar|unzip|zip|head|tail|wc|which|whoami|echo|pwd|find|sed|awk|sort|diff|make|python3?";
+const SHELL_LINE = new RegExp("^(" + SHELL_WORDS + ")(?:\\s+(?:-|[\\w./~$\\\"'@:*]).*|\\s*)$");
+const SHELL_TOOLS = /^(go\s+(run|build|test|mod|get|install|fmt|vet|version)\b|node\s+\S+\.(m|c)?js\b|java\s+(-jar\s|\S+\.java\b)|javac\s+\S+|gcc\s+-?\S+|g\+\+\s+-?\S+)/;
+const SHELL_BARE = /^(ls|pwd|whoami|ps|make)$/;
+
+// the shell word a line starts with, "" when it does not look like a shell command
+export function shellWordOf(line: string): string {
+  const t = String(line || "").trim();
+  const tool = SHELL_TOOLS.exec(t);
+  if (tool) return tool[1].split(/\s/)[0];
+  const m = SHELL_LINE.exec(t);
+  if (!m) return "";
+  // the word alone is a command only for a few; "go" or "node" alone is the language's own (a name in Python)
+  if (t === m[1] && !SHELL_BARE.test(t)) return "";
+  // "go run x.go" and "node x.js" are shell lines; "go = 5" has no match above (the "=" is not a start)
+  return m[1];
+}
+
+// The terminals that are shells: a shell line is typed there without question.
+export const SHELL_REPLS = ["bash", "sh", "zsh", "dash"];
+
 // riskOf says why a line is risky, or "" when nothing in it is. It looks at the
 // whole line, so a danger after a semicolon or in a pipe is found too.
 export function riskOf(text: string): string {

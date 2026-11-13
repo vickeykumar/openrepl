@@ -123,4 +123,4 @@ its menu are in `agent.ts`; the review's choice and `applyDirect` are in `js/src
 - Page: scope `shell` ("Run commands"), a kind of its own in the permissions. The command is in `Action.text`, so `riskOf` and `hardBlockOf` judge it as a terminal line: risky commands are asked every time, `sudo` and anything outside the workspace never skipped. The step line folds the output; the model gets the last 4000 characters and the exit code. Stop aborts the request, which kills the command.
 - Prompt: use it only for what other actions cannot do; a long-running program (a server, a REPL, a watcher, a long build) is started with `set_language` "Bash" and `terminal_type`, so the user sees it and can stop it.
 - Not done: outside network for installs (a separate admin decision).
-
+- Page guard (2026-11-13): a `terminal_type` line that starts like a shell command (`shellWordOf` in `agent-protocol.ts`: curl, ls, git, `go run`, `node x.js` ...) is refused before any card when the REPL in use is not a shell (`SHELL_REPLS`), with a result that tells the model to use `bash` or a Bash tab. Lines of the language itself (`ls = [1]`, `cat.speak()`, `go f()`) are not matched.
