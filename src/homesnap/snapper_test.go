@@ -459,3 +459,143 @@ func TestAHomeThatNeverRestsIsSnapshottedAfterAFewRounds(t *testing.T) {
 		}
 	}
 }
+
+// A fresh home has what the server makes itself (.bashrc that a terminal writes, the histories of the REPLs, .tmp): that is no
+// reason to leave the user's files in the bucket.
+func TestAHomeWithOnlyWhatTheServerMakesIsRestoredAndKeepsThose(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	os.RemoveAll(dir)
+	write(t, filepath.Join(dir, ".bashrc"), "PS1='$ '", time.Second)
+	write(t, filepath.Join(dir, ".tmp", "x"), "scratch", time.Second)
+
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	s2.Touch("anna0123")
+	if b, err := os.ReadFile(filepath.Join(dir, "main.c")); err != nil || string(b) != "int main(){}" {
+		t.Fatalf("the files were not put back: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "src", "util", "a.py")); err != nil || string(b) != "print(1)" {
+		t.Errorf("a file in a folder: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, ".bashrc")); err != nil || string(b) != "PS1='$ '" {
+		t.Errorf("a file the server made, that the snapshot does not have, is gone: %q %v", b, err)
+	}
+	if s2.Status().Restores != 1 {
+		t.Errorf("status: %+v", s2.Status())
+	}
+}
+
+func TestAFileThatIsInTheSnapshotAndInTheFolderTakesTheSnapshotsVersion(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	write(t, filepath.Join(dir, ".bashrc"), "from the snapshot", time.Hour)
+	if res, err := s.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made { // forced: the folder has just been changed
+		t.Fatalf("%+v %v", res, err)
+	}
+	os.RemoveAll(dir)
+	write(t, filepath.Join(dir, ".bashrc"), "fresh", time.Second)
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	s2.Touch("anna0123")
+	if b, _ := os.ReadFile(filepath.Join(dir, ".bashrc")); string(b) != "from the snapshot" {
+		t.Errorf(".bashrc is %q", b)
+	}
+}
+
+func TestAHomeWithAFileOfTheUserIsNotRestoredOver(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	os.RemoveAll(dir)
+	write(t, filepath.Join(dir, ".bashrc"), "fresh", time.Second)
+	write(t, filepath.Join(dir, "notes.txt"), "work of today", time.Second)
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	s2.Touch("anna0123")
+	if _, err := os.Stat(filepath.Join(dir, "main.c")); err == nil {
+		t.Error("a home with a file of the user's was restored over")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "notes.txt")); string(b) != "work of today" {
+		t.Errorf("notes.txt is %q", b)
+	}
+}
+
+// One failed attempt must not be the last: a timeout of the object store right after a deploy left the home without its files
+// for good, and its next snapshot took the place of the good one.
+func TestARestoreThatFailsIsTriedAgainAndNoSnapshotIsMadeBeforeItAnswers(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	os.RemoveAll(dir)
+	write(t, filepath.Join(dir, ".bashrc"), "fresh", time.Hour)
+
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	clock := time.Now()
+	s2.Now = func() time.Time { return clock }
+	f.FailNext(50)
+	s2.Touch("anna0123") // the store does not answer
+	if _, err := os.Stat(filepath.Join(dir, "main.c")); err == nil {
+		t.Fatal("restored although the store did not answer")
+	}
+	// the home is not snapshotted while its restore has not answered: that would put a fresh folder in the place of the good one
+	before := strings.Join(f.Stored(), ",")
+	f.FailNext(0)
+	if res, err := s2.SnapshotHome(ctx, "anna0123", true); err != nil || res.Made || res.Note != "waiting for its restore" {
+		t.Fatalf("a snapshot was made, or not refused in words: %+v %v", res, err)
+	}
+	if strings.Join(f.Stored(), ",") != before {
+		t.Errorf("the bucket changed: %v", f.Stored())
+	}
+	// at once the next request does not try again (not more often than once a minute)
+	s2.Touch("anna0123")
+	if _, err := os.Stat(filepath.Join(dir, "main.c")); err == nil {
+		t.Error("tried again before the time")
+	}
+	// later it does, and the files come back
+	clock = clock.Add(restoreRetryAfter + time.Second)
+	s2.Touch("anna0123")
+	if b, err := os.ReadFile(filepath.Join(dir, "main.c")); err != nil || string(b) != "int main(){}" {
+		t.Fatalf("not restored at the next request: %q %v", b, err)
+	}
+	// and from then on it snapshots as usual
+	write(t, filepath.Join(dir, "new.txt"), "x", time.Minute)
+	if res, err := s2.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made {
+		t.Errorf("no snapshot after the restore: %+v %v", res, err)
+	}
+}
+
+func TestARestoreThatKeepsFailingIsGivenUpAfterTenTries(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	dir := makeHome(t, base, "anna0123")
+	s.SnapshotHome(ctx, "anna0123", false)
+	os.RemoveAll(dir)
+	s2, _ := newSnapper(t, f)
+	s2.Base = s.Base
+	clock := time.Now()
+	s2.Now = func() time.Time { return clock }
+	f.FailNext(100000)
+	for i := 0; i < maxRestoreTries+3; i++ {
+		s2.Touch("anna0123")
+		clock = clock.Add(restoreRetryAfter + time.Second)
+	}
+	s2.mu.Lock()
+	st := s2.state("anna0123")
+	tries, pending, touched := st.tries, st.pending, st.touched
+	s2.mu.Unlock()
+	if tries != maxRestoreTries || pending || !touched {
+		t.Errorf("tries %d, pending %v, touched %v", tries, pending, touched)
+	}
+}

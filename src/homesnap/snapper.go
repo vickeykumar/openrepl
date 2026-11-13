@@ -41,6 +41,9 @@ const (
 	// a home that has no snapshot is not asked about again for this long
 	noSnapshotFor = 10 * time.Minute
 	timeLayout    = "20060102T150405Z"
+	// a restore that failed with an error is tried again at the next request, at most this often, and this many times
+	restoreRetryAfter = time.Minute
+	maxRestoreTries   = 10
 )
 
 // ErrConflict is what SnapshotHome answers when another writer advanced the home's pointer meanwhile.
@@ -87,9 +90,13 @@ type homeState struct {
 	generation  int64     // the last one this process knows
 	noSnapshot  time.Time // asked at this time and there was none
 	busy        bool
-	touched     bool   // Touch has looked at its folder
-	changing    int    // rounds in a row in which the home was still changing
-	lastNote    string // why the last round did not snapshot it ("" when it did)
+	touched     bool      // Touch has looked at its folder, and the restore (if one was due) has answered
+	pending     bool      // Touch has begun, the restore has not answered: no snapshot of the folder is made yet
+	restoring   bool      // a restore is under way for this home (Touch)
+	tries       int       // restores of this home that failed with an error
+	retryAt     time.Time // not before this time is a failed restore tried again
+	changing    int       // rounds in a row in which the home was still changing
+	lastNote    string    // why the last round did not snapshot it ("" when it did)
 }
 
 // Status is what the dashboard shows.
@@ -252,6 +259,12 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 		s.mu.Unlock()
 		return Result{Note: "unchanged"}, nil
 	}
+	if st.pending {
+		// the folder has not been looked at for a restore yet (or the restore failed and will be tried again): what is on
+		// the disk now may be a fresh home, and a snapshot of it would take the place of the good one
+		s.mu.Unlock()
+		return s.noted(home, Result{Note: "waiting for its restore"}), nil
+	}
 	prevGen := st.generation
 	st.busy = true
 	s.mu.Unlock()
@@ -375,24 +388,58 @@ func (s *Snapper) Touch(home string) {
 	}
 	s.mu.Lock()
 	st := s.state(home)
-	seen := st.touched
-	st.touched = true
-	s.mu.Unlock()
-	if seen {
-		return // the folder was looked at when it was first used: this is called on every request
+	if st.touched || st.restoring || (!st.retryAt.IsZero() && s.now().Before(st.retryAt)) {
+		s.mu.Unlock()
+		return // looked at already (this is called on every request), or under way, or a failed one is not tried again yet
 	}
+	st.restoring, st.pending = true, true
+	s.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	if _, err := s.Ensure(ctx, home); err != nil {
-		log.Printf("homesnap: restoring %s: %v", home, err)
+	_, err := s.Ensure(ctx, home)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st.restoring = false
+	if err != nil {
+		// not answered: the next request tries again, so that a timeout of the object store right after a deploy does not leave
+		// the home without its files for good
+		st.tries++
+		if st.tries >= maxRestoreTries {
+			st.touched, st.pending = true, false
+			log.Printf("homesnap: restoring %s failed %d times, giving up for this process: %v", home, st.tries, err)
+			return
+		}
+		st.retryAt = s.now().Add(restoreRetryAfter)
+		log.Printf("homesnap: restoring %s: %v (try %d of %d, again at the next request after %s)", home, err, st.tries, maxRestoreTries, st.retryAt.Format("15:04:05"))
+		return
 	}
+	st.touched, st.pending, st.tries = true, false, 0
 }
 
 // ---- restore ---------------------------------------------------------------------------------------
 
-// Ensure puts a home back from its newest good snapshot when its folder is missing or empty, and says whether
-// it did. A home that is there is left alone. A home with no snapshot is not asked about again for ten
-// minutes.
+// ErrBusy is what Ensure answers when the home is being snapshotted or restored just now: it has not looked.
+var ErrBusy = errors.New("homesnap: the home is busy")
+
+// madeByTheServer says that a folder holds nothing a user made: it is empty, or every name in it begins with a dot
+// (.bashrc that a terminal writes, the histories of the REPLs, .tmp). Such a home is a new one, and the snapshot of
+// the user's files is put back into it.
+func madeByTheServer(dir string) bool {
+	entries, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return os.IsNotExist(err)
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".") {
+			return false
+		}
+	}
+	return true
+}
+
+// Ensure puts a home back from its newest good snapshot when its folder is missing, empty, or holds only what the
+// server makes itself, and says whether it did. A home with a file of the user's is left alone. A home with no
+// snapshot is not asked about again for ten minutes.
 func (s *Snapper) Ensure(ctx context.Context, home string) (bool, error) {
 	if !IsKept(home) {
 		return false, nil
@@ -402,12 +449,16 @@ func (s *Snapper) Ensure(ctx context.Context, home string) (bool, error) {
 		return false, nil
 	}
 	dir := s.dir(home)
-	if entries, err := ioutil.ReadDir(dir); err == nil && len(entries) > 0 {
+	if !madeByTheServer(dir) {
 		return false, nil
 	}
 	s.mu.Lock()
 	st := s.state(home)
-	if st.busy || (!st.noSnapshot.IsZero() && s.now().Sub(st.noSnapshot) < noSnapshotFor) {
+	if st.busy {
+		s.mu.Unlock()
+		return false, ErrBusy
+	}
+	if !st.noSnapshot.IsZero() && s.now().Sub(st.noSnapshot) < noSnapshotFor {
 		s.mu.Unlock()
 		return false, nil
 	}
@@ -437,8 +488,7 @@ func (s *Snapper) Ensure(ctx context.Context, home string) (bool, error) {
 		os.RemoveAll(tmp)
 		return false, err
 	}
-	os.Remove(dir) // an empty folder in the way
-	if err := os.Rename(tmp, dir); err != nil {
+	if err := mergeInto(tmp, dir); err != nil {
 		os.RemoveAll(tmp)
 		return false, err
 	}
@@ -621,4 +671,28 @@ func (s *Snapper) Final(timeout time.Duration) {
 	if made > 0 {
 		log.Printf("homesnap: %d workspaces were snapshotted at the stop", made)
 	}
+}
+
+// mergeInto puts the entries of src (a folder that was extracted whole) into dst, which may hold the files the server made
+// itself: an entry that is in both takes the snapshot's version, an entry only in dst stays. A dst that is not there is
+// simply replaced by src (one rename, as before).
+func mergeInto(src, dst string) error {
+	if entries, err := ioutil.ReadDir(dst); err != nil || len(entries) == 0 {
+		os.Remove(dst) // an empty folder in the way
+		return os.Rename(src, dst)
+	}
+	entries, err := ioutil.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		to := filepath.Join(dst, e.Name())
+		if err := os.RemoveAll(to); err != nil {
+			return err
+		}
+		if err := os.Rename(filepath.Join(src, e.Name()), to); err != nil {
+			return err
+		}
+	}
+	return os.RemoveAll(src)
 }
