@@ -77,6 +77,9 @@ func snapshotError(err error) (int, string) {
 		return http.StatusTooManyRequests, err.Error()
 	}
 	log.Println("profile snapshots:", redactErr(err))
+	if errors.Is(err, homesnap.ErrBadSnapshot) {
+		return http.StatusUnprocessableEntity, "That snapshot cannot be read as a whole. Download it as a zip, or pick another one."
+	}
 	return http.StatusBadGateway, "The object store did not answer. Try again in a minute."
 }
 

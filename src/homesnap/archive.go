@@ -218,6 +218,20 @@ func safeRel(p string) (string, bool) {
 // yet). A path outside the folder, a link, a file the manifest does not list, a wrong size or hash, or too
 // much data is refused, and dest is removed.
 func Extract(archive []byte, dest string) (m Manifest, err error) {
+	return extract(archive, dest, false)
+}
+
+// extractForced is Extract for the last resort (every snapshot of a home fails the check against its manifest): the
+// manifest is not held against the files, so what is in the archive is written. The checks that keep a path inside the folder
+// (no link, no path that leaves it, the size limits) stay.
+// errManifest marks the failures of the check of the files against the manifest (and not those that keep a path inside the folder).
+var errManifest = errors.New("homesnap")
+
+func extractForced(archive []byte, dest string) (Manifest, error) {
+	return extract(archive, dest, true)
+}
+
+func extract(archive []byte, dest string, forced bool) (m Manifest, err error) {
 	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
 		return m, fmt.Errorf("homesnap: not a snapshot: %v", err)
@@ -273,31 +287,36 @@ func Extract(archive []byte, dest string) (m Manifest, err error) {
 			return m, errors.New("homesnap: too many files in the snapshot")
 		}
 	}
-	if raw == nil || json.Unmarshal(raw, &m) != nil || m.Version != 1 {
-		return m, errors.New("homesnap: the snapshot has no readable manifest")
+	if forced {
+		json.Unmarshal(raw, &m) // what can be read of it; it is not needed
+	} else if raw == nil || json.Unmarshal(raw, &m) != nil || m.Version != 1 {
+		return m, fmt.Errorf("%w: the snapshot has no readable manifest", errManifest)
 	}
 	// every entry of the manifest is there and matches, and nothing else is
 	seen := map[string]bool{}
 	for _, e := range m.Entries {
+		if forced {
+			break
+		}
 		rel, ok := safeRel(e.Path)
 		if !ok {
 			return m, fmt.Errorf("homesnap: %q is not a path a snapshot may have", e.Path)
 		}
 		f, ok := files[rel]
 		if !ok {
-			return m, fmt.Errorf("homesnap: %s is in the manifest and not in the snapshot", e.Path)
+			return m, fmt.Errorf("%w: %s is in the manifest and not in the snapshot", errManifest, e.Path)
 		}
 		if strings.HasSuffix(e.Path, "/") != f.dir {
-			return m, fmt.Errorf("homesnap: %s is a file in one place and a folder in the other", e.Path)
+			return m, fmt.Errorf("%w: %s is a file in one place and a folder in the other", errManifest, e.Path)
 		}
 		if !f.dir && (int64(len(f.data)) != e.Size || sum(f.data) != e.SHA256) {
-			return m, fmt.Errorf("homesnap: %s does not match its manifest", e.Path)
+			return m, fmt.Errorf("%w: %s does not match its manifest", errManifest, e.Path)
 		}
 		seen[rel] = true
 	}
 	for rel := range files {
-		if !seen[rel] {
-			return m, fmt.Errorf("homesnap: %s is in the snapshot and not in its manifest", rel)
+		if !seen[rel] && !forced {
+			return m, fmt.Errorf("%w: %s is in the snapshot and not in its manifest", errManifest, rel)
 		}
 	}
 	if err := os.Mkdir(dest, 0755); err != nil {
