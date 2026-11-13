@@ -165,6 +165,7 @@ const launcher = (firebaseconfig: any) => {
             (window as any).ToggleReconnect();
         });
         Array.prototype.slice.call(originalOption.options).forEach((option: HTMLOptionElement) => {
+            if (option.getAttribute('data-web')) return; // HTML and CSS are not languages of the terminal
             const item = document.createElement('button');
             item.type = 'button';
             item.className = 'ctx-item';

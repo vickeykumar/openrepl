@@ -251,3 +251,18 @@ now gives it working ones (`livepreview/storage.go`):
 - Not provided: IndexedDB, Cache storage, service workers, the `storage` event between frames, cookie `Secure`/`HttpOnly`/path rules.
 - Tests: `storage_test.go`, `TestAProgramsHTMLGetsStorageForItsPort`, and the browser test "localStorage, sessionStorage and cookies work".
 
+## 11. HTML and CSS in the language picker (2026-11-13)
+
+The top picker has a group "Web (shown in the Preview)" with HTML and CSS (`<optgroup>` in `index.html`, options with `data-web="1"`). They are not
+languages of the terminal, so the real `<select id="optionlist">`, which the terminal, the starters and the share link follow, keeps its value:
+
+- `select-menu.js`: an item of the web group is not set in the select; the menu calls `window.WebLanguage.choose` and shows the choice on its button
+  (`select.__menuOverride`, dropped by itself when the select's own value changes). `pickLanguage` (hero chips, the palette, Genie) does the same.
+- `29-web-language.js` (the page) and `lib-weblang.mjs` (no page, tested): the editor's mode (`#select-lang`), a starter in an untitled editor that
+  has no text of its own (else a notice offers it), and Run (`CompileandRun` asks `WebLanguage.active()` first): HTML saves the open page, or makes
+  `index.html` (a free name) from an untitled editor, and opens it in the Preview; CSS saves the sheet (an untitled editor becomes `style.css`) and shows
+  the `index.html` beside it, or says to make one. The terminal is not touched.
+- Not in the terminal's own menu (`main.ts`) and not read by the `?repl=` loop. Genie's `set_language` calls `WebLanguage.choose` for them.
+- Tests: `lib-weblang.test.mjs`, `e2e/tests/web-language.spec.js`. Not done: sharing a code link from a web language shares it under the terminal's
+  language; the hero's "19 languages" counts the terminal's languages only.
+

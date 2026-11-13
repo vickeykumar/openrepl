@@ -22,6 +22,7 @@ function LoadOptionFromUrl() {
   	if (optionMenu) {
     	for (var i = 0; i < optionMenu.length; i++){
       		var option = optionMenu.options[i];
+		if (option.getAttribute("data-web")) continue; // HTML and CSS are not languages of the terminal
 		var lang = option.text.trim().toLowerCase();
       		if ((repl && option.getAttribute("value").toLowerCase() === repl) || (searchParams.get(lang)!==null && searchParams.get(lang)!==undefined)) {
 				//option found
@@ -60,6 +61,8 @@ function StartTour() {
 }
 
 function CompileandRun() {
+    // HTML or CSS chosen in the language picker: the page is shown in the Preview, and the terminal is not touched (29-web-language.js)
+    if (window.WebLanguage && window.WebLanguage.active()) { window.WebLanguage.run(); return; }
     // An .html file is shown, not run: the Preview pane opens (27-preview.js)
     if (window.Preview && window.Preview.runs()) { window.Preview.open(); return; }
     // The execution node is away and the countdown is running (11-terminal-state.js).

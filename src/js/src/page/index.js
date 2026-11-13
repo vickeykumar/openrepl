@@ -29,3 +29,4 @@ import "./18-genie-review";
 import "./19-genie-actions";
 import "./20-tips";
 import "./21-ide-theme";
+import "./29-web-language"; // HTML and CSS in the language picker

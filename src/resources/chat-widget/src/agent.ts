@@ -185,6 +185,11 @@ class StepLine {
   }
 }
 
+// an option of the language picker for HTML or CSS: not a language of the terminal (js/src/page/29-web-language.js)
+function isWebOption(o: HTMLOptionElement): boolean {
+  return typeof o.getAttribute === "function" && o.getAttribute("data-web") === "1";
+}
+
 // What the model is told about the Preview: short, and only what helps (the address, the errors, the last calls)
 function previewSummary(s: any): string {
   const out: string[] = [];
@@ -555,7 +560,14 @@ export class AgentRunner {
       case "set_language": {
         const picker = this.picker();
         if (!picker) return { type: a.type, status: "failed", detail: "there is no language picker" };
-        const opts = Array.from(picker.options).map((o) => ({ value: o.value, text: o.text }));
+        // HTML and CSS are in the picker but are not languages of the terminal: the page makes the choice (editor mode, Run shows the Preview)
+        const web = (window as any).WebLanguage;
+        const wopts = Array.from(picker.options).filter((o) => isWebOption(o)).map((o) => ({ value: o.value, text: o.text }));
+        const wvalue = web ? findLanguage(wopts, a.language || "") : null;
+        if (wvalue && web.choose(wvalue)) {
+          return { type: a.type, status: "done", detail: "the picker shows " + (web.labels[wvalue] || wvalue) + " now: the editor is in that mode and Run shows the page in the Preview; the terminal and its language are as they were" };
+        }
+        const opts = Array.from(picker.options).filter((o) => !isWebOption(o)).map((o) => ({ value: o.value, text: o.text }));
         const value = findLanguage(opts, a.language || "");
         if (!value) {
           // not a language the terminal runs: it may be a mode of the editor (HTML, CSS, JavaScript, Markdown, JSON, YAML ...), which
