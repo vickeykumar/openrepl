@@ -557,7 +557,13 @@ export class AgentRunner {
         if (!picker) return { type: a.type, status: "failed", detail: "there is no language picker" };
         const opts = Array.from(picker.options).map((o) => ({ value: o.value, text: o.text }));
         const value = findLanguage(opts, a.language || "");
-        if (!value) return { type: a.type, status: "failed", detail: "no such language; the picker has: " + opts.map((o) => o.text).join(", ") };
+        if (!value) {
+          // not a language the terminal runs: it may be a mode of the editor (HTML, CSS, JavaScript, Markdown, JSON, YAML ...), which
+          // changes the colours and the editing of the open file, and nothing else
+          const m = this.setEditorMode(a.language || "");
+          if (m.ok) return { type: a.type, status: "done", detail: m.detail };
+          return { type: a.type, status: "failed", detail: "no such language; the picker has: " + opts.map((o) => o.text).join(", ") + "; the editor's modes are: " + m.modes };
+        }
         // already there: a change event would only start the terminal again and
         // put the starter code over the user's code
         if (picker.value === value) return { type: a.type, status: "done", detail: "it is the language already; nothing changed" };
@@ -1011,6 +1017,28 @@ export class AgentRunner {
         return done(r, { type: a.type, status: "done", detail: "deleted " + path + (r.ok && r.detail ? "; " + r.detail : "") });
       }
     }
+  }
+
+  // The editor's mode list (the language button at the foot of the editor): what a file's text is coloured and edited as. Choosing one
+  // does not start the terminal again and does not touch the text.
+  private setEditorMode(name: string): { ok: true; detail: string } | { ok: false; modes: string } {
+    const sel = document.getElementById("select-lang") as HTMLSelectElement | null;
+    if (!sel) return { ok: false, modes: "not available here" };
+    const opts = Array.from(sel.options).filter((o) => !o.disabled).map((o) => ({ value: o.value, text: o.text }));
+    const value = findLanguage(opts, name);
+    if (!value) return { ok: false, modes: opts.map((o) => o.text).join(", ") };
+    const text = (opts.find((o) => o.value === value) || { text: value }).text;
+    if (sel.value !== value) {
+      sel.value = value;
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    const web = /^(html|css|javascript|markdown)$/.test(value);
+    return {
+      ok: true,
+      detail:
+        "the editor's mode is " + text + " now (colours and editing); the terminal, Run and the text are as they were" +
+        (web ? "; to see a web page or Markdown, use preview_open" : ""),
+    };
   }
 
   private picker(): HTMLSelectElement | null {

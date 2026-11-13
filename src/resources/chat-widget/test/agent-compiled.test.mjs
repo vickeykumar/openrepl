@@ -422,6 +422,48 @@ test("built: the editor's changes go in without a review when everything is allo
   assert.equal(t.runner.perms.undoable().length, 0); // undone on the line, so the badge menu does not list it any more
 });
 
+test("built: a language that is a mode of the editor (HTML, CSS) is set as the mode, with the terminal left alone, and an unknown one lists both", async () => {
+  const sel = (id, options, value) => ({
+    id,
+    options,
+    value,
+    changed: 0,
+    dispatchEvent(e) {
+      if (e.type === "change") this.changed++;
+      return true;
+    },
+  });
+  const picker = sel("optionlist", [{ value: "c", text: "C" }, { value: "python", text: "Python" }], "python");
+  const mode = sel("select-lang", [{ value: "css", text: "CSS" }, { value: "html", text: "HTML" }, { value: "javascript", text: "JavaScript" }, { value: "image", text: "Image", disabled: true }], "text");
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "set_language", language: "HTML" }], done: false },
+      { say: "", actions: [{ type: "set_language", language: "COBOL" }], done: false },
+      { say: "", actions: [], done: true },
+    ],
+    { answer: () => "Allow once" }
+  );
+  globalThis.document.getElementById = (id) => (id === "optionlist" ? picker : id === "select-lang" ? mode : null);
+  try {
+    await t.done(t.runner.start("make a web page"));
+  } finally {
+    globalThis.document.getElementById = () => null;
+  }
+  const r1 = t.results(1).step_results[0];
+  assert.equal(r1.status, "done");
+  assert.match(r1.detail, /mode is HTML/);
+  assert.match(r1.detail, /preview_open/);
+  assert.equal(mode.value, "html");
+  assert.equal(mode.changed, 1);
+  assert.equal(picker.value, "python", "the terminal's language was changed");
+  assert.equal(picker.changed, 0);
+  const r2 = t.results(2).step_results[0];
+  assert.equal(r2.status, "failed");
+  assert.match(r2.detail, /the picker has: C, Python/);
+  assert.match(r2.detail, /editor's modes are: CSS, HTML, JavaScript/);
+  assert.doesNotMatch(r2.detail, /Image/); // a mode that cannot be chosen is not offered
+});
+
 test("built: Stop ends a task whose model is silent, and the box comes back", async () => {
   const t = setup([{ hang: true }]);
   const running = t.runner.start("wait for ever");
