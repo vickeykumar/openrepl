@@ -299,6 +299,7 @@ test("the menu keeps its switches, and Run keeps the pane with the terminal as a
 test("Ctrl+Alt+V opens and closes the pane, F6 moves the focus, Ctrl+L goes to the address bar", async ({ page }) => {
   await ready(page);
   const at = await makePages(page, { "f6.html": "<h1>f6</h1>" });
+  await page.locator("#terminal-div .xterm-helper-textarea").first().focus(); // the terminal has the focus, as it does in a real visit
   await page.keyboard.press("Control+Alt+V");
   await expect(page.locator("#preview-pane")).toBeVisible();
   await page.evaluate((f) => window.Preview.openPath(f), await at("f6.html")); // a page with the pane's script, so that keys inside it reach the pane

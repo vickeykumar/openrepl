@@ -796,7 +796,7 @@ function init() {
     if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && (k === "v" || k === "V" || e.code === "KeyV")) { e.preventDefault(); if (open) closePane(); else openPane(); return; }
     if (k === "F6" && open) { e.preventDefault(); focusNext(); return; }
     if (open && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (k === "l" || k === "L")) { var p = el("preview-pane"); if (p && p.contains(document.activeElement)) { e.preventDefault(); focusAddress(); } }
-  });
+}, true); // on the way down, so that the terminal (which takes keys for itself while it has the focus) does not swallow them
   // a program that already listens when the page opens (the pane's button shows a dot), and one that starts later: the
   // workspace is asked every 20 seconds while the page is in view and the pane is closed (a short answer, read from the
   // server's own tables; nothing else is asked of the server for this)
