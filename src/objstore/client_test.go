@@ -159,3 +159,60 @@ func TestNewChecksItsSettings(t *testing.T) {
 		t.Errorf("%+v %v", c, err)
 	}
 }
+
+func TestVersionsOfAnOverwrittenKeyAreListedAndReadOne_ByOne(t *testing.T) {
+	f := NewFake()
+	defer f.Close()
+	c, err := New(f.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	// a store that keeps no versions says so
+	if _, err := c.ListVersions(ctx, "h/"); err != ErrNoVersions {
+		t.Fatalf("an unversioned store: %v", err)
+	}
+	f.SetVersioned(true)
+	for _, body := range []string{"one", "two", "three"} {
+		if err := c.Put(ctx, "h/day.tar.gz", []byte(body), "application/gzip", map[string]string{"sha256": body}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.Put(ctx, "other/x", []byte("x"), "", nil)
+	vs, err := c.ListVersions(ctx, "h/")
+	if err != nil || len(vs) != 3 {
+		t.Fatalf("%+v %v", vs, err)
+	}
+	if !vs[0].IsLatest || vs[1].IsLatest || vs[0].Key != "h/day.tar.gz" || vs[0].Size != 5 {
+		t.Errorf("the newest first: %+v", vs)
+	}
+	got := map[string]string{}
+	for _, v := range vs {
+		data, obj, err := c.GetVersion(ctx, v.Key, v.VersionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got[string(data)] = obj.Meta["sha256"]
+	}
+	if len(got) != 3 || got["one"] != "one" || got["three"] != "three" {
+		t.Errorf("each version has its own body and notes: %v", got)
+	}
+	if _, _, err := c.GetVersion(ctx, "h/day.tar.gz", "nope"); err != ErrNotFound {
+		t.Errorf("a version that is not there: %v", err)
+	}
+	// a delete hides the key and keeps its versions
+	c.Delete(ctx, "h/day.tar.gz")
+	if _, _, err := c.Get(ctx, "h/day.tar.gz"); err != ErrNotFound {
+		t.Errorf("a deleted key: %v", err)
+	}
+	vs, _ = c.ListVersions(ctx, "h/")
+	marks := 0
+	for _, v := range vs {
+		if v.DeleteMarker {
+			marks++
+		}
+	}
+	if len(vs) != 4 || marks != 1 {
+		t.Errorf("versions after a delete: %+v", vs)
+	}
+}

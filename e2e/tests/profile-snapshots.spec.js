@@ -12,12 +12,15 @@ const script = fs.readFileSync(res("js", "profile-snapshots.js"), "utf8");
 const css = fs.readFileSync(res("css", "ui-refresh.css"), "utf8");
 
 const iso = (hoursAgo) => new Date(Date.now() - hoursAgo * 3600 * 1000).toISOString().replace(/\.\d+Z$/, "Z");
+const day = (n) => new Date(Date.now() - n * 86400 * 1000).toISOString().slice(0, 10);
 const LIST = {
   enabled: true, keep: 3, minutes: 5,
   snapshots: [
-    { generation: 90, at: iso(1), size: 1200, newest: true, few: true, before: false },
-    { generation: 89, at: iso(5), size: 8700000, newest: false, few: false, before: false },
-    { generation: 88, at: iso(30), size: 8650000, newest: false, few: false, before: true },
+    { id: "d:" + day(0), kind: "day", day: day(0), at: iso(1), size: 1200, newest: true, few: true,
+      earlier: [{ id: "d:" + day(0) + "@v2", kind: "version", at: iso(2), size: 8700000 }, { id: "d:" + day(0) + "@v1", kind: "version", at: iso(3), size: 8650000 }] },
+    { id: "d:" + day(1), kind: "day", day: day(1), at: iso(30), size: 8700000, newest: false, few: false },
+    { id: "d:" + day(2), kind: "day", day: day(2), at: iso(50), size: 8650000, newest: false, few: false },
+    { id: "d:" + day(4) + "@h1", kind: "hidden", day: day(4), at: iso(100), size: 8000000, newest: false, few: false },
   ],
 };
 
@@ -26,7 +29,7 @@ async function open(page, answers) {
   await page.route("**/profile/snapshots**", async (route) => {
     const req = route.request();
     const url = new URL(req.url());
-    if (url.pathname.endsWith("/zip")) { seen.zips.push(url.searchParams.get("generation")); return route.fulfill({ status: 200, contentType: "application/zip", body: "PK" }); }
+    if (url.pathname.endsWith("/zip")) { seen.zips.push(url.searchParams.get("id")); return route.fulfill({ status: 200, contentType: "application/zip", body: "PK" }); }
     if (url.pathname.endsWith("/restore")) {
       const body = JSON.parse(req.postData() || "{}");
       seen.posts.push(body);
@@ -50,14 +53,24 @@ const rows = (page) => card(page).locator("[data-snap-row]");
 test("the card lists the snapshots from the server, newest first, with what is worth a look", async ({ page }) => {
   const seen = await open(page, {});
   await expect(card(page)).toBeVisible();
-  await expect(rows(page)).toHaveCount(3);
-  await expect(card(page).locator("[data-snap-meta]")).toHaveText("3 of 3 kept");
+  await expect(rows(page)).toHaveCount(4);
+  await expect(card(page).locator("[data-snap-meta]")).toHaveText("3 of 3 days kept");
+  await expect(rows(page).nth(0)).toContainText("Today");
+  await expect(rows(page).nth(0)).toContainText("last saved");
   await expect(rows(page).nth(0)).toContainText("Newest");
   await expect(rows(page).nth(0)).toContainText("Few files");
   await expect(rows(page).nth(0)).toContainText("1.2 KB");
+  await expect(rows(page).nth(1)).toContainText("Yesterday");
   await expect(rows(page).nth(1)).toContainText("8.3 MB");
-  await expect(rows(page).nth(2)).toContainText("Before restore");
-  await expect(rows(page).nth(0)).toContainText("generation 90");
+  // the earlier versions of a day open under it, and close again
+  await expect(card(page)).toContainText("2 earlier versions of this day");
+  await card(page).getByRole("button", { name: /2 earlier versions/ }).click();
+  await expect(rows(page)).toHaveCount(6);
+  await expect(rows(page).nth(1)).toHaveClass(/profile-snap__earlier/);
+  await card(page).getByRole("button", { name: /2 earlier versions/ }).click();
+  await expect(rows(page)).toHaveCount(4);
+  // a day that was removed but is still in the store is listed apart
+  await expect(card(page)).toContainText("Removed days the store still has");
   // Refresh asks the server again
   await card(page).getByRole("button", { name: "Refresh" }).click();
   await expect.poll(() => seen.lists).toBe(2);
@@ -75,20 +88,20 @@ test("an empty list, a server with no snapshots and an error are each said in wo
   await expect(card(p3)).toContainText("The object store did not answer");
 });
 
-test("Get back into a new folder sends the generation and the way, says what was made and reads the list again", async ({ page }) => {
+test("Get back into a new folder sends the snapshot and the way, says what was made and reads the list again", async ({ page }) => {
   const seen = await open(page, {});
   await rows(page).nth(1).getByRole("button", { name: /Get back/ }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("Get back the snapshot of");
+  await expect(dialog).toContainText("Get back the files of yesterday");
   await expect(dialog.getByRole("radio", { name: /Put them in a new folder/ })).toBeChecked();
   await dialog.getByRole("button", { name: "Continue" }).click();
   await expect(dialog).toBeHidden();
-  expect(seen.posts).toEqual([{ generation: 89, mode: "folder", confirm: "" }]);
+  expect(seen.posts).toEqual([{ id: "d:" + day(1), mode: "folder", confirm: "" }]);
   await expect(card(page).locator("[data-snap-status]")).toContainText("41 files are in the folder restored-2026-11-12-1802");
   await expect.poll(() => seen.lists).toBe(2);
 });
 
-test("a zip is a download of that generation and adds nothing to the workspace", async ({ page }) => {
+test("a zip is a download of that snapshot and adds nothing to the workspace", async ({ page }) => {
   const seen = await open(page, {});
   await rows(page).nth(1).getByRole("button", { name: /Get back/ }).click();
   const dialog = page.getByRole("dialog");
@@ -96,7 +109,7 @@ test("a zip is a download of that generation and adds nothing to the workspace",
   const download = page.waitForEvent("download");
   await dialog.getByRole("button", { name: "Continue" }).click();
   await download;
-  expect(seen.zips).toEqual(["89"]);
+  expect(seen.zips).toEqual(["d:" + day(1)]);
   expect(seen.posts).toEqual([]);
 });
 
@@ -107,7 +120,8 @@ test("Replace asks for the word, stays off until it is typed in full, and then s
   await dialog.getByRole("radio", { name: /Replace my workspace/ }).check();
   await dialog.getByRole("button", { name: "Continue" }).click();
   await expect(dialog).toContainText("Replace your whole workspace?");
-  await expect(dialog).toContainText("a copy of what you have now is saved as a snapshot");
+  await expect(dialog).toContainText("Nothing is saved of the files you have now");
+  await expect(dialog).toContainText("Copy or download any file you want to keep");
   const replace = dialog.getByRole("button", { name: "Replace", exact: true });
   await expect(replace).toBeDisabled();
   await dialog.getByRole("textbox").fill("REPLA");
@@ -118,8 +132,8 @@ test("Replace asks for the word, stays off until it is typed in full, and then s
   await expect(replace).toBeEnabled();
   await replace.click();
   await expect(dialog).toBeHidden();
-  expect(seen.posts).toEqual([{ generation: 89, mode: "replace", confirm: "REPLACE" }]);
-  await expect(card(page).locator("[data-snap-status]")).toContainText("your workspace is the snapshot of");
+  expect(seen.posts).toEqual([{ id: "d:" + day(1), mode: "replace", confirm: "REPLACE" }]);
+  await expect(card(page).locator("[data-snap-status]")).toContainText("your workspace is the files of yesterday");
 });
 
 test("Cancel and Escape close the question and send nothing; an error from the server is said and nothing is claimed", async ({ page }) => {

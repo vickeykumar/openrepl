@@ -13,49 +13,172 @@ import (
 	"objstore"
 )
 
-// three snapshots of one home: generation 1 holds a.txt and b/b.txt, 2 adds c.txt, 3 changes a.txt
-func threeSnapshots(t *testing.T) (*Snapper, *objstore.Fake, string, func()) {
+// a home with a snapshot on each of three UTC days, and a second one on the last day (so that its file has an earlier version)
+// day 1 (2026-11-10): a.txt "one", b/b.txt; day 2 (11-11): c.txt added; day 3 (11-12): a.txt "uno", then d.txt added later in the day
+type days struct {
+	s     *Snapper
+	f     *objstore.Fake
+	dir   string
+	clock *time.Time
+}
+
+func threeDays(t *testing.T, versioned bool) days {
 	t.Helper()
 	f := objstore.NewFake()
+	f.SetVersioned(versioned)
 	s, base := newSnapper(t, f)
 	dir := filepath.Join(base, "anna0123")
+	clock := time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC)
+	s.Now = func() time.Time { return clock }
+	f.Now = func() time.Time { return clock }
 	write(t, filepath.Join(dir, "a.txt"), "one", time.Hour)
 	write(t, filepath.Join(dir, "b", "b.txt"), "bee", time.Hour)
-	clock := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
-	s.Now = func() time.Time { return clock }
 	snap := func() {
 		t.Helper()
 		if res, err := s.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made {
 			t.Fatalf("snapshot: %+v %v", res, err)
 		}
-		clock = clock.Add(2 * time.Hour)
 	}
 	snap()
+	clock = clock.Add(24 * time.Hour)
 	write(t, filepath.Join(dir, "c.txt"), "see", time.Hour)
 	snap()
+	clock = clock.Add(24 * time.Hour)
 	write(t, filepath.Join(dir, "a.txt"), "uno", time.Hour)
 	snap()
-	return s, f, dir, func() { clock = clock.Add(2 * time.Minute) }
+	clock = clock.Add(2 * time.Hour)
+	write(t, filepath.Join(dir, "d.txt"), "dee", time.Hour)
+	snap()
+	clock = clock.Add(2 * time.Minute)
+	return days{s: s, f: f, dir: dir, clock: &clock}
 }
 
-func TestTheListIsReadFromTheBucketNewestFirst(t *testing.T) {
-	s, f, _, _ := threeSnapshots(t)
-	defer f.Close()
-	infos, err := s.List(ctx, "anna0123")
+func (d days) later(dur time.Duration) { *d.clock = d.clock.Add(dur) }
+
+func TestThereIsOneFileForEachUTCDayAndASnapshotOverwritesItsDaysFile(t *testing.T) {
+	d := threeDays(t, true)
+	defer d.f.Close()
+	var got []string
+	for _, k := range d.f.Stored() {
+		got = append(got, k[strings.LastIndex(k, "/")+1:])
+	}
+	want := []string{"anna0123-2026-11-10.tar.gz", "anna0123-2026-11-11.tar.gz", "anna0123-2026-11-12.tar.gz", "latest.json"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("%v, want %v", got, want)
+	}
+	// the day's file holds the end of the day: the second snapshot of day 3
+	data, info, err := d.s.Archive(ctx, "anna0123", "d:2026-11-12")
+	if err != nil || info.Day != "2026-11-12" {
+		t.Fatal(info, err)
+	}
+	var zipped bytes.Buffer
+	if err := ToZip(data, &zipped); err != nil {
+		t.Fatal(err)
+	}
+	zr, _ := zip.NewReader(bytes.NewReader(zipped.Bytes()), int64(zipped.Len()))
+	names := ""
+	for _, f := range zr.File {
+		names += f.Name + ","
+	}
+	if !strings.Contains(names, "d.txt") || !strings.Contains(names, "c.txt") {
+		t.Errorf("the end of the day: %s", names)
+	}
+}
+
+func TestTheListHasTheDaysNewestFirstAndTheEarlierVersionsOfADay(t *testing.T) {
+	d := threeDays(t, true)
+	defer d.f.Close()
+	infos, err := d.s.List(ctx, "anna0123")
 	if err != nil || len(infos) != 3 {
 		t.Fatalf("%+v %v", infos, err)
 	}
-	if infos[0].Generation != 3 || !infos[0].Newest || infos[1].Generation != 2 || infos[2].Generation != 1 || infos[2].Newest {
+	if infos[0].ID != "d:2026-11-12" || !infos[0].Newest || infos[1].ID != "d:2026-11-11" || infos[2].ID != "d:2026-11-10" || infos[2].Newest {
 		t.Errorf("order: %+v", infos)
 	}
-	if infos[2].At.Format("2006-01-02 15:04") != "2026-11-12 10:00" || infos[0].Size <= 0 {
-		t.Errorf("time and size: %+v", infos[2])
+	if infos[0].Day != "2026-11-12" || infos[0].Size <= 0 || infos[0].At.Format("2006-01-02 15:04") != "2026-11-12 12:00" {
+		t.Errorf("the last write of the day: %+v", infos[0])
+	}
+	// day 3 was written twice: one earlier version, from before d.txt was added; days written once have none
+	if len(infos[0].Earlier) != 1 || infos[0].Earlier[0].Kind != "version" || infos[0].Earlier[0].At.Format("15:04") != "10:00" {
+		t.Errorf("earlier versions of the last day: %+v", infos[0].Earlier)
+	}
+	if len(infos[1].Earlier) != 0 || len(infos[2].Earlier) != 0 {
+		t.Errorf("a day written once has no earlier version: %+v %+v", infos[1].Earlier, infos[2].Earlier)
 	}
 	// another user's home, a guest, and a folder that is not a home are not listed
 	for _, h := range []string{"guest-abc", "bob00000", "../x"} {
-		if infos, err := s.List(ctx, h); err == nil && len(infos) > 0 {
+		if infos, err := d.s.List(ctx, h); err == nil && len(infos) > 0 {
 			t.Errorf("%s: %+v", h, infos)
 		}
+	}
+}
+
+func TestAnEarlierVersionOfADayComesBackAsItWas(t *testing.T) {
+	d := threeDays(t, true)
+	defer d.f.Close()
+	infos, _ := d.s.List(ctx, "anna0123")
+	earlier := infos[0].Earlier[0]
+	res, err := d.s.Restore(ctx, "anna0123", earlier.ID, "folder")
+	if err != nil || res.Files != 3 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if _, err := os.Stat(filepath.Join(d.dir, res.Folder, "d.txt")); err == nil {
+		t.Error("d.txt was added after that version")
+	}
+	if b, _ := os.ReadFile(filepath.Join(d.dir, res.Folder, "c.txt")); string(b) != "see" {
+		t.Errorf("c.txt: %q", b)
+	}
+	// an ID that is not in the list is refused, whatever it looks like
+	for _, id := range []string{"d:2026-11-12@v99999", "d:2030-01-01", "../../x", "g:5", "d:2026-11-12@"} {
+		if _, err := d.s.Restore(ctx, "anna0123", id, "folder"); err == nil {
+			t.Errorf("%q was taken", id)
+		}
+	}
+}
+
+func TestADayThatFellOutOfTheKeptDaysIsHiddenAndStillListedWhileTheStoreKeepsIt(t *testing.T) {
+	d := threeDays(t, true)
+	defer d.f.Close()
+	// a fourth day: the first day's file is removed from the bucket (hidden, on a versioned one)
+	d.later(24 * time.Hour)
+	write(t, filepath.Join(d.dir, "e.txt"), "eee", time.Hour)
+	if res, err := d.s.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made || res.Deleted != 1 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	infos, _ := d.s.List(ctx, "anna0123")
+	if len(infos) != 4 || infos[0].Day != "2026-11-13" || infos[3].Kind != "hidden" || infos[3].Day != "2026-11-10" {
+		t.Fatalf("%+v", infos)
+	}
+	if infos[3].Newest || infos[0].Kind != "day" {
+		t.Errorf("flags: %+v", infos)
+	}
+	// it can still be got back
+	res, err := d.s.Restore(ctx, "anna0123", infos[3].ID, "folder")
+	if err != nil || res.Files != 2 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(d.dir, res.Folder, "a.txt")); string(b) != "one" {
+		t.Errorf("a.txt of the removed day: %q", b)
+	}
+}
+
+func TestWithoutVersionsTheListHasTheKeptDaysOnly(t *testing.T) {
+	d := threeDays(t, false)
+	defer d.f.Close()
+	d.later(24 * time.Hour)
+	write(t, filepath.Join(d.dir, "e.txt"), "eee", time.Hour)
+	d.s.SnapshotHome(ctx, "anna0123", true)
+	infos, err := d.s.List(ctx, "anna0123")
+	if err != nil || len(infos) != 3 {
+		t.Fatalf("%+v %v", infos, err)
+	}
+	for _, in := range infos {
+		if len(in.Earlier) != 0 || in.Kind != "day" {
+			t.Errorf("no history to show: %+v", in)
+		}
+	}
+	if infos[0].Day != "2026-11-13" || infos[2].Day != "2026-11-11" {
+		t.Errorf("the kept days: %+v", infos)
 	}
 }
 
@@ -64,6 +187,9 @@ func TestASnapshotMuchSmallerThanTheOneBeforeItIsMarkedFew(t *testing.T) {
 	defer f.Close()
 	s, base := newSnapper(t, f)
 	dir := filepath.Join(base, "anna0123")
+	clock := time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC)
+	s.Now = func() time.Time { return clock }
+	f.Now = func() time.Time { return clock }
 	// not compressible, as a real workspace is
 	b := make([]byte, 60000)
 	rand.New(rand.NewSource(1)).Read(b)
@@ -71,6 +197,7 @@ func TestASnapshotMuchSmallerThanTheOneBeforeItIsMarkedFew(t *testing.T) {
 	if res, err := s.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made {
 		t.Fatal(res, err)
 	}
+	clock = clock.Add(24 * time.Hour)
 	os.RemoveAll(dir)
 	write(t, filepath.Join(dir, ".bashrc"), "x", time.Hour)
 	if res, err := s.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made {
@@ -82,131 +209,131 @@ func TestASnapshotMuchSmallerThanTheOneBeforeItIsMarkedFew(t *testing.T) {
 	}
 }
 
-func TestASnapshotCanComeBackInANewFolderAndNothingThereIsTouched(t *testing.T) {
-	s, f, dir, later := threeSnapshots(t)
-	defer f.Close()
-	write(t, filepath.Join(dir, "today.txt"), "work of today", time.Minute)
-	res, err := s.Restore(ctx, "anna0123", 1, "folder")
-	if err != nil || res.Folder != "restored-2026-11-12-1000" || res.Files != 2 {
+func TestADayCanComeBackInANewFolderAndNothingThereIsTouched(t *testing.T) {
+	d := threeDays(t, true)
+	defer d.f.Close()
+	write(t, filepath.Join(d.dir, "today.txt"), "work of today", time.Minute)
+	res, err := d.s.Restore(ctx, "anna0123", "d:2026-11-10", "folder")
+	if err != nil || res.Folder != "restored-2026-11-10-1000" || res.Files != 2 {
 		t.Fatalf("%+v %v", res, err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, res.Folder, "a.txt")); string(b) != "one" {
-		t.Errorf("a.txt of generation 1: %q", b)
+	if b, _ := os.ReadFile(filepath.Join(d.dir, res.Folder, "a.txt")); string(b) != "one" {
+		t.Errorf("a.txt of day 1: %q", b)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, res.Folder, "b", "b.txt")); string(b) != "bee" {
-		t.Errorf("b/b.txt: %q", b)
-	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "a.txt")); string(b) != "uno" {
+	if b, _ := os.ReadFile(filepath.Join(d.dir, "a.txt")); string(b) != "uno" {
 		t.Errorf("the file that is there was touched: %q", b)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "today.txt")); string(b) != "work of today" {
+	if b, _ := os.ReadFile(filepath.Join(d.dir, "today.txt")); string(b) != "work of today" {
 		t.Errorf("today.txt: %q", b)
 	}
 	// a second time within a minute is refused, later it gets a new name
-	if _, err := s.Restore(ctx, "anna0123", 1, "folder"); err != ErrTooSoon {
+	if _, err := d.s.Restore(ctx, "anna0123", "d:2026-11-10", "folder"); err != ErrTooSoon {
 		t.Errorf("too soon: %v", err)
 	}
-	later()
-	later()
-	if res, err := s.Restore(ctx, "anna0123", 1, "folder"); err != nil || res.Folder != "restored-2026-11-12-1000-2" {
+	d.later(2 * time.Minute)
+	if res, err := d.s.Restore(ctx, "anna0123", "d:2026-11-10", "folder"); err != nil || res.Folder != "restored-2026-11-10-1000-2" {
 		t.Errorf("second folder: %+v %v", res, err)
 	}
 }
 
-func TestReplaceMakesTheWorkspaceTheSnapshotAfterACopyOfWhatWasThere(t *testing.T) {
-	s, f, dir, _ := threeSnapshots(t)
-	defer f.Close()
-	write(t, filepath.Join(dir, "today.txt"), "work of today", time.Minute)
-	// the oldest of the three: the copy that is made first pushes it out of the bucket, and it must still come back
-	res, err := s.Restore(ctx, "anna0123", 1, "replace")
+func TestReplaceMakesTheWorkspaceExactlyTheSnapshot(t *testing.T) {
+	d := threeDays(t, true)
+	defer d.f.Close()
+	write(t, filepath.Join(d.dir, "today.txt"), "work of today", time.Minute)
+	res, err := d.s.Restore(ctx, "anna0123", "d:2026-11-10", "replace")
 	if err != nil || res.Mode != "replace" || res.Files != 2 {
 		t.Fatalf("%+v %v", res, err)
 	}
 	for name, want := range map[string]string{"a.txt": "one", "b/b.txt": "bee"} {
-		if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != want {
+		if b, _ := os.ReadFile(filepath.Join(d.dir, name)); string(b) != want {
 			t.Errorf("%s is %q, want %q", name, b, want)
 		}
 	}
-	for _, gone := range []string{"c.txt", "today.txt"} {
-		if _, err := os.Stat(filepath.Join(dir, gone)); err == nil {
+	for _, gone := range []string{"c.txt", "d.txt", "today.txt"} {
+		if _, err := os.Stat(filepath.Join(d.dir, gone)); err == nil {
 			t.Errorf("%s was not removed", gone)
 		}
 	}
-	// the files are as new as now, so that the sync with a worker keeps them
-	if fi, err := os.Stat(filepath.Join(dir, "a.txt")); err != nil || s.now().Sub(fi.ModTime()) > time.Minute || fi.ModTime().Sub(s.now()) > time.Minute {
+	if fi, err := os.Stat(filepath.Join(d.dir, "a.txt")); err != nil || d.s.now().Sub(fi.ModTime()) > time.Minute || fi.ModTime().Sub(d.s.now()) > time.Minute {
 		t.Errorf("modification time: %v %v", fi, err)
 	}
-	// nothing is left of the work: no folder of the old home or of the restore in the workspaces folder
-	entries, _ := os.ReadDir(filepath.Dir(dir))
+	entries, _ := os.ReadDir(filepath.Dir(d.dir))
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), ".replaced-") || strings.HasPrefix(e.Name(), ".restore-") {
 			t.Errorf("left behind: %s", e.Name())
 		}
 	}
-	// the copy of what was there is in the list, as "before", and holds today's file
-	infos, _ := s.List(ctx, "anna0123")
-	if len(infos) == 0 || !infos[0].Before {
-		t.Fatalf("the list: %+v", infos)
-	}
-	data, _, err := s.Archive(ctx, "anna0123", infos[0].Generation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var zipped bytes.Buffer
-	if err := ToZip(data, &zipped); err != nil {
-		t.Fatal(err)
-	}
-	zr, _ := zip.NewReader(bytes.NewReader(zipped.Bytes()), int64(zipped.Len()))
-	var names []string
-	for _, zf := range zr.File {
-		names = append(names, zf.Name)
-	}
-	if !strings.Contains(strings.Join(names, ","), "today.txt") || !strings.Contains(strings.Join(names, ","), "c.txt") {
-		t.Errorf("the safety copy: %v", names)
-	}
-}
-
-func TestReplaceChangesNothingWhenTheCopyOfWhatIsThereCannotBeMade(t *testing.T) {
-	s, f, dir, _ := threeSnapshots(t)
-	defer f.Close()
-	write(t, filepath.Join(dir, "today.txt"), "work of today", time.Minute)
-	f.CutPuts(true) // the upload of the copy dies
-	if _, err := s.Restore(ctx, "anna0123", 2, "replace"); err == nil {
-		t.Fatal("replaced although the copy could not be made")
-	}
-	f.CutPuts(false)
-	if b, _ := os.ReadFile(filepath.Join(dir, "today.txt")); string(b) != "work of today" {
-		t.Errorf("the workspace was changed: %q", b)
-	}
-	entries, _ := os.ReadDir(filepath.Dir(dir))
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".replaced-") || strings.HasPrefix(e.Name(), ".restore-") {
-			t.Errorf("left behind: %s", e.Name())
+	// nothing is saved of what was there: the list is still the three days
+	infos, _ := d.s.List(ctx, "anna0123")
+	for _, in := range infos {
+		if strings.Contains(in.ID, "b:") {
+			t.Errorf("a copy was made: %+v", in)
 		}
 	}
 }
 
 func TestASnapshotThatIsNotThereOrIsAnotherUsersIsRefused(t *testing.T) {
-	s, f, _, _ := threeSnapshots(t)
-	defer f.Close()
-	if _, err := s.Restore(ctx, "anna0123", 99, "folder"); err != ErrNoSuchSnapshot {
-		t.Errorf("a generation that is not there: %v", err)
+	d := threeDays(t, true)
+	defer d.f.Close()
+	if _, err := d.s.Restore(ctx, "anna0123", "d:2030-01-01", "folder"); err != ErrNoSuchSnapshot {
+		t.Errorf("a day that is not there: %v", err)
 	}
-	if _, err := s.Restore(ctx, "anna0123", 1, "everything"); err == nil {
+	if _, err := d.s.Restore(ctx, "anna0123", "d:2026-11-10", "everything"); err == nil {
 		t.Error("an unknown way was taken")
 	}
-	if _, err := s.Restore(ctx, "guest-abc", 1, "folder"); err == nil {
+	if _, err := d.s.Restore(ctx, "guest-abc", "d:2026-11-10", "folder"); err == nil {
 		t.Error("a guest's home was restored")
 	}
-	if _, err := s.Restore(ctx, "bob00000", 1, "folder"); err == nil {
+	if _, err := d.s.Restore(ctx, "bob00000", "d:2026-11-10", "folder"); err == nil {
 		t.Error("a home with no snapshots was restored")
 	}
 }
 
-func TestAZipHasTheFilesAndFoldersOfTheSnapshot(t *testing.T) {
-	s, f, _, _ := threeSnapshots(t)
+func TestOldSnapshotsOfTheEarlierSchemeAreReadAndRemovedWhenOldAndADayExists(t *testing.T) {
+	f := objstore.NewFake()
 	defer f.Close()
-	data, _, err := s.Archive(ctx, "anna0123", 2)
+	s, base := newSnapper(t, f)
+	dir := filepath.Join(base, "anna0123")
+	clock := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+	s.Now = func() time.Time { return clock }
+	f.Now = func() time.Time { return clock }
+	write(t, filepath.Join(dir, "a.txt"), "one", time.Hour)
+	// a snapshot of the earlier scheme: put by hand, the name of that scheme
+	if res, err := s.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made {
+		t.Fatal(res, err)
+	}
+	day := f.Stored()[0]
+	data, _ := f.Object(day)
+	f.Set("pfx/homes/prod/anna0123/0000000007-20261108T100000Z-abcdef.tar.gz", data, clock.Add(-4*24*time.Hour)) // 4 days old
+	f.Set("pfx/homes/prod/anna0123/0000000008-20261111T100000Z-abcdef.tar.gz", data, clock.Add(-24*time.Hour))   // a day old
+	infos, _ := s.List(ctx, "anna0123")
+	kinds := ""
+	for _, in := range infos {
+		kinds += in.Kind + ","
+	}
+	if !strings.Contains(kinds, "legacy") || len(infos) != 3 {
+		t.Fatalf("the earlier scheme is listed: %+v", infos)
+	}
+	// the next snapshot removes the one that is old, and keeps the one of a day ago
+	clock = clock.Add(time.Hour)
+	write(t, filepath.Join(dir, "b.txt"), "bee", time.Minute)
+	if res, err := s.SnapshotHome(ctx, "anna0123", true); err != nil || res.Deleted != 1 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	for _, k := range f.Stored() {
+		if strings.Contains(k, "0000000007-") {
+			t.Errorf("an old snapshot is still there: %s", k)
+		}
+	}
+	if !strings.Contains(strings.Join(f.Stored(), ","), "0000000008-") {
+		t.Error("a snapshot of a day ago was removed")
+	}
+}
+
+func TestAZipHasTheFilesAndFoldersOfTheSnapshot(t *testing.T) {
+	d := threeDays(t, true)
+	defer d.f.Close()
+	data, _, err := d.s.Archive(ctx, "anna0123", "d:2026-11-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +353,7 @@ func TestAZipHasTheFilesAndFoldersOfTheSnapshot(t *testing.T) {
 		rc.Close()
 		got[zf.Name] = b.String()
 	}
-	if got["a.txt"] != "one" || got["b/b.txt"] != "bee" || got["c.txt"] != "see" {
+	if got["a.txt"] != "one" || got["b/b.txt"] != "bee" {
 		t.Errorf("%v", got)
 	}
 	if _, ok := got["MANIFEST.json"]; ok {

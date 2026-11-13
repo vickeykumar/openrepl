@@ -2567,6 +2567,12 @@ body.files-collapsed .files-panel { display: none; }
 .profile-snap__note { margin: 12px 0 0; font-size: 14px; line-height: 1.55; color: #5B5866; }
 [data-theme="dark"] .profile-snap__note { color: var(--muted-2); }
 .profile-snap__note.is-error { color: #B02A2A; }
+.profile-snap__note.is-warn { color: #B02A2A; font-weight: 600; }
+.profile-snap__h { margin: 18px 0 0; font-size: 15px; font-weight: 700; }
+.profile-snap__earlier td { padding-left: 24px; background: rgba(22, 21, 26, 0.03); }
+[data-theme="dark"] .profile-snap__earlier td { background: rgba(255, 255, 255, 0.04); }
+.profile-snap__link { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
+.profile-snap__toggle td { padding-top: 4px; padding-bottom: 8px; }
 .profile-snap__table { width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 14px; }
 .profile-snap__table th { padding: 8px 10px; text-align: left; font-weight: 600; font-size: 12.5px; color: #5B5866; border-bottom: 1px solid #E4E1DA; }
 .profile-snap__table td { padding: 10px; vertical-align: middle; border-bottom: 1px solid #E4E1DA; }

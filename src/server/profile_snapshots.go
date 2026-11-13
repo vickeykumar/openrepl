@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,23 +18,14 @@ import (
 
 // The signed-in user's own workspace snapshots (the profile page): the list read from the object store at the time, getting
 // one back into a new folder or as a zip, or making the workspace exactly that snapshot. The home is always the one of the
-// signed-in account: the request names a generation and nothing else.
-
-type snapshotInfo struct {
-	Generation int64  `json:"generation"`
-	At         string `json:"at"`
-	Size       int64  `json:"size"`
-	Newest     bool   `json:"newest"`
-	Few        bool   `json:"few"`
-	Before     bool   `json:"before"`
-}
+// signed-in account: the request names a snapshot id and nothing else.
 
 type snapshotList struct {
-	Enabled   bool           `json:"enabled"`
-	Keep      int            `json:"keep"`
-	Minutes   int            `json:"minutes"` // how often a snapshot is made
-	Snapshots []snapshotInfo `json:"snapshots"`
-	Error     string         `json:"error,omitempty"`
+	Enabled   bool            `json:"enabled"`
+	Keep      int             `json:"keep"`
+	Minutes   int             `json:"minutes"` // how often a snapshot is made
+	Snapshots []homesnap.Info `json:"snapshots"`
+	Error     string          `json:"error,omitempty"`
 }
 
 // snapshotHome is the home of the signed-in account, or "" after the answer has been written.
@@ -85,8 +75,6 @@ func snapshotError(err error) (int, string) {
 		return http.StatusNotFound, "That snapshot is no longer there. Refresh the list."
 	case errors.Is(err, homesnap.ErrTooSoon), errors.Is(err, homesnap.ErrBusy):
 		return http.StatusTooManyRequests, err.Error()
-	case errors.Is(err, homesnap.ErrSafetyCopy):
-		return http.StatusBadGateway, err.Error()
 	}
 	log.Println("profile snapshots:", redactErr(err))
 	return http.StatusBadGateway, "The object store did not answer. Try again in a minute."
@@ -102,7 +90,7 @@ func (server *Server) handleProfileSnapshots(w http.ResponseWriter, r *http.Requ
 	if home == "" {
 		return
 	}
-	reply := snapshotList{Keep: homesnap.Keep, Minutes: int(homesnap.Default.CurrentInterval() / time.Minute), Snapshots: []snapshotInfo{}}
+	reply := snapshotList{Keep: homesnap.Keep, Minutes: int(homesnap.Default.CurrentInterval() / time.Minute), Snapshots: []homesnap.Info{}}
 	if !homesnap.Default.Enabled() {
 		writeJSON(w, http.StatusOK, reply)
 		return
@@ -117,16 +105,16 @@ func (server *Server) handleProfileSnapshots(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, status, reply)
 		return
 	}
-	for _, i := range infos {
-		reply.Snapshots = append(reply.Snapshots, snapshotInfo{Generation: i.Generation, At: i.At.UTC().Format(time.RFC3339), Size: i.Size, Newest: i.Newest, Few: i.Few, Before: i.Before})
+	if infos != nil {
+		reply.Snapshots = infos
 	}
 	writeJSON(w, http.StatusOK, reply)
 }
 
 type restoreRequest struct {
-	Generation int64  `json:"generation"`
-	Mode       string `json:"mode"` // "folder" or "replace"
-	Confirm    string `json:"confirm"`
+	ID      string `json:"id"`
+	Mode    string `json:"mode"` // "folder" or "replace"
+	Confirm string `json:"confirm"`
 }
 
 // POST /profile/snapshots/restore
@@ -144,7 +132,7 @@ func (server *Server) handleProfileSnapshotRestore(w http.ResponseWriter, r *htt
 		return
 	}
 	var req restoreRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil || req.Generation <= 0 {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil || req.ID == "" {
 		http.Error(w, "Say which snapshot.", http.StatusBadRequest)
 		return
 	}
@@ -154,17 +142,17 @@ func (server *Server) handleProfileSnapshotRestore(w http.ResponseWriter, r *htt
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	res, err := homesnap.Default.Restore(ctx, home, req.Generation, req.Mode)
+	res, err := homesnap.Default.Restore(ctx, home, req.ID, req.Mode)
 	if err != nil {
 		status, msg := snapshotError(err)
 		http.Error(w, msg, status)
 		return
 	}
-	log.Printf("profile snapshots: %s got back generation %d (%s): %d files %s", home, req.Generation, req.Mode, res.Files, res.Folder)
+	log.Printf("profile snapshots: %s got back %s (%s): %d files %s", home, req.ID, req.Mode, res.Files, res.Folder)
 	writeJSON(w, http.StatusOK, res)
 }
 
-// GET /profile/snapshots/zip?generation=N
+// GET /profile/snapshots/zip?id=<id>
 func (server *Server) handleProfileSnapshotZip(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "GET only", http.StatusMethodNotAllowed)
@@ -174,14 +162,14 @@ func (server *Server) handleProfileSnapshotZip(w http.ResponseWriter, r *http.Re
 	if home == "" {
 		return
 	}
-	gen, err := strconv.ParseInt(r.URL.Query().Get("generation"), 10, 64)
-	if err != nil || gen <= 0 {
+	id := r.URL.Query().Get("id")
+	if id == "" {
 		http.Error(w, "Say which snapshot.", http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
-	data, info, err := homesnap.Default.Archive(ctx, home, gen)
+	data, info, err := homesnap.Default.Archive(ctx, home, id)
 	if err != nil {
 		status, msg := snapshotError(err)
 		http.Error(w, msg, status)
@@ -191,6 +179,6 @@ func (server *Server) handleProfileSnapshotZip(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%s.zip"`, home, info.At.UTC().Format("2006-01-02-1504")))
 	w.Header().Set("Cache-Control", "no-store")
 	if err := homesnap.ToZip(data, w); err != nil {
-		log.Println("profile snapshots: the zip of", home, gen, "stopped:", err)
+		log.Println("profile snapshots: the zip of", home, id, "stopped:", err)
 	}
 }

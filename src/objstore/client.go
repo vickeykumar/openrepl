@@ -154,7 +154,8 @@ func (c *Client) do(ctx context.Context, method string, u *url.URL, body []byte,
 			lastErr = err
 			continue
 		}
-		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+		// a 501 says the store does not know the call: asking again does not help
+		if (resp.StatusCode >= 500 && resp.StatusCode != http.StatusNotImplemented) || resp.StatusCode == http.StatusTooManyRequests {
 			lastErr = readError(resp)
 			continue
 		}
@@ -324,4 +325,103 @@ func (c *Client) Check(ctx context.Context) error {
 	}
 	resp.Body.Close()
 	return nil
+}
+
+// ErrNoVersions is what ListVersions answers for a store that keeps no versions of an object (R2, or a bucket whose
+// versioning is off and that does not list them): there is simply no history to show.
+var ErrNoVersions = errors.New("objstore: this store keeps no versions of an object")
+
+// Version is one stored version of a key: the current one, an older one that an overwrite left, or a delete marker.
+type Version struct {
+	Key          string
+	VersionID    string
+	Size         int64
+	LastModified time.Time
+	IsLatest     bool
+	DeleteMarker bool
+}
+
+// ListVersions returns every version of every key that starts with prefix, newest first for a key (the order the store gives).
+// It follows the pages; more than maxObjects is an error. A store that does not know the call answers ErrNoVersions.
+func (c *Client) ListVersions(ctx context.Context, prefix string) ([]Version, error) {
+	const maxObjects = 20000
+	var out []Version
+	keyMarker, idMarker := "", ""
+	for {
+		q := url.Values{"versions": {""}, "prefix": {c.full(prefix)}}
+		if keyMarker != "" {
+			q.Set("key-marker", keyMarker)
+			if idMarker != "" {
+				q.Set("version-id-marker", idMarker)
+			}
+		}
+		resp, err := c.do(ctx, http.MethodGet, c.url("", q), nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusBadRequest {
+			resp.Body.Close()
+			return nil, ErrNoVersions
+		}
+		if resp.StatusCode/100 != 2 {
+			return nil, readError(resp)
+		}
+		type item struct {
+			Key          string `xml:"Key"`
+			VersionID    string `xml:"VersionId"`
+			IsLatest     bool   `xml:"IsLatest"`
+			LastModified string `xml:"LastModified"`
+			Size         int64  `xml:"Size"`
+		}
+		var page struct {
+			Truncated   bool   `xml:"IsTruncated"`
+			NextKey     string `xml:"NextKeyMarker"`
+			NextID      string `xml:"NextVersionIdMarker"`
+			Versions    []item `xml:"Version"`
+			DeleteMarks []item `xml:"DeleteMarker"`
+		}
+		err = xml.NewDecoder(resp.Body).Decode(&page)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("objstore: the listing of versions could not be read: %v", err)
+		}
+		add := func(it item, marker bool) {
+			t, _ := time.Parse(time.RFC3339, it.LastModified)
+			out = append(out, Version{Key: c.strip(it.Key), VersionID: it.VersionID, Size: it.Size, LastModified: t, IsLatest: it.IsLatest, DeleteMarker: marker})
+		}
+		for _, v := range page.Versions {
+			add(v, false)
+		}
+		for _, d := range page.DeleteMarks {
+			add(d, true)
+		}
+		if len(out) > maxObjects {
+			return nil, errors.New("objstore: the listing of versions is too long to be used")
+		}
+		if !page.Truncated || page.NextKey == "" {
+			return out, nil
+		}
+		keyMarker, idMarker = page.NextKey, page.NextID
+	}
+}
+
+// GetVersion reads one stored version of a key.
+func (c *Client) GetVersion(ctx context.Context, key, versionID string) ([]byte, *Object, error) {
+	resp, err := c.do(ctx, http.MethodGet, c.url(key, url.Values{"versionId": {versionID}}), nil, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, nil, ErrNotFound
+	}
+	if resp.StatusCode/100 != 2 {
+		return nil, nil, readError(resp)
+	}
+	defer resp.Body.Close()
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	return data, objectFrom(key, resp.Header), nil
 }

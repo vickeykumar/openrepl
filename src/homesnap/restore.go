@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"objstore"
 )
 
 // What a user may do with the snapshots of their own workspace (the profile page): see the list, get one back into a new
@@ -26,48 +28,35 @@ var (
 	ErrNoSuchSnapshot = errors.New("homesnap: that snapshot is no longer there")
 	// ErrTooSoon is what a restore answers when another was done for the same home less than a minute ago.
 	ErrTooSoon = errors.New("homesnap: a snapshot was got back a moment ago; try again in a minute")
-	// ErrSafetyCopy is what Replace answers when the copy of the files that are there now could not be made: nothing is changed.
-	ErrSafetyCopy = errors.New("homesnap: the files you have now could not be copied first, so nothing was changed")
 )
 
 // restoreEvery is the least time between two restores of one home.
 const restoreEvery = time.Minute
 
-// Info is one snapshot of a home, as the profile page lists it.
+// Info is one snapshot of a home, as the profile page lists it. The ID is what a request names (the server finds the
+// object from it; a user never names a key).
 type Info struct {
-	Generation int64     `json:"generation"`
-	At         time.Time `json:"at"`
-	Size       int64     `json:"size"`
-	Newest     bool      `json:"newest"`
-	Few        bool      `json:"few"`    // a lot smaller than the one before it (a hint, nothing more)
-	Before     bool      `json:"before"` // the copy made before a workspace was replaced
-	Key        string    `json:"-"`
+	ID      string    `json:"id"`
+	Kind    string    `json:"kind"` // "day", "legacy", "version" (an earlier version of a day's file) or "hidden" (a day's file that was removed)
+	Day     string    `json:"day,omitempty"`
+	At      time.Time `json:"at"`
+	Size    int64     `json:"size"`
+	Newest  bool      `json:"newest"`
+	Few     bool      `json:"few"` // a lot smaller than the one before it (a hint, nothing more)
+	Earlier []Info    `json:"earlier,omitempty"`
+
+	key       string
+	versionID string
 }
 
-// parseKey reads the generation, the time and the kind from the name of a snapshot object.
-func parseKey(key string) (gen int64, at time.Time, before bool, ok bool) {
-	name := key[strings.LastIndex(key, "/")+1:]
-	if !strings.HasSuffix(name, ".tar.gz") {
-		return 0, at, false, false
-	}
-	name = strings.TrimSuffix(name, ".tar.gz")
-	before = strings.HasSuffix(name, "-before")
-	name = strings.TrimSuffix(name, "-before")
-	parts := strings.Split(name, "-")
-	if len(parts) < 2 {
-		return 0, at, false, false
-	}
-	if _, err := fmt.Sscan(parts[0], &gen); err != nil || gen <= 0 {
-		return 0, at, false, false
-	}
-	t, err := time.Parse(timeLayout, parts[1])
-	if err != nil {
-		return 0, at, false, false
-	}
-	return gen, t, before, true
-}
+// maxEarlier bounds the earlier versions listed for one day, and maxHidden the removed days.
+const (
+	maxEarlier = 60
+	maxHidden  = 6
+)
 
-// List is the snapshots of a home that are in the bucket now, the newest first.
+// List is the snapshots of a home that are in the bucket now, the newest first: the days that are kept, what is left of the earlier scheme, and, when the store keeps versions, the earlier versions of each day (what the
+// day's file was before each overwrite) and the days that were removed and are still there as hidden versions.
 func (s *Snapper) List(ctx context.Context, home string) ([]Info, error) {
 	if !IsKept(home) || !s.Enabled() {
 		return nil, ErrNotAvailable
@@ -76,56 +65,142 @@ func (s *Snapper) List(ctx context.Context, home string) ([]Info, error) {
 	if err != nil {
 		return nil, ErrNotAvailable
 	}
-	objs, err := c.List(ctx, s.prefix(home))
+	objs, err := s.objects(ctx, c, home)
 	if err != nil {
 		return nil, err
 	}
 	var out []Info
+	byKey := map[string]int{}
 	for _, o := range objs {
-		gen, at, before, ok := parseKey(o.Key)
-		if !ok {
+		in := Info{At: o.at, Size: o.size, key: o.key}
+		switch o.kind {
+		case kindDay:
+			in.ID, in.Kind, in.Day = "d:"+o.day, kindDay, o.day
+		case kindLegacy:
+			in.ID, in.Kind = fmt.Sprintf("g:%d", o.gen), kindLegacy
+		}
+		byKey[o.key] = len(out)
+		out = append(out, in)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
+	byKey = map[string]int{}
+	for i := range out {
+		byKey[out[i].key] = i
+	}
+	// what the store remembers: earlier versions of a day's file, and days that were removed
+	if vs, verr := c.ListVersions(ctx, s.prefix(home)); verr == nil {
+		type group struct {
+			key      string
+			versions []objstore.Version
+		}
+		groups := map[string]*group{}
+		var order []string
+		for _, v := range vs {
+			if g := groups[v.Key]; g != nil {
+				g.versions = append(g.versions, v)
+			} else {
+				groups[v.Key] = &group{key: v.Key, versions: []objstore.Version{v}}
+				order = append(order, v.Key)
+			}
+		}
+		hidden := 0
+		for _, k := range order {
+			g := groups[k]
+			ob, ok := parseObject(home, objstore.Object{Key: k})
+			if !ok || ob.kind != kindDay {
+				continue
+			}
+			sort.Slice(g.versions, func(i, j int) bool { return g.versions[i].LastModified.After(g.versions[j].LastModified) })
+			var earlier []Info
+			for _, v := range g.versions {
+				if v.DeleteMarker || v.IsLatest && !g.versions[0].DeleteMarker {
+					continue
+				}
+				if len(earlier) >= maxEarlier {
+					break
+				}
+				earlier = append(earlier, Info{ID: "d:" + ob.day + "@" + v.VersionID, Kind: "version", Day: ob.day, At: v.LastModified, Size: v.Size, key: k, versionID: v.VersionID})
+			}
+			if i, here := byKey[k]; here {
+				out[i].Earlier = earlier
+			} else if len(earlier) > 0 && hidden < maxHidden {
+				// the day's file was removed (it fell out of the kept days): its versions are still in the store, for a while
+				hidden++
+				top := earlier[0]
+				out = append(out, Info{ID: "d:" + ob.day + "@" + top.versionID, Kind: "hidden", Day: ob.day, At: top.At, Size: top.Size, Earlier: earlier[1:], key: k, versionID: top.versionID})
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		hi, hj := out[i].Kind == "hidden", out[j].Kind == "hidden"
+		if hi != hj {
+			return hj // removed days last
+		}
+		return out[i].At.After(out[j].At)
+	})
+	first := true
+	for i := range out {
+		if out[i].Kind == "hidden" {
 			continue
 		}
-		out = append(out, Info{Generation: gen, At: at, Size: o.Size, Before: before, Key: o.Key})
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Generation != out[j].Generation {
-			return out[i].Generation > out[j].Generation
+		if first {
+			out[i].Newest = true
+			first = false
 		}
-		return out[i].Key > out[j].Key
-	})
-	for i := range out {
-		out[i].Newest = i == 0
 		// a lot smaller than the one before it: the trouble of a fresh folder that was snapshotted over the user's files
-		if i+1 < len(out) && out[i+1].Size >= 4096 && out[i].Size*5 < out[i+1].Size {
-			out[i].Few = true
+		for j := i + 1; j < len(out); j++ {
+			if out[j].Kind == "hidden" {
+				continue
+			}
+			if out[j].Size >= 4096 && out[i].Size*5 < out[j].Size {
+				out[i].Few = true
+			}
+			break
 		}
 	}
 	return out, nil
 }
 
-// Archive reads one snapshot and checks it is whole (its hash, when the bucket has it).
-func (s *Snapper) Archive(ctx context.Context, home string, generation int64) ([]byte, Info, error) {
+// find is the entry of the list that an ID names (also among the earlier versions).
+func find(infos []Info, id string) (Info, bool) {
+	for _, in := range infos {
+		if in.ID == id {
+			return in, true
+		}
+		for _, e := range in.Earlier {
+			if e.ID == id {
+				return e, true
+			}
+		}
+	}
+	return Info{}, false
+}
+
+// Archive reads the snapshot an ID names and checks it is whole (its hash, when the object has one).
+func (s *Snapper) Archive(ctx context.Context, home, id string) ([]byte, Info, error) {
 	infos, err := s.List(ctx, home)
 	if err != nil {
 		return nil, Info{}, err
 	}
-	var want *Info
-	for i := range infos {
-		if infos[i].Generation == generation {
-			want = &infos[i]
-			break
-		}
-	}
-	if want == nil {
+	want, ok := find(infos, id)
+	if !ok {
 		return nil, Info{}, ErrNoSuchSnapshot
 	}
 	c, err := s.Client()
 	if err != nil {
 		return nil, Info{}, ErrNotAvailable
 	}
-	data, obj, err := c.Get(ctx, want.Key)
+	var data []byte
+	var obj *objstore.Object
+	if want.versionID != "" {
+		data, obj, err = c.GetVersion(ctx, want.key, want.versionID)
+	} else {
+		data, obj, err = c.Get(ctx, want.key)
+	}
 	if err != nil {
+		if errors.Is(err, objstore.ErrNotFound) {
+			return nil, Info{}, ErrNoSuchSnapshot
+		}
 		return nil, Info{}, err
 	}
 	if obj != nil {
@@ -133,7 +208,7 @@ func (s *Snapper) Archive(ctx context.Context, home string, generation int64) ([
 			return nil, Info{}, errors.New("homesnap: that snapshot is damaged")
 		}
 	}
-	return data, *want, nil
+	return data, want, nil
 }
 
 // RestoreResult says what a restore did.
@@ -144,14 +219,14 @@ type RestoreResult struct {
 }
 
 // Restore gets a snapshot back. mode "folder": its files are put in a new folder of the home, beside what is there, and
-// nothing existing is touched. mode "replace": a copy of what is there now is made first (a snapshot named "before"), and
-// then the home becomes exactly the snapshot: the other files are removed.
-func (s *Snapper) Restore(ctx context.Context, home string, generation int64, mode string) (RestoreResult, error) {
+// nothing existing is touched. mode "replace": the home becomes exactly the snapshot and the other files are removed; there is
+// no copy of them first (the page tells the user to copy or download them before), so it cannot be taken back.
+func (s *Snapper) Restore(ctx context.Context, home, id, mode string) (RestoreResult, error) {
 	res := RestoreResult{Mode: mode}
 	if mode != "folder" && mode != "replace" {
 		return res, fmt.Errorf("homesnap: %q is not a way to get a snapshot back", mode)
 	}
-	archive, info, err := s.Archive(ctx, home, generation) // read first: the copy below may push the oldest snapshot out
+	archive, info, err := s.Archive(ctx, home, id) // read first: the copy below may push the oldest snapshot out
 	if err != nil {
 		return res, err
 	}
@@ -202,13 +277,6 @@ func (s *Snapper) Restore(ctx context.Context, home string, generation int64, mo
 		res.Folder = name
 		return res, nil
 	default:
-		// the files that are there now are copied first; with none there is nothing to lose
-		if fi, serr := os.Stat(dir); serr == nil && fi.IsDir() {
-			if _, err := s.snapshot(ctx, home, true, false, "-before"); err != nil {
-				os.RemoveAll(tmp)
-				return res, fmt.Errorf("%w: %v", ErrSafetyCopy, err)
-			}
-		}
 		// every file gets the time of now: the sync with a worker keeps the newer file, and what comes back must win
 		now := s.now()
 		filepath.Walk(tmp, func(p string, fi os.FileInfo, err error) error {

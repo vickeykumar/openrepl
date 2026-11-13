@@ -25,6 +25,19 @@ type Fake struct {
 	fail     int  // the next requests that get a 503
 	cutPuts  bool // a PUT stores nothing and drops the connection
 	requests []string
+	// Now is the clock of the bucket (the time an object is stored); nil: the real one
+	Now func() time.Time
+	// versioned makes the bucket keep what an overwrite replaces and hide, not remove, what is deleted (as B2 does)
+	versioned bool
+	versions  map[string][]fakeVersion // key -> versions, oldest first
+	nextID    int
+}
+
+type fakeVersion struct {
+	id     string
+	object fakeObject
+	marker bool
+	at     time.Time
 }
 
 type fakeObject struct {
@@ -45,6 +58,42 @@ func NewFake() *Fake {
 	f := &Fake{objects: map[string]fakeObject{}, pageSize: 1000}
 	f.Server = httptest.NewServer(http.HandlerFunc(f.serve))
 	return f
+}
+
+// SetVersioned makes the bucket keep every version of a key and hide a deleted one behind a delete marker, as a versioned bucket
+// does; the listing of versions (ListVersions) and the read of one version (GetVersion) work only then.
+func (f *Fake) SetVersioned(on bool) {
+	f.mu.Lock()
+	f.versioned = on
+	if on && f.versions == nil {
+		f.versions = map[string][]fakeVersion{}
+	}
+	f.mu.Unlock()
+}
+
+// Age moves the time of every stored version of a key back by d (for tests of what is old).
+func (f *Fake) Age(key string, d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key = f.cfgPrefix() + key
+	if o, ok := f.objects[key]; ok {
+		o.at = o.at.Add(-d)
+		f.objects[key] = o
+	}
+	vs := f.versions[key]
+	for i := range vs {
+		vs[i].at = vs[i].at.Add(-d)
+		vs[i].object.at = vs[i].at
+	}
+}
+
+func (f *Fake) cfgPrefix() string { return f.Config().Prefix + "/" }
+
+func (f *Fake) now() time.Time {
+	if f.Now != nil {
+		return f.Now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 func (f *Fake) Config() Config {
@@ -104,15 +153,34 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 				meta[strings.TrimPrefix(lk, "x-amz-meta-")] = v[0]
 			}
 		}
-		f.objects[key] = fakeObject{data: body, meta: meta, at: time.Now().UTC(), typ: r.Header.Get("Content-Type")}
+		obj := fakeObject{data: body, meta: meta, at: f.now(), typ: r.Header.Get("Content-Type")}
+		f.objects[key] = obj
+		if f.versioned {
+			f.nextID++
+			id := fmt.Sprintf("v%d", f.nextID)
+			f.versions[key] = append(f.versions[key], fakeVersion{id: id, object: obj, at: obj.at})
+			w.Header().Set("x-amz-version-id", id)
+		}
 		sum := md5.Sum(body)
 		w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])+`"`)
 	case http.MethodGet, http.MethodHead:
 		if key == "" {
+			if _, ok := r.URL.Query()["versions"]; ok {
+				f.listVersions(w, r)
+				return
+			}
 			f.list(w, r)
 			return
 		}
 		o, ok := f.objects[key]
+		if id := r.URL.Query().Get("versionId"); id != "" {
+			ok = false
+			for _, v := range f.versions[key] {
+				if v.id == id && !v.marker {
+					o, ok = v.object, true
+				}
+			}
+		}
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			if r.Method == http.MethodGet {
@@ -132,6 +200,10 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	case http.MethodDelete:
 		delete(f.objects, key)
+		if f.versioned {
+			f.nextID++
+			f.versions[key] = append(f.versions[key], fakeVersion{id: fmt.Sprintf("v%d", f.nextID), marker: true, at: f.now()})
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -237,4 +309,47 @@ func (f *Fake) Set(key string, data []byte, at time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.objects[key] = fakeObject{data: data, meta: map[string]string{}, at: at.UTC()}
+}
+
+// listVersions answers ?versions: every version of every key under the prefix (newest first for a key), with delete markers.
+func (f *Fake) listVersions(w http.ResponseWriter, r *http.Request) {
+	if !f.versioned {
+		w.WriteHeader(http.StatusNotImplemented)
+		fmt.Fprint(w, "<Error><Code>NotImplemented</Code><Message>no versions here</Message></Error>")
+		return
+	}
+	prefix := r.URL.Query().Get("prefix")
+	var keys []string
+	for k := range f.versions {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	type item struct {
+		Key          string
+		VersionId    string
+		IsLatest     bool
+		LastModified string
+		Size         int
+	}
+	res := struct {
+		XMLName      xml.Name `xml:"ListVersionsResult"`
+		IsTruncated  bool
+		Version      []item
+		DeleteMarker []item
+	}{}
+	for _, k := range keys {
+		vs := f.versions[k]
+		for i := len(vs) - 1; i >= 0; i-- {
+			v := vs[i]
+			it := item{Key: k, VersionId: v.id, IsLatest: i == len(vs)-1, LastModified: v.at.Format(time.RFC3339), Size: len(v.object.data)}
+			if v.marker {
+				res.DeleteMarker = append(res.DeleteMarker, it)
+			} else {
+				res.Version = append(res.Version, it)
+			}
+		}
+	}
+	xml.NewEncoder(w).Encode(res)
 }

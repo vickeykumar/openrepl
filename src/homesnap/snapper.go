@@ -260,12 +260,11 @@ type Result struct {
 // changed for Settle); force skips both checks. It is safe to call from several places: a home that is being
 // snapshotted is skipped.
 func (s *Snapper) SnapshotHome(ctx context.Context, home string, force bool) (Result, error) {
-	return s.snapshot(ctx, home, force, !force, "")
+	return s.snapshot(ctx, home, force, !force)
 }
 
 // snapshot is SnapshotHome with the wait for a home to settle apart from the check for a change.
-// label is put at the end of the name of the object ("-before": the copy made before a workspace is replaced).
-func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool, label string) (Result, error) {
+func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool) (Result, error) {
 	if !IsKept(home) {
 		return Result{Note: "not a home that is kept"}, nil
 	}
@@ -334,11 +333,24 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool,
 		s.fail(err)
 		return Result{}, err
 	}
-	// the writer is in the name: two writers that reach the same generation in the same second do not
-	// overwrite each other
-	key := s.prefix(home) + fmt.Sprintf("%010d-%s-%s%s.tar.gz", gen, m.CreatedAt.Format(timeLayout), sum([]byte(s.writerID()))[:6], label)
+	// one file for each UTC day, overwritten by every snapshot of that day (so it holds the end of the day, and the store's
+	// own versions hold the day's history)
+	key := s.dayKey(home)
 	hash := sum(archive)
-	if err := c.Put(ctx, key, archive, "application/gzip", map[string]string{"sha256": hash, "generation": fmt.Sprint(gen)}); err != nil {
+	meta := map[string]string{"sha256": hash, "generation": fmt.Sprint(gen), "created": m.CreatedAt.UTC().Format(time.RFC3339)}
+	// another writer (an overlapping deploy) that already wrote a newer snapshot of this day is not overwritten
+	if cur, herr := c.Head(ctx, key); herr == nil {
+		var have int64
+		fmt.Sscan(cur.Meta["generation"], &have)
+		if have >= gen {
+			s.fail(ErrConflict)
+			return Result{}, ErrConflict
+		}
+	} else if !errors.Is(herr, objstore.ErrNotFound) {
+		s.fail(herr)
+		return Result{}, herr
+	}
+	if err := c.Put(ctx, key, archive, "application/gzip", meta); err != nil {
 		s.fail(err)
 		return Result{}, fmt.Errorf("uploading the snapshot: %w", err)
 	}
@@ -348,7 +360,6 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool,
 	// the pointer moves only if nobody else moved it since it was read
 	now, nerr := s.readLatest(ctx, c, home)
 	if (nerr == nil && now.Generation != latest.Generation) || (nerr != nil && !errors.Is(nerr, objstore.ErrNotFound)) || (errors.Is(nerr, objstore.ErrNotFound) && lerr == nil) {
-		c.Delete(ctx, key)
 		if nerr != nil && !errors.Is(nerr, objstore.ErrNotFound) {
 			s.fail(nerr)
 			return Result{}, nerr
@@ -387,31 +398,6 @@ func (s *Snapper) noted(home string, r Result) Result {
 		log.Printf("homesnap: %s is not snapshotted: %s", home, r.Note)
 	}
 	return r
-}
-
-// prune keeps the newest Keep snapshots of a home and deletes the rest. A listing that fails deletes nothing.
-func (s *Snapper) prune(ctx context.Context, c *objstore.Client, home, protect string) int {
-	objs, err := c.List(ctx, s.prefix(home))
-	if err != nil {
-		return 0
-	}
-	var snaps []string
-	for _, o := range objs {
-		if strings.HasSuffix(o.Key, ".tar.gz") {
-			snaps = append(snaps, o.Key)
-		}
-	}
-	sort.Sort(sort.Reverse(sort.StringSlice(snaps))) // the generation is the start of the name: newest first
-	deleted := 0
-	for i, k := range snaps {
-		if i < Keep || k == protect {
-			continue
-		}
-		if c.Delete(ctx, k) == nil {
-			deleted++
-		}
-	}
-	return deleted
 }
 
 // Touch tells the snapshotter that a signed-in user's home is in use: it is snapshotted from now on, and if
@@ -534,52 +520,6 @@ func (s *Snapper) Ensure(ctx context.Context, home string) (bool, error) {
 	s.mu.Unlock()
 	log.Printf("homesnap: %s was restored from its snapshot of %s (generation %d)", home, latest.CreatedAt.Format(time.RFC3339), latest.Generation)
 	return true, nil
-}
-
-// newestValid is the snapshot latest.json names if it is whole, else the newest of the others that is (three
-// are tried); nil when the home has none.
-func (s *Snapper) newestValid(ctx context.Context, c *objstore.Client, home string) ([]byte, Latest, error) {
-	tried := map[string]bool{}
-	l, err := s.readLatest(ctx, c, home)
-	if err == nil {
-		tried[l.Key] = true
-		if data, _, gerr := c.Get(ctx, l.Key); gerr == nil && sum(data) == l.SHA256 {
-			return data, l, nil
-		}
-		log.Printf("homesnap: %s is missing or damaged, looking for an older one", l.Key)
-	} else if !errors.Is(err, objstore.ErrNotFound) {
-		return nil, l, err
-	}
-	objs, err := c.List(ctx, s.prefix(home))
-	if err != nil {
-		return nil, l, err
-	}
-	var snaps []string
-	for _, o := range objs {
-		if strings.HasSuffix(o.Key, ".tar.gz") && !tried[o.Key] {
-			snaps = append(snaps, o.Key)
-		}
-	}
-	sort.Sort(sort.Reverse(sort.StringSlice(snaps)))
-	if len(snaps) > 3 {
-		snaps = snaps[:3]
-	}
-	for _, k := range snaps {
-		data, obj, gerr := c.Get(ctx, k)
-		if gerr != nil {
-			continue
-		}
-		if want := obj.Meta["sha256"]; want != "" && want != sum(data) {
-			continue
-		}
-		var gen int64
-		fmt.Sscan(k[strings.LastIndex(k, "/")+1:], &gen)
-		return data, Latest{Generation: gen, Key: k, SHA256: sum(data), Size: int64(len(data))}, nil
-	}
-	if len(tried) > 0 || len(snaps) > 0 {
-		return nil, l, errors.New("homesnap: none of the newest snapshots could be used")
-	}
-	return nil, l, nil
 }
 
 // ---- the job ---------------------------------------------------------------------------------------
@@ -707,7 +647,7 @@ func (s *Snapper) Final(timeout time.Duration) {
 	s.mu.Unlock()
 	made := 0
 	for _, h := range homes {
-		if res, err := s.snapshot(ctx, h, false, false, ""); err != nil {
+		if res, err := s.snapshot(ctx, h, false, false); err != nil {
 			log.Printf("homesnap: the last snapshot of %s failed: %v", h, err)
 		} else if res.Made {
 			made++

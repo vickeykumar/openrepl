@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -78,7 +79,7 @@ func TestAHomeIsSnapshottedAndComesBackWhole(t *testing.T) {
 		t.Fatalf("snapshot: %+v %v", res, err)
 	}
 	keys := f.Stored()
-	if len(keys) != 2 || !strings.Contains(keys[0], "pfx/homes/prod/anna0123/0000000001-") || !strings.HasSuffix(keys[1], "/latest.json") {
+	if len(keys) != 2 || !strings.Contains(keys[0], "pfx/homes/prod/anna0123/anna0123-"+time.Now().UTC().Format("2006-01-02")+".tar.gz") || !strings.HasSuffix(keys[1], "/latest.json") {
 		t.Fatalf("stored: %v", keys)
 	}
 
@@ -160,7 +161,12 @@ func TestOnlyTheNewestThreeSnapshotsAreKept(t *testing.T) {
 	defer f.Close()
 	s, base := newSnapper(t, f)
 	dir := makeHome(t, base, "anna0123")
+	clock := time.Now().UTC()
+	s.Now = func() time.Time { return clock }
+	var days []string
 	for i := 0; i < 6; i++ {
+		days = append(days, clock.Add(24*time.Hour).Format("2006-01-02"))
+		clock = clock.Add(24 * time.Hour)
 		write(t, filepath.Join(dir, "main.c"), fmt.Sprint("version ", i), time.Minute)
 		if res, err := s.SnapshotHome(ctx, "anna0123", false); err != nil || !res.Made {
 			t.Fatalf("%d: %+v %v", i, res, err)
@@ -169,10 +175,10 @@ func TestOnlyTheNewestThreeSnapshotsAreKept(t *testing.T) {
 	var snaps []string
 	for _, k := range f.Stored() {
 		if strings.HasSuffix(k, ".tar.gz") {
-			snaps = append(snaps, k[strings.LastIndex(k, "/")+1:][:10])
+			snaps = append(snaps, k[strings.LastIndex(k, "/")+1:])
 		}
 	}
-	if strings.Join(snaps, ",") != "0000000004,0000000005,0000000006" {
+	if strings.Join(snaps, ",") != "anna0123-"+days[3]+".tar.gz,anna0123-"+days[4]+".tar.gz,anna0123-"+days[5]+".tar.gz" {
 		t.Errorf("snapshots left: %v", snaps)
 	}
 }
@@ -212,31 +218,47 @@ func TestAnotherWriterThatGotThereFirstWinsAndNothingIsCorrupted(t *testing.T) {
 	a.writer = "this-instance"
 
 	write(t, filepath.Join(dir, "main.c"), "written through a", time.Minute)
-	// b makes its snapshot between a's upload and a's pointer
+	// the other instance moves the pointer between a's upload and a's pointer
 	a.beforePointer = func(home string) {
 		a.beforePointer = nil
-		if res, err := b.SnapshotHome(ctx, home, true); err != nil || !res.Made {
-			t.Errorf("b: %+v %v", res, err)
+		cl, _ := objstore.New(f.Config())
+		raw, _ := json.Marshal(Latest{Generation: 2, Key: a.dayKey(home), Writer: "other-instance"})
+		if err := cl.Put(ctx, a.prefix(home)+"latest.json", raw, "application/json", nil); err != nil {
+			t.Errorf("b: %v", err)
 		}
 	}
 	_, err := a.SnapshotHome(ctx, "anna0123", false)
 	if err != ErrConflict {
 		t.Fatalf("a: %v", err)
 	}
-	// the pointer is b's, and a's archive is gone
+	// the pointer is the other's, and a did not move it
 	cl, _ := objstore.New(f.Config())
 	l, err := b.readLatest(ctx, cl, "anna0123")
 	if err != nil || l.Writer != "other-instance" || l.Generation != 2 {
 		t.Fatalf("latest: %+v %v", l, err)
 	}
-	var gens []string
-	for _, k := range f.Stored() {
-		if strings.HasSuffix(k, ".tar.gz") {
-			gens = append(gens, k[strings.LastIndex(k, "/")+1:][:10])
-		}
+}
+
+// a day's file that an instance with a newer generation wrote is not overwritten by an older one
+func TestADaysFileOfANewerGenerationIsNotOverwritten(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	a, base := newSnapper(t, f)
+	makeHome(t, base, "anna0123")
+	if res, err := a.SnapshotHome(ctx, "anna0123", true); err != nil || !res.Made {
+		t.Fatal(res, err)
 	}
-	if strings.Join(gens, ",") != "0000000001,0000000002" {
-		t.Errorf("archives: %v", gens)
+	cl, _ := objstore.New(f.Config())
+	key := a.dayKey("anna0123")
+	cl.Put(ctx, key, []byte("newer"), "application/gzip", map[string]string{"generation": "99"})
+	a.mu.Lock()
+	a.state("anna0123").generation = 0
+	a.mu.Unlock()
+	if _, err := a.SnapshotHome(ctx, "anna0123", true); err != ErrConflict {
+		t.Fatalf("overwrote: %v", err)
+	}
+	if b, _ := f.Object("pfx/" + key); string(b) != "newer" {
+		t.Errorf("the file was changed: %q", b)
 	}
 }
 
@@ -245,11 +267,15 @@ func TestADamagedLatestSnapshotFallsBackToTheOlderOne(t *testing.T) {
 	defer f.Close()
 	s, base := newSnapper(t, f)
 	dir := makeHome(t, base, "anna0123")
+	clock := time.Now().UTC()
+	s.Now = func() time.Time { return clock }
 	s.SnapshotHome(ctx, "anna0123", false)
+	clock = clock.Add(24 * time.Hour)
+	second := clock.Format("2006-01-02")
 	write(t, filepath.Join(dir, "main.c"), "second version", time.Minute)
 	s.SnapshotHome(ctx, "anna0123", false)
 	for _, k := range f.Stored() {
-		if strings.Contains(k, "/0000000002-") {
+		if strings.HasSuffix(k, ".tar.gz") && strings.Contains(k, second) {
 			f.Set(k, []byte("damaged"), time.Now())
 		}
 	}

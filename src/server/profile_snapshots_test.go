@@ -11,7 +11,7 @@ import (
 
 func TestOnlyThePagesOwnJSONMayChangeTheWorkspace(t *testing.T) {
 	post := func(contentType, origin, site string) int {
-		r := httptest.NewRequest("POST", "http://openrepl.test/profile/snapshots/restore", strings.NewReader(`{"generation":1,"mode":"folder"}`))
+		r := httptest.NewRequest("POST", "http://openrepl.test/profile/snapshots/restore", strings.NewReader(`{"id":"d:2026-11-10","mode":"folder"}`))
 		if contentType != "" {
 			r.Header.Set("Content-Type", contentType)
 		}
@@ -63,7 +63,6 @@ func TestSnapshotErrorsAreSaidInWordsAndNeverLeakTheStore(t *testing.T) {
 		homesnap.ErrNoSuchSnapshot:    http.StatusNotFound,
 		homesnap.ErrTooSoon:           http.StatusTooManyRequests,
 		homesnap.ErrBusy:              http.StatusTooManyRequests,
-		homesnap.ErrSafetyCopy:        http.StatusBadGateway,
 		errString("dial tcp 1.2.3.4"): http.StatusBadGateway,
 	} {
 		code, msg := snapshotError(err)
