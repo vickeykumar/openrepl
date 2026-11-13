@@ -599,3 +599,36 @@ func TestARestoreThatKeepsFailingIsGivenUpAfterTenTries(t *testing.T) {
 		t.Errorf("tries %d, pending %v, touched %v", tries, pending, touched)
 	}
 }
+
+func TestTheIntervalIsSetFromTheDashboardAndTheJobWaitsForTheNewTime(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, _ := newSnapper(t, f)
+	if s.CurrentInterval() != Interval {
+		t.Errorf("the built-in time: %v", s.CurrentInterval())
+	}
+	s.SetInterval(2 * time.Minute)
+	if s.CurrentInterval() != 2*time.Minute {
+		t.Errorf("set: %v", s.CurrentInterval())
+	}
+	s.SetInterval(0)
+	if s.CurrentInterval() != Interval {
+		t.Errorf("0 is the built-in time: %v", s.CurrentInterval())
+	}
+	// the job: a home that changes is snapshotted at the next round, and a new interval makes the job wait for it afresh
+	dir := makeHome(t, s.Base(), "anna0123")
+	s.Touch("anna0123")
+	s.SetInterval(150 * time.Millisecond)
+	stop := s.Start()
+	defer stop()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(f.Stored()) > 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(f.Stored()) == 0 {
+		t.Fatalf("no snapshot at the short interval (%v)", dir)
+	}
+}

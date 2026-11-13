@@ -77,12 +77,14 @@ type Snapper struct {
 	// beforePointer is for tests: it runs after the archive is uploaded and before the pointer is written
 	beforePointer func(home string)
 
-	mu      sync.Mutex
-	enabled bool
-	writer  string
-	homes   map[string]*homeState
-	started bool
-	status  Status
+	mu       sync.Mutex
+	interval time.Duration // set from the admin dashboard; 0: Interval
+	wake     chan struct{} // a new interval is to be used now (made by Start)
+	enabled  bool
+	writer   string
+	homes    map[string]*homeState
+	started  bool
+	status   Status
 }
 
 type homeState struct {
@@ -97,6 +99,7 @@ type homeState struct {
 	retryAt     time.Time // not before this time is a failed restore tried again
 	changing    int       // rounds in a row in which the home was still changing
 	lastNote    string    // why the last round did not snapshot it ("" when it did)
+	lastRestore time.Time // the last time a snapshot was got back by the user
 }
 
 // Status is what the dashboard shows.
@@ -120,6 +123,36 @@ var Default = &Snapper{
 	Name:   utils.BackupName,
 	Client: objstore.Default,
 	Now:    time.Now,
+}
+
+// SetInterval sets how often the homes that changed are snapshotted (0: the built-in Interval). It is used from the next
+// round on; a job that is waiting is told to wait for the new time instead.
+func (s *Snapper) SetInterval(d time.Duration) {
+	if d < 0 {
+		d = 0
+	}
+	s.mu.Lock()
+	changed := s.interval != d
+	s.interval = d
+	wake := s.wake
+	s.mu.Unlock()
+	if changed && wake != nil {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// CurrentInterval is the time between two rounds in force.
+func (s *Snapper) CurrentInterval() time.Duration {
+	s.mu.Lock()
+	d := s.interval
+	s.mu.Unlock()
+	if d <= 0 {
+		return Interval
+	}
+	return d
 }
 
 func (s *Snapper) now() time.Time {
@@ -227,11 +260,12 @@ type Result struct {
 // changed for Settle); force skips both checks. It is safe to call from several places: a home that is being
 // snapshotted is skipped.
 func (s *Snapper) SnapshotHome(ctx context.Context, home string, force bool) (Result, error) {
-	return s.snapshot(ctx, home, force, !force)
+	return s.snapshot(ctx, home, force, !force, "")
 }
 
 // snapshot is SnapshotHome with the wait for a home to settle apart from the check for a change.
-func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool) (Result, error) {
+// label is put at the end of the name of the object ("-before": the copy made before a workspace is replaced).
+func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool, label string) (Result, error) {
 	if !IsKept(home) {
 		return Result{Note: "not a home that is kept"}, nil
 	}
@@ -302,7 +336,7 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 	}
 	// the writer is in the name: two writers that reach the same generation in the same second do not
 	// overwrite each other
-	key := s.prefix(home) + fmt.Sprintf("%010d-%s-%s.tar.gz", gen, m.CreatedAt.Format(timeLayout), sum([]byte(s.writerID()))[:6])
+	key := s.prefix(home) + fmt.Sprintf("%010d-%s-%s%s.tar.gz", gen, m.CreatedAt.Format(timeLayout), sum([]byte(s.writerID()))[:6], label)
 	hash := sum(archive)
 	if err := c.Put(ctx, key, archive, "application/gzip", map[string]string{"sha256": hash, "generation": fmt.Sprint(gen)}); err != nil {
 		s.fail(err)
@@ -620,20 +654,34 @@ func (s *Snapper) Start() (stop func()) {
 		utils.Jobs.RegisterOff("home-snapshots", "Workspace snapshots", what, "no object store is set up (OPENREPL_S3_*)")
 		return func() {}
 	}
-	report := utils.Jobs.Register("home-snapshots", "Workspace snapshots", what, Interval)
+	report := utils.Jobs.Register("home-snapshots", "Workspace snapshots", what, s.CurrentInterval())
 	done := make(chan struct{})
+	wake := make(chan struct{}, 1)
+	s.mu.Lock()
+	s.wake = wake
+	s.mu.Unlock()
 	go func() {
-		t := time.NewTicker(Interval)
-		defer t.Stop()
+		timer := time.NewTimer(s.CurrentInterval())
+		defer timer.Stop()
 		for {
 			select {
-			case <-t.C:
+			case <-timer.C:
 				report.Run(func() (string, error) {
 					ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 					defer cancel()
 					round, err := s.SnapshotAll(ctx)
 					return round.String(), err
 				})
+				timer.Reset(s.CurrentInterval())
+			case <-wake:
+				// the interval was changed in the dashboard: the wait starts again with the new time
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(s.CurrentInterval())
 			case <-done:
 				return
 			}
@@ -659,7 +707,7 @@ func (s *Snapper) Final(timeout time.Duration) {
 	s.mu.Unlock()
 	made := 0
 	for _, h := range homes {
-		if res, err := s.snapshot(ctx, h, false, false); err != nil {
+		if res, err := s.snapshot(ctx, h, false, false, ""); err != nil {
 			log.Printf("homesnap: the last snapshot of %s failed: %v", h, err)
 		} else if res.Made {
 			made++

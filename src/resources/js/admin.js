@@ -1099,6 +1099,7 @@
         disabledLanguages: languages.filter(function (l) { return !form.langs[l.value].checked; }).map(function (l) { return l.value; }).sort(),
         dbCapacityMB: int(form.dbCap.value),
         maxEditorFileMB: int(form.maxFile.value),
+        snapshotIntervalMinutes: int(form.snapEvery.value),
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
           customModels: (form.custom || []).map(readCustom),
@@ -1153,6 +1154,7 @@
         disabledLanguages: (s.disabledLanguages || []).slice().sort(),
         dbCapacityMB: s.dbCapacityMB || 0,
         maxEditorFileMB: s.maxEditorFileMB || 0,
+        snapshotIntervalMinutes: s.snapshotIntervalMinutes || 0,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
           disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
           featuredModels: (s.genie.featuredModels || []).slice(),
@@ -1191,6 +1193,9 @@
       form.maxFile = h('input', { type: 'number', class: 'field', id: 'f-max-file', min: '1', max: '16', step: '1', placeholder: '16', 'aria-label': 'Largest file the editor opens, in megabytes', oninput: update });
       form.maxFile.value = settings.maxEditorFileMB || '';
       form.maxFile.style.maxWidth = '9rem';
+      form.snapEvery = h('input', { type: 'number', class: 'field', id: 'f-snap-every', min: '1', max: '60', step: '1', placeholder: '5', 'aria-label': 'Minutes between workspace snapshots' });
+      form.snapEvery.value = settings.snapshotIntervalMinutes || '';
+      form.snapEvery.style.maxWidth = '9rem';
       form.colour = colour.input; form.maint = maint.input; form.genie = genie.input;
       // agent mode: on for signed-in users unless switched off here, and off on the practice page unless allowed
       var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
@@ -1586,6 +1591,8 @@
           row('Capacity in MB', 'Used only with MongoDB. Amber from 80% used, red from 95%.', form.dbCap) ]),
         card('Files', 'Text files up to this size open in the editor. A bigger text file opens read-only in a viewer, in pieces, that only the person who chose it sees. A binary file always opens as a hex dump in that viewer.', [
           row('Largest file the editor opens, in MB', 'From 1 to 16. 16 is the most: the editor is shared through Firebase, which refuses a write over 16 MB. Leave it empty for 16. Visitors get the new limit when they reload the page.', form.maxFile) ]),
+        card('Workspace snapshots', 'Signed-in users\' workspaces that changed are copied to the object store (S3, R2, B2) this often, once nothing in them has changed for 30 seconds. Only the newest 3 snapshots of each workspace are kept, so a shorter time means older snapshots go sooner. Without an object store set up, nothing is copied.', [
+          row('Minutes between snapshots', 'From 1 to 60. Leave it empty for 5. The change is used at once by the running job.', form.snapEvery) ]),
         card('Languages', 'Untick a language that is broken. The picker greys it out and its terminals refuse to start with a message; terminals that are already open keep running. Admins can still start it, to test a fix.', langGrid),
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),
@@ -2155,6 +2162,7 @@
     { id: 'data', x: 1116, y: 168, w: 244, h: 86, c: '#F59E0B', t: 'user and feedback data', s: 'sessions, blog, practice', g: 'Persistence' },
     { id: 'store', x: 1116, y: 278, w: 244, h: 86, c: '#F59E0B', t: 'UnQLite files', s: '/opt/gotty/*.db', g: 'Persistence' },
     { id: 'external', x: 1116, y: 388, w: 244, h: 86, c: '#8C8A98', t: 'MongoDB or Firestore', s: 'optional', g: 'Persistence', dashed: true },
+    { id: 'objstore', x: 1116, y: 498, w: 244, h: 86, c: '#F59E0B', t: 'Object storage', s: 'S3, R2, B2: backups, workspaces', g: 'Persistence', dashed: true },
     { id: 'fb-db', x: 80, y: 728, w: 142, h: 66, c: '#D946EF', t: 'Realtime DB', s: '', g: 'Firebase', small: true },
     { id: 'fb-auth', x: 232, y: 728, w: 136, h: 66, c: '#D946EF', t: 'Auth', s: '', g: 'Firebase', small: true },
     { id: 'openai', x: 756, y: 728, w: 132, h: 66, c: '#D946EF', t: 'OpenAI', s: '', g: 'Language models', small: true },
@@ -2168,6 +2176,7 @@
     { id: 'ws-exec', segs: [[700, 377, 40, 'h']] },
     { id: 'data-persist', segs: [[1024, 211, 92, 'h']] },
     { id: 'persist-store', segs: [[1024, 321, 92, 'h']] },
+    { id: 'persist-objstore', segs: [[1024, 541, 92, 'h']] },
     { id: 'chat-llm', segs: [[470, 530, 231, 'v'], [470, 761, 286, 'h']], label: ['API key added here', 486, 650] },
     { id: 'jobs-exec', segs: [[700, 590, 40, 'h']] },
     { id: 'browser-firebase', segs: [[200, 652, 76, 'v']] }
