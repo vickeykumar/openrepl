@@ -297,3 +297,32 @@ func TestAProgramsHTMLGetsStorageForItsPort(t *testing.T) {
 		t.Errorf("the program's page has no storage: %.300s", body)
 	}
 }
+
+// A plain-text answer for a frame is a light page (the browser's own text page is white on white under a dark editor);
+// a fetch and a request for its own tab get the text itself.
+func TestPlainTextForAFrameIsALightPage(t *testing.T) {
+	hook := HTMLHookWith("/preview/x/p/1230", nil, "")
+	mk := func(dest, ct string) *http.Response {
+		req := httptest.NewRequest("GET", "/", nil)
+		if dest != "" {
+			req.Header.Set("Sec-Fetch-Dest", dest)
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {ct}}, Body: io.NopCloser(strings.NewReader("Hello <b>x</b>\n")), Request: req}
+	}
+	res := mk("iframe", "text/plain; charset=utf-8")
+	if err := hook(res); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(res.Body)
+	if !strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") || !strings.Contains(string(b), "Hello &lt;b&gt;x&lt;/b&gt;") || !strings.Contains(string(b), "color-scheme") {
+		t.Errorf("frame: %s %q", res.Header.Get("Content-Type"), b)
+	}
+	for _, dest := range []string{"", "empty", "document", "script"} {
+		res := mk(dest, "text/plain")
+		hook(res)
+		b, _ := io.ReadAll(res.Body)
+		if res.Header.Get("Content-Type") != "text/plain" || string(b) != "Hello <b>x</b>\n" {
+			t.Errorf("%q was changed: %s %q", dest, res.Header.Get("Content-Type"), b)
+		}
+	}
+}

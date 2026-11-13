@@ -78,6 +78,9 @@ func HTMLHook(prefix string) func(*http.Response) error { return HTMLHookWith(pr
 // HTMLHookWith is HTMLHook for a page that also gets the storage of st, for scope.
 func HTMLHookWith(prefix string, st *StorageInfo, scope string) func(*http.Response) error {
 	return func(res *http.Response) error {
+		if done, err := wrapPlain(res); done || err != nil {
+			return err
+		}
 		if !strings.HasPrefix(strings.ToLower(res.Header.Get("Content-Type")), "text/html") || res.StatusCode == http.StatusSwitchingProtocols {
 			return nil
 		}

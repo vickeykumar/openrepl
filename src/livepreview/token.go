@@ -59,6 +59,24 @@ func Home(secret, token string, now time.Time) (home string, ok bool) {
 	return home, ok
 }
 
+// UnverifiedHome is the workspace a token names, WITHOUT checking its signature or its end. It is for choosing which node
+// of a gateway's cluster gets the request (the node that runs the workspace); that node then checks the token with Viewer.
+func UnverifiedHome(token string) string {
+	i := strings.IndexByte(token, '.')
+	if i <= 0 {
+		return ""
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(token[:i])
+	if err != nil {
+		return ""
+	}
+	var c claims
+	if json.Unmarshal(raw, &c) != nil {
+		return ""
+	}
+	return c.Home
+}
+
 // Viewer reads a token like Home does, and also says which viewer of the workspace it was made for ("" for none).
 func Viewer(secret, token string, now time.Time) (home, viewer string, ok bool) {
 	if secret == "" {
