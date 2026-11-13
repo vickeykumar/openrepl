@@ -35,7 +35,7 @@ func TestThePreviewRouteServesTheWorkspaceNamedByAToken(t *testing.T) {
 		return rec
 	}
 	rec := get("/preview/" + tok + "/f/index.html")
-	if rec.Code != 200 || rec.Body.String() != livepreview.BridgeScript+"<h1>mine</h1>" || !strings.HasPrefix(rec.Header().Get("Content-Security-Policy"), "sandbox ") {
+	if rec.Code != 200 || !strings.HasSuffix(rec.Body.String(), livepreview.BridgeScript+"<h1>mine</h1>") || !strings.Contains(rec.Body.String(), "localStorage") || !strings.HasPrefix(rec.Header().Get("Content-Security-Policy"), "sandbox ") {
 		t.Fatalf("%d %q %v", rec.Code, rec.Body.String(), rec.Header())
 	}
 	// the token reaches its own workspace only

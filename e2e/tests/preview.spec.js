@@ -442,3 +442,44 @@ test("a file name typed in the address bar opens that page, beside the one shown
   await page.keyboard.press("Enter");
   await expect(page.locator("#preview-message")).toContainText("style.css cannot be shown in the Preview");
 });
+
+test("localStorage, sessionStorage and cookies work in the previewed page, and survive a reload", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, {
+    "store.html": `<p id="out"></p><script>
+      var n = (parseInt(localStorage.getItem("n"), 10) || 0) + 1;
+      localStorage.setItem("n", n);
+      sessionStorage.setItem("s", "tab");
+      var loads = (document.cookie.match(/loads=(\\d+)/) || [0, 0])[1] * 1 + 1;
+      document.cookie = "loads=" + loads + "; max-age=1000";
+      localStorage.theme = "dark";
+      document.getElementById("out").textContent = [n, sessionStorage.getItem("s"), loads, localStorage.length, localStorage.theme, Object.keys(localStorage).join(",")].join("|");
+    </script>`,
+  });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("store.html"));
+  const out = page.frameLocator("#preview-frame").locator("#out");
+  await expect(out).toHaveText("1|tab|1|2|dark|n,theme");
+  await page.waitForTimeout(600); // the writes go back to the server in the background
+  await page.evaluate(() => window.Preview.reload());
+  await expect(out).toHaveText("2|tab|2|2|dark|n,theme");
+  // storage is not shown to the pane's own page
+  expect(await page.evaluate(() => localStorage.getItem("n"))).toBeNull();
+});
+
+test("with one address there is a + for another, and Reload brings the page back after a typed address could not be shown", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "back.html": "<h1 id='h'>still here</h1>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("back.html"));
+  await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("still here");
+  await expect(page.locator("#preview-tabs")).toBeVisible();
+  await expect(page.locator("#preview-tabs .preview-tab--new")).toBeVisible();
+  await page.locator("#preview-tabs .preview-tab--new").click();
+  await expect(page.locator("#preview-ports")).toBeVisible();
+  await page.locator("#preview-address").click();
+  await page.locator("#preview-address-input").fill("back.html23242");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#preview-message")).toContainText("back.html23242 cannot be shown");
+  await page.locator("#preview-reload").click();
+  await expect(page.locator("#preview-message")).toBeHidden();
+  await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("still here");
+});

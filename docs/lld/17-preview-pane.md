@@ -233,3 +233,21 @@ of this section. How each works:
 
 **Still not done:** the Phone layout and the pop-out window were tried in Chromium at a desktop size only (the phone tab is not
 covered by a browser test); the WebSocket ping through a real edge; "Pop out" cannot be tested headless; Firefox and Safari.
+
+## 10. localStorage, sessionStorage and cookies in the previewed page (2026-11-13)
+
+The frame has no origin, so a browser gives its page none of the three (`localStorage` and `document.cookie` throw). The preview
+now gives it working ones (`livepreview/storage.go`):
+
+- The server keeps them in memory (`Store`): `local` and `cookie` for each workspace and scope, `session` for each viewer and scope. A
+  scope is the folder of a page (`f:/site/`) or the port of a program (`p:5000`). Each area is a JSON object of at most 5 MB, at most
+  4096 stores are kept (oldest first). They do not outlive the server.
+- A page gets its stores in a script put at the top of its head (`StorageInfo.script`, for a file in `ServeFileWith`, for a program in
+  `HTMLHookWith`), so a read is synchronous as in a browser. `<` in the data is written as `\u003c`, so data cannot close the script.
+- The script replaces `window.localStorage`, `window.sessionStorage` (a Proxy: `getItem`, `setItem`, `removeItem`, `clear`, `key`,
+  `length`, `store.name = v`, `Object.keys`) and `document.cookie` (name and value; `max-age` and `expires` are kept, path and domain are
+  ignored). A write goes back after 40 ms with `POST /preview/<token>/s` (text body, so no preflight; `keepalive`).
+- The pane's own storage and the site's cookies are not touched. Pages of one folder share their storage, as pages of one site do.
+- Not provided: IndexedDB, Cache storage, service workers, the `storage` event between frames, cookie `Secure`/`HttpOnly`/path rules.
+- Tests: `storage_test.go`, `TestAProgramsHTMLGetsStorageForItsPort`, and the browser test "localStorage, sessionStorage and cookies work".
+

@@ -259,7 +259,7 @@ function tabName(x) { return x.t.kind === "f" ? x.t.path.split("/").pop() : ":" 
 function renderTabs() {
   var box = el("preview-tabs");
   if (!box) return;
-  box.hidden = tabs.length < 2 && !(tabs.length === 1 && open && false);
+  box.hidden = tabs.length < 1; // with one address the strip is there too, for its + (a place to open another)
   box.textContent = "";
   tabs.forEach(function (x, k) {
     var b = document.createElement("div");
@@ -583,6 +583,7 @@ function frameFor(t) {
 
 function reload() {
   if (!open || !target) return;
+  message(""); // a notice such as "cannot be shown" must not stay over the page that is reloaded
   var frame = frameFor(target);
   var url = frame.getAttribute("data-url");
   if (!url) { load(); return; }

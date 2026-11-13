@@ -125,11 +125,14 @@ func (server *Server) handlePreview(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, why, http.StatusForbidden)
 		return
 	}
+	st := &livepreview.StorageInfo{Store: previewStore, Home: home, Viewer: viewer, URL: "/preview/" + token + "/s"}
 	switch kind {
 	case "f":
-		livepreview.ServeFile(rw, req, home, rest)
+		livepreview.ServeFileWith(rw, req, home, rest, st)
+	case "s":
+		livepreview.HandleStorage(rw, req, previewStore, home, viewer)
 	case "p":
-		server.previewProgram(rw, req, token, home, viewer, rest)
+		server.previewProgram(rw, req, token, home, viewer, rest, st)
 	default:
 		http.NotFound(rw, req)
 	}
@@ -138,8 +141,11 @@ func (server *Server) handlePreview(rw http.ResponseWriter, req *http.Request) {
 // previewJar keeps the cookies of the programs that are previewed (the page in the frame cannot keep them).
 var previewJar = livepreview.NewJar()
 
+// previewStore keeps the localStorage, sessionStorage and cookies that the previewed pages write (the frame has none of its own).
+var previewStore = livepreview.NewStore()
+
 // previewProgram passes a request to the program of the workspace that listens on a port: /preview/<token>/p/<port>/<path>.
-func (server *Server) previewProgram(rw http.ResponseWriter, req *http.Request, token, home, viewer, rest string) {
+func (server *Server) previewProgram(rw http.ResponseWriter, req *http.Request, token, home, viewer, rest string, st *livepreview.StorageInfo) {
 	seg := strings.SplitN(rest, "/", 2)
 	port, err := strconv.Atoi(seg[0])
 	if err != nil || port < livepreview.MinPort || port > 65535 {
@@ -158,7 +164,7 @@ func (server *Server) previewProgram(rw http.ResponseWriter, req *http.Request, 
 	}
 	prefix := "/preview/" + token + "/p/" + seg[0]
 	livepreview.Proxy(rw, req, seg[1], livepreview.Options{
-		Home: home, Port: port, Prefix: prefix, Dial: previewDialer(home), Jar: previewJar, Viewer: viewer, Hook: livepreview.HTMLHook(prefix),
+		Home: home, Port: port, Prefix: prefix, Dial: previewDialer(home), Jar: previewJar, Viewer: viewer, Hook: livepreview.HTMLHookWith(prefix, st, livepreview.ProgramScope(port)),
 	})
 }
 

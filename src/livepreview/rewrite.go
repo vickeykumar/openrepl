@@ -55,8 +55,11 @@ func RewriteHTML(page []byte, prefix string) []byte {
 
 // InjectBridge adds BridgeScript to a page of the workspace: at the top of its head, or before everything after a doctype.
 // The page's own addresses stay as they are (the files are served by their relative paths).
-func InjectBridge(page []byte) []byte {
-	script := []byte(BridgeScript)
+func InjectBridge(page []byte) []byte { return injectAtTop(page, BridgeScript) }
+
+// injectAtTop puts a script at the top of the head of a page (or before everything, after a doctype, when there is no head).
+func injectAtTop(page []byte, s string) []byte {
+	script := []byte(s)
 	if loc := headRe.FindIndex(page); loc != nil {
 		return append(append(append([]byte{}, page[:loc[1]]...), script...), page[loc[1]:]...)
 	}
@@ -70,7 +73,10 @@ func InjectBridge(page []byte) []byte {
 }
 
 // HTMLHook is the Options.Hook that rewrites the HTML answers of a program.
-func HTMLHook(prefix string) func(*http.Response) error {
+func HTMLHook(prefix string) func(*http.Response) error { return HTMLHookWith(prefix, nil, "") }
+
+// HTMLHookWith is HTMLHook for a page that also gets the storage of st, for scope.
+func HTMLHookWith(prefix string, st *StorageInfo, scope string) func(*http.Response) error {
 	return func(res *http.Response) error {
 		if !strings.HasPrefix(strings.ToLower(res.Header.Get("Content-Type")), "text/html") || res.StatusCode == http.StatusSwitchingProtocols {
 			return nil
@@ -92,6 +98,9 @@ func HTMLHook(prefix string) func(*http.Response) error {
 		}
 		res.Body.Close()
 		out := RewriteHTML(body, prefix)
+		if s := st.script(scope); s != "" {
+			out = injectAtTop(out, s)
+		}
 		res.Body = io.NopCloser(bytes.NewReader(out))
 		res.ContentLength = int64(len(out))
 		res.Header.Set("Content-Length", strconv.Itoa(len(out)))

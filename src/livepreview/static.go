@@ -30,6 +30,11 @@ func within(dir, resolved string) bool {
 // ServeFile sends the file rel of the workspace home, read-only, and nothing outside the workspace: not through
 // "..", not through a link that leads out. A folder shows its index.html. The answer carries SandboxHeaders.
 func ServeFile(rw http.ResponseWriter, req *http.Request, home, rel string) {
+	ServeFileWith(rw, req, home, rel, nil)
+}
+
+// ServeFileWith is ServeFile with the storage of st for the pages it sends.
+func ServeFileWith(rw http.ResponseWriter, req *http.Request, home, rel string, st *StorageInfo) {
 	SandboxHeaders(rw.Header())
 	if req.Method != http.MethodGet && req.Method != http.MethodHead && req.Method != http.MethodOptions {
 		rw.Header().Set("Allow", "GET, HEAD, OPTIONS")
@@ -115,6 +120,9 @@ func ServeFile(rw http.ResponseWriter, req *http.Request, home, rel string) {
 		// a page of the workspace gets the script that reports to the pane (see BridgeScript)
 		if page, err := io.ReadAll(f); err == nil {
 			out := InjectBridge(page)
+			if sc := st.script(storageScope(rel)); sc != "" {
+				out = injectAtTop(out, sc)
+			}
 			rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 			rw.Header().Set("Content-Length", strconv.Itoa(len(out)))
 			rw.Write(out)

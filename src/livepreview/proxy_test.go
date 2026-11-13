@@ -281,3 +281,19 @@ func TestAnIdleWebSocketIsPingedAndItsMessagesStayWhole(t *testing.T) {
 		t.Errorf("an idle socket should have been pinged a few times: %d", pings)
 	}
 }
+
+func TestAProgramsHTMLGetsStorageForItsPort(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte("<html><head></head><body>app</body></html>"))
+	}))
+	defer backend.Close()
+	port, dial := dialServer(backend)
+	st := &StorageInfo{Store: NewStore(), Home: "/h", Viewer: "v", URL: "/preview/tok/s"}
+	st.Store.Set("local", "/h", "v", ProgramScope(port), []byte(`{"seen":"yes"}`))
+	o := Options{Home: "/h", Port: port, Prefix: "/preview/tok/p/" + strconv.Itoa(port), Dial: dial, Jar: NewJar(), Hook: HTMLHookWith("/preview/tok/p/"+strconv.Itoa(port), st, ProgramScope(port))}
+	body := run(o, "GET", "", "").Body.String()
+	if !strings.Contains(body, `"seen":"yes"`) || !strings.Contains(body, `SC="p:`+strconv.Itoa(port)+`"`) || !strings.HasSuffix(body, "<body>app</body></html>") {
+		t.Errorf("the program's page has no storage: %.300s", body)
+	}
+}

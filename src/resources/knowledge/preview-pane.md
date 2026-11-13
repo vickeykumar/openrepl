@@ -9,4 +9,4 @@ Ways to open it: the Preview button above the editor (shown for an .html, Markdo
 
 No button? Nothing that can be shown is open and no program listens. Open an .html page, start a program in the terminal (python3 -m http.server 8000), or use the command menu. Programs are found only where each workspace has a private network.
 
-The Ports list shows open ports and lines to start Python, Flask, Node, Vite, Next.js and Angular servers ("Type it" does not press Enter).  The page runs in a sandbox: it cannot see your account, and its own cookies and localStorage are not kept (server logins of a program work). An admin can switch the preview off, or off for guests.
+The Ports list shows open ports and lines to start Python, Flask, Node, Vite, Next.js and Angular servers ("Type it" does not press Enter).  The page runs in a sandbox: it cannot see your account. Its localStorage, sessionStorage and cookies work, and so do a program's server logins. An admin can switch the preview off, or off for guests.
