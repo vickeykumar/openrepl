@@ -1299,6 +1299,10 @@ body.files-collapsed .files-panel { display: none; }
   border-right: 1px solid var(--ink-700);
   cursor: pointer;
 }
+.etab__icon { flex-shrink: 0; font-size: 12px; opacity: 0.8; }
+.etab.active .etab__icon { opacity: 1; }
+.etab--modified .etab__icon { color: var(--fm-modified); }
+.etab--new .etab__icon { color: var(--fm-new); }
 .etab__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .etab:hover { color: var(--paper); background: var(--ink-800); }
 .etab.active {

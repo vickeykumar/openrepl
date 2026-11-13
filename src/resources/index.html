@@ -56,7 +56,11 @@
       <link rel="stylesheet" href="./css/ui-refresh.css">
       <!-- Page speed (T16): Font Awesome no longer blocks the first paint; FirebaseUI (sign-in), intro.js (tour)
            and reCAPTCHA load the first time they are used (loadScriptOnce in scribbler.js). -->
-      <script src="https://kit.fontawesome.com/f54540db67.js" crossorigin="anonymous" defer></script>
+      <!-- Font Awesome Free 6.5.1, from this site (css/fa): the file and folder icons of the Files panel and the buttons. A kit script from
+           kit.fontawesome.com was used before and answers 403 now, which left the Files panel without its icons. v4-shims keeps the
+           old names (fa-files-o, fa-trash-o, fa-close, fa-github ...). Licence: Icons CC BY 4.0, fonts SIL OFL 1.1, code MIT. -->
+      <link rel="stylesheet" href="./css/fa/css/all.min.css">
+      <link rel="stylesheet" href="./css/fa/css/v4-shims.min.css">
       <script>if (location.pathname.indexOf("/practice") === 0) document.documentElement.classList.add("is-practice");</script>
       <script src="./js/theme.js"></script>
       <script src="./js/usage-beat.js" defer></script>

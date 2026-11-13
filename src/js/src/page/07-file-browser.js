@@ -166,6 +166,8 @@
     }
     return "fa fa-file";
   }
+  // the editor tabs draw the same icon as the Files panel for a file (22-editor-tabs.js)
+  window.FileIconClass = filename2IconClass;
 
   function shoulddisable(filename) {
     // should disable the hidden files, usually startes with . or any other binary file format that can't be loaded to the editor
