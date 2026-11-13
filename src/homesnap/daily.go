@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,7 +54,8 @@ func parseObject(home string, o objstore.Object) (object, bool) {
 	name := o.Key[strings.LastIndex(o.Key, "/")+1:]
 	out := object{key: o.Key, at: o.LastModified, size: o.Size}
 	if m := legacyName.FindStringSubmatch(name); m != nil {
-		fmt.Sscan(m[1], &out.gen)
+		// base 10: Sscan reads "0000000089" as octal and stops at the 8, which made every generation from 8 up "0"
+		out.gen, _ = strconv.ParseInt(m[1], 10, 64)
 		t, err := time.Parse(timeLayout, m[2])
 		if err != nil {
 			return out, false

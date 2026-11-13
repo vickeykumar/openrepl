@@ -360,3 +360,28 @@ func TestAZipHasTheFilesAndFoldersOfTheSnapshot(t *testing.T) {
 		t.Error("the manifest is not a file of the user")
 	}
 }
+
+// the generation in the name of an object of the earlier scheme has leading zeros: it is read as a decimal number, and each
+// object has an id of its own (it was read as octal once, and every one from 8 up was "g:0")
+func TestTheObjectsOfTheEarlierSchemeHaveIdsOfTheirOwn(t *testing.T) {
+	f := objstore.NewFake()
+	defer f.Close()
+	s, base := newSnapper(t, f)
+	makeHome(t, base, "anna0123")
+	cl, _ := objstore.New(f.Config())
+	data := []byte("x")
+	for _, n := range []string{"0000000089-20261112T201626Z-aa", "0000000090-20261112T211123Z-aa", "0000000100-20261113T081200Z-aa"} {
+		cl.Put(ctx, s.prefix("anna0123")+n+".tar.gz", data, "application/gzip", nil)
+	}
+	infos, err := s.List(ctx, "anna0123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ""
+	for _, in := range infos {
+		got += in.ID + ","
+	}
+	if got != "g:100,g:90,g:89," {
+		t.Errorf("ids: %s", got)
+	}
+}
