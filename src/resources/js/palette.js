@@ -129,6 +129,12 @@
       add("Editor", "Focus the editor", focusEditor, { keys: ["Ctrl", "`"], words: "go to code" });
       add("Editor", "Save the open file", saveFile, { keys: [MOD, "S"], words: "write" });
       if (window.Unsaved && window.Unsaved.count() > 0) add("Editor", "Save all files", function () { window.Unsaved.saveAll(); }, { keys: [MOD, "Alt", "S"], words: "write every changed unsaved tabs" });
+      if (window.Preview) {
+        if (window.Preview.isOpen()) add("Editor", "Close the preview", function () { window.Preview.close(); }, { words: "browser page web view" });
+        else if (window.Preview.runs()) add("Editor", "Preview this page", function () { window.Preview.open(); }, { words: "browser page web html view run" });
+        // with nothing to show the button is hidden; the pane then lists the ports and how to start a program
+        else if (window.Preview.available && window.Preview.available()) add("Editor", "Open the preview", function () { window.Preview.open(); }, { words: "browser page web view port server localhost program" });
+      }
       add("Editor", "Download the editor code", call("DownloadEditor"), { words: "export save as" });
       add("Editor", editorShown() ? "Hide the editor" : "Show the editor", call("ToggleEditor"), { words: "toggle layout" });
       var rot = byId("rotate-button-label");

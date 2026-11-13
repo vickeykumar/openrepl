@@ -72,6 +72,9 @@ $(function() {
     
     // Select the desired programming language you want to code in 
     var $selectLang = $("#select-lang").change(function (event) {
+        // "Image" and "PDF" are shown, not edited: the file sets them, and they are no language of the editor, so
+        // nothing is told to the editor or to the other people of the session
+        if (this.value === "image" || this.value === "pdf") return;
         // Check if the silent event
         let is_silent = (event.detail && event.detail.silent) || false;
         console.log("is silent change: ", is_silent, event);

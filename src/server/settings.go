@@ -69,6 +69,10 @@ type SiteSettings struct {
 	// SnapshotIntervalMinutes is how often the workspaces of signed-in users that changed are snapshotted to the object
 	// store (package homesnap), from 1 to 60; 0 means the built-in 5. Only the newest 3 snapshots of a home are kept.
 	SnapshotIntervalMinutes int `json:"snapshotIntervalMinutes"`
+	// PreviewOff switches the Preview pane off for everyone, and PreviewGuestsOff for visitors who are not signed in:
+	// the pane shows pages written by visitors on this site's domain, so abuse can be stopped here without a deploy.
+	PreviewOff       bool `json:"previewOff"`
+	PreviewGuestsOff bool `json:"previewGuestsOff"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
 	// Admins are the accounts added in the dashboard, lower case, besides the
@@ -422,6 +426,9 @@ type publicSettings struct {
 	Maintenance       Maintenance  `json:"maintenance"`
 	DisabledLanguages []string     `json:"disabledLanguages"`
 	GenieDisabled     bool         `json:"genieDisabled"`
+	// the Preview pane: off for all, or for guests (the page hides its button)
+	PreviewOff       bool `json:"previewOff"`
+	PreviewGuestsOff bool `json:"previewGuestsOff"`
 	// the largest file the editor opens, in MB (the effective number: 16 when none is set)
 	MaxEditorFileMB int `json:"maxEditorFileMB"`
 	// the models that are switched off, and the one visitors start with (empty:
@@ -601,6 +608,8 @@ func (s SiteSettings) public() publicSettings {
 		Maintenance:       s.Maintenance,
 		DisabledLanguages: langs,
 		GenieDisabled:     s.Genie.Disabled,
+		PreviewOff:        s.PreviewOff,
+		PreviewGuestsOff:  s.PreviewGuestsOff,
 		MaxEditorFileMB:   s.maxEditorFileMB(),
 		DisabledModels:    models,
 		CustomModels:      s.Genie.publicCustomModels(),
@@ -812,6 +821,12 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.DBCapacityMB != b.DBCapacityMB {
 		out = append(out, "database capacity changed")
+	}
+	if a.PreviewOff != b.PreviewOff {
+		out = append(out, "preview "+onoff(!b.PreviewOff))
+	}
+	if a.PreviewGuestsOff != b.PreviewGuestsOff {
+		out = append(out, "preview for guests "+onoff(!b.PreviewGuestsOff))
 	}
 	if a.maxEditorFileMB() != b.maxEditorFileMB() {
 		out = append(out, fmt.Sprintf("largest editor file %d MB", b.maxEditorFileMB()))

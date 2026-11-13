@@ -32,6 +32,10 @@ export const ACTIONS = [
   "files_move",
   "files_delete",
   "read_output",
+  "preview_open",
+  "preview_close",
+  "preview_reload",
+  "preview_state",
   "finish",
 ] as const;
 export type ActionType = (typeof ACTIONS)[number];
@@ -55,6 +59,7 @@ export interface Action {
   name?: string; // files_rename: the new name, one segment
   kind?: "file" | "folder"; // files_new
   waitSeconds?: number; // read_output and terminal_type, 1 to 20
+  port?: number; // preview_open: a port of the workspace, 1024 to 65535
 }
 
 export interface Step {
@@ -80,7 +85,7 @@ export interface StepResult {
 // Switching the language is a kind of its own: it is not a change the user
 // reviews, the page puts the language's starter code in the editor and starts
 // the terminal again.
-export type Scope = "editor" | "language" | "run" | "terminal" | "files";
+export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview";
 
 export function scopeOf(a: Action): Scope | null {
   switch (a.type) {
@@ -112,6 +117,11 @@ export function scopeOf(a: Action): Scope | null {
     case "files_move":
     case "files_delete":
       return "files";
+    // opening, closing and reloading the Preview change the page's layout only; preview_state reads and needs no permission
+    case "preview_open":
+    case "preview_close":
+    case "preview_reload":
+      return "preview";
     default:
       return null;
   }
@@ -186,6 +196,7 @@ export function scopeQuestion(scope: Scope): string {
   if (scope === "language") return "Genie wants to switch the language";
   if (scope === "terminal") return "Genie wants to use your terminal";
   if (scope === "files") return "Genie wants to use your files";
+  if (scope === "preview") return "Genie wants to use the Preview";
   return "Genie wants to run your code";
 }
 
@@ -224,6 +235,13 @@ export function scopeDetail(scope: Scope, a: Action, openFile: string = ""): str
       default:
         return "It will delete " + a.path + " for good, and everything in it if it is a folder.";
     }
+  }
+  if (scope === "preview") {
+    if (a.type === "preview_close") return "It will close the Preview pane. Nothing is stopped: a program that runs keeps running.";
+    if (a.type === "preview_reload") return "It will reload the page that the Preview shows.";
+    if (a.port) return "It will show the program that listens on port " + a.port + " in the Preview pane beside your editor.";
+    if (a.path) return "It will show " + a.path + " in the Preview pane beside your editor.";
+    return "It will open the Preview pane beside your editor.";
   }
   if (scope === "terminal") {
     if (a.type === "terminal_interrupt") return "It will press Ctrl+C in your terminal, which stops the program that is running there.";
@@ -508,6 +526,20 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
       case "files_save":
         actions.push({ type });
         break;
+      case "preview_close":
+      case "preview_reload":
+      case "preview_state":
+        actions.push({ type });
+        break;
+      case "preview_open": {
+        const port = a.port === undefined ? undefined : typeof a.port === "number" && Number.isInteger(a.port) && a.port >= 1024 && a.port <= 65535 ? a.port : null;
+        const p = a.path === undefined ? undefined : cleanPath(a.path, false);
+        if (port === null) dropped.push('preview_open left out: "port" has to be a whole number from 1024 to 65535');
+        else if (p === null) dropped.push('preview_open left out: "path" has to be a file relative to the home directory, as files_list shows it');
+        else if (port !== undefined && p !== undefined) dropped.push('preview_open left out: give a "port" or a "path", not both');
+        else actions.push(port !== undefined ? { type, port } : p !== undefined ? { type, path: p } : { type });
+        break;
+      }
       case "files_rename": {
         const p = cleanPath(a.path, false);
         const n = cleanName(a.name);
@@ -593,6 +625,14 @@ export function describe(a: Action): string {
       return "Moving " + a.path + " into " + where(a.to);
     case "files_delete":
       return "Deleting " + a.path;
+    case "preview_open":
+      return a.port ? "Opening the Preview on port " + a.port : a.path ? "Opening " + a.path + " in the Preview" : "Opening the Preview";
+    case "preview_close":
+      return "Closing the Preview";
+    case "preview_reload":
+      return "Reloading the Preview";
+    case "preview_state":
+      return "Looking at the Preview";
     case "read_output":
       return "Reading the output";
     default:

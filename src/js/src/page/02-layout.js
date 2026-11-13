@@ -137,7 +137,7 @@ function SaveSelectedNodeToFile(oldSelectedNodeId, errcallback=null) {
     let type =  $('#file-browser').jstree(true).get_node(oldSelectedNodeId).type;
     if (type === "file") {
       var savedText = GetEditorContent();
-      var base64EncodedString=btoa(savedText);
+      var base64EncodedString=window.textToBase64(savedText); // UTF-8; btoa alone fails on a character outside Latin1
       $.ajax({
         url: preprocessurl("/ws_filebrowser?q=save&filepath="+oldSelectedNodeId),
         method: "POST",

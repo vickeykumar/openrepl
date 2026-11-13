@@ -39,6 +39,8 @@ function currentTheme() {
     return p && p.term ? p.term : THEME;
 }
 
+const PORT_HINT = /(serving http|listening on|listening at|running on http|started server|ready on|local:\s+http|(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::\]?):\d{4,5})/i;
+
 export class Xterm {
     elem: HTMLElement;
     term: XTerminal;
@@ -154,7 +156,12 @@ export class Xterm {
     };
 
     output(data: string) {
-        this.term.write(this.decoder.decode(data));
+        const text = this.decoder.decode(data);
+        this.term.write(text);
+        // A program that says where it listens ("Serving HTTP on ... port 8000", "Running on http://127.0.0.1:5000"):
+        // the page is told, so that the Preview can offer it at once (27-preview.js). A short test of a short piece
+        // of text; nothing is sent anywhere.
+        if (text.length < 4096 && PORT_HINT.test(text)) window.dispatchEvent(new Event("terminal-port-hint"));
     };
 
     // Whether the terminal is connected and takes input.

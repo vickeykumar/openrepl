@@ -358,7 +358,10 @@ func OwnWorkspace(r *http.Request) bool {
 // IsExecutionBound reports whether the path runs user code or touches a
 // user's workspace: the terminal WebSockets, the file browser and uploads.
 func IsExecutionBound(rel string) bool {
-	return rel == "ws" || strings.HasPrefix(rel, "ws_") || rel == "upload_file"
+	// The preview's token and port list name the workspace of the session, so they are asked of the node that runs it,
+	// like the file browser: from the site alone they would answer for the workspace of the cookie, which is another one
+	// when the cookie was renewed after the page opened.
+	return rel == "ws" || strings.HasPrefix(rel, "ws_") || rel == "upload_file" || rel == "preview_token" || rel == "preview_ports" || rel == "preview_cookies"
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {

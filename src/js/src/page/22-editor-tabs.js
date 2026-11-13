@@ -258,7 +258,7 @@ function saveText(path, text, then) {
     url: preprocessurl("/ws_filebrowser?q=save&filepath=" + path),
     method: "POST",
     processData: false,
-    data: btoa(text),
+    data: window.textToBase64(text), // UTF-8; btoa alone fails on a character outside Latin1
     contentType: "application/octet-stream"
   }).done(function () {
     baseline[path] = text;

@@ -60,6 +60,7 @@ function paint() {
 
 function event(op, path) {
   if (!path) return;
+  if ((op === "write" || op === "create") && window.Preview) window.Preview.changed(String(path)); // a previewed page reloads
   var before = JSON.stringify(marks);
   marks = applyEvent(marks, op, String(path));
   if (JSON.stringify(marks) !== before) { schedule(); if (window.EditorTabs) window.EditorTabs.redraw(); }

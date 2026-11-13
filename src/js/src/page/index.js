@@ -12,6 +12,7 @@ import "./23-tab-lanes";
 import "./24-large-file-viewer";
 import "./25-file-search";
 import "./26-file-marks";
+import "./27-preview";
 import "./28-unsaved";
 import "./07-file-browser";
 import "./08-genie-nudge";

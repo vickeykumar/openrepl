@@ -13,6 +13,9 @@
 // menu. The menu also opens from the keyboard (the Menu key, Shift+F10).
 
 import { fenced, codeOf, withAction } from "./lib-actions.mjs";
+import { textToBase64 } from "./lib-encoding.mjs";
+// the save of a file (02-layout.js, 22-editor-tabs.js) encodes its text with this: UTF-8, not Latin1 as btoa alone does
+window.textToBase64 = textToBase64;
 
 const MENU_ID = "genie-menu";
 const CODE_ACTIONS = {
