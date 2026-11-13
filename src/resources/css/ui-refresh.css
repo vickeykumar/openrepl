@@ -2543,6 +2543,7 @@ body.files-collapsed .files-panel { display: none; }
 .profile-btn--primary:focus-visible,
 [data-theme="dark"] .profile-btn--primary:hover,
 [data-theme="dark"] .profile-btn--primary:focus-visible { background: var(--accent-color); filter: brightness(1.07); }
+.profile-btn[hidden] { display: none; }
 .profile-btn--out { margin-left: auto; color: var(--danger-color); }
 [data-theme="light"] .profile-btn--out { color: #B02A2A; }
 @media screen and (max-width: 600px) {
@@ -2553,6 +2554,49 @@ body.files-collapsed .files-panel { display: none; }
   .profile-btn--out { margin-left: 0; }
 }
 
+/* The profile page's Workspace snapshots card (js/profile-snapshots.js) */
+.profile-snap { margin-top: 20px; }
+.profile-snap__head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.profile-snap__head h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
+.profile-snap__meta { flex: 1 1 auto; font-size: 13px; color: #5B5866; }
+[data-theme="dark"] .profile-snap__meta { color: var(--muted-2); }
+.profile-snap__status { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; font-size: 14px; line-height: 1.5; background: rgba(22, 21, 26, 0.05); }
+.profile-snap__status.is-ok { background: rgba(60, 160, 90, 0.12); }
+.profile-snap__status.is-error { background: rgba(176, 42, 42, 0.12); }
+[data-theme="dark"] .profile-snap__status { background: var(--ink-700); }
+.profile-snap__note { margin: 12px 0 0; font-size: 14px; line-height: 1.55; color: #5B5866; }
+[data-theme="dark"] .profile-snap__note { color: var(--muted-2); }
+.profile-snap__note.is-error { color: #B02A2A; }
+.profile-snap__table { width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 14px; }
+.profile-snap__table th { padding: 8px 10px; text-align: left; font-weight: 600; font-size: 12.5px; color: #5B5866; border-bottom: 1px solid #E4E1DA; }
+.profile-snap__table td { padding: 10px; vertical-align: middle; border-bottom: 1px solid #E4E1DA; }
+[data-theme="dark"] .profile-snap__table th, [data-theme="dark"] .profile-snap__table td { border-bottom-color: var(--ink-700); }
+.profile-snap__when { font-weight: 600; }
+.profile-snap__sub { display: block; font-size: 12.5px; color: #5B5866; }
+[data-theme="dark"] .profile-snap__sub { color: var(--muted-2); }
+.profile-snap__size { white-space: nowrap; }
+.profile-snap__actions { text-align: right; white-space: nowrap; }
+.profile-snap__actions .profile-btn { min-height: 34px; padding: 0 12px; font-size: 14px; margin-left: 8px; }
+.profile-snap__badge { display: inline-block; padding: 1px 8px; border: 1px solid #CFCBC3; border-radius: 999px; font-size: 12px; margin-left: 4px; }
+[data-theme="dark"] .profile-snap__badge { border-color: var(--ink-500); }
+.profile-snap__badge.is-newest { border-color: var(--accent-color); }
+.profile-snap__badge.is-few { border-color: #B87514; color: #B87514; }
+.profile-snap__backdrop { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.5); }
+.profile-snap__dialog { width: min(480px, 100%); max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; padding: 20px 22px; border-radius: 14px; background: #FFFFFF; color: #16151A; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); }
+[data-theme="dark"] .profile-snap__dialog { background: var(--ink-800); color: var(--paper); }
+.profile-snap__dialog h2 { margin: 0; font-size: 18px; font-weight: 800; }
+.profile-snap__dialog h2.is-danger { color: #B02A2A; }
+.profile-snap__choices { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.profile-snap__choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid #CFCBC3; border-radius: 10px; cursor: pointer; }
+[data-theme="dark"] .profile-snap__choice { border-color: var(--ink-500); }
+.profile-snap__choice.is-danger { border-color: #B02A2A; }
+.profile-snap__choice input { margin-top: 3px; }
+.profile-snap__choice strong { display: block; font-size: 14.5px; }
+.profile-snap__input { display: block; box-sizing: border-box; width: 100%; margin-top: 6px; padding: 8px 10px; font: 500 15px var(--font-code); border: 1px solid #CFCBC3; border-radius: 8px; background: transparent; color: inherit; }
+.profile-snap__buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.profile-btn--danger { background: #B02A2A; border-color: #B02A2A; color: #fff; }
+.profile-btn--danger:disabled { opacity: 0.45; cursor: default; }
+.profile-btn--danger:hover:not(:disabled), .profile-btn--danger:focus-visible { background: #B02A2A; filter: brightness(1.1); }
 /* ------------------------------------------------------------------ */
 /* Phone layout (T10)                                                  */
 /* ------------------------------------------------------------------ */
