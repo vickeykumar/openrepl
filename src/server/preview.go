@@ -21,13 +21,9 @@ import (
 // The Preview pane (docs/preview-pane-design.md). The pane's frame is sandboxed and has no origin, so none of the
 // visitor's cookies reach the route it loads: what names the workspace is a token in the address (package preview).
 
-// previewTokenLife is how long a preview link works: the admin's setting (Settings, Preview), or the built-in 2 hours.
-func previewTokenLife(s SiteSettings) time.Duration {
-	if d := s.previewLinkLife(); d != 0 {
-		return d
-	}
-	return livepreview.TokenLife
-}
+// previewTokenLife is how long a preview link works: the admin's setting for guests or for signed-in users (Settings, Preview),
+// or the built-in 1 hour and 12 hours.
+func previewTokenLife(s SiteSettings, guest bool) time.Duration { return s.previewLinkLife(guest) }
 
 // viewerID is the random id a pane makes for itself, kept to letters and digits and 32 of them (it ends in a token).
 func viewerID(v string) string {
@@ -76,7 +72,7 @@ func (server *Server) handlePreviewToken(rw http.ResponseWriter, req *http.Reque
 		http.Error(rw, why, http.StatusForbidden)
 		return
 	}
-	life := previewTokenLife(GetSiteSettings())
+	life := previewTokenLife(GetSiteSettings(), uid == "")
 	token, err := livepreview.NewViewerToken(utils.Secret(), homedir, viewerID(req.Form.Get("v")), time.Now(), life)
 	if err != nil {
 		http.Error(rw, "the preview is not available on this server", http.StatusServiceUnavailable)

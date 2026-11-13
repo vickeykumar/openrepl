@@ -7,30 +7,37 @@ import (
 	"livepreview"
 )
 
-func TestTheTimeAPreviewLinkWorksIsCheckedAndDefaultsToTwoHours(t *testing.T) {
+func TestTheTimeAPreviewLinkWorksIsCheckedAndDefaultsToAnHourForGuestsAndThreeForSignedInUsers(t *testing.T) {
 	for _, m := range []int{0, 10, 120, 1440} {
-		if _, err := (SiteSettings{PreviewLinkMinutes: m}).normalize(); err != nil {
+		if _, err := (SiteSettings{PreviewLinkGuestMinutes: m, PreviewLinkUserMinutes: m}).normalize(); err != nil {
 			t.Errorf("%d minutes is allowed: %v", m, err)
 		}
 	}
 	for _, m := range []int{-1, 1, 9, 1441, 100000} {
-		if _, err := (SiteSettings{PreviewLinkMinutes: m}).normalize(); err == nil {
-			t.Errorf("%d minutes was taken", m)
+		if _, err := (SiteSettings{PreviewLinkGuestMinutes: m}).normalize(); err == nil {
+			t.Errorf("%d minutes was taken for guests", m)
+		}
+		if _, err := (SiteSettings{PreviewLinkUserMinutes: m}).normalize(); err == nil {
+			t.Errorf("%d minutes was taken for signed-in users", m)
 		}
 	}
-	if got := previewTokenLife(SiteSettings{}); got != livepreview.TokenLife || got != 2*time.Hour {
-		t.Errorf("nothing set: %v, want the built-in 2 hours", got)
+	if got := previewTokenLife(SiteSettings{}, true); got != time.Hour {
+		t.Errorf("a guest, nothing set: %v, want 1 hour", got)
 	}
-	if got := previewTokenLife(SiteSettings{PreviewLinkMinutes: 30}); got != 30*time.Minute {
-		t.Errorf("30 minutes: %v", got)
+	if got := previewTokenLife(SiteSettings{}, false); got != 3*time.Hour {
+		t.Errorf("a signed-in user, nothing set: %v, want 3 hours", got)
 	}
-	if got := previewTokenLife(SiteSettings{PreviewLinkMinutes: 5000}); got != 2*time.Hour {
+	s := SiteSettings{PreviewLinkGuestMinutes: 30, PreviewLinkUserMinutes: 90}
+	if previewTokenLife(s, true) != 30*time.Minute || previewTokenLife(s, false) != 90*time.Minute {
+		t.Errorf("each has its own: %v %v", previewTokenLife(s, true), previewTokenLife(s, false))
+	}
+	if got := previewTokenLife(SiteSettings{PreviewLinkGuestMinutes: 5000, PreviewLinkUserMinutes: 5}, false); got != 3*time.Hour {
 		t.Errorf("a number out of range must not be used: %v", got)
 	}
 }
 
 func TestALinkMadeWithTheSettingEndsWhenTheSettingSays(t *testing.T) {
-	life := previewTokenLife(SiteSettings{PreviewLinkMinutes: 45})
+	life := previewTokenLife(SiteSettings{PreviewLinkGuestMinutes: 45}, true)
 	now := time.Now()
 	tok, err := livepreview.NewViewerToken("secret", "/home/openrepl/ws", "v", now, life)
 	if err != nil {
@@ -54,6 +61,28 @@ func TestTheChangeLogSaysWhenThePreviewLinkTimeChanges(t *testing.T) {
 		}
 		t.Errorf("settingsChanges lacks %q: %v", want, settingsChanges(a, b))
 	}
-	has(SiteSettings{}, SiteSettings{PreviewLinkMinutes: 30}, "preview link works 30 minutes")
-	has(SiteSettings{PreviewLinkMinutes: 30}, SiteSettings{}, "preview link time back to the built-in 2 hours")
+	has(SiteSettings{}, SiteSettings{PreviewLinkGuestMinutes: 30}, "preview link works 30 minutes for guests")
+	has(SiteSettings{}, SiteSettings{PreviewLinkUserMinutes: 360}, "preview link works 360 minutes for signed-in users")
+	has(SiteSettings{PreviewLinkGuestMinutes: 30}, SiteSettings{}, "preview link works 60 minutes for guests")
+}
+
+func TestTheAgentsAutoLevelsCanBeSwitchedOffAndTheChangeLogSaysSo(t *testing.T) {
+	pub := (SiteSettings{Genie: GenieSettings{AgentAutoOff: true}}).public()
+	if !pub.AgentAutoOff || pub.AgentRiskyOff {
+		t.Errorf("the page is told: auto off %v, risky off %v", pub.AgentAutoOff, pub.AgentRiskyOff)
+	}
+	if (SiteSettings{}).public().AgentAutoOff || (SiteSettings{}).public().AgentRiskyOff {
+		t.Error("both levels are available by default")
+	}
+	has := func(a, b SiteSettings, want string) {
+		t.Helper()
+		for _, c := range settingsChanges(a, b) {
+			if c == want {
+				return
+			}
+		}
+		t.Errorf("settingsChanges lacks %q: %v", want, settingsChanges(a, b))
+	}
+	has(SiteSettings{}, SiteSettings{Genie: GenieSettings{AgentAutoOff: true}}, "agent: allow everything for a session off")
+	has(SiteSettings{}, SiteSettings{Genie: GenieSettings{AgentRiskyOff: true}}, "agent: allowing riskier things for a while off")
 }

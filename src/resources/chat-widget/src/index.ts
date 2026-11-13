@@ -883,6 +883,11 @@ const agentRunner = new AgentRunner(
     renderActivity();
   }
 );
+// The review card of the editor's changes (js/src/page/18-genie-review.js) offers "apply later changes without asking" through this
+(window as any).GenieAgent = {
+  canAutoApply: () => agentRunner.canAutoApply(),
+  enableAutoApply: () => agentRunner.enableAutoApply(),
+};
 
 // ---- pinned beside the IDE -------------------------------------------------------
 // The pin button docks the panel in the workspace row (#genie-dock, index.html),

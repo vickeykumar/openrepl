@@ -8,16 +8,27 @@
 import {
   Action,
   CUT_OFF,
+  EVERYDAY_SCOPES,
   MAX_OUTPUT,
   MAX_TABS,
   PAGE_ONLY_LANGUAGES,
+  Permissions,
+  RISK_KINDS,
+  RISK_LABELS,
+  RISK_MINUTES,
+  RISK_PHRASE,
+  RiskKind,
   RunPhase,
+  SCOPE_LABELS,
   Scope,
   Status,
   StepResult,
+  TRASH,
   describe,
   endedAtTail,
   filesAskReason,
+  hardBlockOf,
+  riskKindOf,
   splitPath,
   findLanguage,
   newOutput,
@@ -159,6 +170,19 @@ class StepLine {
     this.mark.textContent = MARKS[phase];
     if (label !== undefined) this.text.textContent = label;
   }
+  // a small button on the line (Undo)
+  addAction(label: string, run: () => boolean): HTMLButtonElement {
+    const b = el("button", "cw-agent__step-btn", label);
+    b.type = "button";
+    b.addEventListener("click", () => {
+      if (run()) {
+        b.disabled = true;
+        b.textContent = "Undone";
+      }
+    });
+    this.root.appendChild(b);
+    return b;
+  }
 }
 
 // What the model is told about the Preview: short, and only what helps (the address, the errors, the last calls)
@@ -179,7 +203,16 @@ export class AgentRunner {
   private stopped = false; // Stop was pressed: the task winds down
   private timedOut = false;
   private ctl: AbortController | null = null;
-  private grants = new Set<Scope>(); // allowed for the rest of the session (until the page closes)
+  // what is allowed for the rest of the session (until the page closes or the chat is cleared): agent-protocol.ts, Permissions
+  private perms = new Permissions(() => {
+    const s = (window as any).site_settings || {};
+    return { autoOff: !!s.agentAutoOff, riskyOff: !!s.agentRiskyOff };
+  });
+  private badgeTimer = 0;
+  private menu: HTMLElement | null = null;
+  private pendingAction: { a: Action; risk: string } | null = null;
+  private trashNext = false; // the delete that goes is moved to the Trash (the riskier level allowed it)
+  private lastLine: StepLine | null = null; // the line of the action that just ran (perform adds an Undo to its own)
   private pendingAnswer: ((a: "once" | "session" | "deny") => void) | null = null;
   // The run this task started, if any: the terminal that was there when Run was
   // pressed (the run's own terminal is another one), and when.
@@ -436,8 +469,15 @@ export class AgentRunner {
         : scopeOf(a) === "files"
         ? filesAskReason(a, this.host.files.buffer())
         : "";
+    let riskyNote = "";
+    this.trashNext = false;
     if (scope && !noChange) {
-      if (risk || !this.grants.has(scope)) line.set("active", "Waiting for your answer: " + describe(a));
+      const decision = this.perms.decide(a, !risk);
+      if (decision === "risky") {
+        riskyNote = " (risky, allowed by you)";
+        this.trashNext = a.type === "files_delete";
+      }
+      if (decision === "ask") line.set("active", "Waiting for your answer: " + describe(a));
       const allowed = await this.permission(scope, a, risk);
       if (this.stopped) {
         line.set("stopped", "Stopped");
@@ -475,7 +515,8 @@ export class AgentRunner {
     await sleep(a.type === "terminal_type" ? 700 : 350); // long enough to see where it was (and the line that was typed)
     this.clearHighlight();
     const phase: Phase = result.status === "failed" || result.status === "denied" || result.status === "rejected" ? "failed" : result.status === "skipped" ? "stopped" : "done";
-    line.set(phase, labelFor(a, result));
+    line.set(phase, labelFor(a, result) + riskyNote);
+    this.lastLine = line;
     return result;
   }
 
@@ -485,10 +526,27 @@ export class AgentRunner {
       case "editor_write":
       case "editor_insert": {
         if (!review) return { type: a.type, status: "failed", detail: "the editor is not available" };
+        // allowed without a review (Allow everything, or "apply later changes without asking"): it goes in at once, with an Undo
+        if (this.perms.autoApply() && typeof review.applyDirect === "function") {
+          const d = review.applyDirect(a.type === "editor_write" ? { text: a.text } : { insert: a.text });
+          if (d.error) return { type: a.type, status: "failed", detail: d.error };
+          if (d.total === 0) return { type: a.type, status: "done", detail: "the editor already had this text" };
+          const label = "Applied " + d.total + (d.total === 1 ? " change" : " changes") + " to " + (this.openFile() || "the editor");
+          const item = { label, undo: d.undo as () => boolean, done: false };
+          this.perms.pushUndo(item);
+          if (line) {
+            line.addAction("Undo", () => {
+              const ok = d.undo();
+              if (ok) item.done = true; // the badge menu does not offer it again
+              return ok;
+            });
+          }
+          return { type: a.type, status: "accepted", accepted: d.total, rejected: 0, detail: "applied without a review, as the user allowed; the user can undo it" };
+        }
         const r =
           a.type === "editor_write"
-            ? await this.needsYou<any>(review.proposeAsync(a.text, { title: "Genie wants to replace the file:" }))
-            : await this.needsYou<any>(review.proposeInsertAsync(a.text, { title: "Genie wants to insert" }));
+            ? await this.needsYou<any>(review.proposeAsync(a.text, { title: "Genie wants to replace the file:", agent: true }))
+            : await this.needsYou<any>(review.proposeInsertAsync(a.text, { title: "Genie wants to insert", agent: true }));
         if (r.error) return { type: a.type, status: "failed", detail: r.error };
         if (r.total === 0) return { type: a.type, status: "done", detail: "the editor already had this text" };
         const status: Status = r.accepted === r.total ? "accepted" : r.accepted > 0 ? "partly_accepted" : "rejected";
@@ -943,6 +1001,12 @@ export class AgentRunner {
         return done(r, { type: a.type, status: "done", detail: "moved into " + (a.to || "the home folder") });
       }
       default: {
+        // the riskier level allowed this delete: it goes to the Trash folder of the workspace, so that it can be restored
+        if (this.trashNext) {
+          const t = await this.moveToTrash(path);
+          if (!t.ok) return { type: a.type, status: "failed", detail: t.error };
+          return { type: a.type, status: "done", detail: "moved " + path + " to " + t.to + " (the Trash folder of the workspace; move it back to restore it)" };
+        }
         const r = await f.remove(path);
         return done(r, { type: a.type, status: "done", detail: "deleted " + path + (r.ok && r.detail ? "; " + r.detail : "") });
       }
@@ -998,7 +1062,7 @@ export class AgentRunner {
   // risk: why a terminal line is risky, "" if it is not. A risky line is asked
   // about every time and can only be allowed once.
   private permission(scope: Scope, a: Action, risk: string = ""): Promise<boolean> {
-    if (!risk && this.grants.has(scope)) return Promise.resolve(true);
+    if (this.perms.decide(a, !risk) !== "ask") return Promise.resolve(true);
     return new Promise<boolean>((resolve) => {
       const box = el("div", "cw-agent__ask" + (risk ? " cw-agent__ask--risk" : ""));
       box.setAttribute("role", "group");
@@ -1027,8 +1091,10 @@ export class AgentRunner {
         answered = true;
         if (this.host.attention) this.host.attention(false);
         this.pendingAnswer = null;
+        this.pendingAction = null;
         box.remove();
-        if (answer === "session") this.grants.add(scope);
+        if (answer === "session") this.perms.grant(scope);
+        this.renderBadge();
         resolve(answer !== "deny");
       };
       const mk = (label: string, cls: string, answer: "once" | "session" | "deny") => {
@@ -1041,10 +1107,33 @@ export class AgentRunner {
       if (!risk) buttons.append(mk("Allow for this session", "", "session"));
       buttons.append(mk("Deny", "", "deny"));
       box.appendChild(buttons);
+      // one answer for everything (it asks to confirm), and, for a risky action, a way to allow that kind for a while
+      if (!risk && this.perms.everythingAllowed()) {
+        const more = el("div", "cw-agent__ask-more");
+        const all = el("button", "cw-agent__ask-all", "Allow everything for this session…");
+        all.type = "button";
+        all.addEventListener("click", () => this.confirmEverything(box, done));
+        more.appendChild(all);
+        box.appendChild(more);
+      }
+      if (risk) {
+        const kind = riskKindOf(a);
+        const floor = hardBlockOf(a);
+        if (floor) box.appendChild(el("p", "cw-agent__ask-hint", "Never allowed without a card, because " + floor + "."));
+        else if (kind && this.perms.riskyAvailable()) {
+          const more = el("div", "cw-agent__ask-more");
+          const open = el("button", "cw-agent__ask-all", "Allow this kind of risky action for a while…");
+          open.type = "button";
+          open.addEventListener("click", () => this.openPermissions(kind));
+          more.appendChild(open);
+          box.appendChild(more);
+        }
+      }
       if (scope === "terminal" && !risk) {
         box.appendChild(el("p", "cw-agent__ask-hint", "Lines that can delete or change things are still asked about every time."));
       }
       this.pendingAnswer = done;
+      this.pendingAction = { a, risk };
       if (this.list && this.list.parentElement) this.list.parentElement.appendChild(box);
       else this.host.messages().prepend(box);
       // Keys go where the user is typing. A card that took the focus for its
@@ -1068,6 +1157,319 @@ export class AgentRunner {
         // scrolling is not essential
       }
     });
+  }
+
+  // ---- the Trash ---------------------------------------------------------------------
+
+  // Moves a file or folder into the Trash folder at the top of the workspace (made when it is not there), under a new name when
+  // the Trash holds one of that name already.
+  private async moveToTrash(path: string): Promise<{ ok: true; to: string } | { ok: false; error: string }> {
+    const f = this.host.files;
+    if (!f.info(TRASH).exists) {
+      const c = await f.create(TRASH, "folder");
+      if (!c.ok) return { ok: false, error: "the Trash folder could not be made: " + c.error };
+    }
+    const { parent, name } = splitPath(path);
+    let from = path;
+    let finalName = name;
+    if (f.info(TRASH + "/" + name).exists) {
+      const dot = name.lastIndexOf(".");
+      const stamp = "-" + Date.now();
+      finalName = dot > 0 ? name.slice(0, dot) + stamp + name.slice(dot) : name + stamp;
+      const r = await f.rename(path, finalName);
+      if (!r.ok) return { ok: false, error: "it could not be renamed for the Trash: " + r.error };
+      from = parent ? parent + "/" + finalName : finalName;
+    }
+    const m = await f.move(from, TRASH);
+    if (!m.ok) return { ok: false, error: m.error };
+    return { ok: true, to: TRASH + "/" + finalName };
+  }
+
+  // ---- what is allowed for the session: the confirmation, the badge and its menu, the permissions card ------------------
+
+  // "Allow everything for this session…": says what it covers and what is still asked, and takes effect on a second click.
+  private confirmEverything(box: HTMLElement, done: (answer: "once" | "session" | "deny") => void) {
+    const parts = Array.from(box.children) as HTMLElement[];
+    parts.forEach((c) => (c.hidden = true));
+    const panel = el("div", "cw-agent__confirm");
+    panel.appendChild(el("div", "cw-agent__ask-title", "Allow everything for this session?"));
+    panel.appendChild(el("p", "cw-agent__ask-text", "Genie will not ask again until you close or reload the page, or clear the chat."));
+    const grid = el("div", "cw-agent__confirm-grid");
+    const yes = el("div", "cw-agent__confirm-box cw-agent__confirm-box--yes");
+    yes.appendChild(el("b", "", "Genie can, without asking"));
+    yes.appendChild(el("span", "", "Change the editor (with an Undo) · switch the language · press Run and Debug · type safe lines in the terminal · open, create and save files · use the Preview"));
+    const no = el("div", "cw-agent__confirm-box cw-agent__confirm-box--no");
+    no.appendChild(el("b", "", "Still asked every time"));
+    no.appendChild(el("span", "", "Risky terminal lines · deleting · renaming and moving · pasting after a cut · closing a terminal tab · hidden files"));
+    grid.append(yes, no);
+    panel.appendChild(grid);
+    const row = el("div", "cw-agent__ask-buttons");
+    const go = el("button", "is-primary", "Allow everything");
+    go.type = "button";
+    go.addEventListener("click", () => {
+      this.perms.grantEverything();
+      done("session");
+    });
+    const cancel = el("button", "", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", () => {
+      panel.remove();
+      parts.forEach((c) => (c.hidden = false));
+    });
+    row.append(go, cancel);
+    panel.appendChild(row);
+    box.appendChild(panel);
+  }
+
+  // The badge in the panel's header: shown while anything is allowed for the session, and red while riskier things are.
+  private renderBadge(keepMenu: boolean = false) {
+    const slot = document.getElementById("chat-widget__auto");
+    if (!slot) return;
+    window.clearInterval(this.badgeTimer);
+    slot.textContent = "";
+    if (!keepMenu) this.closeMenu();
+    const p = this.perms;
+    const open = (e: Event) => {
+      e.stopPropagation();
+      this.toggleMenu();
+    };
+    if (p.auto() && (p.grants_().length > 0 || p.autoApply())) {
+      const n = p.grants_().length;
+      const all = n === EVERYDAY_SCOPES.length && p.autoApply();
+      const b = el("button", "cw-auto", all ? "Auto for this session ▾" : "Auto: " + n + " of " + EVERYDAY_SCOPES.length + " ▾");
+      b.type = "button";
+      b.title = "What Genie may do without asking, for this session";
+      b.setAttribute("aria-haspopup", "true");
+      b.addEventListener("click", open);
+      slot.appendChild(b);
+    }
+    if (p.riskyOn()) {
+      const left = p.riskyMinutesLeft();
+      const r = el("button", "cw-auto cw-auto--risky", "⚠ Risky allowed · " + (left ? left + " min left" : "until the page closes") + " ▾");
+      r.type = "button";
+      r.title = "Riskier things Genie may do without asking";
+      r.setAttribute("aria-haspopup", "true");
+      r.addEventListener("click", open);
+      slot.appendChild(r);
+      // the minutes left, and the end
+      if (!p.riskyUntilClose()) this.badgeTimer = window.setInterval(() => this.renderBadge(true), 20000);
+    }
+  }
+
+  private closeMenu() {
+    if (this.menu) this.menu.remove();
+    this.menu = null;
+  }
+
+  private toggleMenu() {
+    if (this.menu) return this.closeMenu();
+    const panel = document.getElementById(PANEL_ID);
+    if (!panel) return;
+    const p = this.perms;
+    const m = el("div", "cw-menu");
+    m.setAttribute("role", "menu");
+    m.appendChild(el("div", "cw-menu__title", "Allowed for this session"));
+    const sw = (label: string, on: boolean, change: (on: boolean) => void, note?: string) => {
+      const row = el("label", "cw-menu__row");
+      const t = el("span", "", label);
+      if (note) t.appendChild(el("small", "", note));
+      const box = el("input");
+      box.type = "checkbox";
+      box.checked = on;
+      box.addEventListener("change", () => {
+        change(box.checked);
+        this.renderBadge();
+        this.toggleMenu(); // drawn again with what is true now
+        this.toggleMenu();
+      });
+      row.append(t, box);
+      m.appendChild(row);
+    };
+    EVERYDAY_SCOPES.forEach((s) => {
+      sw(SCOPE_LABELS[s], p.has(s), (on) => (on ? p.grant(s) : p.revoke(s)));
+      if (s === "editor" && p.has("editor") && p.everythingAllowed()) {
+        sw("…applied without a review", p.autoApply(), (on) => p.setAutoApply(on), "each change can be undone");
+      }
+    });
+    if (p.riskyOn()) {
+      m.appendChild(el("div", "cw-menu__title cw-menu__title--risky", "Riskier things allowed"));
+      p.riskyKinds().forEach((k) => m.appendChild(el("div", "cw-menu__line", RISK_LABELS[k].label)));
+      const off = el("button", "cw-menu__link", "Turn the riskier level off");
+      off.type = "button";
+      off.addEventListener("click", () => {
+        p.stopRisky();
+        this.renderBadge();
+      });
+      m.appendChild(off);
+    }
+    const undos = p.undoable();
+    if (undos.length) {
+      const u = el("button", "cw-menu__link", "Undo the last change of Genie's (" + undos.length + " can be undone)");
+      u.type = "button";
+      u.addEventListener("click", () => {
+        p.undoLast();
+        this.renderBadge();
+      });
+      m.appendChild(u);
+    }
+    const foot = el("div", "cw-menu__foot");
+    const perm = el("button", "cw-menu__link", "Permissions…");
+    perm.type = "button";
+    perm.addEventListener("click", () => {
+      this.closeMenu();
+      this.openPermissions();
+    });
+    const stop = el("button", "cw-menu__link cw-menu__link--stop", "Stop auto mode");
+    stop.type = "button";
+    stop.addEventListener("click", () => {
+      p.stopAuto();
+      this.renderBadge();
+    });
+    foot.append(perm, stop);
+    m.appendChild(foot);
+    panel.appendChild(m);
+    this.menu = m;
+    const away = (e: Event) => {
+      if (this.menu && !this.menu.contains(e.target as Node) && !(e.target as HTMLElement).closest(".cw-auto")) {
+        this.closeMenu();
+        document.removeEventListener("click", away, true);
+      }
+    };
+    setTimeout(() => document.addEventListener("click", away, true), 0);
+  }
+
+  // The permissions card (the "Permissions" and "riskier items" boards of the design): the three levels, and, for the third, the kinds,
+  // a typed confirmation and how long.
+  private openPermissions(preselect?: RiskKind) {
+    const p = this.perms;
+    const box = el("div", "cw-agent__ask cw-perm");
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", "Permissions for agent mode");
+    box.appendChild(el("div", "cw-agent__ask-title", "Permissions for agent mode"));
+    box.appendChild(el("p", "cw-agent__ask-text", "For this browser, for the time you choose. Nothing here is shared with the people in a shared session."));
+    const current = p.riskyOn() ? "risky" : p.grants_().length === EVERYDAY_SCOPES.length ? "everyday" : "ask";
+    let level: string = preselect ? "risky" : current;
+    const levels: { id: string; label: string; text: string; show: boolean }[] = [
+      { id: "ask", label: "Ask me each time", text: "A card for each kind of action. The default.", show: true },
+      { id: "everyday", label: "Allow everyday things for this session", text: "Editor (with an Undo), language, Run, safe terminal lines, files, Preview.", show: p.everythingAllowed() },
+      { id: "risky", label: "Also allow riskier things…", text: "Chosen one kind at a time below. Asks you to confirm.", show: p.everythingAllowed() && p.riskyAvailable() },
+    ];
+    const riskyBox = el("div", "cw-perm__risky");
+    const refresh = () => {
+      riskyBox.hidden = level !== "risky";
+      box.querySelectorAll<HTMLElement>(".cw-perm__level").forEach((r) => r.classList.toggle("is-on", r.dataset.level === level));
+    };
+    levels
+      .filter((l) => l.show)
+      .forEach((l) => {
+        const row = el("label", "cw-perm__level");
+        row.dataset.level = l.id;
+        const radio = el("input");
+        radio.type = "radio";
+        radio.name = "cw-perm-level";
+        radio.checked = l.id === level;
+        radio.addEventListener("change", () => {
+          level = l.id;
+          refresh();
+        });
+        const t = el("span", "");
+        t.appendChild(el("b", "", l.label));
+        t.appendChild(el("small", "", l.text));
+        row.append(radio, t);
+        box.appendChild(row);
+      });
+    // the riskier kinds
+    riskyBox.appendChild(el("div", "cw-perm__sub", "Riskier kinds (each off until you turn it on)"));
+    const picked = new Set<RiskKind>(preselect ? [preselect] : p.riskyKinds());
+    RISK_KINDS.forEach((k) => {
+      const row = el("label", "cw-perm__kind");
+      const t = el("span", "", RISK_LABELS[k].label);
+      if (RISK_LABELS[k].hint) t.appendChild(el("small", "", RISK_LABELS[k].hint));
+      const c = el("input");
+      c.type = "checkbox";
+      c.checked = picked.has(k);
+      c.addEventListener("change", () => (c.checked ? picked.add(k) : picked.delete(k)));
+      row.append(t, c);
+      riskyBox.appendChild(row);
+    });
+    riskyBox.appendChild(
+      el(
+        "p",
+        "cw-agent__ask-warn",
+        "Genie could change or remove files without asking. Text that Genie reads in your files or in terminal output could try to steer it: that is the main risk. It will not touch hidden files or anything outside your workspace, and a delete goes to a Trash folder first.",
+      ),
+    );
+    const typed = el("input", "cw-perm__typed");
+    typed.type = "text";
+    typed.placeholder = RISK_PHRASE;
+    typed.setAttribute("aria-label", "Type " + RISK_PHRASE + " to confirm");
+    typed.autocomplete = "off";
+    const typedRow = el("label", "cw-perm__row");
+    typedRow.append(el("span", "", "Type “" + RISK_PHRASE + "” to confirm"), typed);
+    const dur = el("select", "cw-perm__dur");
+    RISK_MINUTES.forEach((m) => {
+      const o = el("option", "", m === 0 ? "until the page closes" : m === 60 ? "1 hour" : m + " minutes");
+      o.value = String(m);
+      dur.appendChild(o);
+    });
+    const durRow = el("label", "cw-perm__row");
+    durRow.append(el("span", "", "For"), dur);
+    riskyBox.append(typedRow, durRow);
+    box.appendChild(riskyBox);
+    const err = el("p", "cw-agent__ask-warn");
+    err.hidden = true;
+    box.appendChild(err);
+    const buttons = el("div", "cw-agent__ask-buttons");
+    const apply = el("button", "is-primary", "Apply");
+    apply.type = "button";
+    apply.addEventListener("click", () => {
+      err.hidden = true;
+      if (level === "ask") p.stopAuto();
+      else if (level === "everyday") {
+        p.stopRisky();
+        p.grantEverything();
+      } else {
+        if (typed.value.trim().toLowerCase() !== RISK_PHRASE) {
+          err.textContent = "Type “" + RISK_PHRASE + "” to confirm.";
+          err.hidden = false;
+          return;
+        }
+        if (picked.size === 0) {
+          err.textContent = "Choose at least one kind.";
+          err.hidden = false;
+          return;
+        }
+        p.grantEverything();
+        p.allowRisky(RISK_KINDS.filter((k) => picked.has(k)), parseInt(dur.value, 10) || 0);
+      }
+      box.remove();
+      this.renderBadge();
+      // a card that waits for an answer may not need one any more
+      const w = this.pendingAction;
+      if (w && this.pendingAnswer && p.decide(w.a, !w.risk) !== "ask") this.pendingAnswer("once");
+    });
+    const cancel = el("button", "", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", () => box.remove());
+    buttons.append(apply, cancel);
+    box.appendChild(buttons);
+    refresh();
+    if (this.list && this.list.parentElement) this.list.parentElement.appendChild(box);
+    else this.host.messages().prepend(box);
+    try {
+      box.scrollIntoView({ block: "nearest" });
+    } catch (e) {
+      // scrolling is not essential
+    }
+  }
+
+  // the review card of the editor's changes asks these two: it offers "apply later changes without asking" while that is allowed
+  canAutoApply(): boolean {
+    return this.perms.everythingAllowed();
+  }
+  enableAutoApply(): void {
+    this.perms.setAutoApply(true);
+    this.renderBadge();
   }
 
   // ---- the task card ---------------------------------------------------------------

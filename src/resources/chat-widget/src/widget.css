@@ -1637,3 +1637,47 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
     opacity: 0.7;
   }
 }
+
+/* What is allowed for the session (agent.ts: renderBadge, toggleMenu, openPermissions, confirmEverything). Designed in the
+   "Genie agent: remember my answers for the session" canvas. */
+#chat-widget__auto { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
+.cw-auto {
+  font: inherit; font-size: 11.5px; font-weight: 500; padding: 2px 9px; cursor: pointer;
+  color: var(--cw-accent); background: color-mix(in srgb, var(--cw-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cw-accent) 55%, transparent); border-radius: 99px;
+}
+.cw-auto--risky { color: var(--danger-color, #F07171); background: rgba(240, 113, 113, 0.14); border-color: rgba(240, 113, 113, 0.55); }
+.cw-menu {
+  position: absolute; right: 10px; top: 46px; z-index: 30; width: min(300px, calc(100% - 20px)); padding: 8px;
+  background: var(--cw-bg); border: 1px solid var(--cw-field-border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  font-size: 12.5px; color: var(--cw-text);
+}
+.cw-menu__title { padding: 4px 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cw-muted); }
+.cw-menu__title--risky { color: var(--danger-color, #F07171); margin-top: 6px; }
+.cw-menu__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+.cw-menu__row:hover { background: var(--cw-secondary-bg); }
+.cw-menu__row small { display: block; color: var(--cw-muted); font-size: 11px; }
+.cw-menu__line { padding: 3px 6px; color: var(--cw-text); }
+.cw-menu__foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--cw-field-border); }
+.cw-menu__link { font: inherit; font-size: 12px; padding: 4px 6px; background: none; border: 0; color: var(--cw-accent); text-decoration: underline; cursor: pointer; text-align: left; }
+.cw-menu__link--stop { color: var(--danger-color, #F07171); }
+.cw-agent__ask-more { margin-top: 8px; }
+.cw-agent__ask-all { font: inherit; font-size: 12px; padding: 4px 10px; color: var(--cw-accent); background: transparent; border: 1px dashed color-mix(in srgb, var(--cw-accent) 60%, transparent); border-radius: 6px; cursor: pointer; }
+.cw-agent__confirm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 10px; }
+.cw-agent__confirm-box { padding: 8px 10px; border: 1px solid var(--cw-field-border); border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--cw-muted); }
+.cw-agent__confirm-box b { display: block; margin-bottom: 3px; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+.cw-agent__confirm-box--yes b { color: var(--cw-accent); }
+.cw-agent__confirm-box--no b { color: #F5C37A; }
+.cw-agent__step-btn { margin-left: auto; font: inherit; font-size: 11.5px; padding: 1px 9px; color: var(--cw-text); background: transparent; border: 1px solid var(--cw-field-border); border-radius: 6px; cursor: pointer; }
+.cw-agent__step-btn:disabled { opacity: 0.6; cursor: default; }
+.cw-perm__level { display: flex; gap: 10px; align-items: flex-start; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--cw-field-border); border-radius: 8px; cursor: pointer; }
+.cw-perm__level.is-on { border-color: var(--cw-accent); background: color-mix(in srgb, var(--cw-accent) 7%, transparent); }
+.cw-perm__level b { display: block; font-weight: 500; color: var(--cw-strong); }
+.cw-perm__level small, .cw-perm__kind small { display: block; font-size: 11.5px; color: var(--cw-muted); line-height: 1.4; }
+.cw-perm__risky { margin: 6px 0; padding: 8px 10px; border: 1px solid rgba(240, 113, 113, 0.5); border-radius: 8px; }
+.cw-perm__risky[hidden] { display: none; }
+.cw-perm__sub { font-size: 11.5px; color: var(--cw-muted); margin-bottom: 4px; }
+.cw-perm__kind { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 5px 0; border-top: 1px solid var(--cw-field-border); font-size: 12.5px; }
+.cw-perm__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; font-size: 12.5px; }
+.cw-perm__typed, .cw-perm__dur { font: inherit; font-size: 12.5px; padding: 3px 8px; color: var(--cw-text); background: var(--cw-secondary-bg); border: 1px solid var(--cw-field-border); border-radius: 6px; }
+

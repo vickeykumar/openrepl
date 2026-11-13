@@ -672,3 +672,235 @@ export function findLanguage(options: { value: string; text: string }[], name: s
   }
   return null;
 }
+
+// ===== What the user has allowed, and the limits that nothing lifts (agent permissions) =====
+// What the user has allowed Genie's agent for the rest of the session, and the limits that nothing lifts. No DOM in here: node
+// runs it in test/ (node --test test/). Designed in the "Genie agent: remember my answers for the session" canvas.
+//
+// Three levels:
+//  1. Ask each time (the default): a card for each kind of action, as before.
+//  2. Everyday things for this session: one kind ("Allow for this session") or all of them ("Allow everything for this
+//     session"). The editor's changes are then applied without a review (and can be undone).
+//  3. Riskier things, chosen one kind at a time and for a while (30 minutes, or until the page closes): risky terminal lines,
+//     deleting (to the Trash), renaming and moving, closing a terminal tab. Never lifted, whatever is allowed: hidden files,
+//     anything outside the workspace, sudo, commands that wipe the home folder or the system, changes to the permissions
+//     themselves. Those are still asked about.
+// Everything is kept in the page only: not saved, not sent, not shared with a collaborator; a reload starts again.
+
+export const EVERYDAY_SCOPES: Scope[] = ["editor", "language", "run", "terminal", "files", "preview"];
+
+export const SCOPE_LABELS: Record<Scope, string> = {
+  editor: "Editor changes",
+  language: "Language switches",
+  run: "Run and Debug",
+  terminal: "Terminal (safe lines)",
+  files: "Files (open, create, save)",
+  preview: "Preview (open, reload, close)",
+};
+
+export type RiskKind = "terminal" | "delete" | "move" | "tab";
+export const RISK_KINDS: RiskKind[] = ["terminal", "delete", "move", "tab"];
+export const RISK_LABELS: Record<RiskKind, { label: string; hint: string }> = {
+  terminal: { label: "Risky terminal lines", hint: "for example rm, mv, chmod, git reset, a pipe into sh" },
+  delete: { label: "Delete files and folders", hint: "moved to a Trash folder first, so they can be restored" },
+  move: { label: "Rename, move and paste after a cut", hint: "" },
+  tab: { label: "Close terminal tabs", hint: "stops what is running in them" },
+};
+
+// the phrase that has to be typed to allow riskier things
+export const RISK_PHRASE = "allow risky";
+export const RISK_MINUTES = [30, 60, 0]; // 0 is "until the page closes"
+export const UNDO_LIMIT = 10;
+export const TRASH = "Trash";
+
+// the kind of risk an action carries, "" when it is an everyday one. A terminal line is risky when riskOf says so.
+export function riskKindOf(a: Action): RiskKind | null {
+  switch (a.type) {
+    case "terminal_type":
+      return riskOf(a.text || "") ? "terminal" : null;
+    case "terminal_close_tab":
+      return "tab";
+    case "files_delete":
+      return "delete";
+    case "files_rename":
+    case "files_move":
+    case "files_paste":
+      return "move";
+    default:
+      return null;
+  }
+}
+
+const HOME_OK = /^(\/home\/openrepl\/|\/tmp\/|\.\/|~\/|\$HOME\/)/;
+const SENSITIVE = /^(rm|mv|cp|chmod|chown|ln|truncate|shred|find|rsync|tee|dd|touch|mkdir|rmdir|unlink)$/;
+
+// why nothing lifts the ask for this action, "" when it can be allowed. Looks at the words of a terminal line, and at the path of
+// a file action. It is a floor, not the whole check: riskOf still sends a line to the user.
+export function hardBlockOf(a: Action): string {
+  if (a.type === "terminal_type") {
+    const line = String(a.text || "");
+    if (/(^|[\s;&|(])sudo(\s|$)/.test(line)) return "it uses sudo";
+    if (/(^|[\s;&|(])(su|doas)(\s|$)/.test(line)) return "it switches user";
+    if (/\bmkfs(\.|\s)|\bdd\s+[^|;&]*\bif=|:\(\)\s*\{|>\s*\/dev\/(sd|nvme|disk|hd)/.test(line)) return "it can wipe a disk or hang the machine";
+    if (/\brm\s+(-[a-zA-Z]+\s+)*-[a-zA-Z]*[rR][a-zA-Z]*\s+(--no-preserve-root\s+)?(\/|~|\$HOME|\.\.?|\*)(\s|$|\/\*)/.test(line)) return "it removes the home folder, the system or everything here";
+    if (/\bchmod\s+(-[a-zA-Z]+\s+)*-[a-zA-Z]*R[a-zA-Z]*\s+\S+\s+(\/|~)(\s|$)/.test(line)) return "it changes the permissions of the whole system or home folder";
+    // a command that changes files, aimed outside the workspace, at a parent folder or at a hidden file
+    const words = line.split(/[\s;&|()]+/).filter(Boolean);
+    let sensitive = false;
+    for (const w of words) {
+      if (SENSITIVE.test(w)) {
+        sensitive = true;
+        continue;
+      }
+      if (!sensitive || w.startsWith("-")) continue;
+      if (/(^|\/)\.\.(\/|$)/.test(w)) return "it reaches outside the workspace (..)";
+      if (w.startsWith("/") && !HOME_OK.test(w)) return "it reaches outside the workspace";
+      if (/^~(?!\/)/.test(w)) return "it reaches outside the workspace";
+      const base = w.replace(/\/+$/, "").split("/").pop() || "";
+      if (base.startsWith(".") && base !== "." && base !== "..") return "it touches a hidden file";
+    }
+    return "";
+  }
+  if (a.type === "files_delete" && typeof a.path === "string" && (a.path === TRASH || a.path.startsWith(TRASH + "/"))) return "it empties the Trash";
+  if (a.type.startsWith("files_")) {
+    for (const p of [a.path, a.to, a.name]) {
+      if (typeof p !== "string" || p === "") continue;
+      if (p.split("/").some((seg) => seg.startsWith(".") && seg !== "." && seg !== "..")) return "it touches a hidden file";
+    }
+  }
+  return "";
+}
+
+export interface SitePolicy {
+  autoOff?: boolean; // the admin switched "allow everything" and the auto-apply of changes off
+  riskyOff?: boolean; // the admin switched the riskier level off
+}
+
+export interface UndoItem {
+  label: string; // "Applied 2 changes to vk.py"
+  undo: () => boolean; // puts it back; false when it cannot (the code changed since)
+  done: boolean;
+}
+
+export class Permissions {
+  private grants = new Set<Scope>();
+  private apply = false; // the editor's changes go in without a review
+  private risky = new Set<RiskKind>();
+  private riskyEnd = 0; // when the riskier level ends (ms), Infinity for "until the page closes", 0 for off
+  private undoStack: UndoItem[] = [];
+  private policy: () => SitePolicy;
+  private clock: () => number;
+  constructor(policy: () => SitePolicy = () => ({}), clock: () => number = () => Date.now()) {
+    this.policy = policy;
+    this.clock = clock;
+  }
+
+  // ---- the everyday level
+  grant(scope: Scope): void {
+    this.grants.add(scope);
+  }
+  has(scope: Scope): boolean {
+    return this.grants.has(scope);
+  }
+  revoke(scope: Scope): void {
+    this.grants.delete(scope);
+    if (scope === "editor") this.apply = false;
+  }
+  everythingAllowed(): boolean {
+    return !this.policy().autoOff;
+  }
+  grantEverything(): boolean {
+    if (!this.everythingAllowed()) return false;
+    for (const s of EVERYDAY_SCOPES) this.grants.add(s);
+    this.apply = true;
+    return true;
+  }
+  grants_(): Scope[] {
+    return EVERYDAY_SCOPES.filter((s) => this.grants.has(s));
+  }
+  // the editor's changes are applied at once, without the review
+  autoApply(): boolean {
+    return this.apply && this.grants.has("editor") && !this.policy().autoOff;
+  }
+  setAutoApply(on: boolean): boolean {
+    if (on && this.policy().autoOff) return false;
+    this.apply = on;
+    if (on) this.grants.add("editor");
+    return true;
+  }
+  stopAuto(): void {
+    this.grants.clear();
+    this.apply = false;
+    this.risky.clear();
+    this.riskyEnd = 0;
+  }
+  auto(): boolean {
+    return this.grants.size > 0 || this.apply || this.riskyOn();
+  }
+
+  // ---- the riskier level
+  riskyAvailable(): boolean {
+    return !this.policy().riskyOff;
+  }
+  // allow some kinds, for `minutes` (0: until the page closes)
+  allowRisky(kinds: RiskKind[], minutes: number): boolean {
+    if (!this.riskyAvailable() || kinds.length === 0) return false;
+    this.risky = new Set(kinds);
+    this.riskyEnd = minutes > 0 ? this.clock() + minutes * 60000 : Infinity;
+    return true;
+  }
+  stopRisky(): void {
+    this.risky.clear();
+    this.riskyEnd = 0;
+  }
+  riskyOn(): boolean {
+    return this.risky.size > 0 && this.riskyEnd > this.clock() && this.riskyAvailable();
+  }
+  riskyKinds(): RiskKind[] {
+    return this.riskyOn() ? RISK_KINDS.filter((k) => this.risky.has(k)) : [];
+  }
+  // whole minutes left, 0 when it ends with the page or is off
+  riskyMinutesLeft(): number {
+    if (!this.riskyOn() || this.riskyEnd === Infinity) return 0;
+    return Math.max(1, Math.ceil((this.riskyEnd - this.clock()) / 60000));
+  }
+  riskyUntilClose(): boolean {
+    return this.riskyOn() && this.riskyEnd === Infinity;
+  }
+
+  // ---- the decision: may this action go without a card?
+  //   "ask"  a card is shown
+  //   "auto" it goes: the everyday level allows it
+  //   "risky" it goes: the riskier level allows it, and the chat says so
+  // everyday: the caller has judged the action not risky (a paste of a copy, say): only the everyday level is looked at
+  decide(a: Action, everyday: boolean = false): "ask" | "auto" | "risky" {
+    const kind = everyday ? null : riskKindOf(a);
+    if (kind) {
+      if (this.riskyOn() && this.risky.has(kind) && hardBlockOf(a) === "") return "risky";
+      return "ask";
+    }
+    // a file action that the everyday level would allow still never touches a hidden file without a card
+    if (a.type.startsWith("files_") && hardBlockOf(a) !== "") return "ask";
+    const scope = scopeOf(a);
+    return scope && this.grants.has(scope) ? "auto" : "ask";
+  }
+
+  // ---- undo of the editor's changes that went in without a review (the last UNDO_LIMIT)
+  pushUndo(item: UndoItem): void {
+    this.undoStack.push(item);
+    while (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
+  }
+  undoable(): UndoItem[] {
+    return this.undoStack.filter((u) => !u.done);
+  }
+  undoLast(): UndoItem | null {
+    for (let i = this.undoStack.length - 1; i >= 0; i--) {
+      const u = this.undoStack[i];
+      if (!u.done) {
+        if (u.undo()) u.done = true;
+        return u;
+      }
+    }
+    return null;
+  }
+}
