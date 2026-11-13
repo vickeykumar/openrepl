@@ -1117,7 +1117,7 @@
           openRouterHosts: hostsOf(form.host1.value, form.host2.value),
           modelPrices: pricesOf(), showCostToUsers: form.showCost.checked,
           agentDisabled: !form.agentOn.checked, agentOnPractice: form.agentPractice.checked,
-          agentAutoOff: !form.agentAuto.checked, agentRiskyOff: !form.agentRisky.checked,
+          agentAutoOff: !form.agentAuto.checked, agentRiskyOff: !form.agentRisky.checked, agentShellOff: !form.agentShell.checked,
           agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value) }
       };
     }
@@ -1176,7 +1176,7 @@
           openRouterHosts: (s.genie.openRouterHosts || []).slice(),
           modelPrices: pricesClean(s.genie.modelPrices), showCostToUsers: !!s.genie.showCostToUsers,
           agentDisabled: !!s.genie.agentDisabled, agentOnPractice: !!s.genie.agentOnPractice,
-          agentAutoOff: !!s.genie.agentAutoOff, agentRiskyOff: !!s.genie.agentRiskyOff,
+          agentAutoOff: !!s.genie.agentAutoOff, agentRiskyOff: !!s.genie.agentRiskyOff, agentShellOff: !!s.genie.agentShellOff,
           agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0 } };
     }
     function isDirty() { return !!form && !!form.ready && JSON.stringify(snapshot()) !== JSON.stringify(clean(saved)); }
@@ -1222,6 +1222,8 @@
       var agentPractice = toggle('f-agent-practice', !!settings.genie.agentOnPractice, 'Agent mode on the practice page');
       var agentAuto = toggle('f-agent-auto', !settings.genie.agentAutoOff, 'Allow everything for a session');
       var agentRisky = toggle('f-agent-risky', !settings.genie.agentRiskyOff, 'Allow riskier things for a while');
+      var agentShell = toggle('f-agent-shell', !settings.genie.agentShellOff, 'Agent: run commands');
+      form.agentShell = agentShell.input;
       form.agentOn = agentOn.input; form.agentPractice = agentPractice.input; form.agentAuto = agentAuto.input; form.agentRisky = agentRisky.input;
       // what the models cost: dollars for a million tokens sent and written, by model
       var showCost = toggle('f-show-cost', !!settings.genie.showCostToUsers, 'Show the cost to users');
@@ -1438,7 +1440,7 @@
         maintMsg.disabled = !maint.input.checked;
         guest.disabled = user.disabled = !genie.input.checked;
         // the agent's options only matter while it is on
-        agentAuto.input.disabled = agentRisky.input.disabled = agentPractice.input.disabled = form.agentTasks.disabled = form.agentSteps.disabled = !agentOn.input.checked;
+        agentAuto.input.disabled = agentRisky.input.disabled = agentShell.input.disabled = agentPractice.input.disabled = form.agentTasks.disabled = form.agentSteps.disabled = !agentOn.input.checked;
         // the second host only matters when a first one is chosen, and is another one
         form.host2.disabled = !form.host1.value;
         Array.prototype.forEach.call(form.host2.options, function (o) { o.disabled = !!o.value && o.value === form.host1.value; });
@@ -1658,6 +1660,7 @@
         card('Agent mode', 'Genie works on a task in steps: it writes in the editor and runs the code, after the user allowed each kind of action and reviewed the changes. Only signed-in users have it, and it is on unless you switch it off here. Each task costs a user one request, like a chat message, however many steps it has.', [
           row('Agent mode', 'Shows the Chat | Agent switch in the Genie panel for signed-in users. Chat stays the default.', agentOn.node),
           row('Allow everything for a session', 'On: a user can answer one card with "Allow everything for this session", and the editor\'s changes then go in without a review (each can be undone). Off: a card for every kind of action, and every change is reviewed. Allowing one kind for the session stays.', agentAuto.node),
+          row('Agent: run commands', 'On: Genie can run a command (bash -c) in a signed-in owner\'s workspace, after the user allowed it, in the same sandbox as the terminal, for at most 120 seconds, with no input and no outside network. Each command is logged (workspace, exit code), not its output. Off: the server refuses every command.', agentShell.node),
           row('Allow riskier things for a while', 'On: a user can, on purpose (typing a phrase), let Genie do risky terminal lines, delete to a Trash folder, rename and move, and close terminal tabs for 30 minutes or an hour. Hidden files, anything outside the workspace and sudo are never allowed. Off: those are asked about every time.', agentRisky.node),
           row('On the practice page', 'Off by default: the practice page is for solving questions with an interviewer.', agentPractice.node),
           row('Tasks per hour', 'How many tasks a signed-in user may start in an hour (admins have no limit). Counted on this server and reset when it restarts.', form.agentTasks),

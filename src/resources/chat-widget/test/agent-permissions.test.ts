@@ -150,3 +150,13 @@ test("the editor's changes that went in without a review can be undone, newest f
   q.undoLast();
   assert.equal(q.undoable().length, 1); // it could not be undone, so it is still listed
 });
+
+test("bash is an everyday scope: safe commands follow the grant, risky ones ask", () => {
+  const p = new Permissions(() => ({}));
+  const ls = { type: "bash" as const, text: "ls -la", timeoutSeconds: 30 };
+  assert.equal(p.decide(ls), "ask");
+  p.grant("shell");
+  assert.equal(p.decide(ls), "auto");
+  assert.equal(p.decide({ ...ls, text: "rm -r build" }), "ask");
+  assert.equal(p.decide({ ...ls, text: "sudo ls" }), "ask");
+});

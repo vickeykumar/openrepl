@@ -1457,6 +1457,14 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 .cw-agent__ask-title { font-weight: 500; color: var(--cw-strong); }
 .cw-agent__ask-text { margin: 4px 0 8px; font-size: 12px; color: var(--cw-muted); line-height: 1.5; }
 /* the exact line Genie will type: plain text, as it will be sent */
+.cw-agent__out {
+  margin: 4px 0 0 22px;
+  font-size: 12.5px;
+}
+.cw-agent__out summary {
+  cursor: pointer;
+  color: var(--cw-muted, inherit);
+}
 .cw-agent__cmd {
   margin: 0 0 8px;
   padding: 8px 10px;

@@ -21,6 +21,7 @@ export const ACTIONS = [
   "terminal_new_tab",
   "terminal_select_tab",
   "terminal_close_tab",
+  "bash",
   "files_list",
   "files_open",
   "files_new",
@@ -45,6 +46,9 @@ export const MAX_TEXT = 200000; // characters of code in one action
 export const MAX_SAY = 600; // characters shown to the user for a step
 export const MAX_OUTPUT = 4000; // characters of terminal output sent back
 export const MAX_TERMINAL_TEXT = 500; // characters of the line Genie types in the terminal
+export const MAX_COMMAND = 4000; // characters of a bash command
+export const MAX_COMMAND_SECONDS = 120; // the longest a bash command may run
+export const DEFAULT_COMMAND_SECONDS = 30;
 export const MAX_TABS = 5; // terminal tabs the page allows (js/src/main.ts)
 export const MAX_PATH = 400; // characters of a path in the Files panel, relative to the home directory
 export const MAX_NAME = 100; // characters of one name in it
@@ -58,6 +62,7 @@ export interface Action {
   to?: string; // files_move: the folder it goes into
   name?: string; // files_rename: the new name, one segment
   kind?: "file" | "folder"; // files_new
+  timeoutSeconds?: number; // bash: 1 to MAX_COMMAND_SECONDS; the command itself is in "text"
   waitSeconds?: number; // read_output and terminal_type, 1 to 20
   port?: number; // preview_open: a port of the workspace, 1024 to 65535
 }
@@ -85,7 +90,7 @@ export interface StepResult {
 // Switching the language is a kind of its own: it is not a change the user
 // reviews, the page puts the language's starter code in the editor and starts
 // the terminal again.
-export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview";
+export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview" | "shell";
 
 export function scopeOf(a: Action): Scope | null {
   switch (a.type) {
@@ -100,6 +105,9 @@ export function scopeOf(a: Action): Scope | null {
     case "run":
     case "debug":
       return "run";
+    // a command in its own shell: not the terminal of the page
+    case "bash":
+      return "shell";
     case "terminal_type":
     case "terminal_interrupt":
     case "terminal_reconnect":
@@ -197,6 +205,7 @@ export function scopeQuestion(scope: Scope): string {
   if (scope === "terminal") return "Genie wants to use your terminal";
   if (scope === "files") return "Genie wants to use your files";
   if (scope === "preview") return "Genie wants to use the Preview";
+  if (scope === "shell") return "Genie wants to run a command in your workspace";
   return "Genie wants to run your code";
 }
 
@@ -235,6 +244,9 @@ export function scopeDetail(scope: Scope, a: Action, openFile: string = ""): str
       default:
         return "It will delete " + a.path + " for good, and everything in it if it is a folder.";
     }
+  }
+  if (scope === "shell") {
+    return "It runs once, in its own shell in your workspace folder, with no input and a limit of " + (a.timeoutSeconds || DEFAULT_COMMAND_SECONDS) + " seconds. Your terminal is not touched.";
   }
   if (scope === "preview") {
     if (a.type === "preview_close") return "It will close the Preview pane. Nothing is stopped: a program that runs keeps running.";
@@ -485,6 +497,21 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
         }
         break;
       }
+      case "bash": {
+        // a command: plain text, may span lines (a here-document, a pipeline), no other control characters
+        const cmd = typeof a.command === "string" ? a.command.replace(/[\r\n]+$/, "") : null;
+        if (cmd === null || cmd.trim() === "") {
+          dropped.push('bash left out: it needs "command"');
+        } else if (/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(cmd)) {
+          dropped.push("bash left out: the command has to be plain text (no control characters)");
+        } else if (cmd.length > MAX_COMMAND) {
+          dropped.push(`bash left out: the command is longer than ${MAX_COMMAND} characters`);
+        } else {
+          const t = typeof a.timeout_seconds === "number" && isFinite(a.timeout_seconds) ? Math.round(a.timeout_seconds) : DEFAULT_COMMAND_SECONDS;
+          actions.push({ type, text: cmd, timeoutSeconds: Math.min(MAX_COMMAND_SECONDS, Math.max(1, t)) });
+        }
+        break;
+      }
       case "terminal_new_tab":
         if (a.language !== undefined && (typeof a.language !== "string" || a.language.length > 40)) {
           dropped.push("terminal_new_tab left out: language has to be a language name");
@@ -595,6 +622,8 @@ export function describe(a: Action): string {
       return "Pressing Debug";
     case "terminal_type":
       return "Typing in the terminal: " + (a.text || "");
+    case "bash":
+      return "bash: " + (a.text || "").split("\n")[0].slice(0, 120);
     case "terminal_interrupt":
       return "Pressing Ctrl+C in the terminal";
     case "terminal_reconnect":
@@ -687,7 +716,7 @@ export function findLanguage(options: { value: string; text: string }[], name: s
 //     themselves. Those are still asked about.
 // Everything is kept in the page only: not saved, not sent, not shared with a collaborator; a reload starts again.
 
-export const EVERYDAY_SCOPES: Scope[] = ["editor", "language", "run", "terminal", "files", "preview"];
+export const EVERYDAY_SCOPES: Scope[] = ["editor", "language", "run", "terminal", "files", "preview", "shell"];
 
 export const SCOPE_LABELS: Record<Scope, string> = {
   editor: "Editor changes",
@@ -696,6 +725,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   terminal: "Terminal (safe lines)",
   files: "Files (open, create, save)",
   preview: "Preview (open, reload, close)",
+  shell: "Run commands (safe ones)",
 };
 
 export type RiskKind = "terminal" | "delete" | "move" | "tab";
@@ -717,6 +747,7 @@ export const TRASH = "Trash";
 export function riskKindOf(a: Action): RiskKind | null {
   switch (a.type) {
     case "terminal_type":
+    case "bash":
       return riskOf(a.text || "") ? "terminal" : null;
     case "terminal_close_tab":
       return "tab";
@@ -737,7 +768,7 @@ const SENSITIVE = /^(rm|mv|cp|chmod|chown|ln|truncate|shred|find|rsync|tee|dd|to
 // why nothing lifts the ask for this action, "" when it can be allowed. Looks at the words of a terminal line, and at the path of
 // a file action. It is a floor, not the whole check: riskOf still sends a line to the user.
 export function hardBlockOf(a: Action): string {
-  if (a.type === "terminal_type") {
+  if (a.type === "terminal_type" || a.type === "bash") {
     const line = String(a.text || "");
     if (/(^|[\s;&|(])sudo(\s|$)/.test(line)) return "it uses sudo";
     if (/(^|[\s;&|(])(su|doas)(\s|$)/.test(line)) return "it switches user";

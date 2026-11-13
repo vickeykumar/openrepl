@@ -11,6 +11,7 @@ func TestTheCallsOfThePreviewAreExecutionBound(t *testing.T) {
 		"preview_token":   true,
 		"preview_ports":   true,
 		"preview_cookies": true,
+		"agent_bash":      true,
 		"preview":         false, // the frame's address carries its own token
 		"preview/x/f/a":   false,
 		"about.html":      false,

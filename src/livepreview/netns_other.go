@@ -16,6 +16,9 @@ func DialIn(nsPath string, port int, timeout time.Duration) (net.Conn, error) {
 // FindPID needs Linux.
 func FindPID(home string) int { return 0 }
 
+// FindPIDs needs Linux.
+func FindPIDs(home string) []int { return nil }
+
 // SameNetwork needs Linux.
 func SameNetwork(pid int) bool { return false }
 

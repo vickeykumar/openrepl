@@ -101,6 +101,8 @@ export interface AgentHost {
   selectTab(n: number): boolean;
   files: FilesHost;
   closeTab(n: number): boolean; // presses the x of tab n
+  // Runs one command in its own shell in the user's workspace (POST agent_bash); the signal ends it (Stop). Absent where the page cannot.
+  runCommand?(command: string, seconds: number, signal: AbortSignal): Promise<{ status: number; message?: string; exit_code?: number; output?: string; truncated?: boolean; timed_out?: boolean; duration_ms?: number }>;
   userSaid(text: string): Promise<void>;
   // context: the X-OpenREPL-Context header of the step, which lists the site notes it was answered from
   genieSaid(text: string, context?: string | null): Promise<void>;
@@ -164,6 +166,13 @@ class StepLine {
   constructor(label: string) {
     this.text.textContent = label;
     this.root.append(this.mark, this.text);
+  }
+  // the output of a command, folded
+  addOutput(text: string) {
+    const d = el("details", "cw-agent__out");
+    d.appendChild(el("summary", "", "Show output (" + (text.split("\n").length) + " lines)"));
+    d.appendChild(el("pre", "cw-agent__cmd", text));
+    this.root.appendChild(d);
   }
   set(phase: Phase, label?: string) {
     this.root.className = "cw-agent__step cw-agent__step--" + phase;
@@ -467,7 +476,7 @@ export class AgentRunner {
     const noChange = a.type === "set_language" && this.isCurrentLanguage(a.language || "");
     // a line that can do harm is asked about every time, whatever was allowed
     const risk =
-      a.type === "terminal_type"
+      a.type === "terminal_type" || a.type === "bash"
         ? riskOf(a.text || "")
         : a.type === "terminal_close_tab"
         ? "closes the tab and stops what is running in it"
@@ -501,7 +510,7 @@ export class AgentRunner {
         ? "tabs"
         : scope === "language"
         ? "language"
-        : a.type === "read_output" || scope === "terminal"
+        : a.type === "read_output" || scope === "terminal" || scope === "shell"
         ? "output"
         : scope === "run"
         ? "run"
@@ -718,6 +727,31 @@ export class AgentRunner {
           status: "done",
           output: text.length > MAX_OUTPUT ? "..." + text.slice(-MAX_OUTPUT) : text,
           detail: "now on tab " + n + " of " + tabs.count + "; Run uses the language in the picker (" + this.pickerLanguage() + ")",
+        };
+      }
+      case "bash": {
+        if (!this.host.runCommand) return { type: a.type, status: "failed", detail: "this page cannot run commands" };
+        const secs = a.timeoutSeconds || 30;
+        this.host.thinking(true);
+        let r;
+        try {
+          r = await this.host.runCommand(a.text || "", secs, this.ctl ? this.ctl.signal : new AbortController().signal);
+        } finally {
+          this.host.thinking(false);
+        }
+        if (this.stopped) return { type: a.type, status: "skipped", detail: "the user stopped the task; the command was ended" };
+        if (r.status !== 200) return { type: a.type, status: "failed", detail: r.message || "the server refused the command (" + r.status + ")" };
+        const out = String(r.output || "");
+        const secsUsed = Math.round(((r.duration_ms || 0) / 1000) * 10) / 10;
+        if (out.trim()) line.addOutput(out);
+        const detail = r.timed_out
+          ? "stopped after " + secs + " s: it ran too long and was killed (try a smaller command, or start a long-running program with terminal_type in a Bash terminal)"
+          : "exit code " + r.exit_code + ", " + secsUsed + " s" + (r.truncated ? "; the middle of a very long output was cut" : "");
+        return {
+          type: a.type,
+          status: r.timed_out || r.exit_code !== 0 ? "failed" : "done",
+          detail,
+          output: out === "" ? "(no output)" : out.length > MAX_OUTPUT ? "..." + out.slice(-MAX_OUTPUT) : out,
         };
       }
       case "terminal_type": {
@@ -1111,12 +1145,14 @@ export class AgentRunner {
           ? "Genie wants to close a terminal tab"
           : risk && a.type === "terminal_type"
           ? "Genie wants to type a risky line in your terminal"
+          : risk && a.type === "bash"
+          ? "Genie wants to run a risky command in your workspace"
           : scopeQuestion(scope);
       box.setAttribute("aria-label", title);
       box.appendChild(el("div", "cw-agent__ask-title", title));
       box.appendChild(el("p", "cw-agent__ask-text", scopeDetail(scope, a, this.openFile())));
-      if (a.type === "terminal_type") {
-        // exactly what will be typed, as plain text
+      if (a.type === "terminal_type" || a.type === "bash") {
+        // exactly what will be typed or run, as plain text
         box.appendChild(el("pre", "cw-agent__cmd", a.text || ""));
       } else if (scope === "files") {
         // exactly which paths, as plain text
@@ -1169,7 +1205,7 @@ export class AgentRunner {
           box.appendChild(more);
         }
       }
-      if (scope === "terminal" && !risk) {
+      if ((scope === "terminal" || scope === "shell") && !risk) {
         box.appendChild(el("p", "cw-agent__ask-hint", "Lines that can delete or change things are still asked about every time."));
       }
       this.pendingAnswer = done;

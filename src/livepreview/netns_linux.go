@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,17 +72,32 @@ func FindPID(home string) int {
 			return c.pid
 		}
 	}
-	pid := scanPID(home)
+	pids := scanPIDs(home)
+	pid := 0
+	if len(pids) > 0 {
+		pid = pids[0]
+	}
 	if len(pidCache.m) > 512 {
 		pidCache.m = map[string]cachedPID{}
 	}
-	pidCache.m[home] = cachedPID{pid, time.Now()}
+	pidCache.m[home] = cachedPID{pid, pids, time.Now()}
 	return pid
 }
 
 type cachedPID struct {
-	pid int
-	at  time.Time
+	pid  int
+	pids []int
+	at   time.Time
+}
+
+// FindPIDs is one process of each network the workspace's processes run in (the lowest id of each). A workspace with two
+// terminals, a Python REPL and a Bash one, has two networks when each REPL has a namespace of its own, and the program the
+// user wants to see may be in either: the lowest id overall (FindPID) is just the oldest of them.
+func FindPIDs(home string) []int {
+	FindPID(home)
+	pidCache.mu.Lock()
+	defer pidCache.mu.Unlock()
+	return append([]int{}, pidCache.m[home].pids...)
 }
 
 var pidCache = struct {
@@ -89,30 +105,43 @@ var pidCache = struct {
 	m  map[string]cachedPID
 }{m: map[string]cachedPID{}}
 
-func scanPID(home string) int {
+// scanPIDs lists the lowest id of each network among the processes of the workspace, lowest first.
+func scanPIDs(home string) []int {
 	cmdWant := "--workspace\x00" + home + "\x00"
 	envWant := "\x00HOME=" + home + "\x00"
 	dirs, err := os.ReadDir("/proc")
 	if err != nil {
-		return 0
+		return nil
 	}
-	best := 0
+	lowest := map[string]int{} // network -> lowest process id
 	for _, d := range dirs {
 		pid, err := strconv.Atoi(d.Name())
-		if err != nil || (best != 0 && pid > best) {
+		if err != nil {
+			continue
+		}
+		ns, err := os.Readlink("/proc/" + d.Name() + "/ns/net")
+		if err != nil {
+			continue
+		}
+		if have, ok := lowest[ns]; ok && pid > have {
 			continue
 		}
 		cmd, err := os.ReadFile("/proc/" + d.Name() + "/cmdline")
 		if err == nil && strings.Contains(string(cmd), cmdWant) {
-			best = pid
+			lowest[ns] = pid
 			continue
 		}
 		env, err := os.ReadFile("/proc/" + d.Name() + "/environ")
 		if err == nil && strings.Contains("\x00"+string(env), envWant) {
-			best = pid
+			lowest[ns] = pid
 		}
 	}
-	return best
+	out := make([]int, 0, len(lowest))
+	for _, pid := range lowest {
+		out = append(out, pid)
+	}
+	sort.Ints(out)
+	return out
 }
 
 // SameNetwork says whether process pid is in the network namespace of this process (the server).

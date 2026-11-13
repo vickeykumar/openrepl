@@ -180,16 +180,33 @@ var errNoIsolation = errors.New("a program can be previewed only where each work
 // the server, or of another visitor, would then be reachable).
 func previewDialer(home string) livepreview.Dialer {
 	return func(ctx context.Context, port int) (net.Conn, error) {
-		pid := livepreview.FindPID(home)
-		if pid == 0 {
+		pids := livepreview.FindPIDs(home)
+		if len(pids) == 0 {
 			return nil, livepreview.ErrNoProgram
 		}
-		if !livepreview.SameNetwork(pid) {
-			return livepreview.DialIn(fmt.Sprintf("/proc/%d/ns/net", pid), port, 10*time.Second)
+		// each REPL of a workspace may have a network of its own: the program is in the one that listens on the port
+		var lastErr error
+		own := false
+		for _, pid := range pids {
+			if livepreview.SameNetwork(pid) {
+				own = true
+				continue
+			}
+			c, err := livepreview.DialIn(fmt.Sprintf("/proc/%d/ns/net", pid), port, 10*time.Second)
+			if err == nil {
+				return c, nil
+			}
+			lastErr = err
+		}
+		if lastErr != nil && !own {
+			return nil, lastErr
 		}
 		if containers.NetEmuActive() {
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", netemu.Name(netemu.WorkspaceID(home), "t", uint16(port)))
+		}
+		if lastErr != nil {
+			return nil, lastErr
 		}
 		return nil, errNoIsolation
 	}
@@ -197,19 +214,28 @@ func previewDialer(home string) livepreview.Dialer {
 
 // previewPorts lists the ports a workspace's programs listen on, from the sockets of its own network.
 func previewPorts(home string) []int {
-	pid := livepreview.FindPID(home)
-	if pid == 0 {
+	pids := livepreview.FindPIDs(home)
+	if len(pids) == 0 {
 		return []int{}
 	}
-	if !livepreview.SameNetwork(pid) {
+	var all []int
+	shared := false
+	for _, pid := range pids {
+		if livepreview.SameNetwork(pid) {
+			shared = true
+			continue
+		}
 		base := fmt.Sprintf("/proc/%d/net/", pid)
-		all := append(livepreview.ParseTCP(livepreview.ReadProc(base+"tcp")), livepreview.ParseTCP(livepreview.ReadProc(base+"tcp6"))...)
+		all = append(all, livepreview.ParseTCP(livepreview.ReadProc(base+"tcp"))...)
+		all = append(all, livepreview.ParseTCP(livepreview.ReadProc(base+"tcp6"))...)
+	}
+	if !shared {
 		return uniqueSorted(all)
 	}
 	if containers.NetEmuActive() {
 		// the names of the workspace's TCP sockets all start "@openrepl-ne/<workspace>/t/", then the port
 		prefix := strings.TrimSuffix(netemu.Name(netemu.WorkspaceID(home), "t", 0), "0")
-		return livepreview.ParseUnixAbstract(livepreview.ReadProc("/proc/net/unix"), prefix)
+		return uniqueSorted(append(all, livepreview.ParseUnixAbstract(livepreview.ReadProc("/proc/net/unix"), prefix)...))
 	}
 	return []int{}
 }

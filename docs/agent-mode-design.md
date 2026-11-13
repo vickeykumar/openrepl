@@ -115,3 +115,12 @@ its menu are in `agent.ts`; the review's choice and `applyDirect` are in `js/src
 - **Not built**: a saved "always" across reloads (a later step with its own Settings page); an Undo for a delete other than moving it back from the
   Trash; hardBlockOf looks at the words of a line and is a floor, not a sandbox.
 
+## The bash action (2026-11-13)
+
+`{"type":"bash","command":"...","timeout_seconds":30}` runs `bash -c` in the workspace and returns exit code, output and time. Design canvas: claude.ai/artifact/Fh1F5Qf79BnhKwbTCeM3mX.
+
+- Server: `server/agent_shell.go` (`POST /agent_bash`, execution-bound in the gateway), `agent_shell_linux.go` (`runShell`: `containers.GetCommandArgsIn` with the landlock helper and net emulation, the bash REPL's cgroup, no stdin, own session, the group is killed on timeout or when the page aborts). Signed-in owner only (not a collaborator, not a guest); refused when agent mode or `GenieSettings.AgentShellOff` is off. 30 s default, 120 s most, 4000 characters, 60 a minute per user, one at a time per workspace (a second waits 5 s). Output: first and last 32 KB kept, the middle cut and said so. The log line has the workspace, exit code and time, never the output.
+- Page: scope `shell` ("Run commands"), a kind of its own in the permissions. The command is in `Action.text`, so `riskOf` and `hardBlockOf` judge it as a terminal line: risky commands are asked every time, `sudo` and anything outside the workspace never skipped. The step line folds the output; the model gets the last 4000 characters and the exit code. Stop aborts the request, which kills the command.
+- Prompt: use it only for what other actions cannot do; a long-running program (a server, a REPL, a watcher, a long build) is started with `set_language` "Bash" and `terminal_type`, so the user sees it and can stop it.
+- Not done: outside network for installs (a separate admin decision).
+

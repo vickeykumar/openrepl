@@ -24,6 +24,8 @@ import {
   scopeDetail,
   scopeOf,
   scopeQuestion,
+  hardBlockOf,
+  riskKindOf,
 } from "../src/agent-protocol.ts";
 
 const ok = (content: string) => {
@@ -110,6 +112,7 @@ test("the list of actions is the one in the server's prompt", () => {
     "terminal_new_tab",
     "terminal_select_tab",
     "terminal_close_tab",
+    "bash",
     "files_list",
     "files_open",
     "files_new",
@@ -502,4 +505,25 @@ test("preview actions: a port or a path, never both, and the permission is asked
   assert.equal(scopeQuestion("preview"), "Genie wants to use the Preview");
   assert.match(scopeDetail("preview", { type: "preview_open", port: 5000 }), /port 5000/);
   assert.match(describe({ type: "preview_open", path: "a.html" }), /a\.html/);
+});
+
+test("bash: parsing, limits, scope, risk", () => {
+  const r = ok('{"say":"x","actions":[{"type":"bash","command":"grep -rn TODO src | head -20","timeout_seconds":500}]}');
+  assert.deepEqual(r.actions, [{ type: "bash", text: "grep -rn TODO src | head -20", timeoutSeconds: 120 }]);
+  assert.equal(ok('{"actions":[{"type":"bash","command":"ls"}]}').actions[0].timeoutSeconds, 30);
+  assert.equal(ok('{"actions":[{"type":"bash","command":"ls","timeout_seconds":0}]}').actions[0].timeoutSeconds, 1);
+  assert.equal(ok('{"actions":[{"type":"bash","command":"a\\nb"}]}').actions.length, 1); // several lines are plain text
+  for (const bad of ['{"type":"bash"}', '{"type":"bash","command":"  "}', '{"type":"bash","command":5}', '{"type":"bash","command":"a\\u0007b"}', '{"type":"bash","command":"' + "x".repeat(4001) + '"}']) {
+    const s = ok('{"actions":[' + bad + "]}");
+    assert.equal(s.actions.length, 0, bad.slice(0, 40));
+    assert.equal(s.dropped.length, 1);
+  }
+  const a = { type: "bash" as const, text: "ls -la", timeoutSeconds: 30 };
+  assert.equal(scopeOf(a), "shell");
+  assert.equal(describe(a), "bash: ls -la");
+  assert.match(scopeDetail("shell", a), /own shell.*30 seconds.*terminal is not touched/);
+  assert.equal(riskKindOf(a), null);
+  assert.equal(riskKindOf({ ...a, text: "rm -r build" }), "terminal");
+  assert.match(hardBlockOf({ ...a, text: "sudo apt install x" }), /sudo/);
+  assert.match(hardBlockOf({ ...a, text: "cp x /etc/y" }), /outside/);
 });

@@ -165,6 +165,8 @@ type GenieSettings struct {
 	// deleting, renaming and moving, closing tabs) for a while. Allowing one kind for the session stays.
 	AgentAutoOff  bool `json:"agentAutoOff"`
 	AgentRiskyOff bool `json:"agentRiskyOff"`
+	// AgentShellOff takes away the agent's "bash" action: the server refuses a command (agent_shell.go).
+	AgentShellOff bool `json:"agentShellOff"`
 	AgentMaxSteps int  `json:"agentMaxSteps"`
 }
 
@@ -885,6 +887,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.Genie.AgentAutoOff != b.Genie.AgentAutoOff {
 		out = append(out, "agent: allow everything for a session "+onoff(!b.Genie.AgentAutoOff))
+	}
+	if a.Genie.AgentShellOff != b.Genie.AgentShellOff {
+		out = append(out, "agent: run commands "+onoff(!b.Genie.AgentShellOff))
 	}
 	if a.Genie.AgentRiskyOff != b.Genie.AgentRiskyOff {
 		out = append(out, "agent: allowing riskier things for a while "+onoff(!b.Genie.AgentRiskyOff))
