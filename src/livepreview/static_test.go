@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -61,7 +62,7 @@ func TestAFolderShowsItsIndexAndASlashIsAddedFirst(t *testing.T) {
 	if rec := get(home, "/preview/t/f/site", "site"); rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/preview/t/f/site/" {
 		t.Errorf("no slash: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
-	if rec := get(home, "/preview/t/f/site/", "site/"); rec.Code != 200 || rec.Body.String() != "<h1>hi</h1>" {
+	if rec := get(home, "/preview/t/f/site/", "site/"); rec.Code != 200 || rec.Body.String() != BridgeScript+"<h1>hi</h1>" {
 		t.Errorf("index: %d %q", rec.Code, rec.Body.String())
 	}
 	if rec := get(home, "/preview/t/f/empty/", "empty/"); rec.Code != 404 || !strings.Contains(rec.Body.String(), "No index.html") {
@@ -124,5 +125,24 @@ func TestAMissingFileAndAMissingWorkspaceAre404(t *testing.T) {
 	}
 	if rec := get(filepath.Join(home, "gone"), "/x", "notes.md"); rec.Code != 404 {
 		t.Errorf("no workspace: %d", rec.Code)
+	}
+}
+
+func TestAPageOfTheWorkspaceGetsTheScriptOfThePaneAndOtherFilesDoNot(t *testing.T) {
+	home := workspace(t)
+	page := get(home, "/preview/t/f/site/index.html", "site/index.html")
+	body := page.Body.String()
+	if page.Code != 200 || !strings.Contains(body, `post({t:"nav"`) || !strings.HasSuffix(body, "<h1>hi</h1>") {
+		t.Errorf("a page: %d %q", page.Code, body)
+	}
+	if page.Header().Get("Content-Length") != strconv.Itoa(len(body)) {
+		t.Errorf("the length is of the new body: %q for %d", page.Header().Get("Content-Length"), len(body))
+	}
+	if css := get(home, "/preview/t/f/site/style.css", "site/style.css"); css.Code == 200 && strings.Contains(css.Body.String(), "openrepl") {
+		t.Errorf("a stylesheet has no script: %q", css.Body.String())
+	}
+	out := string(InjectBridge([]byte("<!doctype html><title>x</title>")))
+	if !strings.HasPrefix(out, "<!doctype html><script>") {
+		t.Errorf("after the doctype when there is no head: %q", out[:40])
 	}
 }

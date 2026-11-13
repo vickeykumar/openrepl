@@ -725,5 +725,24 @@ input[type=text],[type=email], select, textarea, email {
   border-radius: 6px;
   cursor: pointer;
 }
+.notice__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+/* the card of "your program is listening" (page/27-preview.js): dark, a green dot, a lime main button */
+.notice--program { color: #F2F0EC; background: #1B1B24; border: 1px solid #2A2A36; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+.notice--program .notice__icon { width: 8px; height: 8px; margin-top: 9px; background: #4CC38A; }
+.notice--program .notice__icon svg { display: none; }
+.notice--program .notice__title { font-size: 14px; }
+.notice--program .notice__title + .notice__text { color: #A9A7B4; font-size: 13px; }
+.notice--program .notice__close { color: #A9A7B4; }
+.notice--program .notice__close:hover,
+.notice--program .notice__close:focus-visible { background: rgba(255, 255, 255, 0.08); }
+.notice--program .notice__action { color: #F2F0EC; background: #14141B; border-color: #2A2A36; }
+.notice--program .notice__action:hover,
+.notice--program .notice__action:focus-visible { background: #22222D; }
+.notice--program .notice__action--primary { color: #15151C; background: #C8F04A; border-color: #C8F04A; }
+.notice--program .notice__action--primary:hover,
+.notice--program .notice__action--primary:focus-visible { background: #D6F67A; border-color: #D6F67A; }
+.notice--program .notice__action--quiet { color: #A9A7B4; background: transparent; border-color: transparent; font-weight: 500; }
+.notice--program .notice__action--quiet:hover,
+.notice--program .notice__action--quiet:focus-visible { color: #F2F0EC; background: rgba(255, 255, 255, 0.06); }
 .notice__action:hover,
 .notice__action:focus-visible { background: #E3EDFF; }

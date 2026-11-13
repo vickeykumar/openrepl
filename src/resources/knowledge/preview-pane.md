@@ -1,6 +1,12 @@
 ---
 title: Preview a web page or program
-keywords: preview, web page, html, browser, localhost, port, server, flask, node, vite, live preview, see my page, listening
+keywords: preview, web page, html, browser, localhost, live preview, see my page, listening, open the preview, no preview button, preview button missing
 link: /about.html
 ---
-The Preview button, next to Download above the editor, shows a web page of your workspace beside the editor: open an .html file and press Preview or Run, and its CSS, scripts and images load from your folder and the page reloads when you save. It also shows a program of yours that listens on a port from 1024 up, for example python3 -m http.server 8000 or a Flask, Node or Vite server started in the terminal: when one starts listening you are offered to open it, and the Ports list in the pane shows every open port and examples of how to start a program. The page runs in a sandbox that is not part of OpenREPL, with sizes for a phone, a tablet and a laptop. The pane takes the terminal's place while it is open, and Run brings the terminal back. A site admin can switch the preview off, or off for guests. The Preview also shows a Markdown file rendered, a picture, or a PDF: open the file and press Preview. A picture or a PDF opens as a card instead of the editor, with Open in Preview, View as hex and Download, and the language list shows Image or PDF for it. Markdown is in the language list and is edited like any text.
+The Preview shows a web page of your workspace, or a program of yours that listens on a port, in a sandboxed frame beside the editor. It takes the terminal's place; the terminal and its programs keep running.
+
+Ways to open it: the Preview button above the editor (shown for an .html, Markdown, picture or PDF page, and with a dot while a program listens on a port from 1024 up); the right-click "Open preview"; the command menu (the ⌘K button, or Ctrl/Cmd+Shift+P) entry "Open the preview", which works when nothing is open or running; Ctrl+Alt+V. Run on an .html page opens it too. A program that starts listening is offered to you.
+
+No button? Nothing that can be shown is open and no program listens. Open an .html page, start a program in the terminal (python3 -m http.server 8000), or use the command menu. Programs are found only where each workspace has a private network.
+
+The Ports list shows open ports and lines to start Python, Flask, Node, Vite, Next.js and Angular servers ("Type it" does not press Enter).  The page runs in a sandbox: it cannot see your account, and its own cookies and localStorage are not kept (server logins of a program work). An admin can switch the preview off, or off for guests.

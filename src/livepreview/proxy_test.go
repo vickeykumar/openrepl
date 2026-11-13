@@ -7,9 +7,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -218,4 +220,64 @@ func TestAStreamedAnswerArrivesAsItIsWritten(t *testing.T) {
 		t.Errorf("the first event did not arrive on its own: %q", buf[:n])
 	}
 	close(release)
+}
+
+func TestEachViewerOfASharedSessionHasHisOwnCookies(t *testing.T) {
+	port, dial := app(t)
+	jar := NewJar()
+	alice := Options{Home: "/h/a", Port: port, Prefix: "/preview/tok/p/1", Dial: dial, Jar: jar, Viewer: "alice"}
+	bob := alice
+	bob.Viewer = "bob"
+	run(alice, "GET", "set", "") // alice logs in
+	if got := run(alice, "GET", "me", "").Body.String(); !strings.Contains(got, "abc123") {
+		t.Fatalf("her own cookie is not sent: %q", got)
+	}
+	if got := run(bob, "GET", "me", "").Body.String(); strings.Contains(got, "abc123") {
+		t.Errorf("a login of one viewer is a login of another: %q", got)
+	}
+	jar.Clear("/h/a|alice|" + strconv.Itoa(port))
+	if got := run(alice, "GET", "me", "").Body.String(); strings.Contains(got, "abc123") {
+		t.Errorf("cleared cookies are still sent: %q", got)
+	}
+}
+
+func TestAnIdleWebSocketIsPingedAndItsMessagesStayWhole(t *testing.T) {
+	old := PingEvery
+	PingEvery = 60 * time.Millisecond
+	defer func() { PingEvery = old }()
+	up := websocket.Upgrader{}
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := up.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		c.WriteMessage(websocket.TextMessage, []byte("first"))
+		time.Sleep(400 * time.Millisecond)                                        // quiet: the page is pinged meanwhile
+		c.WriteMessage(websocket.TextMessage, []byte(strings.Repeat("x", 70000))) // a message of several frames' worth of bytes
+		time.Sleep(50 * time.Millisecond)
+	}))
+	defer backend.Close()
+	port, dial := dialServer(backend)
+	o := Options{Home: "/h", Port: port, Prefix: "/p", Dial: dial, Jar: NewJar(), Hook: HTMLHook("/p")}
+	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { Proxy(w, r, "socket", o) }))
+	defer front.Close()
+	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(front.URL, "http")+"/x", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	pings := 0
+	c.SetPingHandler(func(string) error { pings++; return nil })
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, msg, err := c.ReadMessage(); err != nil || string(msg) != "first" {
+		t.Fatalf("%q %v", msg, err)
+	}
+	_, big, err := c.ReadMessage()
+	if err != nil || len(big) != 70000 {
+		t.Fatalf("the long message arrived damaged: %d bytes, %v", len(big), err)
+	}
+	if pings < 2 {
+		t.Errorf("an idle socket should have been pinged a few times: %d", pings)
+	}
 }

@@ -1,6 +1,6 @@
 # 17. Preview pane
 
-Status: implemented on branch `preview-pane` (phases 1 to 4 of `docs/preview-pane-design.md`), not merged, not deployed.
+Status: phases 1 to 4 of `docs/preview-pane-design.md` are on `development` (commits 5286c3d5, 116cab4b and 6805fb44 after the rebase of 2026-11-13), not on `master`, not deployed.
 Packages `livepreview` (src/livepreview), `server/preview.go`, page `js/src/page/27-preview.js`, tests
 `e2e/tests/preview.spec.js`.
 
@@ -87,9 +87,9 @@ frames), so a connection that is idle for minutes may be dropped by an edge that
 
 ### 3.4 Auto-detect (phase 4)
 
-The page asks `/preview_ports` when it opens, every 20 seconds while it is in view and the pane is closed, when it comes
+The page asks `/preview_ports` when it opens, every 8 seconds while it is in view and the pane is closed, when it comes
 back into view, and at 2, 4, 8, 15, 30 and 60 seconds after Run. A port that was not there before gets one notice
-("Your program is listening on port N", with Open preview, Not now, Don't ask again; the last is remembered per workspace
+(a dark card with a green dot, "Your program is listening on port N" and a lime Open preview button, as on the "What the Preview says in each state" board, with Not now and Don't ask again; the last is remembered per workspace
 in `localStorage`, `preview-noask:<home>`). While a program listens, the Preview button shows a dot and is visible for any
 file. The answer is a few bytes read from the server's own tables.
 
@@ -142,3 +142,94 @@ shows the picture. A PDF has no parameter.
   in Chromium only, with `python3 -m http.server`.
 - The design's board 4 (Run slides the terminal up as a drawer under the editor, the Preview stays) is not built: Run
   closes the pane.
+
+## 8. Feature list (2026-11-13)
+
+What a visitor can do, in one place. Screens of each feature, and how the pieces fit together, are on two canvases (private, the
+owner can open them): features and flows https://claude.ai/artifact/AD4g5DsptGo3knQRDUGbUc, screens
+https://claude.ai/artifact/Rgg2nwieVn3nryv5dAaSKo.
+
+| Area | Feature | Where |
+|---|---|---|
+| Files | An `.html` page shown beside the editor, with its CSS, scripts and images, reloaded on save | 3.1 |
+| Files | Markdown rendered by the server (2 MB at most), pictures, PDF in the browser's viewer, and the card with Open in Preview, View as hex and Download | 6 |
+| Files | Language list: Markdown, and Image and PDF under "Shown, not edited" | 6 |
+| Programs | A program on a port from 1024 up (`python3 -m http.server`, Flask, Node, Vite, Next.js, Angular), with WebSockets, streaming, cookie logins and absolute links | 3.2, 3.3 |
+| Programs | The notice "Your program is listening on port N" (Open preview, Not now, Don't ask again) and the dot on the button | 3.4 |
+| Programs | The Ports list with start lines and "Type it" (the line goes to the terminal, Enter is not pressed) | 3.3 |
+| Pane | Takes the terminal's place; the shell stays alive; Run closes it; Hide / Show of the terminal | 1 |
+| Pane | Address bar, Phone / Tablet / Laptop sizes, reload, close | 1 |
+| Safety | Sandboxed frame without `allow-same-origin`, signed token of 2 hours, read-only files inside the workspace, the program reached only through the workspace's own network | 2, 3 |
+| Admin | "Preview" card: off for everyone, or off for guests; tokens already issued stop at once | 4 |
+| Messages | Words inside the frame: "Nothing is listening on port N", "Nothing is running yet", "The program did not answer in time", "This preview has ended." | 3.2 |
+
+### 8.1 When the Preview button is shown
+
+`syncButton` in `27-preview.js`: hidden when the admin switched the preview off; otherwise shown when the open file is an `.html`,
+Markdown, picture or PDF file (`previewKind`), or when `/preview_ports` lists a port (the button then has a dot), or while the pane is
+open. With nothing to show the button is hidden and the command menu has "Open the preview" (`palette.js`, shown when `Preview.available()` and the pane is closed), which opens the pane on its Ports list. A server where the workspace has neither a network of its own nor the network emulation lists no ports (3.2, case 3), so for a
+program the button never shows there.
+
+### 8.2 On a gateway the token and port calls had to be execution-bound (found and fixed 2026-11-13)
+
+On a gateway, only `ws`, `ws_*` and `upload_file` are "execution-bound" (`gateway.IsExecutionBound`): the gateway chooses the node and
+the workspace for them. `/preview_token` and `/preview_ports` went to the site alone and named the workspace of the cookie, while the
+terminal and the file browser named the workspace the gateway had chosen. On the dev container (a gateway that runs the session
+itself) the terminal ran in `guest-582489444d` and the Preview asked about `guest-4268386744`, so `/preview_ports` answered
+`{"isolated":true,"ports":[]}` and the button did not show for a program that was listening. Both routes are now execution-bound
+(`TestTheCallsOfThePreviewAreExecutionBound`). A guest on a gateway needs the rebuilt binary. Still open on a gateway: the frame's
+own route `/preview/<token>/...` carries no cookie, so a session that a worker runs is not reached (section 7).
+
+A first idea, sending the page's `homedir` with the calls, does not work: a page that owns its session has no signature for it
+(`window.homesig` is only set for a shared session), and the server ignores a workspace named without one.
+
+## 9. Check against the design canvas (2026-11-13)
+
+All 15 boards of "Preview pane and terminal toggle" were read and compared with the running page (dark and light editor theme, a
+page and a program, with the browser tests of `preview.spec.js` and `preview-types.spec.js`: 15 passed on the dev gateway).
+
+**As designed and working:** sandboxed frame; guests included; the pane beside the editor in the terminal's place; Hide / Show in the
+terminal bar and Ctrl+` (remembered); Run always shows the terminal; Run on an `.html` file opens the Preview; right-click "Open
+preview"; page reload on save; port list and "Type it"; programs on a port with absolute links, WebSockets and cookie logins; the
+listening notice (now drawn as board 3, see 8); the sandbox notice line; the states of boards 3 (nothing running, nothing on the port,
+ended); Markdown, picture and PDF with the card and the language list; the admin switches; both editor themes (the pane follows the
+IDE colours); the splitter between the editor and the pane is the IDE's own.
+
+**Fixed in this check:** the listening notice (dark card, green dot, lime main button; its buttons no longer squeeze the text);
+the command menu entry "Open the preview" for when nothing is shown; the size menu drawn like the bar's other buttons instead of
+the browser's own control; the token and port calls on a gateway (8.2).
+
+**Built after this check (2026-11-13, same day):** every item of the "designed but not built" list except the ones named at the end
+of this section. How each works:
+
+- *The bridge* (`livepreview.BridgeScript`, added to every page the preview shows, a program's and a file of the workspace's, so a
+  file's HTML now carries it): reports the page's address and title, its console lines and uncaught errors, the calls it makes with
+  `fetch` and `XMLHttpRequest`, and the keys the editor uses, to the pane with `postMessage`. The pane takes messages only from its
+  own frame (`e.source`).
+- *Back, Forward, loading bar, address bar*: the pane keeps its own list of addresses for each tab; a link in the page adds one; Back and
+  Forward load the stored address again (with the current token). The address bar is typed in (click, or Ctrl+L): a file of the
+  workspace, or `5000/path`.
+- *Console and Requests*: a drawer under the page, with a red count on the button; emptied when the page loads again.
+- *Tabs*: up to four (a file or a port each), each with its own history and console.
+- *Status line*: Loading, Live (with what reloads it), or "Your program has stopped" (a 502 or 504 of the program).
+- *The "..." menu*: Auto-update on save, Reload when I press Run (both remembered), Clear this preview's cookies
+  (`POST /preview_cookies`), Copy address, Pop out to its own window (the window follows reloads; "Bring it back").
+- *500 banner*: after a program's page loads, the pane asks for the same address once and, on a 5xx, shows the status and the first
+  lines of the answer with "Show in terminal" and "Show page anyway".
+- *Run*: with the pane open, Run keeps it, brings the terminal up under it as a drawer (the terminal's Hide closes the drawer) and
+  reloads the page after 1.2 and 4 seconds (switch in the menu).
+- *Keyboard*: Ctrl+Alt+V opens or closes the pane (Ctrl+Shift+V is the browsers' "paste as text" and would break paste in the editor and
+  the terminal, so it was not taken), F6 moves between the editor, the pane's bar and the page, Esc Esc in the page goes back to the
+  editor, Ctrl+L goes to the address bar, Ctrl+` shows the terminal.
+- *First use*: one hint, once for each browser (`localStorage preview-hint`), the first time the button shows.
+- *Phone*: below 800 px the open pane is a third tab, Preview, beside Editor and Terminal; the Terminal tab closes the pane.
+- *WebSocket keep-alive* (`livepreview/wsping.go`): a proxied WebSocket that has been quiet for 25 seconds gets a ping, sent only between two
+  frames (the relay follows frame boundaries). Not tried through a real edge such as Render's.
+- *Shared sessions*: each pane has a random viewer id that goes into its token; the server keeps a program's cookies for each viewer
+  (workspace, viewer, port), so a login of one person is not a login of the others. Everyone previews the owner's workspace and program.
+- *Genie*: agent actions `preview_open` (path or port), `preview_reload`, `preview_close` (one permission, scope "preview") and
+  `preview_state` (reads the address, ports, console errors and last calls; no permission); notes `preview-pane.md`, `preview-tools.md`,
+  `genie-agent-preview.md`. Tests: `agent-protocol.test.ts`, the prompt list test in Go.
+
+**Still not done:** the Phone layout and the pop-out window were tried in Chromium at a desktop size only (the phone tab is not
+covered by a browser test); the WebSocket ping through a real edge; "Pop out" cannot be tested headless; Firefox and Safari.

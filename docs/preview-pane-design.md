@@ -1,6 +1,6 @@
 # Preview pane and terminal toggle: design
 
-Status: phases 1 to 4 built on branch `preview-pane` (see docs/lld/17-preview-pane.md for what was built and what was not). Written 2026-11-11 from the discussion with the owner. Design canvas (thirteen boards):
+Status: phases 1 to 4 built, now on `development` (see docs/lld/17-preview-pane.md for what was built and what was not). Written 2026-11-11 from the discussion with the owner. Design canvas (thirteen boards):
 https://claude.ai/artifact/QurmTT5RANCgpP1ZJDUEDF (private; the owner can open it).
 
 ## 1. What it is

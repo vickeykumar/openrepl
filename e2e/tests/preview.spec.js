@@ -203,3 +203,220 @@ test("the pane lists how to start a program, and Type it puts the command in the
   await expect(page.locator("#preview-pane")).toBeHidden(); // the terminal is back
   await expect.poll(async () => (await page.locator("#terminal-div .xterm-rows").first().innerText()).replace(/ /g, " ")).toContain("python3 -m http.server 8000");
 });
+
+test("with nothing to show the button is hidden, and the command menu opens the preview with its list of ports", async ({ page }) => {
+  await ready(page);
+  await expect(page.locator("#preview-button")).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+Shift+P");
+  await expect(page.locator("#palette")).toBeVisible();
+  await page.locator("#palette-input").fill("preview");
+  await page.locator("#palette .palette__item", { hasText: "Open the preview" }).click();
+  await expect(page.locator("#preview-pane")).toBeVisible();
+  await expect(page.locator("#preview-ports")).toBeVisible();
+});
+
+// ---- the tools of the pane: history, console, requests, tabs, address bar, menu, the Run drawer -----------------------
+
+async function makePages(page, pages) {
+  const d = `pg${Date.now().toString(36)}`;
+  await page.evaluate(async ([d, pages]) => {
+    await window.FileBrowser.create(d, "folder");
+    for (const n of Object.keys(pages)) await window.FileBrowser.create(d + "/" + n, "file");
+    for (const [n, t] of Object.entries(pages)) {
+      await $.ajax({ url: preprocessurl("/ws_filebrowser?q=save&filepath=" + window.homedir + "/" + d + "/" + n), method: "POST", processData: false, data: btoa(t), contentType: "application/octet-stream" });
+    }
+  }, [d, pages]);
+  return (name) => page.evaluate(([d, name]) => window.homedir + "/" + d + "/" + name, [d, name]);
+}
+
+test("Back and Forward follow the links of the page, and the address bar follows the page", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "one.html": '<h1>One</h1><a id="go" href="two.html">two</a>', "two.html": "<h1 id='h'>Two</h1>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("one.html"));
+  await expect(page.locator("#preview-address-text")).toContainText("one.html");
+  await expect(page.locator("#preview-back")).toBeDisabled();
+  await page.frameLocator("#preview-frame").locator("#go").click();
+  await expect(page.locator("#preview-address-text")).toContainText("two.html");
+  await expect(page.locator("#preview-back")).toBeEnabled();
+  await page.locator("#preview-back").click();
+  await expect(page.locator("#preview-address-text")).toContainText("one.html");
+  await expect(page.locator("#preview-forward")).toBeEnabled();
+  await page.locator("#preview-forward").click();
+  await expect(page.locator("#preview-address-text")).toContainText("two.html");
+  await expect(page.locator("#preview-status-text")).toContainText("Live");
+});
+
+test("the Console shows what the page writes and its errors, and Requests the calls it makes", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "c.html": '<h1>c</h1><script>console.log("hello console");console.warn("careful");fetch("c.html");setTimeout(function(){ null.x }, 30)</script>' });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("c.html"));
+  await expect(page.locator("#preview-console-count")).toHaveText("1");
+  await page.locator("#preview-console-button").click();
+  await expect(page.locator("#preview-console-body")).toContainText("hello console");
+  await expect(page.locator("#preview-console-body")).toContainText("careful");
+  await page.locator("#preview-tab-requests").click();
+  await expect(page.locator("#preview-console-body")).toContainText("200");
+  await page.locator("#preview-console-clear").click();
+  await expect(page.locator("#preview-console-body")).toContainText("No calls");
+});
+
+test("two files are two tabs, and a typed address opens a port", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "a.html": "<h1>a</h1>", "b.html": "<h1>b</h1>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("a.html"));
+  await page.evaluate((f) => window.Preview.openPath(f), await at("b.html"));
+  await expect(page.locator("#preview-tabs .preview-tab[role=tab]")).toHaveCount(2);
+  await page.locator("#preview-tabs .preview-tab[role=tab]").first().click();
+  await expect(page.locator("#preview-address-text")).toContainText("a.html");
+  await page.locator("#preview-address").click();
+  await page.locator("#preview-address-input").fill("5999/x");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#preview-address-text")).toContainText("127.0.0.1:5999");
+});
+
+test("the menu keeps its switches, and Run keeps the pane with the terminal as a drawer under it", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "r.html": "<h1>r</h1>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("r.html"));
+  await page.locator("#preview-menu-button").click();
+  await expect(page.locator("#preview-opt-auto")).toBeChecked();
+  await page.locator("#preview-opt-auto").uncheck();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("preview-opt-auto"))).toBe("0");
+  await page.locator("#preview-menu-button").click();
+  await page.locator("#preview-opt-auto").check();
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => window.Preview.onRun());
+  await expect(page.locator("#terminal-div.with-drawer")).toHaveCount(1);
+  await expect(page.locator("#preview-pane")).toBeVisible();
+  await page.locator("#hide-terminal-button").click();
+  await expect(page.locator("#terminal-div.with-drawer")).toHaveCount(0);
+  await expect(page.locator("#preview-pane")).toBeVisible();
+});
+
+// ---- more of the pane: keys, hint, the 500 banner, tokens of viewers, phone, the notice -----------------------------------
+
+test("Ctrl+Alt+V opens and closes the pane, F6 moves the focus, Ctrl+L goes to the address bar", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "f6.html": "<h1>f6</h1>" });
+  await page.keyboard.press("Control+Alt+V");
+  await expect(page.locator("#preview-pane")).toBeVisible();
+  await page.evaluate((f) => window.Preview.openPath(f), await at("f6.html")); // a page with the pane's script, so that keys inside it reach the pane
+  await expect(page.frameLocator("#preview-frame").locator("h1")).toHaveText("f6");
+  await page.locator("#preview-reload").focus();
+  await page.keyboard.press("Control+L");
+  await expect(page.locator("#preview-address-input")).toBeVisible();
+  await expect(page.locator("#preview-address-input")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#preview-address-input")).toBeHidden();
+  await page.locator("#preview-reload").focus();
+  await page.keyboard.press("F6");
+  await expect.poll(() => page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("preview-frame");
+  await page.keyboard.press("F6");
+  await expect.poll(() => page.evaluate(() => { const e = window["editor"]; return !!(e && e.env && e.env.editor && e.env.editor.isFocused()); })).toBe(true);
+  await page.keyboard.press("Control+Alt+V");
+  await expect(page.locator("#preview-pane")).toBeHidden();
+});
+
+test("keys pressed inside the previewed page reach the editor: Esc twice goes back to it, Ctrl+Alt+V closes the pane", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "k.html": "<h1>keys</h1><input id='i'>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("k.html"));
+  const frame = page.frameLocator("#preview-frame");
+  await frame.locator("#i").click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => page.evaluate(() => { const e = window["editor"]; return !!(e && e.env && e.env.editor && e.env.editor.isFocused()); })).toBe(true);
+  await frame.locator("#i").click();
+  await page.keyboard.press("Control+Alt+V");
+  await expect(page.locator("#preview-pane")).toBeHidden();
+});
+
+test("the first time the button shows there is a hint, once", async ({ page }) => {
+  await page.addInitScript(() => { try { localStorage.removeItem("preview-hint"); } catch (e) {} });
+  await ready(page);
+  await makeSite(page);
+  await openIndex(page);
+  const hint = page.locator(".notice", { hasText: "See your web page here" });
+  await expect(hint).toBeVisible();
+  await expect(hint.getByRole("button", { name: "Show me" })).toBeVisible();
+  await hint.getByRole("button", { name: "Got it" }).click();
+  await expect(hint).toBeHidden();
+  expect(await page.evaluate(() => localStorage.getItem("preview-hint"))).toBe("1");
+});
+
+test("a program that answers with a server error gets a banner, with Show in terminal and Show page anyway", async ({ page }) => {
+  await ready(page);
+  await page.route("**/preview/*/p/5077/**", (route) => route.fulfill({ status: 500, contentType: "text/html", body: "<h1>Internal Server Error</h1><p>KeyError: 'name'</p>" }));
+  await page.evaluate(() => window.Preview.openPort(5077));
+  const banner = page.locator("#preview-error");
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText("500");
+  await expect(banner).toContainText("KeyError: 'name'");
+  await banner.getByRole("button", { name: "Show in terminal" }).click();
+  await expect(page.locator("#terminal-div.with-drawer")).toHaveCount(1);
+  await expect(page.locator("#preview-pane")).toBeVisible();
+  await banner.getByRole("button", { name: "Show page anyway" }).click();
+  await expect(banner).toBeHidden();
+});
+
+test("each pane's token names its viewer, and the cookies of a preview can be cleared", async ({ page }) => {
+  await ready(page);
+  const claims = async (v) => page.evaluate(async (v) => {
+    const r = await fetch("/preview_token?v=" + v).then((x) => x.json());
+    return JSON.parse(atob(r.token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/")));
+  }, v);
+  const a = await claims("viewerAAA"), b = await claims("viewerBBB");
+  expect(a.v).toBe("viewerAAA");
+  expect(b.v).toBe("viewerBBB");
+  expect(a.h).toBe(b.h); // the same workspace
+  const bad = await claims("../../etc");
+  expect(bad.v).toBe("etc"); // letters and digits only
+  const status = await page.evaluate(() => fetch("/preview_cookies?port=5000", { method: "POST" }).then((r) => r.status));
+  expect(status).toBe(204);
+  const get = await page.evaluate(() => fetch("/preview_cookies").then((r) => r.status));
+  expect(get).toBe(405);
+});
+
+test("on a phone the open pane is a third tab, and the Terminal tab closes it", async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  await page.goto("/");
+  await page.waitForFunction(() => window.FileBrowser && window.FileBrowser.ready() && window.Preview && window.EditorTabs);
+  await expect(page.locator("#mobile-view-preview")).toBeHidden();
+  await page.evaluate(() => window.Preview.open());
+  await expect(page.locator("#mobile-view-preview")).toBeVisible();
+  await expect(page.locator("#mobile-view-preview")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#preview-pane")).toBeVisible();
+  await page.locator("#mobile-view-terminal").click();
+  await expect(page.locator("#preview-pane")).toBeHidden();
+  await expect(page.locator("#mobile-view-preview")).toBeHidden();
+  await ctx.close();
+});
+
+test("a notice with several buttons keeps its text readable: the buttons go in a row of their own", async ({ page }) => {
+  await ready(page);
+  await page.evaluate(() => window.notify("Open it in the Preview pane beside your editor.", { type: "info", variant: "program", title: "Your program is listening on port 8000", timeout: 0, actions: [{ label: "Open preview", primary: true, onClick() {} }, { label: "Not now", onClick() {} }, { label: "Don't ask again", quiet: true, onClick() {} }] }));
+  const notice = page.locator(".notice--program");
+  await expect(notice.locator(".notice__actions .notice__action")).toHaveCount(3);
+  const width = await notice.locator(".notice__text").evaluate((e) => e.getBoundingClientRect().width);
+  expect(width).toBeGreaterThan(200);
+  await expect(notice.locator(".notice__action--primary")).toHaveCSS("background-color", "rgb(200, 240, 74)");
+});
+
+test("the Genie agent's preview actions open and read the pane", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "g.html": "<h1>g</h1><script>console.error('bad thing')</script>" });
+  const out = await page.evaluate(async (f) => {
+    const ok = window.Preview.openPath(f);
+    await new Promise((r) => setTimeout(r, 1500));
+    const s = window.Preview.state();
+    return { ok, open: s.open, address: s.address, errors: s.errors, last: s.console.map((c) => c.text) };
+  }, await at("g.html"));
+  expect(out.ok).toBe(true);
+  expect(out.open).toBe(true);
+  expect(out.address).toContain("g.html");
+  expect(out.errors).toBe(1);
+  expect(out.last.join(" ")).toContain("bad thing");
+  expect(await page.evaluate(() => window.Preview.openPath("x/notes.txt"))).toBe(false); // not a page that can be shown
+});

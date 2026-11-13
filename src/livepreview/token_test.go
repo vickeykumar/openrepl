@@ -50,3 +50,22 @@ func TestNoTokenWithoutASecretOrAWorkspace(t *testing.T) {
 		t.Error("a token was read with no secret")
 	}
 }
+
+func TestATokenCanNameTheViewerOfASharedSession(t *testing.T) {
+	now := time.Now()
+	tok, err := NewViewerToken("s", "/home/openrepl/ws", "abc123", now, TokenLife)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, viewer, ok := Viewer("s", tok, now)
+	if !ok || home != "/home/openrepl/ws" || viewer != "abc123" {
+		t.Errorf("Viewer = %q %q %v", home, viewer, ok)
+	}
+	if h, ok := Home("s", tok, now); !ok || h != "/home/openrepl/ws" {
+		t.Errorf("Home of a viewer's token = %q %v", h, ok)
+	}
+	plain, _ := NewToken("s", "/home/openrepl/ws", now, TokenLife)
+	if _, v, _ := Viewer("s", plain, now); v != "" {
+		t.Errorf("a token without a viewer has none: %q", v)
+	}
+}

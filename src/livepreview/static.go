@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -110,8 +111,22 @@ func ServeFile(rw http.ResponseWriter, req *http.Request, home, rel string) {
 		rw.Header().Set("Content-Type", "application/pdf")
 		rw.Header().Set("Content-Disposition", "inline")
 	}
+	if ext := strings.ToLower(filepath.Ext(resolved)); (ext == ".html" || ext == ".htm") && req.Method == http.MethodGet && info.Size() <= MaxBridged {
+		// a page of the workspace gets the script that reports to the pane (see BridgeScript)
+		if page, err := io.ReadAll(f); err == nil {
+			out := InjectBridge(page)
+			rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+			rw.Header().Set("Content-Length", strconv.Itoa(len(out)))
+			rw.Write(out)
+			return
+		}
+		f.Seek(0, io.SeekStart)
+	}
 	http.ServeContent(rw, req, filepath.Base(resolved), info.ModTime(), f)
 }
+
+// MaxBridged is the largest page of the workspace that gets the script of the pane (a larger one is sent as it is).
+const MaxBridged = 8 << 20
 
 // MaxMarkdown is the largest Markdown file that is rendered (a larger one is shown as the plain text it is).
 const MaxMarkdown = 2 << 20

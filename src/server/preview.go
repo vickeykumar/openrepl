@@ -21,6 +21,40 @@ import (
 // The Preview pane (docs/preview-pane-design.md). The pane's frame is sandboxed and has no origin, so none of the
 // visitor's cookies reach the route it loads: what names the workspace is a token in the address (package preview).
 
+// viewerID is the random id a pane makes for itself, kept to letters and digits and 32 of them (it ends in a token).
+func viewerID(v string) string {
+	out := make([]byte, 0, 32)
+	for i := 0; i < len(v) && len(out) < 32; i++ {
+		if c := v[i]; c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+			out = append(out, c)
+		}
+	}
+	return string(out)
+}
+
+// handlePreviewCookies forgets the cookies the server keeps for the caller's preview of a port (POST /preview_cookies?port=N&v=ID).
+func (server *Server) handlePreviewCookies(rw http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	if req.Method != http.MethodPost {
+		http.Error(rw, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	uid, homedir := server.requestIdentity(rw, req)
+	if why := previewRefused(uid == ""); why != "" {
+		http.Error(rw, why, http.StatusForbidden)
+		return
+	}
+	viewer := viewerID(req.Form.Get("v"))
+	if port, err := strconv.Atoi(req.Form.Get("port")); err == nil {
+		previewJar.Clear(fmt.Sprintf("%s|%s|%d", homedir, viewer, port))
+	} else {
+		for _, p := range previewPorts(homedir) {
+			previewJar.Clear(fmt.Sprintf("%s|%s|%d", homedir, viewer, p))
+		}
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
 // handlePreviewToken gives the editor page a token for its own workspace, to put in the address of the pane's frame.
 // It is asked with the visitor's own cookies, like every other call of the page.
 func (server *Server) handlePreviewToken(rw http.ResponseWriter, req *http.Request) {
@@ -34,7 +68,7 @@ func (server *Server) handlePreviewToken(rw http.ResponseWriter, req *http.Reque
 		http.Error(rw, why, http.StatusForbidden)
 		return
 	}
-	token, err := livepreview.NewToken(utils.Secret(), homedir, time.Now(), livepreview.TokenLife)
+	token, err := livepreview.NewViewerToken(utils.Secret(), homedir, viewerID(req.Form.Get("v")), time.Now(), livepreview.TokenLife)
 	if err != nil {
 		http.Error(rw, "the preview is not available on this server", http.StatusServiceUnavailable)
 		return
@@ -78,7 +112,7 @@ func (server *Server) handlePreview(rw http.ResponseWriter, req *http.Request) {
 	if len(parts) == 3 {
 		rest = parts[2]
 	}
-	home, ok := livepreview.Home(utils.Secret(), token, time.Now())
+	home, viewer, ok := livepreview.Viewer(utils.Secret(), token, time.Now())
 	if !ok {
 		livepreview.SandboxHeaders(rw.Header())
 		rw.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -95,7 +129,7 @@ func (server *Server) handlePreview(rw http.ResponseWriter, req *http.Request) {
 	case "f":
 		livepreview.ServeFile(rw, req, home, rest)
 	case "p":
-		server.previewProgram(rw, req, token, home, rest)
+		server.previewProgram(rw, req, token, home, viewer, rest)
 	default:
 		http.NotFound(rw, req)
 	}
@@ -105,7 +139,7 @@ func (server *Server) handlePreview(rw http.ResponseWriter, req *http.Request) {
 var previewJar = livepreview.NewJar()
 
 // previewProgram passes a request to the program of the workspace that listens on a port: /preview/<token>/p/<port>/<path>.
-func (server *Server) previewProgram(rw http.ResponseWriter, req *http.Request, token, home, rest string) {
+func (server *Server) previewProgram(rw http.ResponseWriter, req *http.Request, token, home, viewer, rest string) {
 	seg := strings.SplitN(rest, "/", 2)
 	port, err := strconv.Atoi(seg[0])
 	if err != nil || port < livepreview.MinPort || port > 65535 {
@@ -124,7 +158,7 @@ func (server *Server) previewProgram(rw http.ResponseWriter, req *http.Request, 
 	}
 	prefix := "/preview/" + token + "/p/" + seg[0]
 	livepreview.Proxy(rw, req, seg[1], livepreview.Options{
-		Home: home, Port: port, Prefix: prefix, Dial: previewDialer(home), Jar: previewJar, Hook: livepreview.HTMLHook(prefix),
+		Home: home, Port: port, Prefix: prefix, Dial: previewDialer(home), Jar: previewJar, Viewer: viewer, Hook: livepreview.HTMLHook(prefix),
 	})
 }
 

@@ -53,6 +53,22 @@ func RewriteHTML(page []byte, prefix string) []byte {
 	return append(append(append([]byte{}, out[:i]...), script...), out[i:]...)
 }
 
+// InjectBridge adds BridgeScript to a page of the workspace: at the top of its head, or before everything after a doctype.
+// The page's own addresses stay as they are (the files are served by their relative paths).
+func InjectBridge(page []byte) []byte {
+	script := []byte(BridgeScript)
+	if loc := headRe.FindIndex(page); loc != nil {
+		return append(append(append([]byte{}, page[:loc[1]]...), script...), page[loc[1]:]...)
+	}
+	i := 0
+	if bytes.HasPrefix(bytes.ToLower(bytes.TrimSpace(page)), []byte("<!doctype")) {
+		if j := bytes.IndexByte(page, '>'); j >= 0 {
+			i = j + 1
+		}
+	}
+	return append(append(append([]byte{}, page[:i]...), script...), page[i:]...)
+}
+
 // HTMLHook is the Options.Hook that rewrites the HTML answers of a program.
 func HTMLHook(prefix string) func(*http.Response) error {
 	return func(res *http.Response) error {
@@ -95,9 +111,34 @@ var F=window.fetch;if(F){window.fetch=function(i,o){if(typeof i==="string"){i=re
 var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){var a=[].slice.call(arguments);a[1]=typeof u==="string"?(u.charAt(0)==="/"?rel(u):fix(u)):u;return X.apply(this,a)};
 function wrap(name){var O=window[name];if(!O)return;var W=function(u,p){u=fix(String(u));return p===undefined?new O(u):new O(u,p)};W.prototype=O.prototype;for(var k in O){try{W[k]=O[k]}catch(e){}}window[name]=W}
 wrap("WebSocket");wrap("EventSource");
-addEventListener("keydown",function(e){if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&!e.metaKey&&(e.key==="` + "`" + `"||e.code==="Backquote")){e.preventDefault();parent.postMessage({openrepl:"key",key:"terminal"},"*")}},true);
-})();</script>`
+})();</script>` + BridgeScript
 }
+
+// BridgeScript is added to every page the preview shows (a program's and a file of the workspace): it reports what the page
+// does to the pane around it with postMessage, and passes the keys that the editor uses. The pane takes messages only from
+// its own frame. What it reports: the address and title of the page (Back and Forward, the address bar), what it writes to the
+// console and its uncaught errors (the Console tab), the calls it makes with fetch and XMLHttpRequest (the Requests tab).
+const BridgeScript = `<script>(function(){var M="openrepl";
+function post(m){try{m[M]=m.t;parent.postMessage(m,"*")}catch(e){}}
+function str(v){try{if(typeof v==="string")return v;if(v instanceof Error)return v.stack||String(v);return JSON.stringify(v)}catch(e){return String(v)}}
+function nav(){post({t:"nav",href:location.href,title:document.title})}
+addEventListener("load",nav);addEventListener("popstate",nav);addEventListener("hashchange",nav);
+["pushState","replaceState"].forEach(function(k){var o=history[k];history[k]=function(){var r=o.apply(this,arguments);setTimeout(nav,0);return r}});
+["log","info","warn","error","debug"].forEach(function(k){var o=console[k];console[k]=function(){try{post({t:"console",level:k,text:[].map.call(arguments,str).join(" ").slice(0,2000)})}catch(e){}return o.apply(this,arguments)}});
+addEventListener("error",function(e){post({t:"console",level:"error",text:(e.message||"Error")+(e.filename?" ("+e.filename.split("/").pop()+":"+e.lineno+")":"")})});
+addEventListener("unhandledrejection",function(e){post({t:"console",level:"error",text:"Unhandled promise rejection: "+str(e.reason)})});
+var F=window.fetch;if(F){window.fetch=function(i,o){var t0=Date.now(),m=(o&&o.method)||(i&&i.method)||"GET",u=typeof i==="string"?i:(i&&i.url)||"";return F.apply(this,arguments).then(function(r){post({t:"request",method:m,url:u,status:r.status,ms:Date.now()-t0});return r},function(e){post({t:"request",method:m,url:u,status:0,ms:Date.now()-t0});throw e})}}
+var XO=XMLHttpRequest.prototype.open,XS=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.open=function(m,u){this._or=[m,u];return XO.apply(this,arguments)};
+XMLHttpRequest.prototype.send=function(){var x=this,t0=Date.now();x.addEventListener("loadend",function(){var r=x._or||["GET",""];post({t:"request",method:r[0],url:String(r[1]),status:x.status,ms:Date.now()-t0})});return XS.apply(this,arguments)};
+var esc=0;
+addEventListener("keydown",function(e){var k=e.key;
+if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&!e.metaKey&&(k==="` + "`" + `"||e.code==="Backquote")){e.preventDefault();post({t:"key",key:"terminal"});return}
+if(e.ctrlKey&&e.altKey&&!e.shiftKey&&!e.metaKey&&(k==="v"||e.code==="KeyV")){e.preventDefault();post({t:"key",key:"preview"});return}
+if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&!e.metaKey&&(k==="l"||k==="L")){e.preventDefault();post({t:"key",key:"address"});return}
+if(k==="F6"){e.preventDefault();post({t:"key",key:"focus"});return}
+if(k==="Escape"){var n=Date.now();if(n-esc<700){post({t:"key",key:"escape"});esc=0}else{esc=n}}
+},true);
+})();</script>`
 
 func jsString(s string) string {
 	var b strings.Builder

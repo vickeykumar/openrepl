@@ -106,6 +106,7 @@ type Options struct {
 	Prefix string                     // the address of the preview, "/preview/<token>/p/<port>": links the program answers with go back through it
 	Dial   Dialer                     // reaches the workspace's ports
 	Jar    *Jar                       // its cookies
+	Viewer string                     // whose cookies: the viewer of a shared session has his own ("" for none)
 	Hook   func(*http.Response) error // for the page rewriting of phase 3, after the headers are dealt with
 }
 
@@ -116,7 +117,7 @@ const MaxBody = 10 << 20
 // with the sandbox headers and without anything the program sets that could undo them.
 func Proxy(rw http.ResponseWriter, req *http.Request, rest string, o Options) {
 	SandboxHeaders(rw.Header())
-	key := fmt.Sprintf("%s|%d", o.Home, o.Port)
+	key := fmt.Sprintf("%s|%s|%d", o.Home, o.Viewer, o.Port)
 	target := fmt.Sprintf("127.0.0.1:%d", o.Port)
 	req.Body = http.MaxBytesReader(rw, req.Body, MaxBody)
 	rp := &httputil.ReverseProxy{
@@ -173,6 +174,9 @@ func Proxy(rw http.ResponseWriter, req *http.Request, rest string, o Options) {
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			Refused(w, o.Port, err)
 		},
+	}
+	if isWebSocket(req) {
+		rw = keepAliveWriter{ResponseWriter: rw, every: PingEvery}
 	}
 	rp.ServeHTTP(rw, req)
 }

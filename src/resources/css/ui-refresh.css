@@ -2676,7 +2676,8 @@ body.files-collapsed .files-panel { display: none; }
     min-height: 420px;
   }
   .ide-split { flex-direction: column; }
-  .ide-split[data-mobile-view="terminal"] #ide { display: none !important; }
+  .ide-split[data-mobile-view="terminal"] #ide,
+  .ide-split[data-mobile-view="preview"] #ide { display: none !important; }
   .ide-split[data-mobile-view="editor"] #terminal-div { display: none !important; }
   .ide-split[data-mobile-view] #ide,
   .ide-split[data-mobile-view] #terminal-div { width: 100% !important; height: 100% !important; flex: 1; }
@@ -4243,10 +4244,10 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .unsaved-dialog__input { box-sizing: border-box; width: 100%; margin: 12px 0 0; padding: 8px 10px; font: 400 13.5px var(--font-code); color: var(--paper); background: var(--ink-900); border: 1px solid var(--ink-600); border-radius: 8px; }
 .unsaved-dialog__input:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 1px; }
 /* The Preview pane (page/27-preview.js): in the terminal's place while it is open */
-.terminal-div.is-previewing > :not(.preview-pane) { display: none !important; }
+.terminal-div.is-previewing:not(.with-drawer) > :not(.preview-pane) { display: none !important; }
 .preview-pane { display: none; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; background: var(--ide-surface, #09090D); color: var(--paper); }
 .terminal-div.is-previewing > .preview-pane:not([hidden]) { display: flex; }
-.preview-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--ink-700); flex-shrink: 0; }
+.preview-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--ink-700); flex-shrink: 0; }
 .preview-bar .ide-btn { height: 30px; padding: 0 8px; font-size: 13px; color: var(--ide-chrome-text, #B9B7C4); }
 .preview-address {
   display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; height: 30px; padding: 0 10px;
@@ -4254,7 +4255,13 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 }
 .preview-address svg { flex-shrink: 0; color: var(--muted-2); }
 .preview-address span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.preview-size { max-width: 9.5rem; }
+/* the size menu is drawn like the other buttons of the bar, not as the browser's own control (board 1 and 9 of the design) */
+.preview-size {
+  max-width: 9.5rem; height: 30px; padding: 0 26px 0 10px; font: 500 13px var(--font-ui, inherit); color: var(--ide-chrome-text, #B9B7C4);
+  background: var(--ink-800) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%238C8A98' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 9px center;
+  border: 1px solid var(--ink-700); border-radius: 8px; appearance: none; -webkit-appearance: none; cursor: pointer;
+}
+.preview-size:hover, .preview-size:focus-visible { border-color: var(--ink-600); color: var(--paper); }
 .preview-ports { padding: 8px 12px; border-bottom: 1px solid var(--ink-700); display: flex; flex-direction: column; gap: 8px; font-size: 13px; background: var(--ink-850); }
 .preview-ports[hidden] { display: none; }
 .preview-ports__title { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-2); }
@@ -4282,3 +4289,56 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .preview-message[hidden] { display: none; }
 .preview-message strong { color: var(--paper); font-size: 15px; }
 .preview-message .ide-btn { border: 1px solid var(--ink-600); }
+
+/* the Preview pane's tabs, loading bar, menu, console, status line and error banner (page/27-preview.js; boards 9, 12, 13 of the design) */
+.preview-pane { position: relative; }
+.preview-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 4px 8px 0; border-bottom: 1px solid var(--ink-700); flex-shrink: 0; overflow-x: auto; }
+.preview-tabs[hidden] { display: none; }
+.preview-tab { display: flex; align-items: center; gap: 6px; max-width: 12rem; padding: 5px 8px 5px 11px; font-size: 12.5px; color: var(--muted-1); background: transparent; border: 1px solid transparent; border-bottom: 0; border-radius: 7px 7px 0 0; cursor: pointer; font-family: inherit; }
+.preview-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-tab.is-on { color: var(--paper); background: var(--ink-850); border-color: var(--ink-700); }
+.preview-tab__x { border: 0; background: transparent; color: var(--muted-2); cursor: pointer; padding: 0 2px; font-size: 12px; line-height: 1; }
+.preview-tab__x:hover { color: var(--paper); }
+.preview-tab--new { color: var(--muted-2); padding: 5px 10px; }
+.preview-bar .ide-btn:disabled { opacity: 0.35; cursor: default; }
+.preview-address { position: relative; cursor: text; flex: 1 1 11rem; min-width: 9rem; }
+.preview-address__input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; font: inherit; color: var(--paper); background: transparent; border: 0; outline: 0; }
+.preview-address__input[hidden] { display: none; }
+.preview-address:focus-within { border-color: var(--accent-color, #C8F04A); }
+.preview-loading { position: relative; height: 2px; flex-shrink: 0; overflow: hidden; background: transparent; }
+.preview-loading[hidden] { display: none; }
+.preview-loading::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--accent-color, #C8F04A); animation: preview-load 1s ease-in-out infinite; }
+@keyframes preview-load { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+@media (prefers-reduced-motion: reduce) { .preview-loading::before { animation: none; width: 100%; opacity: 0.6; } }
+.preview-badge { display: inline-block; min-width: 16px; margin-left: 5px; padding: 0 4px; font-size: 11px; line-height: 16px; text-align: center; color: #15151C; background: #F07171; border-radius: 8px; }
+.preview-badge[hidden] { display: none; }
+.preview-menu { position: absolute; right: 8px; top: 44px; z-index: 30; min-width: 14rem; padding: 5px; display: flex; flex-direction: column; background: var(--ink-850); border: 1px solid var(--ink-600); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+.preview-menu[hidden] { display: none; }
+.preview-menu__item { display: flex; align-items: center; gap: 8px; padding: 6px 9px; font: 400 13px var(--font-ui, inherit); color: var(--paper); text-align: left; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+.preview-menu__item:hover, .preview-menu__item:focus-visible { background: var(--ink-800); outline: 0; }
+.preview-console { flex: 0 0 150px; min-height: 80px; display: flex; flex-direction: column; border-top: 1px solid var(--ink-700); background: var(--ink-850); }
+.preview-console[hidden] { display: none; }
+.preview-console__bar { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-bottom: 1px solid var(--ink-700); font-size: 12.5px; }
+.preview-console__tab { padding: 3px 9px; font: inherit; color: var(--muted-1); background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+.preview-console__tab.is-on { color: var(--paper); background: var(--ink-800); }
+.preview-console__sp { flex: 1; }
+.preview-console__body { flex: 1; overflow: auto; padding: 5px 10px; font: 400 12px/1.6 var(--font-code); color: var(--muted-1); }
+.preview-console__row { white-space: pre-wrap; word-break: break-word; }
+.preview-console__row--warn { color: #F5C37A; }
+.preview-console__row--error { color: #F07171; }
+.preview-console__empty { color: var(--muted-2); font-family: var(--font-ui, inherit); }
+.preview-console__row .st { display: inline-block; min-width: 2.2rem; }
+.preview-status { display: flex; align-items: center; gap: 7px; flex-shrink: 0; padding: 4px 12px; font-size: 12px; color: var(--muted-1); border-top: 1px solid var(--ink-700); }
+.preview-status__dot { width: 7px; height: 7px; border-radius: 50%; background: #4CC38A; flex-shrink: 0; }
+.preview-status.is-loading .preview-status__dot { background: #F5C37A; }
+.preview-status.is-bad .preview-status__dot { background: #F07171; }
+.preview-error { flex-shrink: 0; padding: 9px 12px; color: var(--paper); background: rgba(240, 113, 113, 0.12); border-bottom: 1px solid rgba(240, 113, 113, 0.4); font-size: 13px; }
+.preview-error[hidden] { display: none; }
+.preview-error__head { color: #F07171; font-weight: 600; }
+.preview-error pre { margin: 6px 0; font: 400 12px/1.5 var(--font-code); color: var(--muted-1); white-space: pre-wrap; max-height: 5.5em; overflow: hidden; }
+.preview-error__actions { display: flex; gap: 8px; }
+/* Run keeps the pane and shows the terminal under it (board 4) */
+.terminal-div.is-previewing.with-drawer > .preview-pane:not([hidden]) { order: -1; flex: 1 1 58%; min-height: 0; }
+.terminal-div.is-previewing.with-drawer > .terminal.active { flex: 1 1 40%; min-height: 6rem; }
+
+.mobile-view[hidden] { display: none; }

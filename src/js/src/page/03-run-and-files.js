@@ -64,9 +64,10 @@ function CompileandRun() {
     if (window.Preview && window.Preview.runs()) { window.Preview.open(); return; }
     // The execution node is away and the countdown is running (11-terminal-state.js).
     if (window.awayWaitMs && window.awayWaitMs() > 0) return;
-    // the result is shown in the terminal: the Preview pane, which has its place, closes; and a hidden terminal comes back
-    if (window.Preview && window.Preview.isOpen()) window.Preview.close();
-    if (window.ShowTerminal) window.ShowTerminal();
+    // the result is shown in the terminal: a hidden terminal comes back, and an open Preview pane makes room for it as a drawer
+    // (design board 4) with the Preview open it stays, the terminal comes up under it and the page reloads
+    if (window.Preview && window.Preview.isOpen()) window.Preview.onRun();
+    else if (window.ShowTerminal) window.ShowTerminal();
     // a program that starts listening on a port within seconds is offered in the Preview pane (27-preview.js)
     if (window.Preview) window.Preview.watchAfterRun();
     const termdiv = get("#terminal-div");

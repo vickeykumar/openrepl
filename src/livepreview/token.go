@@ -23,8 +23,9 @@ import (
 const TokenLife = 2 * time.Hour
 
 type claims struct {
-	Home string `json:"h"`
-	End  int64  `json:"e"`
+	Home   string `json:"h"`
+	Viewer string `json:"v,omitempty"`
+	End    int64  `json:"e"`
 }
 
 func mac(secret, payload string) string {
@@ -35,37 +36,49 @@ func mac(secret, payload string) string {
 
 // NewToken makes a token for the workspace home, valid until now+life. secret is the server's secret.
 func NewToken(secret, home string, now time.Time, life time.Duration) (string, error) {
+	return NewViewerToken(secret, home, "", now, life)
+}
+
+// NewViewerToken is NewToken for one viewer of the workspace: in a shared session each person's pane has its own token, and
+// with it its own cookies of the previewed program (a login of one person is not a login of the others).
+func NewViewerToken(secret, home, viewer string, now time.Time, life time.Duration) (string, error) {
 	if secret == "" {
 		return "", errors.New("the server has no secret to sign a preview with")
 	}
 	if home == "" {
 		return "", errors.New("no workspace")
 	}
-	raw, _ := json.Marshal(claims{Home: home, End: now.Add(life).Unix()})
+	raw, _ := json.Marshal(claims{Home: home, Viewer: viewer, End: now.Add(life).Unix()})
 	payload := base64.RawURLEncoding.EncodeToString(raw)
 	return payload + "." + mac(secret, payload), nil
 }
 
 // Home reads a token: the workspace it names, when it is signed with secret and has not ended.
 func Home(secret, token string, now time.Time) (home string, ok bool) {
+	home, _, ok = Viewer(secret, token, now)
+	return home, ok
+}
+
+// Viewer reads a token like Home does, and also says which viewer of the workspace it was made for ("" for none).
+func Viewer(secret, token string, now time.Time) (home, viewer string, ok bool) {
 	if secret == "" {
-		return "", false
+		return "", "", false
 	}
 	i := strings.IndexByte(token, '.')
 	if i <= 0 {
-		return "", false
+		return "", "", false
 	}
 	payload, sig := token[:i], token[i+1:]
 	if !hmac.Equal([]byte(mac(secret, payload)), []byte(sig)) {
-		return "", false
+		return "", "", false
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(payload)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 	var c claims
 	if json.Unmarshal(raw, &c) != nil || c.Home == "" || now.Unix() >= c.End {
-		return "", false
+		return "", "", false
 	}
-	return c.Home, true
+	return c.Home, c.Viewer, true
 }

@@ -320,6 +320,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.HandleFunc(pathPrefix+"ws_filebrowser", server.handleFileBrowser)
 	siteMux.HandleFunc(pathPrefix+"preview_token", server.handlePreviewToken)
 	siteMux.HandleFunc(pathPrefix+"preview_ports", server.handlePreviewPorts)
+	siteMux.HandleFunc(pathPrefix+"preview_cookies", server.handlePreviewCookies)
 	siteMux.HandleFunc(pathPrefix+"preview/", server.handlePreview)
 	siteMux.HandleFunc(pathPrefix+"upload_file", server.handleFileUpload)
 

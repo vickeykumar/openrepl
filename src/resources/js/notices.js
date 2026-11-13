@@ -37,7 +37,7 @@
     var type = ICONS[opts.type] ? opts.type : "info";
     if (!document.body) { console.log("notice:", message); return; }
     var n = document.createElement("div");
-    n.className = "notice notice--" + type;
+    n.className = "notice notice--" + type + (opts.variant ? " notice--" + opts.variant : "");
     n.setAttribute("role", type === "error" ? "alert" : "status");
 
     var icon = document.createElement("span");
@@ -60,12 +60,19 @@
     // opts.action = { label, onClick }: one button next to the message, for something the person may want to do about
     // it (Undo). opts.actions = [ ... ] the same, for several.
     var actionList = (opts.actions || (opts.action ? [opts.action] : [])).filter(function (a) { return a && typeof a.onClick === "function"; });
+    // several buttons would squeeze the text to nothing in a row, so they go in a row of their own under the text
+    var actionRow = null;
+    if (actionList.length > 1) {
+      actionRow = document.createElement("div");
+      actionRow.className = "notice__actions";
+      body.appendChild(actionRow);
+    }
     var actionButtons = actionList.map(function (a) {
       var button = document.createElement("button");
       button.type = "button";
-      button.className = "notice__action";
+      button.className = "notice__action" + (a.primary ? " notice__action--primary" : "") + (a.quiet ? " notice__action--quiet" : "");
       text(button, a.label || "Undo");
-      n.appendChild(button);
+      (actionRow || n).appendChild(button);
       return button;
     });
 

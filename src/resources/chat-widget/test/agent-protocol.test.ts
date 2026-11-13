@@ -121,6 +121,10 @@ test("the list of actions is the one in the server's prompt", () => {
     "files_move",
     "files_delete",
     "read_output",
+    "preview_open",
+    "preview_close",
+    "preview_reload",
+    "preview_state",
     "finish",
   ]);
 });
@@ -476,4 +480,26 @@ test("what a file permission card says is what the action does", () => {
   assert.equal(describe({ type: "files_rename", path: "a.py", name: "b.py" }), "Renaming a.py to b.py");
   assert.equal(describe({ type: "files_paste", to: "" }), "Pasting into the home folder");
   assert.match(scopeQuestion("files"), /files/);
+});
+
+test("preview actions: a port or a path, never both, and the permission is asked once for opening, reloading and closing", () => {
+  const types = (json: string) => ok(json).actions;
+  assert.deepEqual(types('{"actions":[{"type":"preview_open"},{"type":"preview_open","port":5000},{"type":"preview_open","path":"./site/index.html"}]}'), [
+    { type: "preview_open" },
+    { type: "preview_open", port: 5000 },
+    { type: "preview_open", path: "site/index.html" },
+  ]);
+  assert.deepEqual(types('{"actions":[{"type":"preview_reload"},{"type":"preview_close"},{"type":"preview_state"}]}'), [{ type: "preview_reload" }, { type: "preview_close" }, { type: "preview_state" }]);
+  for (const bad of ['{"type":"preview_open","port":80}', '{"type":"preview_open","port":"5000"}', '{"type":"preview_open","port":70000}', '{"type":"preview_open","path":"../x.html"}', '{"type":"preview_open","port":5000,"path":"a.html"}']) {
+    const s = ok('{"actions":[' + bad + "]}");
+    assert.equal(s.actions.length, 0, bad);
+    assert.equal(s.dropped.length, 1, bad);
+  }
+  assert.equal(scopeOf({ type: "preview_open" }), "preview");
+  assert.equal(scopeOf({ type: "preview_reload" }), "preview");
+  assert.equal(scopeOf({ type: "preview_close" }), "preview");
+  assert.equal(scopeOf({ type: "preview_state" }), null);
+  assert.equal(scopeQuestion("preview"), "Genie wants to use the Preview");
+  assert.match(scopeDetail("preview", { type: "preview_open", port: 5000 }), /port 5000/);
+  assert.match(describe({ type: "preview_open", path: "a.html" }), /a\.html/);
 });

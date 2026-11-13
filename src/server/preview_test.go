@@ -35,7 +35,7 @@ func TestThePreviewRouteServesTheWorkspaceNamedByAToken(t *testing.T) {
 		return rec
 	}
 	rec := get("/preview/" + tok + "/f/index.html")
-	if rec.Code != 200 || rec.Body.String() != "<h1>mine</h1>" || !strings.HasPrefix(rec.Header().Get("Content-Security-Policy"), "sandbox ") {
+	if rec.Code != 200 || rec.Body.String() != livepreview.BridgeScript+"<h1>mine</h1>" || !strings.HasPrefix(rec.Header().Get("Content-Security-Policy"), "sandbox ") {
 		t.Fatalf("%d %q %v", rec.Code, rec.Body.String(), rec.Header())
 	}
 	// the token reaches its own workspace only
@@ -65,5 +65,20 @@ func TestThePreviewRouteRefusesATokenMadeWithAnotherSecret(t *testing.T) {
 	(&Server{}).handlePreview(rec, httptest.NewRequest("GET", "/preview/"+tok+"/f/x", nil))
 	if rec.Code != http.StatusGone {
 		t.Errorf("%d", rec.Code)
+	}
+}
+
+func TestAViewerIdIsLettersAndDigitsOnlyAndShort(t *testing.T) {
+	for in, want := range map[string]string{
+		"abc123":                  "abc123",
+		"../../x":                 "x",
+		"a b|c\x00d/e":            "abcde",
+		"":                        "",
+		strings.Repeat("a", 80):   strings.Repeat("a", 32),
+		"{\"h\":\"/home/other\"}": "hhomeother",
+	} {
+		if got := viewerID(in); got != want {
+			t.Errorf("viewerID(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
