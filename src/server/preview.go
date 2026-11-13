@@ -21,6 +21,14 @@ import (
 // The Preview pane (docs/preview-pane-design.md). The pane's frame is sandboxed and has no origin, so none of the
 // visitor's cookies reach the route it loads: what names the workspace is a token in the address (package preview).
 
+// previewTokenLife is how long a preview link works: the admin's setting (Settings, Preview), or the built-in 2 hours.
+func previewTokenLife(s SiteSettings) time.Duration {
+	if d := s.previewLinkLife(); d != 0 {
+		return d
+	}
+	return livepreview.TokenLife
+}
+
 // viewerID is the random id a pane makes for itself, kept to letters and digits and 32 of them (it ends in a token).
 func viewerID(v string) string {
 	out := make([]byte, 0, 32)
@@ -68,7 +76,8 @@ func (server *Server) handlePreviewToken(rw http.ResponseWriter, req *http.Reque
 		http.Error(rw, why, http.StatusForbidden)
 		return
 	}
-	token, err := livepreview.NewViewerToken(utils.Secret(), homedir, viewerID(req.Form.Get("v")), time.Now(), livepreview.TokenLife)
+	life := previewTokenLife(GetSiteSettings())
+	token, err := livepreview.NewViewerToken(utils.Secret(), homedir, viewerID(req.Form.Get("v")), time.Now(), life)
 	if err != nil {
 		http.Error(rw, "the preview is not available on this server", http.StatusServiceUnavailable)
 		return
@@ -77,7 +86,7 @@ func (server *Server) handlePreviewToken(rw http.ResponseWriter, req *http.Reque
 	rw.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(rw).Encode(map[string]interface{}{
 		"token":   token,
-		"expires": time.Now().Add(livepreview.TokenLife).Unix(),
+		"expires": time.Now().Add(life).Unix(),
 	})
 }
 

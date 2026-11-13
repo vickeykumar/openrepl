@@ -69,6 +69,9 @@ type SiteSettings struct {
 	// SnapshotIntervalMinutes is how often the workspaces of signed-in users that changed are snapshotted to the object
 	// store (package homesnap), from 1 to 60; 0 means the built-in 5. Only the newest 3 snapshots of a home are kept.
 	SnapshotIntervalMinutes int `json:"snapshotIntervalMinutes"`
+	// PreviewLinkMinutes is how long the address of a preview (its token) works, in minutes, from 10 to 1440; 0 means the built-in
+	// 2 hours (livepreview.TokenLife). The pane asks for a new one before it ends; a link opened in a tab of its own ends with it.
+	PreviewLinkMinutes int `json:"previewLinkMinutes"`
 	// PreviewOff switches the Preview pane off for everyone, and PreviewGuestsOff for visitors who are not signed in:
 	// the pane shows pages written by visitors on this site's domain, so abuse can be stopped here without a deploy.
 	PreviewOff       bool `json:"previewOff"`
@@ -187,6 +190,9 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	}
 	if s.SnapshotIntervalMinutes != 0 && (s.SnapshotIntervalMinutes < minSnapshotMinutes || s.SnapshotIntervalMinutes > maxSnapshotMinutes) {
 		return s, fmt.Errorf("the time between workspace snapshots must be between %d and %d minutes (or empty)", minSnapshotMinutes, maxSnapshotMinutes)
+	}
+	if s.PreviewLinkMinutes != 0 && (s.PreviewLinkMinutes < minPreviewLinkMinutes || s.PreviewLinkMinutes > maxPreviewLinkMinutes) {
+		return s, fmt.Errorf("the time a preview link works must be between %d and %d minutes (or empty)", minPreviewLinkMinutes, maxPreviewLinkMinutes)
 	}
 	if s.DBCapacityMB != 0 && (s.DBCapacityMB < minDBCapacityMB || s.DBCapacityMB > maxDBCapacityMB) {
 		return s, fmt.Errorf("the database capacity must be between %d and %d MB (or empty)", minDBCapacityMB, maxDBCapacityMB)
@@ -585,6 +591,17 @@ func (s SiteSettings) snapshotInterval() time.Duration {
 	return time.Duration(s.SnapshotIntervalMinutes) * time.Minute
 }
 
+// the time a preview link works, in minutes
+const minPreviewLinkMinutes, maxPreviewLinkMinutes = 10, 1440
+
+// previewLinkLife is how long a preview link works in force: the one set, or 0 (the built-in 2 hours).
+func (s SiteSettings) previewLinkLife() time.Duration {
+	if s.PreviewLinkMinutes < minPreviewLinkMinutes || s.PreviewLinkMinutes > maxPreviewLinkMinutes {
+		return 0
+	}
+	return time.Duration(s.PreviewLinkMinutes) * time.Minute
+}
+
 // maxEditorFileMB is the limit in force: the one set, or the built-in 16.
 func (s SiteSettings) maxEditorFileMB() int {
 	if s.MaxEditorFileMB < minEditorFileMB || s.MaxEditorFileMB > maxEditorFileMB {
@@ -827,6 +844,13 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.PreviewGuestsOff != b.PreviewGuestsOff {
 		out = append(out, "preview for guests "+onoff(!b.PreviewGuestsOff))
+	}
+	if a.previewLinkLife() != b.previewLinkLife() {
+		if d := b.previewLinkLife(); d == 0 {
+			out = append(out, "preview link time back to the built-in 2 hours")
+		} else {
+			out = append(out, fmt.Sprintf("preview link works %d minutes", int(d.Minutes())))
+		}
 	}
 	if a.maxEditorFileMB() != b.maxEditorFileMB() {
 		out = append(out, fmt.Sprintf("largest editor file %d MB", b.maxEditorFileMB()))

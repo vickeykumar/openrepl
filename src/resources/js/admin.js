@@ -1100,6 +1100,7 @@
         dbCapacityMB: int(form.dbCap.value),
         maxEditorFileMB: int(form.maxFile.value),
         snapshotIntervalMinutes: int(form.snapEvery.value),
+        previewLinkMinutes: int(form.previewLife.value),
         previewOff: !form.previewOn.checked,
         previewGuestsOff: !form.previewGuests.checked,
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
@@ -1157,6 +1158,7 @@
         dbCapacityMB: s.dbCapacityMB || 0,
         maxEditorFileMB: s.maxEditorFileMB || 0,
         snapshotIntervalMinutes: s.snapshotIntervalMinutes || 0,
+        previewLinkMinutes: s.previewLinkMinutes || 0,
         previewOff: !!s.previewOff,
         previewGuestsOff: !!s.previewGuestsOff,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
@@ -1200,6 +1202,9 @@
       form.snapEvery = h('input', { type: 'number', class: 'field', id: 'f-snap-every', min: '1', max: '60', step: '1', placeholder: '5', 'aria-label': 'Minutes between workspace snapshots' });
       form.snapEvery.value = settings.snapshotIntervalMinutes || '';
       form.snapEvery.style.maxWidth = '9rem';
+      form.previewLife = h('input', { type: 'number', class: 'field', id: 'f-preview-life', min: '10', max: '1440', step: '1', placeholder: '120', 'aria-label': 'Minutes a preview link works', oninput: update });
+      form.previewLife.value = settings.previewLinkMinutes || '';
+      form.previewLife.style.maxWidth = '9rem';
       form.colour = colour.input; form.maint = maint.input; form.genie = genie.input;
       // the Preview pane (pages written by visitors, shown on this site's domain): off for all, or for guests only
       var previewOn = toggle('f-preview', !settings.previewOff, 'Preview available');
@@ -1603,7 +1608,8 @@
           row('Minutes between snapshots', 'From 1 to 60. Leave it empty for 5. The change is used at once by the running job.', form.snapEvery) ]),
         card('Preview', 'The Preview pane shows a web page or program that a visitor wrote, in a sandbox on this site. Switch it off here if it is abused: the button disappears and the server refuses new previews.', [
           row('Preview is available', null, previewOn.node),
-          row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node) ]),
+          row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node),
+          row('Minutes a preview link works', 'From 10 to 1440 (a day). Leave it empty for 120 (2 hours). A pane gets a new link by itself before the old one ends; a link opened in a tab of its own, or copied, stops at its end. A change applies to links made after it.', form.previewLife) ]),
         card('Languages', 'Untick a language that is broken. The picker greys it out and its terminals refuse to start with a message; terminals that are already open keep running. Admins can still start it, to test a fix.', langGrid),
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),

@@ -19,7 +19,7 @@ requests (its CSS, scripts, `fetch`), so the cookie cannot say whose workspace i
 its cookies, asks `GET /preview_token` and the pane loads `/preview/<token>/...`.
 
 `livepreview.NewToken` makes `base64url({"h": home, "e": end}) + "." + hmac-sha256(secret, "openrepl-preview\0" + payload)`,
-valid 2 hours; the page renews it 5 minutes before the end. A wrong or ended token gets 410 and "This preview has ended."
+valid 2 hours by default, or the admin's setting `previewLinkMinutes` (Settings, Preview card; 10 to 1440 minutes; `previewTokenLife` in `server/preview.go`); the page renews it 5 minutes before the end. A wrong or ended token gets 410 and "This preview has ended."
 A token names one workspace and cannot be made without the server's secret (`utils.Secret()`).
 
 ## 3. Routes
@@ -101,7 +101,7 @@ workspace also stop (the preview route checks the setting on every request; a gu
 
 ## 5. Limits that are in place
 
-Token 2 hours; ports 1024 to 65535; request body 10 MB; answer headers within 30 seconds; static files 50 MB; HTML rewrite
+Token 2 hours (the admin can set 10 minutes to a day); ports 1024 to 65535; request body 10 MB; answer headers within 30 seconds; static files 50 MB; HTML rewrite
 8 MB; cookie jar bounds; no preview where the machine's network is shared. Not built: a limit of requests per minute or of
 open connections per workspace.
 
