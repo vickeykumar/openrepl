@@ -13,5 +13,6 @@ func SandboxHeaders(h http.Header) {
 	h.Set("X-Robots-Tag", "noindex, nofollow")
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set("Access-Control-Allow-Origin", "*")
+	h.Set("Access-Control-Expose-Headers", "*")
 	h.Set("Cross-Origin-Resource-Policy", "cross-origin")
 }

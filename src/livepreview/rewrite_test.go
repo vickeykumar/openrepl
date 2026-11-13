@@ -82,3 +82,22 @@ func appWith(t *testing.T, types map[string]string) (int, Dialer) {
 	t.Cleanup(srv.Close)
 	return dialServer(srv)
 }
+
+func TestRewriteCSSAndTheRestOfAPage(t *testing.T) {
+	const p = "/preview/x/p/5000"
+	css := string(RewriteCSS([]byte(`a{background:url(/img/a.png)} b{background:url( "/b.png" )} c{background:url(//cdn/x.png)} @import "/base.css"; d{background:url(rel.png)} e{background:url(`+p+`/done.png)}`), p))
+	for _, want := range []string{"url(" + p + "/img/a.png)", `url( "` + p + `/b.png" )`, "url(//cdn/x.png)", `@import "` + p + `/base.css"`, "url(rel.png)", "url(" + p + "/done.png)"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("css lacks %q: %s", want, css)
+		}
+	}
+	if strings.Contains(css, p+p) {
+		t.Errorf("prefix twice: %s", css)
+	}
+	page := string(RewriteHTML([]byte(`<html><head><style>h1{background:url(/h.png)}</style><meta http-equiv="refresh" content="3; url=/next"></head><body style="background:url('/bg.png')"><img srcset="/a.png 1x, /b.png 2x, //cdn/c.png 3x" src=/plain.png><a href=/x>x</a></body></html>`), p))
+	for _, want := range []string{"url(" + p + "/h.png)", "url=" + p + "/next", "url('" + p + "/bg.png')", `srcset="` + p + "/a.png 1x, " + p + "/b.png 2x, //cdn/c.png 3x", "src=" + p + "/plain.png", "href=" + p + "/x"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q: %s", want, page)
+		}
+	}
+}
