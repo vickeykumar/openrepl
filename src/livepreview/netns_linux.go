@@ -144,6 +144,27 @@ func scanPIDs(home string) []int {
 	return out
 }
 
+// Unsandboxed says whether process pid runs with no seccomp filter at all. Under the network emulation every REPL of a
+// workspace carries the filter of the emulation (the helper installs it before the REPL starts), so a REPL that has none,
+// in the network of the server, is one that was started without any sandbox: an admin's. Its programs listen on the
+// machine's real network.
+func Unsandboxed(pid int) bool {
+	// the helper itself, before it has installed the filter, is not a REPL without a sandbox
+	if cmd, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/cmdline"); err != nil || strings.Contains(string(cmd), "--net-emulation") || strings.Contains(string(cmd), "--workspace") {
+		return false
+	}
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/status")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "Seccomp:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "Seccomp:")) == "0"
+		}
+	}
+	return false
+}
+
 // SameNetwork says whether process pid is in the network namespace of this process (the server).
 func SameNetwork(pid int) bool {
 	a, err1 := os.Readlink("/proc/self/ns/net")

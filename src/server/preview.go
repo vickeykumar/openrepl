@@ -187,9 +187,13 @@ func previewDialer(home string) livepreview.Dialer {
 		// each REPL of a workspace may have a network of its own: the program is in the one that listens on the port
 		var lastErr error
 		own := false
+		admin := false // a REPL with no sandbox at all (an admin's) listens on the machine's real network
 		for _, pid := range pids {
 			if livepreview.SameNetwork(pid) {
 				own = true
+				if containers.NetEmuActive() && livepreview.Unsandboxed(pid) {
+					admin = true
+				}
 				continue
 			}
 			c, err := livepreview.DialIn(fmt.Sprintf("/proc/%d/ns/net", pid), port, 10*time.Second)
@@ -200,6 +204,10 @@ func previewDialer(home string) livepreview.Dialer {
 		}
 		if lastErr != nil && !own {
 			return nil, lastErr
+		}
+		if admin {
+			var d net.Dialer
+			return d.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		}
 		if containers.NetEmuActive() {
 			var d net.Dialer
@@ -223,7 +231,10 @@ func previewPorts(home string) []int {
 	for _, pid := range pids {
 		if livepreview.SameNetwork(pid) {
 			shared = true
-			continue
+			// an admin's REPL has no sandbox: its sockets are the machine's own
+			if !(containers.NetEmuActive() && livepreview.Unsandboxed(pid)) {
+				continue
+			}
 		}
 		base := fmt.Sprintf("/proc/%d/net/", pid)
 		all = append(all, livepreview.ParseTCP(livepreview.ReadProc(base+"tcp"))...)
