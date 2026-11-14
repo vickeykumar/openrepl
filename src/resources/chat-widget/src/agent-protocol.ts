@@ -37,6 +37,7 @@ export const ACTIONS = [
   "preview_close",
   "preview_reload",
   "preview_state",
+  "store_suggest",
   "finish",
 ] as const;
 export type ActionType = (typeof ACTIONS)[number];
@@ -584,6 +585,12 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
       case "preview_state":
         actions.push({ type });
         break;
+      case "store_suggest": {
+        const n = typeof a.name === "string" ? a.name.trim().toLowerCase() : "";
+        if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(n)) dropped.push('store_suggest left out: "name" has to be a conda-forge package name, for example flask');
+        else actions.push({ type, name: n });
+        break;
+      }
       case "preview_open": {
         const port = a.port === undefined ? undefined : typeof a.port === "number" && Number.isInteger(a.port) && a.port >= 1024 && a.port <= 65535 ? a.port : null;
         const p = a.path === undefined ? undefined : cleanPath(a.path, false);
@@ -680,6 +687,8 @@ export function describe(a: Action): string {
       return "Moving " + a.path + " into " + where(a.to);
     case "files_delete":
       return "Deleting " + a.path;
+    case "store_suggest":
+      return "Offering to install " + a.name + " from the App Store";
     case "preview_open":
       return a.port ? "Opening the Preview on port " + a.port : a.path ? "Opening " + a.path + " in the Preview" : "Opening the Preview";
     case "preview_close":

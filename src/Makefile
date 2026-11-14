@@ -12,7 +12,7 @@ ifneq ($(UNAME), Linux)
 	PRE_REQ = tools
 endif
 
-gotty: go-toolchain asset landlock-helper ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.go backend/*.go backend/localcommand/*.go containers/*.go netemu/*.go cachedb/*.go meters/*.go reaper/*.go user/*.go cookie/*.go ${TARGET}/Makefile
+gotty: go-toolchain asset landlock-helper appstore/*.go ${TARGET}/main.go utils/*.go server/*.go webtty/*.go filebrowser/*.go backend/*.go backend/localcommand/*.go containers/*.go netemu/*.go cachedb/*.go meters/*.go reaper/*.go user/*.go cookie/*.go ${TARGET}/Makefile
 	@echo "building gotty: "${TARGET}
 	cd ${TARGET} && \
 	make
@@ -27,7 +27,7 @@ asset: go-bindata bindata/static/js/gotty-bundle.js bindata/static/js/chat-widge
 # The helper that puts the filesystem sandbox (Landlock, LLD 14) on a REPL before it runs. Without cgo,
 # so that it is a static program that loads nothing from the environment of the REPL.
 .PHONY: landlock-helper
-landlock-helper: go-toolchain landlock/*.go landlockhelper/*.go netemu/*.go
+landlock-helper: go-toolchain landlock/*.go landlockhelper/*.go netemu/*.go appstore/*.go
 	CGO_ENABLED=0 GO111MODULE=off $(GOROOT)/bin/go build -o $(ROOT)/bin/landlock-helper landlockhelper
 
 .PHONY: go-toolchain

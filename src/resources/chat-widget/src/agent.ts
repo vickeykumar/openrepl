@@ -720,6 +720,13 @@ export class AgentRunner {
           detail: "tab closed; now on tab " + now.active + " of " + now.count + "; Run uses the language in the picker (" + this.pickerLanguage() + ")",
         };
       }
+      case "store_suggest": {
+        // the App Store opens on the app; the user decides whether to install it and to switch it on (nothing is installed here)
+        const S = (window as any).AppStore;
+        if (!S || typeof S.available !== "function" || !S.available()) return { type: a.type, status: "failed", detail: "the App Store is only for signed-in users, and this one is not signed in or it is switched off" };
+        S.suggest(String(a.name || ""));
+        return { type: a.type, status: "done", detail: "the App Store is open on " + a.name + "; the user chooses whether to install it and turn it on, then tell them to run their program again" };
+      }
       case "preview_open":
       case "preview_close":
       case "preview_reload":

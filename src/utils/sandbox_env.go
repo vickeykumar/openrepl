@@ -142,3 +142,21 @@ func TmpMaxAge() time.Duration {
 	}
 	return d
 }
+
+// EnvStoreDir is the folder of the App Store (LLD 18). "off" switches it off; the default is DefaultStoreDir.
+const EnvStoreDir = "OPENREPL_STORE_DIR"
+
+// DefaultStoreDir is outside /opt on purpose: the sandbox lets every terminal read the other folders of /opt.
+const DefaultStoreDir = "/store"
+
+// StoreDir is where the App Store is on this server, or "" when it is switched off.
+func StoreDir() string {
+	v := strings.TrimSpace(os.Getenv(EnvStoreDir))
+	switch v {
+	case "":
+		return DefaultStoreDir
+	case "off":
+		return ""
+	}
+	return v
+}

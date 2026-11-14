@@ -63,6 +63,7 @@
     usage: '<path d="M3 20h18M6 16V9M11 16V5M16 16v-4M20 16V8"/>',
     traffic: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
     audit: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    apps: '<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z M3 8l9 5 9-5 M12 13v8"/>',
     copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     close: '<path d="M18 6L6 18M6 6l12 12"/>',
     play: '<path d="M6 4l14 8-14 8z"/>',
@@ -2438,6 +2439,107 @@
     return { root: root, refresh: refresh, poll: true };
   }
 
+
+  // ---- App Store (LLD 18)
+
+  function viewStore() {
+    var root = h('div'), box = h('div');
+    root.appendChild(pageHead('App Store', 'Libraries and tools that signed-in users switch on for their terminals. They are installed once on each server. Users install the safe list themselves; everything else is asked for here.'));
+    root.appendChild(box);
+    function post(body, okText) {
+      return api.post('admin/store', body).then(function () { if (okText) toast(okText); return load(); }, fail);
+    }
+    function reasonDialog(title, confirm) {
+      var input = h('input', { type: 'text', placeholder: 'A reason the people who asked will see', maxlength: '200' });
+      return ask({ title: title, content: input, confirm: confirm, danger: true }).then(function (ok) { return ok ? input.value : null; });
+    }
+    function status(r, id) {
+      if (r.have.indexOf(id) >= 0) return h('span', { class: 'ok', text: 'ready' });
+      if (r.failed && r.failed[id]) return h('span', { class: 'bad', title: r.failed[id], text: 'failed' });
+      return h('span', { class: 'sub', text: 'missing' });
+    }
+    function draw(d) {
+      var out = h('div');
+      if (!d.enabled && d.error) { out.appendChild(h('div', { class: 'card' }, h('p', { text: 'The App Store is off: ' + d.error }))); return out; }
+      out.appendChild(h('div', { class: 'toolbar' },
+        h('span', { class: 'sub', text: 'Installer: ' + d.installer + ' · folder ' + d.dir + ' · ' + d.sizeMB.toFixed(0) + ' MB of ' + d.limitMB + ' MB' }),
+        h('span', { class: 'grow' }), refreshButton(load)));
+      // what a server could not do (an app that did not install there, an apt package)
+      d.nodes.forEach(function (n) {
+        Object.keys(n.failed || {}).filter(function (k) { return k.indexOf('apt:') === 0 || k.indexOf('user:') === 0 || k === 'store'; }).forEach(function (k) {
+          out.appendChild(h('div', { class: 'card' }, h('b', { text: n.node + ': ' + k }), h('p', { class: 'sub wrap-text', text: n.failed[k] })));
+        });
+      });
+      // requests
+      var waiting = d.requests.filter(function (r) { return r.status === 'waiting'; });
+      out.appendChild(h('h3', { text: 'Requests (' + waiting.length + ')' }));
+      out.appendChild(table([
+        { key: 'name', label: 'App', cell: function (r) { return h('div', null, h('b', { text: r.name }), h('div', { class: 'sub', text: r.kind })); } },
+        { key: 'askers', label: 'Asked by', cell: function (r) { return r.askers.length + (r.askers.length === 1 ? ' user' : ' users'); } },
+        { key: 'reason', label: 'Why', cell: function (r) { return h('span', { class: 'wrap-text', text: r.reason || '' }); } },
+        { key: 'act', label: '', cell: function (r) {
+          return h('div', { class: 'row-actions' },
+            h('button', { class: 'btn primary', type: 'button', text: 'Approve and install', onclick: function () { post({ action: 'approve', name: r.name }, r.name + ' is being installed.'); } }),
+            h('button', { class: 'btn', type: 'button', text: 'Reject', onclick: function () { reasonDialog('Reject ' + r.name + '?', 'Reject').then(function (why) { if (why !== null) post({ action: 'reject', name: r.name, answer: why }); }); } }));
+        } }
+      ], waiting, { empty: 'Nobody is waiting for an answer.' }));
+      // failures
+      var open = d.reports.filter(function (r) { return r.status === 'open'; });
+      out.appendChild(h('h3', { text: 'Failures reported (' + open.length + ')' }));
+      out.appendChild(table([
+        { key: 'name', label: 'App', cell: function (r) { return h('b', { text: r.name }); } },
+        { key: 'who', label: 'Reported by', cell: function (r) { return r.reporters.length + (r.reporters.length === 1 ? ' user' : ' users'); } },
+        { key: 'note', label: 'What they wanted', cell: function (r) { return h('span', { class: 'wrap-text', text: r.note || '' }); } },
+        { key: 'log', label: 'Log', cell: function (r) { return h('pre', { class: 'wrap-text mono', text: r.log || '' }); } },
+        { key: 'act', label: '', cell: function (r) {
+          return h('div', { class: 'row-actions' },
+            h('button', { class: 'btn primary', type: 'button', text: 'Try again', onclick: function () { post({ action: 'retry', name: r.name }, 'Trying ' + r.name + ' again.'); } }),
+            h('button', { class: 'btn', type: 'button', text: 'Mark installed', title: 'You fixed it by hand on the server', onclick: function () { post({ action: 'installed', name: r.name }); } }),
+            h('button', { class: 'btn', type: 'button', text: 'Reject', onclick: function () { reasonDialog('Reject the report about ' + r.name + '?', 'Reject').then(function (why) { if (why !== null) post({ action: 'rejectreport', name: r.name, answer: why }); }); } }));
+        } }
+      ], open, { empty: 'No failures are waiting for you.' }));
+      // installed, and where
+      out.appendChild(h('h3', { text: 'Installed apps, and where' }));
+      var cols = [
+        { key: 'name', label: 'App', cell: function (a) { return h('div', null, h('b', { text: a.name }), h('div', { class: 'sub', text: a.version + ' · ' + a.state })); } },
+        { key: 'size', label: 'Size', cell: function (a) { return a.size ? (a.size / 1048576).toFixed(0) + ' MB' : ''; } },
+        { key: 'users', label: 'On for', cell: function (a) { return (d.users[a.id] || 0) + ' users'; } }
+      ];
+      d.nodes.forEach(function (n) { cols.push({ key: 'n-' + n.node, label: n.node, cell: function (a) { return a.state === 'installed' ? status(n, a.id) : h('span', { class: 'sub', text: a.state }); } }); });
+      cols.push({ key: 'act', label: '', cell: function (a) {
+        return h('button', { class: 'btn danger', type: 'button', text: 'Remove', onclick: function () {
+          var n = d.users[a.id] || 0;
+          ask({ title: 'Remove ' + a.name + '?', body: n ? n + ' users have it on. It is switched off for them and deleted on every server.' : 'Nobody has it on. It is deleted on every server.', confirm: 'Remove', danger: true })
+            .then(function (ok) { if (ok) post({ action: 'remove', name: a.name }, a.name + ' was removed.'); });
+        } });
+      } });
+      out.appendChild(table(cols, d.apps, { empty: 'Nothing is installed yet.' }));
+      // install, apt
+      var name = h('input', { type: 'text', placeholder: 'conda-forge package, e.g. ffmpeg', 'aria-label': 'Package to install' });
+      out.appendChild(h('div', { class: 'toolbar' }, name,
+        h('button', { class: 'btn primary', type: 'button', text: 'Install for everyone', onclick: function () { if (name.value.trim()) post({ action: 'install', name: name.value.trim() }, 'Installing ' + name.value.trim() + '.').then(function () { name.value = ''; }); } })));
+      out.appendChild(h('h3', { text: 'apt packages (installed on every server, for all users)' }));
+      var apt = h('textarea', { rows: '3', 'aria-label': 'apt packages, one per line' }); apt.value = (d.apt || []).join('\n');
+      out.appendChild(apt);
+      out.appendChild(h('div', { class: 'toolbar' }, h('button', { class: 'btn', type: 'button', text: 'Save apt list', onclick: function () {
+        post({ action: 'apt', apt: apt.value.split(/\s+/).filter(Boolean) }, 'The apt list was saved. Each server installs it at its next check.'); } })));
+      // settings
+      out.appendChild(h('h3', { text: 'Settings' }));
+      var safe = h('textarea', { rows: '5', 'aria-label': 'Safe list' }); safe.value = d.safeList.join('\n');
+      var limit = h('input', { type: 'number', min: '100', step: '100', value: String(d.limitSet || ''), placeholder: String(d.limitMB), 'aria-label': 'Size limit in MB' });
+      var off = h('input', { type: 'checkbox' }); off.checked = !d.enabled;
+      out.appendChild(h('p', { class: 'sub', text: 'Safe list: users install these without asking (one conda-forge name per line).' }));
+      out.appendChild(safe);
+      out.appendChild(h('div', { class: 'toolbar' }, h('label', null, 'Most the store may use on a server (MB): ', limit), h('label', null, off, ' Switch the App Store off for everyone'),
+        h('span', { class: 'grow' }),
+        h('button', { class: 'btn primary', type: 'button', text: 'Save settings', onclick: function () {
+          post({ action: 'settings', safeList: safe.value.split(/\s+/).filter(Boolean), limitMB: parseInt(limit.value, 10) || 0, off: off.checked }, 'Saved.'); } })));
+      return out;
+    }
+    function load() { return api.get('admin/store').then(function (d) { render(box, JSON.stringify(d), draw(d)); }); }
+    return { root: root, refresh: load, poll: true };
+  }
+
   var VIEWS = {
     overview: { label: 'Overview', icon: 'overview', make: viewOverview },
     map: { label: 'Live map', icon: 'map', make: viewMap },
@@ -2453,6 +2555,7 @@
     jobs: { label: 'Jobs', icon: 'jobs', make: viewJobs },
     params: { label: 'Parameters', icon: 'params', make: viewParams },
     logs: { label: 'Log', icon: 'logs', make: viewLogs },
+    store: { label: 'App Store', icon: 'apps', make: viewStore },
     audit: { label: 'Audit log', icon: 'audit', make: viewAudit }
   };
 

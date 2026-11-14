@@ -143,6 +143,11 @@ func wrapWithLandlock(command []string, workspace string, debug, scopeSignals bo
 		if debug {
 			wrapped = append(wrapped, "--debug")
 		}
+		if dir := utils.StoreDir(); dir != "" {
+			if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+				wrapped = append(wrapped, "--store-dir", dir) // the user's App Store bundles (LLD 18)
+			}
+		}
 	} else {
 		wrapped = []string{NetEmuStatus().Helper, "--no-landlock"}
 	}

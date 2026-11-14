@@ -40,6 +40,7 @@ func (server *Server) registerAdmin(mux *http.ServeMux, prefix string) {
 	api("admin/snippets", server.handleAdminSnippets)
 	api("admin/snippets/", server.handleAdminSnippets)
 	api("admin/genie-usage", server.handleAdminGenieUsage)
+	api("admin/store", server.handleAdminStore)
 	api("admin/users", server.handleAdminUsers)
 	api("admin/users/", server.handleAdminUsers)
 	if server.options.Mode == ModeGateway {

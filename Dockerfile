@@ -42,6 +42,17 @@ COPY --from=build-image /opt/openrepl/scripts/run_app.sh /opt/scripts/
 
 RUN chmod 755 /usr/local/bin/gotty /usr/local/bin/landlock-helper && chmod 755 /opt/scripts/run_app.sh
 
+# The App Store (LLD 18) installs libraries and tools from conda-forge with micromamba, a single static program, into /store
+# (outside /opt, which the filesystem sandbox lets every REPL read). If the download fails the image still builds: the store then
+# says in the admin dashboard that micromamba is missing.
+RUN mkdir -p /store && arch="$(dpkg --print-architecture)" && \
+    case "$arch" in amd64) m=linux-64;; arm64) m=linux-aarch64;; *) m="";; esac && \
+    if [ -n "$m" ]; then \
+      (apt-get update && apt-get install -y --no-install-recommends bzip2 && \
+       curl -fsSL "https://micro.mamba.pm/api/micromamba/$m/latest" | tar -xj -C /usr/local/bin --strip-components=1 bin/micromamba && \
+       rm -rf /var/lib/apt/lists/*) || echo "micromamba was not installed: the App Store cannot install until it is"; \
+    fi
+
 WORKDIR /opt/openrepl
 
 ENV TERM=xterm

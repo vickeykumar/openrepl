@@ -326,6 +326,9 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.HandleFunc(pathPrefix+"agent_bash", server.handleAgentBash)
 	siteMux.HandleFunc(pathPrefix+"preview/", server.handlePreview)
 	siteMux.HandleFunc(pathPrefix+"upload_file", server.handleFileUpload)
+	siteMux.HandleFunc(pathPrefix+"store/api/", server.handleStoreAPI)
+	siteMux.HandleFunc(pathPrefix+"store/sync", server.handleStoreSync)
+	server.startAppStore(ctx)
 
 	siteMux.Handle(pathPrefix+"js/", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"images/", http.StripPrefix(pathPrefix, staticFileHandler))

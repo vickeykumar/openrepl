@@ -1,6 +1,7 @@
 package server
 
 import (
+	"appstore"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -69,6 +70,12 @@ type SiteSettings struct {
 	// SnapshotIntervalMinutes is how often the workspaces of signed-in users that changed are snapshotted to the object
 	// store (package homesnap), from 1 to 60; 0 means the built-in 5. Only the newest 3 snapshots of a home are kept.
 	SnapshotIntervalMinutes int `json:"snapshotIntervalMinutes"`
+	// StoreSafeList are the apps (conda-forge package names) a signed-in user may install in the App Store without asking (LLD 18);
+	// empty means the built-in list. StoreLimitMB is the most the store may use on a server, 0 for the built-in 2048. StoreOff
+	// switches the App Store off for everyone.
+	StoreSafeList []string `json:"storeSafeList,omitempty"`
+	StoreLimitMB  int      `json:"storeLimitMB"`
+	StoreOff      bool     `json:"storeOff"`
 	// PreviewLinkGuestMinutes and PreviewLinkUserMinutes are how long the address of a preview (its token) works for a guest and for
 	// a signed-in user, in minutes, from 10 to 1440; 0 means the built-in 60 (guest) and 180 (signed in: 3 hours). The pane asks
 	// for a new one before it ends; a link opened in a tab of its own ends with it.
@@ -216,6 +223,24 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 			return s, fmt.Errorf("the time a preview link works for %s must be between %d and %d minutes (or empty)", name, minPreviewLinkMinutes, maxPreviewLinkMinutes)
 		}
 	}
+	if s.StoreLimitMB != 0 && (s.StoreLimitMB < 100 || s.StoreLimitMB > 1048576) {
+		return s, fmt.Errorf("the size of the App Store must be between 100 and 1048576 MB (or empty)")
+	}
+	if len(s.StoreSafeList) > 300 {
+		return s, fmt.Errorf("the safe list of the App Store holds at most 300 names")
+	}
+	var safe []string
+	for _, n := range s.StoreSafeList {
+		n = strings.ToLower(strings.TrimSpace(n))
+		if n == "" {
+			continue
+		}
+		if !appstore.ValidName(n) {
+			return s, fmt.Errorf("%q is not a conda-forge package name", n)
+		}
+		safe = append(safe, n)
+	}
+	s.StoreSafeList = safe
 	if s.SnippetMaxDays != 0 && (s.SnippetMaxDays < minSnippetMaxDays || s.SnippetMaxDays > maxSnippetMaxDays) {
 		return s, fmt.Errorf("the longest a code link works must be between %d and %d days (or empty)", minSnippetMaxDays, maxSnippetMaxDays)
 	}
@@ -921,6 +946,15 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if strings.Join(a.DisabledLanguages, ",") != strings.Join(b.DisabledLanguages, ",") {
 		out = append(out, "languages switched off: "+strings.Join(b.DisabledLanguages, ", "))
+	}
+	if strings.Join(a.StoreSafeList, ",") != strings.Join(b.StoreSafeList, ",") {
+		out = append(out, "App Store safe list changed")
+	}
+	if a.StoreLimitMB != b.StoreLimitMB {
+		out = append(out, fmt.Sprintf("App Store size limit %d MB", b.StoreLimitMB))
+	}
+	if a.StoreOff != b.StoreOff {
+		out = append(out, "App Store "+onoff(!b.StoreOff))
 	}
 	out = append(out, nodeLanguageChanges(a, b)...)
 	if a.Genie.Disabled != b.Genie.Disabled {
