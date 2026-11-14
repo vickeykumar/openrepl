@@ -70,6 +70,11 @@ $(function() {
         editor.setFontSize(this.value+"px");
     });
     
+    // The editor's list has C and C++ as two entries (the picker has two REPLs for them); Ace colours both with its one mode.
+    // A record of an older page names that mode ("c_cpp"): it is the language the picker is on, C unless that is C++.
+    var aceMode = function (value) { return value === "c" || value === "cpp" ? "c_cpp" : value; };
+    var listValue = function (value) { return value === "c_cpp" ? ($("#optionlist").val() === "cpp" ? "cpp" : "c") : value; };
+
     // Select the desired programming language you want to code in 
     var $selectLang = $("#select-lang").change(function (event) {
         // "Image" and "PDF" are shown, not edited: the file sets them, and they are no language of the editor, so
@@ -88,7 +93,7 @@ $(function() {
         });
         // Set the editor language
         if (editor) {
-          editor.getSession().setMode("ace/mode/" + this.value);
+          editor.getSession().setMode("ace/mode/" + aceMode(this.value));
         }
 
         //get language from optionmenu
@@ -136,7 +141,7 @@ $(function() {
                 if (typeof isMaster !== "function" || isMaster()) return;
             }
             if (!langdata) return; // the record is gone (the session ended)
-            let value = langdata.data;
+            let value = listValue(langdata.data);
             let is_silent = langdata.silent || false;
             console.log("data recieved from remote: ",langdata);
             // Set the language
@@ -300,7 +305,7 @@ $(function() {
              //get language from optionmenu
             var optionlang = $('#optionlist option:selected').data('editor');
             if (optionlang==null) {
-              optionlang="c_cpp"
+              optionlang="c"
             }
             // Here's where we set the initial content of the editor. Only the owner starts a session: a link to one
             // that has ended must not bring it back.

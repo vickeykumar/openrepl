@@ -162,6 +162,9 @@
     var edname = getOptEditorValue();
     // a picture or a PDF that a file shows is not replaced by the language of the picker, whenever that language is set up
     if (lang_selector.value === "image" || lang_selector.value === "pdf") return;
+    // The picker changed a second or two ago, and a file has been chosen since (a C file, then a Go one): the file decides. Putting
+    // the picker's language back in the list would change the picker to it again, and the old language would stay.
+    if (typeof window.fileEditorMode === "function" && window.fileEditorMode()) return;
     if (lang_selector.value !== edname) {
       console.log("editor: ",edname);
       lang_selector.value = edname;

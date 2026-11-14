@@ -151,7 +151,7 @@ function showUntitled() {
 }
 
 // the default name for a new file: main.<extension of the language in the list>, main-1.<ext> when that exists
-var EXT = { assembly_x86: "asm", c_cpp: "c", css: "css", golang: "go", html: "html", java: "java", javascript: "js", json: "json",
+var EXT = { assembly_x86: "asm", c: "c", cpp: "cpp", c_cpp: "c", css: "css", golang: "go", html: "html", java: "java", javascript: "js", json: "json",
   markdown: "md", perl: "pl", python: "py", ruby: "rb", rust: "rs", sh: "sh", sql: "sql", tcl: "tcl", typescript: "ts", xml: "xml",
   yaml: "yaml", toml: "toml", text: "txt", makefile: "mk", ini: "ini", protobuf: "proto", diff: "diff", batchfile: "bat" };
 function defaultName() {

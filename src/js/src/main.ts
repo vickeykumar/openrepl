@@ -103,8 +103,51 @@ function showTabContextMenu(event: MouseEvent) {
 var primaryterm: GottyTerminal; // primary terminal tab
 const termelem = document.getElementById("terminal") as CustomHTMLElement;
 const isprimary : boolean = true;
+// The language the owner of a shared session is in, as the editor's list names it ("" for the owner's own page, when nothing is
+// kept, or when it does not answer within a moment). A collaborator's page starts its terminal in it, instead of in the picker's
+// first choice, and does not tell the owner anything about its language before it has it.
+const ownerLanguage = (): Promise<string> => new Promise((resolve) => {
+    const w = window as any;
+    if (typeof w.isMaster === "function" && w.isMaster()) { resolve(""); return; }
+    let done = false;
+    const finish = (v: string) => { if (!done) { done = true; resolve(v); } };
+    setTimeout(() => finish(""), 2500);
+    try {
+        const id = w.dbpath || (typeof w.getExampleRef === "function" ? w.getExampleRef() : "");
+        (window as any).firebase.database().ref("editor_values/" + id + "/lang").once("value",
+            (snap: any) => { const v = snap.val(); finish(v && typeof v.data === "string" ? v.data : ""); },
+            () => finish(""));
+    } catch (e) {
+        finish("");
+    }
+});
+
+// choose the picker's entry for an editor mode the owner has; the entry the picker is on is left alone when none is found
+const chooseOwnerLanguage = (mode: string) => {
+    const sel = document.getElementById("optionlist") as HTMLSelectElement | null;
+    if (!sel || !mode || mode === "c_cpp") return; // an older page's record names the one mode of C and C++: no choice to read from it
+    const option = Array.prototype.filter.call(sel.options, (o: HTMLOptionElement) => o.getAttribute("data-editor") === mode && !o.getAttribute("data-web"))[0] as HTMLOptionElement | undefined;
+    if (!option || sel.value === option.value) return;
+    const w = window as any;
+    w.__languageFromSession = true;
+    try {
+        sel.value = option.value;
+        sel.dispatchEvent(new Event("change"));
+    } finally {
+        w.__languageFromSession = false;
+    }
+};
+
 const launcher = (firebaseconfig: any) => {
     InitializeApp(firebaseconfig);
+    ownerLanguage().then((mode) => {
+        chooseOwnerLanguage(mode);
+        (window as any).__sessionLangSynced = true; // from here on a collaborator's change of language is its own
+        startPrimaryTerminal();
+    });
+};
+
+const startPrimaryTerminal = () => {
     if (termelem !== null) {
         primaryterm = new GottyTerminal(termelem, gotty_term, gotty_auth_token, isprimary); // create a gotty terminal instance and register for the callbacks
         // start the gotty terminal instance on the element #terminal
