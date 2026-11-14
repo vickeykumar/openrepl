@@ -5,6 +5,8 @@
 // cookies with its requests: what names the workspace is a token in the address (/preview/<token>/f/<path>), asked
 // for with this page's own cookies (/preview_token) and renewed before it ends.
 
+import { parseAddress } from "./lib-address.mjs";
+
 var TOKEN_MARGIN = 5 * 60 * 1000; // renew this long before the end
 var SIZES = { fit: null, phone: [390, 844], tablet: [768, 1024], laptop: [1280, 800] };
 var SIZE_KEY = "preview-size";
@@ -183,7 +185,7 @@ function renderPorts() {
     b.type = "button";
     b.className = "ide-btn";
     b.textContent = "127.0.0.1:" + p;
-    b.addEventListener("click", function () { openPort(p); togglePorts(false); });
+    b.addEventListener("click", function () { openPort(p, true); togglePorts(false); });
     list.appendChild(b);
   });
   if (fileBtn) fileBtn.hidden = !canShow(fileOf());
@@ -225,7 +227,7 @@ function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&
 function setAddress(text) {
   var a = el("preview-address-text");
   if (!a) return;
-  a.textContent = text || (target ? (target.kind === "f" ? relative(target.path) : "127.0.0.1:" + target.port) : "Preview");
+  a.textContent = text || (target ? (target.kind === "n" ? NEWTAB_HINT : target.kind === "f" ? relative(target.path) : "127.0.0.1:" + target.port) : "Preview");
 }
 
 // what the frame's address means to a person: a file of the workspace, or a port and a path
@@ -241,6 +243,8 @@ function renew(p) { return token ? p.replace(/^\/preview\/[^/]+\//, "/preview/" 
 
 // ---- tabs, history, the status line ---------------------------------------------------------------------------------
 
+var NEWTAB_HINT = "Type a file or a port";
+
 function sameTarget(a, b) { return a && b && a.kind === b.kind && (a.kind === "f" ? a.path === b.path : a.port === b.port); }
 
 function useTab(t) {
@@ -254,7 +258,7 @@ function useTab(t) {
   cur = i;
 }
 
-function tabName(x) { return x.t.kind === "f" ? x.t.path.split("/").pop() : ":" + x.t.port; }
+function tabName(x) { return x.t.kind === "n" ? "New tab" : x.t.kind === "f" ? x.t.path.split("/").pop() : ":" + x.t.port; }
 
 function renderTabs() {
   var box = el("preview-tabs");
@@ -282,8 +286,9 @@ function renderTabs() {
   if (tabs.length && tabs.length < MAX_TABS) {
     var plus = document.createElement("button");
     plus.type = "button"; plus.className = "preview-tab preview-tab--new"; plus.textContent = "+";
-    plus.setAttribute("aria-label", "Preview another port or file");
-    plus.addEventListener("click", function () { togglePorts(true); });
+    plus.setAttribute("aria-label", "New tab");
+    plus.title = "New tab: type a file of the workspace or a port";
+    plus.addEventListener("click", function () { newBlankTab(); });
     box.appendChild(plus);
   }
 }
@@ -295,6 +300,7 @@ function selectTab(k) {
   setAddress(tb.hist.length ? describe(tb.hist[tb.idx]) : "");
   var frame = frameFor(target);
   frame.setAttribute("data-url", "");
+  if (target.kind === "n") { load(); hideError(); render(); focusAddress(); return; }
   if (tb.hist.length) { navTo = renew(tb.hist[tb.idx]); frame.setAttribute("data-url", navTo); setStatus("loading"); frame.src = navTo; } else load();
   hideError(); render();
 }
@@ -332,6 +338,7 @@ function setStatus(state) {
   text.textContent = state === "loading" ? "Loading\u2026"
     : state === "stopped" ? "Your program has stopped. Run it again."
     : state === "message" ? "Nothing to show"
+    : state === "newtab" ? "New tab \u00b7 sandboxed pane \u00b7 nothing loaded"
     : "Live \u00b7 sandboxed page \u00b7 " + (program ? (optRun ? "reloads when you press Run" : "reload with the button") : (optAuto ? "reloads when you save" : "reload with the button"));
 }
 
@@ -369,6 +376,7 @@ function showDrawer() {
   var term = el("terminal-div");
   if (!term || !open) return;
   if (typeof window.ShowTerminal === "function") window.ShowTerminal();
+  if (overEditor()) return; // docked over the editor: the terminal is beside the pane already
   term.classList.add("with-drawer");
   setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 60);
 }
@@ -449,12 +457,96 @@ function focusNext() {
   else if (bar) bar.focus();
 }
 
+// ---- where the pane sits: over the terminal (the default) or over the editor ----------------------------------------------
+// The pane is a child of the terminal's box; docked over the editor it is a child of the editor's box (#ide), and the terminal is
+// then in use beside it. Dragging the grip drops it on the side the pointer is on, or pops it out when the pointer leaves the
+// browser's window. The place is this browser's own (not written to a shared session).
+
+var dock = (function () { try { return localStorage.getItem("preview-dock") === "editor" ? "editor" : "terminal"; } catch (e) { return "terminal"; } })();
+function editorBody() { return el("ide"); } // the whole editor box: its tabs and toolbar, the text and its status bar
+function overEditor() { var b = editorBody(); return dock === "editor" && !!b && b.offsetWidth > 0 && !window.mobileActive; }
+
+function placePane() {
+  var pane = el("preview-pane"), term = el("terminal-div"), body = editorBody();
+  if (!pane || !term) return;
+  var onEditor = overEditor();
+  var want = onEditor ? body : term;
+  if (pane.parentNode !== want) want.appendChild(pane);
+  pane.classList.toggle("is-over-editor", onEditor);
+  term.classList.toggle("is-previewing", open && !onEditor);
+  if (onEditor) term.classList.remove("with-drawer");
+  var grip = el("preview-grip"); if (grip) grip.hidden = !!window.mobileActive;
+  var dm = el("preview-menu-dock"); if (dm) { dm.textContent = dock === "editor" ? "Dock over the terminal" : "Dock over the editor"; dm.hidden = !!window.mobileActive; }
+}
+
+function setDock(where) {
+  dock = where === "editor" ? "editor" : "terminal";
+  try { localStorage.setItem("preview-dock", dock); } catch (e) {}
+  placePane();
+  if (open) { toggleMenu(false); setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50); }
+}
+
+var dropBox = null;
+function dropEl() {
+  if (!dropBox) { dropBox = document.createElement("div"); dropBox.className = "preview-drop"; dropBox.hidden = true; document.body.appendChild(dropBox); }
+  return dropBox;
+}
+function rectOf(node) { var r = node && node.getBoundingClientRect(); return r && r.width > 0 && r.height > 0 ? r : null; }
+function within(r, x, y) { return !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; }
+// where a drop at this point would go: "editor", "terminal", "out" (beyond the window) or "" (nowhere)
+function dropZone(x, y) {
+  var m = 40;
+  if (x < -m || y < -m || x > window.innerWidth + m || y > window.innerHeight + m) return "out";
+  if (within(rectOf(el("ide")), x, y)) return "editor";
+  if (within(rectOf(el("terminal-div")), x, y)) return "terminal";
+  return "";
+}
+
+function startDrag(e) {
+  if (e.button !== 0 || !open || window.mobileActive) return;
+  var grip = e.currentTarget;
+  e.preventDefault();
+  try { grip.setPointerCapture(e.pointerId); } catch (x) {}
+  var x0 = e.clientX, y0 = e.clientY, moving = false, zone = "", box = dropEl();
+  function paint(px, py) {
+    zone = dropZone(px, py);
+    var r = zone === "editor" ? rectOf(editorBody()) || rectOf(el("ide")) : zone === "terminal" ? rectOf(el("terminal-div")) : null;
+    box.className = "preview-drop" + (zone === "out" ? " is-out" : "");
+    if (zone === "editor" || zone === "terminal") {
+      box.style.left = r.left + "px"; box.style.top = r.top + "px"; box.style.width = r.width + "px"; box.style.height = r.height + "px";
+      box.textContent = zone === "editor" ? "Drop: over the editor" : "Drop: over the terminal";
+    } else if (zone === "out") {
+      box.style.left = "50%"; box.style.top = "12px"; box.style.width = "auto"; box.style.height = "auto";
+      box.textContent = "Release to open the preview in its own window";
+    } else { box.hidden = true; return; }
+    box.hidden = false;
+  }
+  function move(ev) {
+    if (!moving && Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) < 6) return;
+    moving = true; paint(ev.clientX, ev.clientY);
+  }
+  function end(ev, apply) {
+    grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", cancel);
+    document.removeEventListener("keydown", key, true);
+    try { grip.releasePointerCapture(e.pointerId); } catch (x) {}
+    box.hidden = true;
+    if (!apply || !moving) return;
+    if (zone === "out") popOut();
+    else if ((zone === "editor" || zone === "terminal") && zone !== (overEditor() ? "editor" : "terminal")) setDock(zone);
+  }
+  function up(ev) { end(ev, true); }
+  function cancel(ev) { end(ev, false); }
+  function key(ev) { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); end(ev, false); } }
+  grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", cancel);
+  document.addEventListener("keydown", key, true);
+}
+
 // ---- the address bar --------------------------------------------------------------------------------------------------
 
 function focusAddress() {
   var input = el("preview-address-input"), text = el("preview-address-text");
   if (!input || !text) return;
-  input.value = text.textContent === "Preview" ? "" : text.textContent;
+  input.value = text.textContent === "Preview" || text.textContent === NEWTAB_HINT ? "" : text.textContent;
   text.hidden = true; input.hidden = false;
   input.focus(); input.select();
 }
@@ -466,19 +558,127 @@ function leaveAddress() {
 function goTyped(raw) {
   var text = String(raw || "").trim();
   if (!text) return;
-  var m = /^(?:https?:\/\/)?(?:(?:127\.0\.0\.1|localhost):)?(\d{4,5})(\/.*)?$/.exec(text);
-  if (m && +m[1] >= 1024 && +m[1] <= 65535) { show({ kind: "p", port: +m[1], sub: m[2] || "/" }); return; }
-  // a name without a folder is looked for beside the page that is shown, else in the home folder
   var base = home();
   if (target && target.kind === "f") base = target.path.slice(0, target.path.lastIndexOf("/"));
-  var path = text.charAt(0) === "/" && text.indexOf(home()) === 0 ? text : base + "/" + text.replace(/^\/+/, "");
-  if (canShow(path)) show({ kind: "f", path: path });
+  var r = parseAddress(text, home(), base);
+  if (r.empty) return;
+  if (r.error === "port") { message("<strong>" + esc(text) + " is not a port of your workspace.</strong><br>A program listens on a port from 1024 to 65535, such as 5000 or 5000/api.", null); return; }
+  if (r.error === "outside") { message("<strong>Only your workspace can be shown here.</strong><br>Type a file such as web/index.html, or a port such as 5000 or 5000/api.", null); return; }
+  if (r.error) { message("<strong>" + esc(text) + " is not in your workspace.</strong><br>Type a file such as web/index.html, or a port such as 5000 or 5000/api.", null); return; }
+  remember(text);
+  if (r.kind === "p") { navigateTo({ kind: "p", port: r.port, sub: r.sub }); return; }
+  // a name is counted from the home folder; when it is not there but is beside the page now shown, that file is meant
+  var have = entryPaths();
+  var path = r.path;
+  if (have && !have[path] && r.alt && have[r.alt]) path = r.alt;
+  if (canShow(path) && have && !have[path]) { message("<strong>" + esc(text) + " was not found in your workspace.</strong><br>Type a file such as web/index.html, counted from your home folder, or a port such as 5000.", null); return; }
+  if (canShow(path)) navigateTo({ kind: "f", path: path });
   else message("<strong>" + esc(text) + " cannot be shown in the Preview.</strong><br>It shows .html and Markdown pages, pictures and PDF files, or a program by its port, such as 5000 or 5000/api.", null);
+}
+
+// An address typed in the bar loads in the tab that is shown (a browser's way); the tab keeps its history, so Back returns
+function navigateTo(t) {
+  var tb = tab();
+  if (!open || !tb) { show(t); return; }
+  tb.t = t; target = t;
+  message(""); hideError();
+  setAddress();
+  var frame = frameFor(target);
+  clearLogs(); setStatus("loading");
+  getToken().then(function (tok) {
+    if (tab() !== tb) return;
+    // the address goes on the tab's history now: a program that is not there answers without telling the page's bridge
+    var url = urlFor(target, tok);
+    tb.hist = tb.hist.slice(0, tb.idx + 1); tb.hist.push(url); tb.idx = tb.hist.length - 1;
+    navTo = url;
+    frame.setAttribute("data-url", url);
+    frame.src = url;
+    if (popout && !popout.closed) { try { popout.location.href = location.origin + url; } catch (e) {} }
+    render();
+  }, function (e) {
+    message("<strong>The preview is not available.</strong><br>" + esc(e && e.message ? e.message : e), null);
+  });
+  render();
+}
+
+// the files of the workspace that the pane can show, by path (null when the file browser is not ready)
+function entryPaths() {
+  if (!window.FileBrowser || !window.FileBrowser.ready || !window.FileBrowser.ready() || !window.FileBrowser.entries) return null;
+  var o = {};
+  window.FileBrowser.entries().forEach(function (e) { if (e.kind === "file") o[e.path] = true; });
+  return o;
+}
+
+// ---- the empty tab: what to open ---------------------------------------------------------------------------------------
+
+var recent = [];
+var sugIdx = -1;
+function remember(text) {
+  recent = recent.filter(function (x) { return x !== text; });
+  recent.unshift(text);
+  if (recent.length > 5) recent.pop();
+}
+
+function newBlankTab() {
+  if (disabled()) return;
+  var blank = tabs.some(function (x) { return x.t.kind === "n"; });
+  if (open && !blank && tabs.length >= MAX_TABS) { if (window.notify) window.notify("Close a tab first: the Preview holds " + MAX_TABS + ".", { type: "info" }); return; }
+  show({ kind: "n" });
+  togglePorts(false);
+  focusAddress();
+}
+
+// what the empty tab offers for the letters typed so far: files of the workspace, ports that listen, what was opened lately
+function suggestions(q) {
+  q = String(q || "").trim().toLowerCase();
+  var out = [];
+  var seen = {};
+  function add(text, kind, note) { if (!seen[text] && out.length < 9) { seen[text] = true; out.push({ text: text, note: note }); } }
+  var have = entryPaths();
+  if (have) {
+    var files = Object.keys(have).filter(canShow).map(relative).sort();
+    var n = 0;
+    files.forEach(function (rel) { if (n < 6 && (!q || rel.toLowerCase().indexOf(q) >= 0)) { add(rel, "f", "file of this workspace"); n++; } });
+  }
+  knownPorts.forEach(function (p) { if (!q || String(p).indexOf(q.replace(/^.*:/, "")) === 0) add(String(p), "p", "program listening now"); });
+  recent.forEach(function (r) { if (!q || r.toLowerCase().indexOf(q) >= 0) add(r, "r", "opened lately"); });
+  return out;
+}
+
+function renderNewPage() {
+  var page = el("preview-newpage");
+  if (!page || page.hidden) return;
+  var input = el("preview-address-input");
+  var list = el("preview-newpage-list");
+  list.textContent = "";
+  var items = suggestions(input && !input.hidden ? input.value : "");
+  if (sugIdx >= items.length) sugIdx = items.length - 1;
+  items.forEach(function (it, k) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "preview-newpage__item" + (k === sugIdx ? " is-on" : "");
+    var name = document.createElement("b"); name.textContent = it.text;
+    var note = document.createElement("span"); note.textContent = it.note;
+    b.appendChild(name); b.appendChild(note);
+    b.addEventListener("mousedown", function (e) { e.preventDefault(); }); // the click must not blur the bar first
+    b.addEventListener("click", function () { leaveAddress(); goTyped(it.text); });
+    list.appendChild(b);
+  });
+  el("preview-newpage-empty").hidden = items.length > 0;
 }
 
 function goBack() { var tb = tab(); if (!tb || tb.idx <= 0) return; tb.idx--; goHist(tb); }
 function goForward() { var tb = tab(); if (!tb || tb.idx >= tb.hist.length - 1) return; tb.idx++; goHist(tb); }
+// the file or the program an address of the pane stands for
+function targetOfAddress(p) {
+  var m = /^\/preview\/[^/]+\/f\/([^?#]*)/.exec(p);
+  if (m) { try { return { kind: "f", path: home() + "/" + decodeURIComponent(m[1]) }; } catch (e) { return null; } }
+  m = /^\/preview\/[^/]+\/p\/(\d+)(\/[^?#]*)?/.exec(p);
+  if (m) return { kind: "p", port: +m[1], sub: m[2] || "/" };
+  return null;
+}
 function goHist(tb) {
+  var at = targetOfAddress(tb.hist[tb.idx]);
+  if (at) { tb.t = at; target = at; }
   var frame = frameFor(target);
   navTo = renew(tb.hist[tb.idx]);
   frame.setAttribute("data-url", navTo);
@@ -510,7 +710,7 @@ function copyAddress() {
 }
 
 function popOut() {
-  if (!target) return;
+  if (!target || target.kind === "n") return;
   getToken().then(function (tok) {
     var tb = tab();
     var url = location.origin + (tb && tb.hist.length ? renew(tb.hist[tb.idx]) : urlFor(target, tok));
@@ -555,6 +755,11 @@ function applySize() {
 function load() {
   if (!target) return;
   var frame = frameFor(target);
+  if (target.kind === "n") {
+    frame.removeAttribute("src"); frame.removeAttribute("data-url");
+    message(""); hideError(); setStatus("newtab"); renderNewPage();
+    return;
+  }
   message(""); hideError(); clearLogs(); setStatus("loading");
   getToken().then(function (tok) {
     var url = urlFor(target, tok);
@@ -575,6 +780,8 @@ function frameFor(t) {
   var viewer = el("preview-pdf-frame");
   if (viewer) viewer.hidden = !pdf;
   if (page) page.hidden = pdf;
+  var np = el("preview-newpage");
+  if (np) np.hidden = !(t && t.kind === "n");
   var frame = pdf ? viewer : page;
   var other = pdf ? page : viewer;
   if (other) { other.removeAttribute("src"); other.removeAttribute("data-url"); }
@@ -642,9 +849,10 @@ function openPane(path) {
   togglePorts(true);
 }
 
-function openPort(port) {
+function openPort(port, inPlace) {
   if (disabled()) return;
-  show({ kind: "p", port: Number(port) });
+  if (inPlace && open && tab()) navigateTo({ kind: "p", port: Number(port) });
+  else show({ kind: "p", port: Number(port) });
 }
 
 function show(t) {
@@ -657,7 +865,7 @@ function show(t) {
   var pane = el("preview-pane");
   if (!term || !pane) return;
   pane.hidden = false;
-  term.classList.add("is-previewing");
+  placePane();
   setAddress();
   applySize();
   if (target) { var tb = tab(); if (tb && tb.hist.length && !t.sub) { var f = frameFor(target); navTo = renew(tb.hist[tb.idx]); f.setAttribute("data-url", navTo); setStatus("loading"); f.src = navTo; setAddress(describe(navTo)); } else load(); }
@@ -718,13 +926,13 @@ function init() {
   el("preview-ports-form").addEventListener("submit", function (e) {
     e.preventDefault();
     var n = parseInt(el("preview-port-input").value, 10);
-    if (n >= 1024 && n <= 65535) { openPort(n); togglePorts(false); }
+    if (n >= 1024 && n <= 65535) { openPort(n, true); togglePorts(false); }
   });
   el("preview-reload").addEventListener("click", function () { reload(); });
   el("preview-close").addEventListener("click", closePane);
   el("preview-terminal").addEventListener("click", closePane);
   el("preview-newtab").addEventListener("click", function () {
-    if (!target) return;
+    if (!target || target.kind === "n") return;
     getToken().then(function (tok) { window.open(urlFor(target, tok), "_blank", "noopener"); });
   });
   window.addEventListener("resize", function () { if (open) applySize(); });
@@ -754,11 +962,25 @@ function init() {
   var addr = el("preview-address"), input = el("preview-address-input");
   if (addr && input) {
     addr.addEventListener("click", function () { if (input.hidden) focusAddress(); });
+    input.addEventListener("input", function () { sugIdx = -1; renderNewPage(); });
     input.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") { e.preventDefault(); var v = input.value; leaveAddress(); goTyped(v); }
+      var np = el("preview-newpage");
+      if (np && !np.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+        e.preventDefault();
+        var n = el("preview-newpage-list").children.length;
+        if (n) { sugIdx = ((sugIdx + 1 + (e.key === "ArrowDown" ? 1 : -1) + n + 1) % (n + 1)) - 1; renderNewPage(); }
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        var v = input.value;
+        if (np && !np.hidden && sugIdx >= 0) { var it = suggestions(v)[sugIdx]; if (it) v = it.text; }
+        sugIdx = -1; leaveAddress(); goTyped(v);
+      }
       else if (e.key === "Escape") { e.preventDefault(); leaveAddress(); }
     });
     input.addEventListener("blur", leaveAddress);
+    input.addEventListener("focus", function () { renderNewPage(); });
   }
   el("preview-console-button").addEventListener("click", function () { toggleConsole(); });
   el("preview-console-close").addEventListener("click", function () { toggleConsole(false); });
@@ -778,6 +1000,8 @@ function init() {
   el("preview-opt-run").addEventListener("change", function (e) { optRun = e.target.checked; saveOpt("preview-opt-run", optRun); setStatus("live"); });
   el("preview-menu-copy").addEventListener("click", function () { toggleMenu(false); copyAddress(); });
   el("preview-menu-popout").addEventListener("click", function () { toggleMenu(false); popOut(); });
+  el("preview-menu-dock").addEventListener("click", function () { setDock(dock === "editor" ? "terminal" : "editor"); });
+  el("preview-grip").addEventListener("pointerdown", startDrag);
   el("preview-menu-cookies").addEventListener("click", function () {
     toggleMenu(false);
     fetch(preprocessurl("/preview_cookies?v=" + viewer + (target && target.kind === "p" ? "&port=" + target.port : "")), { method: "POST", credentials: "same-origin" })

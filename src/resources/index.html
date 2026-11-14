@@ -526,6 +526,7 @@
         <div class="preview-pane" id="preview-pane" role="region" aria-label="Preview" hidden>
           <div class="preview-tabs" id="preview-tabs" role="tablist" aria-label="Previews" hidden></div>
           <div class="preview-bar">
+            <button type="button" class="ide-btn ide-btn--icon preview-grip" id="preview-grip" title="Drag to move the pane: over the editor, over the terminal, or out into its own window" aria-label="Move the pane (drag), or use the More menu"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
             <button type="button" class="ide-btn ide-btn--icon" id="preview-back" title="Back" aria-label="Back" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5 M12 19l-7-7 7-7"/></svg></button>
             <button type="button" class="ide-btn ide-btn--icon" id="preview-forward" title="Forward" aria-label="Forward" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14 M12 5l7 7-7 7"/></svg></button>
             <button type="button" class="ide-btn ide-btn--icon" id="preview-reload" title="Reload the preview" aria-label="Reload the preview"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7"/></svg></button>
@@ -550,6 +551,7 @@
             <label class="preview-menu__item" role="menuitemcheckbox"><input type="checkbox" id="preview-opt-run"> Reload when I press Run</label>
             <button type="button" class="preview-menu__item" role="menuitem" id="preview-menu-cookies">Clear this preview's cookies</button>
             <button type="button" class="preview-menu__item" role="menuitem" id="preview-menu-copy">Copy address</button>
+            <button type="button" class="preview-menu__item" role="menuitem" id="preview-menu-dock">Dock over the editor</button>
             <button type="button" class="preview-menu__item" role="menuitem" id="preview-menu-popout">Pop out to its own window</button>
           </div>
           <div class="preview-ports" id="preview-ports" hidden>
@@ -567,11 +569,11 @@
               <div id="preview-howto" class="preview-ports__howto-list"></div>
             </details>
           </div>
-          <div class="preview-note" id="preview-note">This page runs in a sandbox and is not part of OpenREPL.</div>
           <div class="preview-error" id="preview-error" role="alert" hidden></div>
           <div class="preview-stage" id="preview-stage">
             <div class="preview-device" id="preview-device"><iframe class="preview-frame" id="preview-frame" title="Preview" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads" referrerpolicy="no-referrer"></iframe><iframe class="preview-frame" id="preview-pdf-frame" title="PDF preview" hidden></iframe></div>
             <div class="preview-message" id="preview-message" role="status" hidden></div>
+            <div class="preview-newpage" id="preview-newpage" hidden><h2>Where to?</h2><div class="preview-newpage__list" id="preview-newpage-list" role="list"></div><p class="preview-newpage__empty" id="preview-newpage-empty" hidden>Type a file of your workspace, such as web/index.html, or a port, such as 5000 or 5000/api.</p></div>
           </div>
           <div class="preview-console" id="preview-console" hidden>
             <div class="preview-console__bar" role="tablist">

@@ -266,3 +266,30 @@ languages of the terminal, so the real `<select id="optionlist">`, which the ter
 - Tests: `lib-weblang.test.mjs`, `e2e/tests/web-language.spec.js`. Not done: sharing a code link from a web language shares it under the terminal's
   language; the hero's "19 languages" counts the terminal's languages only.
 
+
+## 12. A browser's address bar, the + tab, and the pane's place (2026-11-14)
+
+Design on the canvas "Preview pane: move it and pop it out", approved the same day. Built in `page/27-preview.js`, `page/lib-address.mjs`, `index.html`, `ui-refresh.css`.
+
+- **The top bar is gone.** "This page runs in a sandbox and is not part of OpenREPL." (`#preview-note`) is removed; the status line below ("Live · sandboxed page · ...")
+  is the only notice. It is outside the frame, so the page cannot change it.
+- **An address typed in the bar loads in the tab that is shown** (`navigateTo`): the tab's target is replaced, the page reports its address (`onNav`) and it is
+  pushed on that tab's history, so Back returns to the page before. `goHist` takes the tab's target from the address it goes back to (a file or a port).
+  The ports list ("127.0.0.1:port" and Other port) loads in place as well; the "Preview the open file" button, Run, Genie's `preview_open` and the notice for a
+  program that starts to listen still use `show`, which reuses a tab of the same target or adds one.
+- **`lib-address.mjs` (`parseAddress`, tested in `lib-address.test.mjs`):** a name is a file counted from the home folder (`web/index.html`, `/web/index.html`, the absolute
+  path of the home folder); it cannot climb out with `..`; when the file is not under the home folder but is beside the page shown, that one is meant (`alt`, checked against
+  `FileBrowser.entries()`). A port: `5000`, `5000/api`, `localhost:5000`, `127.x.x.x`, `[::1]`, the private ranges with a port, with or without `http(s)://`: all go to the
+  program of this workspace on that port through the same proxy and sandbox (the pane's server never leaves the workspace's own loopback). Another site or machine,
+  a scheme other than http(s), and a port outside 1024 to 65535 are refused with a message over the tab, which keeps its page and history.
+- **+ is a new empty tab** (`newBlankTab`, target `{kind:"n"}`, shown by `#preview-newpage`): the address bar is focused and empty, and the page lists up to 9 suggestions: files of
+  the workspace the pane can show (by name), ports that listen, and the last 5 addresses typed. Arrow keys and Enter pick, a click picks, Escape leaves the bar. A name typed there
+  loads in that same tab. A second + while an empty tab exists selects it (never two). The status line says "New tab · sandboxed pane · nothing loaded". At the tab limit (4) a notice says so.
+- **The pane's place** (`placePane`, `setDock`): by default it is a child of the terminal's box and covers the terminal (`is-previewing`); docked over the editor it is a child of
+  `#ide` (absolute, over the whole editor box: its file tabs and toolbar, the text and its status bar; the pane's own bar has Close and Terminal), the terminal is shown beside it, and Run does not need the drawer. The grip
+  (`#preview-grip`, first in the pane's bar) is dragged with the mouse or a pen: the side of the page the pointer is on decides (the rectangle of `#ide` or of `#terminal-div`,
+  outlined in `.preview-drop`), Escape cancels, and a release more than 40 px outside the browser's window pops the pane out (`popOut`, as the menu's entry does). The keyboard way is
+  the "..." menu: "Dock over the editor" / "Dock over the terminal". The place is remembered in this browser (`localStorage` `preview-dock`) and is never written to a shared session.
+  On a phone there is no grip (the pane is its own tab). Moving the pane in the DOM reloads the frame, so the page starts again; its history stays.
+- **Tests:** `lib-address.test.mjs`; `e2e/tests/preview.spec.js`: no bar, typed address in the same tab with Back, the + tab with suggestions, docking by the menu and by dragging.
+  Not tested headless: the pop-out by dragging out of the window (the pop-out itself is the same call as the menu's).

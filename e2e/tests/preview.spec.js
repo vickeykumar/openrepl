@@ -474,8 +474,6 @@ test("with one address there is a + for another, and Reload brings the page back
   await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("still here");
   await expect(page.locator("#preview-tabs")).toBeVisible();
   await expect(page.locator("#preview-tabs .preview-tab--new")).toBeVisible();
-  await page.locator("#preview-tabs .preview-tab--new").click();
-  await expect(page.locator("#preview-ports")).toBeVisible();
   await page.locator("#preview-address").click();
   await page.locator("#preview-address-input").fill("back.html23242");
   await page.keyboard.press("Enter");
@@ -483,4 +481,112 @@ test("with one address there is a + for another, and Reload brings the page back
   await page.locator("#preview-reload").click();
   await expect(page.locator("#preview-message")).toBeHidden();
   await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("still here");
+});
+
+test("a file name that does not exist says so in the pane, and the tab keeps its page", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "here.html": "<h1 id='h'>here</h1>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("here.html"));
+  await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("here");
+  await page.locator("#preview-address").click();
+  await page.locator("#preview-address-input").fill("nothere.html");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#preview-message")).toContainText("nothere.html was not found in your workspace");
+  await expect(page.locator("#preview-address-text")).toContainText("here.html");
+});
+
+test("there is no sandbox bar above the page: the status line below says it", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "n.html": "<h1>n</h1>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("n.html"));
+  await expect(page.locator("#preview-note")).toHaveCount(0);
+  await expect(page.locator("#preview-status-text")).toContainText("sandboxed page");
+});
+
+test("an address typed in the bar loads in the same tab, and Back returns to the page before", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "one.html": "<h1 id='h'>one</h1>", "two.html": "<h1 id='h'>two</h1>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("one.html"));
+  await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("one");
+  await page.locator("#preview-address").click();
+  await page.locator("#preview-address-input").fill("5999/x");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#preview-address-text")).toContainText("127.0.0.1:5999");
+  await expect(page.locator("#preview-tabs .preview-tab[role=tab]")).toHaveCount(1);
+  await expect(page.locator("#preview-tabs .preview-tab[role=tab]")).toContainText(":5999");
+  await page.locator("#preview-back").click();
+  await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("one");
+  await expect(page.locator("#preview-address-text")).toContainText("one.html");
+  // another site is refused and the tab keeps its page
+  await page.locator("#preview-address").click();
+  await page.locator("#preview-address-input").fill("https://example.com");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#preview-message")).toContainText("Only your workspace");
+});
+
+test("+ opens an empty tab with suggestions; a name typed there loads in that tab", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "alpha.html": "<h1 id='h'>alpha</h1>", "beta.html": "<h1 id='h'>beta</h1>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("alpha.html"));
+  await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("alpha");
+  await page.locator("#preview-tabs .preview-tab--new").click();
+  await expect(page.locator("#preview-newpage")).toBeVisible();
+  await expect(page.locator("#preview-address-input")).toBeFocused();
+  await expect(page.locator("#preview-status-text")).toContainText("New tab");
+  await expect(page.locator("#preview-tabs .preview-tab[role=tab]")).toHaveCount(2);
+  await page.locator("#preview-address-input").fill("beta");
+  await expect(page.locator("#preview-newpage-list .preview-newpage__item")).toContainText(["beta.html"]);
+  // the arrow key picks the first suggestion, Enter opens it in this same tab
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#preview-newpage")).toBeHidden();
+  await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("beta");
+  await expect(page.locator("#preview-tabs .preview-tab[role=tab]")).toHaveCount(2);
+  // a + while an empty tab exists reuses it: there are never two
+  await page.locator("#preview-tabs .preview-tab--new").click();
+  await page.locator("#preview-tabs .preview-tab--new").click();
+  await expect(page.locator("#preview-tabs .preview-tab[role=tab]")).toHaveCount(3);
+});
+
+test("the pane can be docked over the editor, with the terminal usable beside it, and back", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "d.html": "<h1 id='h'>docked</h1>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("d.html"));
+  await expect(page.locator("#terminal-div > #preview-pane")).toHaveCount(1);
+  await page.locator("#preview-menu-button").click();
+  await page.locator("#preview-menu-dock").click();
+  await expect(page.locator("#ide > #preview-pane")).toHaveCount(1);
+  await expect(page.locator("#preview-pane")).toBeVisible();
+  await expect(page.frameLocator("#preview-frame").locator("#h")).toHaveText("docked");
+  // the terminal is shown, not covered
+  await expect(page.locator("#terminal-div .terminal.active").first()).toBeVisible();
+  await expect(page.locator("#terminal-div")).not.toHaveClass(/is-previewing/);
+  await page.locator("#preview-menu-button").click();
+  await expect(page.locator("#preview-menu-dock")).toHaveText("Dock over the terminal");
+  await page.locator("#preview-menu-dock").click();
+  await expect(page.locator("#terminal-div > #preview-pane")).toHaveCount(1);
+  await expect(page.locator("#terminal-div")).toHaveClass(/is-previewing/);
+});
+
+test("dragging the grip onto the editor docks the pane there, and onto the terminal brings it back", async ({ page }) => {
+  await ready(page);
+  const at = await makePages(page, { "g.html": "<h1>g</h1>" });
+  await page.evaluate((f) => window.Preview.openPath(f), await at("g.html"));
+  const grip = await page.locator("#preview-grip").boundingBox();
+  const ed = await page.locator("#ide").boundingBox();
+  const tm = await page.locator("#terminal-div").boundingBox();
+  const drag = async (from, to) => {
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
+    await page.mouse.move(to.x, to.y, { steps: 4 });
+    await expect(page.locator(".preview-drop")).toBeVisible();
+    await page.mouse.up();
+  };
+  await drag({ x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 }, { x: ed.x + ed.width / 2, y: ed.y + ed.height / 2 });
+  await expect(page.locator("#ide > #preview-pane")).toHaveCount(1);
+  const grip2 = await page.locator("#preview-grip").boundingBox();
+  await drag({ x: grip2.x + grip2.width / 2, y: grip2.y + grip2.height / 2 }, { x: tm.x + tm.width / 2, y: tm.y + tm.height / 2 });
+  await expect(page.locator("#terminal-div > #preview-pane")).toHaveCount(1);
+  await expect(page.locator(".preview-drop")).toBeHidden();
 });

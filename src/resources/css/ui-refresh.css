@@ -4298,7 +4298,15 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .preview-howto__row code { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px var(--font-code); color: var(--paper); }
 .preview-dot { width: 8px; height: 8px; margin-left: 2px; border-radius: 50%; background: var(--ok-color, #4ade80); }
 .preview-dot[hidden] { display: none; }
-.preview-note { padding: 4px 12px; font-size: 12px; color: var(--muted-2); border-bottom: 1px solid var(--ink-700); flex-shrink: 0; }
+.preview-newpage { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; padding: 22px 26px; background: var(--ink-900); color: var(--muted-1); overflow: auto; }
+.preview-newpage[hidden] { display: none; }
+.preview-newpage h2 { margin: 0; font-size: 17px; font-weight: 600; color: var(--paper); }
+.preview-newpage__list { display: flex; flex-direction: column; gap: 6px; max-width: 640px; }
+.preview-newpage__item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--ink-600); border-radius: 9px; background: var(--ink-800, var(--ink-900)); color: var(--muted-1); font: inherit; text-align: left; cursor: pointer; }
+.preview-newpage__item b { color: var(--paper); font-family: var(--font-mono, monospace); font-weight: 500; font-size: 12.5px; }
+.preview-newpage__item span { margin-left: auto; font-size: 11px; color: var(--muted-2); }
+.preview-newpage__item:hover, .preview-newpage__item.is-on { border-color: var(--accent, #b6e03a); }
+.preview-newpage__empty { margin: 0; font-size: 13px; line-height: 1.5; }
 .preview-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--ink-900); }
 .preview-device { position: relative; width: 100%; height: 100%; margin: 0 auto; transform-origin: top center; }
 .preview-device.is-sized { box-shadow: 0 0 0 1px var(--ink-600), 0 8px 28px rgba(0, 0, 0, 0.35); border-radius: 6px; overflow: hidden; }
@@ -4365,3 +4373,13 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 /* "Accept all, and apply Genie's later changes without asking" under the head of the agent's review */
 .genie-review__auto { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 14px; font-size: 12.5px; line-height: 1.45; color: var(--muted-1); background: var(--ink-850); border-bottom: 1px solid var(--ink-700); cursor: pointer; }
 .genie-review__auto input { margin-top: 3px; accent-color: var(--accent-color, #C8F04A); }
+
+/* The Preview pane docked over the editor, and the outline shown while it is dragged (page/27-preview.js) */
+.ide { position: relative; }
+.ide > .preview-pane { position: absolute; inset: 0; z-index: 30; }
+.ide > .preview-pane:not([hidden]) { display: flex; }
+.preview-grip { cursor: grab; touch-action: none; }
+.preview-grip:active { cursor: grabbing; }
+.preview-drop { position: fixed; z-index: 10000; pointer-events: none; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--accent-color, #b6e03a); border-radius: 10px; background: rgba(182, 224, 58, 0.12); color: var(--paper); font-weight: 600; font-size: 14px; }
+.preview-drop[hidden] { display: none; }
+.preview-drop.is-out { transform: translateX(-50%); padding: 8px 14px; background: var(--ink-800, #1d1e1a); }
