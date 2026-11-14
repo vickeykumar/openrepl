@@ -203,6 +203,24 @@
       </ul>
     </nav>
 
+    <!-- The App Store (page/33-app-store.js, LLD 18): libraries and tools that a signed-in user switches on for their terminals. -->
+    <dialog class="appstore" id="appstore-dialog" aria-labelledby="appstore-title">
+      <div class="appstore__card">
+        <div class="appstore__head">
+          <h2 id="appstore-title">App Store</h2>
+          <a class="appstore__full" href="./store">Open the full App Store</a>
+          <button type="button" class="appstore__close" id="appstore-close" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
+        </div>
+        <div class="appstore__tabs" role="tablist" aria-label="App Store">
+          <button type="button" role="tab" id="appstore-tab-browse" aria-selected="true">Browse</button>
+          <button type="button" role="tab" id="appstore-tab-mine" aria-selected="false">My apps</button>
+        </div>
+        <div class="appstore__tools" id="appstore-tools"><input type="search" id="appstore-search" placeholder="Search, or type the name of a conda-forge package" autocomplete="off" spellcheck="false" aria-label="Search the apps"></div>
+        <div class="appstore__note" id="appstore-note" role="status" hidden></div>
+        <div class="appstore__list" id="appstore-list"></div>
+        <div class="appstore__foot" id="appstore-foot"></div>
+      </div>
+    </dialog>
     <!-- Sign-in dialog. 05-auth.js opens it and FirebaseUI draws the sign-in methods into the container. -->
     <dialog class="signin" id="signin-dialog" aria-labelledby="signin-title" data-mode="signin" data-step="pick" data-state="loading">
       <div class="signin__card">
@@ -391,6 +409,7 @@
           <div class="editor-tabs" id="editor-tabs" role="tablist" aria-label="Open files"></div>
           <div class="editor-header__tools" role="toolbar" aria-label="Editor and layout">
             <button type="button" class="ide-btn" id="preview-button" data-tip-name="Preview" data-tip-desc="See a web page or a program of yours next to the editor." title="Preview" hidden><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span>Preview</span><span class="preview-dot" id="preview-dot" aria-hidden="true" hidden></span></button>
+            <button type="button" class="ide-btn" id="appstore-button" data-tip-name="App Store" data-tip-desc="Add libraries and tools to your terminals (signed-in users)." title="App Store"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z M3 8l9 5 9-5 M12 13v8"/></svg><span>Apps</span></button>
             <span class="toolbar-sep" aria-hidden="true"></span>
             <button type="button" class="ide-btn" id="rotate-button" onclick="ToggleRotateEditor();" title="Switch between side by side and stacked"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 12h18"></path></svg><span id="rotate-button-label">Stacked</span></button>
             <button type="button" class="ide-btn" id="editor-button" data-tip-name="Hide editor" onclick="ToggleEditor();" title="Hide the editor and show only the terminal"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M12 4v16 M7 10l2 2-2 2"></path></svg><span>Hide editor</span></button>

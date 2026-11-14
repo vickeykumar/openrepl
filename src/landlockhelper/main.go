@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"appstore"
 	"landlock"
 	"netemu"
 )
@@ -36,6 +37,7 @@ func main() {
 	maxFileMB := flag.Int("max-file-mb", 0, "the size one file the REPL writes may have, in MB (0: no limit)")
 	noLandlock := flag.Bool("no-landlock", false, "no filesystem policy: only the network emulation (--net-emulation)")
 	netEmulation := flag.Bool("net-emulation", false, "the REPL gets the private network of its workspace (LLD 16); the server gave this process a socket as descriptor 3")
+	storeDir := flag.String("store-dir", "", "the App Store's folder (LLD 18): the bundles on the user's list are readable and on the PATH")
 	netProbe := flag.Bool("net-probe", false, "the self test of the network emulation, run by the server at start")
 	netSelftest := flag.Bool("net-selftest", false, "internal: the second half of --net-probe")
 	flag.Parse()
@@ -81,8 +83,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Landlock sandbox not applied:", err)
 		os.Exit(failed)
 	}
+	extra := storeFolders(*storeDir, *workspace)
 	policy, err := landlock.Build(landlock.Options{Workspace: *workspace, HomeRoot: *homeRoot, ABI: abi, Self: landlock.Self(), Debug: *debug,
-		ScopeSignals: *scopeSignals && landlock.ScopeSupported()}, nil)
+		ScopeSignals: *scopeSignals && landlock.ScopeSupported(), ExtraRO: extra}, nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Landlock sandbox not applied:", err)
 		os.Exit(failed)
@@ -149,4 +152,51 @@ func runWithoutPolicy(netEmulation bool, args []string) {
 		fmt.Fprintln(os.Stderr, "landlock-helper: exec", path+":", err)
 		os.Exit(127)
 	}
+}
+
+// storeFolders reads the list of the user's App Store bundles (the manifest of the user whose workspace this is) and puts them on
+// the environment of the program: PATH (after the system's), PYTHONPATH, LD_LIBRARY_PATH. It returns the folders the sandbox
+// must let through: the bundles and the user's own folder of the store (where env.sh is). It runs before the restriction, with
+// the server's rights, and a terminal cannot write the store: it cannot add itself to a list. A bad entry stops the start.
+func storeFolders(dir, workspace string) []string {
+	if dir == "" {
+		return nil
+	}
+	store := appstore.Store{Dir: dir}
+	home := filepath.Base(filepath.Clean(workspace))
+	own := store.HomeDir(home)
+	if own == "" {
+		return nil
+	}
+	ids, err := store.Manifest(home)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "landlock-helper: the App Store list of this user:", err)
+		os.Exit(failed)
+	}
+	var folders []string
+	var have []string
+	for _, id := range ids {
+		if store.HasBundle(id) { // a bundle this server does not have yet (it is being replayed) is left out
+			folders = append(folders, store.BundlePath(id))
+			have = append(have, id)
+		}
+	}
+	if len(have) == 0 {
+		return nil
+	}
+	folders = append(folders, own)
+	env := appstore.VarsFor(dir, have).Apply(os.Environ())
+	for _, e := range env {
+		for i := 0; i < len(e); i++ {
+			if e[i] == '=' {
+				os.Setenv(e[:i], e[i+1:])
+				break
+			}
+		}
+	}
+	// Python cannot write its bytecode into a bundle (the sandbox lets it only read them): it goes to the user's workspace instead
+	if os.Getenv("PYTHONPYCACHEPREFIX") == "" {
+		os.Setenv("PYTHONPYCACHEPREFIX", filepath.Join(workspace, ".pycache"))
+	}
+	return folders
 }

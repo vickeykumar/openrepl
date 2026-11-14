@@ -33,3 +33,4 @@ import "./29-web-language"; // HTML and CSS in the language picker
 import "./30-owner-presence"; // a shared session whose owner is not there
 import "./31-share-session"; // a share link with a time
 import "./32-remember-language"; // the language of the last visit
+import "./33-app-store"; // libraries and tools for signed-in users

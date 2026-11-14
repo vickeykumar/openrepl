@@ -37,6 +37,7 @@ export const ACTIONS = [
   "preview_close",
   "preview_reload",
   "preview_state",
+  "store_suggest",
   "finish",
 ] as const;
 export type ActionType = (typeof ACTIONS)[number];
@@ -90,7 +91,7 @@ export interface StepResult {
 // Switching the language is a kind of its own: it is not a change the user
 // reviews, the page puts the language's starter code in the editor and starts
 // the terminal again.
-export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview" | "shell";
+export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview" | "shell" | "store";
 
 export function scopeOf(a: Action): Scope | null {
   switch (a.type) {
@@ -130,6 +131,9 @@ export function scopeOf(a: Action): Scope | null {
     case "preview_close":
     case "preview_reload":
       return "preview";
+    // an app of the App Store is installed (when it is on the safe list) and switched on: the user is asked each time
+    case "store_suggest":
+      return "store";
     default:
       return null;
   }
@@ -205,6 +209,7 @@ export function scopeQuestion(scope: Scope): string {
   if (scope === "terminal") return "Genie wants to use your terminal";
   if (scope === "files") return "Genie wants to use your files";
   if (scope === "preview") return "Genie wants to use the Preview";
+  if (scope === "store") return "Genie wants to install an app from the App Store";
   if (scope === "shell") return "Genie wants to run a command in your workspace";
   return "Genie wants to run your code";
 }
@@ -212,6 +217,10 @@ export function scopeQuestion(scope: Scope): string {
 // openFile: the file that is open in the editor, if any. The page leaves the
 // editor alone on a change of language then, and the card must not say otherwise.
 export function scopeDetail(scope: Scope, a: Action, openFile: string = ""): string {
+  if (scope === "store") {
+    const n = a.name || "an app";
+    return "It will install " + n + " (a conda-forge package) on the server and turn it on for your terminals, if it is on the safe list; an app that needs an admin is only offered to you in the store. It is installed once and shared: it does not change your files.";
+  }
   if (scope === "editor") return "It will propose changes. You review each one before anything is applied.";
   if (scope === "language") {
     const lang = a.language || "another language";
@@ -584,6 +593,12 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
       case "preview_state":
         actions.push({ type });
         break;
+      case "store_suggest": {
+        const n = typeof a.name === "string" ? a.name.trim().toLowerCase() : "";
+        if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(n)) dropped.push('store_suggest left out: "name" has to be a conda-forge package name, for example flask');
+        else actions.push({ type, name: n });
+        break;
+      }
       case "preview_open": {
         const port = a.port === undefined ? undefined : typeof a.port === "number" && Number.isInteger(a.port) && a.port >= 1024 && a.port <= 65535 ? a.port : null;
         const p = a.path === undefined ? undefined : cleanPath(a.path, false);
@@ -680,6 +695,8 @@ export function describe(a: Action): string {
       return "Moving " + a.path + " into " + where(a.to);
     case "files_delete":
       return "Deleting " + a.path;
+    case "store_suggest":
+      return "Offering to install " + a.name + " from the App Store";
     case "preview_open":
       return a.port ? "Opening the Preview on port " + a.port : a.path ? "Opening " + a.path + " in the Preview" : "Opening the Preview";
     case "preview_close":
@@ -752,6 +769,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   files: "Files (open, create, save)",
   preview: "Preview (open, reload, close)",
   shell: "Run commands (safe ones)",
+  store: "App Store (install an app)",
 };
 
 export type RiskKind = "terminal" | "delete" | "move" | "tab";

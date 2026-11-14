@@ -287,3 +287,28 @@ func TestTheDevicesAreAnAllowlist(t *testing.T) {
 		t.Error("/dev itself has a rule")
 	}
 }
+
+// The App Store (LLD 18): only the bundles on the user's list are readable and runnable, never writable, and a folder that
+// holds the workspaces never gets a rule.
+func TestStoreBundlesGetReadAndExecuteOnly(t *testing.T) {
+	fs := newFS("/home/openrepl", "/home/openrepl/ann")
+	fs.dirs["/store/apps/flask-3.0.2"] = true
+	fs.dirs["/store/apps/numpy-2.1.0"] = true
+	fs.dirs["/store/envs/ann"] = true
+	p, err := Build(Options{Workspace: "/home/openrepl/ann", HomeRoot: "/home/openrepl", ABI: 4,
+		ExtraRO: []string{"/store/apps/flask-3.0.2", "/store/envs/ann", "relative/path", "/home/openrepl"}}, fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := paths(p)
+	for _, d := range []string{"/store/apps/flask-3.0.2", "/store/envs/ann"} {
+		if m[d]&Execute == 0 || m[d]&ReadFile == 0 || m[d]&WriteFile != 0 || m[d]&MakeReg != 0 {
+			t.Errorf("%s has %b: it must be read and execute only", d, m[d])
+		}
+	}
+	for _, d := range []string{"/store/apps/numpy-2.1.0", "/store", "relative/path", "/home/openrepl"} {
+		if _, ok := m[d]; ok {
+			t.Errorf("%s must have no rule", d)
+		}
+	}
+}

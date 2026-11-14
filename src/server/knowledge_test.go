@@ -133,6 +133,8 @@ func TestSearchFindsTheRightNoteForQuestionsAboutTheSite(t *testing.T) {
 		{"can two users use the same port 8080", "ports-and-sockets"},
 		{"why does connection refused or network is unreachable show in my socket program", "ports-and-sockets"},
 		{"does pip install work in my repl", "ports-and-sockets"},
+		{"how do I install flask in the app store", "app-store"},
+		{"what do I do about ModuleNotFoundError no module named numpy", "app-store"},
 		{"which languages are supported", "languages"},
 		{"is there a rust repl", "languages"},
 		{"how do I debug c code with gdb", "run-and-debug"},

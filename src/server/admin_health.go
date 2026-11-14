@@ -222,6 +222,10 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	default:
 		add("Network isolation", healthWarn, "not available: "+ne.Reason+". REPLs without a namespace of their own share one network")
 	}
+	// the App Store (LLD 18): the installer, the size of the store, installs that failed, workers that are behind
+	if st, detail := appStoreHealth(); st != "" {
+		add("App Store", st, detail)
+	}
 	if _, err := os.Stat(os.TempDir()); err == nil {
 		checks = append(checks, diskCheck("Disk space for /tmp", os.TempDir()))
 	}

@@ -107,10 +107,10 @@ func TestTheBinaryCarriesThePagesAndTheirScripts(t *testing.T) {
 		t.Skip("no assets are built into this binary (run make asset)")
 	}
 	for _, name := range []string{
-		"static/index.html", "static/profile.html", "static/admin.html", "static/practice.html", "static/doc.html",
+		"static/index.html", "static/profile.html", "static/store.html", "static/admin.html", "static/practice.html", "static/doc.html",
 		"static/js/gotty-bundle.js", "static/js/scribbler.js", "static/js/preprocessing.js", "static/js/hterm.js",
-		"static/js/chat-widget.js", "static/js/jsconsole.js", "static/js/theme.js", "static/js/usage-beat.js", "static/js/admin.js",
-		"static/css/scribbler-global.css", "static/css/ui-refresh.css", "static/css/admin.css", "static/css/xterm.css",
+		"static/js/chat-widget.js", "static/js/jsconsole.js", "static/js/theme.js", "static/js/usage-beat.js", "static/js/admin.js", "static/js/store.js",
+		"static/css/scribbler-global.css", "static/css/ui-refresh.css", "static/css/admin.css", "static/css/store.css", "static/css/xterm.css",
 	} {
 		data, err := Asset(name)
 		if err != nil || len(data) < 100 {

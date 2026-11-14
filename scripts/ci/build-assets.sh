@@ -21,7 +21,7 @@ rm -rf bindata
 mkdir -p bindata/static/js bindata/static/css bindata/static/images bindata/static/media bindata/static/meta bindata/static/docs bindata/knowledge
 
 # pages
-for f in index profile practice doc editblog admin about references privacy terms NewFile; do
+for f in index profile store practice doc editblog admin about references privacy terms NewFile; do
   cp "resources/$f.html" "bindata/static/$f.html"
 done
 cp resources/robots.txt bindata/static/robots.txt

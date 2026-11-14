@@ -135,6 +135,7 @@
         // with nothing to show the button is hidden; the pane then lists the ports and how to start a program
         else if (window.Preview.available && window.Preview.available()) add("Editor", "Open the preview", function () { window.Preview.open(); }, { words: "browser page web view port server localhost program" });
       }
+      if (window.AppStore && window.AppStore.available()) add("Editor", "App Store", function () { window.AppStore.open(); }, { words: "install libraries tools packages apps flask pip conda add" });
       add("Editor", "Download the editor code", call("DownloadEditor"), { words: "export save as" });
       add("Editor", editorShown() ? "Hide the editor" : "Show the editor", call("ToggleEditor"), { words: "toggle layout" });
       var rot = byId("rotate-button-label");
