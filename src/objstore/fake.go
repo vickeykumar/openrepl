@@ -199,6 +199,18 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 			w.Write(o.data)
 		}
 	case http.MethodDelete:
+		if id := r.URL.Query().Get("versionId"); id != "" {
+			// one version goes for good (the current one is never asked for by the callers; here it just goes from the list)
+			vs := f.versions[key]
+			for i := range vs {
+				if vs[i].id == id {
+					f.versions[key] = append(vs[:i:i], vs[i+1:]...)
+					break
+				}
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		delete(f.objects, key)
 		if f.versioned {
 			f.nextID++

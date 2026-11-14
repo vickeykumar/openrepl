@@ -266,6 +266,20 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// DeleteVersion removes one stored version of a key for good (not the key: the others, and the current one, stay). A version that is
+// not there is not an error.
+func (c *Client) DeleteVersion(ctx context.Context, key, versionID string) error {
+	resp, err := c.do(ctx, http.MethodDelete, c.url(key, url.Values{"versionId": {versionID}}), nil, nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode/100 != 2 && resp.StatusCode != http.StatusNotFound {
+		return readError(resp)
+	}
+	resp.Body.Close()
+	return nil
+}
+
 // List returns every object whose key starts with prefix, in key order. It follows the pages; more than
 // maxObjects is an error (a listing that is cut short must never be taken for the whole).
 func (c *Client) List(ctx context.Context, prefix string) ([]Object, error) {

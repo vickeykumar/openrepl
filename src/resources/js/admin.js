@@ -1211,7 +1211,7 @@
       form.maxFile = h('input', { type: 'number', class: 'field', id: 'f-max-file', min: '1', max: '16', step: '1', placeholder: '16', 'aria-label': 'Largest file the editor opens, in megabytes', oninput: update });
       form.maxFile.value = settings.maxEditorFileMB || '';
       form.maxFile.style.maxWidth = '9rem';
-      form.snapEvery = h('input', { type: 'number', class: 'field', id: 'f-snap-every', min: '1', max: '60', step: '1', placeholder: '5', 'aria-label': 'Minutes between workspace snapshots' });
+      form.snapEvery = h('input', { type: 'number', class: 'field', id: 'f-snap-every', min: '1', max: '60', step: '1', placeholder: '5', 'aria-label': 'Minutes between workspace snapshots', oninput: update });
       form.snapEvery.value = settings.snapshotIntervalMinutes || '';
       form.snapEvery.style.maxWidth = '9rem';
       form.previewLifeGuest = h('input', { type: 'number', class: 'field', id: 'f-preview-life-guest', min: '10', max: '1440', step: '1', placeholder: '60', 'aria-label': 'Minutes a preview link works for guests', oninput: update });

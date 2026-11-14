@@ -707,6 +707,16 @@ func objectStorageNode() archNode {
 		n.Status = archWarn
 	}
 	n.Rows = append(n.Rows, archRow{Label: "Bucket", Value: storage.detail, Status: n.Status})
+	// what the bucket holds, counted from the store's own listing
+	usage, usageAt, usageErr, usageKnown := objectUsageRead()
+	switch {
+	case usageKnown:
+		n.Rows = append(n.Rows, archRow{Label: "Stored", Value: objectUsageText(usage) + " (counted " + shortDuration(time.Since(usageAt)) + " ago)", Status: ""})
+	case usageErr != "":
+		n.Rows = append(n.Rows, archRow{Label: "Stored", Value: "could not be counted: " + usageErr, Status: archWarn})
+	default:
+		n.Rows = append(n.Rows, archRow{Label: "Stored", Value: "counting what the bucket holds…", Status: ""})
+	}
 	bst, bdetail := backupHealth()
 	n.Rows = append(n.Rows, archRow{Label: "Backups", Value: bdetail, Status: to[bst]})
 	n.Status = worse(n.Status, to[bst])
@@ -724,6 +734,9 @@ func objectStorageNode() archNode {
 		n.Text = fmt.Sprintf("%d homes followed · last round %s ago", st.Homes, shortDuration(time.Since(st.LastRun)))
 	default:
 		n.Text = "bucket answers"
+	}
+	if usageKnown && n.Status != archFail {
+		n.Text = objectUsageShort(usage) + " stored · " + n.Text
 	}
 	return n
 }
