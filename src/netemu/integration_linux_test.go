@@ -48,6 +48,8 @@ func childMain(scenario string) int {
 		err = scenarioStress()
 	case scenario == "unix":
 		err = scenarioUnix()
+	case scenario == "peer":
+		err = scenarioPeer()
 	case strings.HasPrefix(scenario, "serve:"):
 		err = scenarioServe(strings.TrimPrefix(scenario, "serve:"), label)
 	case strings.HasPrefix(scenario, "dial:"):
@@ -419,5 +421,55 @@ func TestManyShortConnectionsDoNotHang(t *testing.T) {
 	out, err := startChild(t, WorkspaceID("stress"), "stress", "X").wait(t, 40*time.Second)
 	if err != nil {
 		t.Errorf("%v\n%s", err, out)
+	}
+}
+
+// scenarioPeer accepts one connection and says what address the REPL sees for the peer.
+func scenarioPeer() error {
+	l, err := net.Listen("tcp", "127.0.0.1:7071")
+	if err != nil {
+		return fmt.Errorf("listen: %v", err)
+	}
+	defer l.Close()
+	c, err := l.Accept()
+	if err != nil {
+		return fmt.Errorf("accept: %v", err)
+	}
+	defer c.Close()
+	bufio.NewReader(c).ReadString('\n')
+	fmt.Fprintf(c, "PEER %s\n", c.RemoteAddr())
+	return nil
+}
+
+// A client that never bound its socket (the Preview's proxy dials the workspace's abstract name like that) has no name, but the
+// REPL must still be given an address for it: Python's http servers (and Flask's werkzeug, which calls .replace on it) take the
+// first part of it, and got a number (the address family) when nothing was written back.
+func TestAPeerThatNeverBoundStillHasAnAddress(t *testing.T) {
+	skipUnlessItWorks(t)
+	// startChild turns the name into the workspace's id (so the abstract name holds WorkspaceID of it)
+	s := startChild(t, "peer", "peer", "P")
+	ws := WorkspaceID("peer")
+	var got string
+	var dialErr error
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		c, err := net.Dial("unix", Name(ws, "t", 7071))
+		if err != nil {
+			dialErr = err
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		c.SetDeadline(time.Now().Add(5 * time.Second))
+		fmt.Fprintf(c, "hi\n")
+		got, _ = bufio.NewReader(c).ReadString('\n')
+		c.Close()
+		break
+	}
+	out, err := s.wait(t, 20*time.Second)
+	if err != nil || !strings.Contains(out, "OK") {
+		t.Fatalf("the REPL side: %v (the last dial error: %v)\n%.300s", err, dialErr, out)
+	}
+	if got != "PEER 127.0.0.1:0\n" {
+		t.Fatalf("the REPL saw the peer as %q, want the loopback with port 0", got)
 	}
 }

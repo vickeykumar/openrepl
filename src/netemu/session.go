@@ -664,11 +664,21 @@ func (s *Session) hAccept(n *notif) result {
 	}
 	s.setInfo(nfd, sockInfo{family: i.family})
 	if n.args[1] != 0 {
-		if out, found := s.addrOf(i, peer, true); found && named {
-			if e := s.putAddr(n, n.args[1], n.args[2], out); e != 0 {
-				s.keep(ino, nfd, peer, named)
-				return fail(e)
-			}
+		var out []byte
+		found := false
+		if named {
+			out, found = s.addrOf(i, peer, true)
+		}
+		if !found {
+			// The peer has no name: it never bound its socket (the Preview's proxy dials the workspace's abstract name like that).
+			// The REPL must still be given an address. Writing nothing left its buffer as it was, and a program read the family
+			// of an address it never got: Python's http servers took a number for the peer's host, and Flask's werkzeug crashed
+			// on it. It is the loopback with port 0, what a kernel gives for a peer that has no port.
+			out = Build(i.family, 0, false, true)
+		}
+		if e := s.putAddr(n, n.args[1], n.args[2], out); e != 0 {
+			s.keep(ino, nfd, peer, named)
+			return fail(e)
 		}
 	}
 	r := s.inject(n, nfd, flags&syscall.SOCK_CLOEXEC != 0)
