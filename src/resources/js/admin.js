@@ -1102,6 +1102,8 @@
         snapshotIntervalMinutes: int(form.snapEvery.value),
         previewLinkGuestMinutes: int(form.previewLifeGuest.value),
         previewLinkUserMinutes: int(form.previewLifeUser.value),
+        shareLinkGuestMinutes: int(form.shareLifeGuest.value),
+        shareLinkUserMinutes: int(form.shareLifeUser.value),
         previewOff: !form.previewOn.checked,
         previewGuestsOff: !form.previewGuests.checked,
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
@@ -1162,6 +1164,8 @@
         snapshotIntervalMinutes: s.snapshotIntervalMinutes || 0,
         previewLinkGuestMinutes: s.previewLinkGuestMinutes || 0,
         previewLinkUserMinutes: s.previewLinkUserMinutes || 0,
+        shareLinkGuestMinutes: s.shareLinkGuestMinutes || 0,
+        shareLinkUserMinutes: s.shareLinkUserMinutes || 0,
         previewOff: !!s.previewOff,
         previewGuestsOff: !!s.previewGuestsOff,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
@@ -1212,6 +1216,12 @@
       form.previewLifeUser = h('input', { type: 'number', class: 'field', id: 'f-preview-life-user', min: '10', max: '1440', step: '1', placeholder: '180', 'aria-label': 'Minutes a preview link works for signed-in users', oninput: update });
       form.previewLifeUser.value = settings.previewLinkUserMinutes || '';
       form.previewLifeUser.style.maxWidth = '9rem';
+      form.shareLifeGuest = h('input', { type: 'number', class: 'field', id: 'f-share-life-guest', min: '10', max: '10080', step: '1', placeholder: '60', 'aria-label': 'Most minutes a share link works for guests', oninput: update });
+      form.shareLifeGuest.value = settings.shareLinkGuestMinutes || '';
+      form.shareLifeGuest.style.maxWidth = '9rem';
+      form.shareLifeUser = h('input', { type: 'number', class: 'field', id: 'f-share-life-user', min: '10', max: '10080', step: '1', placeholder: '10080', 'aria-label': 'Most minutes a share link works for signed-in users', oninput: update });
+      form.shareLifeUser.value = settings.shareLinkUserMinutes || '';
+      form.shareLifeUser.style.maxWidth = '9rem';
       form.colour = colour.input; form.maint = maint.input; form.genie = genie.input;
       // the Preview pane (pages written by visitors, shown on this site's domain): off for all, or for guests only
       var previewOn = toggle('f-preview', !settings.previewOff, 'Preview available');
@@ -1621,7 +1631,9 @@
           row('Preview is available', null, previewOn.node),
           row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node),
           row('Minutes a preview link works for guests', 'From 10 to 1440 (a day). Leave it empty for 60 (1 hour). A pane gets a new link by itself before the old one ends; a link opened in a tab of its own, or copied, stops at its end. A change applies to links made after it.', form.previewLifeGuest),
-          row('Minutes a preview link works for signed-in users', 'From 10 to 1440. Leave it empty for 180 (3 hours).', form.previewLifeUser) ]),
+          row('Minutes a preview link works for signed-in users', 'From 10 to 1440. Leave it empty for 180 (3 hours).', form.previewLifeUser),
+          row('Longest a share link works for guests (minutes)', 'From 10 to 10080 (7 days). Leave it empty for 60 (1 hour). The owner chooses the time in the Share popover and may add time up to this: guests 30 minutes or 1 hour; signed-in users also 4 hours, 24 hours and 7 days, as far as this allows.', form.shareLifeGuest),
+          row('Longest a share link works for signed-in users (minutes)', 'From 10 to 10080 (7 days, as long as a sign-in lasts). Leave it empty for 10080.', form.shareLifeUser) ]),
         card('Languages', 'Untick a language that is broken. The picker greys it out and its terminals refuse to start with a message; terminals that are already open keep running. Admins can still start it, to test a fix.', langGrid),
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),

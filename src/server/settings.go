@@ -74,6 +74,11 @@ type SiteSettings struct {
 	// for a new one before it ends; a link opened in a tab of its own ends with it.
 	PreviewLinkGuestMinutes int `json:"previewLinkGuestMinutes"`
 	PreviewLinkUserMinutes  int `json:"previewLinkUserMinutes"`
+	// ShareLinkGuestMinutes and ShareLinkUserMinutes are the longest a share link of a live session may work (the time chosen
+	// in the Share popover, with the time added), in minutes, from 10 to 10080 (7 days); 0 means the built-in 60 (guest: 1
+	// hour) and 10080 (signed in: 7 days, as long as a sign-in lasts).
+	ShareLinkGuestMinutes int `json:"shareLinkGuestMinutes"`
+	ShareLinkUserMinutes  int `json:"shareLinkUserMinutes"`
 	// PreviewOff switches the Preview pane off for everyone, and PreviewGuestsOff for visitors who are not signed in:
 	// the pane shows pages written by visitors on this site's domain, so abuse can be stopped here without a deploy.
 	PreviewOff       bool `json:"previewOff"`
@@ -203,6 +208,11 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	for name, m := range map[string]int{"guests": s.PreviewLinkGuestMinutes, "signed-in users": s.PreviewLinkUserMinutes} {
 		if m != 0 && (m < minPreviewLinkMinutes || m > maxPreviewLinkMinutes) {
 			return s, fmt.Errorf("the time a preview link works for %s must be between %d and %d minutes (or empty)", name, minPreviewLinkMinutes, maxPreviewLinkMinutes)
+		}
+	}
+	for name, m := range map[string]int{"guests": s.ShareLinkGuestMinutes, "signed-in users": s.ShareLinkUserMinutes} {
+		if m != 0 && (m < minShareLinkMinutes || m > maxShareLinkMinutes) {
+			return s, fmt.Errorf("the longest a share link works for %s must be between %d and %d minutes (or empty)", name, minShareLinkMinutes, maxShareLinkMinutes)
 		}
 	}
 	if s.DBCapacityMB != 0 && (s.DBCapacityMB < minDBCapacityMB || s.DBCapacityMB > maxDBCapacityMB) {
@@ -448,6 +458,9 @@ type publicSettings struct {
 	PreviewGuestsOff bool `json:"previewGuestsOff"`
 	// the largest file the editor opens, in MB (the effective number: 16 when none is set)
 	MaxEditorFileMB int `json:"maxEditorFileMB"`
+	// ShareMaxGuestMinutes and ShareMaxUserMinutes are the longest a share link works (SiteSettings.ShareLinkGuestMinutes)
+	ShareMaxGuestMinutes int `json:"shareMaxGuestMinutes"`
+	ShareMaxUserMinutes  int `json:"shareMaxUserMinutes"`
 	// the models that are switched off, and the one visitors start with (empty:
 	// the built-in choice); model-choice.js reads them
 	DisabledModels []string `json:"disabledModels"`
@@ -612,6 +625,26 @@ const (
 	defaultPreviewLinkSignedIn = 180 // a signed-in user: 3 hours
 )
 
+// the longest a share link works, in minutes: the least and the most the admin may set, and what it is when nothing is set
+const (
+	minShareLinkMinutes      = 10
+	maxShareLinkMinutes      = 10080
+	defaultShareLinkGuest    = 60    // a guest: 1 hour
+	defaultShareLinkSignedIn = 10080 // a signed-in user: 7 days, as long as a sign-in lasts
+)
+
+// shareLinkMax is the longest a share link works in force for a guest or a signed-in user: the one set, or the built-in time.
+func (s SiteSettings) shareLinkMax(guest bool) int {
+	m, def := s.ShareLinkUserMinutes, defaultShareLinkSignedIn
+	if guest {
+		m, def = s.ShareLinkGuestMinutes, defaultShareLinkGuest
+	}
+	if m < minShareLinkMinutes || m > maxShareLinkMinutes {
+		m = def
+	}
+	return m
+}
+
 // previewLinkLife is how long a preview link works in force for a guest or a signed-in user: the one set, or the built-in time.
 func (s SiteSettings) previewLinkLife(guest bool) time.Duration {
 	m, def := s.PreviewLinkUserMinutes, defaultPreviewLinkSignedIn
@@ -642,24 +675,26 @@ func (s SiteSettings) public() publicSettings {
 		models = []string{}
 	}
 	return publicSettings{
-		ColorOfTheDay:     s.ColorOfTheDay,
-		Announcement:      s.Announcement,
-		Maintenance:       s.Maintenance,
-		DisabledLanguages: langs,
-		GenieDisabled:     s.Genie.Disabled,
-		PreviewOff:        s.PreviewOff,
-		PreviewGuestsOff:  s.PreviewGuestsOff,
-		MaxEditorFileMB:   s.maxEditorFileMB(),
-		DisabledModels:    models,
-		CustomModels:      s.Genie.publicCustomModels(),
-		DefaultModel:      s.Genie.DefaultModel,
-		FeaturedModels:    append([]string{}, s.Genie.FeaturedModels...),
-		GenieContext:      s.Genie.context(),
-		AgentEnabled:      !s.Genie.AgentDisabled && !s.Genie.Disabled,
-		AgentAutoOff:      s.Genie.AgentAutoOff,
-		AgentRiskyOff:     s.Genie.AgentRiskyOff,
-		AgentOnPractice:   s.Genie.AgentOnPractice,
-		AgentMaxSteps:     s.Genie.agentMaxSteps(),
+		ColorOfTheDay:        s.ColorOfTheDay,
+		Announcement:         s.Announcement,
+		Maintenance:          s.Maintenance,
+		DisabledLanguages:    langs,
+		GenieDisabled:        s.Genie.Disabled,
+		PreviewOff:           s.PreviewOff,
+		PreviewGuestsOff:     s.PreviewGuestsOff,
+		MaxEditorFileMB:      s.maxEditorFileMB(),
+		ShareMaxGuestMinutes: s.shareLinkMax(true),
+		ShareMaxUserMinutes:  s.shareLinkMax(false),
+		DisabledModels:       models,
+		CustomModels:         s.Genie.publicCustomModels(),
+		DefaultModel:         s.Genie.DefaultModel,
+		FeaturedModels:       append([]string{}, s.Genie.FeaturedModels...),
+		GenieContext:         s.Genie.context(),
+		AgentEnabled:         !s.Genie.AgentDisabled && !s.Genie.Disabled,
+		AgentAutoOff:         s.Genie.AgentAutoOff,
+		AgentRiskyOff:        s.Genie.AgentRiskyOff,
+		AgentOnPractice:      s.Genie.AgentOnPractice,
+		AgentMaxSteps:        s.Genie.agentMaxSteps(),
 	}
 }
 
@@ -874,6 +909,12 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.previewLinkLife(false) != b.previewLinkLife(false) {
 		out = append(out, fmt.Sprintf("preview link works %d minutes for signed-in users", int(b.previewLinkLife(false).Minutes())))
+	}
+	if a.shareLinkMax(true) != b.shareLinkMax(true) {
+		out = append(out, fmt.Sprintf("share link works at most %d minutes for guests", b.shareLinkMax(true)))
+	}
+	if a.shareLinkMax(false) != b.shareLinkMax(false) {
+		out = append(out, fmt.Sprintf("share link works at most %d minutes for signed-in users", b.shareLinkMax(false)))
 	}
 	if a.maxEditorFileMB() != b.maxEditorFileMB() {
 		out = append(out, fmt.Sprintf("largest editor file %d MB", b.maxEditorFileMB()))

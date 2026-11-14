@@ -179,6 +179,13 @@ export class FireTTY {
                         if(optionMenu!==null) {
                             const SelectOption = (optionMenu.getElementsByClassName("list")[0] as HTMLSelectElement);
                             if (SelectOption !== null) {   //once
+                                // A page that joins or reloads says which language it has: when that is the one in use already,
+                                // nothing changes. Restarting the REPL for it would end the program and clear the terminal of
+                                // the owner, and a collaborator would find a new, empty one in place of what the owner has.
+                                if (SelectOption.value === d.Data) {
+                                    console.log("master is on this language already, not restarting.");
+                                    return;
+                                }
                                 SelectOption.value = d.Data;
                                 let event = new Event('change');
                                 SelectOption.dispatchEvent(event);

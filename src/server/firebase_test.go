@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"os"
 	"strings"
@@ -27,30 +26,22 @@ func firebaseEnv(t *testing.T, value string) {
 	})
 }
 
-// The built-in config is the production project and has to stay exactly what
-// it was: it is base64 in the source, which makes a typo easy to miss.
-func TestBuiltInFirebaseConfigIsTheProductionProject(t *testing.T) {
+// There is no built-in project: a server started without OPENREPL_FIREBASE_CONFIG serves no config of any project, and says so in
+// the console of the page, instead of quietly using the production one.
+func TestNoFirebaseConfigIsServedWithoutTheEnvironment(t *testing.T) {
 	firebaseEnv(t, "")
 	js := string(firebaseConfigJS())
-	if _, err := base64.StdEncoding.DecodeString(builtinFirebaseConfig); err != nil {
-		t.Fatalf("the built-in config is not valid base64: %v", err)
+	if !strings.Contains(js, "const firebaseconfig = null;") || !strings.Contains(js, "OPENREPL_FIREBASE_CONFIG") {
+		t.Errorf("config.js without a Firebase config:\n%s", js)
 	}
-	for _, want := range []string{
-		"const firebaseconfig = {",
-		`authDomain: "openrepl-app.firebaseapp.com"`,
-		`projectId: "openrepl-app"`,
-		`databaseURL: "https://openrepl-app-default-rtdb.firebaseio.com"`,
-	} {
-		if !strings.Contains(js, want) {
-			t.Errorf("the built-in config lacks %s:\n%s", want, js)
+	for _, leak := range []string{"openrepl-app", "AIza", "apiKey", "firebaseio.com"} {
+		if strings.Contains(js, leak) {
+			t.Errorf("a project is still built in: %q in\n%s", leak, js)
 		}
-	}
-	if !strings.Contains(js, `apiKey: "AIza`) {
-		t.Error("the built-in config has no api key")
 	}
 }
 
-func TestFirebaseConfigFromTheEnvironmentReplacesTheBuiltInOne(t *testing.T) {
+func TestFirebaseConfigFromTheEnvironmentIsServed(t *testing.T) {
 	firebaseEnv(t, `{"apiKey":"AIzaSyDevKey1234567890","authDomain":"my-dev.firebaseapp.com","projectId":"my-dev-project"}`)
 	js := string(firebaseConfigJS())
 	if strings.Contains(js, "openrepl-app") {
@@ -77,22 +68,5 @@ func TestAWrongFirebaseConfigStopsTheServerFromStarting(t *testing.T) {
 	firebaseEnv(t, "")
 	if err := o.Validate(); err != nil {
 		t.Fatalf("no config: %v", err)
-	}
-}
-
-// The built-in config is base64 of a snippet. Giving that very text to
-// OPENREPL_FIREBASE_CONFIG has to work, and has to give the same project.
-func TestTheBuiltInConfigIsAcceptedInTheEnvironment(t *testing.T) {
-	firebaseEnv(t, builtinFirebaseConfig)
-	cfg, set, err := utils.FirebaseConfigFromEnv()
-	if err != nil || !set {
-		t.Fatalf("%v %v", set, err)
-	}
-	if cfg["projectId"] != "openrepl-app" || cfg["authDomain"] != "openrepl-app.firebaseapp.com" ||
-		cfg["databaseURL"] != "https://openrepl-app-default-rtdb.firebaseio.com" || !strings.HasPrefix(cfg["apiKey"], "AIza") {
-		t.Fatalf("%v", cfg)
-	}
-	if js := string(firebaseConfigJS()); !strings.Contains(js, `"projectId": "openrepl-app"`) {
-		t.Fatalf("%s", js)
 	}
 }

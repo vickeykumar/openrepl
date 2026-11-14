@@ -473,25 +473,18 @@ func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
     }
 }
 
-// builtinFirebaseConfig is the production Firebase project's web config, used
-// unless OPENREPL_FIREBASE_CONFIG names another one.
-const builtinFirebaseConfig = "CmNvbnN0IGZpcmViYXNlY29uZmlnID0gewogIGFwaUtleTogIkFJemFTeUFTZ0FhUnY2eVhV" +
-	"SlFWY0hhQV9sUkZWTXk5QVlaZVJscyIsCiAgYXV0aERvbWFpbjogIm9wZW5yZXBsLWFwcC5m" +
-	"aXJlYmFzZWFwcC5jb20iLAogIHByb2plY3RJZDogIm9wZW5yZXBsLWFwcCIsCiAgZGF0YWJh" +
-	"c2VVUkw6ICJodHRwczovL29wZW5yZXBsLWFwcC1kZWZhdWx0LXJ0ZGIuZmlyZWJhc2Vpby5j" +
-	"b20iCn07Cgo="
+// noFirebaseConfig is what /config.js says when the server has no Firebase config: nothing of any project, and a line in the
+// console of the page that says what to do. The pages that sign in or share a session cannot work without one.
+const noFirebaseConfig = "\nconst firebaseconfig = null;\nconsole.error(\"OpenREPL: this server has no Firebase config. Set OPENREPL_FIREBASE_CONFIG (README, Environment).\");\n\n"
 
-// firebaseConfigJS is the part of config.js that defines `firebaseconfig`.
+// firebaseConfigJS is the part of config.js that defines `firebaseconfig`: the one OPENREPL_FIREBASE_CONFIG names. There is no
+// built-in project: a server started without one must not quietly use somebody else's (the production project's), so what it
+// serves says plainly that there is none.
 func firebaseConfigJS() []byte {
 	if js, ok := utils.FirebaseConfigJS(); ok {
 		return js
 	}
-	decoded, err := base64.StdEncoding.DecodeString(builtinFirebaseConfig)
-	if err != nil {
-		log.Println("Error: decoding the built-in firebase config: ", err)
-		return nil
-	}
-	return decoded
+	return []byte(noFirebaseConfig)
 }
 
 // serverTitleVariables returns the title variables for one connection. The

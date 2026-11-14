@@ -659,7 +659,7 @@ The server-side settings come from environment variables, and gotty can load the
 | `OPENREPL_LANDLOCK` | The filesystem sandbox of the REPLs (LLD 14): `auto` (the default) applies it where the kernel has Landlock and says in the log and on the admin health page where it does not, `off` switches it off, `require` refuses to start a REPL without it. | |
 | `OPENREPL_NET_ISOLATION` | The private network of a workspace for REPLs that have no kernel network namespace of their own (LLD 16): `auto` (the default) turns it on where a start-up probe passes and says in the log and on the admin health page where it does not, `off` switches it off, `require` refuses to start a REPL without it. | |
 | `OPENREPL_TMP_MAX_AGE` | A duration such as `1h`: the server deletes from `/tmp` what nobody has touched for that long. The Docker image sets `1h`. Not set: never. | |
-| `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Default: the built-in production project. See below. | |
+| `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Required for sign-in, shared sessions and the shared editor: there is no built-in project, and a server without it says so in its log and in the console of the page. See below. | |
 | `OPENREPL_ENV` | `dev` or `production` (the default). Dev shows the values of these settings in the start-up log; production only says which are set. | |
 
 The environment wins over the file. A variable that is empty counts as not set, so a half-filled `.env` does not switch the file off. The file is looked for in `/opt/gotty/.gitconfig`, then `~/.gitconfig`, then `/etc/.gitconfig`, and only the first one that exists is read.
@@ -726,7 +726,7 @@ Sign-in goes through Firebase, so to test it without touching the production pro
 
    - **The snippet exactly as the console shows it** (`const firebaseConfig = { apiKey: "...", ... };`, with or without the first line). Nothing in it is run; only the `key: "value"` pairs are read.
    - **JSON on one line:** `{"apiKey":"AIza...","authDomain":"my-openrepl-dev.firebaseapp.com","projectId":"my-openrepl-dev","databaseURL":"https://my-openrepl-dev-default-rtdb.firebaseio.com"}`.
-   - **The base64 of either**, which has no quotes in it. The server's own built-in config is kept in this form, base64 of the snippet, so the same text works here. To make it, paste the snippet into a file and run `base64 < firebase-dev.txt | tr -d '\n'`.
+   - **The base64 of either**, which has no quotes in it. To make it, paste the snippet into a file and run `base64 < firebase-dev.txt | tr -d '\n'`.
 
    ```bash
    # ~/.env

@@ -803,10 +803,8 @@ func configSummary(dev bool) string {
 	switch fb, set, err := FirebaseConfigFromEnv(); {
 	case err != nil:
 		fmt.Fprintf(&b, "; firebase: INVALID (%s)", err.Error())
-	case !set && dev:
-		b.WriteString("; firebase: the built-in project, which is the production one (set " + EnvFirebaseConfig + " to use a development project)")
 	case !set:
-		b.WriteString("; firebase: the built-in project")
+		b.WriteString("; firebase: NOT SET (sign-in, shared sessions and the shared editor do not work: set " + EnvFirebaseConfig + ")")
 	case dev:
 		obj, _ := json.Marshal(fb)
 		fmt.Fprintf(&b, "; firebase: %s (from env)", obj)

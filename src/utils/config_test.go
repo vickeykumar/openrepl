@@ -466,11 +466,11 @@ func TestFirebaseConfigAcceptsAnEmulatorStyleDatabaseURL(t *testing.T) {
 
 func TestSummaryFirebase(t *testing.T) {
 	settings(t, nil, nil)
-	if got := configSummary(false); !strings.Contains(got, "firebase: the built-in project") || strings.Contains(got, "production one") {
-		t.Errorf("production, unset: %s", got)
-	}
-	if got := configSummary(true); !strings.Contains(got, "the production one") || !strings.Contains(got, EnvFirebaseConfig) {
-		t.Errorf("dev, unset should say that this is the production project: %s", got)
+	// no built-in project: an unset config is said loudly, in production and in dev
+	for _, dev := range []bool{false, true} {
+		if got := configSummary(dev); !strings.Contains(got, "firebase: NOT SET") || !strings.Contains(got, EnvFirebaseConfig) || strings.Contains(got, "built-in") {
+			t.Errorf("dev=%v, unset: %s", dev, got)
+		}
 	}
 
 	settings(t, map[string]string{EnvFirebaseConfig: devFirebase}, nil)
