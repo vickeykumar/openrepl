@@ -85,7 +85,10 @@ $(function() {
         console.log("is silent change: ", is_silent, event);
         // Set the language in the Firebase object
         // This is a preference per editor. Not by a collaborator of a session that is over: that would bring back a record of it.
-        if (!(window.OwnerAway && window.OwnerAway.active())) currentEditorValue.update({
+        // A collaborator says nothing of its language until it has the owner's (the first record of the session is read and applied): what
+        // its page holds before is the picker's first choice, and the owner would follow it.
+        var mayTell = (typeof isMaster !== "function" || isMaster()) || window.__sessionLangReady;
+        if (mayTell && !(window.OwnerAway && window.OwnerAway.active())) currentEditorValue.update({
             lang: {
               data: this.value,
               silent: is_silent // trigger event only when told
@@ -132,6 +135,13 @@ $(function() {
         // Somebody changed the lang. Hey, we have to update it in our editor too!
         var firstLang = true;
         currentEditorValue.child("lang").on("value", function (r) {
+            try {
+                applySessionLanguage(r);
+            } finally {
+                window.__sessionLangReady = true; // from here on a collaborator's change of language is its own
+            }
+        });
+        function applySessionLanguage(r) {
             let langdata = r.val();
             // The owner's page opens in its own language (the one chosen last, 32-remember-language.js) and tells the session
             // about it: what the record held when the page opened is from before, and must not replace it. Later changes,
@@ -161,7 +171,7 @@ $(function() {
                     window.__languageFromSession = false;
                 }
             }
-        });
+        }
 
         // Hide the spinner
         $("#loader").fadeOut();

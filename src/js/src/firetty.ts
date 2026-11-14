@@ -110,7 +110,7 @@ export class FireTTY {
                 this.lastrestarted = FireTTY.setngetrestart();
                 // a collaborator's page says nothing of its language until it has the owner's (main.ts, ownerLanguage): what it
                 // says first is the picker's first choice, and the owner would restart for it
-                if (!this.master && !(window as any).__sessionLangSynced) return;
+                if (!this.master && !(window as any).__sessionLangReady) return;
                 if (!this.master && FireTTY.applyingchanges) {
                     // no notification back as i am applying my notification change here.
                     console.log("slave applying its own change request...")
