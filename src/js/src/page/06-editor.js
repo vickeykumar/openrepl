@@ -164,6 +164,8 @@ $(function() {
 
         // Initialize the ACE editor
         editor = ace.edit("editor");
+        // a collaborator of a session that is over only reads (30-owner-presence.js)
+        if (window.OwnerAway && window.OwnerAway.over()) editor.setReadOnly(true);
         try { editor.textInput.getElement().setAttribute("aria-label", "Code editor"); } catch (e) {} // T15
         editor.setTheme(getTheme(), function () { if (window.applyIdeTheme) window.applyIdeTheme(editor, getTheme()); });
         editor.setFontSize("14px");

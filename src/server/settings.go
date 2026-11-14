@@ -79,6 +79,9 @@ type SiteSettings struct {
 	// hour) and 10080 (signed in: 7 days, as long as a sign-in lasts).
 	ShareLinkGuestMinutes int `json:"shareLinkGuestMinutes"`
 	ShareLinkUserMinutes  int `json:"shareLinkUserMinutes"`
+	// SessionCleanupHours is how often the server removes the shared sessions that ended, ran out or were left in the Firebase
+	// Realtime Database (session_cleanup.go), from 1 to 720 hours; 0 means the built-in 24 (daily).
+	SessionCleanupHours int `json:"sessionCleanupHours"`
 	// PreviewOff switches the Preview pane off for everyone, and PreviewGuestsOff for visitors who are not signed in:
 	// the pane shows pages written by visitors on this site's domain, so abuse can be stopped here without a deploy.
 	PreviewOff       bool `json:"previewOff"`
@@ -209,6 +212,9 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 		if m != 0 && (m < minPreviewLinkMinutes || m > maxPreviewLinkMinutes) {
 			return s, fmt.Errorf("the time a preview link works for %s must be between %d and %d minutes (or empty)", name, minPreviewLinkMinutes, maxPreviewLinkMinutes)
 		}
+	}
+	if s.SessionCleanupHours != 0 && (s.SessionCleanupHours < minSessionCleanupHours || s.SessionCleanupHours > maxSessionCleanupHours) {
+		return s, fmt.Errorf("the time between two cleanups of shared sessions must be between %d and %d hours (or empty)", minSessionCleanupHours, maxSessionCleanupHours)
 	}
 	for name, m := range map[string]int{"guests": s.ShareLinkGuestMinutes, "signed-in users": s.ShareLinkUserMinutes} {
 		if m != 0 && (m < minShareLinkMinutes || m > maxShareLinkMinutes) {
@@ -633,6 +639,22 @@ const (
 	defaultShareLinkSignedIn = 10080 // a signed-in user: 7 days, as long as a sign-in lasts
 )
 
+// how often the server cleans up the shared sessions, in hours
+const (
+	minSessionCleanupHours     = 1
+	maxSessionCleanupHours     = 720
+	defaultSessionCleanupHours = 24
+)
+
+// sessionCleanupInterval is the time between two cleanups in force: the one set, or a day.
+func (s SiteSettings) sessionCleanupInterval() time.Duration {
+	h := s.SessionCleanupHours
+	if h < minSessionCleanupHours || h > maxSessionCleanupHours {
+		h = defaultSessionCleanupHours
+	}
+	return time.Duration(h) * time.Hour
+}
+
 // shareLinkMax is the longest a share link works in force for a guest or a signed-in user: the one set, or the built-in time.
 func (s SiteSettings) shareLinkMax(guest bool) int {
 	m, def := s.ShareLinkUserMinutes, defaultShareLinkSignedIn
@@ -909,6 +931,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.previewLinkLife(false) != b.previewLinkLife(false) {
 		out = append(out, fmt.Sprintf("preview link works %d minutes for signed-in users", int(b.previewLinkLife(false).Minutes())))
+	}
+	if a.sessionCleanupInterval() != b.sessionCleanupInterval() {
+		out = append(out, fmt.Sprintf("shared session cleanup every %d hours", int(b.sessionCleanupInterval().Hours())))
 	}
 	if a.shareLinkMax(true) != b.shareLinkMax(true) {
 		out = append(out, fmt.Sprintf("share link works at most %d minutes for guests", b.shareLinkMax(true)))

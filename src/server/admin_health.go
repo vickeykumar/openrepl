@@ -245,6 +245,10 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	} else {
 		add("Firebase", healthFail, "no Firebase config: sign-in, shared sessions and the shared editor do not work. Set OPENREPL_FIREBASE_CONFIG")
 	}
+	{
+		st, detail := sessionCleanupStatus()
+		add("Shared session cleanup", st, detail)
+	}
 	switch st := currentSettingsStoreStatus(); {
 	case st.Healthy:
 		add("Settings store", healthOK, st.Detail)

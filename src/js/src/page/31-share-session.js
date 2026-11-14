@@ -113,8 +113,16 @@ function addTime() {
 function wipe(id) {
   if (!id) return Promise.resolve();
   var d = db();
-  var jobs = [d.ref("editor_values/" + id).remove(), d.ref("file-browser/" + id).remove()];
-  try { if (window.getrepl_firebasedbref) jobs.push(window.getrepl_firebasedbref().child(id).remove()); } catch (e) { /* not essential */ }
+  var jobs;
+  window.__sessionWipe = true; // a collaborator's page writes nothing once the session is over, except this (30-owner-presence.js)
+  try {
+    jobs = [d.ref("editor_values/" + id).remove(), d.ref("file-browser/" + id).remove(), d.ref("chat-list/" + id).remove()];
+    if (window.getrepl_firebasedbref) jobs.push(window.getrepl_firebasedbref().child(id).remove());
+  } catch (e) {
+    jobs = jobs || [];
+  } finally {
+    window.__sessionWipe = false;
+  }
   return Promise.all(jobs.map(function (p) { return p.catch(function () {}); }));
 }
 

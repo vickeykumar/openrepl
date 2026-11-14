@@ -5,7 +5,7 @@
 // was opened, or the session has ended, the collaborator is told once in a popup, and a bar stays above the editor.
 // Nothing is stored about who the owner is: only whether the page is open, and when it last said so.
 
-window.OwnerAway = { active: active, hostSession: hostSession, stopHosting: stopHosting, watch: watch, beforeInit: beforeInit, state: function () { return state; } };
+window.OwnerAway = { over: over, active: active, hostSession: hostSession, stopHosting: stopHosting, watch: watch, beforeInit: beforeInit, state: function () { return state; } };
 
 var HEARTBEAT_MS = 25000; // the owner's page says it is here this often
 var GRACE_MS = 8000; // offline this long before a collaborator is told (a reload of the owner's page is not announced)
@@ -16,6 +16,8 @@ var state = { away: false, ended: false, kind: "", seenOnline: false, dismissed:
 var warned = false;
 
 function active() { return state.away || state.ended; }
+// the session is over (ended, expired, or gone): a collaborator's page then writes nothing
+function over() { return !!state.ended; }
 function say(text, type) { if (window.notify) window.notify(text, { type: type || "info", timeout: 4000 }); }
 function stamp() { return firebase.database.ServerValue.TIMESTAMP; }
 
@@ -103,6 +105,7 @@ function setOver(kind) {
   clearTimeout(graceTimer);
   graceTimer = 0;
   state.dismissed = false;
+  lockPage();
   drawBar();
   showDialog();
   // the owner's page takes the records away when it can; this page does it too a little later, so that nothing of a link that
@@ -201,6 +204,7 @@ function showEnded() {
   if (state.ended) return;
   state.ended = true;
   state.kind = "ended";
+  lockPage();
   drawBar();
   showDialog();
 }
@@ -378,6 +382,60 @@ function dlgButtonBar(label, onClick) {
   b.textContent = label;
   b.addEventListener("click", onClick);
   return b;
+}
+
+// When the session is over the collaborator's page can only read. The editor is read-only; the terminal and the peer chat send
+// nothing (firetty.ts and the chat widget ask over()); the owner's files cannot be reached (below); the page says so to the eye.
+function lockPage() {
+  document.body.classList.add("session-over");
+  var ed = document.getElementById("editor");
+  if (ed && ed.env && ed.env.editor) ed.env.editor.setReadOnly(true);
+  installWriteGuard();
+}
+
+var guarded = false;
+function blockedUrl(u) {
+  var s = typeof u === "string" ? u : (u && u.url) || "";
+  return /\/(ws_filebrowser|upload_file)(\?|$)/.test(s);
+}
+// A collaborator's page reaches the owner's files through the file browser (and uploads): not any more once the session is over.
+function installWriteGuard() {
+  if (guarded) return;
+  guarded = true;
+  var f = window.fetch;
+  if (f) {
+    window.fetch = function (input) {
+      if (over() && blockedUrl(input)) return Promise.reject(new TypeError("This session has ended."));
+      return f.apply(this, arguments);
+    };
+  }
+  // and every write to Firebase from this page (the editor, the terminal, the files and tabs, the chat): the wipe of the session
+  // alone is let through
+  try {
+    var R = firebase.database.Reference.prototype;
+    ["set", "update", "push", "remove", "transaction", "setWithPriority"].forEach(function (name) {
+      var orig = R[name];
+      if (typeof orig !== "function") return;
+      R[name] = function () {
+        if (over() && !window.__sessionWipe) return name === "push" ? this : Promise.resolve();
+        return orig.apply(this, arguments);
+      };
+    });
+  } catch (e) { /* the page's own checks above still hold */ }
+  var open = XMLHttpRequest.prototype.open;
+  var send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    this.__sessionOverBlocked = blockedUrl(url);
+    return open.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function () {
+    if (over() && this.__sessionOverBlocked) {
+      var x = this;
+      setTimeout(function () { x.dispatchEvent(new Event("error")); }, 0);
+      return undefined;
+    }
+    return send.apply(this, arguments);
+  };
 }
 
 // Run is off for a collaborator while the owner is away: the terminal it would run in is the owner's.

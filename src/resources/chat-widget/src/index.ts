@@ -393,6 +393,14 @@ const setupFBListener = () => {
        firebase.initializeApp(config.firebaseconfig);
     }
     chatfirebasedbref = window.firebase.database().ref(CHAT_LIST_KEY).child(config.dbpath);
+    // a collaborator's page of a session that is over (30-owner-presence.js) writes nothing to the peer chat
+    const chatRef: any = chatfirebasedbref;
+    const sendToChat = chatRef.push.bind(chatRef);
+    chatRef.push = (value?: any, onComplete?: any) => {
+      const w: any = window;
+      if (w.OwnerAway && w.OwnerAway.over && w.OwnerAway.over()) return Promise.resolve(chatRef);
+      return sendToChat(value, onComplete);
+    };
     
     // firebase callback
     chatfirebasedbref.on("child_added", (data: firebase.database.DataSnapshot | null, prevChildKey?: string | undefined) => {

@@ -323,6 +323,8 @@ export class FireTTY {
     };
 
     dboutput(type: string, data: any) {
+            // a collaborator's page of a session that is over sends nothing (30-owner-presence.js)
+            if (!this.master && (window as any).OwnerAway && (window as any).OwnerAway.over && (window as any).OwnerAway.over()) return;
     		//console.log("db output event: ", type, data);
 	    	this.firebasedbref.push ({
 			   eventT: type,

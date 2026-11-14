@@ -64,11 +64,26 @@ test("End session tells the collaborators, and a new Share makes a new link", as
   const first = await readLink(o.page);
   const v = await viewer(browser, first);
   await expect.poll(() => v.page.evaluate(() => window.OwnerAway.state().seenOnline), { timeout: 30 * 1000 }).toBe(true);
+  const id = new URL(first).hash.slice(1);
+  // chat and terminal records exist while the session lives
+  await v.page.evaluate((i) => firebase.database().ref("chat-list/" + i).push({ eventT: "join", uid: "x", timestamp: Date.now() }), id);
   await o.page.locator("#share-end").click();
   await o.page.getByRole("button", { name: "End session" }).last().click();
   await expect(dialog(v.page)).toBeVisible({ timeout: 30 * 1000 });
   await expect(dialog(v.page)).toContainText("The owner ended this session");
   await expect(dialog(v.page).getByRole("button", { name: "Copy it to my own editor" })).toBeVisible();
+  // the collaborator's page can write nothing now: the editor is read-only, Firebase and the owner's files are shut
+  await v.page.keyboard.press("Escape");
+  expect(await v.page.evaluate(() => document.getElementById("editor").env.editor.getReadOnly())).toBe(true);
+  const dropped = await v.page.evaluate(async (i) => {
+    const ref = firebase.database().ref("chat-list/" + i);
+    await ref.push({ eventT: "message", text: "after the end" });
+    await firebase.database().ref("editor_values/" + i + "/content").set("changed after the end");
+    let files = "reached";
+    try { await fetch(preprocessurl("/ws_filebrowser?q=load")); } catch (e) { files = "refused"; }
+    return files;
+  }, id);
+  expect(dropped).toBe("refused");
   // the owner's page loads again and gets a link of its own, not the ended one
   await expect.poll(async () => (await o.page.evaluate(() => (document.getElementById("share-it") || {}).value || "").catch(() => "")), { timeout: 60 * 1000 }).not.toBe(first);
   await o.page.waitForFunction(() => window.ShareSession && window.EditorTabs);
@@ -82,11 +97,14 @@ test("End session tells the collaborators, and a new Share makes a new link", as
   await expect(dialog(late.page)).toContainText("This shared session has ended");
   await expect(dialog(late.page).getByRole("button", { name: "Start my own editor" })).toBeVisible();
   // everything of the session is gone from Firebase: no code, no record
-  const left = await late.page.evaluate(async (id) => {
-    const snap = await firebase.database().ref("editor_values/" + id).once("value");
-    return snap.exists();
-  }, new URL(first).hash.slice(1));
-  expect(left).toBe(false);
+  await expect.poll(() => late.page.evaluate(async (id) => {
+    const left = [];
+    for (const path of ["editor_values", "file-browser", "openrepl", "chat-list"]) {
+      const snap = await firebase.database().ref(path + "/" + id).once("value");
+      if (snap.exists()) left.push(path);
+    }
+    return left;
+  }, id), { timeout: 40 * 1000 }).toEqual([]);
   await o.ctx.close();
   await v.ctx.close();
   await late.ctx.close();

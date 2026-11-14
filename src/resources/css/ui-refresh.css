@@ -2952,6 +2952,7 @@ body .xterm-helper-textarea:focus-visible { outline: none !important; }
 .popover__btn:hover { filter: brightness(1.07); }
 .popover__btn:disabled { opacity: 0.6; cursor: default; filter: none; }
 .popover__btn--danger { color: #f3b4ae; background: transparent; border: 1px solid #6b3434; }
+.session-over #file-browser, .session-over #terminal-div, .session-over #editor-tabs .etab__close { pointer-events: none; opacity: 0.6; }
 .share-session { margin-top: 12px; }
 .share-session[hidden] { display: none; }
 .share-session__row { display: flex; align-items: center; gap: 10px; }

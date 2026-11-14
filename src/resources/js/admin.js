@@ -1104,6 +1104,7 @@
         previewLinkUserMinutes: int(form.previewLifeUser.value),
         shareLinkGuestMinutes: int(form.shareLifeGuest.value),
         shareLinkUserMinutes: int(form.shareLifeUser.value),
+        sessionCleanupHours: int(form.sessionCleanup.value),
         previewOff: !form.previewOn.checked,
         previewGuestsOff: !form.previewGuests.checked,
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
@@ -1166,6 +1167,7 @@
         previewLinkUserMinutes: s.previewLinkUserMinutes || 0,
         shareLinkGuestMinutes: s.shareLinkGuestMinutes || 0,
         shareLinkUserMinutes: s.shareLinkUserMinutes || 0,
+        sessionCleanupHours: s.sessionCleanupHours || 0,
         previewOff: !!s.previewOff,
         previewGuestsOff: !!s.previewGuestsOff,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
@@ -1222,6 +1224,9 @@
       form.shareLifeUser = h('input', { type: 'number', class: 'field', id: 'f-share-life-user', min: '10', max: '10080', step: '1', placeholder: '10080', 'aria-label': 'Most minutes a share link works for signed-in users', oninput: update });
       form.shareLifeUser.value = settings.shareLinkUserMinutes || '';
       form.shareLifeUser.style.maxWidth = '9rem';
+      form.sessionCleanup = h('input', { type: 'number', class: 'field', id: 'f-session-cleanup', min: '1', max: '720', step: '1', placeholder: '24', 'aria-label': 'Hours between two cleanups of shared sessions', oninput: update });
+      form.sessionCleanup.value = settings.sessionCleanupHours || '';
+      form.sessionCleanup.style.maxWidth = '9rem';
       form.colour = colour.input; form.maint = maint.input; form.genie = genie.input;
       // the Preview pane (pages written by visitors, shown on this site's domain): off for all, or for guests only
       var previewOn = toggle('f-preview', !settings.previewOff, 'Preview available');
@@ -1633,7 +1638,8 @@
           row('Minutes a preview link works for guests', 'From 10 to 1440 (a day). Leave it empty for 60 (1 hour). A pane gets a new link by itself before the old one ends; a link opened in a tab of its own, or copied, stops at its end. A change applies to links made after it.', form.previewLifeGuest),
           row('Minutes a preview link works for signed-in users', 'From 10 to 1440. Leave it empty for 180 (3 hours).', form.previewLifeUser),
           row('Longest a share link works for guests (minutes)', 'From 10 to 10080 (7 days). Leave it empty for 60 (1 hour). The owner chooses the time in the Share popover and may add time up to this: guests 30 minutes or 1 hour; signed-in users also 4 hours, 24 hours and 7 days, as far as this allows.', form.shareLifeGuest),
-          row('Longest a share link works for signed-in users (minutes)', 'From 10 to 10080 (7 days, as long as a sign-in lasts). Leave it empty for 10080.', form.shareLifeUser) ]),
+          row('Longest a share link works for signed-in users (minutes)', 'From 10 to 10080 (7 days, as long as a sign-in lasts). Leave it empty for 10080.', form.shareLifeUser),
+          row('Hours between two cleanups of shared sessions', 'From 1 to 720. Leave it empty for 24 (daily). The server removes, from Firebase, the sessions whose link ended or ran out, and sessions that have no end and no owner online for a whole interval (the terminal, the code, the chat and the files records). It needs the service account key of the project (OPENREPL_FIREBASE_ADMIN, or OPENREPL_FIRESTORE_CREDENTIALS); the Health page says if it is missing.', form.sessionCleanup) ]),
         card('Languages', 'Untick a language that is broken. The picker greys it out and its terminals refuse to start with a message; terminals that are already open keep running. Admins can still start it, to test a fix.', langGrid),
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),
