@@ -2953,6 +2953,11 @@ body .xterm-helper-textarea:focus-visible { outline: none !important; }
 .popover__btn:disabled { opacity: 0.6; cursor: default; filter: none; }
 .popover__btn--danger { color: #f3b4ae; background: transparent; border: 1px solid #6b3434; }
 .session-over #file-browser, .session-over #terminal-div, .session-over #editor-tabs .etab__close { pointer-events: none; opacity: 0.6; }
+.share-code__expiry { display: flex; align-items: center; gap: 10px; margin: 8px 0 0; }
+.share-code__expiry label { font-size: 13px; color: var(--muted-1); white-space: nowrap; }
+.share-code__date { flex: 1; min-width: 0; height: 34px; padding: 0 10px; font: inherit; font-size: 13.5px; color: var(--paper); background: var(--ink-700); border: 1px solid var(--ink-600); border-radius: 8px; color-scheme: dark; }
+.share-code__date:disabled { opacity: 0.6; }
+.share-code__ends { margin: 8px 0 0; font-size: 12.5px; color: var(--accent-color); }
 .share-session { margin-top: 12px; }
 .share-session[hidden] { display: none; }
 .share-session__row { display: flex; align-items: center; gap: 10px; }

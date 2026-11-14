@@ -82,6 +82,9 @@ type SiteSettings struct {
 	// SessionCleanupHours is how often the server removes the shared sessions that ended, ran out or were left in the Firebase
 	// Realtime Database (session_cleanup.go), from 1 to 720 hours; 0 means the built-in 24 (daily).
 	SessionCleanupHours int `json:"sessionCleanupHours"`
+	// SnippetMaxDays is the longest a code link (/s/<id>) may work from the day it is made, in days, from 1 to 365; 0 means the
+	// built-in 30 (a month). It is the latest day the calendar offers, and the day it starts on (snippets.go).
+	SnippetMaxDays int `json:"snippetMaxDays"`
 	// PreviewOff switches the Preview pane off for everyone, and PreviewGuestsOff for visitors who are not signed in:
 	// the pane shows pages written by visitors on this site's domain, so abuse can be stopped here without a deploy.
 	PreviewOff       bool `json:"previewOff"`
@@ -212,6 +215,9 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 		if m != 0 && (m < minPreviewLinkMinutes || m > maxPreviewLinkMinutes) {
 			return s, fmt.Errorf("the time a preview link works for %s must be between %d and %d minutes (or empty)", name, minPreviewLinkMinutes, maxPreviewLinkMinutes)
 		}
+	}
+	if s.SnippetMaxDays != 0 && (s.SnippetMaxDays < minSnippetMaxDays || s.SnippetMaxDays > maxSnippetMaxDays) {
+		return s, fmt.Errorf("the longest a code link works must be between %d and %d days (or empty)", minSnippetMaxDays, maxSnippetMaxDays)
 	}
 	if s.SessionCleanupHours != 0 && (s.SessionCleanupHours < minSessionCleanupHours || s.SessionCleanupHours > maxSessionCleanupHours) {
 		return s, fmt.Errorf("the time between two cleanups of shared sessions must be between %d and %d hours (or empty)", minSessionCleanupHours, maxSessionCleanupHours)
@@ -467,6 +473,8 @@ type publicSettings struct {
 	// ShareMaxGuestMinutes and ShareMaxUserMinutes are the longest a share link works (SiteSettings.ShareLinkGuestMinutes)
 	ShareMaxGuestMinutes int `json:"shareMaxGuestMinutes"`
 	ShareMaxUserMinutes  int `json:"shareMaxUserMinutes"`
+	// SnippetMaxDays is the most days a code link may work (SiteSettings.SnippetMaxDays)
+	SnippetMaxDays int `json:"snippetMaxDays"`
 	// the models that are switched off, and the one visitors start with (empty:
 	// the built-in choice); model-choice.js reads them
 	DisabledModels []string `json:"disabledModels"`
@@ -639,6 +647,22 @@ const (
 	defaultShareLinkSignedIn = 10080 // a signed-in user: 7 days, as long as a sign-in lasts
 )
 
+// the longest a code link works, in days
+const (
+	minSnippetMaxDays     = 1
+	maxSnippetMaxDays     = 365
+	defaultSnippetMaxDays = 30
+)
+
+// snippetMaxDays is the longest a code link works in force: the one set, or a month.
+func (s SiteSettings) snippetMaxDays() int {
+	d := s.SnippetMaxDays
+	if d < minSnippetMaxDays || d > maxSnippetMaxDays {
+		d = defaultSnippetMaxDays
+	}
+	return d
+}
+
 // how often the server cleans up the shared sessions, in hours
 const (
 	minSessionCleanupHours     = 1
@@ -707,6 +731,7 @@ func (s SiteSettings) public() publicSettings {
 		MaxEditorFileMB:      s.maxEditorFileMB(),
 		ShareMaxGuestMinutes: s.shareLinkMax(true),
 		ShareMaxUserMinutes:  s.shareLinkMax(false),
+		SnippetMaxDays:       s.snippetMaxDays(),
 		DisabledModels:       models,
 		CustomModels:         s.Genie.publicCustomModels(),
 		DefaultModel:         s.Genie.DefaultModel,
@@ -931,6 +956,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.previewLinkLife(false) != b.previewLinkLife(false) {
 		out = append(out, fmt.Sprintf("preview link works %d minutes for signed-in users", int(b.previewLinkLife(false).Minutes())))
+	}
+	if a.snippetMaxDays() != b.snippetMaxDays() {
+		out = append(out, fmt.Sprintf("code links work at most %d days", b.snippetMaxDays()))
 	}
 	if a.sessionCleanupInterval() != b.sessionCleanupInterval() {
 		out = append(out, fmt.Sprintf("shared session cleanup every %d hours", int(b.sessionCleanupInterval().Hours())))

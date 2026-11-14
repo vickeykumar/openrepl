@@ -248,6 +248,8 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	{
 		st, detail := sessionCleanupStatus()
 		add("Shared session cleanup", st, detail)
+		st, detail = snippetCleanupStatus()
+		add("Code link cleanup", st, detail)
 	}
 	switch st := currentSettingsStoreStatus(); {
 	case st.Healthy:

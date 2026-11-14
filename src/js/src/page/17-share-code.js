@@ -32,7 +32,32 @@ function onStarterCodeLoaded(lang) {
   applySharedSnippet();
 }
 
+// The day a new code link works until: the calendar (a date input) offers tomorrow up to today plus the most the admin allows, and
+// starts on a month from today, or on the most when that is shorter. Days are counted in UTC, as the server counts them
+// (server/snippets.go, snippetExpiryFor), so a day it offers is a day the server takes.
+function utcDay(offsetDays) {
+  var d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+function codeLinkMaxDays() {
+  var n = Number((window.site_settings || {}).snippetMaxDays);
+  return n > 0 ? n : 30;
+}
+function setupCodeLinkDate() {
+  var input = document.getElementById("code-link-until");
+  if (!input) return;
+  var max = codeLinkMaxDays();
+  input.min = utcDay(1);
+  input.max = utcDay(max);
+  input.value = utcDay(Math.min(30, max));
+  var hint = document.getElementById("code-link-until-hint");
+  if (hint) hint.textContent = "Chosen from tomorrow up to " + (max === 1 ? "1 day" : max + " days") + " (the most this site allows). " + (max >= 30 ? "A month is picked for you." : "The most is picked for you.");
+}
+window.setupCodeLinkDate = setupCodeLinkDate;
+
 $(function () {
+  setupCodeLinkDate();
   var params = new URLSearchParams(location.search);
   var id = params.get("s");
   if (id && /^[A-Za-z0-9]{8}$/.test(id) && isMaster()) {
@@ -69,7 +94,7 @@ $(function () {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lang: $("#optionlist").val(), code: code })
+      body: JSON.stringify({ lang: $("#optionlist").val(), code: code, expires: $("#code-link-until").val() || "" })
     })
       .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
       .then(function (res) {
@@ -78,6 +103,9 @@ $(function () {
           return;
         }
         $("#code-link").val(res.body.url);
+        var ends = $("#code-link-ends");
+        if (!ends.length) ends = $('<p class="share-code__ends" id="code-link-ends"></p>').insertAfter("#code-link-row");
+        ends.text(res.body.expires ? "Works until " + new Date(res.body.expires * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) + ". Then it says it has expired." : "");
         $("#code-link-row").prop("hidden", false);
         $("#code-link").trigger("focus").trigger("select");
         btn.textContent = "Create a new link";

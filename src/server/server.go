@@ -206,6 +206,7 @@ func (server *Server) Run(ctx context.Context, options ...RunOption) error {
 		return err
 	}
 	server.startSessionCleanup()
+	server.startSnippetCleanup()
 
 	go func() {
 		select {

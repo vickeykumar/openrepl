@@ -84,7 +84,7 @@ What the parts do, together:
 - **Hero and landing.** Language chips and cards (`pickLanguage`), the usage heading, the docker command copy and the request form.
 - **Genie nudge.** `setupGenieErrorNudge` watches terminal output for the first error.
 - **Language pages.** `langPageForRepl` and a `#optionlist` change handler move the address to the language's page with `history.replaceState` and update the title, hero and canonical link (variants without a page keep the address).
-- **Share-code links.** "Create code link" in the Share popover POSTs the editor content to `/snippet` and shows the link. On a page opened with `?s=<id>`, `applySharedSnippet` puts the saved code in the editor once the language's starter code has loaded, and says so in a notice.
+- **Share-code links.** "Create code link" in the Share popover POSTs the editor content and a day (`#code-link-until`, a date input: `min` tomorrow, `max` today plus the admin's most from `site_settings.snippetMaxDays`, value a month from today or the most when shorter, all counted in UTC like the server, `setupCodeLinkDate`) to `/snippet` and shows the link and "Works until ...". A link that has expired answers 410, and the notice says so. Test: `e2e/tests/code-link-expiry.spec.js`. On a page opened with `?s=<id>`, `applySharedSnippet` puts the saved code in the editor once the language's starter code has loaded, and says so in a notice.
 - **Accessibility helpers.** `syncTerminalTabsA11y` and arrow-key handling for the terminal tabs, the Esc-then-Tab way out of the editor and terminal (`moveFocusOutOf`), `describeCodeInputs`, and the Share popover's keyboard support.
 - **Empty Files panel.** `updateFilesEmptyState` (LLD 04).
 
