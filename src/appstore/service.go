@@ -52,17 +52,22 @@ const MaxOn = 40
 
 // App is an app that has been (or is being) installed on this site. One version of each, pinned when it was installed.
 type App struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	ID      string `json:"id"`
-	Kind    string `json:"kind"`
-	State   string `json:"state"`
-	Size    int64  `json:"size,omitempty"`
-	By      string `json:"by,omitempty"`
-	At      int64  `json:"at"`
-	Err     string `json:"err,omitempty"`
-	Log     string `json:"log,omitempty"`
-	Retried int64  `json:"retried,omitempty"`
+	Name     string  `json:"name"`
+	Version  string  `json:"version"`
+	ID       string  `json:"id"`
+	Kind     string  `json:"kind"`
+	State    string  `json:"state"`
+	Size     int64   `json:"size,omitempty"`
+	By       string  `json:"by,omitempty"`
+	At       int64   `json:"at"`
+	Err      string  `json:"err,omitempty"`
+	Log      string  `json:"log,omitempty"`
+	Retried  int64   `json:"retried,omitempty"`
+	Want     string  `json:"want,omitempty"`     // a version an admin picked
+	Node     string  `json:"node,omitempty"`     // the server the install ran on
+	LastUsed int64   `json:"lastUsed,omitempty"` // the last time a user switched it on
+	Packages int     `json:"packages,omitempty"` // what the solve brought with it
+	Download float64 `json:"download,omitempty"` // MB fetched for it
 }
 
 // Request is a user's ask for an app that is not on the safe list. One for each app: a second asker is added to it.
@@ -87,6 +92,10 @@ type Report struct {
 	Status    string   `json:"status"` // open, fixed, rejected
 	Answer    string   `json:"answer,omitempty"`
 	At        int64    `json:"at"`
+	Node      string   `json:"node,omitempty"` // the server the install failed on
+	Version   string   `json:"version,omitempty"`
+	Step      string   `json:"step,omitempty"` // what it stopped at
+	Seen      []string `json:"seen,omitempty"` // reporters that were told the answer
 }
 
 // Config is what the service is made of.
@@ -94,10 +103,13 @@ type Config struct {
 	Store     Store
 	KV        KV
 	Installer Installer
-	Apt       AptRunner       // installs the Debian packages an admin approved, nil for a node that does not
-	Safe      func() []string // the names a user may install without asking
-	LimitMB   func() int      // the most the store may use, 0 for no limit
-	Now       func() time.Time
+	Apt       AptRunner // installs the Debian packages an admin approved, nil for a node that does not
+	// Fetch gets a finished bundle from the gateway (a worker; see tarball.go). When it is nil, or fails, the node installs the
+	// bundle itself from conda-forge.
+	Fetch   func(ctx context.Context, id, dest string) error
+	Safe    func() []string // the names a user may install without asking
+	LimitMB func() int      // the most the store may use, 0 for no limit
+	Now     func() time.Time
 }
 
 // Service is the App Store of one server (the gateway or a standalone server holds the catalog; a worker only applies it).
@@ -111,9 +123,11 @@ type Service struct {
 
 // Job is an install that is going on.
 type Job struct {
-	Name  string
-	Step  string
-	Start time.Time
+	Name   string
+	Step   string
+	Index  int    // which of installSteps is going on
+	Detail string // what the solve found, for the step list
+	Start  time.Time
 }
 
 // New makes the service.
@@ -278,9 +292,24 @@ func cleanKind(k string) string {
 
 // ---- install -------------------------------------------------------------------------------------------------------------
 
+// installSteps are the stages of an install, in order; the page shows them as a list.
+var installSteps = []string{"Checked that it is allowed", "Resolved the dependencies", "Downloading and linking", "Checking that it works"}
+
 // Install starts the install of an app. A user may install the apps on the safe list; an admin any app. It returns at once: the
 // work goes on in the background (Job and Views tell how far it is). Installing an app that failed before is a try again.
 func (s *Service) Install(who, name, kind string, admin bool) error {
+	return s.install(who, name, kind, admin, "")
+}
+
+// InstallVersion installs a version that an admin picked (for an app whose newest version does not solve or does not work).
+func (s *Service) InstallVersion(who, name, kind, version string) error {
+	if !ValidVersion(version) {
+		return fmt.Errorf("%q is not a version", version)
+	}
+	return s.install(who, name, kind, true, version)
+}
+
+func (s *Service) install(who, name, kind string, admin bool, version string) error {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if !ValidName(name) {
 		return fmt.Errorf("%q is not a package name", name)
@@ -307,14 +336,14 @@ func (s *Service) Install(who, name, kind string, admin bool) error {
 	if limit := s.cfg.LimitMB(); limit > 0 && s.cfg.Store.Size() > int64(limit)<<20 {
 		return ErrFull
 	}
-	a := App{Name: name, Kind: cleanKind(kind), State: StateInstalling, By: who, At: s.now(), Retried: s.now()}
+	a := App{Name: name, Kind: cleanKind(kind), State: StateInstalling, By: who, At: s.now(), Retried: s.now(), Want: version}
 	if old, ok := s.app(name); ok && old.Kind != "" {
 		a.Kind = old.Kind
 	}
 	if err := s.put("app:"+name, a); err != nil {
 		return err
 	}
-	s.jobs[name] = &Job{Name: name, Step: "Waiting its turn", Start: s.cfg.Now()}
+	s.jobs[name] = &Job{Name: name, Step: "Waiting its turn", Index: -1, Start: s.cfg.Now()}
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -323,10 +352,13 @@ func (s *Service) Install(who, name, kind string, admin bool) error {
 	return nil
 }
 
-func (s *Service) step(name, text string) {
+func (s *Service) step(name string, index int, detail string) {
 	s.mu.Lock()
 	if j := s.jobs[name]; j != nil {
-		j.Step = text
+		j.Index, j.Detail = index, detail
+		if index >= 0 && index < len(installSteps) {
+			j.Step = installSteps[index]
+		}
 	}
 	s.mu.Unlock()
 }
@@ -337,8 +369,13 @@ func (s *Service) finishJob(name string) {
 	s.mu.Unlock()
 }
 
+func hostName() string {
+	h, _ := os.Hostname()
+	return h
+}
+
 func (s *Service) fail(a App, step string, err error, log string) {
-	a.State, a.Err = StateFailed, step+": "+tail(err.Error(), 300)
+	a.State, a.Err, a.Node = StateFailed, step+": "+tail(err.Error(), 300), hostName()
 	a.Log = CleanLog(log, s.cfg.Store.Dir)
 	s.mu.Lock()
 	s.put("app:"+a.Name, a)
@@ -356,40 +393,53 @@ func (s *Service) runInstall(a App) {
 		s.fail(a, "Preparing the store", err, "")
 		return
 	}
-	s.step(a.Name, "Resolving the dependencies")
-	version, err := s.cfg.Installer.Resolve(ctx, a.Name)
+	s.step(a.Name, 1, "")
+	res, err := s.cfg.Installer.Resolve(ctx, a.Name, a.Want)
 	if err != nil {
 		s.fail(a, "Resolving the dependencies", err, err.Error())
 		return
 	}
-	a.Version, a.ID = version, BundleID(a.Name, version)
+	a.Version, a.ID, a.Packages, a.Download = res.Version, BundleID(a.Name, res.Version), res.Packages, res.DownloadMB
 	dest := s.cfg.Store.BundlePath(a.ID)
 	if dest == "" {
-		s.fail(a, "Resolving the dependencies", fmt.Errorf("%s is not a usable version", version), "")
+		s.fail(a, "Resolving the dependencies", fmt.Errorf("%s is not a usable version", res.Version), "")
 		return
 	}
+	detail := fmt.Sprintf("%d packages", res.Packages)
+	if res.DownloadMB > 0 {
+		detail += fmt.Sprintf(", %.0f MB", res.DownloadMB)
+	}
 	os.RemoveAll(dest) // a half-made bundle of an earlier try
-	s.step(a.Name, "Downloading and linking")
-	if err := s.cfg.Installer.Install(ctx, a.Name, version, dest, &logb); err != nil {
+	s.step(a.Name, 2, detail)
+	if err := s.cfg.Installer.Install(ctx, a.Name, res.Version, dest, &logb); err != nil {
 		os.RemoveAll(dest)
 		s.fail(a, "Downloading and linking", err, logb.String())
 		return
 	}
-	s.step(a.Name, "Checking that it is complete")
+	s.step(a.Name, 3, detail)
+	if err := checkBundle(ctx, dest, a.Name); err != nil {
+		os.RemoveAll(dest)
+		s.fail(a, "Checking that it works", err, err.Error())
+		return
+	}
 	m, err := s.cfg.Store.Finish(a.ID, a.Name, a.Version)
 	if err != nil {
 		os.RemoveAll(dest)
-		s.fail(a, "Checking that it is complete", err, "")
+		s.fail(a, "Checking that it works", err, "")
 		return
 	}
-	a.State, a.Size, a.Err, a.Log = StateInstalled, m.Size, "", ""
+	a.State, a.Size, a.Err, a.Log, a.Node = StateInstalled, m.Size, "", "", hostName()
 	s.mu.Lock()
 	s.put("app:"+a.Name, a)
-	// the request, and the reports of the failure, are answered by it
-	s.del("req:" + a.Name)
+	// the people who asked, and who reported the failure, are told (Notices); the request is kept until they have seen it
+	var req Request
+	if s.get("req:"+a.Name, &req) {
+		req.Status, req.Answer, req.Seen = "approved", "It is installed.", nil
+		s.put("req:"+a.Name, req)
+	}
 	var rep Report
 	if s.get("rep:"+a.Name, &rep) && rep.Status == "open" {
-		rep.Status, rep.Answer = "fixed", "It is installed."
+		rep.Status, rep.Answer, rep.Seen = "fixed", "It is installed.", nil
 		s.put("rep:"+a.Name, rep)
 	}
 	s.mu.Unlock()
@@ -490,8 +540,7 @@ func (s *Service) Report(who, name, note string) error {
 	}
 	var r Report
 	if !s.get("rep:"+name, &r) || r.Status != "open" {
-		r = Report{Name: name, Status: "open", At: s.now(), Log: a.Log, Note: clip(note, 300)}
-		r.Note = clip(note, 300)
+		r = Report{Name: name, Status: "open", At: s.now(), Log: a.Log, Note: clip(note, 300), Node: a.Node, Version: a.Version, Step: a.Err}
 	}
 	r.Reporters = addUnique(r.Reporters, who)
 	if r.Note == "" {
@@ -613,6 +662,14 @@ func (s *Service) Switch(home, id string, on bool) error {
 	if err := s.cfg.Store.WriteManifest(home, next); err != nil {
 		return err
 	}
+	if on {
+		for _, a := range s.Apps() {
+			if a.ID == id {
+				a.LastUsed = s.now()
+				s.put("app:"+a.Name, a)
+			}
+		}
+	}
 	return s.setList(home, next)
 }
 
@@ -620,20 +677,54 @@ func (s *Service) Switch(home, id string, on bool) error {
 
 // View is one app as a user sees it.
 type View struct {
-	Name     string  `json:"name"`
-	Version  string  `json:"version,omitempty"`
-	ID       string  `json:"id,omitempty"`
-	Kind     string  `json:"kind"`
-	State    string  `json:"state"` // available, installing, installed, failed, requested, rejected
-	Safe     bool    `json:"safe"`
-	On       bool    `json:"on"`
-	SizeMB   float64 `json:"sizeMB,omitempty"`
-	Step     string  `json:"step,omitempty"`
-	Err      string  `json:"err,omitempty"`
-	Log      string  `json:"log,omitempty"`
-	Reported bool    `json:"reported,omitempty"`
-	Answer   string  `json:"answer,omitempty"`
-	Mine     bool    `json:"mine,omitempty"` // I asked, or I installed it, or I reported it
+	At       int64      `json:"at,omitempty"`       // when it was installed or asked for
+	Steps    []StepView `json:"steps,omitempty"`    // while installing: the list with what is done
+	Pct      int        `json:"pct,omitempty"`      // how far the install is
+	Detail   string     `json:"detail,omitempty"`   // what the solve found ("14 packages, 41 MB")
+	Packages int        `json:"packages,omitempty"` // what an installed app brought
+	Node     string     `json:"node,omitempty"`     // where a failed install ran
+	Name     string     `json:"name"`
+	Version  string     `json:"version,omitempty"`
+	ID       string     `json:"id,omitempty"`
+	Kind     string     `json:"kind"`
+	State    string     `json:"state"` // available, installing, installed, failed, requested, rejected
+	Safe     bool       `json:"safe"`
+	On       bool       `json:"on"`
+	SizeMB   float64    `json:"sizeMB,omitempty"`
+	Step     string     `json:"step,omitempty"`
+	Err      string     `json:"err,omitempty"`
+	Log      string     `json:"log,omitempty"`
+	Reported bool       `json:"reported,omitempty"`
+	Answer   string     `json:"answer,omitempty"`
+	Mine     bool       `json:"mine,omitempty"` // I asked, or I installed it, or I reported it
+}
+
+// StepView is one line of the list of an install.
+type StepView struct {
+	Text  string `json:"text"`
+	State string `json:"state"` // done, current, todo
+}
+
+func stepViews(j Job) ([]StepView, int) {
+	out := make([]StepView, len(installSteps))
+	for i, t := range installSteps {
+		st := "todo"
+		if i < j.Index {
+			st = "done"
+		} else if i == j.Index {
+			st = "current"
+		}
+		out[i] = StepView{Text: t, State: st}
+	}
+	// the first step is only a look at the safe list: it is done as soon as the job has a turn
+	if j.Index >= 0 {
+		out[0].State = "done"
+	}
+	pct := 5
+	if j.Index >= 0 {
+		pct = 10 + j.Index*25
+	}
+	return out, pct
 }
 
 // Views lists the apps for one user: what is installed or failing, what was asked for, and the safe list.
@@ -645,17 +736,20 @@ func (s *Service) Views(who, home string) []View {
 	seen := map[string]bool{}
 	var out []View
 	for _, a := range s.Apps() {
-		v := View{Name: a.Name, Version: a.Version, ID: a.ID, Kind: a.Kind, State: a.State, Safe: s.IsSafe(a.Name),
+		v := View{At: a.At, Name: a.Name, Version: a.Version, ID: a.ID, Kind: a.Kind, State: a.State, Safe: s.IsSafe(a.Name),
 			On: my[a.ID], SizeMB: float64(a.Size) / (1 << 20), Mine: a.By == who}
+		v.Packages = a.Packages
 		if a.State == StateInstalling {
 			if j, ok := s.Job(a.Name); ok {
 				v.Step = j.Step
+				v.Steps, v.Pct = stepViews(j)
+				v.Detail = j.Detail
 			} else {
 				v.Step = "Starting"
 			}
 		}
 		if a.State == StateFailed {
-			v.Err, v.Log = a.Err, a.Log
+			v.Err, v.Log, v.Node = a.Err, a.Log, a.Node
 			var r Report
 			if s.get("rep:"+a.Name, &r) && r.Status == "open" {
 				v.Reported = true
@@ -673,7 +767,7 @@ func (s *Service) Views(who, home string) []View {
 		if seen[r.Name] {
 			continue
 		}
-		v := View{Name: r.Name, Kind: r.Kind, State: "requested", Answer: r.Answer}
+		v := View{At: r.At, Name: r.Name, Kind: r.Kind, State: "requested", Answer: r.Answer}
 		if r.Status == "rejected" {
 			v.State = "rejected"
 		}
@@ -764,7 +858,17 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		dest := s.cfg.Store.BundlePath(a.ID)
 		os.RemoveAll(dest)
 		var logb bytes.Buffer
-		err := s.cfg.Installer.Install(ctx, a.Name, a.Version, dest, &logb)
+		var err error
+		if s.cfg.Fetch != nil {
+			// a worker takes the finished bundle from the gateway: it needs neither the internet nor the time of a solve
+			if err = s.cfg.Fetch(ctx, a.ID, dest); err != nil {
+				log.Printf("appstore: replay: %s could not be fetched from the gateway (%v); installing it here", a.ID, err)
+				os.RemoveAll(dest)
+			}
+		}
+		if s.cfg.Fetch == nil || err != nil {
+			err = s.cfg.Installer.Install(ctx, a.Name, a.Version, dest, &logb)
+		}
 		if err == nil {
 			_, err = s.cfg.Store.Finish(a.ID, a.Name, a.Version)
 		}
@@ -844,4 +948,80 @@ func (s *Service) SetApt(list []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.put("apt", clean)
+}
+
+// ---- the answers users are told ------------------------------------------------------------------------------------------
+
+// Notice is an answer a user has not seen yet: a request that was approved (the app is installed now) or rejected, a report that
+// was fixed or turned down.
+type Notice struct {
+	Kind   string `json:"kind"` // request, report
+	Name   string `json:"name"`
+	Status string `json:"status"` // approved, rejected, fixed
+	Text   string `json:"text"`
+}
+
+func has(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// Notices lists what the admin decided about this user's requests and reports, until the user has seen it (Ack).
+func (s *Service) Notices(who string) []Notice {
+	var out []Notice
+	for _, r := range s.Requests() {
+		if !has(r.Askers, who) || has(r.Seen, who) {
+			continue
+		}
+		switch r.Status {
+		case "approved":
+			out = append(out, Notice{"request", r.Name, "approved", r.Name + " is installed. Turn it on in the App Store to use it."})
+		case "rejected":
+			t := r.Name + " was not approved."
+			if r.Answer != "" {
+				t += " " + r.Answer
+			}
+			out = append(out, Notice{"request", r.Name, "rejected", t})
+		}
+	}
+	for _, r := range s.Reports() {
+		if !has(r.Reporters, who) || has(r.Seen, who) {
+			continue
+		}
+		switch r.Status {
+		case "fixed":
+			out = append(out, Notice{"report", r.Name, "fixed", r.Name + " is installed now. Turn it on in the App Store to use it."})
+		case "rejected":
+			t := "The admin will not install " + r.Name + "."
+			if r.Answer != "" {
+				t += " " + r.Answer
+			}
+			out = append(out, Notice{"report", r.Name, "rejected", t})
+		}
+	}
+	return out
+}
+
+// Ack says that the user has seen the answer about an app. An approved request is forgotten when every asker has seen it.
+func (s *Service) Ack(who, name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var r Request
+	if s.get("req:"+name, &r) && has(r.Askers, who) && !has(r.Seen, who) && (r.Status == "approved" || r.Status == "rejected") {
+		r.Seen = append(r.Seen, who)
+		if r.Status == "approved" && len(r.Seen) >= len(r.Askers) {
+			s.del("req:" + name)
+		} else {
+			s.put("req:"+name, r)
+		}
+	}
+	var rep Report
+	if s.get("rep:"+name, &rep) && has(rep.Reporters, who) && !has(rep.Seen, who) && rep.Status != "open" {
+		rep.Seen = append(rep.Seen, who)
+		s.put("rep:"+name, rep)
+	}
 }

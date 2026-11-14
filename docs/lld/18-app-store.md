@@ -46,7 +46,7 @@ terminal with status 126, it is never skipped**), leaves out a bundle this serve
   `NODE_PATH`). There is no `LD_LIBRARY_PATH`: it would put conda's libraries in front of the system's and break the system's own programs.
 
 The terminal cannot write `/store` at all, so it cannot add itself to a list or change a bundle (a hard-linked file shares its inode with the cache). Python's bytecode cannot be
-written into a bundle either; Python then simply does not cache it.
+written into a bundle either: the helper sets `PYTHONPYCACHEPREFIX` to `<workspace>/.pycache`.
 
 Checked by hand 2026-11-14 with the real helper on Landlock (arm64 image): a user with `flask` on can `import flask`, run its tool, and sees `numpy` as "No module named"; listing
 `/store/apps`, another bundle or another user's folder gives "Permission denied"; writing a bundle or one's own manifest is refused; `["../../etc"]` in a manifest stops the start.
@@ -57,8 +57,8 @@ State lives in the site's database (`persist`, file `appstore.db` or Firestore/M
 failed, size, log tail), `req:<name>`, `rep:<name>`, `user:<home>` (the list), `apt`. The version is pinned by the store: the newest conda-forge build that solves with the server's Python
 (`Installer.Resolve`, `micromamba create --dry-run --json`), and every node installs that same version.
 
-One install at a time (a mutex), as a goroutine: *resolve, download and link* (`micromamba create -p <bundle> --override-channels -c conda-forge python=3.10 <name>=<ver>`), write the marker,
-record it, answer the request and the open report. A failure removes the half-made bundle, keeps the last lines of the log (the store's folder shortened) and the step it stopped at. The server runs the
+One install at a time (a mutex), as a goroutine with four steps the page shows (`installSteps`, `View.Steps`): *checked that it is allowed, resolve (the solve says how many packages and how many MB), download and link* (`micromamba create -p <bundle> --override-channels -c conda-forge python=3.10 <name>=<ver>`), write the marker,
+run a check (`checkBundle`: the bundle's own Python starts and imports the package's module, when it has one), record it, and mark the request and the open report answered (`Notices` tells their askers). An admin can install a version of their choice (`InstallVersion`, for an app whose newest version does not solve). A failure removes the half-made bundle, keeps the last lines of the log (the store's folder shortened) and the step it stopped at. The server runs the
 installer outside any terminal's sandbox, so terminals need no internet. The store is refused when it is over its limit (`storeLimitMB`, default 2048). A server that stopped in the middle of
 an install marks it failed at its next start (`Recover`). No micromamba on the server (`OPENREPL_MICROMAMBA`, or on the PATH) gives the installer `Missing`: every install says so, and the admin page
 shows it. `OPENREPL_STORE_INSTALLER=fake` makes tiny bundles (a Python module of the package's name) for tests and development.
@@ -70,37 +70,53 @@ snapshot is complete (`Full`: both listings of the database worked, so an outage
 - Gateway or standalone: at start, every 10 minutes, and after each admin decision.
 - A worker (no database): every minute it POSTs `/store/sync` to the gateway with the shared worker token (`Authorization: Bearer`, constant-time compare) and its state (what it has, what failed, its
   size), and applies the catalog it gets back. The gateway keeps the last state of each worker for the Servers matrix. A change a user makes is therefore on a worker within a minute.
-- A bundle already in the store is not fetched again, so a deploy that keeps `/store` costs nothing; one that wipes it rebuilds every bundle from conda-forge (the object-store tarballs of the design are **not
-  built**: the gateway and workers all have internet).
+- A bundle already in the store is not fetched again, so a deploy that keeps `/store` costs nothing. A worker takes a missing bundle as a .tar.gz from the gateway (`Store.WriteBundle` / `ReadBundle`, which refuse any entry that leaves the
+  bundle; the files hold the store's path, so every node of a site uses the same `OPENREPL_STORE_DIR`) and installs it itself only if that fails. The gateway rebuilds from conda-forge after a wipe.
 - apt: the admin's list (database) is part of the snapshot; each node installs what is missing with `apt-get install -y --no-install-recommends` (`SystemApt`; it needs root and apt-get, and says so when it
   has neither) at every replay, and leaves what `dpkg -s` finds. A package that fails is said in that node's state and on the admin page (a card for `apt:<name>`) and does not stop the others. These are for all users:
   there is no switch. A server with the fake installer never runs apt-get. A node that loses its system between starts (a container) installs them again at its next start; for big packages the image is the better place.
 
-## 6. The page
+## 6. The page, the dialog, the notices
 
-`33-app-store.js`: a dialog (`#appstore-dialog`) opened by the Apps button (shown to signed-in users: `body.is-signed-in`), the command menu entry "App Store", `AppStore.open()` and `AppStore.suggest(name)`. Browse (search; a name
-nothing matches is looked up on conda-forge, `GET /store/api/info`, and can be asked for), My apps (what is on, asked for, failed). Cards for every state: available (Install), installing (the step; the page polls and
-tells you when it is done even if the dialog is closed), installed (a switch, off until the user turns it on), failed (the reason and a log tail, Try again, Report to admin), requested, rejected (with the admin's reason).
-After a switch the dialog offers "Use it in my active terminal": it asks first, then types `. '<env.sh>'` into the active terminal (open terminals keep what they had; new ones use the list).
+**The dedicated page** (`/store`, `resources/store.html`, `js/store.js`, `css/store.css`; canvas boards 2 to 5): a left menu (Browse, My apps with the count of what is on, My requests, Kinds: Python libraries, Tools, Languages (admin), Editor plugins (later);
+System (admin): apt packages), a search field, the chips (All, Installed, Safe to install, Needs approval) and a 3-column grid of cards (name, summary from conda-forge, version, state tag, switch or button). Sections are the address hash.
+- **An app's page** (`#app/<name>`): its three situations (not installed on the safe list, installed with the switch, not on the safe list with a request), the table of Size / Needs (the server's Python) / Who can, the "how to use" line
+  (`import flask`, or `<tool> --help`), the line to run in an open terminal, "I have this problem too" on a failure someone else reported, and, for an admin, "install another version" (the versions come from conda-forge).
+- **Install dialog** (board 4A): a progress bar and the four steps (Checked that it is allowed / Resolved the dependencies (14 packages, 41 MB) / Downloading and linking / Checking that it works), "Hide, keep going". A failure turns it into the
+  failure dialog (4B: the step, the log tail, Report to admin / Try again / Close); a success into "X is installed. Turn it on?".
+- **Report dialog** (4C): a text box and what is sent (the app and version, the step, the log, the server it ran on) and what is not. **Request dialog** (3C): the reason.
+- **The answers** (4D, `Service.Notices`, `GET /store/api/notices`, `POST ack`): an approved or rejected request, a fixed or rejected report: shown once when the page opens (and as a notice in the editor), then acknowledged. An approved request is
+  forgotten when every asker has seen it; a rejected one stays so the card can say "Not available: reason".
+- Guests see the sign-in card. The page cannot type into a terminal: My apps shows the line (`. '<env.sh>'`) with a Copy button.
 
-The terminal's own error: every 3 s, for a signed-in user with the store closed, the page reads the last lines of the active terminal (`lib-store-hint.mjs`, tested in `lib-store-hint.test.mjs`): "No module named 'flask'"
-(a few module names are mapped to their package: PIL to pillow, yaml to pyyaml, ...) or "x: command not found". If the store has that app (on the safe list, installed, or asked for) and it is not on for the user, a notice
-offers "Open the App Store" (or "Turn it on" for an installed one). One notice for each name in a visit; a name the store does not know is never offered; nothing is installed or typed by the notice.
+**The quick dialog** in the editor (`33-app-store.js`, the Apps button and "App Store" in the command menu) stays, with a link "Open the full App Store"; it also offers "Use it in my active terminal" (asks, then types the line).
+`AppStore.installAndOn(name)` installs a safe app and, when it is done, switches it on. **The terminal's own error** ("No module named flask", `lib-store-hint.mjs`) shows a notice with "Install and turn on" (safe apps),
+"Turn it on" (installed), or "Open the App Store"; one notice for each name in a visit; a name the store does not know is never offered.
 
-Genie: the agent action `store_suggest` (`{"type":"store_suggest","name":"flask"}`) opens the store on an app; **the user decides**. It needs no permission because it installs nothing. The agent prompt
-(`server/agent.go`) says when to use it.
+**Genie**: the agent action `store_suggest` (`{"type":"store_suggest","name":"flask"}`) is a permission scope of its own ("store"): the card asks "Genie wants to install an app from the App Store"; on yes it calls `installAndOn`
+(an app that needs an admin is only shown in the store). It is asked every time (not in the everyday scopes). The agent prompt (`server/agent.go`) says when to use it.
 
 ## 7. Admin
 
-`viewStore` ("App Store" in the dashboard): requests (Approve and install, Reject with a reason), failures reported (Try again, Mark installed, Reject), installed apps with their size, how many users have each on,
-and ready / failed / missing on each server (gateway and every worker that has synced), Remove (asks, says how many users lose it), install for everyone, the apt list, and the settings: the safe list, the size
-limit and the switch (`SiteSettings.StoreSafeList`, `StoreLimitMB`, `StoreOff`).
+`viewStore` ("App Store" in the dashboard; canvas boards 7 and 8): tabs.
+- **Requests**: App, Asked by, Why, Status; Approve and install, Reject (a reason the askers see).
+- **Failures**: App and version, Reported by, Where it stopped, What they wanted, the log, the **server** it ran on, Try again, **Pick another version**, Mark installed, Reject.
+- **Installed**: size, how many users have it on, **"unused for N days" when nobody has had it on for 60 days** (nothing is removed by itself), ready / **fetching** / failed / missing on the gateway and each worker (fetching: it is behind and answered
+  within 3 minutes), Remove (asks, says how many users lose it), install for everyone.
+- **Servers**: the disk of the store on each server against the limit (a bar), and what a server could not do (an app, an apt package).
+- **Settings**: the safe list, the size limit, the channel (conda-forge, not editable), the switch, and the apt list.
+- The **Health** page has an "App Store" card (`appStoreHealth`): the installer (a warning when micromamba is missing), apps installed, size against the limit, failed installs, workers that could not apply the catalog.
 
-## 8. Not built, and not tested
+## 8. What is not built, and what was not tested
 
-- The tarballs of finished bundles in the object store (nodes build from conda-forge).
-- A user's own switch reaching a worker takes up to a minute (the poll); a terminal started in that minute does not have it yet.
-- Node libraries (npm) and other kinds (languages, editor plugins): `NODE_PATH` is set for a bundle that has `lib/node_modules`, nothing installs them.
-- A real micromamba install was **not run** here (the image has micromamba only after the Dockerfile's new step); the fake installer, the Go tests, the browser tests with the page's calls answered by a stand-in, and the
-  hand check of the sandbox were.
+- **Percent of a download on a worker** ("fetching 40%" in the canvas): a worker tells the gateway what it has only after each replay, so the admin sees "fetching" and not a percentage.
+- **Search of all of conda-forge**: the store searches the safe list and the apps it knows, and looks up one exact name on conda-forge (summary, newest version, the versions for an admin); it has no full index search.
+- **The size of an app before it is installed** (the canvas shows "about 14 MB"): shown once it is installed.
+- **Object-store tarballs**: instead a worker takes the finished bundle as a .tar.gz from the **gateway** (`GET /store/bundle`, worker token) and falls back to installing it itself; the object store is not used.
+- **The import check runs outside the sandbox** (as the server, in an empty folder, 60 s limit), not inside a terminal's sandbox.
+- Node libraries (npm) and other kinds (languages, editor plugins): their sections say so; `NODE_PATH` is set for a bundle that has `lib/node_modules`, nothing installs them.
+- A user's own switch reaching a worker takes up to a minute (the poll).
+- A real micromamba install **was run** (2026-11-14, in the new image): the owner's first try failed on `MAMBA_NO_RC=1` ("Bad conversion of configurable 'no_rc'": micromamba cannot read a switch from the environment), so only the two folders
+  are passed by environment and the switches are flags (`TestMambaIsGivenNoSwitchesInTheEnvironment`). With that, `python=3.10 beautifulsoup4` solves (29 packages), installs (130 MB, 62 MB of cache shared by hard links), starts, and the system's
+  `python3` imports it through `PYTHONPATH`. Not run: an install through the server's own job with a signed-in user, and a worker fetching a real bundle from a real gateway.
 - A browser test cannot sign in: the signed-in screens are tested against stand-in answers.

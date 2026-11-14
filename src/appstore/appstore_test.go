@@ -1,6 +1,9 @@
 package appstore
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"os"
@@ -76,15 +79,16 @@ func TestNames(t *testing.T) {
 	}
 }
 
-func TestVersionFromSolve(t *testing.T) {
-	raw := []byte(`{"actions":{"LINK":[{"name":"werkzeug","version":"3.0.4"},{"name":"flask","version":"3.0.2"}]}}`)
-	if v, err := versionFromSolve(raw, "flask"); err != nil || v != "3.0.2" {
-		t.Errorf("got %q %v", v, err)
+func TestSolveFrom(t *testing.T) {
+	raw := []byte(`{"actions":{"FETCH":[{"name":"werkzeug","version":"3.0.4","size":1048576},{"name":"flask","version":"3.0.2","size":2097152}],"LINK":[{"name":"werkzeug","version":"3.0.4"},{"name":"flask","version":"3.0.2"},{"name":"click","version":"8.1"}]}}`)
+	r, err := solveFrom(raw, "flask")
+	if err != nil || r.Version != "3.0.2" || r.Packages != 3 || r.DownloadMB != 3 {
+		t.Errorf("got %+v %v", r, err)
 	}
-	if _, err := versionFromSolve(raw, "numpy"); err == nil {
+	if _, err := solveFrom(raw, "numpy"); err == nil {
 		t.Error("a package that is not in the answer is an error")
 	}
-	if _, err := versionFromSolve([]byte("not json"), "flask"); err == nil {
+	if _, err := solveFrom([]byte("not json"), "flask"); err == nil {
 		t.Error("bad json")
 	}
 }
@@ -181,7 +185,7 @@ func TestInstallSafeAndRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc.Wait()
-	if len(svc.Requests()) != 0 || len(svc.Apps()) != 2 {
+	if reqs := svc.Requests(); len(reqs) != 1 || reqs[0].Status != "approved" || len(svc.Apps()) != 2 { // kept until the askers have seen the answer
 		t.Fatalf("after approval: %+v %+v", svc.Requests(), svc.Apps())
 	}
 	// rejected with a reason
@@ -390,4 +394,229 @@ func TestApplyInstallsTheApprovedAptPackagesOnce(t *testing.T) {
 	// a server with no runner does nothing
 	svc.cfg.Apt = nil
 	svc.Apply(context.Background(), snap)
+}
+
+func TestStepsAndTheCheckOfABundle(t *testing.T) {
+	svc, _ := newService(t, Fake{Delay: 300 * time.Millisecond}, "flask")
+	if err := svc.Install("ann", "flask", "lib", false); err != nil {
+		t.Fatal(err)
+	}
+	var seen bool
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && !seen {
+		for _, v := range svc.Views("ann", "ann") {
+			if v.Name == "flask" && v.State == StateInstalling && len(v.Steps) == len(installSteps) && v.Steps[1].State == "done" && v.Steps[2].State == "current" {
+				seen = true
+				if v.Detail == "" || v.Pct <= 5 {
+					t.Errorf("the step list says nothing of the solve: %+v", v)
+				}
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !seen {
+		t.Error("the job never showed the step 'Downloading and linking' as the current one")
+	}
+	svc.Wait()
+	// a bundle that cannot start its Python is refused, one that can is accepted
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "bin"), 0755)
+	os.WriteFile(filepath.Join(dir, "bin", "python"), []byte("#!/bin/sh\nexit 0\n"), 0755)
+	if err := checkBundle(context.Background(), dir, "x"); err != nil {
+		t.Errorf("a working python: %v", err)
+	}
+	os.WriteFile(filepath.Join(dir, "bin", "python"), []byte("#!/bin/sh\necho 'ImportError: no module named x' >&2\nexit 1\n"), 0755)
+	if err := checkBundle(context.Background(), dir, "x"); err == nil || !strings.Contains(err.Error(), "did not start") {
+		t.Errorf("a python that fails must refuse the bundle: %v", err)
+	}
+	if err := checkBundle(context.Background(), t.TempDir(), "x"); err != nil {
+		t.Errorf("no python is nothing to start: %v", err)
+	}
+	mod := t.TempDir()
+	os.MkdirAll(filepath.Join(mod, "lib", "python3.10", "site-packages", "scikit_learn"), 0755)
+	if moduleOf(mod, "scikit-learn") != "scikit_learn" || moduleOf(mod, "numpy") != "" || moduleOf(mod, "a b") != "" {
+		t.Error("moduleOf")
+	}
+}
+
+func TestAnAdminCanPickAVersion(t *testing.T) {
+	svc, _ := newService(t, Fake{})
+	if err := svc.InstallVersion("root", "flask", "lib", "2.3.0"); err != nil {
+		t.Fatal(err)
+	}
+	svc.Wait()
+	if a := svc.Apps()[0]; a.State != StateInstalled || a.Version != "2.3.0" || a.ID != "flask-2.3.0" {
+		t.Fatalf("%+v", a)
+	}
+	if err := svc.InstallVersion("root", "x", "lib", "../1"); err == nil {
+		t.Error("a bad version")
+	}
+}
+
+func TestUsersAreToldTheAnswers(t *testing.T) {
+	svc, _ := newService(t, Fake{Fail: map[string]bool{"pillow": true}}, "pillow")
+	// a request that is approved
+	svc.Request("ann", "numpy", "lib", "")
+	svc.Request("bob", "numpy", "lib", "")
+	svc.Approve("root", "numpy")
+	svc.Wait()
+	ann := svc.Notices("ann")
+	if len(ann) != 1 || ann[0].Status != "approved" || ann[0].Name != "numpy" {
+		t.Fatalf("%+v", ann)
+	}
+	svc.Ack("ann", "numpy")
+	if len(svc.Notices("ann")) != 0 || len(svc.Notices("bob")) != 1 {
+		t.Fatal("each user is told once")
+	}
+	svc.Ack("bob", "numpy")
+	if len(svc.Requests()) != 0 {
+		t.Fatalf("an approved request is forgotten when everyone has seen it: %+v", svc.Requests())
+	}
+	// a request that is rejected stays, with the reason
+	svc.Request("ann", "ffmpeg", "tool", "")
+	svc.Reject("root", "ffmpeg", "too big")
+	n := svc.Notices("ann")
+	if len(n) != 1 || n[0].Status != "rejected" || !strings.Contains(n[0].Text, "too big") {
+		t.Fatalf("%+v", n)
+	}
+	svc.Ack("ann", "ffmpeg")
+	if len(svc.Notices("ann")) != 0 || len(svc.Requests()) != 1 {
+		t.Fatal("a rejected request stays so that the card can say so")
+	}
+	// a report that is fixed
+	svc.Install("ann", "pillow", "lib", false)
+	svc.Wait()
+	svc.Report("ann", "pillow", "")
+	svc.cfg.Installer = Fake{}
+	svc.ResolveReport("root", "pillow", "retry", "")
+	svc.Wait()
+	n = svc.Notices("ann")
+	if len(n) != 1 || n[0].Kind != "report" || n[0].Status != "fixed" {
+		t.Fatalf("%+v", n)
+	}
+	if len(svc.Notices("bob")) != 0 {
+		t.Error("only the reporters are told")
+	}
+}
+
+func TestABundleTravelsAsATarball(t *testing.T) {
+	a := Store{Dir: t.TempDir()}
+	f := Fake{}
+	id := "flask-1.0.0"
+	if err := f.Install(context.Background(), "flask", "1.0.0", a.BundlePath(id), os.Stderr); err != nil {
+		t.Fatal(err)
+	}
+	os.Symlink("../lib/python3.10", filepath.Join(a.BundlePath(id), "bin", "pylib"))
+	a.Finish(id, "flask", "1.0.0")
+	var buf bytes.Buffer
+	if err := a.WriteBundle(id, &buf); err != nil {
+		t.Fatal(err)
+	}
+	b := Store{Dir: t.TempDir()}
+	if err := ReadBundle(bytes.NewReader(buf.Bytes()), b.BundlePath(id)); err != nil {
+		t.Fatal(err)
+	}
+	if !b.HasBundle(id) {
+		t.Fatal("the marker comes with it, last")
+	}
+	got, err := os.ReadFile(filepath.Join(b.BundlePath(id), "lib", "python3.10", "site-packages", "flask", "__init__.py"))
+	if err != nil || !strings.Contains(string(got), "1.0.0") {
+		t.Fatalf("%s %v", got, err)
+	}
+	if l, err := os.Readlink(filepath.Join(b.BundlePath(id), "bin", "pylib")); err != nil || l != "../lib/python3.10" {
+		t.Fatalf("the link: %q %v", l, err)
+	}
+	if fi, _ := os.Stat(filepath.Join(b.BundlePath(id), "bin", "flask-hello")); fi == nil || fi.Mode()&0100 == 0 {
+		t.Error("the executable bit")
+	}
+	if err := a.WriteBundle("nothing-1", &buf); err == nil {
+		t.Error("an unfinished bundle is not sent")
+	}
+	// a bad archive cannot write outside the bundle
+	for name, mk := range map[string]func(tw *tar.Writer){
+		"climbing name": func(tw *tar.Writer) {
+			tw.WriteHeader(&tar.Header{Name: "../evil", Mode: 0644, Size: 1, Typeflag: tar.TypeReg})
+			tw.Write([]byte("x"))
+		},
+		"absolute name": func(tw *tar.Writer) {
+			tw.WriteHeader(&tar.Header{Name: "/etc/evil", Mode: 0644, Size: 1, Typeflag: tar.TypeReg})
+			tw.Write([]byte("x"))
+		},
+		"outside link": func(tw *tar.Writer) {
+			tw.WriteHeader(&tar.Header{Name: "l", Linkname: "../../etc", Typeflag: tar.TypeSymlink})
+		},
+		"absolute link": func(tw *tar.Writer) {
+			tw.WriteHeader(&tar.Header{Name: "l", Linkname: "/etc/passwd", Typeflag: tar.TypeSymlink})
+		},
+		"a device": func(tw *tar.Writer) { tw.WriteHeader(&tar.Header{Name: "d", Typeflag: tar.TypeChar}) },
+	} {
+		var bad bytes.Buffer
+		gz := gzip.NewWriter(&bad)
+		tw := tar.NewWriter(gz)
+		mk(tw)
+		tw.Close()
+		gz.Close()
+		dest := filepath.Join(t.TempDir(), "x-1")
+		if err := ReadBundle(&bad, dest); err == nil {
+			t.Errorf("%s must be refused", name)
+		}
+		if _, err := os.Stat(dest); err == nil {
+			t.Errorf("%s: what was written must be removed", name)
+		}
+	}
+}
+
+func TestAWorkerTakesABundleFromTheGatewayFirst(t *testing.T) {
+	a, _ := newService(t, Fake{}, "flask")
+	a.Install("ann", "flask", "lib", false)
+	a.Wait()
+	snap := a.Snapshot()
+	b, bst := newService(t, Fake{Fail: map[string]bool{"flask": true}}) // it could not install it itself
+	fetched := 0
+	b.cfg.Fetch = func(ctx context.Context, id, dest string) error {
+		fetched++
+		var buf bytes.Buffer
+		if err := a.Store().WriteBundle(id, &buf); err != nil {
+			return err
+		}
+		return ReadBundle(&buf, dest)
+	}
+	st := b.Apply(context.Background(), snap)
+	if fetched != 1 || len(st.Failed) != 0 || !bst.HasBundle("flask-1.0.0") {
+		t.Fatalf("fetched %d, state %+v", fetched, st)
+	}
+	// and when the gateway cannot give it, the node installs it itself
+	c, cst := newService(t, Fake{})
+	c.cfg.Fetch = func(ctx context.Context, id, dest string) error { return errors.New("the gateway is not reachable") }
+	st = c.Apply(context.Background(), snap)
+	if len(st.Failed) != 0 || !cst.HasBundle("flask-1.0.0") {
+		t.Fatalf("%+v", st)
+	}
+}
+
+// micromamba reads its settings from MAMBA_* variables too, and a switch with the value 1 stops it ("Bad conversion of configurable
+// 'no_rc'"): the folders are the only thing the program may be given that way, the switches are flags.
+func TestMambaIsGivenNoSwitchesInTheEnvironment(t *testing.T) {
+	m := Mamba{Bin: "/usr/bin/micromamba", Dir: "/store", Python: "3.10"}
+	c := m.cmd(context.Background(), "create")
+	for _, e := range c.Env {
+		if strings.HasPrefix(e, "MAMBA_") || strings.HasPrefix(e, "CONDA") {
+			k := e[:strings.Index(e, "=")]
+			if k != "MAMBA_ROOT_PREFIX" && k != "CONDA_PKGS_DIRS" && !strings.HasPrefix(e, k+"=/") && !strings.HasPrefix(os.Getenv("NOPE_"+k), "x") {
+				t.Errorf("%s in the environment of micromamba: a switch must be a flag", e)
+			}
+		}
+	}
+	if !contains(m.common(), "--no-rc") {
+		t.Error("the rc files must be switched off by a flag")
+	}
+}
+
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }

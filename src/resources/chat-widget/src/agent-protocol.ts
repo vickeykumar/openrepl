@@ -91,7 +91,7 @@ export interface StepResult {
 // Switching the language is a kind of its own: it is not a change the user
 // reviews, the page puts the language's starter code in the editor and starts
 // the terminal again.
-export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview" | "shell";
+export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview" | "shell" | "store";
 
 export function scopeOf(a: Action): Scope | null {
   switch (a.type) {
@@ -131,6 +131,9 @@ export function scopeOf(a: Action): Scope | null {
     case "preview_close":
     case "preview_reload":
       return "preview";
+    // an app of the App Store is installed (when it is on the safe list) and switched on: the user is asked each time
+    case "store_suggest":
+      return "store";
     default:
       return null;
   }
@@ -206,6 +209,7 @@ export function scopeQuestion(scope: Scope): string {
   if (scope === "terminal") return "Genie wants to use your terminal";
   if (scope === "files") return "Genie wants to use your files";
   if (scope === "preview") return "Genie wants to use the Preview";
+  if (scope === "store") return "Genie wants to install an app from the App Store";
   if (scope === "shell") return "Genie wants to run a command in your workspace";
   return "Genie wants to run your code";
 }
@@ -213,6 +217,10 @@ export function scopeQuestion(scope: Scope): string {
 // openFile: the file that is open in the editor, if any. The page leaves the
 // editor alone on a change of language then, and the card must not say otherwise.
 export function scopeDetail(scope: Scope, a: Action, openFile: string = ""): string {
+  if (scope === "store") {
+    const n = a.name || "an app";
+    return "It will install " + n + " (a conda-forge package) on the server and turn it on for your terminals, if it is on the safe list; an app that needs an admin is only offered to you in the store. It is installed once and shared: it does not change your files.";
+  }
   if (scope === "editor") return "It will propose changes. You review each one before anything is applied.";
   if (scope === "language") {
     const lang = a.language || "another language";
@@ -761,6 +769,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   files: "Files (open, create, save)",
   preview: "Preview (open, reload, close)",
   shell: "Run commands (safe ones)",
+  store: "App Store (install an app)",
 };
 
 export type RiskKind = "terminal" | "delete" | "move" | "tab";

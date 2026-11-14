@@ -63,7 +63,7 @@ function refresh() {
 function busy() { return views.some(function (v) { return v.state === "installing"; }); }
 
 function schedulePoll() {
-  views.forEach(function (v) { if (v.state === "installing") watching[v.name] = true; });
+  views.forEach(function (v) { if (v.state === "installing" && !watching[v.name]) watching[v.name] = true; });
   clearTimeout(pollTimer);
   if (!busy()) return;
   pollTimer = setTimeout(function () {
@@ -73,8 +73,13 @@ function schedulePoll() {
       // an app that was being installed is done (or failed): say so even if the dialog is closed
       views.forEach(function (v) {
         if (!watching[v.name] || v.state === "installing") return;
+        var mode = watching[v.name];
         delete watching[v.name];
-        if (v.state === "installed" && window.notify) {
+        if (v.state === "installed" && mode === "on") {
+          // asked with "Install and turn on": it is switched on now
+          switchApp(v, true);
+          if (window.notify) window.notify(v.name + " is installed and on. New terminals have it; open ones need the line from My apps.", { type: "success", title: "App Store" });
+        } else if (v.state === "installed" && window.notify) {
           window.notify(v.name + " is installed.", { type: "success", variant: "program", title: "App Store", timeout: 0, actions: [
             { label: "Turn it on", primary: true, onClick: function () { switchApp(v, true); } },
             { label: "Later", onClick: function () {} }
@@ -99,6 +104,21 @@ function act(path, body, ok) {
 }
 
 function install(v) { return act("install", { name: v.name, kind: v.kind || "lib" }); }
+
+// "Install and turn on": a safe app is installed and, when it is done, switched on (an installed one is only switched on)
+function installAndOn(name) {
+  name = String(name || "").toLowerCase();
+  return api("list").then(function (j) {
+    take(j);
+    var v = views.filter(function (x) { return x.name === name; })[0];
+    if (!v) throw new Error(name + " is not in the App Store");
+    if (v.state === "installed") return switchApp(v, true).then(function () { return "on"; });
+    if (v.state === "installing") { watching[name] = "on"; schedulePoll(); return "installing"; }
+    if (v.state !== "available") throw new Error(name + " needs an admin: open the App Store and Request it");
+    watching[name] = "on";
+    return api("install", { name: name, kind: v.kind || "lib" }).then(function (r) { take(r); return "installing"; });
+  });
+}
 function request(v) {
   var reason = window.prompt ? window.prompt("Why do you need " + v.name + "? (optional, one line)", "") : "";
   if (reason === null) return;
@@ -270,7 +290,25 @@ function terminalTail() {
   return rows ? rows.innerText : "";
 }
 
+var noticesDone = false;
+
+// what the admin decided about this user's requests and reports (board 4D): one notice each, until it has been seen
+function checkNotices() {
+  if (noticesDone || !signedIn() || !window.notify) return;
+  noticesDone = true;
+  api("notices").then(function (j) {
+    (j.notices || []).forEach(function (n) {
+      window.notify(n.text, { type: n.status === "rejected" ? "info" : "success", variant: "program", title: "App Store", timeout: 0, actions: [
+        { label: "Open the App Store", primary: true, onClick: function () { open(n.name); } },
+        { label: "Later", onClick: function () {} }
+      ] });
+      api("ack", { name: n.name }).catch(function () {});
+    });
+  }, function () { noticesDone = false; });
+}
+
 function checkHint() {
+  checkNotices();
   if (hintBusy || !signedIn() || !window.notify || isOpen()) return;
   var name = missingFrom(terminalTail());
   if (!name || hinted[name]) return;
@@ -283,7 +321,12 @@ function checkHint() {
     hinted[name] = true;
     var text = v.state === "installed" ? name + " is installed, but not on for your terminals." : name + " is in the App Store.";
     window.notify(text, { type: "info", variant: "program", title: "Missing something?", timeout: 0, actions: [
-      { label: v.state === "installed" ? "Turn it on" : "Open the App Store", primary: true, onClick: function () { if (v.state === "installed") switchApp(v, true); else open(name); } },
+      { label: v.state === "installed" ? "Turn it on" : v.state === "available" ? "Install and turn on" : "Open the App Store", primary: true, onClick: function () {
+        if (v.state === "installed") switchApp(v, true);
+        else if (v.state === "available") installAndOn(name).then(function () { if (window.notify) window.notify("Installing " + name + "\u2026 it is switched on when it is done.", { type: "info", title: "App Store" }); }, function (e) { if (window.notify) window.notify(e.message, { type: "error", title: "App Store" }); });
+        else open(name);
+      } },
+      { label: "Open the App Store", onClick: function () { open(name); } },
       { label: "Not now", onClick: function () {} }
     ] });
   }, function () {}).then(function () { hintBusy = false; });
@@ -304,6 +347,8 @@ function init() {
 }
 
 window.AppStore = {
+  // Genie's permission card and the terminal's notice: install a safe app and switch it on, when the user said yes
+  installAndOn: installAndOn,
   open: open,
   // Genie and the terminal offer an app: the store opens on it, the user decides
   suggest: function (name) { open(name); },

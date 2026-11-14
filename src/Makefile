@@ -63,9 +63,10 @@ bindata:
 bindata/static: bindata
 	mkdir bindata/static
 
-bindata/static/index.html: bindata/static resources/index.html resources/profile.html resources/practice.html resources/robots.txt jsconsole/build/static/jsconsole.html
+bindata/static/index.html: bindata/static resources/index.html resources/store.html resources/profile.html resources/practice.html resources/robots.txt jsconsole/build/static/jsconsole.html
 	cp resources/index.html bindata/static/index.html
 	cp resources/profile.html bindata/static/profile.html
+	cp resources/store.html bindata/static/store.html
 	cp resources/practice.html bindata/static/practice.html
 	cp resources/robots.txt bindata/static/robots.txt
 	cp jsconsole/build/static/jsconsole.html bindata/static/jsconsole.html

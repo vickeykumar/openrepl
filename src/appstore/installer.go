@@ -18,13 +18,21 @@ import (
 // Installer makes bundles. The real one runs micromamba against conda-forge; a test, or a dev server without micromamba, uses
 // the fake. The server runs it outside any terminal's sandbox, so a terminal needs no network for an install.
 type Installer interface {
-	// Resolve says which version of a package an install would get now (the newest that works with the server's Python).
-	Resolve(ctx context.Context, name string) (string, error)
+	// Resolve says which version of a package an install would get now (the newest that works with the server's Python), and how
+	// much it brings. version "" means the newest; a version an admin picked is checked the same way.
+	Resolve(ctx context.Context, name, version string) (Resolved, error)
 	// Install makes the finished contents of a bundle in dest (which does not exist yet); what it says goes to log. It does not
 	// write the marker: the caller does, after its own checks.
 	Install(ctx context.Context, name, version, dest string, log io.Writer) error
 	// Name says which installer this is, for the admin page.
 	Name() string
+}
+
+// Resolved is what a solve found: the version of the package, and what an install of it brings with it.
+type Resolved struct {
+	Version    string
+	Packages   int     // how many packages (the app and its dependencies) are linked
+	DownloadMB float64 // what has to be fetched, when the solver says
 }
 
 // ---- micromamba ----------------------------------------------------------------------------------------------------------
@@ -42,10 +50,11 @@ func (m Mamba) Name() string { return "micromamba (conda-forge)" }
 
 func (m Mamba) cmd(ctx context.Context, args ...string) *exec.Cmd {
 	c := exec.CommandContext(ctx, m.Bin, args...)
+	// Only the two folders go in the environment. micromamba cannot read a switch such as MAMBA_NO_RC=1 from it ("Bad conversion of
+	// configurable 'no_rc'": found by running the real program 2026-11-14), so the switches are flags (see common).
 	c.Env = append(os.Environ(),
 		"MAMBA_ROOT_PREFIX="+filepath.Join(m.Dir, "mamba"),
-		"CONDA_PKGS_DIRS="+filepath.Join(m.Dir, "pkgs"),
-		"MAMBA_NO_BANNER=1", "MAMBA_NO_RC=1", "CONDARC=/dev/null")
+		"CONDA_PKGS_DIRS="+filepath.Join(m.Dir, "pkgs"))
 	return c
 }
 
@@ -68,25 +77,29 @@ func (m Mamba) withTimeout(ctx context.Context) (context.Context, context.Cancel
 	return context.WithTimeout(ctx, t)
 }
 
-func (m Mamba) Resolve(ctx context.Context, name string) (string, error) {
-	if !ValidName(name) {
-		return "", fmt.Errorf("%q is not a package name", name)
+func (m Mamba) Resolve(ctx context.Context, name, version string) (Resolved, error) {
+	if !ValidName(name) || (version != "" && !ValidVersion(version)) {
+		return Resolved{}, fmt.Errorf("%q %q is not a package", name, version)
 	}
 	ctx, cancel := m.withTimeout(ctx)
 	defer cancel()
 	args := append([]string{"create", "--dry-run", "--json", "-n", "openrepl-probe"}, m.common()...)
-	args = append(args, name)
+	spec := name
+	if version != "" {
+		spec = name + "=" + version
+	}
+	args = append(args, spec)
 	var out, errb bytes.Buffer
 	c := m.cmd(ctx, args...)
 	c.Stdout, c.Stderr = &out, &errb
 	if err := c.Run(); err != nil {
-		return "", fmt.Errorf("conda-forge could not solve %s: %s", name, tail(errb.String()+out.String(), 600))
+		return Resolved{}, fmt.Errorf("conda-forge could not solve %s: %s", spec, tail(errb.String()+out.String(), 600))
 	}
-	return versionFromSolve(out.Bytes(), name)
+	return solveFrom(out.Bytes(), name)
 }
 
-// versionFromSolve reads the version of a package from the JSON of a dry run.
-func versionFromSolve(raw []byte, name string) (string, error) {
+// solveFrom reads the JSON of a dry run: the version of the package, how many packages are linked and what is to be fetched.
+func solveFrom(raw []byte, name string) (Resolved, error) {
 	var res struct {
 		Actions struct {
 			Link  []solvedPkg `json:"LINK"`
@@ -94,21 +107,32 @@ func versionFromSolve(raw []byte, name string) (string, error) {
 		} `json:"actions"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
-		return "", errors.New("the answer of micromamba could not be read")
+		return Resolved{}, errors.New("the answer of micromamba could not be read")
 	}
+	out := Resolved{Packages: len(res.Actions.Link)}
+	var bytesTotal float64
+	for _, p := range res.Actions.Fetch {
+		bytesTotal += p.Size
+	}
+	out.DownloadMB = bytesTotal / (1 << 20)
 	for _, list := range [][]solvedPkg{res.Actions.Link, res.Actions.Fetch} {
 		for _, p := range list {
 			if p.Name == name && ValidVersion(p.Version) {
-				return p.Version, nil
+				out.Version = p.Version
+				if out.Packages == 0 {
+					out.Packages = len(res.Actions.Fetch)
+				}
+				return out, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("conda-forge has no %s for this server's Python", name)
+	return Resolved{}, fmt.Errorf("conda-forge has no %s for this server's Python", name)
 }
 
 type solvedPkg struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Name    string  `json:"name"`
+	Version string  `json:"version"`
+	Size    float64 `json:"size"`
 }
 
 func (m Mamba) Install(ctx context.Context, name, version, dest string, log io.Writer) error {
@@ -143,14 +167,18 @@ func (f Fake) ver() string {
 	return f.Version
 }
 
-func (f Fake) Resolve(ctx context.Context, name string) (string, error) {
-	if !ValidName(name) {
-		return "", fmt.Errorf("%q is not a package name", name)
+func (f Fake) Resolve(ctx context.Context, name, version string) (Resolved, error) {
+	if !ValidName(name) || (version != "" && !ValidVersion(version)) {
+		return Resolved{}, fmt.Errorf("%q is not a package name", name)
 	}
 	if f.Fail[name] {
-		return "", fmt.Errorf("conda-forge could not solve %s: python 3.10.* is not compatible with %s (fake)", name, name)
+		return Resolved{}, fmt.Errorf("conda-forge could not solve %s: python 3.10.* is not compatible with %s (fake)", name, name)
 	}
-	return f.ver(), nil
+	v := f.ver()
+	if version != "" {
+		v = version
+	}
+	return Resolved{Version: v, Packages: 3, DownloadMB: 1.5}, nil
 }
 
 func (f Fake) Install(ctx context.Context, name, version, dest string, log io.Writer) error {
@@ -209,8 +237,8 @@ func CleanLog(s, dir string) string {
 type Missing struct{ Reason string }
 
 func (m Missing) Name() string { return "none: " + m.Reason }
-func (m Missing) Resolve(ctx context.Context, name string) (string, error) {
-	return "", errors.New(m.Reason)
+func (m Missing) Resolve(ctx context.Context, name, version string) (Resolved, error) {
+	return Resolved{}, errors.New(m.Reason)
 }
 func (m Missing) Install(ctx context.Context, name, version, dest string, log io.Writer) error {
 	return errors.New(m.Reason)

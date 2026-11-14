@@ -31,8 +31,7 @@ import (
 const APPSTORE_DB = utils.GOTTY_PATH + "/appstore.db"
 
 // defaultSafeList is what a signed-in user may install without asking, until an admin saves a list of their own.
-var defaultSafeList = []string{"flask", "requests", "numpy", "pandas", "scipy", "matplotlib", "pillow", "beautifulsoup4", "lxml",
-	"pyyaml", "jinja2", "click", "sqlalchemy", "pytest", "jq"}
+var defaultSafeList = appstore.DefaultSafeList
 
 const defaultStoreLimitMB = 2048
 
@@ -160,7 +159,11 @@ func (server *Server) startAppStore(ctx context.Context) {
 		}
 		kv = db
 	}
-	svc := appstore.New(appstore.Config{Store: appstore.Store{Dir: dir}, KV: kv, Installer: newInstaller(dir), Safe: storeSafeList, LimitMB: storeLimitMB, Apt: aptRunner()})
+	cfg := appstore.Config{Store: appstore.Store{Dir: dir}, KV: kv, Installer: newInstaller(dir), Safe: storeSafeList, LimitMB: storeLimitMB, Apt: aptRunner()}
+	if worker {
+		cfg.Fetch = gatewayFetch(gatewayHTTPBase(server.options.WorkerServer), server.options.WorkerToken, dir)
+	}
+	svc := appstore.New(cfg)
 	appStoreMu.Lock()
 	appStoreSvc, appStoreKV = svc, kv
 	appStoreMu.Unlock()
@@ -348,8 +351,14 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 			dir := svc.Store().Dir
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"views": svc.Views(uid, home), "on": svc.MyList(home), "home": home, "envScript": filepath.Join(dir, "envs", home, "env.sh"),
-				"installer": svc.Installer().Name(), "maxOn": appstore.MaxOn,
+				"installer": svc.Installer().Name(), "maxOn": appstore.MaxOn, "admin": IsUserAdmin(w, r), "python": storePython(),
 			})
+		case "notices":
+			n := svc.Notices(uid)
+			if n == nil {
+				n = []appstore.Notice{}
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{"notices": n})
 		case "job":
 			j, ok := svc.Job(r.URL.Query().Get("name"))
 			writeJSON(w, http.StatusOK, map[string]interface{}{"running": ok, "step": j.Step})
@@ -386,6 +395,8 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 		err = svc.Switch(home, c.ID, c.On)
 	case "report":
 		err = svc.Report(uid, c.Name, c.Note)
+	case "ack":
+		svc.Ack(uid, c.Name)
 	default:
 		http.NotFound(w, r)
 		return
@@ -403,10 +414,11 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 var condaForgeAPI = "https://api.anaconda.org/package/conda-forge/"
 
 type appInfo struct {
-	Name    string `json:"name"`
-	Summary string `json:"summary"`
-	Version string `json:"version"`
-	Home    string `json:"home,omitempty"`
+	Name     string   `json:"name"`
+	Summary  string   `json:"summary"`
+	Version  string   `json:"version"`
+	Home     string   `json:"home,omitempty"`
+	Versions []string `json:"versions,omitempty"` // the newest first, for an admin who picks one
 }
 
 var (
@@ -446,14 +458,20 @@ func lookupApp(ctx context.Context, name string) (appInfo, error) {
 		return appInfo{}, fmt.Errorf("conda-forge answered %s", res.Status)
 	}
 	var raw struct {
-		Summary string `json:"summary"`
-		Latest  string `json:"latest_version"`
-		Home    string `json:"home"`
+		Summary  string   `json:"summary"`
+		Latest   string   `json:"latest_version"`
+		Home     string   `json:"home"`
+		Versions []string `json:"versions"`
 	}
 	if json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&raw) != nil {
 		return appInfo{}, fmt.Errorf("the answer of conda-forge could not be read")
 	}
 	info := appInfo{Name: name, Summary: strings.TrimSpace(raw.Summary), Version: raw.Latest, Home: raw.Home}
+	for i := len(raw.Versions) - 1; i >= 0 && len(info.Versions) < 25; i-- { // the API lists the oldest first
+		if appstore.ValidVersion(raw.Versions[i]) {
+			info.Versions = append(info.Versions, raw.Versions[i])
+		}
+	}
 	if len(info.Summary) > 300 {
 		info.Summary = info.Summary[:300]
 	}
@@ -503,19 +521,20 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 			"enabled": !s.StoreOff, "installer": svc.Installer().Name(), "dir": svc.Store().Dir,
 			"apps": svc.Apps(), "requests": svc.Requests(), "reports": svc.Reports(), "apt": svc.Apt(), "users": users, "nodes": rows,
 			"safeList": storeSafeList(), "limitMB": storeLimitMB(), "limitSet": s.StoreLimitMB, "safeSet": len(s.StoreSafeList) > 0,
-			"sizeMB": local.SizeMB,
+			"sizeMB": local.SizeMB, "channel": "conda-forge", "python": storePython(), "now": time.Now().Unix(),
 		})
 		return
 	}
 	var c struct {
-		Action string   `json:"action"`
-		Name   string   `json:"name"`
-		Kind   string   `json:"kind"`
-		Answer string   `json:"answer"`
-		Apt    []string `json:"apt"`
-		Safe   []string `json:"safeList"`
-		Limit  int      `json:"limitMB"`
-		Off    bool     `json:"off"`
+		Action  string   `json:"action"`
+		Version string   `json:"version"`
+		Name    string   `json:"name"`
+		Kind    string   `json:"kind"`
+		Answer  string   `json:"answer"`
+		Apt     []string `json:"apt"`
+		Safe    []string `json:"safeList"`
+		Limit   int      `json:"limitMB"`
+		Off     bool     `json:"off"`
 	}
 	if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&c) != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -527,6 +546,9 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 	switch c.Action {
 	case "install":
 		err = svc.Install(who, c.Name, c.Kind, true)
+	case "pickversion":
+		err = svc.InstallVersion(who, c.Name, c.Kind, c.Version)
+		detail = c.Name + " " + c.Version
 	case "approve":
 		err = svc.Approve(who, c.Name)
 	case "reject":
@@ -572,4 +594,130 @@ func aptRunner() appstore.AptRunner {
 		return nil
 	}
 	return appstore.SystemApt{}
+}
+
+// appStoreHealth is the card of the Health page: "" when the store is off or this is a worker, else a status and a line.
+func appStoreHealth() (status, detail string) {
+	svc := storeService()
+	if svc == nil {
+		if appStoreErr != "" {
+			return healthFail, "the catalog could not be opened: " + appStoreErr
+		}
+		return "", ""
+	}
+	if GetSiteSettings().StoreOff {
+		return healthOK, "switched off in the settings"
+	}
+	inst := svc.Installer().Name()
+	apps := svc.Apps()
+	installed, failed := 0, 0
+	for _, a := range apps {
+		switch a.State {
+		case appstore.StateInstalled:
+			installed++
+		case appstore.StateFailed:
+			failed++
+		}
+	}
+	mb := float64(svc.Store().Size()) / (1 << 20)
+	behind := 0
+	appStoreMu.Lock()
+	for _, n := range appNodes {
+		if time.Since(n.Seen) < 5*time.Minute && len(n.Failed) > 0 {
+			behind++
+		}
+	}
+	appStoreMu.Unlock()
+	detail = fmt.Sprintf("%d apps installed, %.0f MB of %d MB, installer: %s", installed, mb, storeLimitMB(), inst)
+	status = healthOK
+	if strings.HasPrefix(inst, "none") {
+		return healthWarn, detail + ". Nothing can be installed until micromamba is there."
+	}
+	if failed > 0 {
+		status = healthWarn
+		detail += fmt.Sprintf("; %d failed", failed)
+	}
+	if behind > 0 {
+		status = healthWarn
+		detail += fmt.Sprintf("; %d workers could not apply the catalog", behind)
+	}
+	if mb > float64(storeLimitMB()) {
+		status = healthWarn
+		detail += "; the store is over its limit, installs are refused"
+	}
+	return status, detail
+}
+
+// gatewayFetch is how a worker gets a finished bundle: the gateway sends it as a .tar.gz (handleStoreBundle), so the worker needs
+// no solve and no internet. It is nil when the worker cannot reach its gateway over HTTP.
+func gatewayFetch(base, token, dir string) func(ctx context.Context, id, dest string) error {
+	if base == "" || token == "" {
+		return nil
+	}
+	client := &http.Client{Timeout: 20 * time.Minute}
+	return func(ctx context.Context, id, dest string) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/store/bundle?id="+url.QueryEscape(id), nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		res, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("the gateway answered %s", res.Status)
+		}
+		if err := appstore.ReadBundle(res.Body, dest); err != nil {
+			return err
+		}
+		if _, err := os.Stat(filepath.Join(dest, ".openrepl-bundle.json")); err != nil {
+			os.RemoveAll(dest)
+			return fmt.Errorf("the bundle arrived without its marker")
+		}
+		return nil
+	}
+}
+
+// handleStoreBundle sends a finished bundle to a worker (GET /store/bundle?id=<name>-<version>, the worker token).
+func (server *Server) handleStoreBundle(w http.ResponseWriter, r *http.Request) {
+	svc := storeService()
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if server.options.WorkerToken == "" || subtle.ConstantTimeCompare([]byte(got), []byte(server.options.WorkerToken)) != 1 {
+		http.Error(w, "not allowed", http.StatusUnauthorized)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if svc == nil || !appstore.ValidBundle(id) || !svc.Store().HasBundle(id) {
+		http.Error(w, "no such bundle", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/gzip")
+	if err := svc.Store().WriteBundle(id, w); err != nil {
+		log.Printf("appstore: sending %s to %s: %v", id, r.RemoteAddr, err)
+	}
+}
+
+// handleStorePage serves the page of the App Store (resources/store.html). The page holds no data: it asks /store/api, which
+// checks who is asking.
+func (server *Server) handleStorePage(w http.ResponseWriter, r *http.Request) {
+	data, err := Asset("static/store.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Cache-Control", "no-store")
+	h.Set("X-Content-Type-Options", "nosniff")
+	w.Write(data)
+}
+
+// storePython is the Python the bundles are solved with, as the admin and the page say it.
+func storePython() string {
+	if v := os.Getenv("OPENREPL_STORE_PYTHON"); v != "" {
+		return v
+	}
+	return appstore.PythonOf("python3")
 }

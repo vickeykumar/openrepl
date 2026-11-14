@@ -4422,3 +4422,5 @@ body.is-signed-in #appstore-button { display: inline-flex; }
 .appstore__foot { display: flex; flex-direction: column; gap: 6px; }
 .appstore__apply { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #16262e; border: 1px solid #27414d; border-radius: 9px; padding: 8px 12px; color: #a8d4e8; }
 .appstore__help { font-size: 12px; color: var(--muted-2); }
+.appstore__full { margin-left: auto; margin-right: 12px; font-size: 12.5px; color: var(--accent-color, #b6e03a); text-decoration: none; }
+.appstore__full:hover { text-decoration: underline; }

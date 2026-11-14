@@ -253,3 +253,8 @@ func (s Store) Homes() []string {
 	}
 	return out
 }
+
+// DefaultSafeList is what a signed-in user may install without asking, until an admin saves a list of their own. The CI installs every
+// one of them for real (realinstall_test.go), so a name that conda-forge cannot solve with the image's Python is found there.
+var DefaultSafeList = []string{"flask", "requests", "numpy", "pandas", "scipy", "matplotlib", "pillow", "beautifulsoup4", "lxml",
+	"pyyaml", "jinja2", "click", "sqlalchemy", "pytest", "jq"}

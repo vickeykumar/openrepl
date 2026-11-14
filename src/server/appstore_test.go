@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -111,7 +113,7 @@ func TestLookupAppReadsCondaForge(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		w.Write([]byte(`{"summary":"A simple framework for building complex web applications.","latest_version":"3.0.2","home":"https://flask.palletsprojects.com"}`))
+		w.Write([]byte(`{"summary":"A simple framework for building complex web applications.","latest_version":"3.0.2","home":"https://flask.palletsprojects.com","versions":["2.0.0","2.3.0","3.0.2","../x"]}`))
 	}))
 	defer api.Close()
 	old := condaForgeAPI
@@ -126,6 +128,9 @@ func TestLookupAppReadsCondaForge(t *testing.T) {
 	info, err := lookupApp(context.Background(), "Flask")
 	if err != nil || info.Version != "3.0.2" || !strings.Contains(info.Summary, "web applications") {
 		t.Fatalf("%+v %v", info, err)
+	}
+	if len(info.Versions) != 3 || info.Versions[0] != "3.0.2" || info.Versions[2] != "2.0.0" {
+		t.Errorf("the versions, newest first, and only real ones: %v", info.Versions)
 	}
 	lookupApp(context.Background(), "flask")
 	if hits != 1 {
@@ -152,5 +157,58 @@ func TestStoreSettingsAreChecked(t *testing.T) {
 	}
 	if len(storeSafeList()) == 0 || storeLimitMB() != defaultStoreLimitMB {
 		t.Error("the built-in list and limit")
+	}
+}
+
+func TestStoreBundleIsSentToAWorkerWithTheToken(t *testing.T) {
+	svc := testStoreService(t, appstore.Fake{}, "flask")
+	svc.Install("ann", "flask", "lib", false)
+	svc.Wait()
+	srv := &Server{options: &Options{WorkerToken: "s3cret"}}
+	get := func(token, id string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "http://openrepl.test/store/bundle?id="+id, nil)
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		w := httptest.NewRecorder()
+		srv.handleStoreBundle(w, r)
+		return w
+	}
+	if w := get("", "flask-1.0.0"); w.Code != http.StatusUnauthorized {
+		t.Errorf("no token: %d", w.Code)
+	}
+	if w := get("s3cret", "../etc"); w.Code != http.StatusNotFound {
+		t.Errorf("a bad name: %d", w.Code)
+	}
+	if w := get("s3cret", "numpy-1.0.0"); w.Code != http.StatusNotFound {
+		t.Errorf("a bundle that is not there: %d", w.Code)
+	}
+	w := get("s3cret", "flask-1.0.0")
+	if w.Code != 200 {
+		t.Fatalf("%d", w.Code)
+	}
+	dest := filepath.Join(t.TempDir(), "flask-1.0.0")
+	if err := appstore.ReadBundle(w.Body, dest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, ".openrepl-bundle.json")); err != nil {
+		t.Error("the marker must come with it")
+	}
+	if gatewayFetch("", "t", "/x") != nil || gatewayFetch("http://x", "", "/x") != nil {
+		t.Error("a worker that cannot reach its gateway has no fetch")
+	}
+}
+
+func TestStoreHealthSaysWhatIsWrong(t *testing.T) {
+	svc := testStoreService(t, appstore.Missing{Reason: "micromamba is not installed"}, "flask")
+	if st, detail := appStoreHealth(); st != healthWarn || !strings.Contains(detail, "micromamba") {
+		t.Errorf("no installer: %s %s", st, detail)
+	}
+	svc2 := testStoreService(t, appstore.Fake{Fail: map[string]bool{"flask": true}}, "flask")
+	_ = svc
+	svc2.Install("ann", "flask", "lib", false)
+	svc2.Wait()
+	if st, detail := appStoreHealth(); st != healthWarn || !strings.Contains(detail, "1 failed") {
+		t.Errorf("a failed install: %s %s", st, detail)
 	}
 }

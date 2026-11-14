@@ -194,5 +194,9 @@ func storeFolders(dir, workspace string) []string {
 			}
 		}
 	}
+	// Python cannot write its bytecode into a bundle (the sandbox lets it only read them): it goes to the user's workspace instead
+	if os.Getenv("PYTHONPYCACHEPREFIX") == "" {
+		os.Setenv("PYTHONPYCACHEPREFIX", filepath.Join(workspace, ".pycache"))
+	}
 	return folders
 }
