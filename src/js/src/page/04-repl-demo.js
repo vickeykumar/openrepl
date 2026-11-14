@@ -160,6 +160,8 @@
     var ide = get('#ide');
     var lang_selector = get('#select-lang', ide);
     var edname = getOptEditorValue();
+    // a picture or a PDF that a file shows is not replaced by the language of the picker, whenever that language is set up
+    if (lang_selector.value === "image" || lang_selector.value === "pdf") return;
     if (lang_selector.value !== edname) {
       console.log("editor: ",edname);
       lang_selector.value = edname;

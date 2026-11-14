@@ -5,7 +5,7 @@
 // was opened, or the session has ended, the collaborator is told once in a popup, and a bar stays above the editor.
 // Nothing is stored about who the owner is: only whether the page is open, and when it last said so.
 
-window.OwnerAway = { over: over, active: active, hostSession: hostSession, stopHosting: stopHosting, watch: watch, beforeInit: beforeInit, state: function () { return state; } };
+window.OwnerAway = { over: over, active: active, hostSession: hostSession, stopHosting: stopHosting, stopWrites: stopWrites, watch: watch, beforeInit: beforeInit, state: function () { return state; } };
 
 var HEARTBEAT_MS = 25000; // the owner's page says it is here this often
 var GRACE_MS = 8000; // offline this long before a collaborator is told (a reload of the owner's page is not announced)
@@ -108,10 +108,7 @@ function setOver(kind) {
   lockPage();
   drawBar();
   showDialog();
-  // the owner's page takes the records away when it can; this page does it too a little later, so that nothing of a link that
-  // is over stays in Firebase because its owner has gone
-  var wipeId = window.dbpath;
-  setTimeout(function () { if (window.ShareSession && window.ShareSession.wipe) window.ShareSession.wipe(wipeId); }, 15000);
+  scheduleWipe();
 }
 
 function watch(db, id, content) {
@@ -207,6 +204,21 @@ function showEnded() {
   lockPage();
   drawBar();
   showDialog();
+  scheduleWipe();
+}
+
+// the owner's page, when it ends the session: nothing more is written to Firebase from it (its terminal, its editor), so that the
+// cleanup that follows is the last word
+function stopWrites() {
+  state.ended = true;
+  installWriteGuard();
+}
+
+// the owner's page takes the records away when it can; a collaborator's page does it too a little later, so that nothing of a link
+// that is over stays in Firebase because its owner has gone, or because this page wrote something before it knew
+function scheduleWipe() {
+  var wipeId = window.dbpath;
+  setTimeout(function () { if (window.ShareSession && window.ShareSession.wipe) window.ShareSession.wipe(wipeId); }, 15000);
 }
 
 function words() {

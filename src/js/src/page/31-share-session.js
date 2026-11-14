@@ -116,8 +116,7 @@ function wipe(id) {
   var jobs;
   window.__sessionWipe = true; // a collaborator's page writes nothing once the session is over, except this (30-owner-presence.js)
   try {
-    jobs = [d.ref("editor_values/" + id).remove(), d.ref("file-browser/" + id).remove(), d.ref("chat-list/" + id).remove()];
-    if (window.getrepl_firebasedbref) jobs.push(window.getrepl_firebasedbref().child(id).remove());
+    jobs = [d.ref("editor_values/" + id).remove(), d.ref("file-browser/" + id).remove(), d.ref("chat-list/" + id).remove(), d.ref("openrepl/" + id).remove()];
   } catch (e) {
     jobs = jobs || [];
   } finally {
@@ -137,7 +136,9 @@ function end(state) {
   write(null);
   releaseLink();
   if (window.OwnerAway && window.OwnerAway.stopHosting) window.OwnerAway.stopHosting();
+  // the collaborators are told first; then nothing more is written from this page (its terminal would write its record again)
   shareRef(id).update({ state: state, endsAt: Math.min(info.endsAt, now()) }).catch(function () {});
+  if (window.OwnerAway && window.OwnerAway.stopWrites) window.OwnerAway.stopWrites();
   say(state === "expired" ? "The link ran out of time. Press Share to start a new session." : "Session ended. Press Share to start a new one.", "success");
   draw();
   setTimeout(function () { wipe(id).then(function () { location.reload(); }); }, END_PAUSE_MS);

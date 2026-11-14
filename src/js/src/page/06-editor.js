@@ -344,7 +344,8 @@ $(function() {
         } else {
           // the editor's mode follows the language of the page (the picker), not the first entry of its own list
           var pageMode = $('#optionlist option:selected').data('editor');
-          if (pageMode && $selectLang.val() !== pageMode && $selectLang.find('option[value="' + pageMode + '"]').length) $selectLang.val(pageMode);
+          // only while the list is still on its first entry: a file that was chosen before this (a picture, a PDF, a .py) has set it
+          if (pageMode && $selectLang.val() === $selectLang.find('option:first').val() && $selectLang.val() !== pageMode && $selectLang.find('option[value="' + pageMode + '"]').length) $selectLang.val(pageMode);
           $("#select-lang").trigger('change');
         }
       }
