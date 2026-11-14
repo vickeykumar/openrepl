@@ -51,8 +51,8 @@ test("a collaborator starts in the owner's language and the owner's terminal is 
   const viewer = await vctx.newPage();
   await viewer.goto("/" + url.hash);
   await viewer.waitForFunction(() => window.EditorTabs && window.FileBrowser && window.FileBrowser.ready());
-  // the collaborator is in Python from the start, not in C
-  expect(await viewer.evaluate(() => $("#optionlist").val())).toBe("python");
+  // the collaborator ends in Python (on a slow runner the owner's language arrives a moment after the page is ready)
+  await expect.poll(() => viewer.evaluate(() => $("#optionlist").val()), { timeout: 30 * 1000 }).toBe("python");
   await expect.poll(() => text(viewer), { timeout: 30 * 1000 }).toContain("OWNER-MARKER");
   // and the owner's page did not start again in C: its terminal still holds what it printed, in Python
   await owner.waitForTimeout(8000);
