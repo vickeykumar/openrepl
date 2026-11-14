@@ -385,6 +385,9 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 	res := Result{Made: true, Generation: gen, Size: int64(len(archive)), Files: len(m.Entries), Skipped: len(m.Skipped)}
 	res.Deleted = s.prune(ctx, c, home, key)
 	res.VersionsRemoved = s.pruneVersions(ctx, c, home)
+	// said in the log so that what the bucket did can be searched for ("homesnap: ... snapshot"); a failure has its own lines
+	log.Printf("homesnap: %s snapshot made (generation %d, %.1f MB, %d files); %d old day archives and %d old versions removed",
+		home, res.Generation, float64(res.Size)/(1024*1024), res.Files, res.Deleted, res.VersionsRemoved)
 	return res, nil
 }
 
