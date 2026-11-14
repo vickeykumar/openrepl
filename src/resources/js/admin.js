@@ -1102,6 +1102,10 @@
         snapshotIntervalMinutes: int(form.snapEvery.value),
         previewLinkGuestMinutes: int(form.previewLifeGuest.value),
         previewLinkUserMinutes: int(form.previewLifeUser.value),
+        shareLinkGuestMinutes: int(form.shareLifeGuest.value),
+        shareLinkUserMinutes: int(form.shareLifeUser.value),
+        sessionCleanupHours: int(form.sessionCleanup.value),
+        snippetMaxDays: int(form.snippetMax.value),
         previewOff: !form.previewOn.checked,
         previewGuestsOff: !form.previewGuests.checked,
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
@@ -1162,6 +1166,10 @@
         snapshotIntervalMinutes: s.snapshotIntervalMinutes || 0,
         previewLinkGuestMinutes: s.previewLinkGuestMinutes || 0,
         previewLinkUserMinutes: s.previewLinkUserMinutes || 0,
+        shareLinkGuestMinutes: s.shareLinkGuestMinutes || 0,
+        shareLinkUserMinutes: s.shareLinkUserMinutes || 0,
+        sessionCleanupHours: s.sessionCleanupHours || 0,
+        snippetMaxDays: s.snippetMaxDays || 0,
         previewOff: !!s.previewOff,
         previewGuestsOff: !!s.previewGuestsOff,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
@@ -1203,7 +1211,7 @@
       form.maxFile = h('input', { type: 'number', class: 'field', id: 'f-max-file', min: '1', max: '16', step: '1', placeholder: '16', 'aria-label': 'Largest file the editor opens, in megabytes', oninput: update });
       form.maxFile.value = settings.maxEditorFileMB || '';
       form.maxFile.style.maxWidth = '9rem';
-      form.snapEvery = h('input', { type: 'number', class: 'field', id: 'f-snap-every', min: '1', max: '60', step: '1', placeholder: '5', 'aria-label': 'Minutes between workspace snapshots' });
+      form.snapEvery = h('input', { type: 'number', class: 'field', id: 'f-snap-every', min: '1', max: '60', step: '1', placeholder: '5', 'aria-label': 'Minutes between workspace snapshots', oninput: update });
       form.snapEvery.value = settings.snapshotIntervalMinutes || '';
       form.snapEvery.style.maxWidth = '9rem';
       form.previewLifeGuest = h('input', { type: 'number', class: 'field', id: 'f-preview-life-guest', min: '10', max: '1440', step: '1', placeholder: '60', 'aria-label': 'Minutes a preview link works for guests', oninput: update });
@@ -1212,6 +1220,18 @@
       form.previewLifeUser = h('input', { type: 'number', class: 'field', id: 'f-preview-life-user', min: '10', max: '1440', step: '1', placeholder: '180', 'aria-label': 'Minutes a preview link works for signed-in users', oninput: update });
       form.previewLifeUser.value = settings.previewLinkUserMinutes || '';
       form.previewLifeUser.style.maxWidth = '9rem';
+      form.shareLifeGuest = h('input', { type: 'number', class: 'field', id: 'f-share-life-guest', min: '10', max: '10080', step: '1', placeholder: '60', 'aria-label': 'Most minutes a share link works for guests', oninput: update });
+      form.shareLifeGuest.value = settings.shareLinkGuestMinutes || '';
+      form.shareLifeGuest.style.maxWidth = '9rem';
+      form.shareLifeUser = h('input', { type: 'number', class: 'field', id: 'f-share-life-user', min: '10', max: '10080', step: '1', placeholder: '10080', 'aria-label': 'Most minutes a share link works for signed-in users', oninput: update });
+      form.shareLifeUser.value = settings.shareLinkUserMinutes || '';
+      form.shareLifeUser.style.maxWidth = '9rem';
+      form.sessionCleanup = h('input', { type: 'number', class: 'field', id: 'f-session-cleanup', min: '1', max: '720', step: '1', placeholder: '24', 'aria-label': 'Hours between two cleanups of shared sessions', oninput: update });
+      form.sessionCleanup.value = settings.sessionCleanupHours || '';
+      form.sessionCleanup.style.maxWidth = '9rem';
+      form.snippetMax = h('input', { type: 'number', class: 'field', id: 'f-snippet-max', min: '1', max: '365', step: '1', placeholder: '30', 'aria-label': 'Most days a code link works', oninput: update });
+      form.snippetMax.value = settings.snippetMaxDays || '';
+      form.snippetMax.style.maxWidth = '9rem';
       form.colour = colour.input; form.maint = maint.input; form.genie = genie.input;
       // the Preview pane (pages written by visitors, shown on this site's domain): off for all, or for guests only
       var previewOn = toggle('f-preview', !settings.previewOff, 'Preview available');
@@ -1621,7 +1641,11 @@
           row('Preview is available', null, previewOn.node),
           row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node),
           row('Minutes a preview link works for guests', 'From 10 to 1440 (a day). Leave it empty for 60 (1 hour). A pane gets a new link by itself before the old one ends; a link opened in a tab of its own, or copied, stops at its end. A change applies to links made after it.', form.previewLifeGuest),
-          row('Minutes a preview link works for signed-in users', 'From 10 to 1440. Leave it empty for 180 (3 hours).', form.previewLifeUser) ]),
+          row('Minutes a preview link works for signed-in users', 'From 10 to 1440. Leave it empty for 180 (3 hours).', form.previewLifeUser),
+          row('Longest a share link works for guests (minutes)', 'From 10 to 10080 (7 days). Leave it empty for 60 (1 hour). The owner chooses the time in the Share popover and may add time up to this: guests 30 minutes or 1 hour; signed-in users also 4 hours, 24 hours and 7 days, as far as this allows.', form.shareLifeGuest),
+          row('Longest a share link works for signed-in users (minutes)', 'From 10 to 10080 (7 days, as long as a sign-in lasts). Leave it empty for 10080.', form.shareLifeUser),
+          row('Longest a code link works (days)', 'From 1 to 365. Leave it empty for 30 (a month). It is the latest day the calendar offers when someone makes a code link (Share, Share code), and the day it starts on when that is shorter than a month. The server removes ended links every week. A change applies to links made after it.', form.snippetMax),
+          row('Hours between two cleanups of shared sessions', 'From 1 to 720. Leave it empty for 24 (daily). The server removes, from Firebase, the sessions whose link ended or ran out, and sessions that have no end and no owner online for a whole interval (the terminal, the code, the chat and the files records). It needs the service account key of the project (OPENREPL_FIREBASE_ADMIN, or OPENREPL_FIRESTORE_CREDENTIALS); the Health page says if it is missing.', form.sessionCleanup) ]),
         card('Languages', 'Untick a language that is broken. The picker greys it out and its terminals refuse to start with a message; terminals that are already open keep running. Admins can still start it, to test a fix.', langGrid),
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),
@@ -1767,6 +1791,7 @@
       { key: 'id', label: 'Link', cell: function (s) { return h('a', { href: BASE + 's/' + s.id, target: '_blank', rel: 'noopener', class: 'mono', text: '/s/' + s.id }); } },
       { key: 'lang', label: 'Language', cell: function (s) { return pill(s.lang || '?', 'plain'); } },
       { key: 'created', label: 'Shared', cell: function (s) { return when(s.created); } },
+      { key: 'expires', label: 'Expires', cell: function (s) { return s.expires ? when(s.expires) : h('span', { class: 'muted', text: 'not yet' }); } },
       { key: 'bytes', label: 'Size', num: true, cell: function (s) { return s.bytes + ' B'; } },
       { key: 'preview', label: 'Code', cell: function (s) { return h('div', { class: 'clip mono', text: s.preview.replace(/\s+/g, ' '), title: s.preview.slice(0, 200) }); } },
       { key: 'actions', label: '', cell: function (s) {

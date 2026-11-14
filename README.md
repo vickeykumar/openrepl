@@ -646,6 +646,7 @@ The server-side settings come from environment variables, and gotty can load the
 | `OPENREPL_ADMIN_EMAILS` | Owner accounts, comma-separated. Owners are admins and the only ones who can add or remove other admins in the dashboard. With none set, nobody is an admin. | `user.email` |
 | `OPENREPL_OPENAI_API_KEY` | The OpenAI key, as it is (not base64). | `user.OpenaiAPIKey` (base64) |
 | `OPENREPL_MONGODB_URI` | Optional. Keeps the admin settings and every database (sessions, feedback, blog, snippets, practice) in MongoDB (for example an Atlas `mongodb+srv://` URI) instead of files under `/opt/gotty`, so they survive deploys that wipe the disk. The first start copies the existing files in, once. A secret. Gateway and standalone only; a worker keeps files. | |
+| `OPENREPL_FIREBASE_ADMIN` | Optional. A Google service account key (the JSON, its base64, or a file path) that the server signs in to the Firebase Realtime Database with, for the cleanup of shared sessions (every `sessionCleanupHours`, daily by default; an admin setting). Without it the server falls back to the key of `OPENREPL_FIRESTORE_CREDENTIALS`, and without either the cleanup does not run (the Health page says so) and ended sessions are removed only by the pages that see them. | |
 | `OPENREPL_FIRESTORE_CREDENTIALS` | Optional. A Google service account key (the JSON, its base64, or a file path) for the Firebase project's Firestore. Used when `OPENREPL_MONGODB_URI` is not set and Firestore answers; otherwise the server uses files. Keep the security rules of `kv_*` and `settings` closed. | |
 | `OPENREPL_FIRESTORE_PROJECT` | The project, when the key does not name it (the emulator). | |
 | `OPENREPL_MONGODB_DB` | The MongoDB database for it. Default `openrepl`. | |
@@ -659,7 +660,7 @@ The server-side settings come from environment variables, and gotty can load the
 | `OPENREPL_LANDLOCK` | The filesystem sandbox of the REPLs (LLD 14): `auto` (the default) applies it where the kernel has Landlock and says in the log and on the admin health page where it does not, `off` switches it off, `require` refuses to start a REPL without it. | |
 | `OPENREPL_NET_ISOLATION` | The private network of a workspace for REPLs that have no kernel network namespace of their own (LLD 16): `auto` (the default) turns it on where a start-up probe passes and says in the log and on the admin health page where it does not, `off` switches it off, `require` refuses to start a REPL without it. | |
 | `OPENREPL_TMP_MAX_AGE` | A duration such as `1h`: the server deletes from `/tmp` what nobody has touched for that long. The Docker image sets `1h`. Not set: never. | |
-| `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Default: the built-in production project. See below. | |
+| `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Required for sign-in, shared sessions and the shared editor: there is no built-in project, and a server without it says so in its log and in the console of the page. See below. | |
 | `OPENREPL_ENV` | `dev` or `production` (the default). Dev shows the values of these settings in the start-up log; production only says which are set. | |
 
 The environment wins over the file. A variable that is empty counts as not set, so a half-filled `.env` does not switch the file off. The file is looked for in `/opt/gotty/.gitconfig`, then `~/.gitconfig`, then `/etc/.gitconfig`, and only the first one that exists is read.
@@ -726,7 +727,7 @@ Sign-in goes through Firebase, so to test it without touching the production pro
 
    - **The snippet exactly as the console shows it** (`const firebaseConfig = { apiKey: "...", ... };`, with or without the first line). Nothing in it is run; only the `key: "value"` pairs are read.
    - **JSON on one line:** `{"apiKey":"AIza...","authDomain":"my-openrepl-dev.firebaseapp.com","projectId":"my-openrepl-dev","databaseURL":"https://my-openrepl-dev-default-rtdb.firebaseio.com"}`.
-   - **The base64 of either**, which has no quotes in it. The server's own built-in config is kept in this form, base64 of the snippet, so the same text works here. To make it, paste the snippet into a file and run `base64 < firebase-dev.txt | tr -d '\n'`.
+   - **The base64 of either**, which has no quotes in it. To make it, paste the snippet into a file and run `base64 < firebase-dev.txt | tr -d '\n'`.
 
    ```bash
    # ~/.env

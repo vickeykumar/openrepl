@@ -108,6 +108,9 @@ export class FireTTY {
                     return;
                 }
                 this.lastrestarted = FireTTY.setngetrestart();
+                // a collaborator's page says nothing of its language until it has the owner's (main.ts, ownerLanguage): what it
+                // says first is the picker's first choice, and the owner would restart for it
+                if (!this.master && !(window as any).__sessionLangReady) return;
                 if (!this.master && FireTTY.applyingchanges) {
                     // no notification back as i am applying my notification change here.
                     console.log("slave applying its own change request...")
@@ -179,6 +182,13 @@ export class FireTTY {
                         if(optionMenu!==null) {
                             const SelectOption = (optionMenu.getElementsByClassName("list")[0] as HTMLSelectElement);
                             if (SelectOption !== null) {   //once
+                                // A page that joins or reloads says which language it has: when that is the one in use already,
+                                // nothing changes. Restarting the REPL for it would end the program and clear the terminal of
+                                // the owner, and a collaborator would find a new, empty one in place of what the owner has.
+                                if (SelectOption.value === d.Data) {
+                                    console.log("master is on this language already, not restarting.");
+                                    return;
+                                }
                                 SelectOption.value = d.Data;
                                 let event = new Event('change');
                                 SelectOption.dispatchEvent(event);
@@ -316,6 +326,8 @@ export class FireTTY {
     };
 
     dboutput(type: string, data: any) {
+            // a collaborator's page of a session that is over sends nothing (30-owner-presence.js)
+            if (!this.master && (window as any).OwnerAway && (window as any).OwnerAway.over && (window as any).OwnerAway.over()) return;
     		//console.log("db output event: ", type, data);
 	    	this.firebasedbref.push ({
 			   eventT: type,

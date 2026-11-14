@@ -242,10 +242,14 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	}
 	if project, custom := firebaseProject(); custom {
 		add("Firebase", healthOK, "signing in with the project "+project+" (from OPENREPL_FIREBASE_CONFIG)")
-	} else if utils.IsDev() {
-		add("Firebase", healthWarn, "this dev server uses the built-in project, which is the production one ("+project+")")
 	} else {
-		add("Firebase", healthOK, "signing in with the built-in project "+project)
+		add("Firebase", healthFail, "no Firebase config: sign-in, shared sessions and the shared editor do not work. Set OPENREPL_FIREBASE_CONFIG")
+	}
+	{
+		st, detail := sessionCleanupStatus()
+		add("Shared session cleanup", st, detail)
+		st, detail = snippetCleanupStatus()
+		add("Code link cleanup", st, detail)
 	}
 	switch st := currentSettingsStoreStatus(); {
 	case st.Healthy:

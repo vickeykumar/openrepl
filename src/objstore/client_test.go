@@ -216,3 +216,36 @@ func TestVersionsOfAnOverwrittenKeyAreListedAndReadOne_ByOne(t *testing.T) {
 		t.Errorf("versions after a delete: %+v", vs)
 	}
 }
+
+func TestUsageCountsTheLiveObjectsAndTheOlderVersions(t *testing.T) {
+	c, f := newTestClient(t)
+	f.SetPageSize(2)
+	f.SetVersioned(true)
+	for i := 0; i < 5; i++ {
+		if err := c.Put(ctx, fmt.Sprintf("backups/a/%02d", i), make([]byte, 100), "", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.Put(ctx, "backups/a/00", make([]byte, 40), "", nil) // an overwrite leaves the 100 bytes behind as an older version
+	u, err := c.Usage(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Objects != 5 || u.Bytes != 4*100+40 {
+		t.Errorf("live: %d objects, %d bytes", u.Objects, u.Bytes)
+	}
+	if !u.VersionsKnown || u.OlderVersions != 1 || u.OlderBytes != 100 {
+		t.Errorf("older: %+v", u)
+	}
+	if u.Truncated {
+		t.Errorf("a small bucket was said to be cut")
+	}
+}
+
+func TestUsageOfAnEmptyStore(t *testing.T) {
+	c, _ := newTestClient(t)
+	u, err := c.Usage(ctx)
+	if err != nil || u.Objects != 0 || u.Bytes != 0 {
+		t.Errorf("%+v %v", u, err)
+	}
+}

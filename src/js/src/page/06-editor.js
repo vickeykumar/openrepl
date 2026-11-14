@@ -70,6 +70,11 @@ $(function() {
         editor.setFontSize(this.value+"px");
     });
     
+    // The editor's list has C and C++ as two entries (the picker has two REPLs for them); Ace colours both with its one mode.
+    // A record of an older page names that mode ("c_cpp"): it is the language the picker is on, C unless that is C++.
+    var aceMode = function (value) { return value === "c" || value === "cpp" ? "c_cpp" : value; };
+    var listValue = function (value) { return value === "c_cpp" ? ($("#optionlist").val() === "cpp" ? "cpp" : "c") : value; };
+
     // Select the desired programming language you want to code in 
     var $selectLang = $("#select-lang").change(function (event) {
         // "Image" and "PDF" are shown, not edited: the file sets them, and they are no language of the editor, so
@@ -79,8 +84,11 @@ $(function() {
         let is_silent = (event.detail && event.detail.silent) || false;
         console.log("is silent change: ", is_silent, event);
         // Set the language in the Firebase object
-        // This is a preference per editor
-        currentEditorValue.update({
+        // This is a preference per editor. Not by a collaborator of a session that is over: that would bring back a record of it.
+        // A collaborator says nothing of its language until it has the owner's (the first record of the session is read and applied): what
+        // its page holds before is the picker's first choice, and the owner would follow it.
+        var mayTell = (typeof isMaster !== "function" || isMaster()) || window.__sessionLangReady;
+        if (mayTell && !(window.OwnerAway && window.OwnerAway.active())) currentEditorValue.update({
             lang: {
               data: this.value,
               silent: is_silent // trigger event only when told
@@ -88,7 +96,7 @@ $(function() {
         });
         // Set the editor language
         if (editor) {
-          editor.getSession().setMode("ace/mode/" + this.value);
+          editor.getSession().setMode("ace/mode/" + aceMode(this.value));
         }
 
         //get language from optionmenu
@@ -125,9 +133,25 @@ $(function() {
         //all init for editor goes here
         editorInitialized = true;
         // Somebody changed the lang. Hey, we have to update it in our editor too!
+        var firstLang = true;
         currentEditorValue.child("lang").on("value", function (r) {
+            try {
+                applySessionLanguage(r);
+            } finally {
+                window.__sessionLangReady = true; // from here on a collaborator's change of language is its own
+            }
+        });
+        function applySessionLanguage(r) {
             let langdata = r.val();
-            let value = langdata.data;
+            // The owner's page opens in its own language (the one chosen last, 32-remember-language.js) and tells the session
+            // about it: what the record held when the page opened is from before, and must not replace it. Later changes,
+            // by a collaborator, do.
+            if (firstLang) {
+                firstLang = false;
+                if (typeof isMaster !== "function" || isMaster()) return;
+            }
+            if (!langdata) return; // the record is gone (the session ended)
+            let value = listValue(langdata.data);
             let is_silent = langdata.silent || false;
             console.log("data recieved from remote: ",langdata);
             // Set the language
@@ -139,9 +163,15 @@ $(function() {
                     }
                 });
 
-                $selectLang.val(value).trigger(customEvent);
+                // a language that came from the session is not the visitor's own choice (32-remember-language.js keeps only that)
+                window.__languageFromSession = true;
+                try {
+                    $selectLang.val(value).trigger(customEvent);
+                } finally {
+                    window.__languageFromSession = false;
+                }
             }
-        });
+        }
 
         // Hide the spinner
         $("#loader").fadeOut();
@@ -149,6 +179,8 @@ $(function() {
 
         // Initialize the ACE editor
         editor = ace.edit("editor");
+        // a collaborator of a session that is over only reads (30-owner-presence.js)
+        if (window.OwnerAway && window.OwnerAway.over()) editor.setReadOnly(true);
         try { editor.textInput.getElement().setAttribute("aria-label", "Code editor"); } catch (e) {} // T15
         editor.setTheme(getTheme(), function () { if (window.applyIdeTheme) window.applyIdeTheme(editor, getTheme()); });
         editor.setFontSize("14px");
@@ -212,6 +244,11 @@ $(function() {
             // In case the change is emitted by us, don't do anything
             // (see below, this boolean becomes `true` when we receive data from Firebase)
             if (applyingDeltas) {
+                return;
+            }
+            // A collaborator's change is not shared while the owner is away (30-owner-presence.js): it stays in the page,
+            // and cannot replace the owner's code when they come back.
+            if (window.OwnerAway && window.OwnerAway.active()) {
                 return;
             }
 
@@ -278,10 +315,11 @@ $(function() {
              //get language from optionmenu
             var optionlang = $('#optionlist option:selected').data('editor');
             if (optionlang==null) {
-              optionlang="c_cpp"
+              optionlang="c"
             }
-            // Here's where we set the initial content of the editor
-            editorValues.child(editorId).set({
+            // Here's where we set the initial content of the editor. Only the owner starts a session: a link to one
+            // that has ended must not bring it back.
+            if (typeof isMaster !== "function" || isMaster()) editorValues.child(editorId).set({
                 lang: {
                   data: optionlang,
                   silent: true // trigger event only when told
@@ -307,7 +345,24 @@ $(function() {
         if (edRect.top >= 0 && edRect.bottom <= window.innerHeight && !document.body.classList.contains("is-mobile")) {
           editor.focus();
         }
-        $("#select-lang").trigger('change');
+        // The language of the page is told to the session once the editor is ready. A collaborator's list still shows its
+        // first entry then (Assembly), and telling that would replace the language of the owner on both pages: a
+        // collaborator takes the language of the session, and tells its own only when the session has none yet.
+        if (window.OwnerAway && window.OwnerAway.hostSession && (typeof isMaster !== "function" || isMaster())) {
+          window.OwnerAway.hostSession(db, editorId); // the owner's page says it is here
+        }
+        if (typeof isMaster === "function" && !isMaster()) {
+          currentEditorValue.child("lang").once("value", function (r) {
+            var shared = r.val();
+            if (!shared || shared.data === undefined) $("#select-lang").trigger('change');
+          });
+        } else {
+          // the editor's mode follows the language of the page (the picker), not the first entry of its own list
+          var pageMode = $('#optionlist option:selected').data('editor');
+          // only while the list is still on its first entry: a file that was chosen before this (a picture, a PDF, a .py) has set it
+          if (pageMode && $selectLang.val() === $selectLang.find('option:first').val() && $selectLang.val() !== pageMode && $selectLang.find('option[value="' + pageMode + '"]').length) $selectLang.val(pageMode);
+          $("#select-lang").trigger('change');
+        }
       }
     };  // end of editor init App
 
@@ -315,7 +370,12 @@ $(function() {
     currentEditorValue.child("content").once("value", function (contentRef) {
       // Get the current content
       var val = contentRef.val();
-      initializeEditorApp(val);        
+      if (window.OwnerAway && typeof isMaster === "function" && !isMaster()) {
+        // a link that has ended or run out shows no code (30-owner-presence.js)
+        window.OwnerAway.beforeInit(db, editorId, val, function (use) { initializeEditorApp(use); });
+      } else {
+        initializeEditorApp(val);
+      }        
     });
     // initalize the editor App after 10s delay if above fails to
     setTimeout(initializeEditorApp, 10000);

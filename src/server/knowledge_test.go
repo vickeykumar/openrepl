@@ -122,6 +122,9 @@ func TestSearchFindsTheRightNoteForQuestionsAboutTheSite(t *testing.T) {
 	cases := []struct{ q, want string }{
 		{"How can I send my code to a teammate?", "sharing-a-session"},
 		{"how do I share my session with a friend", "sharing-a-session"},
+		{"what happens to people on my share link when I close my editor", "sharing-a-session"},
+		{"how long does my share link work and can I end the session", "sharing-a-session"},
+		{"does a code link expire", "code-links"},
 		{"can someone type along in my terminal", "sharing-a-session"},
 		{"how do I make a link to my code", "code-links"},
 		{"how do I fork a REPL", "fork-a-repl"},

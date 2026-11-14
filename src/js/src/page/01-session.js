@@ -34,6 +34,13 @@ window.getExampleRef = () => {
     window.dbpath = SHARE_ID;
     return SHARE_ID;
   }
+  // a share link that was started and has not ended is the same after a reload (31-share-session.js), unless another tab
+  // of this browser holds it
+  var kept = savedShareId();
+  if (kept) {
+    window.dbpath = kept;
+    return kept;
+  }
   ref = ref.push();
   if (ref.key) {
     window.dbpath = ref.key;  // save the new reference key for future reference
@@ -42,6 +49,19 @@ window.getExampleRef = () => {
   return "xyz";
 };
 
+
+// The id of the share link this browser started and that has not ended, "" when there is none or another tab holds it now.
+function savedShareId() {
+  try {
+    var v = JSON.parse(localStorage.getItem("openrepl-share"));
+    if (!v || !v.id || !(Number(v.endsAt) > Date.now())) return "";
+    var tab = JSON.parse(localStorage.getItem("openrepl-share-tab"));
+    if (tab && tab.at && Date.now() - tab.at < 12000) return "";
+    return String(v.id);
+  } catch (e) {
+    return "";
+  }
+}
 
 function handleClickOutside(elementselector, callback) {
   $(document).on('click', function(event) {

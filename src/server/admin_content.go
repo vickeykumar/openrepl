@@ -177,6 +177,7 @@ type snippetRow struct {
 	ID      string `json:"id"`
 	Lang    string `json:"lang"`
 	Created string `json:"created"`
+	Expires string `json:"expires,omitempty"` // when the link ends (RFC 3339), empty while it has none
 	Bytes   int    `json:"bytes"`
 	Preview string `json:"preview"`
 	Code    string `json:"code,omitempty"`
@@ -217,6 +218,7 @@ func scanSnippets() ([]snippetRow, error) {
 			ID:      string(key),
 			Lang:    s.Lang,
 			Created: time.Unix(s.Created, 0).UTC().Format(time.RFC3339),
+			Expires: snippetEnds(s),
 			Bytes:   len(s.Code),
 			Preview: preview(s.Code),
 		})
@@ -273,7 +275,7 @@ func (server *Server) handleAdminSnippets(w http.ResponseWriter, r *http.Request
 			return
 		}
 		adminJSON(w, http.StatusOK, snippetRow{
-			ID: parts[1], Lang: s.Lang, Created: time.Unix(s.Created, 0).UTC().Format(time.RFC3339),
+			ID: parts[1], Lang: s.Lang, Created: time.Unix(s.Created, 0).UTC().Format(time.RFC3339), Expires: snippetEnds(s),
 			Bytes: len(s.Code), Code: s.Code,
 		})
 	case len(parts) == 3 && parts[2] == "delete" && r.Method == http.MethodPost:

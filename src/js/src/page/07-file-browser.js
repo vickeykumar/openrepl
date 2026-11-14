@@ -58,8 +58,8 @@
       'py': 'python',
       'rb': 'ruby',
       'java': 'java',
-      'c': 'c_cpp',
-      'cpp': 'c_cpp',
+      'c': 'c',
+      'cpp': 'cpp',
       'go': 'golang',
       'pl': 'perl',
       'sh': 'sh',
@@ -340,6 +340,18 @@
           }
         }
   }
+
+  // The language of the editor that the file selected now sets by its extension ("" when none is selected, or its extension is not a
+  // language). The page's timers that follow the language picker ask it (04-repl-demo.js, changeEditor): a file that was
+  // chosen a moment ago decides, not a picker change that is a second or two old.
+  window.fileEditorMode = function () {
+    var tree = $('#file-browser').jstree(true);
+    if (!tree) return "";
+    var sel = tree.get_selected();
+    if (!sel.length || tree.get_type(sel) !== "file") return "";
+    var ext = String(sel[0]).split('.').pop().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(codeext2menuoption, ext) ? codeext2menuoption[ext] : "";
+  };
 
   var lang_change_scheduled = false;
   function changelangbyselectednode() {

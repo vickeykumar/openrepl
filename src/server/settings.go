@@ -74,6 +74,17 @@ type SiteSettings struct {
 	// for a new one before it ends; a link opened in a tab of its own ends with it.
 	PreviewLinkGuestMinutes int `json:"previewLinkGuestMinutes"`
 	PreviewLinkUserMinutes  int `json:"previewLinkUserMinutes"`
+	// ShareLinkGuestMinutes and ShareLinkUserMinutes are the longest a share link of a live session may work (the time chosen
+	// in the Share popover, with the time added), in minutes, from 10 to 10080 (7 days); 0 means the built-in 60 (guest: 1
+	// hour) and 10080 (signed in: 7 days, as long as a sign-in lasts).
+	ShareLinkGuestMinutes int `json:"shareLinkGuestMinutes"`
+	ShareLinkUserMinutes  int `json:"shareLinkUserMinutes"`
+	// SessionCleanupHours is how often the server removes the shared sessions that ended, ran out or were left in the Firebase
+	// Realtime Database (session_cleanup.go), from 1 to 720 hours; 0 means the built-in 24 (daily).
+	SessionCleanupHours int `json:"sessionCleanupHours"`
+	// SnippetMaxDays is the longest a code link (/s/<id>) may work from the day it is made, in days, from 1 to 365; 0 means the
+	// built-in 30 (a month). It is the latest day the calendar offers, and the day it starts on (snippets.go).
+	SnippetMaxDays int `json:"snippetMaxDays"`
 	// PreviewOff switches the Preview pane off for everyone, and PreviewGuestsOff for visitors who are not signed in:
 	// the pane shows pages written by visitors on this site's domain, so abuse can be stopped here without a deploy.
 	PreviewOff       bool `json:"previewOff"`
@@ -203,6 +214,17 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	for name, m := range map[string]int{"guests": s.PreviewLinkGuestMinutes, "signed-in users": s.PreviewLinkUserMinutes} {
 		if m != 0 && (m < minPreviewLinkMinutes || m > maxPreviewLinkMinutes) {
 			return s, fmt.Errorf("the time a preview link works for %s must be between %d and %d minutes (or empty)", name, minPreviewLinkMinutes, maxPreviewLinkMinutes)
+		}
+	}
+	if s.SnippetMaxDays != 0 && (s.SnippetMaxDays < minSnippetMaxDays || s.SnippetMaxDays > maxSnippetMaxDays) {
+		return s, fmt.Errorf("the longest a code link works must be between %d and %d days (or empty)", minSnippetMaxDays, maxSnippetMaxDays)
+	}
+	if s.SessionCleanupHours != 0 && (s.SessionCleanupHours < minSessionCleanupHours || s.SessionCleanupHours > maxSessionCleanupHours) {
+		return s, fmt.Errorf("the time between two cleanups of shared sessions must be between %d and %d hours (or empty)", minSessionCleanupHours, maxSessionCleanupHours)
+	}
+	for name, m := range map[string]int{"guests": s.ShareLinkGuestMinutes, "signed-in users": s.ShareLinkUserMinutes} {
+		if m != 0 && (m < minShareLinkMinutes || m > maxShareLinkMinutes) {
+			return s, fmt.Errorf("the longest a share link works for %s must be between %d and %d minutes (or empty)", name, minShareLinkMinutes, maxShareLinkMinutes)
 		}
 	}
 	if s.DBCapacityMB != 0 && (s.DBCapacityMB < minDBCapacityMB || s.DBCapacityMB > maxDBCapacityMB) {
@@ -448,6 +470,11 @@ type publicSettings struct {
 	PreviewGuestsOff bool `json:"previewGuestsOff"`
 	// the largest file the editor opens, in MB (the effective number: 16 when none is set)
 	MaxEditorFileMB int `json:"maxEditorFileMB"`
+	// ShareMaxGuestMinutes and ShareMaxUserMinutes are the longest a share link works (SiteSettings.ShareLinkGuestMinutes)
+	ShareMaxGuestMinutes int `json:"shareMaxGuestMinutes"`
+	ShareMaxUserMinutes  int `json:"shareMaxUserMinutes"`
+	// SnippetMaxDays is the most days a code link may work (SiteSettings.SnippetMaxDays)
+	SnippetMaxDays int `json:"snippetMaxDays"`
 	// the models that are switched off, and the one visitors start with (empty:
 	// the built-in choice); model-choice.js reads them
 	DisabledModels []string `json:"disabledModels"`
@@ -612,6 +639,58 @@ const (
 	defaultPreviewLinkSignedIn = 180 // a signed-in user: 3 hours
 )
 
+// the longest a share link works, in minutes: the least and the most the admin may set, and what it is when nothing is set
+const (
+	minShareLinkMinutes      = 10
+	maxShareLinkMinutes      = 10080
+	defaultShareLinkGuest    = 60    // a guest: 1 hour
+	defaultShareLinkSignedIn = 10080 // a signed-in user: 7 days, as long as a sign-in lasts
+)
+
+// the longest a code link works, in days
+const (
+	minSnippetMaxDays     = 1
+	maxSnippetMaxDays     = 365
+	defaultSnippetMaxDays = 30
+)
+
+// snippetMaxDays is the longest a code link works in force: the one set, or a month.
+func (s SiteSettings) snippetMaxDays() int {
+	d := s.SnippetMaxDays
+	if d < minSnippetMaxDays || d > maxSnippetMaxDays {
+		d = defaultSnippetMaxDays
+	}
+	return d
+}
+
+// how often the server cleans up the shared sessions, in hours
+const (
+	minSessionCleanupHours     = 1
+	maxSessionCleanupHours     = 720
+	defaultSessionCleanupHours = 24
+)
+
+// sessionCleanupInterval is the time between two cleanups in force: the one set, or a day.
+func (s SiteSettings) sessionCleanupInterval() time.Duration {
+	h := s.SessionCleanupHours
+	if h < minSessionCleanupHours || h > maxSessionCleanupHours {
+		h = defaultSessionCleanupHours
+	}
+	return time.Duration(h) * time.Hour
+}
+
+// shareLinkMax is the longest a share link works in force for a guest or a signed-in user: the one set, or the built-in time.
+func (s SiteSettings) shareLinkMax(guest bool) int {
+	m, def := s.ShareLinkUserMinutes, defaultShareLinkSignedIn
+	if guest {
+		m, def = s.ShareLinkGuestMinutes, defaultShareLinkGuest
+	}
+	if m < minShareLinkMinutes || m > maxShareLinkMinutes {
+		m = def
+	}
+	return m
+}
+
 // previewLinkLife is how long a preview link works in force for a guest or a signed-in user: the one set, or the built-in time.
 func (s SiteSettings) previewLinkLife(guest bool) time.Duration {
 	m, def := s.PreviewLinkUserMinutes, defaultPreviewLinkSignedIn
@@ -642,24 +721,27 @@ func (s SiteSettings) public() publicSettings {
 		models = []string{}
 	}
 	return publicSettings{
-		ColorOfTheDay:     s.ColorOfTheDay,
-		Announcement:      s.Announcement,
-		Maintenance:       s.Maintenance,
-		DisabledLanguages: langs,
-		GenieDisabled:     s.Genie.Disabled,
-		PreviewOff:        s.PreviewOff,
-		PreviewGuestsOff:  s.PreviewGuestsOff,
-		MaxEditorFileMB:   s.maxEditorFileMB(),
-		DisabledModels:    models,
-		CustomModels:      s.Genie.publicCustomModels(),
-		DefaultModel:      s.Genie.DefaultModel,
-		FeaturedModels:    append([]string{}, s.Genie.FeaturedModels...),
-		GenieContext:      s.Genie.context(),
-		AgentEnabled:      !s.Genie.AgentDisabled && !s.Genie.Disabled,
-		AgentAutoOff:      s.Genie.AgentAutoOff,
-		AgentRiskyOff:     s.Genie.AgentRiskyOff,
-		AgentOnPractice:   s.Genie.AgentOnPractice,
-		AgentMaxSteps:     s.Genie.agentMaxSteps(),
+		ColorOfTheDay:        s.ColorOfTheDay,
+		Announcement:         s.Announcement,
+		Maintenance:          s.Maintenance,
+		DisabledLanguages:    langs,
+		GenieDisabled:        s.Genie.Disabled,
+		PreviewOff:           s.PreviewOff,
+		PreviewGuestsOff:     s.PreviewGuestsOff,
+		MaxEditorFileMB:      s.maxEditorFileMB(),
+		ShareMaxGuestMinutes: s.shareLinkMax(true),
+		ShareMaxUserMinutes:  s.shareLinkMax(false),
+		SnippetMaxDays:       s.snippetMaxDays(),
+		DisabledModels:       models,
+		CustomModels:         s.Genie.publicCustomModels(),
+		DefaultModel:         s.Genie.DefaultModel,
+		FeaturedModels:       append([]string{}, s.Genie.FeaturedModels...),
+		GenieContext:         s.Genie.context(),
+		AgentEnabled:         !s.Genie.AgentDisabled && !s.Genie.Disabled,
+		AgentAutoOff:         s.Genie.AgentAutoOff,
+		AgentRiskyOff:        s.Genie.AgentRiskyOff,
+		AgentOnPractice:      s.Genie.AgentOnPractice,
+		AgentMaxSteps:        s.Genie.agentMaxSteps(),
 	}
 }
 
@@ -874,6 +956,18 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.previewLinkLife(false) != b.previewLinkLife(false) {
 		out = append(out, fmt.Sprintf("preview link works %d minutes for signed-in users", int(b.previewLinkLife(false).Minutes())))
+	}
+	if a.snippetMaxDays() != b.snippetMaxDays() {
+		out = append(out, fmt.Sprintf("code links work at most %d days", b.snippetMaxDays()))
+	}
+	if a.sessionCleanupInterval() != b.sessionCleanupInterval() {
+		out = append(out, fmt.Sprintf("shared session cleanup every %d hours", int(b.sessionCleanupInterval().Hours())))
+	}
+	if a.shareLinkMax(true) != b.shareLinkMax(true) {
+		out = append(out, fmt.Sprintf("share link works at most %d minutes for guests", b.shareLinkMax(true)))
+	}
+	if a.shareLinkMax(false) != b.shareLinkMax(false) {
+		out = append(out, fmt.Sprintf("share link works at most %d minutes for signed-in users", b.shareLinkMax(false)))
 	}
 	if a.maxEditorFileMB() != b.maxEditorFileMB() {
 		out = append(out, fmt.Sprintf("largest editor file %d MB", b.maxEditorFileMB()))

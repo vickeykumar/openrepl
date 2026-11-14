@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/big"
 	"net"
@@ -41,9 +42,10 @@ var (
 )
 
 type snippet struct {
-	Lang    string `json:"lang"`    // value of the language in #optionlist, e.g. "python"
-	Code    string `json:"code"`    // editor content
-	Created int64  `json:"created"` // unix seconds
+	Lang    string `json:"lang"`              // value of the language in #optionlist, e.g. "python"
+	Code    string `json:"code"`              // editor content
+	Created int64  `json:"created"`           // unix seconds
+	Expires int64  `json:"expires,omitempty"` // unix seconds: the end of the last day the link works (UTC); 0 on a link made before links had an end, until snippet_expiry.go gives it one
 }
 
 func InitSnippetDBHandle() {
@@ -197,20 +199,69 @@ func writeSnippetJSON(w http.ResponseWriter, status int, v interface{}) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// handleSnippet serves /snippet: GET ?id=<id> returns {lang, code, created};
-// POST {lang, code} stores a snapshot and returns {id, url}.
+// snippetExpired says whether a link's end has passed. A link with no end yet (Expires 0) has not.
+func snippetExpired(s snippet, now time.Time) bool {
+	return s.Expires > 0 && now.Unix() >= s.Expires
+}
+
+// endOfDay is the last second of the day (UTC) that day falls on.
+func endOfDay(t time.Time) int64 {
+	t = t.UTC()
+	return time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, time.UTC).Unix()
+}
+
+// snippetExpiryFor reads the day a new link works until ("2006-01-02", UTC) and says which end it makes. Empty is the default: a
+// month from today, or the most when that is shorter. A day before today, or after today plus the most, is refused with the reason.
+func snippetExpiryFor(day string, now time.Time, maxDays int) (int64, string) {
+	today := now.UTC()
+	latest := today.AddDate(0, 0, maxDays)
+	if strings.TrimSpace(day) == "" {
+		d := defaultSnippetMaxDays
+		if maxDays < d {
+			d = maxDays
+		}
+		return endOfDay(today.AddDate(0, 0, d)), ""
+	}
+	t, err := time.Parse("2006-01-02", strings.TrimSpace(day))
+	if err != nil {
+		return 0, "Choose the day the link works until from the calendar."
+	}
+	if endOfDay(t) < endOfDay(today) {
+		return 0, "That day has passed. Choose today or a later day."
+	}
+	if endOfDay(t) > endOfDay(latest) {
+		return 0, fmt.Sprintf("A code link can work for at most %d days. Choose an earlier day.", maxDays)
+	}
+	return endOfDay(t), ""
+}
+
+// writeSnippetExpired answers a link that has ended.
+func writeSnippetExpired(w http.ResponseWriter, s snippet) {
+	writeSnippetJSON(w, http.StatusGone, map[string]interface{}{"error": "This code link has expired.", "expired": true, "expires": s.Expires})
+}
+
+// handleSnippet serves /snippet: GET ?id=<id> returns {lang, code, created, expires}, or 410 once the link has ended;
+// POST {lang, code, expires} (expires: the day it works until, "2006-01-02") stores a snapshot and returns {id, url, expires}.
 func handleSnippet(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		s, ok := fetchSnippet(r.URL.Query().Get("id"))
 		if !ok {
-			writeSnippetJSON(w, http.StatusNotFound, map[string]string{"error": "This code link doesn't exist."})
+			writeSnippetJSON(w, http.StatusNotFound, map[string]string{"error": "This code link doesn't exist or has expired."})
+			return
+		}
+		if snippetExpired(s, time.Now()) {
+			writeSnippetExpired(w, s)
 			return
 		}
 		writeSnippetJSON(w, http.StatusOK, s)
 	case http.MethodPost:
 		r.Body = http.MaxBytesReader(w, r.Body, snippetMaxBytes*2+1024) // JSON escaping can double the size
-		var in snippet
+		var in struct {
+			Lang    string `json:"lang"`
+			Code    string `json:"code"`
+			Expires string `json:"expires"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			writeSnippetJSON(w, http.StatusBadRequest, map[string]string{"error": "The code is too large or not valid."})
 			return
@@ -227,17 +278,22 @@ func handleSnippet(w http.ResponseWriter, r *http.Request) {
 			writeSnippetJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "Code links hold up to 64 KB."})
 			return
 		}
+		ends, why := snippetExpiryFor(in.Expires, time.Now(), GetSiteSettings().snippetMaxDays())
+		if why != "" {
+			writeSnippetJSON(w, http.StatusBadRequest, map[string]string{"error": why})
+			return
+		}
 		if !allowSnippet(clientIP(r)) {
 			writeSnippetJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many code links. Try again in a few minutes."})
 			return
 		}
-		id, err := storeSnippet(snippet{Lang: in.Lang, Code: in.Code, Created: time.Now().Unix()})
+		id, err := storeSnippet(snippet{Lang: in.Lang, Code: in.Code, Created: time.Now().Unix(), Expires: ends})
 		if err != nil {
 			log.Println("ERROR: storing snippet: ", err.Error())
 			writeSnippetJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Couldn't save the code link. Try again later."})
 			return
 		}
-		writeSnippetJSON(w, http.StatusOK, map[string]string{"id": id, "url": siteURL(r) + "/s/" + id})
+		writeSnippetJSON(w, http.StatusOK, map[string]interface{}{"id": id, "url": siteURL(r) + "/s/" + id, "expires": ends})
 	default:
 		w.Header().Set("Allow", "GET, POST")
 		writeSnippetJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Use GET or POST."})
@@ -250,7 +306,11 @@ func handleSnippetLink(w http.ResponseWriter, r *http.Request) {
 	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/s/"), "/")
 	s, ok := fetchSnippet(id)
 	if !ok {
-		errorHandler(w, r, "This code link doesn't exist. It may have been mistyped.", http.StatusNotFound)
+		errorHandler(w, r, "This code link doesn't exist or has expired. It may have been mistyped.", http.StatusNotFound)
+		return
+	}
+	if snippetExpired(s, time.Now()) {
+		errorHandler(w, r, "This code link has expired. It worked until "+time.Unix(s.Expires, 0).UTC().Format("2 Jan 2006")+". Ask the person who sent it for a new one.", http.StatusGone)
 		return
 	}
 	target := "/?repl=" + url.QueryEscape(s.Lang) + "&s=" + id

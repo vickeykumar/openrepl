@@ -254,7 +254,9 @@ type Result struct {
 	Files      int
 	Skipped    int
 	Deleted    int
-	Note       string
+	// VersionsRemoved is how many older versions of the home's files the bucket was asked to drop (versions.go)
+	VersionsRemoved int
+	Note            string
 }
 
 // SnapshotHome makes a snapshot of one home if it changed since the last one and has settled (nothing in it
@@ -382,6 +384,7 @@ func (s *Snapper) snapshot(ctx context.Context, home string, force, settle bool)
 	s.mu.Unlock()
 	res := Result{Made: true, Generation: gen, Size: int64(len(archive)), Files: len(m.Entries), Skipped: len(m.Skipped)}
 	res.Deleted = s.prune(ctx, c, home, key)
+	res.VersionsRemoved = s.pruneVersions(ctx, c, home)
 	return res, nil
 }
 
