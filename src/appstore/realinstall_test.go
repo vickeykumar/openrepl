@@ -2,11 +2,11 @@
 
 package appstore
 
-// The real thing: micromamba, conda-forge, the image's Python and the filesystem sandbox. It is not part of `go test` (it needs
+// The real thing: pixi, conda-forge, the image's Python and the filesystem sandbox. It is not part of `go test` (it needs
 // the internet and takes a long time); the CI job "App Store installs" builds it with -tags realinstall and runs it inside the
 // image that was just built (docker-image.yml), so what it proves is what a user gets. It installs EVERY app of the safe list.
 //
-//	OPENREPL_MICROMAMBA   the program (default: the PATH)
+//	OPENREPL_PIXI         the program (default: the PATH)
 //	OPENREPL_REAL_STORE   the folder of the store (default: a temporary one)
 //	OPENREPL_HELPER       landlock-helper (default: the PATH)
 //	OPENREPL_REAL_ONLY    a comma list of names, for a quick run (the CI installs the whole safe list)
@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -47,23 +48,23 @@ func realService(t *testing.T) (*Service, Store) {
 		if dir == "" {
 			dir = os.TempDir() + "/real-store"
 		}
-		bin := os.Getenv("OPENREPL_MICROMAMBA")
+		bin := os.Getenv("OPENREPL_PIXI")
 		if bin == "" {
-			bin, _ = exec.LookPath("micromamba")
+			bin, _ = exec.LookPath("pixi")
 		}
 		if bin == "" {
 			return
 		}
 		py := PythonOf("python3")
 		realStore = Store{Dir: dir}
-		inst := Multi{Conda: Mamba{Bin: bin, Dir: dir, Python: py}, Plugin: PluginInstaller{}}
+		inst := Multi{Conda: Pixi{Bin: bin, Dir: dir, Python: py}, Plugin: PluginInstaller{}}
 		if npm := findRealNpm(); npm != "" {
 			inst.Node = Npm{Bin: npm, Dir: dir}
 		}
 		realSvc = New(Config{Store: realStore, KV: newKV(), Installer: inst, Safe: func() []string { return DefaultSafeList }})
 	})
 	if realSvc == nil {
-		t.Fatal("micromamba was not found: set OPENREPL_MICROMAMBA")
+		t.Fatal("pixi was not found: set OPENREPL_PIXI")
 	}
 	return realSvc, realStore
 }
@@ -150,7 +151,7 @@ func TestEveryAppOfTheSafeListInstallsAndWorks(t *testing.T) {
 // the program is looked up in the bundle's own folder (exec looks in the PATH of this process, not in the one given to the child)
 func runInBundle(t *testing.T, st Store, app App, env []string, cmd []string) {
 	t.Helper()
-	bin := filepath.Join(st.BundlePath(app.ID), "bin", cmd[0])
+	bin := filepath.Join(PrefixOf(st.BundlePath(app.ID)), "bin", cmd[0])
 	if _, err := os.Stat(bin); err != nil {
 		bin = filepath.Join(st.BundlePath(app.ID), "node_modules", ".bin", cmd[0])
 	}
@@ -187,7 +188,7 @@ func TestALanguageAndAPluginAreInstalledByAnAdmin(t *testing.T) {
 		t.Fatalf("lua %+v, plugin %+v", lua, plugin)
 	}
 	env := VarsFor(st.Dir, []string{lua.ID}).Apply(os.Environ())
-	c := exec.Command(filepath.Join(st.BundlePath(lua.ID), "bin", "lua"), "-e", "print('lua works')")
+	c := exec.Command(filepath.Join(PrefixOf(st.BundlePath(lua.ID)), "bin", "lua"), "-e", "print('lua works')")
 	c.Env, c.Dir = env, os.TempDir()
 	if out, err := c.CombinedOutput(); err != nil || !strings.Contains(string(out), "lua works") {
 		t.Errorf("lua does not run: %v %s", err, tailOf(out))
@@ -288,5 +289,93 @@ func TestTheSandboxLetsOnlyTheListedBundlesThrough(t *testing.T) {
 	}
 	if out, err := run("ann", "sh", "-c", "echo '[]' > "+filepath.Join(st.Dir, "envs", "ann", "manifest.json")); err == nil {
 		t.Errorf("a terminal changed its own list: %s", out)
+	}
+}
+
+// the packages an environment holds, from its conda-meta: name-version-build for each
+func installedPackages(t *testing.T, bundle string) []string {
+	t.Helper()
+	files, _ := filepath.Glob(filepath.Join(PrefixOf(bundle), "conda-meta", "*.json"))
+	var out []string
+	for _, f := range files {
+		out = append(out, strings.TrimSuffix(filepath.Base(f), ".json"))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// A node that installs from the lock of the catalog gets exactly the packages the gateway got, and the lock is what a worker is given
+// over the tunnel: nothing is solved again.
+func TestAWorkerInstallsExactlyWhatTheLockOfTheGatewaySays(t *testing.T) {
+	svc, st := realService(t)
+	if err := svc.Install("ci", "flask", KindLib, false); err != nil {
+		t.Fatal(err)
+	}
+	svc.Wait()
+	app, ok := svc.AppByID("flask-" + versionOf(svc, "flask"))
+	if !ok || !app.Locked {
+		t.Skipf("flask is not installed with a lock: %+v", app)
+	}
+	lock, ok := svc.LockOf(app.ID)
+	if !ok || !strings.Contains(lock.Lock, "linux-64") || !strings.Contains(lock.Lock, "linux-aarch64") {
+		t.Fatalf("the lock must cover both CPU types: %v", ok)
+	}
+	// a second node: its own store, the same installer, the lock from the catalog (no solving: the lock says what to fetch)
+	dir := t.TempDir()
+	node := New(Config{Store: Store{Dir: dir}, KV: newKV(), Installer: Pixi{Bin: realPixiBin(), Dir: dir, Python: PythonOf("python3")}})
+	node.SetLock(func(ctx context.Context, id string) (Lock, error) { return lock, nil })
+	st2 := node.Apply(context.Background(), Snapshot{Full: true, Apps: []App{app}})
+	if len(st2.Failed) != 0 {
+		t.Fatalf("the node could not install from the lock: %+v", st2)
+	}
+	a, b := installedPackages(t, st.BundlePath(app.ID)), installedPackages(t, Store{Dir: dir}.BundlePath(app.ID))
+	if len(a) < 20 || strings.Join(a, " ") != strings.Join(b, " ") {
+		t.Errorf("not the same packages:\n%v\n%v", a, b)
+	}
+}
+
+func versionOf(svc *Service, name string) string {
+	for _, a := range svc.Apps() {
+		if a.Name == name {
+			return a.Version
+		}
+	}
+	return ""
+}
+
+func realPixiBin() string {
+	if p := os.Getenv("OPENREPL_PIXI"); p != "" {
+		return p
+	}
+	p, _ := exec.LookPath("pixi")
+	return p
+}
+
+// A package that sets variables when it is activated (proj: PROJ_DATA) has them in the environment of a user who has it on.
+func TestThePackagesActivationVariablesReachTheUsersEnvironment(t *testing.T) {
+	svc, st := realService(t)
+	if err := svc.Install("root", "proj", KindTool, true); err != nil {
+		t.Fatal(err)
+	}
+	svc.Wait()
+	app, ok := svc.AppByID("proj-" + versionOf(svc, "proj"))
+	if !ok {
+		t.Fatalf("proj is not installed: %v", svc.Apps())
+	}
+	v := VarsFor(st.Dir, []string{app.ID})
+	want := filepath.Join(PrefixOf(st.BundlePath(app.ID)), "share", "proj")
+	if v.Extra["PROJ_DATA"] != want {
+		t.Fatalf("PROJ_DATA %q want %q (all: %v)", v.Extra["PROJ_DATA"], want, v.Extra)
+	}
+	for k := range v.Extra {
+		if strings.HasPrefix(k, "PIXI_") || strings.HasPrefix(k, "CONDA_") || k == "PATH" {
+			t.Errorf("%s must not be passed on", k)
+		}
+	}
+	// and the program uses it: projinfo finds its data through the variable
+	c := exec.Command(filepath.Join(PrefixOf(st.BundlePath(app.ID)), "bin", "projinfo"), "EPSG:4326")
+	c.Env, c.Dir = v.Apply(os.Environ()), os.TempDir()
+	if out, err := c.CombinedOutput(); err != nil || !strings.Contains(string(out), "WGS 84") {
+		t.Errorf("projinfo: %v\n%s", err, tailOf(out))
 	}
 }

@@ -478,6 +478,15 @@
           var everyone = (d.defaults || []).indexOf(a.name) >= 0;
           rbtn(row, everyone ? "On for everyone: turn off" : "Turn on for everyone", "", function () { adminPost({ action: "default", name: a.name, on: !everyone }, a.name + (everyone ? " is no longer on for everyone." : " is on for every signed-in user now (each may turn it off for themselves).")); });
         }
+        if (a.state === "installed" && a.kind !== "node" && a.kind !== "plugin") {
+          rbtn(row, "New lock", "", function () {
+            modal(function (dd) {
+              dd.appendChild(heading("Make a new lock of " + a.name + "?"));
+              dd.appendChild(el("p", "", "It is solved again for every CPU type and installed again on every server. The people who have it on keep their switch; it is missing for a short while."));
+              dd.appendChild(dialogButtons([{ label: "New lock", primary: true, run: function () { closeModal(); adminPost({ action: "relock", name: a.name }, "Making a new lock of " + a.name + "."); } }, { label: "Cancel", run: closeModal }]));
+            });
+          });
+        }
         rbtn(row, "Uninstall for everyone", "is-danger", function () {
           modal(function (dd) {
             dd.appendChild(heading("Uninstall " + a.name + "?"));

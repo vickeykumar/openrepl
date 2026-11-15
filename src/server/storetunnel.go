@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"hash/fnv"
 	"log"
 	"sort"
@@ -89,6 +90,20 @@ func (server *Server) gatewayStoreUpdate(w *tunnel.Worker, have int64) *tunnel.S
 	return storeUpdateFor(storeService(), w.ID(), have)
 }
 
+// gatewayStoreLock is the lock of a bundle for a worker that asks for it over the tunnel.
+func (server *Server) gatewayStoreLock(w *tunnel.Worker, id string) (json.RawMessage, bool) {
+	svc := storeService()
+	if svc == nil {
+		return nil, false
+	}
+	l, ok := svc.LockOf(id)
+	if !ok {
+		return nil, false
+	}
+	raw, err := json.Marshal(l)
+	return raw, err == nil
+}
+
 func (server *Server) gatewayStoreState(w *tunnel.Worker, raw json.RawMessage) {
 	storeStateFrom(w.ID(), raw)
 }
@@ -155,6 +170,17 @@ func (server *Server) startWorkerStore(ctx context.Context, svc *appstore.Servic
 		client.SendStoreState(st)
 	}
 	svc.SetOnStep(send)
+	svc.SetLock(func(ctx context.Context, id string) (appstore.Lock, error) {
+		var l appstore.Lock
+		raw, err := client.StoreLock(id)
+		if err == nil {
+			err = json.Unmarshal(raw, &l)
+		}
+		if err == nil && l.Lock == "" {
+			err = errors.New("the lock is empty")
+		}
+		return l, err
+	})
 	var current appstore.Snapshot
 	go func() {
 		for {

@@ -371,6 +371,22 @@ func (c *Client) applyStore(u *StoreUpdate) {
 	atomic.StoreInt64(&c.storeRev, u.Rev)
 }
 
+// StoreLock asks the gateway for the lock of one bundle (see ReqStoreLock). The error says why there is none (not connected, the gateway has
+// no lock for it, no answer).
+func (c *Client) StoreLock(id string) (json.RawMessage, error) {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+	if conn == nil {
+		return nil, errors.New("not connected to the gateway")
+	}
+	ok, data := c.request(conn, ReqStoreLock, map[string]string{"id": id}, 60*time.Second)
+	if !ok || len(data) == 0 {
+		return nil, errors.New("the gateway has no lock for " + id)
+	}
+	return json.RawMessage(data), nil
+}
+
 // SendStoreState tells the gateway how the worker stands with the catalog (see ReqStoreState). It reports whether the gateway took it;
 // a worker that is not connected cannot, and says so (the caller sends it again when it registers).
 func (c *Client) SendStoreState(v interface{}) bool {

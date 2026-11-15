@@ -75,23 +75,23 @@ func storeLimitMB() int {
 	return defaultStoreLimitMB
 }
 
-// newInstaller picks the installer: the fake one for tests and development (OPENREPL_STORE_INSTALLER=fake), else micromamba
-// (OPENREPL_MICROMAMBA, or the PATH), else one that says what is missing.
+// newInstaller picks the installer: the fake one for tests and development (OPENREPL_STORE_INSTALLER=fake), else pixi
+// (OPENREPL_PIXI, or the PATH), else one that says what is missing.
 func newInstaller(dir string) appstore.Installer {
 	if os.Getenv("OPENREPL_STORE_INSTALLER") == "fake" {
 		return appstore.Fake{}
 	}
 	multi := appstore.Multi{Plugin: appstore.PluginInstaller{}}
-	bin := os.Getenv("OPENREPL_MICROMAMBA")
+	bin := os.Getenv("OPENREPL_PIXI")
 	if bin == "" {
-		bin, _ = exec.LookPath("micromamba")
+		bin, _ = exec.LookPath("pixi")
 	}
 	if bin != "" {
 		py := os.Getenv("OPENREPL_STORE_PYTHON")
 		if py == "" {
 			py = appstore.PythonOf("python3")
 		}
-		multi.Conda = appstore.Mamba{Bin: bin, Dir: dir, Python: py}
+		multi.Conda = appstore.Pixi{Bin: bin, Dir: dir, Python: py}
 	}
 	if npm := findNpm(); npm != "" {
 		multi.Node = appstore.Npm{Bin: npm, Dir: dir}
@@ -574,6 +574,19 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 			appStoreMu.Unlock()
 		}
 		detail = c.Node + ": " + c.ID
+	case "relock":
+		var id string
+		if id, err = svc.Relock(who, c.Name); err == nil {
+			// every worker makes it again, from the new lock, when the gateway has installed it
+			appStoreMu.Lock()
+			for node := range appNodes {
+				if !hasString(appCommands[node], id) {
+					appCommands[node] = append(appCommands[node], id)
+				}
+			}
+			appStoreMu.Unlock()
+			detail = c.Name + " (new lock)"
+		}
 	case "pickversion":
 		err = svc.InstallVersion(who, c.Name, c.Kind, c.Version)
 		detail = c.Name + " " + c.Version
@@ -659,7 +672,7 @@ func appStoreHealth() (status, detail string) {
 	detail = fmt.Sprintf("%d apps installed, %.0f MB of %d MB, installer: %s", installed, mb, storeLimitMB(), inst)
 	status = healthOK
 	if strings.HasPrefix(inst, "none") {
-		return healthWarn, detail + ". Nothing can be installed until micromamba is there."
+		return healthWarn, detail + ". Nothing can be installed until pixi is there."
 	}
 	if failed > 0 {
 		status = healthWarn

@@ -20,7 +20,7 @@ func moduleOf(dest, name string) string {
 	if !identPattern.MatchString(mod) {
 		return ""
 	}
-	dirs, _ := filepath.Glob(filepath.Join(dest, "lib", "python3*", "site-packages"))
+	dirs, _ := filepath.Glob(filepath.Join(PrefixOf(dest), "lib", "python3*", "site-packages"))
 	for _, d := range dirs {
 		if fi, err := os.Stat(filepath.Join(d, mod)); err == nil && fi.IsDir() {
 			return mod
@@ -35,17 +35,17 @@ func moduleOf(dest, name string) string {
 // checkBundle starts the bundle's own Python and imports the package's module (or just starts Python, when the module is not
 // known): a bundle that cannot start is never offered as installed. A bundle with no Python has nothing to start. It runs as the
 // server, not in a terminal's sandbox, in an empty folder, with a time limit.
-func checkBundle(ctx context.Context, dest, name, kind string) error {
+func checkBundle(ctx context.Context, dest, name, kind, version string) error {
 	if kind == KindNode {
 		return checkNode(ctx, dest, name)
 	}
 	if kind == KindTool || kind == KindLang {
-		return verifyTool(ctx, dest, name)
+		return verifyTool(ctx, dest, name, version)
 	}
 	if kind == KindPlugin {
 		return checkPlugin(dest)
 	}
-	py := filepath.Join(dest, "bin", "python")
+	py := filepath.Join(PrefixOf(dest), "bin", "python")
 	if _, err := os.Stat(py); err != nil {
 		return nil
 	}

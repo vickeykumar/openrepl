@@ -77,25 +77,6 @@ func TestNames(t *testing.T) {
 	}
 }
 
-func TestSolveFrom(t *testing.T) {
-	raw := []byte(`{"actions":{"FETCH":[{"name":"werkzeug","version":"3.0.4","size":1048576},{"name":"flask","version":"3.0.2","size":2097152}],"LINK":[{"name":"werkzeug","version":"3.0.4","size":1048576},{"name":"flask","version":"3.0.2","size":2097152},{"name":"click","version":"8.1","size":1048576}]}}`)
-	r, err := solveFrom(raw, "flask")
-	if err != nil || r.Version != "3.0.2" || r.Packages != 3 || r.DownloadMB != 4 || r.DiskMB != 10 {
-		t.Errorf("got %+v %v", r, err)
-	}
-	// every package is in the cache already: nothing is fetched, the size is still known
-	cached := []byte(`{"actions":{"FETCH":[],"LINK":[{"name":"flask","version":"3.0.2","size":3145728}]}}`)
-	if r, err := solveFrom(cached, "flask"); err != nil || r.DownloadMB != 3 {
-		t.Errorf("a warm cache: %+v %v", r, err)
-	}
-	if _, err := solveFrom(raw, "numpy"); err == nil {
-		t.Error("a package that is not in the answer is an error")
-	}
-	if _, err := solveFrom([]byte("not json"), "flask"); err == nil {
-		t.Error("bad json")
-	}
-}
-
 func TestManifestAndEnv(t *testing.T) {
 	st := Store{Dir: t.TempDir()}
 	if err := st.Ready(); err != nil {
@@ -425,14 +406,14 @@ func TestStepsAndTheCheckOfABundle(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "bin"), 0755)
 	os.WriteFile(filepath.Join(dir, "bin", "python"), []byte("#!/bin/sh\nexit 0\n"), 0755)
-	if err := checkBundle(context.Background(), dir, "x", KindLib); err != nil {
+	if err := checkBundle(context.Background(), dir, "x", KindLib, "1.0.0"); err != nil {
 		t.Errorf("a working python: %v", err)
 	}
 	os.WriteFile(filepath.Join(dir, "bin", "python"), []byte("#!/bin/sh\necho 'ImportError: no module named x' >&2\nexit 1\n"), 0755)
-	if err := checkBundle(context.Background(), dir, "x", KindLib); err == nil || !strings.Contains(err.Error(), "did not start") {
+	if err := checkBundle(context.Background(), dir, "x", KindLib, "1.0.0"); err == nil || !strings.Contains(err.Error(), "did not start") {
 		t.Errorf("a python that fails must refuse the bundle: %v", err)
 	}
-	if err := checkBundle(context.Background(), t.TempDir(), "x", KindLib); err != nil {
+	if err := checkBundle(context.Background(), t.TempDir(), "x", KindLib, "1.0.0"); err != nil {
 		t.Errorf("no python is nothing to start: %v", err)
 	}
 	mod := t.TempDir()
@@ -499,24 +480,6 @@ func TestUsersAreToldTheAnswers(t *testing.T) {
 	}
 	if len(svc.Notices("bob")) != 0 {
 		t.Error("only the reporters are told")
-	}
-}
-
-// micromamba reads its settings from MAMBA_* variables too, and a switch with the value 1 stops it ("Bad conversion of configurable
-// 'no_rc'"): the folders are the only thing the program may be given that way, the switches are flags.
-func TestMambaIsGivenNoSwitchesInTheEnvironment(t *testing.T) {
-	m := Mamba{Bin: "/usr/bin/micromamba", Dir: "/store", Python: "3.10"}
-	c := m.cmd(context.Background(), "create")
-	for _, e := range c.Env {
-		if strings.HasPrefix(e, "MAMBA_") || strings.HasPrefix(e, "CONDA") {
-			k := e[:strings.Index(e, "=")]
-			if k != "MAMBA_ROOT_PREFIX" && k != "CONDA_PKGS_DIRS" && !strings.HasPrefix(e, k+"=/") && !strings.HasPrefix(os.Getenv("NOPE_"+k), "x") {
-				t.Errorf("%s in the environment of micromamba: a switch must be a flag", e)
-			}
-		}
-	}
-	if !contains(m.common(KindLib), "--no-rc") {
-		t.Error("the rc files must be switched off by a flag")
 	}
 }
 
@@ -628,22 +591,8 @@ func TestSearchSaysWhatTheStoreKnowsOfEachHit(t *testing.T) {
 	if h, _ := svc.Search(context.Background(), "word", KindPlugin); len(h) != 1 || h[0].Name != "wordcount" {
 		t.Errorf("a plugin search: %+v", h)
 	}
-	if _, err := (Missing{Reason: "no micromamba"}).Search(context.Background(), "x", ""); err == nil {
-		t.Error("a server without micromamba says so")
-	}
-}
-
-func TestFoundFromReadsTheSearchOfMicromamba(t *testing.T) {
-	raw := []byte(`{"result":{"pkgs":[{"name":"flask","version":"2.0.0"},{"name":"flask","version":"3.1.3"},{"name":"flask-cors","version":"4.0.0"},{"name":"flaskcache","version":"0.1"},{"name":"BAD NAME","version":"1"}]}}`)
-	got, err := foundFrom(raw, "flask", KindLib)
-	if err != nil || len(got) != 3 || got[0].Name != "flask" || got[0].Version != "3.1.3" || got[1].Name != "flask-cors" || got[2].Name != "flaskcache" {
-		t.Fatalf("%v %+v", err, got)
-	}
-	if _, err := foundFrom([]byte("nope"), "x", ""); err == nil {
-		t.Error("bad json")
-	}
-	if got, _ := (Mamba{Bin: "/x"}).Search(context.Background(), "../x", ""); got != nil {
-		t.Error("a bad pattern is never sent to micromamba")
+	if _, err := (Missing{Reason: "no pixi"}).Search(context.Background(), "x", ""); err == nil {
+		t.Error("a server without pixi says so")
 	}
 }
 
@@ -661,13 +610,6 @@ func TestNpmViewIsRead(t *testing.T) {
 	}
 	if _, err := npmViewFrom([]byte("")); err == nil {
 		t.Error("an empty answer")
-	}
-}
-
-func TestAToolIsSolvedWithoutAPythonAndALibraryWithIt(t *testing.T) {
-	m := Mamba{Bin: "/x", Python: "3.10"}
-	if !contains(m.common(KindLib), "python=3.10") || contains(m.common(KindTool), "python=3.10") || contains(m.common(KindLang), "python=3.10") {
-		t.Errorf("lib %v tool %v lang %v", m.common(KindLib), m.common(KindTool), m.common(KindLang))
 	}
 }
 
@@ -971,7 +913,7 @@ func TestTheVerificationOfAnAppRunsWithTheUsersEnvironmentAndSaysWhyItFailed(t *
 	bad := filepath.Join(t.TempDir(), "zzcli-2.0.0")
 	os.MkdirAll(filepath.Join(bad, "bin"), 0755)
 	os.WriteFile(filepath.Join(bad, "bin", "zzcli"), []byte("#!/bin/sh\nexit 1\n"), 0755)
-	if err := checkBundle(ctx, bad, "zzcli", KindTool); err == nil {
+	if err := checkBundle(ctx, bad, "zzcli", KindTool, "1.0.0"); err == nil {
 		t.Error("a tool that does not start must not be offered as installed")
 	}
 }
@@ -1000,4 +942,297 @@ func (brokenTool) Install(ctx context.Context, name, version, kind, dest string,
 		return err
 	}
 	return os.WriteFile(filepath.Join(dest, "bin", name), []byte("#!/bin/sh\necho 'cannot start'\nexit 9\n"), 0755)
+}
+
+// lockingInstaller installs a Python-library-like bundle with pixi's two files, and says whether the lock was in the folder before it ran.
+type lockingInstaller struct {
+	Fake
+	sawLock *string
+}
+
+func (l lockingInstaller) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
+	os.MkdirAll(dest, 0755)
+	if raw, err := os.ReadFile(filepath.Join(dest, "pixi.lock")); err == nil {
+		*l.sawLock = string(raw)
+	} else if err := os.WriteFile(filepath.Join(dest, "pixi.toml"), []byte("[workspace]\nname=\""+name+"\"\n"), 0644); err == nil {
+		os.WriteFile(filepath.Join(dest, "pixi.lock"), []byte("version: 6\nlocked-by: gateway\n"), 0644)
+	}
+	return l.Fake.Install(ctx, name, version, kind, dest, log)
+}
+
+// The lock of an install is saved in the catalog; a node installs exactly it (and installs nothing when it cannot have it).
+func TestTheLockOfAnInstallIsKeptAndEveryNodeInstallsFromIt(t *testing.T) {
+	var sawA string
+	a, _ := newService(t, lockingInstaller{sawLock: &sawA}, "flask")
+	a.Install("ann", "flask", KindLib, false)
+	a.Wait()
+	app, _ := a.AppByID("flask-1.0.0")
+	if !app.Locked || sawA != "" {
+		t.Fatalf("the gateway solves and keeps the lock: locked %v, saw %q", app.Locked, sawA)
+	}
+	l, ok := a.LockOf("flask-1.0.0")
+	if !ok || !strings.Contains(l.Lock, "locked-by: gateway") {
+		t.Fatalf("the lock in the catalog: %+v %v", l, ok)
+	}
+	snap := a.Snapshot()
+	// a worker gets the lock from the gateway and installs from it
+	var sawB string
+	b, bst := newService(t, lockingInstaller{sawLock: &sawB})
+	b.SetLock(func(ctx context.Context, id string) (Lock, error) {
+		l, ok := a.LockOf(id)
+		if !ok {
+			return Lock{}, errors.New("no lock")
+		}
+		return l, nil
+	})
+	if st := b.Apply(context.Background(), snap); len(st.Failed) != 0 || !bst.HasBundle("flask-1.0.0") {
+		t.Fatalf("%+v", st)
+	}
+	if !strings.Contains(sawB, "locked-by: gateway") {
+		t.Errorf("the worker did not install from the lock: %q", sawB)
+	}
+	// a worker that cannot get the lock installs nothing: it would not be the same bundle
+	var sawC string
+	c, cst := newService(t, lockingInstaller{sawLock: &sawC})
+	c.SetLock(func(ctx context.Context, id string) (Lock, error) {
+		return Lock{}, errors.New("the gateway is not reachable")
+	})
+	st := c.Apply(context.Background(), snap)
+	if st.Failed["flask-1.0.0"] == "" || cst.HasBundle("flask-1.0.0") {
+		t.Fatalf("a worker without the lock must not install: %+v", st)
+	}
+	// a gateway whose disk was wiped installs from the lock in its own database
+	var sawD string
+	d := New(Config{Store: Store{Dir: t.TempDir()}, KV: a.cfg.KV.(*lockedKV).inner, Installer: lockingInstaller{sawLock: &sawD}})
+	if st := d.Apply(context.Background(), snap); len(st.Failed) != 0 || !strings.Contains(sawD, "locked-by: gateway") {
+		t.Fatalf("a gateway after a wipe: %+v saw %q", st, sawD)
+	}
+	// removing the app removes its lock
+	a.Remove("root", "flask")
+	if _, ok := a.LockOf("flask-1.0.0"); ok {
+		t.Error("the lock of a removed app must go")
+	}
+}
+
+// ---- pixi: what is read from its files and its output ------------------------------------------------------------------------
+
+func TestPixiLockIsReadForTheNodesCPUType(t *testing.T) {
+	raw, err := os.ReadFile("testdata/pixi-numpy.lock") // a real lock of python 3.10 + numpy 2.2.6 for linux-64 and linux-aarch64
+	if err != nil {
+		t.Fatal(err)
+	}
+	amd, err := LockPackages(raw, "linux-64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm, err := LockPackages(raw, "linux-aarch64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	find := func(pk []LockedPackage, name string) LockedPackage {
+		for _, p := range pk {
+			if p.Name == name {
+				return p
+			}
+		}
+		return LockedPackage{}
+	}
+	for _, c := range []struct {
+		pk   []LockedPackage
+		cpu  string
+		want string
+	}{{amd, "linux-64", "linux-64/numpy-2.2.6"}, {arm, "linux-aarch64", "linux-aarch64/numpy-2.2.6"}} {
+		n := find(c.pk, "numpy")
+		if n.Version != "2.2.6" || !strings.Contains(n.URL, c.want) || n.Size < 1e5 {
+			t.Errorf("%s numpy: %+v", c.cpu, n)
+		}
+		if py := find(c.pk, "python"); !strings.HasPrefix(py.Version, "3.10.") {
+			t.Errorf("%s python: %+v", c.cpu, py)
+		}
+		for _, p := range c.pk {
+			if !strings.Contains(p.URL, "/"+c.cpu+"/") && !strings.Contains(p.URL, "/noarch/") {
+				t.Errorf("%s has a package of another CPU: %s", c.cpu, p.URL)
+			}
+			if p.Size == 0 || p.Name == "" || p.Version == "" || p.Build == "" {
+				t.Errorf("an incomplete package: %+v", p)
+			}
+		}
+	}
+	if len(amd) < 20 || len(amd) != len(arm) {
+		t.Errorf("packages: %d and %d", len(amd), len(arm))
+	}
+	// the version, the count and the size for the page
+	r, err := resolvedFrom(raw, "numpy", "linux-aarch64")
+	if err != nil || r.Version != "2.2.6" || r.Packages != len(arm) || r.DownloadMB < 20 || r.DiskMB < r.DownloadMB {
+		t.Errorf("%+v %v", r, err)
+	}
+	if _, err := resolvedFrom(raw, "nothing", "linux-64"); err == nil {
+		t.Error("a package the lock does not have")
+	}
+	if _, err := LockPackages(raw, "osx-arm64"); err == nil || !strings.Contains(err.Error(), "linux-64") {
+		t.Errorf("a CPU type that is not in the lock: %v", err)
+	}
+}
+
+func TestPixiManifestPinsTheAppAndThePythonOfALibrary(t *testing.T) {
+	p := Pixi{Python: "3.10"}
+	m, err := p.Manifest("numpy", "2.2.6", KindLib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`platforms = ["linux-64", "linux-aarch64"]`, `python = "3.10.*"`, `"numpy" = "==2.2.6"`, `channels = ["conda-forge"]`} {
+		if !strings.Contains(m, want) {
+			t.Errorf("the manifest lacks %s:\n%s", want, m)
+		}
+	}
+	if m, _ := p.Manifest("jq", "1.7", KindTool); strings.Contains(m, "python") {
+		t.Errorf("a tool must not drag a Python in:\n%s", m)
+	}
+	if m, _ := p.Manifest("lua", "", KindLang); !strings.Contains(m, `"lua" = "*"`) {
+		t.Errorf("the newest:\n%s", m)
+	}
+	for _, bad := range [][2]string{{"Numpy", "1.0"}, {"a b", "1.0"}, {"x\"y", "1.0"}, {"numpy", "1.0\"\n[x]"}} {
+		if _, err := p.Manifest(bad[0], bad[1], KindLib); err == nil {
+			t.Errorf("%q %q must be refused", bad[0], bad[1])
+		}
+	}
+}
+
+func TestPixiSearchIsRead(t *testing.T) {
+	text := `Using channels: conda-forge
+num-utils (1 version)
+  0.5 pl5321hd8ed1ab_0 [noarch] conda-forge
+
+num2words (5 versions)
+  0.5.14 pyhe01879c_0 [noarch] conda-forge
+  0.5.12 pyhd8ed1ab_1 [noarch] conda-forge
+
+numpy (140 versions)
+  2.2.6 py310h6e5608f_0 [linux-aarch64] conda-forge
+  ... and 139 more versions (use -l to show more)
+
+numactl-conda-aarch64 (5 versions)
+  2.0.12 h4616a5c_1111 [noarch] conda-forge
+`
+	got := foundFromPixi(text, "numpy", "")
+	if len(got) != 4 || got[0].Name != "numpy" || got[0].Version != "2.2.6" || got[0].Kind != KindLib {
+		t.Fatalf("%+v", got)
+	}
+	if got[1].Name != "num-utils" || got[2].Name != "num2words" || got[2].Version != "0.5.14" {
+		t.Errorf("order and the newest version: %+v", got)
+	}
+}
+
+func TestTheActivationOfAPackageIsKeptAndFiltered(t *testing.T) {
+	base := []string{"PATH=/usr/bin", "HOME=/root", "LANG=C"}
+	hook := []byte(`{"environment_variables":{"PATH":"/b/.pixi/envs/default/bin:/usr/bin","JAVA_HOME":"/b/.pixi/envs/default/lib/jvm","PROJ_DATA":"/b/share/proj",
+	"PROJ_NETWORK":"ON","CONDA_PREFIX":"/b/.pixi/envs/default","PIXI_EXE":"/x/pixi","LD_LIBRARY_PATH":"/evil","LD_PRELOAD":"/evil.so","HOME":"/tmp/x","LANG":"C",
+	"JAVA_LD_LIBRARY_PATH":"/b/lib/jvm/lib/server","BASH_ENV":"/evil","BAD NAME":"x","XDG_DATA_DIRS":"/b/share:/usr/share","MULTI":"a\nb"}}`)
+	got, err := activationFromHook(hook, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"JAVA_HOME": "/b/.pixi/envs/default/lib/jvm", "PROJ_DATA": "/b/share/proj", "PROJ_NETWORK": "ON", "JAVA_LD_LIBRARY_PATH": "/b/lib/jvm/lib/server"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v want %v", got, want)
+	}
+	// saved in the bundle, read back, passed to a terminal and written in env.sh; the first bundle on the list wins a name
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "apps", "openjdk-17.0.1"), filepath.Join(dir, "apps", "proj-9.0.0")
+	os.MkdirAll(a, 0755)
+	os.MkdirAll(b, 0755)
+	if err := WriteActivation(a, map[string]string{"JAVA_HOME": "/a/jvm", "SHARED": "from-a"}); err != nil {
+		t.Fatal(err)
+	}
+	WriteActivation(b, map[string]string{"PROJ_DATA": "/b/proj", "SHARED": "from-b"})
+	os.WriteFile(filepath.Join(a, activateFile), []byte(`{"env":{"JAVA_HOME":"/a/jvm","SHARED":"from-a","PATH":"/evil","LD_PRELOAD":"/x"}}`), 0644) // a file with what must not pass
+	v := VarsFor(dir, []string{"openjdk-17.0.1", "proj-9.0.0"})
+	if v.Extra["JAVA_HOME"] != "/a/jvm" || v.Extra["PROJ_DATA"] != "/b/proj" || v.Extra["SHARED"] != "from-a" || v.Extra["PATH"] != "" || v.Extra["LD_PRELOAD"] != "" {
+		t.Errorf("%v", v.Extra)
+	}
+	env := v.Apply([]string{"PATH=/usr/bin", "JAVA_HOME=/old"})
+	if !contains(env, "JAVA_HOME=/a/jvm") || !contains(env, "PROJ_DATA=/b/proj") {
+		t.Errorf("%v", env)
+	}
+	if sh := EnvScript(dir, []string{"openjdk-17.0.1"}); !strings.Contains(sh, "export JAVA_HOME='/a/jvm'") || strings.Contains(sh, "LD_PRELOAD") {
+		t.Errorf("env.sh:\n%s", sh)
+	}
+	// a bundle with no file, and a broken one, give nothing and stop nothing
+	os.WriteFile(filepath.Join(b, activateFile), []byte("{not json"), 0644)
+	if v := VarsFor(dir, []string{"proj-9.0.0"}); len(v.Extra) != 0 {
+		t.Errorf("%v", v.Extra)
+	}
+}
+
+// A bundle that pixi made keeps its prefix in .pixi/envs/default; one made before keeps it at its root; both are on the PATH of the user.
+func TestTheEnvironmentFollowsThePrefixOfEachBundleLayout(t *testing.T) {
+	dir := t.TempDir()
+	newer := filepath.Join(dir, "apps", "numpy-2.2.6", ".pixi", "envs", "default")
+	older := filepath.Join(dir, "apps", "flask-3.0.0")
+	for _, p := range []string{filepath.Join(newer, "bin"), filepath.Join(newer, "lib", "python3.10", "site-packages"), filepath.Join(older, "bin"), filepath.Join(older, "lib", "python3.10", "site-packages")} {
+		os.MkdirAll(p, 0755)
+	}
+	v := VarsFor(dir, []string{"numpy-2.2.6", "flask-3.0.0"})
+	if len(v.PathAdd) != 2 || v.PathAdd[0] != filepath.Join(newer, "bin") || v.PathAdd[1] != filepath.Join(older, "bin") || len(v.PythonPath) != 2 {
+		t.Errorf("%+v", v)
+	}
+	if PrefixOf(filepath.Join(dir, "apps", "numpy-2.2.6")) != newer || PrefixOf(older) != older {
+		t.Error("PrefixOf")
+	}
+}
+
+func TestPixiIsNeverGivenABadSearchPattern(t *testing.T) {
+	if got, _ := (Pixi{Bin: "/x"}).Search(context.Background(), "../x", ""); got != nil {
+		t.Error("a bad pattern is never sent to pixi")
+	}
+}
+
+// pixi gets its home and its cache in the store and nothing that could change the result from node to node.
+func TestPixiRunsWithItsOwnHomeAndCacheAndNoColourOrProgress(t *testing.T) {
+	c := (Pixi{Bin: "/usr/bin/pixi", Dir: "/store"}).cmd(context.Background(), "/tmp", "lock")
+	for _, want := range []string{"PIXI_HOME=/store/pixi", "PIXI_CACHE_DIR=/store/pkgs", "PIXI_NO_PROGRESS=true", "PIXI_COLOR=never"} {
+		if !contains(c.Env, want) {
+			t.Errorf("the environment lacks %s", want)
+		}
+	}
+}
+
+// An admin can ask for a fresh lock of an installed app: the same version, solved again; the people who have it on keep their switch.
+func TestAnAdminCanMakeAFreshLockOfAnInstalledApp(t *testing.T) {
+	var saw string
+	svc, st := newService(t, lockingInstaller{sawLock: &saw}, "flask")
+	svc.Install("ann", "flask", KindLib, false)
+	svc.Wait()
+	if err := svc.Switch("ann", "flask-1.0.0", true); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := svc.LockOf("flask-1.0.0")
+	os.WriteFile(filepath.Join(st.BundlePath("flask-1.0.0"), "marker-of-the-old-install"), nil, 0644)
+	id, err := svc.Relock("root", "flask")
+	if err != nil || id != "flask-1.0.0" {
+		t.Fatalf("%q %v", id, err)
+	}
+	if _, ok := svc.LockOf(id); ok {
+		t.Error("the old lock must be gone while it is made again")
+	}
+	svc.Wait()
+	l, ok := svc.LockOf(id)
+	if !ok || l.Lock == "" || l.Lock != old.Lock { // the fake solves the same lock again; what matters is that it was made again
+		t.Fatalf("the new lock: %v %+v", ok, l)
+	}
+	if saw != "" {
+		t.Errorf("a fresh lock is solved, not taken from the old one: %q", saw)
+	}
+	if _, err := os.Stat(filepath.Join(st.BundlePath(id), "marker-of-the-old-install")); err == nil {
+		t.Error("the bundle was made again")
+	}
+	if !has(svc.MyList("ann"), id) {
+		t.Error("the switch of the user is kept")
+	}
+	if eff, _ := st.Manifest("ann"); !has(eff, id) {
+		t.Errorf("the files of the user have it again: %v", eff)
+	}
+	if _, err := svc.Relock("root", "nothing"); err == nil {
+		t.Error("an app that is not installed")
+	}
 }

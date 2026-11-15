@@ -42,15 +42,19 @@ COPY --from=build-image /opt/openrepl/scripts/run_app.sh /opt/scripts/
 
 RUN chmod 755 /usr/local/bin/gotty /usr/local/bin/landlock-helper && chmod 755 /opt/scripts/run_app.sh
 
-# The App Store (LLD 18) installs libraries and tools from conda-forge with micromamba, a single static program, into /store
-# (outside /opt, which the filesystem sandbox lets every REPL read). If the download fails the image still builds: the store then
-# says in the admin dashboard that micromamba is missing.
+# The App Store (LLD 18) installs libraries and tools from conda-forge with pixi, a single static program, into /store
+# (outside /opt, which the filesystem sandbox lets every REPL read). The version is pinned (every node of a site must read the same
+# lock files) and the download is checked against the checksum of the release. If it fails the image still builds: the store then says
+# in the admin dashboard that pixi is missing (and the CI job "App Store installs" fails).
+ARG PIXI_VERSION=0.84.2
 RUN mkdir -p /store && arch="$(dpkg --print-architecture)" && \
-    case "$arch" in amd64) m=linux-64;; arm64) m=linux-aarch64;; *) m="";; esac && \
-    if [ -n "$m" ]; then \
-      (apt-get update && apt-get install -y --no-install-recommends bzip2 && \
-       curl -fsSL "https://micro.mamba.pm/api/micromamba/$m/latest" | tar -xj -C /usr/local/bin --strip-components=1 bin/micromamba && \
-       rm -rf /var/lib/apt/lists/*) || echo "micromamba was not installed: the App Store cannot install until it is"; \
+    case "$arch" in amd64) p=x86_64;; arm64) p=aarch64;; *) p="";; esac && \
+    if [ -n "$p" ]; then \
+      (cd /tmp && f="pixi-$p-unknown-linux-musl.tar.gz" && u="https://github.com/prefix-dev/pixi/releases/download/v${PIXI_VERSION}" && \
+       curl -fsSL --retry 5 --max-time 1500 -o "$f" "$u/$f" && curl -fsSL --retry 5 --max-time 300 -o "$f.sha256" "$u/$f.sha256" && \
+       echo "$(cut -d' ' -f1 "$f.sha256")  $f" | sha256sum -c - && \
+       tar -xzf "$f" -C /usr/local/bin pixi && chmod 755 /usr/local/bin/pixi && rm -f "$f" "$f.sha256" && pixi --version) || \
+      echo "pixi was not installed: the App Store cannot install until it is"; \
     fi
 
 WORKDIR /opt/openrepl

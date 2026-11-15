@@ -170,7 +170,7 @@ jobs:
   # The browser tests are their own job (they need the image of the job above, which is rebuilt here from the layer cache that
   # job has just filled, in a minute or two): a flaky browser test can then be run again alone ("Re-run failed jobs"),
   # without building the image and running the checks above once more.
-  # Every app of the App Store's safe list is installed for real (micromamba, conda-forge) INSIDE the image that was just built, and used
+  # Every app of the App Store's safe list is installed for real (pixi, conda-forge) INSIDE the image that was just built, and used
   # under the filesystem sandbox, and a worker's replay is run: independent of the browser tests, which cannot do that (they have no
   # internet and no signed-in user). It starts when the build is done, like the browser tests, and is a job of its own.
   appstore:
@@ -212,12 +212,12 @@ jobs:
       env:
         CGO_ENABLED: "0"
       run: go test -tags realinstall -c -o "$RUNNER_TEMP/appstore.test" appstore
-    - name: Install every app of the safe list (Python, tools, Node), a language and a plugin, search, use it under the sandbox, replay it on a worker
+    - name: Install every app of the safe list (Python, tools, Node), a language and a plugin, search, use it under the sandbox, install from a lock like a worker, activation variables
       run: |
         docker run --rm --entrypoint /appstore.test \
           -v "$RUNNER_TEMP/appstore.test:/appstore.test:ro" -e OPENREPL_REAL_STORE=/store \
           openrepl:${{ matrix.arch }} \
-          -test.v -test.timeout=80m -test.run='TestEveryAppOfTheSafeList|TestALanguageAndAPlugin|TestSearchAndSize|TestTheSandboxLets'
+          -test.v -test.timeout=80m -test.run='TestEveryAppOfTheSafeList|TestALanguageAndAPlugin|TestSearchAndSize|TestTheSandboxLets|TestAWorkerInstallsExactly|TestThePackagesActivation'
 
   browser:
     needs: [changes, build]

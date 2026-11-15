@@ -117,8 +117,8 @@ func TestStoreSettingsAreChecked(t *testing.T) {
 }
 
 func TestStoreHealthSaysWhatIsWrong(t *testing.T) {
-	svc := testStoreService(t, appstore.Missing{Reason: "micromamba is not installed"}, "flask")
-	if st, detail := appStoreHealth(); st != healthWarn || !strings.Contains(detail, "micromamba") {
+	svc := testStoreService(t, appstore.Missing{Reason: "pixi is not installed"}, "flask")
+	if st, detail := appStoreHealth(); st != healthWarn || !strings.Contains(detail, "pixi") {
 		t.Errorf("no installer: %s %s", st, detail)
 	}
 	svc2 := testStoreService(t, appstore.Fake{Fail: map[string]bool{"flask": true}}, "flask")

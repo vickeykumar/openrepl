@@ -34,7 +34,7 @@ func verifyExe(dest, name string) string {
 		cands = []string{e, name}
 	}
 	for _, c := range cands {
-		if fi, err := os.Stat(filepath.Join(dest, "bin", c)); err == nil && !fi.IsDir() {
+		if fi, err := os.Stat(filepath.Join(PrefixOf(dest), "bin", c)); err == nil && !fi.IsDir() {
 			return c
 		}
 	}
@@ -107,7 +107,7 @@ func RunVerify(ctx context.Context, st Store, home, id, name, kind, dir string, 
 		c := exec.CommandContext(ctx, lookIn(env, argv[0]), argv[1:]...)
 		c.Env, c.Dir = env, dir
 		out, err := c.CombinedOutput()
-		if err == nil {
+		if err == nil || ((cleanKind(kind) == KindTool || cleanKind(kind) == KindLang) && printsVersion(out, versionOfID(id, name))) {
 			return nil
 		}
 		last = fmt.Sprintf("%s: %v", strings.Join(argv[len(argv)-lastWords(argv):], " "), err)
@@ -133,7 +133,7 @@ func lastWords(argv []string) int {
 
 // verifyTool starts a tool or a language of a bundle with the first version flag that works: a bundle whose program does not run is never
 // offered as installed. It runs as the server, in an empty folder, with the bundle's own bin first on the PATH.
-func verifyTool(ctx context.Context, dest, name string) error {
+func verifyTool(ctx context.Context, dest, name, version string) error {
 	exe := verifyExe(dest, name)
 	if exe == "" {
 		return nil
@@ -142,11 +142,12 @@ func verifyTool(ctx context.Context, dest, name string) error {
 	defer cancel()
 	var last string
 	for _, f := range versionFlags {
-		c := exec.CommandContext(ctx, filepath.Join(dest, "bin", exe), f...)
-		c.Env = append(os.Environ(), "PATH="+filepath.Join(dest, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+		bin := filepath.Join(PrefixOf(dest), "bin")
+		c := exec.CommandContext(ctx, filepath.Join(bin, exe), f...)
+		c.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 		c.Dir = os.TempDir()
 		out, err := c.CombinedOutput()
-		if err == nil {
+		if err == nil || printsVersion(out, version) {
 			return nil
 		}
 		last = fmt.Sprintf("%s %s: %v %s", exe, strings.Join(f, " "), err, strings.TrimSpace(string(out)))
@@ -171,3 +172,12 @@ func lookIn(env []string, name string) string {
 	}
 	return name
 }
+
+// printsVersion says whether a program's output names the version of the package: a program that prints its own version has started,
+// whatever exit status it ends with (proj prints its version and then complains that it was given no CRS).
+func printsVersion(out []byte, version string) bool {
+	return len(version) >= 3 && strings.Contains(string(out), version)
+}
+
+// versionOfID is the version in a bundle name (name-version).
+func versionOfID(id, name string) string { return strings.TrimPrefix(id, name+"-") }

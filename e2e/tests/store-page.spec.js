@@ -368,3 +368,19 @@ test("on the store page, turning an app on is checked first; a failure shows the
   await expect(page.locator(".store__note")).toContainText("checked and works");
   await expect(sw).toHaveText("On");
 });
+
+test("an admin can ask for a new lock of an installed app, and the lists say which apps have one", async ({ page }) => {
+  const st = fake(page, { admin: true });
+  st.apps.jq.locked = true;
+  await page.goto("/store#admin/requests");
+  await page.goto("/store");
+  await page.goto("/store#admin/servers");
+  await expect(page.locator("#store-side")).toContainText("Servers and installs");
+  await page.getByRole("link", { name: "Servers and installs" }).click();
+  // the Installed list of the admin (the section that lists the installed apps with Uninstall for everyone)
+  const row = page.locator(".store__row", { hasText: "jq" }).filter({ hasText: "Uninstall for everyone" }).first();
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "New lock" }).click();
+  await page.locator("#store-dialog button", { hasText: "New lock" }).click();
+  await expect.poll(() => st.calls.some((c) => c[0] === "admin:relock" && c[1].name === "jq")).toBe(true);
+});

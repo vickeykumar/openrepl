@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -71,6 +72,7 @@ type App struct {
 	Node     string  `json:"node,omitempty"`     // the server the install ran on
 	LastUsed int64   `json:"lastUsed,omitempty"` // the last time a user switched it on
 	Packages int     `json:"packages,omitempty"` // what the solve brought with it
+	Locked   bool    `json:"locked,omitempty"`   // the exact packages of the install are saved (a Lock): every node installs those
 	Download float64 `json:"download,omitempty"` // MB fetched for it
 }
 
@@ -114,6 +116,9 @@ type Config struct {
 	// OnStep is told how the node stands after each bundle of an Apply ended (installed or failed), so an admin sees a long catch-up
 	// go on; nil on a node that tells nobody.
 	OnStep func(NodeState)
+	// Lock gets the lock of a bundle from the gateway (a worker; nil on the node that has the catalog: it reads its own database). A
+	// node that cannot get it does not install the bundle: it would not be the same one.
+	Lock func(ctx context.Context, id string) (Lock, error)
 }
 
 // Service is the App Store of one server (the gateway or a standalone server holds the catalog; a worker only applies it).
@@ -437,7 +442,58 @@ func (s *Service) InstallVersion(who, name, kind, version string) error {
 	return s.install(who, name, kind, true, version)
 }
 
+// Relock makes an installed app again with a fresh lock: the same version, solved now, so a worker or a wiped gateway that cannot get the
+// packages of the old lock (a build conda-forge no longer has) gets what exists today. The bundle is gone from the gateway until the new
+// install is done; the people who have it on keep their switch. The nodes are told by the caller (they reinstall it from the new lock).
+func (s *Service) Relock(admin, name string) (string, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	s.mu.Lock()
+	a, ok := s.app(name)
+	if !ok || a.State != StateInstalled || a.ID == "" {
+		s.mu.Unlock()
+		return "", ErrUnknown
+	}
+	if s.jobs[name] != nil {
+		s.mu.Unlock()
+		return "", ErrBusy
+	}
+	id := a.ID
+	s.del("lock:" + id)
+	s.cfg.Store.RemoveBundle(id)
+	s.mu.Unlock()
+	log.Printf("appstore: %s asked for a new lock of %s", admin, id)
+	return id, s.installWith(admin, name, a.Kind, true, a.Version, true)
+}
+
+// refreshHomes writes again the files of every user that has a list (a bundle that came back is on their PATH again).
+func (s *Service) refreshHomes() {
+	snap := map[string][]string{}
+	s.each("user:", func(key string, raw []byte) {
+		var ids []string
+		if json.Unmarshal(raw, &ids) == nil {
+			snap[strings.TrimPrefix(key, "user:")] = ids
+		}
+	})
+	for home, ids := range snap {
+		if !ValidHome(home) {
+			continue
+		}
+		var have []string
+		for _, id := range ids {
+			if s.cfg.Store.HasBundle(id) {
+				have = append(have, id)
+			}
+		}
+		s.cfg.Store.WriteHome(home, have, s.offList(home))
+	}
+}
+
 func (s *Service) install(who, name, kind string, admin bool, version string) error {
+	return s.installWith(who, name, kind, admin, version, false)
+}
+
+// installWith is install; again says that an app that is installed is to be made again (a fresh lock).
+func (s *Service) installWith(who, name, kind string, admin bool, version string, again bool) error {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if !ValidName(name) {
 		return fmt.Errorf("%q is not a package name", name)
@@ -454,7 +510,9 @@ func (s *Service) install(who, name, kind string, admin bool, version string) er
 	if a, ok := s.app(name); ok {
 		switch a.State {
 		case StateInstalled:
-			return ErrInstalled
+			if !again {
+				return ErrInstalled
+			}
 		case StateInstalling:
 			if s.jobs[name] != nil {
 				return ErrBusy
@@ -546,7 +604,7 @@ func (s *Service) runInstall(a App) {
 		return
 	}
 	s.step(a.Name, 3, detail)
-	if err := checkBundle(ctx, dest, a.Name, a.Kind); err != nil {
+	if err := checkBundle(ctx, dest, a.Name, a.Kind, a.Version); err != nil {
 		os.RemoveAll(dest)
 		s.fail(a, "Checking that it works", err, err.Error())
 		return
@@ -558,6 +616,7 @@ func (s *Service) runInstall(a App) {
 		return
 	}
 	a.State, a.Size, a.Err, a.Log, a.Node = StateInstalled, m.Size, "", "", hostName()
+	a.Locked = s.captureLock(a.ID, dest)
 	s.mu.Lock()
 	s.put("app:"+a.Name, a)
 	// the people who asked, and who reported the failure, are told (Notices); the request is kept until they have seen it
@@ -574,6 +633,7 @@ func (s *Service) runInstall(a App) {
 	if has(s.Defaults(), a.Name) {
 		s.refreshDefaults() // it was turned on for everyone while it was being installed
 	}
+	s.refreshHomes()
 	s.mu.Unlock()
 	s.finishJob(a.Name)
 	log.Printf("appstore: %s %s installed (%.1f MB), asked by %s", a.Name, a.Version, float64(m.Size)/(1<<20), a.By)
@@ -747,6 +807,9 @@ func (s *Service) Remove(admin, name string) (int, error) {
 		}
 	}
 	s.del("app:" + name)
+	if a.ID != "" {
+		s.del("lock:" + a.ID)
+	}
 	if has(s.Defaults(), name) {
 		var next []string
 		for _, n := range s.Defaults() {
@@ -1104,6 +1167,9 @@ type NodeState struct {
 // SetOnStep sets what is told after each bundle of an Apply ended (see Config.OnStep).
 func (s *Service) SetOnStep(f func(NodeState)) { s.cfg.OnStep = f }
 
+// SetLock sets how a node gets the lock of a bundle it does not have the catalog for (a worker asks the gateway; see Config.Lock).
+func (s *Service) SetLock(f func(ctx context.Context, id string) (Lock, error)) { s.cfg.Lock = f }
+
 // NextRetry is the time of the earliest retry of a failed install on this node; false when nothing is waiting for one.
 func (s *Service) NextRetry() (time.Time, bool) {
 	s.retryMu.Lock()
@@ -1160,11 +1226,23 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		os.RemoveAll(dest)
 		var logb bytes.Buffer
 		// a node always installs a bundle itself (conda-forge / npm over its own internet): a bundle holds programs for one CPU and the
-		// gateway's egress is not given away
-		err := s.cfg.Installer.Install(ctx, a.Name, a.Version, a.Kind, dest, &logb)
+		// gateway's egress is not given away. It installs exactly what the lock of the bundle says, or nothing: a bundle that is not
+		// the same everywhere is worse than one that is late.
+		var err error
+		if a.Locked {
+			var l Lock
+			if l, err = s.lockFor(ctx, a.ID); err == nil {
+				err = WriteLock(dest, l)
+			} else {
+				err = fmt.Errorf("the lock of %s could not be had: %v", a.ID, err)
+			}
+		}
+		if err == nil {
+			err = s.cfg.Installer.Install(ctx, a.Name, a.Version, a.Kind, dest, &logb)
+		}
 		if err == nil {
 			// the node proves that what it installed works before it says it has it
-			err = checkBundle(ctx, dest, a.Name, a.Kind)
+			err = checkBundle(ctx, dest, a.Name, a.Kind, a.Version)
 		}
 		if err == nil {
 			_, err = s.cfg.Store.Finish(a.ID, a.Name, a.Version)
@@ -1493,4 +1571,70 @@ func (s *Service) Uninstall(who, home, name string) error {
 	}
 	_, err := s.Remove(who, name)
 	return err
+}
+
+// ---- the lock of a bundle ---------------------------------------------------------------------------------------------------
+
+// Lock is what pins a bundle: the manifest and the lock of the install that made it (pixi.toml and pixi.lock; the lock holds the exact
+// packages for every CPU type the manifest names). It is saved in the catalog, so a node of any CPU type installs the same packages,
+// and a gateway whose disk was wiped installs them again, not whatever is newest.
+type Lock struct {
+	Manifest string `json:"manifest"`
+	Lock     string `json:"lock"`
+}
+
+// lockFiles are the two files of a bundle that make its Lock.
+const (
+	manifestFile = "pixi.toml"
+	lockFile     = "pixi.lock"
+)
+
+// ReadLock reads the lock files of a bundle folder; false when it has none (an app made before the move to pixi, a Node library, a plugin).
+func ReadLock(bundle string) (Lock, bool) {
+	m, err1 := os.ReadFile(filepath.Join(bundle, manifestFile))
+	l, err2 := os.ReadFile(filepath.Join(bundle, lockFile))
+	if err1 != nil || err2 != nil || len(l) == 0 || len(m) > 256<<10 || len(l) > 4<<20 {
+		return Lock{}, false
+	}
+	return Lock{Manifest: string(m), Lock: string(l)}, true
+}
+
+// WriteLock puts the lock files in a bundle folder (made if it is not there).
+func WriteLock(bundle string, l Lock) error {
+	if err := os.MkdirAll(bundle, 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(bundle, manifestFile), []byte(l.Manifest), 0644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(bundle, lockFile), []byte(l.Lock), 0644)
+}
+
+// captureLock saves the lock of a bundle that was just installed in the catalog; false when it has none.
+func (s *Service) captureLock(id, dest string) bool {
+	l, ok := ReadLock(dest)
+	if !ok {
+		return false
+	}
+	return s.put("lock:"+id, l) == nil
+}
+
+// LockOf is the saved lock of a bundle (what a worker asks the gateway for).
+func (s *Service) LockOf(id string) (Lock, bool) {
+	var l Lock
+	if !ValidBundle(id) || !s.get("lock:"+id, &l) || l.Lock == "" {
+		return Lock{}, false
+	}
+	return l, true
+}
+
+// lockFor finds the lock a node installs a bundle from: the gateway's own database, or the gateway through the hook of a worker.
+func (s *Service) lockFor(ctx context.Context, id string) (Lock, error) {
+	if s.cfg.Lock != nil {
+		return s.cfg.Lock(ctx, id)
+	}
+	if l, ok := s.LockOf(id); ok {
+		return l, nil
+	}
+	return Lock{}, errors.New("the saved lock of " + id + " is not in the catalog")
 }

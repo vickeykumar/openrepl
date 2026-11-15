@@ -53,6 +53,8 @@ type ServerConfig struct {
 	// Store is the App Store's catalog for a worker that reports it has revision have: nil when it is up to date and nothing is
 	// waiting for it. It is called at every heartbeat, so it should be cheap. nil: no App Store.
 	Store func(w *Worker, have int64) *StoreUpdate
+	// StoreLock is the saved lock of a bundle for a worker that asks for it (the answer of ReqStoreLock); false when there is none.
+	StoreLock func(w *Worker, id string) (json.RawMessage, bool)
 	// OnStoreState takes what a worker answers of a catalog (a JSON object the tunnel does not look at).
 	OnStoreState func(w *Worker, state json.RawMessage)
 	// HeartbeatInterval is how often workers report; Timeout is how long a
@@ -446,6 +448,23 @@ func (s *Server) ServeConn(c net.Conn) {
 			}
 			data, _ := json.Marshal(hr)
 			req.Reply(true, data)
+		case ReqStoreLock:
+			if worker == nil {
+				reply(req, false, "not registered")
+				continue
+			}
+			var in struct {
+				ID string `json:"id"`
+			}
+			if s.cfg.StoreLock == nil || json.Unmarshal(req.Payload, &in) != nil || in.ID == "" {
+				reply(req, false, "no lock")
+				continue
+			}
+			if data, ok := s.cfg.StoreLock(worker, in.ID); ok {
+				req.Reply(true, data)
+			} else {
+				reply(req, false, "no lock")
+			}
 		case ReqStoreState:
 			if worker == nil {
 				reply(req, false, "not registered")

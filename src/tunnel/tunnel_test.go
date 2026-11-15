@@ -858,3 +858,25 @@ func TestAWorkerGetsTheStoreCatalogOnlyWhenItChangesAndAnswersOverTheTunnel(t *t
 		t.Errorf("the state: %v", states)
 	}
 }
+
+// A worker can ask the gateway for the lock of one bundle over the tunnel, and is told when there is none.
+func TestAWorkerCanAskTheGatewayForTheLockOfABundle(t *testing.T) {
+	gw := newGateway(t, func(c *ServerConfig) {
+		c.StoreLock = func(w *Worker, id string) (json.RawMessage, bool) {
+			if id == "flask-3.0.2" {
+				return json.RawMessage(`{"manifest":"m","lock":"l"}`), true
+			}
+			return nil, false
+		}
+	})
+	wk := newWorker(t, gw.url, "worker-1", nil, nil)
+	<-wk.reply
+	waitFor(t, "registration", func() bool { return gw.srv.Worker("worker-1") != nil })
+	raw, err := wk.client.StoreLock("flask-3.0.2")
+	if err != nil || string(raw) != `{"manifest":"m","lock":"l"}` {
+		t.Fatalf("the lock: %s %v", raw, err)
+	}
+	if _, err := wk.client.StoreLock("nothing-1.0"); err == nil {
+		t.Error("a bundle with no lock must be an error")
+	}
+}

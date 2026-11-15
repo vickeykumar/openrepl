@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// Installer makes bundles of every kind: conda-forge packages (libraries, tools, languages) with micromamba, Node libraries with npm,
+// Installer makes bundles of every kind: conda-forge packages (libraries, tools, languages) with pixi, Node libraries with npm,
 // and the editor plugins that come with the server. A test, or a dev server without them, uses the fake. The server runs it outside
 // any terminal's sandbox, so a terminal needs no network for an install.
 type Installer interface {
@@ -48,199 +48,7 @@ type Found struct {
 	Kind    string `json:"kind"`
 }
 
-// ---- micromamba ----------------------------------------------------------------------------------------------------------
-
-// Mamba installs from conda-forge with micromamba. Every bundle is a whole conda prefix made of hard links to the shared cache
-// in PkgsDir, so a package that two bundles need is on the disk once.
-type Mamba struct {
-	Bin     string // the micromamba program
-	Dir     string // the store (its pkgs folder is the cache)
-	Python  string // the Python of the server, as "3.10": every library is solved with it
-	Timeout time.Duration
-}
-
-func (m Mamba) Name() string { return "micromamba (conda-forge)" }
-
-func (m Mamba) cmd(ctx context.Context, args ...string) *exec.Cmd {
-	c := exec.CommandContext(ctx, m.Bin, args...)
-	// Only the two folders go in the environment. micromamba cannot read a switch such as MAMBA_NO_RC=1 from it ("Bad conversion of
-	// configurable 'no_rc'": found by running the real program 2026-11-14), so the switches are flags (see common).
-	c.Env = append(os.Environ(),
-		"MAMBA_ROOT_PREFIX="+filepath.Join(m.Dir, "mamba"),
-		"CONDA_PKGS_DIRS="+filepath.Join(m.Dir, "pkgs"))
-	return c
-}
-
-func (m Mamba) py() string {
-	if m.Python == "" {
-		return "3.10"
-	}
-	return m.Python
-}
-
-// common is what every command gets. A library is solved with the server's Python; a tool or a language is not: it brings the Python
-// it needs, if any, and does not drag one in (jq was 112 MB with a Python it never used).
-func (m Mamba) common(kind string) []string {
-	a := []string{"--override-channels", "-c", "conda-forge", "--no-rc", "-y"}
-	if kind == KindLib || kind == "" {
-		a = append(a, "python="+m.py())
-	}
-	return a
-}
-
-func (m Mamba) withTimeout(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
-	t := m.Timeout
-	if t == 0 {
-		t = d
-	}
-	return context.WithTimeout(ctx, t)
-}
-
-func (m Mamba) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
-	if !ValidName(name) || (version != "" && !ValidVersion(version)) {
-		return Resolved{}, fmt.Errorf("%q %q is not a package", name, version)
-	}
-	ctx, cancel := m.withTimeout(ctx, 15*time.Minute)
-	defer cancel()
-	args := append([]string{"create", "--dry-run", "--json", "-n", "openrepl-probe"}, m.common(kind)...)
-	spec := name
-	if version != "" {
-		spec = name + "=" + version
-	}
-	args = append(args, spec)
-	var out, errb bytes.Buffer
-	c := m.cmd(ctx, args...)
-	c.Stdout, c.Stderr = &out, &errb
-	if err := c.Run(); err != nil {
-		return Resolved{}, fmt.Errorf("conda-forge could not solve %s: %s", spec, tail(errb.String()+out.String(), 600))
-	}
-	return solveFrom(out.Bytes(), name)
-}
-
-// solveFrom reads the JSON of a dry run: the version of the package, how many packages are linked and what is to be fetched.
-func solveFrom(raw []byte, name string) (Resolved, error) {
-	var res struct {
-		Actions struct {
-			Link  []solvedPkg `json:"LINK"`
-			Fetch []solvedPkg `json:"FETCH"`
-		} `json:"actions"`
-	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return Resolved{}, errors.New("the answer of micromamba could not be read")
-	}
-	out := Resolved{Packages: len(res.Actions.Link)}
-	// the size of what the app brings, from the packages that are linked: a package that is in the cache already is not fetched, and
-	// the list of what is fetched would say 0 MB for an app that was installed before
-	var bytesTotal float64
-	for _, p := range res.Actions.Link {
-		bytesTotal += p.Size
-	}
-	if bytesTotal == 0 {
-		for _, p := range res.Actions.Fetch {
-			bytesTotal += p.Size
-		}
-	}
-	out.DownloadMB = bytesTotal / (1 << 20)
-	out.DiskMB = out.DownloadMB * 2.5 // conda packages are compressed: about this much once they are unpacked
-	for _, list := range [][]solvedPkg{res.Actions.Link, res.Actions.Fetch} {
-		for _, p := range list {
-			if p.Name == name && ValidVersion(p.Version) {
-				out.Version = p.Version
-				if out.Packages == 0 {
-					out.Packages = len(res.Actions.Fetch)
-				}
-				return out, nil
-			}
-		}
-	}
-	return Resolved{}, fmt.Errorf("conda-forge has no %s for this server's Python", name)
-}
-
-type solvedPkg struct {
-	Name    string  `json:"name"`
-	Version string  `json:"version"`
-	Size    float64 `json:"size"`
-}
-
-func (m Mamba) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
-	if !ValidName(name) || !ValidVersion(version) {
-		return fmt.Errorf("%q %q is not a package", name, version)
-	}
-	ctx, cancel := m.withTimeout(ctx, 30*time.Minute)
-	defer cancel()
-	args := append([]string{"create", "-p", dest}, m.common(kind)...)
-	args = append(args, name+"="+version)
-	c := m.cmd(ctx, args...)
-	c.Stdout, c.Stderr = log, log
-	return c.Run()
-}
-
-// Search asks conda-forge for the packages whose name starts with q (micromamba keeps the index of the channel in its cache, so the
-// first search is slow and the next ones are quick).
-func (m Mamba) Search(ctx context.Context, q, kind string) ([]Found, error) {
-	q = strings.ToLower(strings.TrimSpace(q))
-	if !searchPattern.MatchString(q) {
-		return nil, nil
-	}
-	ctx, cancel := m.withTimeout(ctx, 4*time.Minute)
-	defer cancel()
-	var out, errb bytes.Buffer
-	c := m.cmd(ctx, "search", "--json", "--override-channels", "-c", "conda-forge", "--no-rc", q+"*")
-	c.Stdout, c.Stderr = &out, &errb
-	if err := c.Run(); err != nil {
-		return nil, fmt.Errorf("the search of conda-forge failed: %s", tail(errb.String(), 300))
-	}
-	return foundFrom(out.Bytes(), q, kind)
-}
-
 var searchPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,40}$`)
-
-// foundFrom reads the answer of `micromamba search --json`: one result for each name (its newest version), the exact name first,
-// then the names that start with q, shortest first, at most 30.
-func foundFrom(raw []byte, q, kind string) ([]Found, error) {
-	var res struct {
-		Result struct {
-			Pkgs []struct {
-				Name    string `json:"name"`
-				Version string `json:"version"`
-			} `json:"pkgs"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return nil, errors.New("the answer of the search could not be read")
-	}
-	newest := map[string]string{}
-	for _, p := range res.Result.Pkgs {
-		if ValidName(p.Name) && ValidVersion(p.Version) {
-			newest[p.Name] = p.Version // micromamba lists the versions of a name from the oldest to the newest
-		}
-	}
-	var names []string
-	for n := range newest {
-		names = append(names, n)
-	}
-	sort.Slice(names, func(i, j int) bool {
-		a, b := names[i], names[j]
-		if (a == q) != (b == q) {
-			return a == q
-		}
-		if len(a) != len(b) {
-			return len(a) < len(b)
-		}
-		return a < b
-	})
-	if len(names) > 30 {
-		names = names[:30]
-	}
-	if kind == "" {
-		kind = KindLib
-	}
-	out := make([]Found, 0, len(names))
-	for _, n := range names {
-		out = append(out, Found{Name: n, Version: newest[n], Kind: kind})
-	}
-	return out, nil
-}
 
 // ---- npm -----------------------------------------------------------------------------------------------------------------
 
@@ -473,7 +281,7 @@ func (m Multi) pick(kind string) Installer {
 	if m.Conda != nil {
 		return m.Conda
 	}
-	return Missing{Reason: "micromamba is not installed on this server (set OPENREPL_MICROMAMBA to its path)"}
+	return Missing{Reason: "pixi is not installed on this server (set OPENREPL_PIXI to its path)"}
 }
 
 func (m Multi) Name() string {
@@ -524,7 +332,7 @@ func (m Multi) Search(ctx context.Context, q, kind string) ([]Found, error) {
 
 // ---- the fake ------------------------------------------------------------------------------------------------------------
 
-// Fake makes small bundles of every kind, for tests and for a dev server that has no micromamba: a Python module of the package's
+// Fake makes small bundles of every kind, for tests and for a dev server that has no pixi: a Python module of the package's
 // name, a Node module, a program. Failing names fail, as a conda install that cannot be solved does.
 type Fake struct {
 	Version string          // what every package resolves to, "1.0.0" when empty

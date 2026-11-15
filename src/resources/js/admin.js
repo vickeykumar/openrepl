@@ -2530,7 +2530,7 @@
       if (tab === 'installed') {
         out.appendChild(h('h3', { text: 'Installed apps, and where' }));
         var cols = [
-          { key: 'name', label: 'App', cell: function (a) { return h('div', null, h('b', { text: a.name }), h('div', { class: 'sub', text: a.version + ' · ' + a.state })); } },
+          { key: 'name', label: 'App', cell: function (a) { return h('div', null, h('b', { text: a.name }), h('div', { class: 'sub', text: a.version + ' · ' + a.state + (a.state === 'installed' && a.kind !== 'node' && a.kind !== 'plugin' ? (a.locked ? ' · locked' : ' · no lock (made before pixi)') : '') })); } },
           { key: 'size', label: 'Size', cell: function (a) { return a.size ? (a.size / 1048576).toFixed(0) + ' MB' : ''; } },
           { key: 'users', label: 'On for', cell: function (a) {
             var n = d.users[a.id] || 0, idle = d.now - Math.max(a.at || 0, a.lastUsed || 0);
@@ -2543,11 +2543,15 @@
         ];
         d.nodes.forEach(function (n) { cols.push({ key: 'n-' + n.node, label: n.node, cell: function (a) { return a.state === 'installed' ? status(n, a.id, d.now) : h('span', { class: 'sub', text: a.state }); } }); });
         cols.push({ key: 'act', label: '', cell: function (a) {
-          return h('button', { class: 'btn danger', type: 'button', text: 'Remove', onclick: function () {
+          return h('div', null, a.state === 'installed' && a.kind !== 'node' && a.kind !== 'plugin' ? h('button', { class: 'btn', type: 'button', text: 'New lock', title: 'Solve it again for every CPU type and make it again on every server: the same version, with the packages that exist today',
+            onclick: function () {
+              ask({ title: 'Make a new lock of ' + a.name + '?', body: 'It is solved again for every CPU type and installed again on every server. The people who have it on keep their switch; it is missing for a short while.', confirm: 'New lock' })
+                .then(function (ok) { if (ok) post({ action: 'relock', name: a.name }, 'Making a new lock of ' + a.name + '.'); });
+            } }) : null, ' ', h('button', { class: 'btn danger', type: 'button', text: 'Remove', onclick: function () {
             var n = d.users[a.id] || 0;
             ask({ title: 'Remove ' + a.name + '?', body: n ? n + ' users have it on. It is switched off for them and deleted on every server.' : 'Nobody has it on. It is deleted on every server.', confirm: 'Remove', danger: true })
               .then(function (ok) { if (ok) post({ action: 'remove', name: a.name }, a.name + ' was removed.'); });
-          } });
+          } }));
         } });
         out.appendChild(table(cols, d.apps, { empty: 'Nothing is installed yet.' }));
         out.appendChild(h('p', { class: 'sub', text: 'An app that nobody has had on for 60 days is flagged. Nothing is removed by itself: you decide. A server shows "installing" while it is behind and has answered lately.' }));

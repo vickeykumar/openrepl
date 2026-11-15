@@ -33,6 +33,8 @@ const (
 	// ReqStoreState is the worker's answer to a catalog of the App Store: what it has, what failed and why, and when it tries again.
 	// It is sent when that changes (an install ended), not on a timer.
 	ReqStoreState = "store-state@openrepl"
+	// ReqStoreLock asks the gateway for the lock of one App Store bundle (the exact packages of its install), which the answer carries.
+	ReqStoreLock = "store-lock@openrepl"
 )
 
 // Route kinds: keys that must reach the worker that owns them even when the
