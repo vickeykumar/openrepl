@@ -325,3 +325,37 @@ func TestAdminAndUserListsAreNeverNullOnAnEmptyStore(t *testing.T) {
 		t.Error("views must be a list")
 	}
 }
+
+// A worker that has only reported how far a fetch is has not told what it has: its row in the admin list must say "have": [], not null
+// (the Servers tab called indexOf on it).
+func TestAWorkerThatOnlyReportedAFetchHasAnEmptyListNotNull(t *testing.T) {
+	testStoreService(t, appstore.Fake{})
+	srv := &Server{options: &Options{WorkerToken: "s3cret"}}
+	r := httptest.NewRequest("POST", "http://openrepl.test/store/progress", strings.NewReader(`{"node":"w9","id":"flask-1.0.0","pct":10}`))
+	r.Header.Set("Authorization", "Bearer s3cret")
+	srv.handleStoreProgress(httptest.NewRecorder(), r)
+	defer func() { appStoreMu.Lock(); delete(appNodes, "w9"); appStoreMu.Unlock() }()
+	w := httptest.NewRecorder()
+	srv.handleAdminStore(w, httptest.NewRequest("GET", "http://openrepl.test/admin/store", nil))
+	var out struct {
+		Nodes []struct {
+			Node string          `json:"node"`
+			Have json.RawMessage `json:"have"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, n := range out.Nodes {
+		if n.Node == "w9" {
+			found = true
+			if string(n.Have) != "[]" {
+				t.Errorf("have is %s", n.Have)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("no row for w9: %s", w.Body.String())
+	}
+}

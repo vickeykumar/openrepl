@@ -289,3 +289,34 @@ test("an admin's store page loads when the server has nothing yet (empty lists, 
   await expect(page.locator(".store__rows")).toContainText("Servers and installs");
   expect(errors).toEqual([]);
 });
+
+// Text must be readable in both themes: the colour of the subtitle, a card's name and a heading against the colour behind them.
+for (const scheme of ["light", "dark"]) {
+  test(`the store page is readable in the ${scheme} theme`, async ({ page }) => {
+    fake(page, { admin: true });
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.addInitScript((s) => { try { localStorage.setItem("theme", s); } catch (e) {} }, scheme);
+    await page.goto("/store");
+    await page.evaluate((s) => document.documentElement.setAttribute("data-theme", s), scheme);
+    await expect(page.locator(".sapp").first()).toBeVisible();
+    const ratios = await page.evaluate(() => {
+      const parse = (c) => c.match(/[\d.]+/g).map(Number);
+      const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      const bgOf = (el) => { for (; el; el = el.parentElement) { const c = parse(getComputedStyle(el).backgroundColor); if (c.length < 4 || c[3] > 0.5) return c; } return [255, 255, 255]; };
+      const ratio = (sel) => { const el = document.querySelector(sel); const a = lum(parse(getComputedStyle(el).color)), b = lum(bgOf(el)); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
+      return { sub: ratio(".store__head p"), h1: ratio(".store__head h1"), name: ratio(".sapp__name"), sum: ratio(".sapp__sum"), side: ratio(".store__side a") };
+    });
+    for (const [k, v] of Object.entries(ratios)) expect(v, `${k} in ${scheme}`).toBeGreaterThan(4.5);
+    await page.screenshot({ path: `test-results/store-${scheme}.png` });
+  });
+}
+
+test("the admin's servers list loads when a worker has only reported a fetch (no list of what it has)", async ({ page }) => {
+  fake(page, { admin: true });
+  await page.route("**/admin/store", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ enabled: true, apt: [], apps: [{ id: "jq-1.7", name: "jq", version: "1.7", kind: "tool" }], requests: [], reports: [], users: {}, limitMB: 2048, nodes: [{ node: "w9", have: null, failed: null, fetching: { "jq-1.7": 30 } }] }) }));
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/store#admin/servers");
+  await expect(page.locator(".store__node").first()).toContainText("w9");
+  expect(errors).toEqual([]);
+});

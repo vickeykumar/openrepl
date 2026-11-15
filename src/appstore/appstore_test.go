@@ -924,3 +924,38 @@ func TestNpmEnginesAreRead(t *testing.T) {
 		t.Errorf("the newest that fits: %q", pick)
 	}
 }
+
+// A bundle holds programs built for one CPU: a worker of another architecture than the gateway must not take the gateway's copy,
+// it installs the bundle itself.
+func TestAWorkerOfAnotherArchitectureInstallsItselfAndDoesNotFetch(t *testing.T) {
+	a, _ := newService(t, Fake{}, "flask")
+	a.cfg.Arch = "amd64"
+	a.Install("ann", "flask", "lib", false)
+	a.Wait()
+	snap := a.Snapshot()
+	if snap.Arch != "amd64" {
+		t.Fatalf("the snapshot must say the architecture of the gateway: %q", snap.Arch)
+	}
+	fetch := func(n *int) func(context.Context, string, string, func(int)) error {
+		return func(ctx context.Context, id, dest string, progress func(int)) error {
+			*n++
+			return errors.New("not used")
+		}
+	}
+	var fetched int
+	b, bst := newService(t, Fake{})
+	b.cfg.Arch = "arm64"
+	b.cfg.Fetch = fetch(&fetched)
+	st := b.Apply(context.Background(), snap)
+	if fetched != 0 || len(st.Failed) != 0 || !bst.HasBundle("flask-1.0.0") {
+		t.Fatalf("fetched %d, state %+v", fetched, st)
+	}
+	// the same architecture does ask the gateway
+	c, _ := newService(t, Fake{})
+	c.cfg.Arch = "amd64"
+	c.cfg.Fetch = fetch(&fetched)
+	c.Apply(context.Background(), snap)
+	if fetched != 1 {
+		t.Errorf("the same architecture should fetch: %d", fetched)
+	}
+}

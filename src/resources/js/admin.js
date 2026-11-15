@@ -2466,7 +2466,7 @@
     }
     // the status of one app on one server: ready, fetching (a server that is behind and answered lately), failed, missing
     function status(n, id, now) {
-      if (n.have.indexOf(id) >= 0) return h('span', { class: 'ok', text: 'ready' });
+      if ((n.have || []).indexOf(id) >= 0) return h('span', { class: 'ok', text: 'ready' });
       if (n.failed && n.failed[id]) return h('span', { class: 'bad', title: n.failed[id], text: 'failed' });
       if (n.fetching && n.fetching[id] != null) return h('span', { class: 'warn', text: 'fetching ' + n.fetching[id] + '%' });
       var seen = n.seen ? Date.parse(n.seen) / 1000 : now;
@@ -2565,7 +2565,7 @@
             { key: 'size', label: 'Size here', cell: function (a) { return n.sizes && n.sizes[a.id] ? Math.round(n.sizes[a.id]) + ' MB' : ''; } },
             { key: 'status', label: 'Status', cell: function (a) { return status(n, a.id, d.now); } },
             { key: 'act', label: '', cell: function (a) {
-              var here = n.have.indexOf(a.id) >= 0 || (n.failed && n.failed[a.id]);
+              var here = (n.have || []).indexOf(a.id) >= 0 || (n.failed && n.failed[a.id]);
               return here ? h('button', { class: 'btn', type: 'button', text: 'Reinstall here', title: 'Delete this server\'s copy and make it again', onclick: function () {
                 post({ action: 'reinstall', node: n.node, id: a.id }, 'Asked ' + n.node + ' to make ' + a.name + ' again' + (n.node === 'gateway' ? '.' : ' (within a minute).')); } }) : '';
             } }
@@ -2624,7 +2624,7 @@
   var GROUPS = [
     ['', ['overview', 'map']],
     ['Fleet', ['workers', 'sessions']],
-    ['Site', ['site', 'feedback', 'snippets', 'users', 'traffic', 'usage']],
+    ['Site', ['site', 'feedback', 'snippets', 'store', 'users', 'traffic', 'usage']],
     ['System', ['health', 'jobs', 'params', 'logs', 'audit']]
   ];
 

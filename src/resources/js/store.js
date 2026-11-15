@@ -447,7 +447,7 @@
         var bar = el("div", "store-dialog__bar"); var fill = el("i"); fill.style.width = pct + "%"; bar.appendChild(fill); box.appendChild(bar);
         var ids = d.apps.filter(function (a) { return a.state === "installed"; });
         ids.forEach(function (a) {
-          var have = n.have.indexOf(a.id) >= 0, f = n.fetching && n.fetching[a.id], bad = n.failed && n.failed[a.id];
+          var have = (n.have || []).indexOf(a.id) >= 0, f = n.fetching && n.fetching[a.id], bad = n.failed && n.failed[a.id];
           var status = have ? "ready" : f != null ? "fetching " + f + "%" : bad ? "failed" : "missing";
           var row = admRow(a.name + " " + a.version, kindLabel(a.kind) + (have && n.sizes && n.sizes[a.id] ? " · " + Math.round(n.sizes[a.id]) + " MB" : "") + (bad ? " · " + bad : ""), status, have ? "stag--installed" : f != null ? "stag--installing" : bad ? "stag--failed" : "stag--requested");
           row.setAttribute("data-bundle", a.id);

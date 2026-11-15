@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -184,7 +185,7 @@ func (server *Server) startAppStore(ctx context.Context) {
 		}
 		kv = db
 	}
-	cfg := appstore.Config{Store: appstore.Store{Dir: dir}, KV: kv, Installer: newInstaller(dir), Safe: storeSafeList, LimitMB: storeLimitMB, Apt: aptRunner()}
+	cfg := appstore.Config{Store: appstore.Store{Dir: dir}, KV: kv, Installer: newInstaller(dir), Safe: storeSafeList, LimitMB: storeLimitMB, Apt: aptRunner(), Arch: runtime.GOARCH}
 	if worker {
 		base, id := gatewayHTTPBase(server.options.WorkerServer), server.options.WorkerID
 		if id == "" {
@@ -585,7 +586,11 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 		sort.Strings(ids)
 		for _, id := range ids {
 			n := appNodes[id]
-			rows = append(rows, storeNodeRow{Node: id, Have: n.Have, Failed: n.Failed, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339), Sizes: n.Sizes,
+			have := n.Have
+			if have == nil {
+				have = []string{} // a worker that has only reported a fetch has not told what it has: an empty list, not null
+			}
+			rows = append(rows, storeNodeRow{Node: id, Have: have, Failed: n.Failed, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339), Sizes: n.Sizes,
 				Fetching: n.Fetching, Pending: append([]string(nil), appCommands[id]...)})
 		}
 		appStoreMu.Unlock()
