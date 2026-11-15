@@ -2,6 +2,7 @@ package containers
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -152,5 +153,38 @@ func TestAnAdminsREPLGetsNoFilesystemSandbox(t *testing.T) {
 		if name == "guest" && !helper {
 			t.Errorf("a guest's REPL runs without the helper: %v", got)
 		}
+	}
+}
+
+// A terminal without the sandbox (an admin's, or a server without Landlock) still goes through the helper when there is an App Store, so that
+// the apps that are on for the user are on its environment; with no store, or no helper, the command is untouched.
+func TestATerminalWithoutASandboxStillGetsTheUsersStoreApps(t *testing.T) {
+	bin := t.TempDir()
+	helper := filepath.Join(bin, "landlock-helper")
+	os.WriteFile(helper, []byte("#!/bin/sh\n"), 0755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	store := t.TempDir()
+	t.Setenv(utils.EnvStoreDir, store)
+	cmd := []string{"/bin/bash"}
+	got := wrapStoreEnv(cmd, "/home/openrepl/vickohna")
+	want := []string{helper, "--no-landlock", "--workspace", "/home/openrepl/vickohna", "--store-dir", store, "--", "/bin/bash"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	// the same through wrapWithLandlock, when the server has no Landlock
+	if got := wrapWithLandlock(cmd, "/home/openrepl/vickohna", false, false); !reflect.DeepEqual(got, want) {
+		t.Errorf("without Landlock: %v", got)
+	}
+	t.Setenv(utils.EnvStoreDir, "off")
+	if got := wrapStoreEnv(cmd, "/home/openrepl/vickohna"); !reflect.DeepEqual(got, cmd) {
+		t.Errorf("no store: %v", got)
+	}
+	t.Setenv(utils.EnvStoreDir, filepath.Join(store, "missing"))
+	if got := wrapStoreEnv(cmd, "/home/openrepl/vickohna"); !reflect.DeepEqual(got, cmd) {
+		t.Errorf("a folder that is not there: %v", got)
+	}
+	t.Setenv(utils.EnvStoreDir, store)
+	if got := wrapStoreEnv(cmd, ""); !reflect.DeepEqual(got, cmd) {
+		t.Errorf("no workspace: %v", got)
 	}
 }

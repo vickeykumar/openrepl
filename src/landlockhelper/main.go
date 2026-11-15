@@ -63,6 +63,10 @@ func main() {
 	}
 
 	if *noLandlock {
+		// no filesystem policy (an admin's terminal, or a server without Landlock): the user's App Store apps are still put on the environment
+		if *storeDir != "" && *workspace != "" {
+			storeFolders(*storeDir, *workspace, *storeExtra)
+		}
 		runWithoutPolicy(*netEmulation, flag.Args())
 		return
 	}
@@ -139,11 +143,13 @@ func installNetwork() {
 
 // runWithoutPolicy is for a server where only the network emulation is on.
 func runWithoutPolicy(netEmulation bool, args []string) {
-	if len(args) == 0 || !netEmulation {
-		fmt.Fprintln(os.Stderr, "landlock-helper: usage: --no-landlock --net-emulation -- program [arguments...]")
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "landlock-helper: usage: --no-landlock [--net-emulation] [--store-dir DIR --workspace DIR] -- program [arguments...]")
 		os.Exit(failed)
 	}
-	installNetwork()
+	if netEmulation {
+		installNetwork()
+	}
 	path, err := exec.LookPath(args[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "landlock-helper:", err)

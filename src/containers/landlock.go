@@ -131,7 +131,7 @@ func wrapWithLandlock(command []string, workspace string, debug, scopeSignals bo
 	info := LandlockStatus()
 	net := scopeSignals && NetEmuActive()
 	if !info.Active && !net {
-		return command
+		return wrapStoreEnv(command, workspace)
 	}
 	var wrapped []string
 	if info.Active {
@@ -149,7 +149,7 @@ func wrapWithLandlock(command []string, workspace string, debug, scopeSignals bo
 			}
 		}
 	} else {
-		wrapped = []string{NetEmuStatus().Helper, "--no-landlock"}
+		wrapped = append([]string{NetEmuStatus().Helper, "--no-landlock"}, storeArgs(workspace)...)
 	}
 	if net {
 		wrapped = append(wrapped, "--net-emulation")
@@ -172,4 +172,29 @@ func WrapForVerification(command []string, workspace, bundle string) []string {
 		}
 	}
 	return wrapped
+}
+
+// storeArgs are the helper's arguments that let it put the user's App Store apps on the environment (the folder of the store and the
+// user's workspace); none when the store is off or its folder is not there.
+func storeArgs(workspace string) []string {
+	dir := utils.StoreDir()
+	if workspace == "" || dir == "" {
+		return nil
+	}
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		return nil
+	}
+	return []string{"--workspace", workspace, "--store-dir", dir}
+}
+
+// wrapStoreEnv runs a command that has no sandbox (an admin's terminal, or a server without Landlock) through the helper, only so that the
+// user's App Store apps are on its PATH, PYTHONPATH and NODE_PATH like in every other terminal. The command is returned as it is when
+// there is no store or no helper.
+func wrapStoreEnv(command []string, workspace string) []string {
+	args := storeArgs(workspace)
+	helper := findHelper()
+	if len(args) == 0 || helper == "" || len(command) == 0 {
+		return command
+	}
+	return append(append([]string{helper, "--no-landlock"}, append(args, "--")...), command...)
 }
