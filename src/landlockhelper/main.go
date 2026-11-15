@@ -168,7 +168,7 @@ func storeFolders(dir, workspace string) []string {
 	if own == "" {
 		return nil
 	}
-	ids, err := store.Manifest(home)
+	ids, err := store.Effective(home)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "landlock-helper: the App Store list of this user:", err)
 		os.Exit(failed)

@@ -200,9 +200,97 @@ func ReadManifest(path string) ([]string, error) {
 	return out, nil
 }
 
-// WriteManifest saves a user's list and the env.sh that goes with it. Only finished bundles may be on it. The files are written
-// whole and then renamed, so a terminal that starts at that moment reads the old list or the new one.
+// Kept says that a home is a signed-in user's, not a guest's (the same rule as homesnap.IsKept): what an admin turned on for everyone
+// is on for these only.
+func Kept(home string) bool { return ValidHome(home) && !strings.HasPrefix(home, "guest-") }
+
+// DefaultsPath is the list of the bundles an admin turned on for every signed-in user (a JSON list of bundle names), written by the
+// server and read when a terminal starts. A terminal cannot write it.
+func (s Store) DefaultsPath() string { return filepath.Join(s.Dir, "defaults.json") }
+
+// Defaults reads that list, [] when there is none.
+func (s Store) Defaults() ([]string, error) { return ReadManifest(s.DefaultsPath()) }
+
+// WriteDefaults saves it. Names of bundles that are not here are left out (they are put in when they are).
+func (s Store) WriteDefaults(ids []string) error {
+	clean := []string{}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if ValidBundle(id) && s.HasBundle(id) && !seen[id] {
+			seen[id] = true
+			clean = append(clean, id)
+		}
+	}
+	if err := os.MkdirAll(s.Dir, 0755); err != nil {
+		return err
+	}
+	raw, _ := json.Marshal(clean)
+	return writeAtomic(s.DefaultsPath(), raw)
+}
+
+// Off is the list of the bundles a user turned off although they are on for everyone, [] when there is none.
+func (s Store) Off(home string) ([]string, error) {
+	d := s.HomeDir(home)
+	if d == "" {
+		return nil, fmt.Errorf("%q is not a home", home)
+	}
+	return ReadManifest(filepath.Join(d, "off.json"))
+}
+
+// Effective is what is on for a user: the bundles that are on for everyone (unless the user turned them off) and the user's own.
+// A bad entry in any of the files is an error, never skipped.
+func (s Store) Effective(home string) ([]string, error) {
+	on, err := s.Manifest(home)
+	if err != nil {
+		return nil, err
+	}
+	if !Kept(home) {
+		return on, nil
+	}
+	def, err := s.Defaults()
+	if err != nil {
+		return nil, err
+	}
+	off, err := s.Off(home)
+	if err != nil {
+		return nil, err
+	}
+	return merge(def, off, on), nil
+}
+
+// merge is the defaults that are not off, then the user's own, each once.
+func merge(def, off, on []string) []string {
+	skip := map[string]bool{}
+	for _, id := range off {
+		skip[id] = true
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, id := range def {
+		if !skip[id] && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	for _, id := range on {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// WriteManifest saves a user's own list and the env.sh that goes with it (the off list is left as it is).
 func (s Store) WriteManifest(home string, ids []string) error {
+	off, _ := s.Off(home)
+	return s.WriteHome(home, ids, off)
+}
+
+// WriteHome saves a user's own list, the bundles the user turned off from the ones that are on for everyone, and the env.sh of what is on
+// now (the three together). Only finished bundles may be on the own list. The files are written whole and then renamed, so a terminal
+// that starts at that moment reads the old list or the new one.
+func (s Store) WriteHome(home string, ids, off []string) error {
 	d := s.HomeDir(home)
 	if d == "" {
 		return fmt.Errorf("%q is not a home", home)
@@ -218,6 +306,12 @@ func (s Store) WriteManifest(home string, ids []string) error {
 			clean = append(clean, id)
 		}
 	}
+	offClean := []string{}
+	for _, id := range off {
+		if ValidBundle(id) {
+			offClean = append(offClean, id)
+		}
+	}
 	if err := os.MkdirAll(d, 0755); err != nil {
 		return err
 	}
@@ -228,7 +322,22 @@ func (s Store) WriteManifest(home string, ids []string) error {
 	if err := writeAtomic(filepath.Join(d, "manifest.json"), raw); err != nil {
 		return err
 	}
-	return writeAtomic(filepath.Join(d, "env.sh"), []byte(EnvScript(s.Dir, clean)))
+	rawOff, _ := json.Marshal(offClean)
+	if err := writeAtomic(filepath.Join(d, "off.json"), rawOff); err != nil {
+		return err
+	}
+	now := clean
+	if Kept(home) {
+		def, _ := s.Defaults()
+		var have []string
+		for _, id := range def {
+			if s.HasBundle(id) {
+				have = append(have, id)
+			}
+		}
+		now = merge(have, offClean, clean)
+	}
+	return writeAtomic(filepath.Join(d, "env.sh"), []byte(EnvScript(s.Dir, now)))
 }
 
 func writeAtomic(path string, data []byte) error {

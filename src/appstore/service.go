@@ -274,11 +274,99 @@ func (s *Service) Reports() []Report {
 	return out
 }
 
-// MyList is the bundles that are on for a user.
-func (s *Service) MyList(home string) []string {
+// ownList is the bundles a user switched on (the user's own list).
+func (s *Service) ownList(home string) []string {
 	var ids []string
 	s.get("user:"+home, &ids)
 	return ids
+}
+
+// offList is the bundles a user switched off although an admin turned them on for everyone.
+func (s *Service) offList(home string) []string {
+	var ids []string
+	s.get("off:"+home, &ids)
+	return ids
+}
+
+// Defaults are the names of the apps an admin turned on for every signed-in user (the people who sign in later too); each user may turn
+// one off for themselves.
+func (s *Service) Defaults() []string {
+	var names []string
+	s.get("defaults", &names)
+	if names == nil {
+		names = []string{}
+	}
+	return names
+}
+
+// defaultIDs are the bundles of the installed apps among the Defaults.
+func (s *Service) defaultIDs() []string {
+	want := map[string]bool{}
+	for _, n := range s.Defaults() {
+		want[n] = true
+	}
+	var ids []string
+	for _, a := range s.Apps() {
+		if want[a.Name] && a.State == StateInstalled && a.ID != "" {
+			ids = append(ids, a.ID)
+		}
+	}
+	return ids
+}
+
+// MyList is the bundles that are on for a user: what the user switched on and what is on for everyone (less what the user switched off).
+func (s *Service) MyList(home string) []string {
+	own := s.ownList(home)
+	if !Kept(home) {
+		return own
+	}
+	return merge(s.defaultIDs(), s.offList(home), own)
+}
+
+// SetDefault turns an installed or installing app on for every signed-in user (on) or stops doing that (not on). A user's own choice
+// stays: a user who turned it off keeps it off, and one who turned it on keeps it on.
+func (s *Service) SetDefault(admin, name string, on bool) error {
+	name = strings.ToLower(strings.TrimSpace(name))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.app(name); !ok {
+		return ErrUnknown
+	}
+	var next []string
+	for _, n := range s.Defaults() {
+		if n != name {
+			next = append(next, n)
+		}
+	}
+	if on {
+		next = append(next, name)
+	}
+	if next == nil {
+		next = []string{}
+	}
+	if err := s.put("defaults", next); err != nil {
+		return err
+	}
+	log.Printf("appstore: %s turned %s %s for everyone", admin, name, map[bool]string{true: "on", false: "off"}[on])
+	return s.refreshDefaults()
+}
+
+// refreshDefaults writes the list of what is on for everyone and the env.sh of every user that has files here.
+func (s *Service) refreshDefaults() error {
+	if err := s.cfg.Store.WriteDefaults(s.defaultIDs()); err != nil {
+		return err
+	}
+	for _, home := range s.cfg.Store.Homes() {
+		s.cfg.Store.WriteHome(home, s.ownList(home), s.offList(home))
+	}
+	return nil
+}
+
+func (s *Service) setOff(home string, ids []string) error {
+	if ids == nil {
+		ids = []string{}
+	}
+	return s.put("off:"+home, ids)
 }
 
 func (s *Service) setList(home string, ids []string) error {
@@ -483,6 +571,9 @@ func (s *Service) runInstall(a App) {
 		rep.Status, rep.Answer, rep.Seen = "fixed", "It is installed.", nil
 		s.put("rep:"+a.Name, rep)
 	}
+	if has(s.Defaults(), a.Name) {
+		s.refreshDefaults() // it was turned on for everyone while it was being installed
+	}
 	s.mu.Unlock()
 	s.finishJob(a.Name)
 	log.Printf("appstore: %s %s installed (%.1f MB), asked by %s", a.Name, a.Version, float64(m.Size)/(1<<20), a.By)
@@ -656,8 +747,21 @@ func (s *Service) Remove(admin, name string) (int, error) {
 		}
 	}
 	s.del("app:" + name)
+	if has(s.Defaults(), name) {
+		var next []string
+		for _, n := range s.Defaults() {
+			if n != name {
+				next = append(next, n)
+			}
+		}
+		if next == nil {
+			next = []string{}
+		}
+		s.put("defaults", next)
+	}
 	if a.ID != "" {
 		s.cfg.Store.RemoveBundle(a.ID)
+		s.refreshDefaults()
 	}
 	log.Printf("appstore: %s removed %s (it was on for %d users)", admin, name, users)
 	return users, nil
@@ -682,7 +786,36 @@ func (s *Service) Switch(home, id string, on bool) error {
 	if !known {
 		return ErrUnknown
 	}
-	cur := s.MyList(home)
+	if a, ok := s.appByID(id); ok && Kept(home) && has(s.Defaults(), a.Name) {
+		// on for everyone: the user's switch is the off list (and the own list drops it, so the two never disagree)
+		own, off := s.ownList(home), s.offList(home)
+		var nextOwn, nextOff []string
+		for _, x := range own {
+			if x != id {
+				nextOwn = append(nextOwn, x)
+			}
+		}
+		for _, x := range off {
+			if x != id {
+				nextOff = append(nextOff, x)
+			}
+		}
+		if !on {
+			nextOff = append(nextOff, id)
+		}
+		if err := s.cfg.Store.WriteHome(home, nextOwn, nextOff); err != nil {
+			return err
+		}
+		if on {
+			a.LastUsed = s.now()
+			s.put("app:"+a.Name, a)
+		}
+		if err := s.setOff(home, nextOff); err != nil {
+			return err
+		}
+		return s.setList(home, nextOwn)
+	}
+	cur := s.ownList(home)
 	var next []string
 	present := false
 	for _, x := range cur {
@@ -714,10 +847,21 @@ func (s *Service) Switch(home, id string, on bool) error {
 	return s.setList(home, next)
 }
 
+// appByID finds an installed app by its bundle name.
+func (s *Service) appByID(id string) (App, bool) {
+	for _, a := range s.Apps() {
+		if a.ID == id && a.State == StateInstalled {
+			return a, true
+		}
+	}
+	return App{}, false
+}
+
 // ---- what the page shows -------------------------------------------------------------------------------------------------
 
 // View is one app as a user sees it.
 type View struct {
+	Default  bool       `json:"default,omitempty"`  // an admin turned it on for everyone (a user may turn it off for themselves)
 	OthersOn int        `json:"othersOn,omitempty"` // how many other users have it on: a user may uninstall it only when this is 0
 	Summary  string     `json:"summary,omitempty"`  // for the samples, which are not looked up
 	At       int64      `json:"at,omitempty"`       // when it was installed or asked for
@@ -791,10 +935,17 @@ func (s *Service) Views(who, home string) []View {
 			}
 		})
 	}
+	def := map[string]bool{}
+	for _, n := range s.Defaults() {
+		def[n] = true
+	}
 	seen := map[string]bool{}
 	out := []View{}
 	for _, a := range s.Apps() {
-		v := View{At: a.At, Name: a.Name, Version: a.Version, ID: a.ID, Kind: a.Kind, State: a.State, Safe: s.isSafe(cleanKind(a.Kind), a.Name),
+		if def[a.Name] && others[a.ID] == 0 {
+			others[a.ID] = 1 // on for everyone: others have it on, so a user cannot uninstall it
+		}
+		v := View{Default: def[a.Name], At: a.At, Name: a.Name, Version: a.Version, ID: a.ID, Kind: a.Kind, State: a.State, Safe: s.isSafe(cleanKind(a.Kind), a.Name),
 			On: my[a.ID], SizeMB: float64(a.Size) / (1 << 20), Mine: a.By == who, OthersOn: others[a.ID]}
 		v.Packages = a.Packages
 		if a.State == StateInstalling {
@@ -869,7 +1020,10 @@ type Snapshot struct {
 	Apps  []App               `json:"apps"`
 	Users map[string][]string `json:"users"`
 	Apt   []string            `json:"apt,omitempty"`
-	Full  bool                `json:"full"` // the list is complete: a bundle that is not in it may be removed
+	// Defaults are the bundles that are on for every signed-in user; Off is, for a user, the ones of them the user turned off.
+	Defaults []string            `json:"defaults,omitempty"`
+	Off      map[string][]string `json:"off,omitempty"`
+	Full     bool                `json:"full"` // the list is complete: a bundle that is not in it may be removed
 	// Reinstall are bundles an admin asked this node to make again (the gateway adds them when it answers a worker): the node
 	// deletes its copy of each, and the replay that follows fetches it again.
 	Reinstall []string `json:"reinstall,omitempty"`
@@ -892,6 +1046,16 @@ func (s *Service) Snapshot() Snapshot {
 		var ids []string
 		if json.Unmarshal(raw, &ids) == nil {
 			snap.Users[strings.TrimPrefix(key, "user:")] = ids
+		}
+	}); err != nil {
+		snap.Full = false
+	}
+	snap.Defaults = s.defaultIDs()
+	snap.Off = map[string][]string{}
+	if err := s.each("off:", func(key string, raw []byte) {
+		var ids []string
+		if json.Unmarshal(raw, &ids) == nil && len(ids) > 0 {
+			snap.Off[strings.TrimPrefix(key, "off:")] = ids
 		}
 	}); err != nil {
 		snap.Full = false
@@ -1020,25 +1184,37 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 			}
 		}
 	}
+	// what is on for everyone (before the users: their env.sh includes it)
+	if err := s.cfg.Store.WriteDefaults(snap.Defaults); err != nil {
+		st.Failed["defaults"] = err.Error()
+	}
 	// the users: the bundles that are here; and an empty list for a user that has none any more
 	homes := map[string]bool{}
-	for home, ids := range snap.Users {
+	write := func(home string) {
 		homes[home] = true
 		var have []string
-		for _, id := range ids {
+		for _, id := range snap.Users[home] {
 			if s.cfg.Store.HasBundle(id) {
 				have = append(have, id)
 			}
 		}
 		if ValidHome(home) {
-			if err := s.cfg.Store.WriteManifest(home, have); err != nil {
+			if err := s.cfg.Store.WriteHome(home, have, snap.Off[home]); err != nil {
 				st.Failed["user:"+home] = err.Error()
 			}
 		}
 	}
+	for home := range snap.Users {
+		write(home)
+	}
+	for home := range snap.Off {
+		if !homes[home] {
+			write(home)
+		}
+	}
 	for _, home := range s.cfg.Store.Homes() {
 		if !homes[home] {
-			s.cfg.Store.WriteManifest(home, nil)
+			s.cfg.Store.WriteHome(home, nil, nil)
 		}
 	}
 	s.applyApt(ctx, snap.Apt, &st)
@@ -1282,6 +1458,9 @@ func (s *Service) Uninstall(who, home, name string) error {
 			others++
 		}
 	})
+	if has(s.Defaults(), name) {
+		return fmt.Errorf("%w: it is on for everyone", ErrInUse)
+	}
 	if others > 0 {
 		return fmt.Errorf("%w: %d other users", ErrInUse, others)
 	}

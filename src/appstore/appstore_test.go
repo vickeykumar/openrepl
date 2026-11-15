@@ -852,3 +852,84 @@ func TestAFailedInstallWaitsLongerAndLongerBeforeItIsTriedAgain(t *testing.T) {
 		t.Error("nothing should be waiting any more")
 	}
 }
+
+// An app an admin turned on for everyone is on for every signed-in user, the ones who sign in later too (not for guests), until a user
+// turns it off for themselves; it cannot be uninstalled by a user; and a worker that applies the catalog gets the same.
+func TestAnAppOnForEveryoneIsOnForEverySignedInUserUntilTheyTurnItOff(t *testing.T) {
+	a, ast := newService(t, Fake{}, "flask", "numpy")
+	a.Install("ann", "flask", "lib", false)
+	a.Install("ann", "numpy", "lib", false)
+	// turned on for everyone while it is being installed: it takes effect when the install ends
+	if err := a.SetDefault("root", "flask", true); err != nil {
+		t.Fatal(err)
+	}
+	a.Wait()
+	const id = "flask-1.0.0"
+	for _, home := range []string{"ann", "zed"} { // zed has never switched anything
+		if !has(a.MyList(home), id) {
+			t.Errorf("%s: flask should be on: %v", home, a.MyList(home))
+		}
+		if eff, err := ast.Effective(home); err != nil || !has(eff, id) {
+			t.Errorf("%s: what the terminal reads: %v %v", home, eff, err)
+		}
+	}
+	if has(a.MyList("guest-7"), id) {
+		t.Error("a guest must not get it")
+	}
+	if eff, _ := ast.Effective("guest-7"); has(eff, id) {
+		t.Error("a guest's terminal must not get it")
+	}
+	if a.Uninstall("ann", "ann", "flask") == nil {
+		t.Error("a user must not uninstall what is on for everyone")
+	}
+	// a user turns it off for themselves; the others keep it; numpy (not for everyone) is the user's own business
+	if err := a.Switch("ann", id, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Switch("ann", "numpy-1.0.0", true); err != nil {
+		t.Fatal(err)
+	}
+	if has(a.MyList("ann"), id) || !has(a.MyList("ann"), "numpy-1.0.0") || !has(a.MyList("zed"), id) {
+		t.Fatalf("ann %v zed %v", a.MyList("ann"), a.MyList("zed"))
+	}
+	if eff, _ := ast.Effective("ann"); has(eff, id) {
+		t.Errorf("ann's terminal still gets it: %v", eff)
+	}
+	if env, _ := os.ReadFile(filepath.Join(ast.HomeDir("ann"), "env.sh")); strings.Contains(string(env), "flask-1.0.0") {
+		t.Error("ann's env.sh still has flask")
+	}
+	// a worker gets the same from the catalog
+	snap := a.Snapshot()
+	if !has(snap.Defaults, id) || !has(snap.Off["ann"], id) {
+		t.Fatalf("the catalog: defaults %v off %v", snap.Defaults, snap.Off)
+	}
+	b, bst := newService(t, Fake{})
+	if st := b.Apply(context.Background(), snap); len(st.Failed) != 0 {
+		t.Fatalf("%+v", st)
+	}
+	if eff, _ := bst.Effective("ann"); has(eff, id) || !has(eff, "numpy-1.0.0") {
+		t.Errorf("the worker, ann: %v", eff)
+	}
+	if eff, _ := bst.Effective("zed"); !has(eff, id) {
+		t.Errorf("the worker, a user who never switched anything: %v", eff)
+	}
+	// she turns it on again; then an admin stops it being on for everyone: it stays on for her, off for the rest
+	if err := a.Switch("ann", id, true); err != nil || !has(a.MyList("ann"), id) {
+		t.Fatalf("on again: %v %v", err, a.MyList("ann"))
+	}
+	a.SetDefault("root", "flask", false)
+	if has(a.MyList("zed"), id) {
+		t.Error("it should not be on for zed any more")
+	}
+	// removing an app that is on for everyone clears it everywhere
+	a.SetDefault("root", "numpy", true)
+	if _, err := a.Remove("root", "numpy"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Defaults()) != 0 {
+		t.Errorf("defaults after the removal: %v", a.Defaults())
+	}
+	if d, _ := ast.Defaults(); len(d) != 0 {
+		t.Errorf("defaults.json after the removal: %v", d)
+	}
+}

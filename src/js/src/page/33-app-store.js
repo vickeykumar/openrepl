@@ -172,6 +172,7 @@ function card(v) {
   top.appendChild(nameLink(v.name));
   top.appendChild(h("span", "appstore__tag", KIND_TEXT[v.kind || "lib"] || v.kind));
   if (v.version) top.appendChild(h("span", "appstore__ver", v.version));
+  if (v.default && v.state === "installed") top.appendChild(h("span", "appstore__tag appstore__tag--installed", "on for everyone"));
   if (STATE_TEXT[v.state]) top.appendChild(h("span", "appstore__tag appstore__tag--" + v.state, STATE_TEXT[v.state]));
   if (v.state === "installed" && v.sizeMB) top.appendChild(h("span", "appstore__size", v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB"));
   c.appendChild(top);

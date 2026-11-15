@@ -495,7 +495,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 		s := GetSiteSettings()
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"enabled": !s.StoreOff, "installer": svc.Installer().Name(), "dir": svc.Store().Dir,
-			"apps": svc.Apps(), "requests": svc.Requests(), "reports": svc.Reports(), "apt": svc.Apt(), "users": users, "nodes": rows,
+			"apps": svc.Apps(), "defaults": svc.Defaults(), "requests": svc.Requests(), "reports": svc.Reports(), "apt": svc.Apt(), "users": users, "nodes": rows,
 			"safeList": storeSafeList(), "limitMB": storeLimitMB(), "limitSet": s.StoreLimitMB, "safeSet": len(s.StoreSafeList) > 0,
 			"sizeMB": local.SizeMB, "channel": "conda-forge", "python": storePython(), "now": time.Now().Unix(),
 		})
@@ -513,6 +513,9 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 		Safe    []string `json:"safeList"`
 		Limit   int      `json:"limitMB"`
 		Off     bool     `json:"off"`
+		// Everyone: with an install, turn the app on for every signed-in user (default is the same, for an app that is installed)
+		Everyone bool `json:"everyone"`
+		On       bool `json:"on"`
 	}
 	if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&c) != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -524,6 +527,12 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 	switch c.Action {
 	case "install":
 		err = svc.Install(who, c.Name, c.Kind, true)
+		if err == nil && c.Everyone {
+			err = svc.SetDefault(who, c.Name, true)
+		}
+	case "default":
+		err = svc.SetDefault(who, c.Name, c.On)
+		detail = c.Name + map[bool]string{true: " on for everyone", false: " not on for everyone"}[c.On]
 	case "reinstall":
 		// make a bundle again on one server: the gateway at once, a worker the next time it asks for the catalog (within a minute)
 		if !appstore.ValidBundle(c.ID) {

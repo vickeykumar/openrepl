@@ -2534,7 +2534,11 @@
           { key: 'size', label: 'Size', cell: function (a) { return a.size ? (a.size / 1048576).toFixed(0) + ' MB' : ''; } },
           { key: 'users', label: 'On for', cell: function (a) {
             var n = d.users[a.id] || 0, idle = d.now - Math.max(a.at || 0, a.lastUsed || 0);
-            return h('div', null, n + (n === 1 ? ' user' : ' users'), n === 0 && a.state === 'installed' && idle > 60 * DAY ? h('div', { class: 'warn', text: 'unused for ' + Math.floor(idle / DAY) + ' days' }) : null);
+            var everyone = (d.defaults || []).indexOf(a.name) >= 0;
+            return h('div', null, n + (n === 1 ? ' user' : ' users'), n === 0 && a.state === 'installed' && idle > 60 * DAY ? h('div', { class: 'warn', text: 'unused for ' + Math.floor(idle / DAY) + ' days' }) : null,
+              a.state === 'installed' ? h('div', null, everyone ? h('span', { class: 'ok', text: 'on for everyone ' }) : null, h('button', { class: 'btn', type: 'button', text: everyone ? 'Turn off for everyone' : 'Turn on for everyone',
+                title: 'Every signed-in user, the ones who sign in later too, gets it on; each may turn it off for themselves.',
+                onclick: function () { post({ action: 'default', name: a.name, on: !everyone }, a.name + (everyone ? ' is no longer on for everyone.' : ' is on for every signed-in user now.')); } })) : null);
           } }
         ];
         d.nodes.forEach(function (n) { cols.push({ key: 'n-' + n.node, label: n.node, cell: function (a) { return a.state === 'installed' ? status(n, a.id, d.now) : h('span', { class: 'sub', text: a.state }); } }); });
@@ -2551,8 +2555,10 @@
         var kindSel = h('select', { 'aria-label': 'Kind' },
           h('option', { value: 'lib', text: 'Python library (conda-forge)' }), h('option', { value: 'tool', text: 'Tool (conda-forge)' }), h('option', { value: 'node', text: 'Node library (npm)' }),
           h('option', { value: 'lang', text: 'Language (conda-forge)' }), h('option', { value: 'plugin', text: 'Editor plugin (comes with the server: wordcount, clock)' }));
+        var everyoneBox = h('input', { type: 'checkbox', id: 'store-install-everyone' });
         out.appendChild(h('div', { class: 'toolbar' }, name, kindSel,
-          h('button', { class: 'btn primary', type: 'button', text: 'Install for everyone', onclick: function () { var n = name.value.trim(); if (n) post({ action: 'install', name: n, kind: kindSel.value }, 'Installing ' + n + '.'); } })));
+          h('label', { class: 'check' }, everyoneBox, ' Also turn it on for all signed-in users'),
+          h('button', { class: 'btn primary', type: 'button', text: 'Install for everyone', onclick: function () { var n = name.value.trim(); if (n) post({ action: 'install', name: n, kind: kindSel.value, everyone: everyoneBox.checked }, 'Installing ' + n + '.'); } })));
       }
       if (tab === 'servers') {
         out.appendChild(h('h3', { text: 'Disk of the store, per server' }));

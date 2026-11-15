@@ -345,3 +345,38 @@ func TestAWorkerInstallsFromTheCatalogOverTheTunnelAndTriesAgainByItself(t *test
 		t.Error("the bundle is not on the worker")
 	}
 }
+
+// An admin installs an app for everyone and turns it on for every signed-in user in the same step; and can change that later.
+func TestAnAdminInstallsForEveryoneAndTurnsItOnForEveryone(t *testing.T) {
+	svc := testStoreService(t, appstore.Fake{})
+	srv := &Server{options: &Options{}}
+	post := func(body string) int {
+		w := httptest.NewRecorder()
+		srv.handleAdminStore(w, httptest.NewRequest("POST", "http://openrepl.test/admin/store", strings.NewReader(body)))
+		return w.Code
+	}
+	if c := post(`{"action":"install","name":"flask","kind":"lib","everyone":true}`); c != http.StatusOK {
+		t.Fatalf("install: %d", c)
+	}
+	svc.Wait()
+	if d := svc.Defaults(); len(d) != 1 || d[0] != "flask" || len(svc.MyList("zed")) != 1 {
+		t.Fatalf("defaults %v, zed %v", d, svc.MyList("zed"))
+	}
+	w := httptest.NewRecorder()
+	srv.handleAdminStore(w, httptest.NewRequest("GET", "http://openrepl.test/admin/store", nil))
+	var out struct {
+		Defaults []string `json:"defaults"`
+	}
+	if json.Unmarshal(w.Body.Bytes(), &out) != nil || len(out.Defaults) != 1 {
+		t.Fatalf("the admin list: %s", w.Body.String())
+	}
+	if c := post(`{"action":"default","name":"flask","on":false}`); c != http.StatusOK || len(svc.Defaults()) != 0 || len(svc.MyList("zed")) != 0 {
+		t.Fatalf("off: %d %v", c, svc.Defaults())
+	}
+	if c := post(`{"action":"default","name":"flask","on":true}`); c != http.StatusOK || len(svc.MyList("zed")) != 1 {
+		t.Fatalf("on again: %d", c)
+	}
+	if c := post(`{"action":"default","name":"nothing","on":true}`); c == http.StatusOK {
+		t.Error("an app that does not exist cannot be turned on")
+	}
+}

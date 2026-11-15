@@ -57,7 +57,7 @@
   function loadAdmin() {
     return api("/admin/store", null, true).then(function (d) {
       // a list that is missing is an empty one: the side menu and the admin sections must never break on it
-      ["requests", "reports", "apps", "apt", "nodes"].forEach(function (k) { if (!Array.isArray(d[k])) d[k] = []; });
+      ["requests", "reports", "apps", "apt", "nodes", "defaults"].forEach(function (k) { if (!Array.isArray(d[k])) d[k] = []; });
       if (!d.users) d.users = {};
       S.adm = d;
     }, function () { S.adm = null; });
@@ -176,6 +176,7 @@
     if (v.version) row.appendChild(el("span", "sapp__ver", v.version));
     var tag = stateTag(v);
     if (tag) row.appendChild(tag);
+    if (v.default && v.state === "installed") row.appendChild(el("span", "stag stag--installed", "on for everyone"));
     if (v.state === "installed" && v.sizeMB) row.appendChild(el("span", "sapp__size", v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB"));
     row.appendChild(el("span", "sapp__sp"));
     control(v, row);
@@ -466,6 +467,10 @@
         var users = d.users[a.id] || 0;
         var row = admRow(a.name + " " + (a.version || ""), kindLabel(a.kind) + " · " + a.state + " · on for " + users + (users === 1 ? " user" : " users") + (a.size ? " · " + Math.round(a.size / 1048576) + " MB" : ""), a.state === "installed" ? "Installed" : a.state, a.state === "installed" ? "stag--installed" : "stag--failed");
         rbtn(row, "Open", "", function () { go("#app/" + encodeURIComponent(a.name)); });
+        if (a.state === "installed") {
+          var everyone = (d.defaults || []).indexOf(a.name) >= 0;
+          rbtn(row, everyone ? "On for everyone: turn off" : "Turn on for everyone", "", function () { adminPost({ action: "default", name: a.name, on: !everyone }, a.name + (everyone ? " is no longer on for everyone." : " is on for every signed-in user now (each may turn it off for themselves).")); });
+        }
         rbtn(row, "Uninstall for everyone", "is-danger", function () {
           modal(function (dd) {
             dd.appendChild(heading("Uninstall " + a.name + "?"));
@@ -576,11 +581,16 @@
     if (v.state === "installed") {
       var row = el("div", "store__switchrow");
       var p = el("p"); p.appendChild(el("b", "", v.kind === "plugin" ? "Use it in my editor" : "Use it in my terminals")); p.appendChild(document.createElement("br"));
-      p.appendChild(document.createTextNode(v.kind === "plugin" ? "Off for you until you turn it on. It shows in the status bar of your editor." : "Off for you until you turn it on. It takes effect in terminals you start next."));
+      p.appendChild(document.createTextNode(v.default ? "An admin turned this on for everyone. You can turn it off for yourself." : v.kind === "plugin" ? "Off for you until you turn it on. It shows in the status bar of your editor." : "Off for you until you turn it on. It takes effect in terminals you start next."));
       row.appendChild(p);
       control(v, row);
       w.appendChild(row);
       w.appendChild(el("pre", "store__code", useLine(v)));
+      if (S.admin) {
+        var ev = el("button", "sbtn", v.default ? "Admin: on for everyone, turn that off" : "Admin: turn it on for every signed-in user"); ev.type = "button";
+        ev.addEventListener("click", function () { adminPost({ action: "default", name: name, on: !v.default }, v.default ? name + " is no longer on for everyone." : name + " is on for every signed-in user now (each may turn it off for themselves)."); });
+        w.appendChild(ev);
+      }
       if (v.on && v.kind !== "plugin") {
         var ap = el("button", "sbtn", "Copy the line for an open terminal"); ap.type = "button"; ap.addEventListener("click", function () { copy(". '" + S.envScript + "'"); });
         w.appendChild(ap);

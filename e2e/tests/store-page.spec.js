@@ -320,3 +320,22 @@ test("the admin's servers list loads when a worker has no list of what it has", 
   await expect(page.locator(".store__node").first()).toContainText("w9");
   expect(errors).toEqual([]);
 });
+
+test("an app an admin turned on for everyone says so to the users, who may turn it off for themselves; an admin can turn it on or off for everyone", async ({ page }) => {
+  const st = fake(page, { admin: true });
+  st.apps.numpy.default = true;
+  st.on.push("numpy-2.1.0");
+  await page.goto("/store");
+  await expect(page.locator('[data-app="numpy"]')).toContainText("on for everyone");
+  await page.goto("/store#app/numpy");
+  await expect(page.locator(".store__switchrow")).toContainText("An admin turned this on for everyone. You can turn it off for yourself.");
+  await page.locator(".store__switchrow .sswitch").click();
+  await expect.poll(() => st.calls.some((c) => c[0] === "switch" && c[1].id === "numpy-2.1.0" && c[1].on === false)).toBe(true);
+  // the admin's own buttons: on the app page, and in the list of installed apps
+  await expect(page.getByRole("button", { name: "Admin: on for everyone, turn that off" })).toBeVisible();
+  await page.goto("/store#admin/servers");
+  await page.goto("/store");
+  await page.goto("/store#app/jq");
+  await page.getByRole("button", { name: "Admin: turn it on for every signed-in user" }).click();
+  await expect.poll(() => st.calls.some((c) => c[0] === "admin:default" && c[1].name === "jq" && c[1].on === true)).toBe(true);
+});
