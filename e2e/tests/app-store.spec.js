@@ -10,17 +10,18 @@ async function ready(page) {
   await waitForTerminalReady(page);
 }
 
-test("a guest cannot use the App Store: no button, a sign-in card, and the server refuses", async ({ page }) => {
+test("a guest sees the App Store button, which says to sign in, and the server refuses", async ({ page }) => {
   await ready(page);
-  await expect(page.locator("#appstore-button")).toBeHidden();
+  await expect(page.locator("#appstore-button")).toBeVisible();
   expect(await page.evaluate(() => window.AppStore.available())).toBe(false);
   const status = await page.evaluate(() => fetch("/store/api/list", { credentials: "same-origin" }).then((r) => r.status));
   expect([401, 503]).toContain(status);
   const post = await page.evaluate(() => fetch("/store/api/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "flask" }) }).then((r) => r.status));
   expect([401, 503]).toContain(post);
-  await page.evaluate(() => window.AppStore.open());
+  await page.locator("#appstore-button").click();
   await expect(page.locator("#appstore-dialog")).toBeVisible();
-  await expect(page.locator(".appstore__guest")).toContainText("signed-in users");
+  await expect(page.locator(".appstore__guest")).toContainText("Sign in to use the App Store");
+  await expect(page.locator(".appstore__guest button")).toHaveText("Sign in");
   await page.locator("#appstore-close").click();
   await expect(page.locator("#appstore-dialog")).toBeHidden();
 });

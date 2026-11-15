@@ -89,6 +89,8 @@ System (admin): apt packages), a search field, the chips (All, Installed, Safe t
   forgotten when every asker has seen it; a rejected one stays so the card can say "Not available: reason".
 - Guests see the sign-in card. The page cannot type into a terminal: My apps shows the line (`. '<env.sh>'`) with a Copy button.
 
+**Guests** see the Apps button and the "App Store" entry of the command menu like everyone; opening either (or `/store`) shows "Sign in to use the App Store" with a Sign in button, and the server still refuses every `/store/api` call without an account.
+
 **The quick dialog** in the editor (`33-app-store.js`, the Apps button and "App Store" in the command menu) stays, with a link "Go to app store page", the name of each app opens that app's page in the store (a new tab), each app shows its kind (python, tool, node, language, plugin), and the dialog follows the editor theme like the other IDE overlays (`.appstore` is in `THEMED_SCOPE`); it also offers "Use it in my active terminal" (asks, then types the line).
 `AppStore.installAndOn(name)` installs a safe app and, when it is done, switches it on. **The terminal's own error** ("No module named flask", `lib-store-hint.mjs`) shows a notice with "Install and turn on" (safe apps),
 "Turn it on" (installed), or "Open the App Store"; one notice for each name in a visit; a name the store does not know is never offered.

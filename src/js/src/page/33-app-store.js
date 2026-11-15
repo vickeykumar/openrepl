@@ -240,8 +240,8 @@ function render(err) {
   var tools = el("appstore-tools"); if (tools) tools.hidden = tab !== "browse";
   if (!signedIn() || (err && err.code === "signin")) {
     var g = h("div", "appstore__guest");
-    g.appendChild(h("b", "", "The App Store is for signed-in users"));
-    g.appendChild(h("span", "", "Sign in to add libraries and tools to your terminals."));
+    g.appendChild(h("b", "", "Sign in to use the App Store"));
+    g.appendChild(h("span", "", "Signed-in users add libraries and tools to their terminals here."));
     var sb = h("button", "appstore__btn is-primary", "Sign in");
     sb.type = "button";
     sb.addEventListener("click", function () { close(); if (typeof window.openSignIn === "function") window.openSignIn(); });

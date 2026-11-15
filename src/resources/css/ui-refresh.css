@@ -4385,8 +4385,6 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .preview-drop.is-out { transform: translateX(-50%); padding: 8px 14px; background: var(--ink-800, #1d1e1a); }
 
 /* The App Store (page/33-app-store.js) */
-#appstore-button { display: none; }
-body.is-signed-in #appstore-button { display: inline-flex; }
 .appstore { border: 0; padding: 0; background: transparent; color: var(--paper); max-width: min(720px, 94vw); width: 720px; }
 .appstore::backdrop { background: rgba(0, 0, 0, 0.55); }
 .appstore__card { background: var(--ink-850, #17181a); border: 1px solid var(--ink-600); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; max-height: 84vh; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); }

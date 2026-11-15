@@ -75,7 +75,7 @@ function fake(page, opts = {}) {
 test("a guest sees the sign-in card on the page, and the server refuses its calls", async ({ page }) => {
   const res = await page.goto("/store");
   expect(res.status()).toBe(200);
-  await expect(page.locator(".store__guest")).toContainText("signed-in users");
+  await expect(page.locator(".store__guest")).toContainText("Sign in to use the App Store");
   await expect(page.locator("#store-side a").first()).toHaveText("Browse");
   const api = await page.evaluate(() => fetch("/store/api/list", { credentials: "same-origin" }).then((r) => r.status));
   expect([401, 503]).toContain(api);

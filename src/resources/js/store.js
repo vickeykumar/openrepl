@@ -118,8 +118,8 @@
 
   function guestCard() {
     var g = el("div", "store__guest");
-    g.appendChild(el("b", "", "The App Store is for signed-in users"));
-    g.appendChild(el("span", "", "Sign in to add libraries and tools to your terminals."));
+    g.appendChild(el("b", "", "Sign in to use the App Store"));
+    g.appendChild(el("span", "", "Signed-in users add libraries and tools to their terminals here."));
     var a = el("a", "sbtn is-primary", "Go to the editor to sign in");
     a.href = "./";
     g.appendChild(a);
