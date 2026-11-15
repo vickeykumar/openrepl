@@ -435,7 +435,7 @@
       if (!open.length) w.appendChild(el("p", "store__legend", "No failures are waiting for you."));
     } else {
       w.appendChild(el("h2", "", "Servers and installs"));
-      w.appendChild(el("p", "store__legend", "Every server (the gateway and each worker) with what it has, how big it is and whether it has caught up. A worker asks the gateway for the catalog every minute and installs what is missing itself, from the internet."));
+      w.appendChild(el("p", "store__legend", "Every server (the gateway and each worker) with what it has, how big it is and whether it has caught up. The gateway sends a worker the catalog over the tunnel when it changes; the worker installs what is missing itself, from the internet, and tries a failed app again after 1, 2, 5, 15, then 60 minutes."));
       d.nodes.forEach(function (n) {
         var pct = Math.min(100, Math.round(100 * n.sizeMB / d.limitMB));
         var box = el("div", "store__node");
@@ -448,10 +448,11 @@
         var ids = d.apps.filter(function (a) { return a.state === "installed"; });
         ids.forEach(function (a) {
           var have = (n.have || []).indexOf(a.id) >= 0, bad = n.failed && n.failed[a.id];
-          var status = have ? "ready" : bad ? "failed" : "missing";
+          var left = bad && n.retry && n.retry[a.id] ? Math.max(1, Math.ceil((n.retry[a.id] - (d.now || Math.floor(Date.now() / 1000))) / 60)) : 0;
+          var status = have ? "ready" : bad ? (left ? "failed, next try in " + left + " min" : "failed") : "missing";
           var row = admRow(a.name + " " + a.version, kindLabel(a.kind) + (have && n.sizes && n.sizes[a.id] ? " · " + Math.round(n.sizes[a.id]) + " MB" : "") + (bad ? " · " + bad : ""), status, have ? "stag--installed" : bad ? "stag--failed" : "stag--requested");
           row.setAttribute("data-bundle", a.id);
-          if (have || bad) rbtn(row, "Reinstall here", "", function () { adminPost({ action: "reinstall", node: n.node, id: a.id }, "Asked " + n.node + " to make " + a.name + " again" + (n.node === "gateway" ? "." : " (within a minute).")); });
+          if (have || bad) rbtn(row, "Reinstall here", "", function () { adminPost({ action: "reinstall", node: n.node, id: a.id }, "Asked " + n.node + " to make " + a.name + " again" + (n.node === "gateway" ? "." : " (within a few seconds).")); });
           box.appendChild(row);
         });
         if (!ids.length) box.appendChild(el("p", "store__legend", "Nothing is installed yet."));

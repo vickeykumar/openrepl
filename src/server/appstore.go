@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,8 +25,8 @@ import (
 
 // The App Store (LLD 18). The catalog (which apps are installed, who asked for what, the users' lists) lives in the site's
 // database on the gateway or a standalone server; every node (the gateway, each worker) keeps the same bundles in its own store
-// folder and makes them match the catalog at its start and from then on. A worker takes the catalog from the gateway
-// (POST /store/sync with the worker token, which also tells the gateway what the worker has).
+// folder and makes them match the catalog at its start and from then on. A worker takes the catalog from the gateway over the
+// tunnel it already has (storetunnel.go): once when it connects, and again only when the catalog changes.
 
 // APPSTORE_DB is the database of the catalog.
 const APPSTORE_DB = utils.GOTTY_PATH + "/appstore.db"
@@ -52,7 +51,7 @@ type appNode struct {
 	Seen time.Time `json:"-"`
 }
 
-// appCommands are what an admin asked of a node (the bundles to make again), handed to a worker the next time it asks for the catalog.
+// appCommands are what an admin asked of a node (the bundles to make again), handed to a worker with its next heartbeat reply.
 var appCommands = map[string][]string{}
 
 func storeService() *appstore.Service {
@@ -192,8 +191,7 @@ func (server *Server) startAppStore(ctx context.Context) {
 	}
 	log.Printf("appstore: store %s, installer %s", dir, svc.Installer().Name())
 	if worker {
-		go server.workerStoreLoop(ctx, svc)
-		return
+		return // the loop starts when the tunnel client exists (startWorkerStore)
 	}
 	svc.Recover()
 	go func() {
@@ -212,102 +210,6 @@ func (server *Server) startAppStore(ctx context.Context) {
 			}
 		}
 	}()
-}
-
-// workerStoreLoop is a worker's replay: it asks the gateway for the catalog (saying what it has), and applies it.
-func (server *Server) workerStoreLoop(ctx context.Context, svc *appstore.Service) {
-	base := gatewayHTTPBase(server.options.WorkerServer)
-	if base == "" {
-		log.Printf("appstore: this worker cannot reach its gateway over HTTP (%q), so the App Store is not kept up to date here", server.options.WorkerServer)
-		return
-	}
-	id := server.options.WorkerID
-	if id == "" {
-		id, _ = os.Hostname()
-	}
-	client := &http.Client{Timeout: 60 * time.Second}
-	var have appstore.NodeState
-	for {
-		snap, err := fetchStoreSnapshot(ctx, client, base, server.options.WorkerToken, id, have)
-		if err != nil {
-			log.Printf("appstore: the catalog could not be fetched from the gateway: %v", err)
-		} else {
-			have = svc.Apply(ctx, snap)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(60 * time.Second):
-		}
-	}
-}
-
-// gatewayHTTPBase turns the tunnel address of a worker (wss://host/api/tunnel) into the gateway's site address.
-func gatewayHTTPBase(tunnel string) string {
-	u, err := url.Parse(tunnel)
-	if err != nil {
-		return ""
-	}
-	switch u.Scheme {
-	case "wss":
-		u.Scheme = "https"
-	case "ws":
-		u.Scheme = "http"
-	default:
-		return ""
-	}
-	u.Path, u.RawQuery = "", ""
-	return strings.TrimRight(u.String(), "/")
-}
-
-func fetchStoreSnapshot(ctx context.Context, c *http.Client, base, token, node string, have appstore.NodeState) (appstore.Snapshot, error) {
-	var snap appstore.Snapshot
-	body, _ := json.Marshal(map[string]interface{}{"node": node, "state": have})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/store/sync", strings.NewReader(string(body)))
-	if err != nil {
-		return snap, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-	res, err := c.Do(req)
-	if err != nil {
-		return snap, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return snap, fmt.Errorf("the gateway answered %s", res.Status)
-	}
-	return snap, json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(&snap)
-}
-
-// handleStoreSync is what the gateway answers a worker: the catalog. The worker proves itself with the shared token.
-func (server *Server) handleStoreSync(w http.ResponseWriter, r *http.Request) {
-	svc := storeService()
-	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if server.options.WorkerToken == "" || subtle.ConstantTimeCompare([]byte(got), []byte(server.options.WorkerToken)) != 1 {
-		http.Error(w, "not allowed", http.StatusUnauthorized)
-		return
-	}
-	if svc == nil || r.Method != http.MethodPost {
-		http.Error(w, "the App Store is off", http.StatusServiceUnavailable)
-		return
-	}
-	var in struct {
-		Node  string             `json:"node"`
-		State appstore.NodeState `json:"state"`
-	}
-	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in) == nil && nodeIDPattern.MatchString(in.Node) {
-		appStoreMu.Lock()
-		appNodes[in.Node] = appNode{NodeState: in.State, Seen: time.Now()}
-		cmds := appCommands[in.Node]
-		delete(appCommands, in.Node)
-		appStoreMu.Unlock()
-		snap := svc.Snapshot()
-		snap.Reinstall = cmds
-		writeJSON(w, http.StatusOK, snap)
-		return
-	}
-	writeJSON(w, http.StatusOK, svc.Snapshot())
 }
 
 func kickStore() {
@@ -551,6 +453,7 @@ type storeNodeRow struct {
 	Seen    string             `json:"seen,omitempty"`
 	Sizes   map[string]float64 `json:"sizes,omitempty"`   // MB of each bundle on the node
 	Pending []string           `json:"pending,omitempty"` // bundles an admin asked it to make again, not taken yet
+	Retry   map[string]int64   `json:"retry,omitempty"`   // when (unix seconds) the node tries a failed bundle again
 }
 
 // handleAdminStore is the Apps page of the dashboard: GET the whole picture, POST one decision.
@@ -566,7 +469,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 			local.Sizes[id] = float64(svc.Store().BundleSize(id)) / (1 << 20)
 		}
 		appStoreMu.Lock()
-		rows := []storeNodeRow{{Node: "gateway", Have: local.Have, Failed: appLocal.Failed, SizeMB: local.SizeMB, Sizes: local.Sizes}}
+		rows := []storeNodeRow{{Node: "gateway", Have: local.Have, Failed: appLocal.Failed, Retry: appLocal.Retry, SizeMB: local.SizeMB, Sizes: local.Sizes}}
 		ids := make([]string, 0, len(appNodes))
 		for id := range appNodes {
 			ids = append(ids, id)
@@ -578,7 +481,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 			if have == nil {
 				have = []string{} // a worker that has only reported a fetch has not told what it has: an empty list, not null
 			}
-			rows = append(rows, storeNodeRow{Node: id, Have: have, Failed: n.Failed, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339), Sizes: n.Sizes,
+			rows = append(rows, storeNodeRow{Node: id, Have: have, Failed: n.Failed, Retry: n.Retry, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339), Sizes: n.Sizes,
 				Pending: append([]string(nil), appCommands[id]...)})
 		}
 		appStoreMu.Unlock()

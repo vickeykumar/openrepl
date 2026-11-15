@@ -111,6 +111,9 @@ type Config struct {
 	Safe      func() []string // the names a user may install without asking
 	LimitMB   func() int      // the most the store may use, 0 for no limit
 	Now       func() time.Time
+	// OnStep is told how the node stands after each bundle of an Apply ended (installed or failed), so an admin sees a long catch-up
+	// go on; nil on a node that tells nobody.
+	OnStep func(NodeState)
 }
 
 // Service is the App Store of one server (the gateway or a standalone server holds the catalog; a worker only applies it).
@@ -120,7 +123,20 @@ type Service struct {
 	inst sync.Mutex // one install at a time
 	jobs map[string]*Job
 	wg   sync.WaitGroup
+
+	retryMu sync.Mutex
+	retry   map[string]retryEntry // the bundles that failed to install here: when to try again (memory only: a restart tries at once)
 }
+
+// retryEntry is a failed install of one bundle on this node.
+type retryEntry struct {
+	fails int
+	next  time.Time
+	err   string
+}
+
+// Backoff is how long a node waits before it tries a bundle again after its 1st, 2nd, ... failure; the last value stays.
+var Backoff = []time.Duration{1 * time.Minute, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute, 60 * time.Minute}
 
 // Job is an install that is going on.
 type Job struct {
@@ -143,7 +159,7 @@ func New(cfg Config) *Service {
 		cfg.LimitMB = func() int { return 0 }
 	}
 	cfg.KV = &lockedKV{inner: cfg.KV}
-	return &Service{cfg: cfg, jobs: map[string]*Job{}}
+	return &Service{cfg: cfg, jobs: map[string]*Job{}, retry: map[string]retryEntry{}}
 }
 
 // lockedKV makes every call of the store one at a time (a callback of Each must not call the store again).
@@ -894,6 +910,24 @@ type NodeState struct {
 	At     int64             `json:"at"`
 	// Sizes is the size of each bundle this node has, in MB (from its marker), for the admin's table of a server.
 	Sizes map[string]float64 `json:"sizes,omitempty"`
+	// Retry is when (unix seconds) the node tries a failed bundle again; it does not try before that, however often it is asked.
+	Retry map[string]int64 `json:"retry,omitempty"`
+}
+
+// SetOnStep sets what is told after each bundle of an Apply ended (see Config.OnStep).
+func (s *Service) SetOnStep(f func(NodeState)) { s.cfg.OnStep = f }
+
+// NextRetry is the time of the earliest retry of a failed install on this node; false when nothing is waiting for one.
+func (s *Service) NextRetry() (time.Time, bool) {
+	s.retryMu.Lock()
+	defer s.retryMu.Unlock()
+	var first time.Time
+	for _, r := range s.retry {
+		if first.IsZero() || r.next.Before(first) {
+			first = r.next
+		}
+	}
+	return first, !first.IsZero()
 }
 
 // Apply makes this node's store match a snapshot: the bundles that are missing are installed (the same pinned versions), the
@@ -903,7 +937,10 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 	st := NodeState{Failed: map[string]string{}, At: s.now()}
 	for _, id := range snap.Reinstall {
 		if ValidBundle(id) {
-			s.cfg.Store.RemoveBundle(id) // the loop below makes it again, from the gateway or from conda-forge
+			s.cfg.Store.RemoveBundle(id) // the loop below makes it again, at once: a command from the admin ends the waiting
+			s.retryMu.Lock()
+			delete(s.retry, id)
+			s.retryMu.Unlock()
 		}
 	}
 	if err := s.cfg.Store.Ready(); err != nil {
@@ -919,6 +956,18 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		if s.cfg.Store.HasBundle(a.ID) {
 			continue
 		}
+		s.retryMu.Lock()
+		r, waiting := s.retry[a.ID]
+		s.retryMu.Unlock()
+		if waiting && s.cfg.Now().Before(r.next) {
+			// it failed lately: not before its time, however often the catalog is applied
+			st.Failed[a.ID] = r.err
+			if st.Retry == nil {
+				st.Retry = map[string]int64{}
+			}
+			st.Retry[a.ID] = r.next.Unix()
+			continue
+		}
 		s.inst.Lock()
 		dest := s.cfg.Store.BundlePath(a.ID)
 		os.RemoveAll(dest)
@@ -931,11 +980,39 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		}
 		if err != nil {
 			os.RemoveAll(dest)
-			st.Failed[a.ID] = tail(err.Error()+" "+logb.String(), 300)
-			log.Printf("appstore: replay: %s could not be installed here: %v", a.ID, err)
+			msg := tail(err.Error()+" "+logb.String(), 300)
+			st.Failed[a.ID] = msg
+			s.retryMu.Lock()
+			fails := s.retry[a.ID].fails + 1
+			wait := Backoff[len(Backoff)-1]
+			if fails <= len(Backoff) {
+				wait = Backoff[fails-1]
+			}
+			next := s.cfg.Now().Add(wait)
+			s.retry[a.ID] = retryEntry{fails: fails, next: next, err: msg}
+			s.retryMu.Unlock()
+			if st.Retry == nil {
+				st.Retry = map[string]int64{}
+			}
+			st.Retry[a.ID] = next.Unix()
+			log.Printf("appstore: replay: %s could not be installed here (try %d): %v; next try in %s", a.ID, fails, err, wait)
+		} else {
+			s.retryMu.Lock()
+			delete(s.retry, a.ID)
+			s.retryMu.Unlock()
 		}
 		s.inst.Unlock()
+		if s.cfg.OnStep != nil {
+			s.cfg.OnStep(s.stateNow(st))
+		}
 	}
+	s.retryMu.Lock()
+	for id := range s.retry {
+		if !want[id] {
+			delete(s.retry, id) // no longer in the catalog: nothing to try again
+		}
+	}
+	s.retryMu.Unlock()
 	if snap.Full {
 		for _, id := range s.cfg.Store.Bundles() {
 			if !want[id] {
@@ -965,13 +1042,29 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		}
 	}
 	s.applyApt(ctx, snap.Apt, &st)
-	st.Have = s.cfg.Store.Bundles()
-	st.Sizes = map[string]float64{}
-	for _, id := range st.Have {
-		st.Sizes[id] = float64(s.cfg.Store.BundleSize(id)) / (1 << 20)
+	return s.stateNow(st)
+}
+
+// stateNow is st with what the node has now: the bundles and their sizes (a copy: the maps of st go on changing).
+func (s *Service) stateNow(st NodeState) NodeState {
+	out := st
+	out.Failed = map[string]string{}
+	for k, v := range st.Failed {
+		out.Failed[k] = v
 	}
-	st.SizeMB = float64(s.cfg.Store.Size()) / (1 << 20)
-	return st
+	if st.Retry != nil {
+		out.Retry = map[string]int64{}
+		for k, v := range st.Retry {
+			out.Retry[k] = v
+		}
+	}
+	out.Have = s.cfg.Store.Bundles()
+	out.Sizes = map[string]float64{}
+	for _, id := range out.Have {
+		out.Sizes[id] = float64(s.cfg.Store.BundleSize(id)) / (1 << 20)
+	}
+	out.SizeMB = float64(s.cfg.Store.Size()) / (1 << 20)
+	return out
 }
 
 // Recover is run at start: an install that was going on when the server stopped did not finish.

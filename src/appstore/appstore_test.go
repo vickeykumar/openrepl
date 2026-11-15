@@ -3,6 +3,7 @@ package appstore
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -798,5 +799,56 @@ func TestNpmEnginesAreRead(t *testing.T) {
 	}
 	if pick != "4.21.2" {
 		t.Errorf("the newest that fits: %q", pick)
+	}
+}
+
+// countingInstaller counts the installs it is asked for.
+type countingInstaller struct {
+	Fake
+	n *int
+}
+
+func (c countingInstaller) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
+	*c.n++
+	return c.Fake.Install(ctx, name, version, kind, dest, log)
+}
+
+// A failed install is tried again after 1, 2, 5, 15, then 60 minutes, not at every apply; a command from the admin and a catalog without
+// the app end the waiting.
+func TestAFailedInstallWaitsLongerAndLongerBeforeItIsTriedAgain(t *testing.T) {
+	a, _ := newService(t, Fake{}, "flask")
+	a.Install("ann", "flask", "lib", false)
+	a.Wait()
+	snap := a.Snapshot()
+	tries := 0
+	b, bst := newService(t, countingInstaller{Fake: Fake{Fail: map[string]bool{"flask": true}}, n: &tries})
+	now := time.Unix(1800000000, 0)
+	b.cfg.Now = func() time.Time { return now }
+	ctx := context.Background()
+	want := []time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour, time.Hour}
+	for i, w := range want {
+		st := b.Apply(ctx, snap)
+		if st.Failed["flask-1.0.0"] == "" || st.Retry["flask-1.0.0"] != now.Add(w).Unix() {
+			t.Fatalf("try %d: failed %q, next %v (want in %s)", i+1, st.Failed, st.Retry, w)
+		}
+		// asked again before its time: no new try, and the same answer
+		before := tries
+		now = now.Add(w - time.Second)
+		if st2 := b.Apply(ctx, snap); st2.Retry["flask-1.0.0"] != st.Retry["flask-1.0.0"] || tries != before {
+			t.Fatalf("try %d: it was tried again before its time", i+1)
+		}
+		now = now.Add(time.Second)
+	}
+	if next, ok := b.NextRetry(); !ok || next.Before(now) {
+		t.Errorf("the next retry: %v %v", next, ok)
+	}
+	// the admin's command ends the waiting, and a success ends the story
+	b.cfg.Installer = Fake{}
+	snap.Reinstall = []string{"flask-1.0.0"}
+	if st := b.Apply(ctx, snap); len(st.Failed) != 0 || !bst.HasBundle("flask-1.0.0") {
+		t.Fatalf("after the command: %+v", st)
+	}
+	if _, ok := b.NextRetry(); ok {
+		t.Error("nothing should be waiting any more")
 	}
 }

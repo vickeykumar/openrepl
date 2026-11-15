@@ -43,6 +43,9 @@ type ClientConfig struct {
 	// OnConfig is called with the gateway's WorkerConfig: after registration,
 	// and whenever a heartbeat reply brings a new one.
 	OnConfig func(*WorkerConfig)
+	// OnStore is called with the App Store catalog when the gateway sends one (a heartbeat reply, when the worker's revision is not
+	// the gateway's or an admin gave it a command). It must not block: start the work in a goroutine.
+	OnStore func(*StoreUpdate)
 	// OnSyncStream is called, in its own goroutine, with the workspace
 	// synchronization channel the gateway opens after registration. The
 	// handler owns the stream and must close it when done.
@@ -68,6 +71,7 @@ type Client struct {
 	routes map[RouteEvent]struct{}
 
 	configRev int64 // atomic: the revision of the WorkerConfig handed to OnConfig last
+	storeRev  int64 // atomic: the revision of the App Store catalog handed to OnStore last
 }
 
 // NewClient validates cfg and creates a Client. Call Run to connect.
@@ -296,6 +300,7 @@ func (c *Client) heartbeat(conn ssh.Conn, every time.Duration, stop <-chan struc
 				hb = c.cfg.Load()
 			}
 			hb.ConfigRev = atomic.LoadInt64(&c.configRev)
+			hb.StoreRev = atomic.LoadInt64(&c.storeRev)
 			// A gateway that does not answer within three intervals is gone.
 			ok, data := c.request(conn, ReqHeartbeat, hb, 3*every)
 			if !ok {
@@ -305,6 +310,7 @@ func (c *Client) heartbeat(conn ssh.Conn, every time.Duration, stop <-chan struc
 			var hr HeartbeatReply
 			if len(data) > 0 && json.Unmarshal(data, &hr) == nil {
 				c.applyConfig(hr.Config)
+				c.applyStore(hr.Store)
 			}
 		case <-stop:
 			return
@@ -351,6 +357,30 @@ func (c *Client) applyConfig(cfg *WorkerConfig) {
 		c.cfg.OnConfig(cfg)
 	}
 	atomic.StoreInt64(&c.configRev, cfg.Revision)
+}
+
+// applyStore hands an App Store catalog to the worker. The revision is remembered after the hand-over, so a worker that is told the
+// same one twice does not start twice (a command, Reinstall, is handed over every time it comes).
+func (c *Client) applyStore(u *StoreUpdate) {
+	if u == nil {
+		return
+	}
+	if c.cfg.OnStore != nil {
+		c.cfg.OnStore(u)
+	}
+	atomic.StoreInt64(&c.storeRev, u.Rev)
+}
+
+// SendStoreState tells the gateway how the worker stands with the catalog (see ReqStoreState). It reports whether the gateway took it;
+// a worker that is not connected cannot, and says so (the caller sends it again when it registers).
+func (c *Client) SendStoreState(v interface{}) bool {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+	if conn == nil {
+		return false
+	}
+	return c.send(conn, ReqStoreState, v)
 }
 
 // SyncReady tells the gateway that this worker's homes are reconciled, so it

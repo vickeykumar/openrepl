@@ -65,7 +65,7 @@ function fake(page, opts = {}) {
       reports: [{ name: "pillow", version: "11.0", reporters: ["a"], node: "gateway", step: "Resolving the dependencies: conflict", note: "images", log: "Found conflicts!", status: "open" }],
       nodes: [
         { node: "gateway", have: ["jq-1.7", "shared-1.0.0", "numpy-2.1.0"], sizeMB: 300, sizes: { "jq-1.7": 1, "shared-1.0.0": 5, "numpy-2.1.0": 96 } },
-        { node: "worker-1", have: ["jq-1.7"], sizeMB: 120, seen: "2026-11-14T10:00:00Z", sizes: { "jq-1.7": 1 }, pending: ["jq-1.7"] },
+        { node: "worker-1", have: ["jq-1.7"], sizeMB: 120, seen: "2026-11-14T10:00:00Z", sizes: { "jq-1.7": 1 }, failed: { "numpy-2.1.0": "no internet" }, retry: { "numpy-2.1.0": 1794700300 }, pending: ["jq-1.7"] },
       ],
     }) });
   });
@@ -256,7 +256,7 @@ test("the admin has sections in the store: requests to approve, failures, the se
   // servers: what each has, a fetch in percent, a command waiting, and a reinstall
   await page.goto("/store#admin/servers");
   await expect(page.locator('[data-node="gateway"]')).toContainText("300 MB of 2048 MB");
-  await expect(page.locator('[data-node="worker-1"] [data-bundle="numpy-2.1.0"]')).toContainText("missing");
+  await expect(page.locator('[data-node="worker-1"] [data-bundle="numpy-2.1.0"]')).toContainText("failed, next try in 5 min");
   await expect(page.locator('[data-node="worker-1"]')).toContainText("Waiting for worker-1 to ask: jq-1.7");
   await page.locator('[data-node="worker-1"] [data-bundle="jq-1.7"] button', { hasText: "Reinstall here" }).click();
   await expect.poll(() => st.calls.some((c) => c[0] === "admin:reinstall" && c[1].node === "worker-1" && c[1].id === "jq-1.7")).toBe(true);

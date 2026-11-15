@@ -5,6 +5,8 @@
 // See docs/lld/11-distributed-execution.md.
 package tunnel
 
+import "encoding/json"
+
 // ProtocolVersion is bumped when the messages below change incompatibly.
 const ProtocolVersion = 1
 
@@ -28,6 +30,9 @@ const (
 	// ReqSyncReady tells the gateway that the worker's homes are reconciled
 	// and it can take new sessions.
 	ReqSyncReady = "sync-ready@openrepl"
+	// ReqStoreState is the worker's answer to a catalog of the App Store: what it has, what failed and why, and when it tries again.
+	// It is sent when that changes (an install ended), not on a timer.
+	ReqStoreState = "store-state@openrepl"
 )
 
 // Route kinds: keys that must reach the worker that owns them even when the
@@ -89,10 +94,20 @@ type WorkerConfig struct {
 	DisabledLanguages  []string `json:"disabled_languages,omitempty"`
 }
 
+// StoreUpdate is the App Store's catalog as the gateway hands it to a worker (the tunnel does not look inside it). Rev identifies
+// the content: a worker that reports the Rev the gateway has is up to date, and nothing is sent. Reinstall are the bundles an admin
+// asked this worker to make again; they are given once.
+type StoreUpdate struct {
+	Rev       int64           `json:"rev"`
+	Catalog   json.RawMessage `json:"catalog,omitempty"`
+	Reinstall []string        `json:"reinstall,omitempty"`
+}
+
 // HeartbeatReply is the payload of the answer to a heartbeat. Config is set
-// when the revision the worker reported is not the gateway's.
+// when the revision the worker reported is not the gateway's, and so is Store.
 type HeartbeatReply struct {
 	Config *WorkerConfig `json:"config,omitempty"`
+	Store  *StoreUpdate  `json:"store,omitempty"`
 }
 
 // Heartbeat reports the worker's load.
@@ -102,6 +117,8 @@ type Heartbeat struct {
 	// ConfigRev is the revision of the WorkerConfig the worker follows now (0:
 	// none yet).
 	ConfigRev int64 `json:"config_rev,omitempty"`
+	// StoreRev is the revision of the App Store catalog the worker has now (0: none yet).
+	StoreRev int64 `json:"store_rev,omitempty"`
 }
 
 // RouteEvent announces or withdraws a key the worker owns.

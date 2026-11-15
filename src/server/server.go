@@ -327,7 +327,6 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.HandleFunc(pathPrefix+"preview/", server.handlePreview)
 	siteMux.HandleFunc(pathPrefix+"upload_file", server.handleFileUpload)
 	siteMux.HandleFunc(pathPrefix+"store/api/", server.handleStoreAPI)
-	siteMux.HandleFunc(pathPrefix+"store/sync", server.handleStoreSync)
 	siteMux.HandleFunc(pathPrefix+"store", server.handleStorePage)
 	siteMux.HandleFunc(pathPrefix+"store.html", server.handleStorePage)
 	server.startAppStore(ctx)

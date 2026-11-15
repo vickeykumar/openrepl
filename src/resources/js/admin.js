@@ -2467,7 +2467,10 @@
     // the status of one app on one server: ready, installing (a server that is behind and answered lately), failed, missing
     function status(n, id, now) {
       if ((n.have || []).indexOf(id) >= 0) return h('span', { class: 'ok', text: 'ready' });
-      if (n.failed && n.failed[id]) return h('span', { class: 'bad', title: n.failed[id], text: 'failed' });
+      if (n.failed && n.failed[id]) {
+        var left = n.retry && n.retry[id] ? Math.max(1, Math.ceil((n.retry[id] - now) / 60)) : 0;
+        return h('span', { class: 'bad', title: n.failed[id], text: left ? 'failed, next try in ' + left + ' min' : 'failed' });
+      }
       var seen = n.seen ? Date.parse(n.seen) / 1000 : now;
       if (now - seen < 180) return h('span', { class: 'warn', text: 'installing…' });
       return h('span', { class: 'sub', text: 'missing' });
@@ -2566,17 +2569,17 @@
             { key: 'act', label: '', cell: function (a) {
               var here = (n.have || []).indexOf(a.id) >= 0 || (n.failed && n.failed[a.id]);
               return here ? h('button', { class: 'btn', type: 'button', text: 'Reinstall here', title: 'Delete this server\'s copy and make it again', onclick: function () {
-                post({ action: 'reinstall', node: n.node, id: a.id }, 'Asked ' + n.node + ' to make ' + a.name + ' again' + (n.node === 'gateway' ? '.' : ' (within a minute).')); } }) : '';
+                post({ action: 'reinstall', node: n.node, id: a.id }, 'Asked ' + n.node + ' to make ' + a.name + ' again' + (n.node === 'gateway' ? '.' : ' (within a few seconds).')); } }) : '';
             } }
           ], installedApps, { empty: 'Nothing is installed yet.' }));
-          if (n.pending && n.pending.length) out.appendChild(h('p', { class: 'sub', text: 'Waiting for ' + n.node + ' to ask for the catalog: ' + n.pending.join(', ') }));
+          if (n.pending && n.pending.length) out.appendChild(h('p', { class: 'sub', text: 'Sent to ' + n.node + ' with its next heartbeat (a few seconds): ' + n.pending.join(', ') }));
           Object.keys(n.failed || {}).forEach(function (k) {
             failedAny = true;
             out.appendChild(h('div', { class: 'card' }, h('b', { text: n.node + ': ' + k }), h('p', { class: 'sub wrap-text', text: n.failed[k] })));
           });
         });
         if (!failedAny) out.appendChild(h('p', { class: 'sub', text: 'Every server applied the catalog without a failure.' }));
-        out.appendChild(h('p', { class: 'sub', text: 'A worker asks the gateway for the catalog every minute and takes finished bundles from the gateway; if that fails it installs them itself.' }));
+        out.appendChild(h('p', { class: 'sub', text: 'The gateway sends a worker the catalog over the tunnel when it changes; the worker installs what is missing itself, from the internet, and tells the gateway after each app. A failed app is tried again after 1, 2, 5, 15, then 60 minutes.' }));
       }
       if (tab === 'settings') {
         out.appendChild(h('h3', { text: 'Settings' }));
