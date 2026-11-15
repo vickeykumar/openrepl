@@ -5,7 +5,7 @@ link: /about.html
 ---
 The App Store lets signed-in users add libraries and tools to their terminals. Open it with the Apps button above the editor (a quick dialog; full page: /store) or the command menu. Guests are asked to sign in.
 
-pip install does not work in the terminals (they have no internet). Use the store instead: find the app (for example flask), press Install, then turn its switch On. New terminals have it; for an open terminal, run the line shown under My apps. Then python3 can import it.
+pip install does not work in the terminals (they have no internet). Use the store instead: find the app (for example flask), press Install, then turn its switch On. New terminals have it; an open one keeps what it had. Then python3 can import it.
 
 It has Python libraries and tools (conda-forge), Node libraries (npm), languages such as Lua, Ruby, Julia and R, and editor plugins. Search finds packages on conda-forge and npm; an app's page shows its size.
 

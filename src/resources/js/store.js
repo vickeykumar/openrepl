@@ -47,7 +47,7 @@
   function take(j) {
     if (j.views) S.views = j.views;
     if (j.on) S.on = j.on;
-    ["home", "envScript", "admin", "python"].forEach(function (k) { if (j[k] !== undefined) S[k] = j[k]; });
+    ["home", "envScript", "admin", "python", "sandbox"].forEach(function (k) { if (j[k] !== undefined) S[k] = j[k]; });
     S.loaded = true; S.error = null;
   }
   function load() {
@@ -321,11 +321,16 @@
     if (!mineList.length) wrap.appendChild(el("p", "store__legend", "Nothing is on for you yet. Browse the store and switch an app on."));
     // what the switches do to terminals that are open
     var apply = el("div", "store__note is-info");
-    apply.appendChild(el("p", "", "A terminal that is open keeps what it had when it started; a new one uses what is on now. To use it in an open terminal, run this line in it:"));
-    apply.appendChild(el("pre", "store__code", ". '" + S.envScript + "'"));
-    var cp = el("button", "sbtn", "Copy the line"); cp.type = "button";
-    cp.addEventListener("click", function () { copy(". '" + S.envScript + "'"); });
-    apply.appendChild(cp);
+    if (S.sandbox && !S.admin) {
+      // the sandbox of a terminal is fixed when it starts: what was switched on later cannot be read in it, so there is no line to run
+      apply.appendChild(el("p", "", "A terminal that is open keeps what it had when it started. Open a new terminal (the + beside the terminal tabs) to use what is on now."));
+    } else {
+      apply.appendChild(el("p", "", "A terminal that is open keeps what it had when it started; a new one uses what is on now. To use it in an open terminal, run this line in it:"));
+      apply.appendChild(el("pre", "store__code", ". '" + S.envScript + "'"));
+      var cp = el("button", "sbtn", "Copy the line"); cp.type = "button";
+      cp.addEventListener("click", function () { copy(". '" + S.envScript + "'"); });
+      apply.appendChild(cp);
+    }
     var back = el("a", "sbtn", "Back to the editor"); back.href = "./"; back.style.marginLeft = "8px";
     apply.appendChild(back);
     wrap.appendChild(apply);
@@ -593,7 +598,10 @@
         ev.addEventListener("click", function () { adminPost({ action: "default", name: name, on: !v.default }, v.default ? name + " is no longer on for everyone." : name + " is on for every signed-in user now (each may turn it off for themselves)."); });
         w.appendChild(ev);
       }
-      if (v.on && v.kind !== "plugin") {
+      if (v.on && v.kind !== "plugin" && S.sandbox && !S.admin) {
+        w.appendChild(el("p", "store__legend", "It is on for terminals you open from now on. A terminal that is already open keeps what it had: open a new one (the + beside the terminal tabs)."));
+        w.appendChild(el("p", "store__legend", "Turning it off removes it from your terminals only. Other users keep their own switch."));
+      } else if (v.on && v.kind !== "plugin") {
         var ap = el("button", "sbtn", "Copy the line for an open terminal"); ap.type = "button"; ap.addEventListener("click", function () { copy(". '" + S.envScript + "'"); });
         w.appendChild(ap);
         w.appendChild(el("p", "store__legend", "Turning it off removes it from your terminals only. Other users keep their own switch."));

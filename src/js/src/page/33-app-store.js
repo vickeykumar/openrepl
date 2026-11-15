@@ -7,6 +7,7 @@ import { missingFrom } from "./lib-store-hint.mjs";
 var tab = "browse";          // browse | mine
 var views = [];              // what the server says: one for each app
 var onList = [];             // the bundles that are on for this user
+var sandbox = false;         // terminals run in a sandbox that is fixed when they start
 var envScript = "";          // the file a shell can run to use what was switched on
 var installer = "";
 var query = "";
@@ -51,6 +52,7 @@ function take(j) {
   if (j.views) views = j.views;
   if (j.on) onList = j.on;
   if (j.envScript) envScript = j.envScript;
+  if (j.sandbox !== undefined) sandbox = !!j.sandbox;
   if (j.installer) installer = j.installer;
   loaded = true;
   schedulePoll();
@@ -294,10 +296,12 @@ function render(err) {
     foot.textContent = "";
     if (changed && tab === "mine") {
       var note = h("div", "appstore__apply");
-      note.appendChild(h("span", "", "You changed what is on. Terminals that are open keep what they had; new ones use it."));
-      var ab = h("button", "appstore__btn", "Use it in my active terminal");
-      ab.type = "button"; ab.addEventListener("click", applyHere);
-      note.appendChild(ab);
+      note.appendChild(h("span", "", "You changed what is on. Terminals that are open keep what they had; new ones use it." + (sandbox ? " Open a new terminal (the + beside the terminal tabs) to use it now." : "")));
+      if (!sandbox) {
+        var ab = h("button", "appstore__btn", "Use it in my active terminal");
+        ab.type = "button"; ab.addEventListener("click", applyHere);
+        note.appendChild(ab);
+      }
       foot.appendChild(note);
     }
     foot.appendChild(h("span", "appstore__help", "Apps are installed once on the server and shared. Switching one on only changes your own terminals."));

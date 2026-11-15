@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"appstore"
+	"containers"
 	"homesnap"
 	"persist"
 	"utils"
@@ -281,7 +282,7 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 		case "list":
 			dir := svc.Store().Dir
 			writeJSON(w, http.StatusOK, map[string]interface{}{
-				"views": svc.Views(uid, home), "on": svc.MyList(home), "home": home, "envScript": filepath.Join(dir, "envs", home, "env.sh"),
+				"views": svc.Views(uid, home), "on": svc.MyList(home), "home": home, "envScript": filepath.Join(dir, "envs", home, "env.sh"), "sandbox": containers.LandlockStatus().Active,
 				"installer": svc.Installer().Name(), "maxOn": appstore.MaxOn, "admin": IsUserAdmin(w, r), "python": storePython(),
 			})
 		case "notices":
