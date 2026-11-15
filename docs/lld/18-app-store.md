@@ -70,9 +70,8 @@ snapshot is complete (`Full`: both listings of the database worked, so an outage
 - Gateway or standalone: at start, every 10 minutes, and after each admin decision.
 - A worker (no database): every minute it POSTs `/store/sync` to the gateway with the shared worker token (`Authorization: Bearer`, constant-time compare) and its state (what it has, what failed, its
   size), and applies the catalog it gets back. The gateway keeps the last state of each worker for the Servers matrix. A change a user makes is therefore on a worker within a minute.
-- **Architecture**: a bundle holds programs built for one CPU, so `Snapshot.Arch` carries the gateway's `runtime.GOARCH` and a worker takes the gateway's copy only when its own architecture is the same (or either is unknown). A worker of another architecture (a Raspberry Pi arm64 worker of an amd64 gateway) installs the bundle itself from conda-forge / npm over its own internet. A fetch that fails also falls back to installing.
-- A bundle already in the store is not fetched again, so a deploy that keeps `/store` costs nothing. A worker takes a missing bundle as a .tar.gz from the gateway (`Store.WriteBundle` / `ReadBundle`, which refuse any entry that leaves the
-  bundle; the files hold the store's path, so every node of a site uses the same `OPENREPL_STORE_DIR`) and installs it itself only if that fails. The gateway rebuilds from conda-forge after a wipe.
+- **A worker installs for itself.** The gateway sends only the catalog (`Snapshot`: the installed apps and each user's list, no files). A worker installs every missing bundle itself from conda-forge / npm over its own internet, so it gets programs built for its own CPU (an arm64 worker of an amd64 gateway) and the gateway's egress bandwidth, which costs money, is not used. Earlier versions let a worker download a .tar.gz of the bundle from the gateway (`/store/bundle`, `/store/progress`); that was removed 2026-11-15 on the owner's word.
+- A bundle already in the store is not made again, so a deploy that keeps `/store` costs nothing. After a wipe every node, the gateway included, installs what the catalog lists again.
 - apt: the admin's list (database) is part of the snapshot; each node installs what is missing with `apt-get install -y --no-install-recommends` (`SystemApt`; it needs root and apt-get, and says so when it
   has neither) at every replay, and leaves what `dpkg -s` finds. A package that fails is said in that node's state and on the admin page (a card for `apt:<name>`) and does not stop the others. These are for all users:
   there is no switch. A server with the fake installer never runs apt-get. A node that loses its system between starts (a container) installs them again at its next start; for big packages the image is the better place.
@@ -102,7 +101,7 @@ System (admin): apt packages), a search field, the chips (All, Installed, Safe t
 `viewStore` ("App Store" in the dashboard; canvas boards 7 and 8): tabs.
 - **Requests**: App, Asked by, Why, Status; Approve and install, Reject (a reason the askers see).
 - **Failures**: App and version, Reported by, Where it stopped, What they wanted, the log, the **server** it ran on, Try again, **Pick another version**, Mark installed, Reject.
-- **Installed**: size, how many users have it on, **"unused for N days" when nobody has had it on for 60 days** (nothing is removed by itself), ready / **fetching** / failed / missing on the gateway and each worker (fetching: it is behind and answered
+- **Installed**: size, how many users have it on, **"unused for N days" when nobody has had it on for 60 days** (nothing is removed by itself), ready / **behind** / failed / missing on the gateway and each worker (fetching: it is behind and answered
   within 3 minutes), Remove (asks, says how many users lose it), install for everyone.
 - **Servers**: the disk of the store on each server against the limit (a bar), and what a server could not do (an app, an apt package).
 - **Settings**: the safe list, the size limit, the channel (conda-forge, not editable), the switch, and the apt list.
@@ -122,21 +121,20 @@ System (admin): apt packages), a search field, the chips (All, Installed, Safe t
 - **Search** (`Service.Search`, `GET /store/api/search?q=&kind=`, one a second for each user): `micromamba search "<q>*"` (conda-forge: the newest version of each name, the exact name first) and `npm search`; the plugins and languages of the store are searched in the store. Each hit says what the store knows of it (available, installed...)
   and whether it is on the safe list. The page searches 450 ms after typing and shows "Found for ..." under the grid. The first search of conda-forge downloads its index (about a minute); micromamba keeps it.
 - **Size before installing** (`Service.Estimate`, `GET /store/api/size`): a solve without installing (conda: the download from the solver and about 2.5 times that on disk; npm: `dist.unpackedSize`), kept an hour. The app's page shows "download about 41 MB, about 99 MB once installed (14 packages, version 3.0.2)".
-- **Download percent on a worker**: the gateway sends the size of the files in `X-Openrepl-Bundle-Bytes`; the worker counts what it writes (`ReadBundleProgress`) and tells the gateway about once a second (`POST /store/progress`, worker token); the admin sees "fetching 40%".
 - **Commands for a server**: `reinstall` (admin) deletes a node's copy of a bundle and the replay makes it again. The gateway does it at once; a worker gets it in the answer of its next ask for the catalog (`Snapshot.Reinstall`, within a minute); the admin sees the command waiting.
 - **Uninstall**: a signed-in user may uninstall an app when **no other user has it on** (`Service.Uninstall`; their own switch goes with the app; `View.OthersOn` says how many others have it, the button is disabled with the reason, the server refuses with 409). An **admin uninstalls anyway**
   (`remove`, which switches it off for everyone and deletes it on every node).
 - **The admin in the store page**: Admin section in the menu (admins only) with Requests (Approve and install, Reject with a reason), Failures (Try again, Pick another version, Mark installed, Reject, the log), Servers and installs (every server: size, what it has, status
-  ready / fetching n% / failed / missing, size of each bundle, "Reinstall here"; the installed apps with "Uninstall for everyone"), apt packages. The dashboard's App Store view (Requests, Failures, Installed, Servers, Settings) has the same and more.
+  ready / behind / failed / missing, size of each bundle, "Reinstall here"; the installed apps with "Uninstall for everyone"), apt packages. The dashboard's App Store view (Requests, Failures, Installed, Servers, Settings) has the same and more.
 
 ## 9. What is not built, and what was not tested
 
 - **The terminal does not find a plugin or a language by itself**: a language is a program on the `PATH` (`lua`, `ruby`), not an entry in the language picker; the picker's REPLs are the image's.
 - **Plugins are samples**: there is no way to write or upload one (that needs a review process of its own); the two that exist are in `plugins.go`.
 - **conda-forge search shows the name and the newest version, not a description** (micromamba's search has none); the page looks the description up when the app is opened.
-- A search is slow the first time (the index of conda-forge); a worker's fetch percent is only as fine as about one report a second.
-- A real **worker fetching a real bundle from a real gateway** over HTTP was not run (the pieces are tested separately); **a signed-in user doing the whole flow in a browser** was not (a browser test cannot sign in: the screens run against stand-in answers).
+- A search is slow the first time (the index of conda-forge).
+- A real **worker installing for itself from a real gateway's catalog** was not run (the pieces are tested separately); **a signed-in user doing the whole flow in a browser** was not (a browser test cannot sign in: the screens run against stand-in answers).
 - The **import check runs outside the sandbox** (as the server, in an empty folder, 60 s limit).
 - A user's switch reaching a worker takes up to a minute.
-- **Real installs, in CI** (job "App Store installs", after the build, on amd64 and arm64, in the image): every app of the safe list (Python libraries, a tool, Node libraries), a language (lua) and a plugin, a real search and size, the sandbox, a worker's replay from a tarball.
+- **Real installs, in CI** (job "App Store installs", after the build, on amd64 and arm64, in the image): every app of the safe list (Python libraries, a tool, Node libraries), a language (lua) and a plugin, a real search and size, the sandbox.
   Run by hand in the image 2026-11-14: flask, jq, requests, express, axios, lodash, moment, lua, wordcount, the search and the size all pass.

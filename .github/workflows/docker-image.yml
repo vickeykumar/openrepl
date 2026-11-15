@@ -217,7 +217,7 @@ jobs:
         docker run --rm --entrypoint /appstore.test \
           -v "$RUNNER_TEMP/appstore.test:/appstore.test:ro" -e OPENREPL_REAL_STORE=/store \
           openrepl:${{ matrix.arch }} \
-          -test.v -test.timeout=80m -test.run='TestEveryAppOfTheSafeList|TestALanguageAndAPlugin|TestSearchAndSize|TestTheSandboxLets|TestAWorkerTakes'
+          -test.v -test.timeout=80m -test.run='TestEveryAppOfTheSafeList|TestALanguageAndAPlugin|TestSearchAndSize|TestTheSandboxLets'
 
   browser:
     needs: [changes, build]

@@ -435,7 +435,7 @@
       if (!open.length) w.appendChild(el("p", "store__legend", "No failures are waiting for you."));
     } else {
       w.appendChild(el("h2", "", "Servers and installs"));
-      w.appendChild(el("p", "store__legend", "Every server (the gateway and each worker) with what it has, how big it is and what it is fetching now. A worker asks the gateway for the catalog every minute."));
+      w.appendChild(el("p", "store__legend", "Every server (the gateway and each worker) with what it has, how big it is and whether it has caught up. A worker asks the gateway for the catalog every minute and installs what is missing itself, from the internet."));
       d.nodes.forEach(function (n) {
         var pct = Math.min(100, Math.round(100 * n.sizeMB / d.limitMB));
         var box = el("div", "store__node");
@@ -447,9 +447,9 @@
         var bar = el("div", "store-dialog__bar"); var fill = el("i"); fill.style.width = pct + "%"; bar.appendChild(fill); box.appendChild(bar);
         var ids = d.apps.filter(function (a) { return a.state === "installed"; });
         ids.forEach(function (a) {
-          var have = (n.have || []).indexOf(a.id) >= 0, f = n.fetching && n.fetching[a.id], bad = n.failed && n.failed[a.id];
-          var status = have ? "ready" : f != null ? "fetching " + f + "%" : bad ? "failed" : "missing";
-          var row = admRow(a.name + " " + a.version, kindLabel(a.kind) + (have && n.sizes && n.sizes[a.id] ? " · " + Math.round(n.sizes[a.id]) + " MB" : "") + (bad ? " · " + bad : ""), status, have ? "stag--installed" : f != null ? "stag--installing" : bad ? "stag--failed" : "stag--requested");
+          var have = (n.have || []).indexOf(a.id) >= 0, bad = n.failed && n.failed[a.id];
+          var status = have ? "ready" : bad ? "failed" : "missing";
+          var row = admRow(a.name + " " + a.version, kindLabel(a.kind) + (have && n.sizes && n.sizes[a.id] ? " · " + Math.round(n.sizes[a.id]) + " MB" : "") + (bad ? " · " + bad : ""), status, have ? "stag--installed" : bad ? "stag--failed" : "stag--requested");
           row.setAttribute("data-bundle", a.id);
           if (have || bad) rbtn(row, "Reinstall here", "", function () { adminPost({ action: "reinstall", node: n.node, id: a.id }, "Asked " + n.node + " to make " + a.name + " again" + (n.node === "gateway" ? "." : " (within a minute).")); });
           box.appendChild(row);

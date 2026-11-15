@@ -13,9 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,8 +49,7 @@ var (
 
 type appNode struct {
 	appstore.NodeState
-	Seen     time.Time      `json:"-"`
-	Fetching map[string]int `json:"-"` // bundles the node is fetching now, in percent
+	Seen time.Time `json:"-"`
 }
 
 // appCommands are what an admin asked of a node (the bundles to make again), handed to a worker the next time it asks for the catalog.
@@ -185,15 +182,7 @@ func (server *Server) startAppStore(ctx context.Context) {
 		}
 		kv = db
 	}
-	cfg := appstore.Config{Store: appstore.Store{Dir: dir}, KV: kv, Installer: newInstaller(dir), Safe: storeSafeList, LimitMB: storeLimitMB, Apt: aptRunner(), Arch: runtime.GOARCH}
-	if worker {
-		base, id := gatewayHTTPBase(server.options.WorkerServer), server.options.WorkerID
-		if id == "" {
-			id, _ = os.Hostname()
-		}
-		cfg.Fetch = gatewayFetch(base, server.options.WorkerToken, dir)
-		cfg.OnProgress = progressSender(base, server.options.WorkerToken, id)
-	}
+	cfg := appstore.Config{Store: appstore.Store{Dir: dir}, KV: kv, Installer: newInstaller(dir), Safe: storeSafeList, LimitMB: storeLimitMB, Apt: aptRunner()}
 	svc := appstore.New(cfg)
 	appStoreMu.Lock()
 	appStoreSvc, appStoreKV = svc, kv
@@ -555,14 +544,13 @@ func lookupApp(ctx context.Context, name string) (appInfo, error) {
 // ---- the admin's side ----------------------------------------------------------------------------------------------------
 
 type storeNodeRow struct {
-	Node     string             `json:"node"`
-	Have     []string           `json:"have"`
-	Failed   map[string]string  `json:"failed,omitempty"`
-	SizeMB   float64            `json:"sizeMB"`
-	Seen     string             `json:"seen,omitempty"`
-	Sizes    map[string]float64 `json:"sizes,omitempty"`    // MB of each bundle on the node
-	Fetching map[string]int     `json:"fetching,omitempty"` // bundles it is fetching now, in percent
-	Pending  []string           `json:"pending,omitempty"`  // bundles an admin asked it to make again, not taken yet
+	Node    string             `json:"node"`
+	Have    []string           `json:"have"`
+	Failed  map[string]string  `json:"failed,omitempty"`
+	SizeMB  float64            `json:"sizeMB"`
+	Seen    string             `json:"seen,omitempty"`
+	Sizes   map[string]float64 `json:"sizes,omitempty"`   // MB of each bundle on the node
+	Pending []string           `json:"pending,omitempty"` // bundles an admin asked it to make again, not taken yet
 }
 
 // handleAdminStore is the Apps page of the dashboard: GET the whole picture, POST one decision.
@@ -591,7 +579,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 				have = []string{} // a worker that has only reported a fetch has not told what it has: an empty list, not null
 			}
 			rows = append(rows, storeNodeRow{Node: id, Have: have, Failed: n.Failed, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339), Sizes: n.Sizes,
-				Fetching: n.Fetching, Pending: append([]string(nil), appCommands[id]...)})
+				Pending: append([]string(nil), appCommands[id]...)})
 		}
 		appStoreMu.Unlock()
 		users := map[string]int{}
@@ -749,126 +737,6 @@ func appStoreHealth() (status, detail string) {
 		detail += "; the store is over its limit, installs are refused"
 	}
 	return status, detail
-}
-
-// gatewayFetch is how a worker gets a finished bundle: the gateway sends it as a .tar.gz (handleStoreBundle), so the worker needs
-// no solve and no internet. It is nil when the worker cannot reach its gateway over HTTP.
-func gatewayFetch(base, token, dir string) func(ctx context.Context, id, dest string, progress func(pct int)) error {
-	if base == "" || token == "" {
-		return nil
-	}
-	client := &http.Client{Timeout: 20 * time.Minute}
-	return func(ctx context.Context, id, dest string, progress func(pct int)) error {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/store/bundle?id="+url.QueryEscape(id), nil)
-		if err != nil {
-			return err
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		res, err := client.Do(req)
-		if err != nil {
-			return err
-		}
-		defer res.Body.Close()
-		if res.StatusCode != http.StatusOK {
-			return fmt.Errorf("the gateway answered %s", res.Status)
-		}
-		// the gateway says how many bytes the files have, so that the percent can be worked out while they arrive
-		total, _ := strconv.ParseInt(res.Header.Get("X-Openrepl-Bundle-Bytes"), 10, 64)
-		if err := appstore.ReadBundleProgress(res.Body, dest, total, progress); err != nil {
-			return err
-		}
-		if _, err := os.Stat(filepath.Join(dest, ".openrepl-bundle.json")); err != nil {
-			os.RemoveAll(dest)
-			return fmt.Errorf("the bundle arrived without its marker")
-		}
-		if progress != nil {
-			progress(100)
-		}
-		return nil
-	}
-}
-
-// progressSender tells the gateway how far a fetch is (POST /store/progress, the worker token), at most once a second and always at 100.
-func progressSender(base, token, node string) func(id string, pct int) {
-	if base == "" || token == "" {
-		return nil
-	}
-	var mu sync.Mutex
-	var last time.Time
-	client := &http.Client{Timeout: 10 * time.Second}
-	return func(id string, pct int) {
-		mu.Lock()
-		if pct < 100 && time.Since(last) < time.Second {
-			mu.Unlock()
-			return
-		}
-		last = time.Now()
-		mu.Unlock()
-		body, _ := json.Marshal(map[string]interface{}{"node": node, "id": id, "pct": pct})
-		req, err := http.NewRequest(http.MethodPost, base+"/store/progress", strings.NewReader(string(body)))
-		if err != nil {
-			return
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
-		if res, err := client.Do(req); err == nil {
-			res.Body.Close()
-		}
-	}
-}
-
-// handleStoreProgress takes what a worker says of a fetch (the worker token) for the admin's table of that server.
-func (server *Server) handleStoreProgress(w http.ResponseWriter, r *http.Request) {
-	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if server.options.WorkerToken == "" || subtle.ConstantTimeCompare([]byte(got), []byte(server.options.WorkerToken)) != 1 {
-		http.Error(w, "not allowed", http.StatusUnauthorized)
-		return
-	}
-	var in struct {
-		Node string `json:"node"`
-		ID   string `json:"id"`
-		Pct  int    `json:"pct"`
-	}
-	if r.Method != http.MethodPost || json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&in) != nil || !nodeIDPattern.MatchString(in.Node) || !appstore.ValidBundle(in.ID) {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	appStoreMu.Lock()
-	n := appNodes[in.Node]
-	if n.Fetching == nil {
-		n.Fetching = map[string]int{}
-	}
-	if in.Pct >= 100 {
-		delete(n.Fetching, in.ID)
-	} else {
-		n.Fetching[in.ID] = in.Pct
-	}
-	if n.Seen.IsZero() {
-		n.Seen = time.Now()
-	}
-	appNodes[in.Node] = n
-	appStoreMu.Unlock()
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleStoreBundle sends a finished bundle to a worker (GET /store/bundle?id=<name>-<version>, the worker token).
-func (server *Server) handleStoreBundle(w http.ResponseWriter, r *http.Request) {
-	svc := storeService()
-	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if server.options.WorkerToken == "" || subtle.ConstantTimeCompare([]byte(got), []byte(server.options.WorkerToken)) != 1 {
-		http.Error(w, "not allowed", http.StatusUnauthorized)
-		return
-	}
-	id := r.URL.Query().Get("id")
-	if svc == nil || !appstore.ValidBundle(id) || !svc.Store().HasBundle(id) {
-		http.Error(w, "no such bundle", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "application/gzip")
-	w.Header().Set("X-Openrepl-Bundle-Bytes", strconv.FormatInt(svc.Store().BundleSize(id), 10))
-	if err := svc.Store().WriteBundle(id, w); err != nil {
-		log.Printf("appstore: sending %s to %s: %v", id, r.RemoteAddr, err)
-	}
 }
 
 // handleStorePage serves the page of the App Store (resources/store.html). The page holds no data: it asks /store/api, which

@@ -107,17 +107,10 @@ type Config struct {
 	Store     Store
 	KV        KV
 	Installer Installer
-	Apt       AptRunner // installs the Debian packages an admin approved, nil for a node that does not
-	// Fetch gets a finished bundle from the gateway (a worker; see tarball.go). When it is nil, or fails, the node installs the
-	// bundle itself from conda-forge.
-	Fetch func(ctx context.Context, id, dest string, progress func(pct int)) error
-	// Arch is the architecture of this node (runtime.GOARCH); a snapshot from a node of another one is not fetched from, only installed.
-	Arch string
-	// OnProgress is told how far a bundle is fetched (0 to 100), for the gateway to show; nil on a node that tells nobody.
-	OnProgress func(id string, pct int)
-	Safe       func() []string // the names a user may install without asking
-	LimitMB    func() int      // the most the store may use, 0 for no limit
-	Now        func() time.Time
+	Apt       AptRunner       // installs the Debian packages an admin approved, nil for a node that does not
+	Safe      func() []string // the names a user may install without asking
+	LimitMB   func() int      // the most the store may use, 0 for no limit
+	Now       func() time.Time
 }
 
 // Service is the App Store of one server (the gateway or a standalone server holds the catalog; a worker only applies it).
@@ -861,9 +854,6 @@ type Snapshot struct {
 	Users map[string][]string `json:"users"`
 	Apt   []string            `json:"apt,omitempty"`
 	Full  bool                `json:"full"` // the list is complete: a bundle that is not in it may be removed
-	// Arch is the CPU architecture of the node that made the snapshot (the gateway): a bundle holds programs built for it, so a node of
-	// another architecture (a Raspberry Pi worker of an amd64 gateway) must not take the gateway's copy: it installs the bundle itself.
-	Arch string `json:"arch,omitempty"`
 	// Reinstall are bundles an admin asked this node to make again (the gateway adds them when it answers a worker): the node
 	// deletes its copy of each, and the replay that follows fetches it again.
 	Reinstall []string `json:"reinstall,omitempty"`
@@ -871,7 +861,7 @@ type Snapshot struct {
 
 // Snapshot takes the catalog of this server.
 func (s *Service) Snapshot() Snapshot {
-	snap := Snapshot{Users: map[string][]string{}, Full: true, Arch: s.cfg.Arch}
+	snap := Snapshot{Users: map[string][]string{}, Full: true}
 	// a listing that fails (the database is not reachable) must not look like an empty catalog: nothing would be removed
 	if err := s.each("app:", func(_ string, raw []byte) {
 		var a App
@@ -933,17 +923,9 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		dest := s.cfg.Store.BundlePath(a.ID)
 		os.RemoveAll(dest)
 		var logb bytes.Buffer
-		var err error
-		if s.cfg.Fetch != nil && (snap.Arch == "" || s.cfg.Arch == "" || snap.Arch == s.cfg.Arch) {
-			// a worker of the gateway's own architecture takes the finished bundle from the gateway: no solve, no internet needed
-			if err = s.cfg.Fetch(ctx, a.ID, dest, func(pct int) { s.progress(a.ID, pct) }); err != nil {
-				log.Printf("appstore: replay: %s could not be fetched from the gateway (%v); installing it here", a.ID, err)
-				os.RemoveAll(dest)
-			}
-		}
-		if s.cfg.Fetch == nil || err != nil || (snap.Arch != "" && s.cfg.Arch != "" && snap.Arch != s.cfg.Arch) {
-			err = s.cfg.Installer.Install(ctx, a.Name, a.Version, a.Kind, dest, &logb)
-		}
+		// a node always installs a bundle itself (conda-forge / npm over its own internet): a bundle holds programs for one CPU and the
+		// gateway's egress is not given away
+		err := s.cfg.Installer.Install(ctx, a.Name, a.Version, a.Kind, dest, &logb)
 		if err == nil {
 			_, err = s.cfg.Store.Finish(a.ID, a.Name, a.Version)
 		}
@@ -1187,12 +1169,6 @@ func (s *Service) Search(ctx context.Context, q, kind string) ([]Hit, error) {
 		add(f)
 	}
 	return hits, err
-}
-
-func (s *Service) progress(id string, pct int) {
-	if s.cfg.OnProgress != nil {
-		s.cfg.OnProgress(id, pct)
-	}
 }
 
 // Uninstall removes an installed app on a user's own word: it is allowed only when no other user has it on (the user's own switch does

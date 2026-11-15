@@ -1,9 +1,6 @@
 package appstore
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"errors"
 	"os"
@@ -504,103 +501,6 @@ func TestUsersAreToldTheAnswers(t *testing.T) {
 	}
 }
 
-func TestABundleTravelsAsATarball(t *testing.T) {
-	a := Store{Dir: t.TempDir()}
-	f := Fake{}
-	id := "flask-1.0.0"
-	if err := f.Install(context.Background(), "flask", "1.0.0", KindLib, a.BundlePath(id), os.Stderr); err != nil {
-		t.Fatal(err)
-	}
-	os.Symlink("../lib/python3.10", filepath.Join(a.BundlePath(id), "bin", "pylib"))
-	a.Finish(id, "flask", "1.0.0")
-	var buf bytes.Buffer
-	if err := a.WriteBundle(id, &buf); err != nil {
-		t.Fatal(err)
-	}
-	b := Store{Dir: t.TempDir()}
-	if err := ReadBundle(bytes.NewReader(buf.Bytes()), b.BundlePath(id)); err != nil {
-		t.Fatal(err)
-	}
-	if !b.HasBundle(id) {
-		t.Fatal("the marker comes with it, last")
-	}
-	got, err := os.ReadFile(filepath.Join(b.BundlePath(id), "lib", "python3.10", "site-packages", "flask", "__init__.py"))
-	if err != nil || !strings.Contains(string(got), "1.0.0") {
-		t.Fatalf("%s %v", got, err)
-	}
-	if l, err := os.Readlink(filepath.Join(b.BundlePath(id), "bin", "pylib")); err != nil || l != "../lib/python3.10" {
-		t.Fatalf("the link: %q %v", l, err)
-	}
-	if fi, _ := os.Stat(filepath.Join(b.BundlePath(id), "bin", "flask-hello")); fi == nil || fi.Mode()&0100 == 0 {
-		t.Error("the executable bit")
-	}
-	if err := a.WriteBundle("nothing-1", &buf); err == nil {
-		t.Error("an unfinished bundle is not sent")
-	}
-	// a bad archive cannot write outside the bundle
-	for name, mk := range map[string]func(tw *tar.Writer){
-		"climbing name": func(tw *tar.Writer) {
-			tw.WriteHeader(&tar.Header{Name: "../evil", Mode: 0644, Size: 1, Typeflag: tar.TypeReg})
-			tw.Write([]byte("x"))
-		},
-		"absolute name": func(tw *tar.Writer) {
-			tw.WriteHeader(&tar.Header{Name: "/etc/evil", Mode: 0644, Size: 1, Typeflag: tar.TypeReg})
-			tw.Write([]byte("x"))
-		},
-		"outside link": func(tw *tar.Writer) {
-			tw.WriteHeader(&tar.Header{Name: "l", Linkname: "../../etc", Typeflag: tar.TypeSymlink})
-		},
-		"absolute link": func(tw *tar.Writer) {
-			tw.WriteHeader(&tar.Header{Name: "l", Linkname: "/etc/passwd", Typeflag: tar.TypeSymlink})
-		},
-		"a device": func(tw *tar.Writer) { tw.WriteHeader(&tar.Header{Name: "d", Typeflag: tar.TypeChar}) },
-	} {
-		var bad bytes.Buffer
-		gz := gzip.NewWriter(&bad)
-		tw := tar.NewWriter(gz)
-		mk(tw)
-		tw.Close()
-		gz.Close()
-		dest := filepath.Join(t.TempDir(), "x-1")
-		if err := ReadBundle(&bad, dest); err == nil {
-			t.Errorf("%s must be refused", name)
-		}
-		if _, err := os.Stat(dest); err == nil {
-			t.Errorf("%s: what was written must be removed", name)
-		}
-	}
-}
-
-func TestAWorkerTakesABundleFromTheGatewayFirst(t *testing.T) {
-	a, _ := newService(t, Fake{}, "flask")
-	a.Install("ann", "flask", "lib", false)
-	a.Wait()
-	snap := a.Snapshot()
-	b, bst := newService(t, Fake{Fail: map[string]bool{"flask": true}}) // it could not install it itself
-	fetched := 0
-	b.cfg.Fetch = func(ctx context.Context, id, dest string, progress func(int)) error {
-		fetched++
-		var buf bytes.Buffer
-		if err := a.Store().WriteBundle(id, &buf); err != nil {
-			return err
-		}
-		return ReadBundle(&buf, dest)
-	}
-	st := b.Apply(context.Background(), snap)
-	if fetched != 1 || len(st.Failed) != 0 || !bst.HasBundle("flask-1.0.0") {
-		t.Fatalf("fetched %d, state %+v", fetched, st)
-	}
-	// and when the gateway cannot give it, the node installs it itself
-	c, cst := newService(t, Fake{})
-	c.cfg.Fetch = func(ctx context.Context, id, dest string, progress func(int)) error {
-		return errors.New("the gateway is not reachable")
-	}
-	st = c.Apply(context.Background(), snap)
-	if len(st.Failed) != 0 || !cst.HasBundle("flask-1.0.0") {
-		t.Fatalf("%+v", st)
-	}
-}
-
 // micromamba reads its settings from MAMBA_* variables too, and a switch with the value 1 stops it ("Bad conversion of configurable
 // 'no_rc'"): the folders are the only thing the program may be given that way, the switches are flags.
 func TestMambaIsGivenNoSwitchesInTheEnvironment(t *testing.T) {
@@ -802,30 +702,6 @@ func TestReinstallMakesABundleAgainOnTheNode(t *testing.T) {
 	}
 }
 
-func TestAFetchSaysHowFarItIs(t *testing.T) {
-	a := Store{Dir: t.TempDir()}
-	id := "flask-1.0.0"
-	Fake{}.Install(context.Background(), "flask", "1.0.0", KindLib, a.BundlePath(id), os.Stderr)
-	a.Finish(id, "flask", "1.0.0")
-	var buf bytes.Buffer
-	if err := a.WriteBundle(id, &buf); err != nil {
-		t.Fatal(err)
-	}
-	b := Store{Dir: t.TempDir()}
-	var seen []int
-	if err := ReadBundleProgress(&buf, b.BundlePath(id), a.BundleSize(id), func(p int) { seen = append(seen, p) }); err != nil {
-		t.Fatal(err)
-	}
-	if len(seen) == 0 || seen[len(seen)-1] > 100 {
-		t.Errorf("progress %v", seen)
-	}
-	for i := 1; i < len(seen); i++ {
-		if seen[i] <= seen[i-1] {
-			t.Errorf("the percent only goes up: %v", seen)
-		}
-	}
-}
-
 func TestAUserMayUninstallAnAppOnlyWhenNobodyElseHasItOn(t *testing.T) {
 	svc, st := newService(t, Fake{}, "flask", "numpy")
 	svc.Install("ann", "flask", KindLib, false)
@@ -922,40 +798,5 @@ func TestNpmEnginesAreRead(t *testing.T) {
 	}
 	if pick != "4.21.2" {
 		t.Errorf("the newest that fits: %q", pick)
-	}
-}
-
-// A bundle holds programs built for one CPU: a worker of another architecture than the gateway must not take the gateway's copy,
-// it installs the bundle itself.
-func TestAWorkerOfAnotherArchitectureInstallsItselfAndDoesNotFetch(t *testing.T) {
-	a, _ := newService(t, Fake{}, "flask")
-	a.cfg.Arch = "amd64"
-	a.Install("ann", "flask", "lib", false)
-	a.Wait()
-	snap := a.Snapshot()
-	if snap.Arch != "amd64" {
-		t.Fatalf("the snapshot must say the architecture of the gateway: %q", snap.Arch)
-	}
-	fetch := func(n *int) func(context.Context, string, string, func(int)) error {
-		return func(ctx context.Context, id, dest string, progress func(int)) error {
-			*n++
-			return errors.New("not used")
-		}
-	}
-	var fetched int
-	b, bst := newService(t, Fake{})
-	b.cfg.Arch = "arm64"
-	b.cfg.Fetch = fetch(&fetched)
-	st := b.Apply(context.Background(), snap)
-	if fetched != 0 || len(st.Failed) != 0 || !bst.HasBundle("flask-1.0.0") {
-		t.Fatalf("fetched %d, state %+v", fetched, st)
-	}
-	// the same architecture does ask the gateway
-	c, _ := newService(t, Fake{})
-	c.cfg.Arch = "amd64"
-	c.cfg.Fetch = fetch(&fetched)
-	c.Apply(context.Background(), snap)
-	if fetched != 1 {
-		t.Errorf("the same architecture should fetch: %d", fetched)
 	}
 }

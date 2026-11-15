@@ -2464,13 +2464,12 @@
           .then(function (ok) { if (ok) return post({ action: 'pickversion', name: name, version: sel.value }, 'Installing ' + name + ' ' + sel.value + '.'); });
       }, fail);
     }
-    // the status of one app on one server: ready, fetching (a server that is behind and answered lately), failed, missing
+    // the status of one app on one server: ready, installing (a server that is behind and answered lately), failed, missing
     function status(n, id, now) {
       if ((n.have || []).indexOf(id) >= 0) return h('span', { class: 'ok', text: 'ready' });
       if (n.failed && n.failed[id]) return h('span', { class: 'bad', title: n.failed[id], text: 'failed' });
-      if (n.fetching && n.fetching[id] != null) return h('span', { class: 'warn', text: 'fetching ' + n.fetching[id] + '%' });
       var seen = n.seen ? Date.parse(n.seen) / 1000 : now;
-      if (now - seen < 180) return h('span', { class: 'warn', text: 'fetching…' });
+      if (now - seen < 180) return h('span', { class: 'warn', text: 'installing…' });
       return h('span', { class: 'sub', text: 'missing' });
     }
     function tabs(d, counts) {
@@ -2544,7 +2543,7 @@
           } });
         } });
         out.appendChild(table(cols, d.apps, { empty: 'Nothing is installed yet.' }));
-        out.appendChild(h('p', { class: 'sub', text: 'An app that nobody has had on for 60 days is flagged. Nothing is removed by itself: you decide. A server shows "fetching" while it is behind and has answered lately.' }));
+        out.appendChild(h('p', { class: 'sub', text: 'An app that nobody has had on for 60 days is flagged. Nothing is removed by itself: you decide. A server shows "installing" while it is behind and has answered lately.' }));
         var name = h('input', { type: 'text', placeholder: 'package name, e.g. ffmpeg', 'aria-label': 'Package to install' });
         var kindSel = h('select', { 'aria-label': 'Kind' },
           h('option', { value: 'lib', text: 'Python library (conda-forge)' }), h('option', { value: 'tool', text: 'Tool (conda-forge)' }), h('option', { value: 'node', text: 'Node library (npm)' }),

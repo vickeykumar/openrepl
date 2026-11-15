@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -160,45 +158,6 @@ func TestStoreSettingsAreChecked(t *testing.T) {
 	}
 }
 
-func TestStoreBundleIsSentToAWorkerWithTheToken(t *testing.T) {
-	svc := testStoreService(t, appstore.Fake{}, "flask")
-	svc.Install("ann", "flask", "lib", false)
-	svc.Wait()
-	srv := &Server{options: &Options{WorkerToken: "s3cret"}}
-	get := func(token, id string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("GET", "http://openrepl.test/store/bundle?id="+id, nil)
-		if token != "" {
-			r.Header.Set("Authorization", "Bearer "+token)
-		}
-		w := httptest.NewRecorder()
-		srv.handleStoreBundle(w, r)
-		return w
-	}
-	if w := get("", "flask-1.0.0"); w.Code != http.StatusUnauthorized {
-		t.Errorf("no token: %d", w.Code)
-	}
-	if w := get("s3cret", "../etc"); w.Code != http.StatusNotFound {
-		t.Errorf("a bad name: %d", w.Code)
-	}
-	if w := get("s3cret", "numpy-1.0.0"); w.Code != http.StatusNotFound {
-		t.Errorf("a bundle that is not there: %d", w.Code)
-	}
-	w := get("s3cret", "flask-1.0.0")
-	if w.Code != 200 {
-		t.Fatalf("%d", w.Code)
-	}
-	dest := filepath.Join(t.TempDir(), "flask-1.0.0")
-	if err := appstore.ReadBundle(w.Body, dest); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dest, ".openrepl-bundle.json")); err != nil {
-		t.Error("the marker must come with it")
-	}
-	if gatewayFetch("", "t", "/x") != nil || gatewayFetch("http://x", "", "/x") != nil {
-		t.Error("a worker that cannot reach its gateway has no fetch")
-	}
-}
-
 func TestStoreHealthSaysWhatIsWrong(t *testing.T) {
 	svc := testStoreService(t, appstore.Missing{Reason: "micromamba is not installed"}, "flask")
 	if st, detail := appStoreHealth(); st != healthWarn || !strings.Contains(detail, "micromamba") {
@@ -211,64 +170,6 @@ func TestStoreHealthSaysWhatIsWrong(t *testing.T) {
 	if st, detail := appStoreHealth(); st != healthWarn || !strings.Contains(detail, "1 failed") {
 		t.Errorf("a failed install: %s %s", st, detail)
 	}
-}
-
-func TestAWorkerSaysHowFarAFetchIsAndTheAdminGivesItCommands(t *testing.T) {
-	svc := testStoreService(t, appstore.Fake{}, "flask")
-	svc.Install("ann", "flask", "lib", false)
-	svc.Wait()
-	srv := &Server{options: &Options{WorkerToken: "s3cret"}}
-	progress := func(token, body string) int {
-		r := httptest.NewRequest("POST", "http://openrepl.test/store/progress", strings.NewReader(body))
-		if token != "" {
-			r.Header.Set("Authorization", "Bearer "+token)
-		}
-		w := httptest.NewRecorder()
-		srv.handleStoreProgress(w, r)
-		return w.Code
-	}
-	if progress("", `{"node":"w1","id":"flask-1.0.0","pct":40}`) != http.StatusUnauthorized {
-		t.Error("no token")
-	}
-	if progress("s3cret", `{"node":"../x","id":"flask-1.0.0","pct":40}`) != http.StatusBadRequest || progress("s3cret", `{"node":"w1","id":"../x","pct":40}`) != http.StatusBadRequest {
-		t.Error("a bad node or bundle")
-	}
-	if progress("s3cret", `{"node":"w1","id":"flask-1.0.0","pct":40}`) != http.StatusNoContent {
-		t.Fatal("a good report")
-	}
-	appStoreMu.Lock()
-	got := appNodes["w1"].Fetching["flask-1.0.0"]
-	appStoreMu.Unlock()
-	if got != 40 {
-		t.Errorf("the percent: %d", got)
-	}
-	progress("s3cret", `{"node":"w1","id":"flask-1.0.0","pct":100}`)
-	appStoreMu.Lock()
-	_, still := appNodes["w1"].Fetching["flask-1.0.0"]
-	appCommands["w1"] = []string{"flask-1.0.0"}
-	appStoreMu.Unlock()
-	if still {
-		t.Error("a finished fetch is not shown any more")
-	}
-	// the worker's next ask for the catalog brings the command, once
-	ask := func() appstore.Snapshot {
-		r := httptest.NewRequest("POST", "http://openrepl.test/store/sync", strings.NewReader(`{"node":"w1","state":{"have":[]}}`))
-		r.Header.Set("Authorization", "Bearer s3cret")
-		w := httptest.NewRecorder()
-		srv.handleStoreSync(w, r)
-		var snap appstore.Snapshot
-		json.Unmarshal(w.Body.Bytes(), &snap)
-		return snap
-	}
-	if snap := ask(); len(snap.Reinstall) != 1 || snap.Reinstall[0] != "flask-1.0.0" {
-		t.Errorf("the command: %+v", snap.Reinstall)
-	}
-	if snap := ask(); len(snap.Reinstall) != 0 {
-		t.Errorf("a command is given once: %+v", snap.Reinstall)
-	}
-	appStoreMu.Lock()
-	delete(appNodes, "w1")
-	appStoreMu.Unlock()
 }
 
 func TestThePluginsOfAUserAreTheOnesThatAreOn(t *testing.T) {
@@ -323,39 +224,5 @@ func TestAdminAndUserListsAreNeverNullOnAnEmptyStore(t *testing.T) {
 	svc := storeService()
 	if v := svc.Views("", ""); v == nil {
 		t.Error("views must be a list")
-	}
-}
-
-// A worker that has only reported how far a fetch is has not told what it has: its row in the admin list must say "have": [], not null
-// (the Servers tab called indexOf on it).
-func TestAWorkerThatOnlyReportedAFetchHasAnEmptyListNotNull(t *testing.T) {
-	testStoreService(t, appstore.Fake{})
-	srv := &Server{options: &Options{WorkerToken: "s3cret"}}
-	r := httptest.NewRequest("POST", "http://openrepl.test/store/progress", strings.NewReader(`{"node":"w9","id":"flask-1.0.0","pct":10}`))
-	r.Header.Set("Authorization", "Bearer s3cret")
-	srv.handleStoreProgress(httptest.NewRecorder(), r)
-	defer func() { appStoreMu.Lock(); delete(appNodes, "w9"); appStoreMu.Unlock() }()
-	w := httptest.NewRecorder()
-	srv.handleAdminStore(w, httptest.NewRequest("GET", "http://openrepl.test/admin/store", nil))
-	var out struct {
-		Nodes []struct {
-			Node string          `json:"node"`
-			Have json.RawMessage `json:"have"`
-		} `json:"nodes"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, n := range out.Nodes {
-		if n.Node == "w9" {
-			found = true
-			if string(n.Have) != "[]" {
-				t.Errorf("have is %s", n.Have)
-			}
-		}
-	}
-	if !found {
-		t.Fatalf("no row for w9: %s", w.Body.String())
 	}
 }
