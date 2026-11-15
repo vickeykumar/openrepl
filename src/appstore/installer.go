@@ -129,9 +129,16 @@ func solveFrom(raw []byte, name string) (Resolved, error) {
 		return Resolved{}, errors.New("the answer of micromamba could not be read")
 	}
 	out := Resolved{Packages: len(res.Actions.Link)}
+	// the size of what the app brings, from the packages that are linked: a package that is in the cache already is not fetched, and
+	// the list of what is fetched would say 0 MB for an app that was installed before
 	var bytesTotal float64
-	for _, p := range res.Actions.Fetch {
+	for _, p := range res.Actions.Link {
 		bytesTotal += p.Size
+	}
+	if bytesTotal == 0 {
+		for _, p := range res.Actions.Fetch {
+			bytesTotal += p.Size
+		}
 	}
 	out.DownloadMB = bytesTotal / (1 << 20)
 	out.DiskMB = out.DownloadMB * 2.5 // conda packages are compressed: about this much once they are unpacked

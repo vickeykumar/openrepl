@@ -80,10 +80,15 @@ func TestNames(t *testing.T) {
 }
 
 func TestSolveFrom(t *testing.T) {
-	raw := []byte(`{"actions":{"FETCH":[{"name":"werkzeug","version":"3.0.4","size":1048576},{"name":"flask","version":"3.0.2","size":2097152}],"LINK":[{"name":"werkzeug","version":"3.0.4"},{"name":"flask","version":"3.0.2"},{"name":"click","version":"8.1"}]}}`)
+	raw := []byte(`{"actions":{"FETCH":[{"name":"werkzeug","version":"3.0.4","size":1048576},{"name":"flask","version":"3.0.2","size":2097152}],"LINK":[{"name":"werkzeug","version":"3.0.4","size":1048576},{"name":"flask","version":"3.0.2","size":2097152},{"name":"click","version":"8.1","size":1048576}]}}`)
 	r, err := solveFrom(raw, "flask")
-	if err != nil || r.Version != "3.0.2" || r.Packages != 3 || r.DownloadMB != 3 {
+	if err != nil || r.Version != "3.0.2" || r.Packages != 3 || r.DownloadMB != 4 || r.DiskMB != 10 {
 		t.Errorf("got %+v %v", r, err)
+	}
+	// every package is in the cache already: nothing is fetched, the size is still known
+	cached := []byte(`{"actions":{"FETCH":[],"LINK":[{"name":"flask","version":"3.0.2","size":3145728}]}}`)
+	if r, err := solveFrom(cached, "flask"); err != nil || r.DownloadMB != 3 {
+		t.Errorf("a warm cache: %+v %v", r, err)
 	}
 	if _, err := solveFrom(raw, "numpy"); err == nil {
 		t.Error("a package that is not in the answer is an error")
