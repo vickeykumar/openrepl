@@ -39,6 +39,12 @@ func checkBundle(ctx context.Context, dest, name, kind string) error {
 	if kind == KindNode {
 		return checkNode(ctx, dest, name)
 	}
+	if kind == KindTool || kind == KindLang {
+		return verifyTool(ctx, dest, name)
+	}
+	if kind == KindPlugin {
+		return checkPlugin(dest)
+	}
 	py := filepath.Join(dest, "bin", "python")
 	if _, err := os.Stat(py); err != nil {
 		return nil
@@ -72,6 +78,16 @@ func checkNode(ctx context.Context, dest, name string) error {
 	c.Dir = os.TempDir()
 	if out, err := c.CombinedOutput(); err != nil {
 		return fmt.Errorf("%s could not be loaded: %s", name, tail(strings.TrimSpace(string(out)), 400))
+	}
+	return nil
+}
+
+// checkPlugin looks for the two files of an editor plugin: a plugin that has no script is never offered as installed.
+func checkPlugin(dest string) error {
+	for _, f := range []string{"plugin.json", "main.js"} {
+		if fi, err := os.Stat(filepath.Join(dest, f)); err != nil || fi.IsDir() {
+			return fmt.Errorf("the plugin has no %s", f)
+		}
 	}
 	return nil
 }

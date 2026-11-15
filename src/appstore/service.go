@@ -847,6 +847,29 @@ func (s *Service) Switch(home, id string, on bool) error {
 	return s.setList(home, next)
 }
 
+// AppByID finds an installed app by its bundle name.
+func (s *Service) AppByID(id string) (App, bool) { return s.appByID(id) }
+
+// ReportUse is a user's report that an installed app did not work for them when they switched it on (what the check said is the log):
+// it goes to the admin with the failed installs, once for each app, with each reporter added to it.
+func (s *Service) ReportUse(who, name, node, step, log, note string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.app(name)
+	if !ok || a.State != StateInstalled {
+		return ErrUnknown
+	}
+	var r Report
+	if !s.get("rep:"+name, &r) || r.Status != "open" {
+		r = Report{Name: name, Status: "open", At: s.now(), Log: clip(log, 600), Note: clip(note, 300), Node: node, Version: a.Version, Step: step}
+	}
+	r.Reporters = addUnique(r.Reporters, who)
+	if r.Note == "" {
+		r.Note = clip(note, 300)
+	}
+	return s.put("rep:"+name, r)
+}
+
 // appByID finds an installed app by its bundle name.
 func (s *Service) appByID(id string) (App, bool) {
 	for _, a := range s.Apps() {
@@ -1139,6 +1162,10 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		// a node always installs a bundle itself (conda-forge / npm over its own internet): a bundle holds programs for one CPU and the
 		// gateway's egress is not given away
 		err := s.cfg.Installer.Install(ctx, a.Name, a.Version, a.Kind, dest, &logb)
+		if err == nil {
+			// the node proves that what it installed works before it says it has it
+			err = checkBundle(ctx, dest, a.Name, a.Kind)
+		}
 		if err == nil {
 			_, err = s.cfg.Store.Finish(a.ID, a.Name, a.Version)
 		}

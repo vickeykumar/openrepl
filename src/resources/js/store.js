@@ -28,7 +28,7 @@
     }
     return fetch(url(path), opts).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (j) {
-        if (!res.ok) { var e = new Error(j.message || j.error || "The App Store did not answer."); e.code = j.error; e.status = res.status; throw e; }
+        if (!res.ok) { var e = new Error(j.message || j.error || "The App Store did not answer."); e.code = j.error; e.status = res.status; e.body = j; throw e; }
         return j;
       });
     });
@@ -147,8 +147,10 @@
       else btn("Request", function () { requestDialog(v); }, "is-primary");
     } else if (v.state === "installing") btn("Details", function () { progress(v.name); });
     else if (v.state === "installed") {
-      var sw = el("button", "sswitch" + (v.on ? " is-on" : ""), v.on ? "On" : "Off");
+      var checking = S.checking === v.id;
+      var sw = el("button", "sswitch" + (v.on ? " is-on" : ""), checking ? "Checking…" : v.on ? "On" : "Off");
       sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", v.on ? "true" : "false");
+      if (checking) { sw.disabled = true; sw.title = "Checking that it works in your terminal environment"; }
       sw.setAttribute("aria-label", "Use " + v.name + " in my terminals");
       sw.addEventListener("click", function (e) { e.stopPropagation(); switchApp(v, !v.on); });
       row.appendChild(sw);
@@ -710,15 +712,15 @@
     });
   }
 
-  function reportDialog(v) {
+  function reportDialog(v, use) {
     modal(function (d) {
       d.appendChild(heading("Tell the admin about " + v.name));
       d.appendChild(el("p", "", "What did you expect? (optional)"));
       var t = el("textarea"); t.maxLength = 300; t.setAttribute("aria-label", "What did you expect?"); d.appendChild(t);
-      d.appendChild(el("p", "", "Sent with it: the app and its version, the step that failed (" + (v.err ? v.err.split(":")[0] : "the install") + "), the log lines above, and the server it ran on" + (v.node ? " (" + v.node + ")" : "") + ". Not sent: your files, or anything about you beyond your account."));
+      d.appendChild(el("p", "", "Sent with it: the app and its version, the step that failed (" + (use ? "turning it on" : v.err ? v.err.split(":")[0] : "the install") + "), the log lines above, and the server it ran on" + (v.node ? " (" + v.node + ")" : "") + ". Not sent: your files, or anything about you beyond your account."));
       d.appendChild(dialogButtons([
         { label: "Send report", primary: true, run: function () { closeModal(); act("report", { name: v.name, note: t.value }, "Sent. The admin will look at it, and you will see the answer here."); } },
-        { label: "Cancel", run: function () { failure(v.name); } }
+        { label: "Cancel", run: function () { if (use) closeModal(); else failure(v.name); } }
       ]));
       t.focus();
     });
@@ -737,8 +739,38 @@
     });
   }
 
+  // turning it on is checked first: the server runs the app's own check for this user, on the server of their terminals, and only then says it is on
   function switchApp(v, on) {
-    return act("switch", { id: v.id, on: on }, on ? v.name + " is on for your terminals." : v.name + " is off for your terminals.").catch(function () {});
+    if (!on) return act("switch", { id: v.id, on: false }, v.name + " is off for your terminals.").catch(function () {});
+    if (S.checking) return Promise.resolve();
+    S.checking = v.id; say("Checking that " + v.name + " works in your terminals…", "info"); render();
+    return store("switch", { id: v.id, on: true }).then(function (j) {
+      S.checking = null; take(j); say(v.name + " is on for your terminals. It was checked and works.", "info"); render();
+    }, function (e) {
+      S.checking = null;
+      if (e.code === "verify" && e.body) { take(e.body); say(""); render(); useFailure(v, e.body); return; }
+      if (e.code === "signin") { S.error = e; } else { say(e.message, "bad"); }
+      render();
+    });
+  }
+  // it did not work for this user: it is off again; what the check said is shown, and the user can report it
+  function useFailure(v, b) {
+    modal(function (d) {
+      if (b.wait) {
+        d.appendChild(heading(v.name + " is not ready on your server yet"));
+        d.appendChild(el("p", "", "Your server is still getting it. Try again in a minute. Nothing is wrong."));
+        d.appendChild(dialogButtons([{ label: "Try again", primary: true, run: function () { closeModal(); switchApp(v, true); } }, { label: "Close", run: closeModal }]));
+        return;
+      }
+      d.appendChild(heading(v.name + " did not work for your terminals"));
+      d.appendChild(el("p", "", "It was checked the way your terminals start it" + (b.node ? ", on " + b.node : "") + ", and the check failed, so it is off. Nothing changed for anyone else."));
+      if (b.log) d.appendChild(el("pre", "store__code", b.log));
+      d.appendChild(dialogButtons([
+        { label: "Report to admin", primary: true, run: function () { reportDialog({ name: v.name, err: "Turning it on", node: b.node }, true); } },
+        { label: "Try again", run: function () { closeModal(); switchApp(v, true); } },
+        { label: "Close", run: closeModal }
+      ]));
+    });
   }
 
   // board 4D: the answers to what the user asked, one at a time

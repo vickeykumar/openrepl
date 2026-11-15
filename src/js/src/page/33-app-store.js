@@ -11,6 +11,8 @@ var envScript = "";          // the file a shell can run to use what was switche
 var installer = "";
 var query = "";
 var lookups = {};            // name -> { info } | { error } for a name typed that the store does not list
+var checking = "";           // the bundle whose check is running (turning it on is checked first)
+var useFail = null;          // {name, log, node}: an app that did not work when it was switched on, until it is reported or tried again
 var changed = false;         // the user switched something since the dialog opened: open terminals keep what they had
 var watching = {};           // apps that are being installed: a notice says when they are done
 var pollTimer = 0;
@@ -31,7 +33,7 @@ function api(path, body) {
   if (body) { opts.method = "POST"; opts.headers = { "Content-Type": "application/json" }; opts.body = JSON.stringify(body); }
   return fetch(url("/store/api/" + path), opts).then(function (res) {
     return res.json().catch(function () { return {}; }).then(function (j) {
-      if (!res.ok) { var e = new Error(j.message || j.error || "The App Store did not answer."); e.status = res.status; e.code = j.error; throw e; }
+      if (!res.ok) { var e = new Error(j.message || j.error || "The App Store did not answer."); e.status = res.status; e.code = j.error; e.body = j; throw e; }
       return j;
     });
   });
@@ -127,11 +129,26 @@ function request(v) {
 function switchApp(v, on) {
   changed = true;
   if (window.AppStorePlugins) setTimeout(function () { window.AppStorePlugins.refresh(); }, 600); // a plugin starts or stops at once
-  return act("switch", { id: v.id, on: on }, on ? v.name + " is on for your terminals." : v.name + " is off for your terminals.");
+  if (!on) return act("switch", { id: v.id, on: false }, v.name + " is off for your terminals.");
+  // turning it on is checked first: the server runs the app's own check for this user, on the server of their terminals
+  if (checking) return Promise.resolve();
+  checking = v.id; useFail = null; say("Checking that " + v.name + " works in your terminals…"); render();
+  return api("switch", { id: v.id, on: true }).then(function (j) {
+    checking = ""; take(j); say(v.name + " is on for your terminals. It was checked and works."); render();
+  }, function (e) {
+    checking = "";
+    if (e.code === "verify" && e.body) {
+      take(e.body);
+      useFail = e.body.wait ? null : { name: v.name, log: e.body.log || "", node: e.body.node || "" };
+      say(e.message, !e.body.wait);
+      render();
+    } else if (e.code === "signin") { render(e); } else { say(e.message, true); render(); }
+    throw e;
+  });
 }
 function report(v) {
   var note = window.prompt ? window.prompt("Tell the admin what you were trying to do (optional)", "") : "";
-  if (note === null) return;
+  if (note === null) return Promise.resolve();
   return act("report", { name: v.name, note: note }, "Sent. The admin will look at it, and you will see the answer here.");
 }
 function applyHere() {
@@ -194,11 +211,22 @@ function card(v) {
   }
   if (v.state === "available") button("Install", function () { install(v); }, true);
   if (v.state === "installed") {
-    var sw = h("button", "appstore__switch" + (v.on ? " is-on" : ""), v.on ? "On" : "Off");
+    var sw = h("button", "appstore__switch" + (v.on ? " is-on" : ""), checking === v.id ? "Checking…" : v.on ? "On" : "Off");
     sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", v.on ? "true" : "false");
+    if (checking === v.id) { sw.disabled = true; sw.title = "Checking that it works in your terminal environment"; }
     sw.setAttribute("aria-label", "Use " + v.name + " in my terminals");
-    sw.addEventListener("click", function () { switchApp(v, !v.on); });
+    sw.addEventListener("click", function () { switchApp(v, !v.on).catch(function () {}); });
     row.appendChild(sw);
+  }
+  if (v.state === "installed" && useFail && useFail.name === v.name) {
+    c.appendChild(h("p", "appstore__sum", "It was checked the way your terminals start it" + (useFail.node ? ", on " + useFail.node : "") + ", and failed, so it is off:"));
+    if (useFail.log) c.appendChild(h("pre", "appstore__log", useFail.log));
+    var fr = h("div", "appstore__row");
+    var rb = h("button", "appstore__btn is-primary", "Report to admin"); rb.type = "button";
+    rb.addEventListener("click", function () { var f = useFail; report(v).then(function () { if (useFail === f) useFail = null; render(); }); });
+    var tb = h("button", "appstore__btn", "Try again"); tb.type = "button";
+    tb.addEventListener("click", function () { switchApp(v, true).catch(function () {}); });
+    fr.appendChild(rb); fr.appendChild(tb); c.appendChild(fr);
   }
   if (v.state === "failed") {
     button("Try again", function () { install(v); }, true);

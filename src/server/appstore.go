@@ -346,9 +346,33 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 	case "request":
 		_, err = svc.Request(uid, c.Name, c.Kind, c.Reason)
 	case "switch":
-		err = svc.Switch(home, c.ID, c.On)
+		if err = svc.Switch(home, c.ID, c.On); err != nil || !c.On {
+			break
+		}
+		// it is on only when it works: the check runs for this user, on the node of their terminals
+		if a, ok := svc.AppByID(c.ID); ok {
+			node, wait, verr := server.verifyOnNode(r.Context(), svc, home, a)
+			if verr != nil {
+				svc.Switch(home, c.ID, false)
+				body := map[string]interface{}{"error": "verify", "name": a.Name, "log": verr.Error(), "node": node, "wait": wait,
+					"views": svc.Views(uid, home), "on": svc.MyList(home)}
+				if wait {
+					body["message"] = a.Name + " is not ready on your server yet. Try again in a minute."
+				} else {
+					rememberUseFailure(uid, a.Name, node, verr.Error())
+					body["message"] = a.Name + " did not work for your terminals, so it is off."
+				}
+				writeJSON(w, http.StatusUnprocessableEntity, body)
+				return
+			}
+		}
 	case "report":
 		err = svc.Report(uid, c.Name, c.Note)
+		if errors.Is(err, appstore.ErrUnknown) {
+			if f, ok := takeUseFailure(uid, c.Name); ok {
+				err = svc.ReportUse(uid, c.Name, f.node, "Turning it on", f.log, c.Note)
+			}
+		}
 	case "uninstall":
 		err = svc.Uninstall(uid, home, c.Name)
 		if err == nil {

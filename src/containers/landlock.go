@@ -156,3 +156,20 @@ func wrapWithLandlock(command []string, workspace string, debug, scopeSignals bo
 	}
 	return append(append(wrapped, "--"), command...)
 }
+
+// WrapForVerification makes a command run in the sandbox of a user's workspace, with one App Store bundle more allowed than the user's
+// list has (the one being checked before it is switched on). With no sandbox on this server the command is returned as it is.
+func WrapForVerification(command []string, workspace, bundle string) []string {
+	wrapped := wrapWithLandlock(command, workspace, false, false)
+	if bundle == "" {
+		return wrapped
+	}
+	for i := 0; i+1 < len(wrapped); i++ {
+		if wrapped[i] == "--store-dir" {
+			out := append([]string{}, wrapped[:i+2]...)
+			out = append(out, "--store-extra", bundle)
+			return append(out, wrapped[i+2:]...)
+		}
+	}
+	return wrapped
+}

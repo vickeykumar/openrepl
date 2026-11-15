@@ -38,6 +38,7 @@ func main() {
 	noLandlock := flag.Bool("no-landlock", false, "no filesystem policy: only the network emulation (--net-emulation)")
 	netEmulation := flag.Bool("net-emulation", false, "the REPL gets the private network of its workspace (LLD 16); the server gave this process a socket as descriptor 3")
 	storeDir := flag.String("store-dir", "", "the App Store's folder (LLD 18): the bundles on the user's list are readable and on the PATH")
+	storeExtra := flag.String("store-extra", "", "one more App Store bundle that is readable and on the PATH for this run (the server checks that an app works for a user before it is on for them)")
 	netProbe := flag.Bool("net-probe", false, "the self test of the network emulation, run by the server at start")
 	netSelftest := flag.Bool("net-selftest", false, "internal: the second half of --net-probe")
 	flag.Parse()
@@ -83,7 +84,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Landlock sandbox not applied:", err)
 		os.Exit(failed)
 	}
-	extra := storeFolders(*storeDir, *workspace)
+	extra := storeFolders(*storeDir, *workspace, *storeExtra)
 	policy, err := landlock.Build(landlock.Options{Workspace: *workspace, HomeRoot: *homeRoot, ABI: abi, Self: landlock.Self(), Debug: *debug,
 		ScopeSignals: *scopeSignals && landlock.ScopeSupported(), ExtraRO: extra}, nil)
 	if err != nil {
@@ -158,7 +159,7 @@ func runWithoutPolicy(netEmulation bool, args []string) {
 // the environment of the program: PATH (after the system's), PYTHONPATH, LD_LIBRARY_PATH. It returns the folders the sandbox
 // must let through: the bundles and the user's own folder of the store (where env.sh is). It runs before the restriction, with
 // the server's rights, and a terminal cannot write the store: it cannot add itself to a list. A bad entry stops the start.
-func storeFolders(dir, workspace string) []string {
+func storeFolders(dir, workspace, extra string) []string {
 	if dir == "" {
 		return nil
 	}
@@ -172,6 +173,13 @@ func storeFolders(dir, workspace string) []string {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "landlock-helper: the App Store list of this user:", err)
 		os.Exit(failed)
+	}
+	if extra != "" {
+		if !appstore.ValidBundle(extra) {
+			fmt.Fprintln(os.Stderr, "landlock-helper: --store-extra is not a bundle name")
+			os.Exit(failed)
+		}
+		ids = append(ids, extra)
 	}
 	var folders []string
 	var have []string

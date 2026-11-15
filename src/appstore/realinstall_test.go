@@ -104,6 +104,10 @@ func TestEveryAppOfTheSafeListInstallsAndWorks(t *testing.T) {
 				t.Fatalf("not installed: %+v", app)
 			}
 			t.Logf("%s %s: %.0f MB, %d packages", name, app.Version, float64(app.Size)/(1<<20), app.Packages)
+			// what turning it on does for a user: the app's own check, with the user's environment
+			if err := RunVerify(context.Background(), st, "ann", app.ID, name, kind, "", nil); err != nil {
+				t.Fatalf("the check for a user: %v", err)
+			}
 			env := VarsFor(st.Dir, []string{app.ID}).Apply(os.Environ())
 			switch kind {
 			case KindLib:

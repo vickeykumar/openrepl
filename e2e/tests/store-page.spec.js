@@ -339,3 +339,32 @@ test("an app an admin turned on for everyone says so to the users, who may turn 
   await page.getByRole("button", { name: "Admin: turn it on for every signed-in user" }).click();
   await expect.poll(() => st.calls.some((c) => c[0] === "admin:default" && c[1].name === "jq" && c[1].on === true)).toBe(true);
 });
+
+test("on the store page, turning an app on is checked first; a failure shows the check's words and can be reported", async ({ page }) => {
+  const st = fake(page, { admin: false });
+  let fail = true;
+  await page.route("**/store/api/switch", async (route) => {
+    const body = route.request().postDataJSON();
+    st.calls.push(["switch", body]);
+    if (fail) {
+      await new Promise((r) => setTimeout(r, 250));
+      return route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ error: "verify", message: "numpy did not work for your terminals, so it is off.", name: "numpy", log: "ImportError: libopenblas.so.0", node: "gateway", views: Object.values(st.apps).map((v) => ({ ...v, on: false })), on: [] }) });
+    }
+    st.on.push(body.id);
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, views: Object.values(st.apps).map((v) => ({ ...v, on: st.on.includes(v.id) })), on: st.on }) });
+  });
+  await page.goto("/store#app/numpy");
+  const sw = page.locator(".store__switchrow .sswitch");
+  await sw.click();
+  await expect(sw).toHaveText("Checking…");
+  await expect(page.locator("#store-dialog h3")).toHaveText("numpy did not work for your terminals");
+  await expect(page.locator("#store-dialog pre")).toContainText("libopenblas.so.0");
+  await page.locator("#store-dialog button", { hasText: "Report to admin" }).click();
+  await page.locator("#store-dialog textarea").fill("it does not start");
+  await page.locator("#store-dialog button", { hasText: "Send report" }).click();
+  await expect.poll(() => st.calls.some((c) => c[0] === "report" && c[1].name === "numpy" && c[1].note === "it does not start")).toBe(true);
+  fail = false;
+  await sw.click();
+  await expect(page.locator(".store__note")).toContainText("checked and works");
+  await expect(sw).toHaveText("On");
+});

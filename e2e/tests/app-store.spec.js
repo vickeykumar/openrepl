@@ -127,3 +127,37 @@ for (const [theme, light] of [["ace/theme/github", true], ["ace/theme/monokai", 
     for (const [k, v] of Object.entries(ratio)) expect(v, k).toBeGreaterThan(3.5);
   });
 }
+
+// Turning an app on is checked first: the answer of the server says whether it worked for this user; when it did not, it is off, the
+// check's own words are shown, and the user can report it to the admin.
+test("switching an app on is checked first, and a failure is shown and can be reported", async ({ page }) => {
+  await ready(page);
+  const calls = [];
+  let fail = true;
+  const views = (on) => [{ name: "numpy", kind: "lib", state: "installed", version: "1.0.0", id: "numpy-1.0.0", sizeMB: 9, safe: true, on }];
+  await page.route("**/store/api/**", async (route) => {
+    const req = route.request();
+    const what = new URL(req.url()).pathname.split("/store/api/")[1];
+    if (req.method() === "POST") calls.push([what, req.postDataJSON()]);
+    if (what === "switch" && fail) {
+      await new Promise((r) => setTimeout(r, 300)); // the check takes a moment
+      return route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ error: "verify", message: "numpy did not work for your terminals, so it is off.", name: "numpy", log: "python3 -c import numpy: exit status 1\nImportError: libopenblas.so.0", node: "worker-1", views: views(false), on: [] }) });
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, views: views(what === "switch"), on: what === "switch" ? ["numpy-1.0.0"] : [], envScript: "/store/envs/me/env.sh", installer: "fake" }) });
+  });
+  await page.evaluate(() => { document.body.classList.add("is-signed-in"); window.prompt = () => "it does not start"; });
+  await page.locator("#appstore-button").click();
+  const sw = page.locator('[data-app="numpy"] .appstore__switch');
+  await sw.click();
+  await expect(sw).toHaveText("Checking…");
+  await expect(page.locator("#appstore-note")).toContainText("did not work for your terminals");
+  await expect(page.locator('[data-app="numpy"] .appstore__log')).toContainText("libopenblas.so.0");
+  await expect(sw).toHaveAttribute("aria-checked", "false");
+  await page.locator('[data-app="numpy"] button', { hasText: "Report to admin" }).click();
+  await expect.poll(() => calls.some((c) => c[0] === "report" && c[1].name === "numpy" && c[1].note === "it does not start")).toBe(true);
+  // when the check passes it is on, and it says it was checked
+  fail = false;
+  await sw.click();
+  await expect(sw).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("#appstore-note")).toContainText("checked and works");
+});

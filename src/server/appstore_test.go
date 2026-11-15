@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -379,4 +382,70 @@ func TestAnAdminInstallsForEveryoneAndTurnsItOnForEveryone(t *testing.T) {
 	if c := post(`{"action":"default","name":"nothing","on":true}`); c == http.StatusOK {
 		t.Error("an app that does not exist cannot be turned on")
 	}
+}
+
+// Switching an app on runs its check for the user on the node of their terminals: here (no worker holds their workspace), and on a
+// worker through the tunnel, which needs the tunnel AND the worker token. A failure is kept so that the user can report it.
+func TestAnAppIsCheckedForTheUserBeforeItIsOnAndAFailureCanBeReported(t *testing.T) {
+	svc := testStoreService(t, appstore.Fake{}, "tool:zzcli")
+	svc.Install("ann", "zzcli", "tool", false)
+	svc.Wait()
+	srv := &Server{options: &Options{WorkerToken: "s3cret"}}
+	app, _ := svc.AppByID("zzcli-1.0.0")
+	if _, wait, err := srv.verifyOnNode(context.Background(), svc, "ann", app); err != nil || wait {
+		t.Fatalf("a working tool: %v %v", err, wait)
+	}
+	os.WriteFile(filepath.Join(svc.Store().BundlePath("zzcli-1.0.0"), "bin", "zzcli"), []byte("#!/bin/sh\necho 'libonig missing'\nexit 3\n"), 0755)
+	node, wait, err := srv.verifyOnNode(context.Background(), svc, "ann", app)
+	if err == nil || wait || node != "gateway" || !strings.Contains(err.Error(), "libonig missing") {
+		t.Fatalf("a tool that does not start: %q %v %v", node, wait, err)
+	}
+	ghost := app
+	ghost.ID = "nothing-1.0.0"
+	if _, wait, err := srv.verifyOnNode(context.Background(), svc, "ann", ghost); err == nil || !wait {
+		t.Errorf("a node that does not have it yet says to wait: %v %v", wait, err)
+	}
+	// the report of a failure the user saw reaches the admin, once, with what the check said
+	rememberUseFailure("uid-1", "zzcli", "gateway", err2s(err))
+	f, ok := takeUseFailure("uid-1", "zzcli")
+	if !ok {
+		t.Fatal("the failure is kept")
+	}
+	if e := svc.ReportUse("uid-1", "zzcli", f.node, "Turning it on", f.log, "it does not start for me"); e != nil {
+		t.Fatal(e)
+	}
+	reps := svc.Reports()
+	if len(reps) != 1 || reps[0].Step != "Turning it on" || !strings.Contains(reps[0].Log, "libonig missing") || reps[0].Note != "it does not start for me" {
+		t.Fatalf("the report: %+v", reps)
+	}
+	if _, ok := takeUseFailure("uid-1", "zzcli"); ok {
+		t.Error("a failure is reported once")
+	}
+
+	// the worker's side: through the tunnel and with the token
+	hs := httptest.NewUnstartedServer(http.HandlerFunc(srv.handleStoreVerify))
+	hs.Config.ConnContext = trustTunnel
+	hs.Start()
+	defer hs.Close()
+	dial := func(ctx context.Context) (net.Conn, error) { return net.Dial("tcp", hs.Listener.Addr().String()) }
+	rep, derr := callWorkerVerify(context.Background(), "s3cret", dial, verifyRequest{Home: "ann", ID: "zzcli-1.0.0", Name: "zzcli", Kind: "tool"})
+	if derr != nil || rep.OK || !strings.Contains(rep.Error, "libonig missing") {
+		t.Fatalf("the worker answer: %+v %v", rep, derr)
+	}
+	if _, derr := callWorkerVerify(context.Background(), "wrong", dial, verifyRequest{Home: "ann", ID: "zzcli-1.0.0", Name: "zzcli", Kind: "tool"}); derr == nil {
+		t.Error("a wrong token must be refused")
+	}
+	plain := httptest.NewServer(http.HandlerFunc(srv.handleStoreVerify)) // a request that did not come through the tunnel
+	defer plain.Close()
+	if _, derr := callWorkerVerify(context.Background(), "s3cret", func(ctx context.Context) (net.Conn, error) { return net.Dial("tcp", plain.Listener.Addr().String()) },
+		verifyRequest{Home: "ann", ID: "zzcli-1.0.0", Name: "zzcli", Kind: "tool"}); derr == nil {
+		t.Error("a request outside the tunnel must be refused")
+	}
+}
+
+func err2s(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

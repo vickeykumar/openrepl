@@ -933,3 +933,71 @@ func TestAnAppOnForEveryoneIsOnForEverySignedInUserUntilTheyTurnItOff(t *testing
 		t.Errorf("defaults.json after the removal: %v", d)
 	}
 }
+
+// Switching an app on is checked first: the app's own verification runs with the user's environment, and what a failure says is kept.
+func TestTheVerificationOfAnAppRunsWithTheUsersEnvironmentAndSaysWhyItFailed(t *testing.T) {
+	svc, st := newService(t, Fake{}, "flask", "tool:zzcli", "npm:express")
+	for _, c := range []struct{ name, kind string }{{"flask", KindLib}, {"zzcli", KindTool}, {"express", KindNode}} {
+		if err := svc.Install("ann", c.name, c.kind, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc.Install("root", "wordcount", KindPlugin, true)
+	svc.Wait()
+	ctx := context.Background()
+	for _, c := range []struct{ id, name, kind string }{{"flask-1.0.0", "flask", KindLib}, {"zzcli-1.0.0", "zzcli", KindTool}, {"express-1.0.0", "express", KindNode}, {"wordcount-1.0.0", "wordcount", KindPlugin}} {
+		if err := RunVerify(ctx, st, "ann", c.id, c.name, c.kind, "", nil); err != nil {
+			t.Errorf("%s should work: %v", c.name, err)
+		}
+	}
+	// a tool that does not start, and a library that cannot be imported, say why
+	os.WriteFile(filepath.Join(st.BundlePath("zzcli-1.0.0"), "bin", "zzcli"), []byte("#!/bin/sh\necho 'zzcli: error while loading libonig.so.5'\nexit 3\n"), 0755)
+	err := RunVerify(ctx, st, "ann", "zzcli-1.0.0", "zzcli", KindTool, "", nil)
+	if err == nil || !strings.Contains(err.Error(), "libonig") {
+		t.Errorf("a tool that does not start: %v", err)
+	}
+	os.WriteFile(filepath.Join(st.BundlePath("flask-1.0.0"), "lib", "python3.10", "site-packages", "flask", "__init__.py"), []byte("raise ImportError('boom: libffi')\n"), 0644)
+	err = RunVerify(ctx, st, "ann", "flask-1.0.0", "flask", KindLib, "", nil)
+	if err == nil || !strings.Contains(err.Error(), "boom: libffi") {
+		t.Errorf("a library that cannot be imported: %v", err)
+	}
+	// not here yet is its own answer, a guest has no apps, and the node installs nothing it cannot start
+	if err := RunVerify(ctx, st, "ann", "nothing-1.0", "nothing", KindLib, "", nil); !errors.Is(err, ErrNotHere) {
+		t.Errorf("a bundle the node does not have: %v", err)
+	}
+	if err := RunVerify(ctx, st, "guest-3", "flask-1.0.0", "flask", KindLib, "", nil); err == nil {
+		t.Error("a guest cannot have an app on")
+	}
+	bad := filepath.Join(t.TempDir(), "zzcli-2.0.0")
+	os.MkdirAll(filepath.Join(bad, "bin"), 0755)
+	os.WriteFile(filepath.Join(bad, "bin", "zzcli"), []byte("#!/bin/sh\nexit 1\n"), 0755)
+	if err := checkBundle(ctx, bad, "zzcli", KindTool); err == nil {
+		t.Error("a tool that does not start must not be offered as installed")
+	}
+}
+
+// A node that installed a bundle in a replay proves it works before it says it has it.
+func TestANodeProvesWhatItInstalledInAReplayBeforeItSaysItHasIt(t *testing.T) {
+	a, _ := newService(t, Fake{}, "tool:jq")
+	a.Install("ann", "jq", KindTool, false)
+	a.Wait()
+	snap := a.Snapshot()
+	b, bst := newService(t, brokenTool{})
+	st := b.Apply(context.Background(), snap)
+	if st.Failed["jq-1.0.0"] == "" || bst.HasBundle("jq-1.0.0") {
+		t.Fatalf("a bundle that does not start was taken: %+v", st)
+	}
+	if st.Retry["jq-1.0.0"] == 0 {
+		t.Error("and it is tried again later")
+	}
+}
+
+// brokenTool installs a tool whose program does not start.
+type brokenTool struct{ Fake }
+
+func (brokenTool) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
+	if err := os.MkdirAll(filepath.Join(dest, "bin"), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dest, "bin", name), []byte("#!/bin/sh\necho 'cannot start'\nexit 9\n"), 0755)
+}
