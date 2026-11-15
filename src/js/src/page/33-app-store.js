@@ -154,13 +154,24 @@ function lookup(name) {
 
 var STATE_TEXT = { available: "", installing: "Installing", installed: "Installed", failed: "Failed", requested: "Waiting for an admin", rejected: "Not available" };
 
+var KIND_TEXT = { lib: "python", tool: "tool", node: "node", lang: "language", plugin: "plugin" };
+
+// the name of an app opens its page in the App Store (a new tab: the editor and its terminals stay as they are)
+function nameLink(name) {
+  var a = h("a", "appstore__name", name);
+  a.href = "./store#app/" + encodeURIComponent(name);
+  a.target = "_blank";
+  a.rel = "noopener";
+  return a;
+}
+
 function card(v) {
   var c = h("div", "appstore__app is-" + v.state);
   c.setAttribute("data-app", v.name);
   var top = h("div", "appstore__top");
-  top.appendChild(h("b", "appstore__name", v.name));
+  top.appendChild(nameLink(v.name));
+  top.appendChild(h("span", "appstore__tag", KIND_TEXT[v.kind || "lib"] || v.kind));
   if (v.version) top.appendChild(h("span", "appstore__ver", v.version));
-  if (v.kind === "tool") top.appendChild(h("span", "appstore__tag", "tool"));
   if (STATE_TEXT[v.state]) top.appendChild(h("span", "appstore__tag appstore__tag--" + v.state, STATE_TEXT[v.state]));
   if (v.state === "installed" && v.sizeMB) top.appendChild(h("span", "appstore__size", v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB"));
   c.appendChild(top);
@@ -203,7 +214,7 @@ function lookupCard(name) {
   var c = h("div", "appstore__app is-lookup");
   c.setAttribute("data-app", name);
   var top = h("div", "appstore__top");
-  top.appendChild(h("b", "appstore__name", name));
+  top.appendChild(nameLink(name));
   top.appendChild(h("span", "appstore__tag", "conda-forge"));
   c.appendChild(top);
   if (!l || l.loading) { c.appendChild(h("p", "appstore__sum", "Looking it up…")); lookup(name); return c; }

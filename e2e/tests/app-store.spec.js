@@ -51,6 +51,12 @@ test("a signed-in user installs, switches on and applies an app; a failure can b
   await expect(page.locator('[data-app="flask"]')).toContainText("Install");
   await expect(page.locator('[data-app="numpy"] .appstore__switch')).toHaveAttribute("aria-checked", "false");
   await expect(page.locator('[data-app="pillow"]')).toContainText("Failed");
+  // every app says its kind, its name opens its page in the store, and the link to the store says where it goes
+  await expect(page.locator('[data-app="flask"] .appstore__tag').first()).toHaveText("python");
+  const link = page.locator('[data-app="numpy"] a.appstore__name');
+  await expect(link).toHaveAttribute("href", "./store#app/numpy");
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(page.locator(".appstore__full")).toHaveText("Go to app store page");
   // search narrows the list
   await page.locator("#appstore-search").fill("num");
   await expect(page.locator(".appstore__app")).toHaveCount(1);
@@ -92,3 +98,31 @@ test("Genie and the terminal open the store on an app the user needs", async ({ 
   await expect(page.locator("#appstore-search")).toHaveValue("flask");
   await expect(page.locator('[data-app="flask"]')).toBeVisible();
 });
+
+// The quick dialog is painted by the editor theme like the other overlays of the IDE: a light editor theme gives a light dialog.
+for (const [theme, light] of [["ace/theme/github", true], ["ace/theme/monokai", false]]) {
+  test(`the quick App Store follows the editor theme (${theme.split("/").pop()})`, async ({ page }) => {
+    await page.addInitScript((t) => { try { localStorage.setItem("editor-theme", t); localStorage.removeItem("ide-palette"); } catch (e) {} }, theme);
+    await ready(page);
+    await page.waitForFunction(() => document.documentElement.hasAttribute("data-ide-theme"), null, { timeout: 15000 });
+    await page.route("**/store/api/**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, views: [{ name: "flask", kind: "lib", state: "installed", version: "3.0", id: "flask-3.0", sizeMB: 9, safe: true }, { name: "jq", kind: "tool", state: "failed", err: "no", safe: true }], on: [], envScript: "/store/envs/me/env.sh", installer: "fake" }) }));
+    await page.evaluate(() => document.body.classList.add("is-signed-in"));
+    await page.locator("#appstore-button").click();
+    await expect(page.locator('[data-app="flask"]')).toBeVisible();
+    const lum = await page.locator(".appstore__card").evaluate((e) => {
+      const c = getComputedStyle(e).backgroundColor.match(/[\d.]+/g).map(Number);
+      return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+    });
+    if (light) expect(lum).toBeGreaterThan(0.6); else expect(lum).toBeLessThan(0.3);
+    // the text is readable on it: the name and the tags
+    const ratio = await page.evaluate(() => {
+      const p = (c) => c.match(/[\d.]+/g).map(Number);
+      const L = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      const bg = L(p(getComputedStyle(document.querySelector(".appstore__app")).backgroundColor));
+      const out = {};
+      for (const sel of [".appstore__name", ".appstore__ver", ".appstore__tag"]) { const f = L(p(getComputedStyle(document.querySelector('[data-app="flask"] ' + sel)).color)); out[sel] = (Math.max(f, bg) + 0.05) / (Math.min(f, bg) + 0.05); }
+      return out;
+    });
+    for (const [k, v] of Object.entries(ratio)) expect(v, k).toBeGreaterThan(3.5);
+  });
+}

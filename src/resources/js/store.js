@@ -172,7 +172,7 @@
     if (!info && !v.summary && (v.kind === "lib" || v.kind === "tool")) loadInfo(v.name);
     c.appendChild(el("p", "sapp__sum", v.summary ? v.summary : info && info.summary ? info.summary : v.state === "failed" ? v.err || "The install stopped." : v.state === "rejected" && v.answer ? v.answer : ""));
     var row = el("div", "sapp__row");
-    if (v.kind && v.kind !== "lib") row.appendChild(el("span", "stag", { tool: "tool", node: "node", lang: "language", plugin: "plugin" }[v.kind] || v.kind));
+    row.appendChild(el("span", "stag", { lib: "python", tool: "tool", node: "node", lang: "language", plugin: "plugin" }[v.kind || "lib"] || v.kind));
     if (v.version) row.appendChild(el("span", "sapp__ver", v.version));
     var tag = stateTag(v);
     if (tag) row.appendChild(tag);
@@ -309,7 +309,7 @@
       var d = el("div");
       var a = el("a", "sapp__name", v.name + (v.version ? " " + v.version : "")); a.href = "#app/" + encodeURIComponent(v.name);
       d.appendChild(a);
-      d.appendChild(el("small", "", (v.kind === "tool" ? "Tool" : "Python library") + (v.state === "requested" ? ", asked for " + day(v.at) : v.state === "failed" ? ", failed" : "")));
+      d.appendChild(el("small", "", kindLabel(v.kind) + (v.state === "requested" ? ", asked for " + day(v.at) : v.state === "failed" ? ", failed" : "")));
       r.appendChild(d);
       var tag = stateTag(v); if (tag && v.state !== "installed") r.appendChild(tag);
       control(v, r);
