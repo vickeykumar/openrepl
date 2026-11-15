@@ -442,7 +442,7 @@
         box.setAttribute("data-node", n.node);
         var head = el("div", "store__nodehead");
         head.appendChild(el("b", "", n.node));
-        head.appendChild(el("span", "store__legend", Math.round(n.sizeMB) + " MB of " + d.limitMB + " MB (" + pct + "%)" + (n.seen ? " · answered " + new Date(n.seen).toLocaleTimeString() : "")));
+        head.appendChild(el("span", "store__legend", Math.round(n.sizeMB) + " MB of " + d.limitMB + " MB (" + pct + "%)" + (n.seen ? " · last heard " + new Date(n.seen).toLocaleTimeString() : "")));
         box.appendChild(head);
         var bar = el("div", "store-dialog__bar"); var fill = el("i"); fill.style.width = pct + "%"; bar.appendChild(fill); box.appendChild(bar);
         var ids = d.apps.filter(function (a) { return a.state === "installed"; });

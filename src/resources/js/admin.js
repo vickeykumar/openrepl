@@ -2495,7 +2495,7 @@
       if (tab === 'requests') {
         out.appendChild(h('h3', { text: 'Requests: not on the safe list' }));
         out.appendChild(table([
-          { key: 'name', label: 'App', cell: function (r) { return h('div', null, h('b', { text: r.name }), h('div', { class: 'sub', text: r.kind + ' · asked ' + when(new Date(r.at * 1000).toISOString()) })); } },
+          { key: 'name', label: 'App', cell: function (r) { return h('div', null, h('b', { text: r.name }), h('div', { class: 'sub' }, r.kind + ' · asked ', when(new Date(r.at * 1000).toISOString()))); } },
           { key: 'askers', label: 'Asked by', cell: function (r) { return r.askers.length + (r.askers.length === 1 ? ' user' : ' users'); } },
           { key: 'reason', label: 'Why', cell: function (r) { return h('span', { class: 'wrap-text', text: r.reason || '' }); } },
           { key: 'status', label: 'Status', cell: function () { return pill('Waiting', 'warn'); } },
@@ -2560,7 +2560,7 @@
         d.nodes.forEach(function (n) {
           var pct = Math.min(100, Math.round(100 * n.sizeMB / d.limitMB));
           var bar = h('div', { class: 'bar', style: 'height:7px;border-radius:4px;background:var(--line,#2b2d26);overflow:hidden;margin-top:4px' }, h('i', { style: 'display:block;height:100%;width:' + pct + '%;background:var(--accent,#b6e03a)' }));
-          out.appendChild(h('div', { class: 'card' }, h('b', { text: n.node }), ' ' + n.sizeMB.toFixed(0) + ' MB of ' + d.limitMB + (n.seen ? ' · answered ' + when(n.seen) : ''), bar));
+          out.appendChild(h('div', { class: 'card' }, h('b', { text: n.node }), ' ' + n.sizeMB.toFixed(0) + ' MB of ' + d.limitMB, n.seen ? h('span', null, ' · last heard ', when(n.seen)) : '', bar));
           var installedApps = d.apps.filter(function (a) { return a.state === 'installed'; });
           out.appendChild(table([
             { key: 'app', label: 'App on ' + n.node, cell: function (a) { return h('div', null, h('b', { text: a.name }), h('div', { class: 'sub', text: a.version + ' \u00b7 ' + a.kind })); } },
