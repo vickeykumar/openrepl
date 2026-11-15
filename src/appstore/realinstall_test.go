@@ -14,6 +14,7 @@ package appstore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -308,7 +309,8 @@ func installedPackages(t *testing.T, bundle string) []string {
 // over the tunnel: nothing is solved again.
 func TestAWorkerInstallsExactlyWhatTheLockOfTheGatewaySays(t *testing.T) {
 	svc, st := realService(t)
-	if err := svc.Install("ci", "flask", KindLib, false); err != nil {
+	// flask is installed already when the whole suite runs (the safe list test); alone, this test installs it
+	if err := svc.Install("ci", "flask", KindLib, false); err != nil && !errors.Is(err, ErrInstalled) {
 		t.Fatal(err)
 	}
 	svc.Wait()
@@ -354,7 +356,7 @@ func realPixiBin() string {
 // A package that sets variables when it is activated (proj: PROJ_DATA) has them in the environment of a user who has it on.
 func TestThePackagesActivationVariablesReachTheUsersEnvironment(t *testing.T) {
 	svc, st := realService(t)
-	if err := svc.Install("root", "proj", KindTool, true); err != nil {
+	if err := svc.Install("root", "proj", KindTool, true); err != nil && !errors.Is(err, ErrInstalled) {
 		t.Fatal(err)
 	}
 	svc.Wait()
