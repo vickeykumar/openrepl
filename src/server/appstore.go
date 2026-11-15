@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,8 +50,12 @@ var (
 
 type appNode struct {
 	appstore.NodeState
-	Seen time.Time `json:"-"`
+	Seen     time.Time      `json:"-"`
+	Fetching map[string]int `json:"-"` // bundles the node is fetching now, in percent
 }
+
+// appCommands are what an admin asked of a node (the bundles to make again), handed to a worker the next time it asks for the catalog.
+var appCommands = map[string][]string{}
 
 func storeService() *appstore.Service {
 	appStoreMu.Lock()
@@ -76,18 +83,36 @@ func newInstaller(dir string) appstore.Installer {
 	if os.Getenv("OPENREPL_STORE_INSTALLER") == "fake" {
 		return appstore.Fake{}
 	}
+	multi := appstore.Multi{Plugin: appstore.PluginInstaller{}}
 	bin := os.Getenv("OPENREPL_MICROMAMBA")
 	if bin == "" {
 		bin, _ = exec.LookPath("micromamba")
 	}
-	if bin == "" {
-		return appstore.Missing{Reason: "micromamba is not installed on this server (set OPENREPL_MICROMAMBA to its path)"}
+	if bin != "" {
+		py := os.Getenv("OPENREPL_STORE_PYTHON")
+		if py == "" {
+			py = appstore.PythonOf("python3")
+		}
+		multi.Conda = appstore.Mamba{Bin: bin, Dir: dir, Python: py}
 	}
-	py := os.Getenv("OPENREPL_STORE_PYTHON")
-	if py == "" {
-		py = appstore.PythonOf("python3")
+	if npm := findNpm(); npm != "" {
+		multi.Node = appstore.Npm{Bin: npm, Dir: dir}
 	}
-	return appstore.Mamba{Bin: bin, Dir: dir, Python: py}
+	return multi
+}
+
+// findNpm is npm: OPENREPL_NPM, the PATH, or the one of the nvm of the image (/root/.nvm, where the Node REPLs get theirs).
+func findNpm() string {
+	if p := os.Getenv("OPENREPL_NPM"); p != "" {
+		return p
+	}
+	if p, err := exec.LookPath("npm"); err == nil {
+		return p
+	}
+	if m, _ := filepath.Glob("/root/.nvm/versions/node/*/bin/npm"); len(m) > 0 {
+		return m[len(m)-1]
+	}
+	return ""
 }
 
 // memKV keeps the catalog in memory: a worker has no database and only applies what the gateway sends.
@@ -161,7 +186,12 @@ func (server *Server) startAppStore(ctx context.Context) {
 	}
 	cfg := appstore.Config{Store: appstore.Store{Dir: dir}, KV: kv, Installer: newInstaller(dir), Safe: storeSafeList, LimitMB: storeLimitMB, Apt: aptRunner()}
 	if worker {
-		cfg.Fetch = gatewayFetch(gatewayHTTPBase(server.options.WorkerServer), server.options.WorkerToken, dir)
+		base, id := gatewayHTTPBase(server.options.WorkerServer), server.options.WorkerID
+		if id == "" {
+			id, _ = os.Hostname()
+		}
+		cfg.Fetch = gatewayFetch(base, server.options.WorkerToken, dir)
+		cfg.OnProgress = progressSender(base, server.options.WorkerToken, id)
 	}
 	svc := appstore.New(cfg)
 	appStoreMu.Lock()
@@ -279,7 +309,13 @@ func (server *Server) handleStoreSync(w http.ResponseWriter, r *http.Request) {
 	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in) == nil && nodeIDPattern.MatchString(in.Node) {
 		appStoreMu.Lock()
 		appNodes[in.Node] = appNode{NodeState: in.State, Seen: time.Now()}
+		cmds := appCommands[in.Node]
+		delete(appCommands, in.Node)
 		appStoreMu.Unlock()
+		snap := svc.Snapshot()
+		snap.Reinstall = cmds
+		writeJSON(w, http.StatusOK, snap)
+		return
 	}
 	writeJSON(w, http.StatusOK, svc.Snapshot())
 }
@@ -332,6 +368,9 @@ func storeError(w http.ResponseWriter, err error) {
 	case appstore.ErrTooSoon:
 		code = http.StatusTooManyRequests
 	}
+	if errors.Is(err, appstore.ErrInUse) {
+		code = http.StatusConflict
+	}
 	writeJSON(w, code, map[string]string{"error": err.Error()})
 }
 
@@ -369,6 +408,29 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			writeJSON(w, http.StatusOK, info)
+		case "search":
+			if !allowStoreSearch(uid) {
+				writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Searching too fast: wait a second."})
+				return
+			}
+			hits, err := svc.Search(r.Context(), r.URL.Query().Get("q"), r.URL.Query().Get("kind"))
+			if hits == nil {
+				hits = []appstore.Hit{}
+			}
+			msg := ""
+			if err != nil {
+				msg = err.Error()
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{"hits": hits, "error": msg})
+		case "size":
+			res, err := svc.Estimate(r.Context(), r.URL.Query().Get("name"), r.URL.Query().Get("kind"))
+			if err != nil {
+				writeJSON(w, http.StatusOK, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{"version": res.Version, "packages": res.Packages, "downloadMB": res.DownloadMB, "diskMB": res.DiskMB})
+		case "plugins":
+			writeJSON(w, http.StatusOK, map[string]interface{}{"plugins": storePlugins(svc, home)})
 		default:
 			http.NotFound(w, r)
 		}
@@ -395,6 +457,11 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 		err = svc.Switch(home, c.ID, c.On)
 	case "report":
 		err = svc.Report(uid, c.Name, c.Note)
+	case "uninstall":
+		err = svc.Uninstall(uid, home, c.Name)
+		if err == nil {
+			kickStore()
+		}
 	case "ack":
 		svc.Ack(uid, c.Name)
 	default:
@@ -487,11 +554,14 @@ func lookupApp(ctx context.Context, name string) (appInfo, error) {
 // ---- the admin's side ----------------------------------------------------------------------------------------------------
 
 type storeNodeRow struct {
-	Node   string            `json:"node"`
-	Have   []string          `json:"have"`
-	Failed map[string]string `json:"failed,omitempty"`
-	SizeMB float64           `json:"sizeMB"`
-	Seen   string            `json:"seen,omitempty"`
+	Node     string             `json:"node"`
+	Have     []string           `json:"have"`
+	Failed   map[string]string  `json:"failed,omitempty"`
+	SizeMB   float64            `json:"sizeMB"`
+	Seen     string             `json:"seen,omitempty"`
+	Sizes    map[string]float64 `json:"sizes,omitempty"`    // MB of each bundle on the node
+	Fetching map[string]int     `json:"fetching,omitempty"` // bundles it is fetching now, in percent
+	Pending  []string           `json:"pending,omitempty"`  // bundles an admin asked it to make again, not taken yet
 }
 
 // handleAdminStore is the Apps page of the dashboard: GET the whole picture, POST one decision.
@@ -502,11 +572,21 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		local := appstore.NodeState{Have: svc.Store().Bundles(), SizeMB: float64(svc.Store().Size()) / (1 << 20), At: time.Now().Unix()}
+		local := appstore.NodeState{Have: svc.Store().Bundles(), SizeMB: float64(svc.Store().Size()) / (1 << 20), At: time.Now().Unix(), Sizes: map[string]float64{}}
+		for _, id := range local.Have {
+			local.Sizes[id] = float64(svc.Store().BundleSize(id)) / (1 << 20)
+		}
 		appStoreMu.Lock()
-		rows := []storeNodeRow{{Node: "gateway", Have: local.Have, Failed: appLocal.Failed, SizeMB: local.SizeMB}}
-		for id, n := range appNodes {
-			rows = append(rows, storeNodeRow{Node: id, Have: n.Have, Failed: n.Failed, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339)})
+		rows := []storeNodeRow{{Node: "gateway", Have: local.Have, Failed: appLocal.Failed, SizeMB: local.SizeMB, Sizes: local.Sizes}}
+		ids := make([]string, 0, len(appNodes))
+		for id := range appNodes {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			n := appNodes[id]
+			rows = append(rows, storeNodeRow{Node: id, Have: n.Have, Failed: n.Failed, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339), Sizes: n.Sizes,
+				Fetching: n.Fetching, Pending: append([]string(nil), appCommands[id]...)})
 		}
 		appStoreMu.Unlock()
 		users := map[string]int{}
@@ -527,6 +607,8 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 	}
 	var c struct {
 		Action  string   `json:"action"`
+		Node    string   `json:"node"`
+		ID      string   `json:"id"`
 		Version string   `json:"version"`
 		Name    string   `json:"name"`
 		Kind    string   `json:"kind"`
@@ -546,6 +628,22 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 	switch c.Action {
 	case "install":
 		err = svc.Install(who, c.Name, c.Kind, true)
+	case "reinstall":
+		// make a bundle again on one server: the gateway at once, a worker the next time it asks for the catalog (within a minute)
+		if !appstore.ValidBundle(c.ID) {
+			err = fmt.Errorf("%q is not a bundle", c.ID)
+		} else if c.Node == "gateway" {
+			err = svc.Store().RemoveBundle(c.ID)
+		} else {
+			appStoreMu.Lock()
+			if _, known := appNodes[c.Node]; !known {
+				err = fmt.Errorf("%q is not a worker that has asked for the catalog", c.Node)
+			} else if !hasString(appCommands[c.Node], c.ID) {
+				appCommands[c.Node] = append(appCommands[c.Node], c.ID)
+			}
+			appStoreMu.Unlock()
+		}
+		detail = c.Node + ": " + c.ID
 	case "pickversion":
 		err = svc.InstallVersion(who, c.Name, c.Kind, c.Version)
 		detail = c.Name + " " + c.Version
@@ -650,12 +748,12 @@ func appStoreHealth() (status, detail string) {
 
 // gatewayFetch is how a worker gets a finished bundle: the gateway sends it as a .tar.gz (handleStoreBundle), so the worker needs
 // no solve and no internet. It is nil when the worker cannot reach its gateway over HTTP.
-func gatewayFetch(base, token, dir string) func(ctx context.Context, id, dest string) error {
+func gatewayFetch(base, token, dir string) func(ctx context.Context, id, dest string, progress func(pct int)) error {
 	if base == "" || token == "" {
 		return nil
 	}
 	client := &http.Client{Timeout: 20 * time.Minute}
-	return func(ctx context.Context, id, dest string) error {
+	return func(ctx context.Context, id, dest string, progress func(pct int)) error {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/store/bundle?id="+url.QueryEscape(id), nil)
 		if err != nil {
 			return err
@@ -669,15 +767,83 @@ func gatewayFetch(base, token, dir string) func(ctx context.Context, id, dest st
 		if res.StatusCode != http.StatusOK {
 			return fmt.Errorf("the gateway answered %s", res.Status)
 		}
-		if err := appstore.ReadBundle(res.Body, dest); err != nil {
+		// the gateway says how many bytes the files have, so that the percent can be worked out while they arrive
+		total, _ := strconv.ParseInt(res.Header.Get("X-Openrepl-Bundle-Bytes"), 10, 64)
+		if err := appstore.ReadBundleProgress(res.Body, dest, total, progress); err != nil {
 			return err
 		}
 		if _, err := os.Stat(filepath.Join(dest, ".openrepl-bundle.json")); err != nil {
 			os.RemoveAll(dest)
 			return fmt.Errorf("the bundle arrived without its marker")
 		}
+		if progress != nil {
+			progress(100)
+		}
 		return nil
 	}
+}
+
+// progressSender tells the gateway how far a fetch is (POST /store/progress, the worker token), at most once a second and always at 100.
+func progressSender(base, token, node string) func(id string, pct int) {
+	if base == "" || token == "" {
+		return nil
+	}
+	var mu sync.Mutex
+	var last time.Time
+	client := &http.Client{Timeout: 10 * time.Second}
+	return func(id string, pct int) {
+		mu.Lock()
+		if pct < 100 && time.Since(last) < time.Second {
+			mu.Unlock()
+			return
+		}
+		last = time.Now()
+		mu.Unlock()
+		body, _ := json.Marshal(map[string]interface{}{"node": node, "id": id, "pct": pct})
+		req, err := http.NewRequest(http.MethodPost, base+"/store/progress", strings.NewReader(string(body)))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		if res, err := client.Do(req); err == nil {
+			res.Body.Close()
+		}
+	}
+}
+
+// handleStoreProgress takes what a worker says of a fetch (the worker token) for the admin's table of that server.
+func (server *Server) handleStoreProgress(w http.ResponseWriter, r *http.Request) {
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if server.options.WorkerToken == "" || subtle.ConstantTimeCompare([]byte(got), []byte(server.options.WorkerToken)) != 1 {
+		http.Error(w, "not allowed", http.StatusUnauthorized)
+		return
+	}
+	var in struct {
+		Node string `json:"node"`
+		ID   string `json:"id"`
+		Pct  int    `json:"pct"`
+	}
+	if r.Method != http.MethodPost || json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&in) != nil || !nodeIDPattern.MatchString(in.Node) || !appstore.ValidBundle(in.ID) {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	appStoreMu.Lock()
+	n := appNodes[in.Node]
+	if n.Fetching == nil {
+		n.Fetching = map[string]int{}
+	}
+	if in.Pct >= 100 {
+		delete(n.Fetching, in.ID)
+	} else {
+		n.Fetching[in.ID] = in.Pct
+	}
+	if n.Seen.IsZero() {
+		n.Seen = time.Now()
+	}
+	appNodes[in.Node] = n
+	appStoreMu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleStoreBundle sends a finished bundle to a worker (GET /store/bundle?id=<name>-<version>, the worker token).
@@ -694,6 +860,7 @@ func (server *Server) handleStoreBundle(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("X-Openrepl-Bundle-Bytes", strconv.FormatInt(svc.Store().BundleSize(id), 10))
 	if err := svc.Store().WriteBundle(id, w); err != nil {
 		log.Printf("appstore: sending %s to %s: %v", id, r.RemoteAddr, err)
 	}
@@ -720,4 +887,55 @@ func storePython() string {
 		return v
 	}
 	return appstore.PythonOf("python3")
+}
+
+// allowStoreSearch lets a user search once a second at most: a search is a call to conda-forge or npm.
+var (
+	searchMu   sync.Mutex
+	searchLast = map[string]time.Time{}
+)
+
+func allowStoreSearch(uid string) bool {
+	searchMu.Lock()
+	defer searchMu.Unlock()
+	if time.Since(searchLast[uid]) < 800*time.Millisecond {
+		return false
+	}
+	if len(searchLast) > 5000 {
+		searchLast = map[string]time.Time{}
+	}
+	searchLast[uid] = time.Now()
+	return true
+}
+
+type storePlugin struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Code string `json:"code"`
+}
+
+// storePlugins are the editor plugins that are on for this user, with their scripts (the page runs each in a sandboxed frame).
+func storePlugins(svc *appstore.Service, home string) []storePlugin {
+	out := []storePlugin{}
+	on := map[string]bool{}
+	for _, id := range svc.MyList(home) {
+		on[id] = true
+	}
+	for _, a := range svc.Apps() {
+		if a.Kind == appstore.KindPlugin && a.State == appstore.StateInstalled && on[a.ID] {
+			if code, err := svc.Store().PluginCode(a.ID); err == nil {
+				out = append(out, storePlugin{ID: a.ID, Name: a.Name, Code: code})
+			}
+		}
+	}
+	return out
+}
+
+func hasString(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }

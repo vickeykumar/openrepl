@@ -254,7 +254,26 @@ func (s Store) Homes() []string {
 	return out
 }
 
-// DefaultSafeList is what a signed-in user may install without asking, until an admin saves a list of their own. The CI installs every
+// DefaultSafeList is what a signed-in user may install without asking, until an admin saves a list of their own. "tool:x" is a program,
+// "npm:x" a Node library, the rest are Python libraries. The CI installs every
 // one of them for real (realinstall_test.go), so a name that conda-forge cannot solve with the image's Python is found there.
 var DefaultSafeList = []string{"flask", "requests", "numpy", "pandas", "scipy", "matplotlib", "pillow", "beautifulsoup4", "lxml",
-	"pyyaml", "jinja2", "click", "sqlalchemy", "pytest", "jq"}
+	"pyyaml", "jinja2", "click", "sqlalchemy", "pytest", "tool:jq", "npm:express", "npm:lodash", "npm:axios", "npm:moment"}
+
+// BundleSize is the size a finished bundle said it had when it was made (its marker), 0 for one that is not there. It is cheap: the
+// files are not walked.
+func (s Store) BundleSize(id string) int64 {
+	p := s.BundlePath(id)
+	if p == "" {
+		return 0
+	}
+	raw, err := os.ReadFile(filepath.Join(p, markerName))
+	if err != nil {
+		return 0
+	}
+	var m Marker
+	if json.Unmarshal(raw, &m) != nil {
+		return 0
+	}
+	return m.Size
+}

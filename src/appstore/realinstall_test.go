@@ -26,6 +26,20 @@ var realOnce sync.Once
 var realSvc *Service
 var realStore Store
 
+// npm: OPENREPL_NPM, the PATH, or the nvm of the image (where the Node REPLs get theirs)
+func findRealNpm() string {
+	if p := os.Getenv("OPENREPL_NPM"); p != "" {
+		return p
+	}
+	if p, err := exec.LookPath("npm"); err == nil {
+		return p
+	}
+	if m, _ := filepath.Glob("/root/.nvm/versions/node/*/bin/npm"); len(m) > 0 {
+		return m[len(m)-1]
+	}
+	return ""
+}
+
 func realService(t *testing.T) (*Service, Store) {
 	t.Helper()
 	realOnce.Do(func() {
@@ -42,7 +56,11 @@ func realService(t *testing.T) (*Service, Store) {
 		}
 		py := PythonOf("python3")
 		realStore = Store{Dir: dir}
-		realSvc = New(Config{Store: realStore, KV: newKV(), Installer: Mamba{Bin: bin, Dir: dir, Python: py}, Safe: func() []string { return DefaultSafeList }})
+		inst := Multi{Conda: Mamba{Bin: bin, Dir: dir, Python: py}, Plugin: PluginInstaller{}}
+		if npm := findRealNpm(); npm != "" {
+			inst.Node = Npm{Bin: npm, Dir: dir}
+		}
+		realSvc = New(Config{Store: realStore, KV: newKV(), Installer: inst, Safe: func() []string { return DefaultSafeList }})
 	})
 	if realSvc == nil {
 		t.Fatal("micromamba was not found: set OPENREPL_MICROMAMBA")
@@ -54,19 +72,25 @@ func realService(t *testing.T) (*Service, Store) {
 var realModules = map[string]string{"beautifulsoup4": "bs4", "pillow": "PIL", "pyyaml": "yaml", "scikit-learn": "sklearn"}
 
 // the tools of the safe list: a program that must run
-var realTools = map[string][]string{"jq": {"jq", "--version"}, "pytest": {"pytest", "--version"}, "flask": {"flask", "--version"}}
+var realTools = map[string][]string{"pytest": {"pytest", "--version"}, "flask": {"flask", "--version"}}
 
 func TestEveryAppOfTheSafeListInstallsAndWorks(t *testing.T) {
 	svc, st := realService(t)
 	t.Logf("python of the server: %q, installer: %s", PythonOf("python3"), svc.Installer().Name())
-	names := DefaultSafeList
-	if only := os.Getenv("OPENREPL_REAL_ONLY"); only != "" { // a quick run on a laptop: a few names; the CI installs them all
-		names = strings.Split(only, ",")
+	entries := DefaultSafeList
+	if only := os.Getenv("OPENREPL_REAL_ONLY"); only != "" { // a quick run on a laptop: a few entries; the CI installs them all
+		entries = strings.Split(only, ",")
 	}
-	for _, name := range names {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			if err := svc.Install("ci", name, KindLib, false); err != nil {
+	for _, entry := range entries {
+		kind, name := safeEntry(entry)
+		entry := entry
+		t.Run(entry, func(t *testing.T) {
+			if kind == KindNode {
+				if findRealNpm() == "" {
+					t.Skip("npm is not here")
+				}
+			}
+			if err := svc.Install("ci", name, kind, false); err != nil {
 				t.Fatal(err)
 			}
 			svc.Wait()
@@ -81,26 +105,114 @@ func TestEveryAppOfTheSafeListInstallsAndWorks(t *testing.T) {
 			}
 			t.Logf("%s %s: %.0f MB, %d packages", name, app.Version, float64(app.Size)/(1<<20), app.Packages)
 			env := VarsFor(st.Dir, []string{app.ID}).Apply(os.Environ())
-			// the system's python3 imports it through the PYTHONPATH of the bundle: what a user's terminal does
-			if mod := realModules[name]; mod != "" || moduleOf(st.BundlePath(app.ID), name) != "" {
+			switch kind {
+			case KindLib:
+				// the system's python3 imports it through the PYTHONPATH of the bundle: what a user's terminal does
+				mod := realModules[name]
 				if mod == "" {
 					mod = moduleOf(st.BundlePath(app.ID), name)
 				}
-				c := exec.Command("python3", "-c", "import "+mod)
-				c.Env, c.Dir = env, os.TempDir()
-				if out, err := c.CombinedOutput(); err != nil {
-					t.Errorf("python3 cannot import %s: %v\n%s", mod, err, tailOf(out))
+				if mod != "" {
+					c := exec.Command("python3", "-c", "import "+mod)
+					c.Env, c.Dir = env, os.TempDir()
+					if out, err := c.CombinedOutput(); err != nil {
+						t.Errorf("python3 cannot import %s: %v\n%s", mod, err, tailOf(out))
+					}
 				}
-			}
-			if cmd, ok := realTools[name]; ok {
-				// the program is looked up in the bundle's own bin (exec looks in the PATH of this process, not in the one given to the child)
-				c := exec.Command(filepath.Join(st.BundlePath(app.ID), "bin", cmd[0]), cmd[1:]...)
-				c.Env, c.Dir = env, os.TempDir()
-				if out, err := c.CombinedOutput(); err != nil {
-					t.Errorf("%s does not run: %v\n%s", strings.Join(cmd, " "), err, tailOf(out))
+				if cmd, ok := realTools[name]; ok {
+					runInBundle(t, st, app, env, cmd)
+				}
+			case KindTool:
+				runInBundle(t, st, app, env, []string{name, "--version"})
+			case KindNode:
+				node, err := exec.LookPath("node")
+				if err != nil {
+					if m, _ := filepath.Glob("/root/.nvm/versions/node/*/bin/node"); len(m) > 0 {
+						node, err = m[len(m)-1], nil
+					}
+				}
+				if err == nil {
+					c := exec.Command(node, "-e", "require('"+name+"'); console.log('loaded')")
+					c.Env, c.Dir = env, os.TempDir()
+					if out, err := c.CombinedOutput(); err != nil || !strings.Contains(string(out), "loaded") {
+						t.Errorf("node cannot load %s: %v\n%s", name, err, tailOf(out))
+					}
 				}
 			}
 		})
+	}
+}
+
+// the program is looked up in the bundle's own folder (exec looks in the PATH of this process, not in the one given to the child)
+func runInBundle(t *testing.T, st Store, app App, env []string, cmd []string) {
+	t.Helper()
+	bin := filepath.Join(st.BundlePath(app.ID), "bin", cmd[0])
+	if _, err := os.Stat(bin); err != nil {
+		bin = filepath.Join(st.BundlePath(app.ID), "node_modules", ".bin", cmd[0])
+	}
+	c := exec.Command(bin, cmd[1:]...)
+	c.Env, c.Dir = env, os.TempDir()
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Errorf("%s does not run: %v\n%s", strings.Join(cmd, " "), err, tailOf(out))
+	}
+}
+
+// A language and a plugin, the two kinds an admin installs: a language brings a program a terminal can run, a plugin its script.
+func TestALanguageAndAPluginAreInstalledByAnAdmin(t *testing.T) {
+	svc, st := realService(t)
+	if err := svc.Install("ci", "lua", KindLang, false); err != ErrNeedsApproval {
+		t.Fatalf("a user cannot install a language: %v", err)
+	}
+	if err := svc.Install("root", "lua", KindLang, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Install("root", "wordcount", KindPlugin, true); err != nil {
+		t.Fatal(err)
+	}
+	svc.Wait()
+	var lua, plugin App
+	for _, a := range svc.Apps() {
+		switch a.Name {
+		case "lua":
+			lua = a
+		case "wordcount":
+			plugin = a
+		}
+	}
+	if lua.State != StateInstalled || plugin.State != StateInstalled {
+		t.Fatalf("lua %+v, plugin %+v", lua, plugin)
+	}
+	env := VarsFor(st.Dir, []string{lua.ID}).Apply(os.Environ())
+	c := exec.Command(filepath.Join(st.BundlePath(lua.ID), "bin", "lua"), "-e", "print('lua works')")
+	c.Env, c.Dir = env, os.TempDir()
+	if out, err := c.CombinedOutput(); err != nil || !strings.Contains(string(out), "lua works") {
+		t.Errorf("lua does not run: %v %s", err, tailOf(out))
+	}
+	code, err := st.PluginCode(plugin.ID)
+	if err != nil || !strings.Contains(code, "openreplPlugin") {
+		t.Errorf("the plugin's script: %v %.80s", err, code)
+	}
+}
+
+// The search of the store, for real: conda-forge and npm answer, and what is found can be sized before it is installed.
+func TestSearchAndSizeAreAnsweredForReal(t *testing.T) {
+	svc, _ := realService(t)
+	hits, err := svc.Search(context.Background(), "flask", "")
+	if err != nil || len(hits) == 0 {
+		t.Fatalf("a search for flask: %v %v", err, hits)
+	}
+	found := false
+	for _, h := range hits {
+		if h.Name == "flask" && h.Kind == KindLib && h.Version != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("conda-forge did not list flask: %v", hits)
+	}
+	r, err := svc.Estimate(context.Background(), "requests", KindLib)
+	if err != nil || r.Version == "" || r.DownloadMB <= 0 || r.Packages < 2 {
+		t.Errorf("the size of requests before it is installed: %+v %v", r, err)
 	}
 }
 
@@ -198,7 +310,7 @@ func TestAWorkerTakesTheBundlesFromTheGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	worker := New(Config{Store: st, KV: newKV(), Installer: Missing{Reason: "a worker must not need to install"},
-		Fetch: func(ctx context.Context, id, dest string) error {
+		Fetch: func(ctx context.Context, id, dest string, progress func(int)) error {
 			return ReadBundle(bytes.NewReader(tarball.Bytes()), dest)
 		}})
 	state := worker.Apply(context.Background(), snap)
@@ -210,7 +322,7 @@ func TestAWorkerTakesTheBundlesFromTheGateway(t *testing.T) {
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("flask from the tarball does not import: %v\n%s", err, tailOf(out))
 	}
-	if err := checkBundle(context.Background(), st.BundlePath(flask.ID), "flask"); err != nil {
+	if err := checkBundle(context.Background(), st.BundlePath(flask.ID), "flask", KindLib); err != nil {
 		t.Fatalf("the bundle from the tarball fails its check: %v", err)
 	}
 }

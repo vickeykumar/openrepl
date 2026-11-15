@@ -126,6 +126,7 @@ function request(v) {
 }
 function switchApp(v, on) {
   changed = true;
+  if (window.AppStorePlugins) setTimeout(function () { window.AppStorePlugins.refresh(); }, 600); // a plugin starts or stops at once
   return act("switch", { id: v.id, on: on }, on ? v.name + " is on for your terminals." : v.name + " is off for your terminals.");
 }
 function report(v) {

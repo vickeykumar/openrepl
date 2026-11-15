@@ -92,7 +92,11 @@ func addEntry(tw *tar.Writer, path, rel string, info os.FileInfo) error {
 // ReadBundle unpacks a bundle made by WriteBundle into dest (which must not exist). Nothing may leave dest: a name that is
 // absolute or climbs, a symlink that points outside, or a kind of file that is not a file, folder or link is refused, and what was
 // written is removed.
-func ReadBundle(r io.Reader, dest string) (err error) {
+func ReadBundle(r io.Reader, dest string) error { return ReadBundleProgress(r, dest, 0, nil) }
+
+// ReadBundleProgress is ReadBundle that says how far it is (0 to 100, about once for each percent) when it knows how many bytes the
+// files will have (total, the size in the bundle's marker; 0 when it does not).
+func ReadBundleProgress(r io.Reader, dest string, total int64, progress func(pct int)) (err error) {
 	if _, e := os.Lstat(dest); e == nil {
 		return fmt.Errorf("%s exists already", dest)
 	}
@@ -108,6 +112,17 @@ func ReadBundle(r io.Reader, dest string) (err error) {
 	tr := tar.NewReader(gz)
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		return err
+	}
+	var done int64
+	last := -1
+	tick := func(n int64) {
+		done += n
+		if progress != nil && total > 0 {
+			if p := int(done * 100 / total); p != last && p <= 100 {
+				last = p
+				progress(p)
+			}
+		}
 	}
 	root := filepath.Clean(dest)
 	inside := func(p string) bool { return p == root || strings.HasPrefix(p, root+string(filepath.Separator)) }
@@ -140,7 +155,9 @@ func ReadBundle(r io.Reader, dest string) (err error) {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(f, tr); err != nil {
+			n, err := io.Copy(f, tr)
+			tick(n)
+			if err != nil {
 				f.Close()
 				return err
 			}

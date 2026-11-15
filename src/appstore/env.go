@@ -40,6 +40,13 @@ func VarsFor(dir string, ids []string) Vars {
 		if isDir(filepath.Join(root, "lib", "node_modules")) {
 			v.NodePath = append(v.NodePath, filepath.Join(root, "lib", "node_modules"))
 		}
+		// a Node bundle made by npm: <bundle>/node_modules, with its .bin
+		if isDir(filepath.Join(root, "node_modules")) {
+			v.NodePath = append(v.NodePath, filepath.Join(root, "node_modules"))
+			if isDir(filepath.Join(root, "node_modules", ".bin")) {
+				v.PathAdd = append(v.PathAdd, filepath.Join(root, "node_modules", ".bin"))
+			}
+		}
 	}
 	return v
 }

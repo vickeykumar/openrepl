@@ -235,8 +235,9 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 		if n == "" {
 			continue
 		}
-		if !appstore.ValidName(n) {
-			return s, fmt.Errorf("%q is not a conda-forge package name", n)
+		bare := strings.TrimPrefix(strings.TrimPrefix(n, "npm:"), "tool:")
+		if !appstore.ValidName(bare) {
+			return s, fmt.Errorf("%q is not a package name (a library: flask, a tool: tool:jq, a Node library: npm:express)", n)
 		}
 		safe = append(safe, n)
 	}

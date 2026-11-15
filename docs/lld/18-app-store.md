@@ -107,16 +107,35 @@ System (admin): apt packages), a search field, the chips (All, Installed, Safe t
 - **Settings**: the safe list, the size limit, the channel (conda-forge, not editable), the switch, and the apt list.
 - The **Health** page has an "App Store" card (`appStoreHealth`): the installer (a warning when micromamba is missing), apps installed, size against the limit, failed installs, workers that could not apply the catalog.
 
-## 8. What is not built, and what was not tested
+## 8. More kinds, search, size, progress, uninstall (2026-11-14, the second round)
 
-- **Percent of a download on a worker** ("fetching 40%" in the canvas): a worker tells the gateway what it has only after each replay, so the admin sees "fetching" and not a percentage.
-- **Search of all of conda-forge**: the store searches the safe list and the apps it knows, and looks up one exact name on conda-forge (summary, newest version, the versions for an admin); it has no full index search.
-- **The size of an app before it is installed** (the canvas shows "about 14 MB"): shown once it is installed.
-- **Object-store tarballs**: instead a worker takes the finished bundle as a .tar.gz from the **gateway** (`GET /store/bundle`, worker token) and falls back to installing it itself; the object store is not used.
-- **The import check runs outside the sandbox** (as the server, in an empty folder, 60 s limit), not inside a terminal's sandbox.
-- Node libraries (npm) and other kinds (languages, editor plugins): their sections say so; `NODE_PATH` is set for a bundle that has `lib/node_modules`, nothing installs them.
-- A user's own switch reaching a worker takes up to a minute (the poll).
-- A real micromamba install **was run** (2026-11-14, in the new image): the owner's first try failed on `MAMBA_NO_RC=1` ("Bad conversion of configurable 'no_rc'": micromamba cannot read a switch from the environment), so only the two folders
-  are passed by environment and the switches are flags (`TestMambaIsGivenNoSwitchesInTheEnvironment`). With that, `python=3.10 beautifulsoup4` solves (29 packages), installs (130 MB, 62 MB of cache shared by hard links), starts, and the system's
-  `python3` imports it through `PYTHONPATH`. Not run: an install through the server's own job with a signed-in user, and a worker fetching a real bundle from a real gateway.
-- A browser test cannot sign in: the signed-in screens are tested against stand-in answers.
+- **Kinds** (`App.Kind`): `lib` (a Python library, conda-forge, solved with the server's Python), `tool` (a program, conda-forge, **no Python pinned**: jq went from 112 MB to 7 MB), `node` (a Node library, npm), `lang` (a language: lua, ruby,
+  julia, r-base as samples; conda-forge, installed by an admin), `plugin` (an editor plugin that comes with the server; installed by an admin). The safe list names the kind of an entry: `flask` (library), `tool:jq`, `npm:express`.
+  A language and a plugin are never on a user's safe list: a user requests them. One name has one kind (installing it again as another kind is refused). `Installer` takes the kind; `Multi` routes: conda-forge to `Mamba`, `node` to `Npm`, `plugin` to `PluginInstaller`.
+- **Node libraries** (`Npm`): `npm install --prefix <bundle> --ignore-scripts --omit=dev <name>@<version>`; the bundle is `<bundle>/node_modules` with its `.bin` (on the terminal's `PATH` after the system's) and `NODE_PATH`. The image's Node is **12.22.9**, and
+  the latest of many libraries needs a newer one (express 5 needs 18), so the version is the **newest whose `engines.node` the server's Node satisfies** (`NodeSatisfies`, a small reader of semver ranges; `npm view <name> versions`, then `engines.node` of each candidate, at most 40).
+  Checked for real: express 4.22.3, axios 1.21.1, lodash 4.18.1, moment 2.31.0 install and load. The check step loads the module with the server's `node`. npm is found by `OPENREPL_NPM`, the PATH, or `/root/.nvm/versions/node/*/bin/npm`.
+- **Editor plugins** (`plugins.go`; samples `wordcount`, `clock`): made from text in the Go source, nothing is downloaded. A plugin script defines `openreplPlugin(api)`. `34-store-plugins.js` runs each plugin that is on for the user in a hidden `<iframe sandbox="allow-scripts">`
+  (no `allow-same-origin`: the frame has no origin, no cookies, no access to the page, the account or the network of the site). The api has `status(text)` (one line, 200 characters, shown with `textContent` in the editor's status bar), `text()` (the editor's text:
+  the user's own) and `every(ms, fn)`. Messages are accepted only from the frames the module made, at most 200 a second for each. `GET /store/api/plugins` sends the scripts of the plugins that are on (at most 64 KB each). A test shows the frame cannot reach the page.
+- **Search** (`Service.Search`, `GET /store/api/search?q=&kind=`, one a second for each user): `micromamba search "<q>*"` (conda-forge: the newest version of each name, the exact name first) and `npm search`; the plugins and languages of the store are searched in the store. Each hit says what the store knows of it (available, installed...)
+  and whether it is on the safe list. The page searches 450 ms after typing and shows "Found for ..." under the grid. The first search of conda-forge downloads its index (about a minute); micromamba keeps it.
+- **Size before installing** (`Service.Estimate`, `GET /store/api/size`): a solve without installing (conda: the download from the solver and about 2.5 times that on disk; npm: `dist.unpackedSize`), kept an hour. The app's page shows "download about 41 MB, about 99 MB once installed (14 packages, version 3.0.2)".
+- **Download percent on a worker**: the gateway sends the size of the files in `X-Openrepl-Bundle-Bytes`; the worker counts what it writes (`ReadBundleProgress`) and tells the gateway about once a second (`POST /store/progress`, worker token); the admin sees "fetching 40%".
+- **Commands for a server**: `reinstall` (admin) deletes a node's copy of a bundle and the replay makes it again. The gateway does it at once; a worker gets it in the answer of its next ask for the catalog (`Snapshot.Reinstall`, within a minute); the admin sees the command waiting.
+- **Uninstall**: a signed-in user may uninstall an app when **no other user has it on** (`Service.Uninstall`; their own switch goes with the app; `View.OthersOn` says how many others have it, the button is disabled with the reason, the server refuses with 409). An **admin uninstalls anyway**
+  (`remove`, which switches it off for everyone and deletes it on every node).
+- **The admin in the store page**: Admin section in the menu (admins only) with Requests (Approve and install, Reject with a reason), Failures (Try again, Pick another version, Mark installed, Reject, the log), Servers and installs (every server: size, what it has, status
+  ready / fetching n% / failed / missing, size of each bundle, "Reinstall here"; the installed apps with "Uninstall for everyone"), apt packages. The dashboard's App Store view (Requests, Failures, Installed, Servers, Settings) has the same and more.
+
+## 9. What is not built, and what was not tested
+
+- **The terminal does not find a plugin or a language by itself**: a language is a program on the `PATH` (`lua`, `ruby`), not an entry in the language picker; the picker's REPLs are the image's.
+- **Plugins are samples**: there is no way to write or upload one (that needs a review process of its own); the two that exist are in `plugins.go`.
+- **conda-forge search shows the name and the newest version, not a description** (micromamba's search has none); the page looks the description up when the app is opened.
+- A search is slow the first time (the index of conda-forge); a worker's fetch percent is only as fine as about one report a second.
+- A real **worker fetching a real bundle from a real gateway** over HTTP was not run (the pieces are tested separately); **a signed-in user doing the whole flow in a browser** was not (a browser test cannot sign in: the screens run against stand-in answers).
+- The **import check runs outside the sandbox** (as the server, in an empty folder, 60 s limit).
+- A user's switch reaching a worker takes up to a minute.
+- **Real installs, in CI** (job "App Store installs", after the build, on amd64 and arm64, in the image): every app of the safe list (Python libraries, a tool, Node libraries), a language (lua) and a plugin, a real search and size, the sandbox, a worker's replay from a tarball.
+  Run by hand in the image 2026-11-14: flask, jq, requests, express, axios, lodash, moment, lua, wordcount, the search and the size all pass.

@@ -212,3 +212,116 @@ func TestStoreHealthSaysWhatIsWrong(t *testing.T) {
 		t.Errorf("a failed install: %s %s", st, detail)
 	}
 }
+
+func TestAWorkerSaysHowFarAFetchIsAndTheAdminGivesItCommands(t *testing.T) {
+	svc := testStoreService(t, appstore.Fake{}, "flask")
+	svc.Install("ann", "flask", "lib", false)
+	svc.Wait()
+	srv := &Server{options: &Options{WorkerToken: "s3cret"}}
+	progress := func(token, body string) int {
+		r := httptest.NewRequest("POST", "http://openrepl.test/store/progress", strings.NewReader(body))
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		w := httptest.NewRecorder()
+		srv.handleStoreProgress(w, r)
+		return w.Code
+	}
+	if progress("", `{"node":"w1","id":"flask-1.0.0","pct":40}`) != http.StatusUnauthorized {
+		t.Error("no token")
+	}
+	if progress("s3cret", `{"node":"../x","id":"flask-1.0.0","pct":40}`) != http.StatusBadRequest || progress("s3cret", `{"node":"w1","id":"../x","pct":40}`) != http.StatusBadRequest {
+		t.Error("a bad node or bundle")
+	}
+	if progress("s3cret", `{"node":"w1","id":"flask-1.0.0","pct":40}`) != http.StatusNoContent {
+		t.Fatal("a good report")
+	}
+	appStoreMu.Lock()
+	got := appNodes["w1"].Fetching["flask-1.0.0"]
+	appStoreMu.Unlock()
+	if got != 40 {
+		t.Errorf("the percent: %d", got)
+	}
+	progress("s3cret", `{"node":"w1","id":"flask-1.0.0","pct":100}`)
+	appStoreMu.Lock()
+	_, still := appNodes["w1"].Fetching["flask-1.0.0"]
+	appCommands["w1"] = []string{"flask-1.0.0"}
+	appStoreMu.Unlock()
+	if still {
+		t.Error("a finished fetch is not shown any more")
+	}
+	// the worker's next ask for the catalog brings the command, once
+	ask := func() appstore.Snapshot {
+		r := httptest.NewRequest("POST", "http://openrepl.test/store/sync", strings.NewReader(`{"node":"w1","state":{"have":[]}}`))
+		r.Header.Set("Authorization", "Bearer s3cret")
+		w := httptest.NewRecorder()
+		srv.handleStoreSync(w, r)
+		var snap appstore.Snapshot
+		json.Unmarshal(w.Body.Bytes(), &snap)
+		return snap
+	}
+	if snap := ask(); len(snap.Reinstall) != 1 || snap.Reinstall[0] != "flask-1.0.0" {
+		t.Errorf("the command: %+v", snap.Reinstall)
+	}
+	if snap := ask(); len(snap.Reinstall) != 0 {
+		t.Errorf("a command is given once: %+v", snap.Reinstall)
+	}
+	appStoreMu.Lock()
+	delete(appNodes, "w1")
+	appStoreMu.Unlock()
+}
+
+func TestThePluginsOfAUserAreTheOnesThatAreOn(t *testing.T) {
+	svc := testStoreService(t, appstore.Fake{})
+	svc.Install("root", "wordcount", "plugin", true)
+	svc.Install("root", "clock", "plugin", true)
+	svc.Wait()
+	if got := storePlugins(svc, "ann"); len(got) != 0 {
+		t.Fatalf("nothing is on: %+v", got)
+	}
+	svc.Switch("ann", "wordcount-1.0.0", true)
+	got := storePlugins(svc, "ann")
+	if len(got) != 1 || got[0].Name != "wordcount" || !strings.Contains(got[0].Code, "openreplPlugin") {
+		t.Fatalf("%+v", got)
+	}
+	if got := storePlugins(svc, "bob"); len(got) != 0 {
+		t.Error("another user's plugins are not shown")
+	}
+}
+
+func TestTheSafeListMayNameToolsAndNodeLibraries(t *testing.T) {
+	s := SiteSettings{StoreSafeList: []string{"flask", "tool:jq", "NPM:Express", "npm:lodash"}}
+	got, err := s.normalize()
+	if err != nil || strings.Join(got.StoreSafeList, ",") != "flask,tool:jq,npm:express,npm:lodash" {
+		t.Fatalf("%v %v", got.StoreSafeList, err)
+	}
+	for _, bad := range []string{"npm:", "tool:../x", "npm:a/b", "lang:lua"} {
+		if _, err := (SiteSettings{StoreSafeList: []string{bad}}).normalize(); err == nil {
+			t.Errorf("%q must be refused", bad)
+		}
+	}
+}
+
+// The admin pages call .filter on these lists: a store with nothing in it must send [] and never null (the admin's store page did not
+// load on a fresh store: "Cannot read properties of null (reading 'filter')").
+func TestAdminAndUserListsAreNeverNullOnAnEmptyStore(t *testing.T) {
+	testStoreService(t, appstore.Fake{})
+	w := httptest.NewRecorder()
+	(&Server{options: &Options{}}).handleAdminStore(w, httptest.NewRequest("GET", "http://openrepl.test/admin/store", nil))
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("%v: %s", err, w.Body.String())
+	}
+	for _, k := range []string{"apps", "requests", "reports", "apt", "nodes", "safeList"} {
+		if string(raw[k]) == "null" || len(raw[k]) == 0 {
+			t.Errorf("%s is %q: it must be a list", k, raw[k])
+		}
+	}
+	if string(raw["users"]) == "null" {
+		t.Error("users must be an object")
+	}
+	svc := storeService()
+	if v := svc.Views("", ""); v == nil {
+		t.Error("views must be a list")
+	}
+}

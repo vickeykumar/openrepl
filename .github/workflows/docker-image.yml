@@ -212,12 +212,12 @@ jobs:
       env:
         CGO_ENABLED: "0"
       run: go test -tags realinstall -c -o "$RUNNER_TEMP/appstore.test" appstore
-    - name: Install every app of the safe list, use it under the sandbox, replay it on a worker
+    - name: Install every app of the safe list (Python, tools, Node), a language and a plugin, search, use it under the sandbox, replay it on a worker
       run: |
         docker run --rm --entrypoint /appstore.test \
           -v "$RUNNER_TEMP/appstore.test:/appstore.test:ro" -e OPENREPL_REAL_STORE=/store \
           openrepl:${{ matrix.arch }} \
-          -test.v -test.timeout=80m -test.run='TestEveryAppOfTheSafeList|TestTheSandboxLets|TestAWorkerTakes'
+          -test.v -test.timeout=80m -test.run='TestEveryAppOfTheSafeList|TestALanguageAndAPlugin|TestSearchAndSize|TestTheSandboxLets|TestAWorkerTakes'
 
   browser:
     needs: [changes, build]

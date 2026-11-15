@@ -2468,6 +2468,7 @@
     function status(n, id, now) {
       if (n.have.indexOf(id) >= 0) return h('span', { class: 'ok', text: 'ready' });
       if (n.failed && n.failed[id]) return h('span', { class: 'bad', title: n.failed[id], text: 'failed' });
+      if (n.fetching && n.fetching[id] != null) return h('span', { class: 'warn', text: 'fetching ' + n.fetching[id] + '%' });
       var seen = n.seen ? Date.parse(n.seen) / 1000 : now;
       if (now - seen < 180) return h('span', { class: 'warn', text: 'fetching…' });
       return h('span', { class: 'sub', text: 'missing' });
@@ -2544,9 +2545,12 @@
         } });
         out.appendChild(table(cols, d.apps, { empty: 'Nothing is installed yet.' }));
         out.appendChild(h('p', { class: 'sub', text: 'An app that nobody has had on for 60 days is flagged. Nothing is removed by itself: you decide. A server shows "fetching" while it is behind and has answered lately.' }));
-        var name = h('input', { type: 'text', placeholder: 'conda-forge package, e.g. ffmpeg', 'aria-label': 'Package to install' });
-        out.appendChild(h('div', { class: 'toolbar' }, name,
-          h('button', { class: 'btn primary', type: 'button', text: 'Install for everyone', onclick: function () { var n = name.value.trim(); if (n) post({ action: 'install', name: n }, 'Installing ' + n + '.'); } })));
+        var name = h('input', { type: 'text', placeholder: 'package name, e.g. ffmpeg', 'aria-label': 'Package to install' });
+        var kindSel = h('select', { 'aria-label': 'Kind' },
+          h('option', { value: 'lib', text: 'Python library (conda-forge)' }), h('option', { value: 'tool', text: 'Tool (conda-forge)' }), h('option', { value: 'node', text: 'Node library (npm)' }),
+          h('option', { value: 'lang', text: 'Language (conda-forge)' }), h('option', { value: 'plugin', text: 'Editor plugin (comes with the server: wordcount, clock)' }));
+        out.appendChild(h('div', { class: 'toolbar' }, name, kindSel,
+          h('button', { class: 'btn primary', type: 'button', text: 'Install for everyone', onclick: function () { var n = name.value.trim(); if (n) post({ action: 'install', name: n, kind: kindSel.value }, 'Installing ' + n + '.'); } })));
       }
       if (tab === 'servers') {
         out.appendChild(h('h3', { text: 'Disk of the store, per server' }));
@@ -2555,6 +2559,18 @@
           var pct = Math.min(100, Math.round(100 * n.sizeMB / d.limitMB));
           var bar = h('div', { class: 'bar', style: 'height:7px;border-radius:4px;background:var(--line,#2b2d26);overflow:hidden;margin-top:4px' }, h('i', { style: 'display:block;height:100%;width:' + pct + '%;background:var(--accent,#b6e03a)' }));
           out.appendChild(h('div', { class: 'card' }, h('b', { text: n.node }), ' ' + n.sizeMB.toFixed(0) + ' MB of ' + d.limitMB + (n.seen ? ' · answered ' + when(n.seen) : ''), bar));
+          var installedApps = d.apps.filter(function (a) { return a.state === 'installed'; });
+          out.appendChild(table([
+            { key: 'app', label: 'App on ' + n.node, cell: function (a) { return h('div', null, h('b', { text: a.name }), h('div', { class: 'sub', text: a.version + ' \u00b7 ' + a.kind })); } },
+            { key: 'size', label: 'Size here', cell: function (a) { return n.sizes && n.sizes[a.id] ? Math.round(n.sizes[a.id]) + ' MB' : ''; } },
+            { key: 'status', label: 'Status', cell: function (a) { return status(n, a.id, d.now); } },
+            { key: 'act', label: '', cell: function (a) {
+              var here = n.have.indexOf(a.id) >= 0 || (n.failed && n.failed[a.id]);
+              return here ? h('button', { class: 'btn', type: 'button', text: 'Reinstall here', title: 'Delete this server\'s copy and make it again', onclick: function () {
+                post({ action: 'reinstall', node: n.node, id: a.id }, 'Asked ' + n.node + ' to make ' + a.name + ' again' + (n.node === 'gateway' ? '.' : ' (within a minute).')); } }) : '';
+            } }
+          ], installedApps, { empty: 'Nothing is installed yet.' }));
+          if (n.pending && n.pending.length) out.appendChild(h('p', { class: 'sub', text: 'Waiting for ' + n.node + ' to ask for the catalog: ' + n.pending.join(', ') }));
           Object.keys(n.failed || {}).forEach(function (k) {
             failedAny = true;
             out.appendChild(h('div', { class: 'card' }, h('b', { text: n.node + ': ' + k }), h('p', { class: 'sub wrap-text', text: n.failed[k] })));
@@ -2568,7 +2584,7 @@
         var safe = h('textarea', { rows: '6', 'aria-label': 'Safe list' }); safe.value = d.safeList.join('\n');
         var limit = h('input', { type: 'number', min: '100', step: '100', value: String(d.limitSet || ''), placeholder: String(d.limitMB), 'aria-label': 'Size limit in MB' });
         var off = h('input', { type: 'checkbox' }); off.checked = !d.enabled;
-        out.appendChild(h('p', { class: 'sub', text: 'Safe list: users install these without asking (one conda-forge name per line).' }));
+        out.appendChild(h('p', { class: 'sub', text: 'Safe list: users install these without asking, one name per line: flask (a Python library), tool:jq (a program), npm:express (a Node library). Languages and plugins are always an admin\'s.' }));
         out.appendChild(safe);
         out.appendChild(h('div', { class: 'toolbar' }, h('label', null, 'Most the store may use on a server (MB): ', limit), h('label', null, 'Channels: ', h('input', { type: 'text', value: d.channel, disabled: 'disabled', 'aria-label': 'Channels (not editable)' })),
           h('label', null, off, ' Switch the App Store off for everyone'), h('span', { class: 'grow' }),

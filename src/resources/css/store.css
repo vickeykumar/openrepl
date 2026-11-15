@@ -87,3 +87,9 @@
   .store__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 560px) { .store__grid { grid-template-columns: 1fr; } }
+.store__h3 { margin: 14px 0 4px; font-size: 14px; color: var(--paper); }
+.store__uninstall { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; border-top: 1px solid var(--ink-700); padding-top: 12px; margin-top: 4px; }
+.store__node { background: var(--ink-900); border: 1px solid var(--ink-700); border-radius: 11px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.store__nodehead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.store__node .store__row { background: var(--ink-850, var(--ink-900)); }
+.store__hits { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--ink-700); padding-top: 10px; }

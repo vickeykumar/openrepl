@@ -104,7 +104,7 @@ func TestManifestAndEnv(t *testing.T) {
 	}
 	f := Fake{}
 	dest := st.BundlePath("flask-3.0.2")
-	if err := f.Install(context.Background(), "flask", "3.0.2", dest, os.Stderr); err != nil {
+	if err := f.Install(context.Background(), "flask", "3.0.2", KindLib, dest, os.Stderr); err != nil {
 		t.Fatal(err)
 	}
 	if st.HasBundle("flask-3.0.2") {
@@ -422,14 +422,14 @@ func TestStepsAndTheCheckOfABundle(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "bin"), 0755)
 	os.WriteFile(filepath.Join(dir, "bin", "python"), []byte("#!/bin/sh\nexit 0\n"), 0755)
-	if err := checkBundle(context.Background(), dir, "x"); err != nil {
+	if err := checkBundle(context.Background(), dir, "x", KindLib); err != nil {
 		t.Errorf("a working python: %v", err)
 	}
 	os.WriteFile(filepath.Join(dir, "bin", "python"), []byte("#!/bin/sh\necho 'ImportError: no module named x' >&2\nexit 1\n"), 0755)
-	if err := checkBundle(context.Background(), dir, "x"); err == nil || !strings.Contains(err.Error(), "did not start") {
+	if err := checkBundle(context.Background(), dir, "x", KindLib); err == nil || !strings.Contains(err.Error(), "did not start") {
 		t.Errorf("a python that fails must refuse the bundle: %v", err)
 	}
-	if err := checkBundle(context.Background(), t.TempDir(), "x"); err != nil {
+	if err := checkBundle(context.Background(), t.TempDir(), "x", KindLib); err != nil {
 		t.Errorf("no python is nothing to start: %v", err)
 	}
 	mod := t.TempDir()
@@ -503,7 +503,7 @@ func TestABundleTravelsAsATarball(t *testing.T) {
 	a := Store{Dir: t.TempDir()}
 	f := Fake{}
 	id := "flask-1.0.0"
-	if err := f.Install(context.Background(), "flask", "1.0.0", a.BundlePath(id), os.Stderr); err != nil {
+	if err := f.Install(context.Background(), "flask", "1.0.0", KindLib, a.BundlePath(id), os.Stderr); err != nil {
 		t.Fatal(err)
 	}
 	os.Symlink("../lib/python3.10", filepath.Join(a.BundlePath(id), "bin", "pylib"))
@@ -573,7 +573,7 @@ func TestAWorkerTakesABundleFromTheGatewayFirst(t *testing.T) {
 	snap := a.Snapshot()
 	b, bst := newService(t, Fake{Fail: map[string]bool{"flask": true}}) // it could not install it itself
 	fetched := 0
-	b.cfg.Fetch = func(ctx context.Context, id, dest string) error {
+	b.cfg.Fetch = func(ctx context.Context, id, dest string, progress func(int)) error {
 		fetched++
 		var buf bytes.Buffer
 		if err := a.Store().WriteBundle(id, &buf); err != nil {
@@ -587,7 +587,9 @@ func TestAWorkerTakesABundleFromTheGatewayFirst(t *testing.T) {
 	}
 	// and when the gateway cannot give it, the node installs it itself
 	c, cst := newService(t, Fake{})
-	c.cfg.Fetch = func(ctx context.Context, id, dest string) error { return errors.New("the gateway is not reachable") }
+	c.cfg.Fetch = func(ctx context.Context, id, dest string, progress func(int)) error {
+		return errors.New("the gateway is not reachable")
+	}
 	st = c.Apply(context.Background(), snap)
 	if len(st.Failed) != 0 || !cst.HasBundle("flask-1.0.0") {
 		t.Fatalf("%+v", st)
@@ -607,7 +609,7 @@ func TestMambaIsGivenNoSwitchesInTheEnvironment(t *testing.T) {
 			}
 		}
 	}
-	if !contains(m.common(), "--no-rc") {
+	if !contains(m.common(KindLib), "--no-rc") {
 		t.Error("the rc files must be switched off by a flag")
 	}
 }
@@ -619,4 +621,301 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+func TestTheKindsAndWhoMayInstallThem(t *testing.T) {
+	svc, st := newService(t, Fake{}, "flask", "tool:jq", "npm:express")
+	// a Python library, a tool and a Node library on the safe list: a user installs them
+	for _, c := range []struct{ name, kind string }{{"flask", KindLib}, {"jq", KindTool}, {"express", KindNode}} {
+		if err := svc.Install("ann", c.name, c.kind, false); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+	}
+	svc.Wait()
+	// the same name asked for as another kind is not on the list for that kind
+	if err := svc.Install("ann", "jq", KindNode, false); err != ErrNeedsApproval {
+		t.Errorf("jq is a tool on the list, not a Node library: %v", err)
+	}
+	if err := svc.Install("ann", "express", KindLib, false); err != ErrNeedsApproval {
+		t.Errorf("express is a Node library on the list, not a Python one: %v", err)
+	}
+	// a language and a plugin are always an admin's
+	if err := svc.Install("ann", "lua", KindLang, false); err != ErrNeedsApproval {
+		t.Errorf("a language: %v", err)
+	}
+	if err := svc.Install("ann", "wordcount", KindPlugin, false); err != ErrNeedsApproval {
+		t.Errorf("a plugin: %v", err)
+	}
+	if err := svc.Install("root", "lua", KindLang, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Install("root", "wordcount", KindPlugin, true); err != nil {
+		t.Fatal(err)
+	}
+	svc.Wait()
+	by := map[string]App{}
+	for _, a := range svc.Apps() {
+		by[a.Name] = a
+	}
+	for _, n := range []string{"flask", "jq", "express", "lua", "wordcount"} {
+		if by[n].State != StateInstalled {
+			t.Fatalf("%s: %+v", n, by[n])
+		}
+	}
+	// the bundles put the right things on a terminal's environment
+	v := VarsFor(st.Dir, []string{by["express"].ID, by["jq"].ID, by["lua"].ID})
+	if len(v.NodePath) != 1 || !strings.HasSuffix(v.NodePath[0], "express-1.0.0/node_modules") {
+		t.Errorf("NODE_PATH %v", v.NodePath)
+	}
+	var bins []string
+	for _, b := range v.PathAdd {
+		bins = append(bins, strings.TrimPrefix(b, st.Dir))
+	}
+	if !reflect.DeepEqual(bins, []string{"/apps/express-1.0.0/node_modules/.bin", "/apps/jq-1.0.0/bin", "/apps/lua-1.0.0/bin"}) {
+		t.Errorf("PATH %v", bins)
+	}
+	// a plugin's script can be read; a plugin that is not installed has none
+	if code, err := st.PluginCode(by["wordcount"].ID); err != nil || !strings.Contains(code, "openreplPlugin") {
+		t.Errorf("the script: %v", err)
+	}
+	if _, err := st.PluginCode("clock-1.0.0"); err == nil {
+		t.Error("a plugin that is not installed has no script")
+	}
+	// the name of an installed app cannot be taken by another kind
+	if err := svc.Install("root", "flask", KindNode, true); err == nil || !strings.Contains(err.Error(), "installed already") {
+		t.Errorf("one name, two kinds: %v", err)
+	}
+}
+
+func TestTheViewsListTheSamplesOfEveryKind(t *testing.T) {
+	svc, _ := newService(t, Fake{}, "flask", "tool:jq", "npm:express")
+	got := map[string]string{}
+	for _, v := range svc.Views("ann", "ann") {
+		got[v.Name] = v.Kind + "/" + v.State
+	}
+	for name, want := range map[string]string{"flask": "lib/available", "jq": "tool/available", "express": "node/available", "lua": "lang/available", "ruby": "lang/available", "wordcount": "plugin/available", "clock": "plugin/available"} {
+		if got[name] != want {
+			t.Errorf("%s: %q, want %q", name, got[name], want)
+		}
+	}
+	for _, v := range svc.Views("ann", "ann") {
+		if (v.Kind == KindLang || v.Kind == KindPlugin) && (v.Safe || v.Summary == "") {
+			t.Errorf("%+v: a sample of an admin's kind is not safe and says what it is", v)
+		}
+	}
+}
+
+func TestSearchSaysWhatTheStoreKnowsOfEachHit(t *testing.T) {
+	svc, _ := newService(t, Fake{}, "flask")
+	svc.Install("ann", "flask", KindLib, false)
+	svc.Wait()
+	hits, err := svc.Search(context.Background(), "flask", "")
+	if err != nil || len(hits) != 2 {
+		t.Fatalf("%v %+v", err, hits)
+	}
+	if hits[0].Name != "flask" || hits[0].State != StateInstalled || !hits[0].Safe || hits[1].Name != "flask-cors" || hits[1].State != "available" || hits[1].Safe {
+		t.Errorf("%+v", hits)
+	}
+	if h, _ := svc.Search(context.Background(), "expr", KindNode); len(h) != 1 || h[0].Kind != KindNode {
+		t.Errorf("a Node search: %+v", h)
+	}
+	if h, _ := svc.Search(context.Background(), "word", KindPlugin); len(h) != 1 || h[0].Name != "wordcount" {
+		t.Errorf("a plugin search: %+v", h)
+	}
+	if _, err := (Missing{Reason: "no micromamba"}).Search(context.Background(), "x", ""); err == nil {
+		t.Error("a server without micromamba says so")
+	}
+}
+
+func TestFoundFromReadsTheSearchOfMicromamba(t *testing.T) {
+	raw := []byte(`{"result":{"pkgs":[{"name":"flask","version":"2.0.0"},{"name":"flask","version":"3.1.3"},{"name":"flask-cors","version":"4.0.0"},{"name":"flaskcache","version":"0.1"},{"name":"BAD NAME","version":"1"}]}}`)
+	got, err := foundFrom(raw, "flask", KindLib)
+	if err != nil || len(got) != 3 || got[0].Name != "flask" || got[0].Version != "3.1.3" || got[1].Name != "flask-cors" || got[2].Name != "flaskcache" {
+		t.Fatalf("%v %+v", err, got)
+	}
+	if _, err := foundFrom([]byte("nope"), "x", ""); err == nil {
+		t.Error("bad json")
+	}
+	if got, _ := (Mamba{Bin: "/x"}).Search(context.Background(), "../x", ""); got != nil {
+		t.Error("a bad pattern is never sent to micromamba")
+	}
+}
+
+func TestNpmViewIsRead(t *testing.T) {
+	r, err := npmViewFrom([]byte(`{"version":"4.19.2","dist.unpackedSize":2097152}`))
+	if err != nil || r.Version != "4.19.2" || r.DiskMB != 2 {
+		t.Fatalf("%+v %v", r, err)
+	}
+	r, err = npmViewFrom([]byte(`[{"version":"4.0.0","dist.unpackedSize":1048576},{"version":"4.1.0","dist.unpackedSize":3145728}]`))
+	if err != nil || r.Version != "4.1.0" || r.DiskMB != 3 {
+		t.Fatalf("several versions: the last is the newest: %+v %v", r, err)
+	}
+	if _, err := npmViewFrom([]byte(`{"version":"../x"}`)); err == nil {
+		t.Error("a bad version")
+	}
+	if _, err := npmViewFrom([]byte("")); err == nil {
+		t.Error("an empty answer")
+	}
+}
+
+func TestAToolIsSolvedWithoutAPythonAndALibraryWithIt(t *testing.T) {
+	m := Mamba{Bin: "/x", Python: "3.10"}
+	if !contains(m.common(KindLib), "python=3.10") || contains(m.common(KindTool), "python=3.10") || contains(m.common(KindLang), "python=3.10") {
+		t.Errorf("lib %v tool %v lang %v", m.common(KindLib), m.common(KindTool), m.common(KindLang))
+	}
+}
+
+func TestEstimateSaysWhatAnInstallWouldCostAndKeepsTheAnswer(t *testing.T) {
+	svc, _ := newService(t, Fake{Fail: map[string]bool{"broken": true}})
+	r, err := svc.Estimate(context.Background(), "flask", KindLib)
+	if err != nil || r.Version != "1.0.0" || r.DownloadMB != 1.5 || r.Packages != 3 {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if _, err := svc.Estimate(context.Background(), "broken", KindLib); err == nil {
+		t.Error("an app that cannot be solved says so before it is installed")
+	}
+	if _, err := svc.Estimate(context.Background(), "../x", KindLib); err == nil {
+		t.Error("a bad name")
+	}
+}
+
+func TestReinstallMakesABundleAgainOnTheNode(t *testing.T) {
+	a, _ := newService(t, Fake{}, "flask")
+	a.Install("ann", "flask", KindLib, false)
+	a.Wait()
+	snap := a.Snapshot()
+	b, bst := newService(t, Fake{})
+	b.Apply(context.Background(), snap)
+	os.WriteFile(filepath.Join(bst.BundlePath("flask-1.0.0"), "junk"), []byte("damaged"), 0644)
+	snap.Reinstall = []string{"flask-1.0.0", "../x"}
+	st := b.Apply(context.Background(), snap)
+	if _, err := os.Stat(filepath.Join(bst.BundlePath("flask-1.0.0"), "junk")); err == nil {
+		t.Error("the bundle was not made again")
+	}
+	if len(st.Failed) != 0 || !bst.HasBundle("flask-1.0.0") || st.Sizes["flask-1.0.0"] <= 0 {
+		t.Errorf("%+v", st)
+	}
+}
+
+func TestAFetchSaysHowFarItIs(t *testing.T) {
+	a := Store{Dir: t.TempDir()}
+	id := "flask-1.0.0"
+	Fake{}.Install(context.Background(), "flask", "1.0.0", KindLib, a.BundlePath(id), os.Stderr)
+	a.Finish(id, "flask", "1.0.0")
+	var buf bytes.Buffer
+	if err := a.WriteBundle(id, &buf); err != nil {
+		t.Fatal(err)
+	}
+	b := Store{Dir: t.TempDir()}
+	var seen []int
+	if err := ReadBundleProgress(&buf, b.BundlePath(id), a.BundleSize(id), func(p int) { seen = append(seen, p) }); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) == 0 || seen[len(seen)-1] > 100 {
+		t.Errorf("progress %v", seen)
+	}
+	for i := 1; i < len(seen); i++ {
+		if seen[i] <= seen[i-1] {
+			t.Errorf("the percent only goes up: %v", seen)
+		}
+	}
+}
+
+func TestAUserMayUninstallAnAppOnlyWhenNobodyElseHasItOn(t *testing.T) {
+	svc, st := newService(t, Fake{}, "flask", "numpy")
+	svc.Install("ann", "flask", KindLib, false)
+	svc.Install("ann", "numpy", KindLib, false)
+	svc.Wait()
+	svc.Switch("ann", "flask-1.0.0", true)
+	svc.Switch("bob", "flask-1.0.0", true)
+	// bob has it on too: ann cannot uninstall it, and is told how many others use it
+	err := svc.Uninstall("ann", "ann", "flask")
+	if !errors.Is(err, ErrInUse) || !strings.Contains(err.Error(), "1 other users") || !st.HasBundle("flask-1.0.0") {
+		t.Fatalf("%v", err)
+	}
+	var v View
+	for _, x := range svc.Views("ann", "ann") {
+		if x.Name == "flask" {
+			v = x
+		}
+	}
+	if v.OthersOn != 1 || !v.On {
+		t.Errorf("the view says how many others use it: %+v", v)
+	}
+	// when bob turns it off, ann may: her own switch does not count, and it goes with the app
+	svc.Switch("bob", "flask-1.0.0", false)
+	if err := svc.Uninstall("ann", "ann", "flask"); err != nil {
+		t.Fatal(err)
+	}
+	if st.HasBundle("flask-1.0.0") || len(svc.MyList("ann")) != 0 {
+		t.Error("the bundle and ann's switch must be gone")
+	}
+	// an app nobody has on can be uninstalled by anyone signed in
+	if err := svc.Uninstall("bob", "bob", "numpy"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Uninstall("bob", "bob", "numpy"); !errors.Is(err, ErrUnknown) {
+		t.Errorf("an app that is not installed: %v", err)
+	}
+	// an admin removes an app that others have on
+	svc.Install("ann", "flask", KindLib, false)
+	svc.Wait()
+	svc.Switch("bob", "flask-1.0.0", true)
+	if n, err := svc.Remove("root", "flask"); err != nil || n != 1 {
+		t.Errorf("an admin removes it anyway: %d %v", n, err)
+	}
+}
+
+func TestNodeRangesAreReadForTheNodeOfTheServer(t *testing.T) {
+	for _, c := range []struct {
+		rng, ver string
+		want     bool
+	}{
+		{"", "12.22.9", true}, {"*", "12.22.9", true}, {">=12", "12.22.9", true}, {">=18", "12.22.9", false}, {">= 18.0.0", "12.22.9", false},
+		{">=0.10.0 <13", "12.22.9", true}, {">=14", "12.22.9", false}, {"^12.0.0", "12.22.9", true}, {"^14.17.0 || >=16", "12.22.9", false},
+		{"^12.17.0 || >=14", "12.22.9", true}, {"12.x", "12.22.9", true}, {"13.x", "12.22.9", false}, {"~12.22", "12.22.9", true}, {"~12.21", "12.22.9", false},
+		{"12 - 14", "12.22.9", true}, {"14 - 16", "12.22.9", false}, {">=6", "v12.22.9", true}, {"<12", "12.22.9", false}, {"nonsense?", "12.22.9", true},
+		{">=18", "bad", true},
+	} {
+		if got := NodeSatisfies(c.rng, c.ver); got != c.want {
+			t.Errorf("%q on %q: %v, want %v", c.rng, c.ver, got, c.want)
+		}
+	}
+}
+
+func TestNpmCandidatesAreTheNewestFirstWithoutPrereleases(t *testing.T) {
+	got := npmCandidates([]byte(`["0.19.0","0.18.1","1.0.0","1.10.0","1.9.0","2.0.0-beta.1","bad version","1.2.0+build"]`))
+	if !reflect.DeepEqual(got, []string{"1.10.0", "1.9.0", "1.0.0", "0.19.0", "0.18.1"}) {
+		t.Errorf("%v", got)
+	}
+	if got := npmCandidates([]byte(`"3.0.0"`)); !reflect.DeepEqual(got, []string{"3.0.0"}) {
+		t.Errorf("one version: %v", got)
+	}
+	if npmCandidates([]byte("nonsense")) != nil {
+		t.Error("an answer that is not a list")
+	}
+}
+
+func TestNpmEnginesAreRead(t *testing.T) {
+	if rng, mb := npmEngines([]byte(`{"engines.node":">= 0.10.0","dist.unpackedSize":2097152}`)); rng != ">= 0.10.0" || mb != 2 {
+		t.Errorf("%q %v", rng, mb)
+	}
+	for _, odd := range []string{`{"engines.node":[">=4","<9"]}`, `{"engines.node":{"a":1}}`, ``, `{}`, `not json`} {
+		if rng, _ := npmEngines([]byte(odd)); rng != "" {
+			t.Errorf("%q must be any Node: %q", odd, rng)
+		}
+	}
+	// the Node of the image (12) with a library whose latest wants 18
+	cands := npmCandidates([]byte(`["4.21.2","5.3.0","4.17.1"]`))
+	var pick string
+	for _, v := range cands {
+		rng := map[string]string{"5.3.0": ">= 18", "4.21.2": ">= 0.10.0", "4.17.1": ">= 0.10.0"}[v]
+		if NodeSatisfies(rng, "v12.22.9") {
+			pick = v
+			break
+		}
+	}
+	if pick != "4.21.2" {
+		t.Errorf("the newest that fits: %q", pick)
+	}
 }

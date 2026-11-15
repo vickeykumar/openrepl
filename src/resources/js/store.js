@@ -4,7 +4,7 @@
 (function () {
   "use strict";
 
-  var S = { views: [], on: [], home: "", envScript: "", admin: false, python: "", loaded: false, error: null, q: "", chip: "all", info: {}, note: null, watch: null };
+  var S = { views: [], on: [], home: "", envScript: "", admin: false, python: "", loaded: false, error: null, q: "", chip: "all", info: {}, note: null, watch: null, hits: {}, sizes: {}, adm: null };
   var side = document.getElementById("store-side");
   var main = document.getElementById("store-main");
   var dlg = document.getElementById("store-dialog");
@@ -51,7 +51,19 @@
     S.loaded = true; S.error = null;
   }
   function load() {
-    return store("list").then(function (j) { take(j); }, function (e) { S.error = e; S.loaded = true; });
+    return store("list").then(function (j) { take(j); }, function (e) { S.error = e; S.loaded = true; }).then(function () { return S.admin ? loadAdmin() : null; });
+  }
+  // what an admin sees besides the store: requests, failures, the servers (GET /admin/store)
+  function loadAdmin() {
+    return api("/admin/store", null, true).then(function (d) {
+      // a list that is missing is an empty one: the side menu and the admin sections must never break on it
+      ["requests", "reports", "apps", "apt", "nodes"].forEach(function (k) { if (!Array.isArray(d[k])) d[k] = []; });
+      if (!d.users) d.users = {};
+      S.adm = d;
+    }, function () { S.adm = null; });
+  }
+  function adminPost(body, ok) {
+    return api("/admin/store", body, true).then(function () { if (ok) say(ok, "info"); return load(); }).then(render, function (e) { say(e.message, "bad"); render(); });
   }
   function say(text, kind) { S.note = text ? { text: text, kind: kind || "" } : null; }
   function act(path, body, ok) {
@@ -86,12 +98,15 @@
     link("My apps", "#mine", counts.mine, r.name === "mine");
     link("My requests", "#requests", counts.req, r.name === "requests");
     side.appendChild(el("h2", "", "Kinds"));
-    link("Python libraries", "#kind/lib", 0, r.name === "kind" && r.arg === "lib");
-    link("Tools", "#kind/tool", 0, r.name === "kind" && r.arg === "tool");
-    link("Languages (admin)", "#kind/languages", 0, r.name === "kind" && r.arg === "languages");
-    link("Editor plugins (later)", "#kind/plugins", 0, r.name === "kind" && r.arg === "plugins");
+    [["lib", "Python libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
+      link(k[1], "#kind/" + k[0], 0, r.name === "kind" && r.arg === k[0]);
+    });
     if (S.admin) {
-      side.appendChild(el("h2", "", "System (admin)"));
+      side.appendChild(el("h2", "", "Admin"));
+      var a = S.adm;
+      link("Requests", "#admin/requests", a ? a.requests.filter(function (x) { return x.status === "waiting"; }).length : 0, r.name === "admin" && r.arg === "requests");
+      link("Failures", "#admin/failures", a ? a.reports.filter(function (x) { return x.status === "open"; }).length : 0, r.name === "admin" && r.arg === "failures");
+      link("Servers and installs", "#admin/servers", 0, r.name === "admin" && r.arg === "servers");
       link("apt packages", "#apt", 0, r.name === "apt");
     }
   }
@@ -126,8 +141,11 @@
 
   function control(v, row) {
     function btn(text, fn, cls) { var b = el("button", "sbtn" + (cls ? " " + cls : ""), text); b.type = "button"; b.addEventListener("click", function (e) { e.stopPropagation(); fn(); }); row.appendChild(b); return b; }
-    if (v.state === "available") btn("Install", function () { install(v); }, "is-primary");
-    else if (v.state === "installing") btn("Details", function () { progress(v.name); });
+    if (v.state === "available") {
+      if (v.safe) btn("Install", function () { install(v); }, "is-primary");
+      else if (S.admin) btn("Install (admin)", function () { adminInstall(v); }, "is-primary");
+      else btn("Request", function () { requestDialog(v); }, "is-primary");
+    } else if (v.state === "installing") btn("Details", function () { progress(v.name); });
     else if (v.state === "installed") {
       var sw = el("button", "sswitch" + (v.on ? " is-on" : ""), v.on ? "On" : "Off");
       sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", v.on ? "true" : "false");
@@ -139,6 +157,11 @@
     else if (v.state === "requested") btn("Details", function () { go("#app/" + encodeURIComponent(v.name)); });
   }
 
+  // an admin installs what is not on the safe list (a language, a plugin, anything), for everyone
+  function adminInstall(v) {
+    api("/admin/store", { action: "install", name: v.name, kind: v.kind || "lib" }, true).then(function () { return load(); }).then(function () { render(); progress(v.name); }, function (e) { say(e.message, "bad"); render(); });
+  }
+
   function card(v) {
     var c = el("article", "sapp is-" + v.state);
     c.setAttribute("data-app", v.name);
@@ -146,9 +169,10 @@
     name.href = "#app/" + encodeURIComponent(v.name);
     c.appendChild(name);
     var info = S.info[v.name];
-    if (!info) loadInfo(v.name);
-    c.appendChild(el("p", "sapp__sum", info && info.summary ? info.summary : v.state === "failed" ? v.err || "The install stopped." : v.state === "rejected" && v.answer ? v.answer : v.kind === "tool" ? "A tool." : ""));
+    if (!info && !v.summary && (v.kind === "lib" || v.kind === "tool")) loadInfo(v.name);
+    c.appendChild(el("p", "sapp__sum", v.summary ? v.summary : info && info.summary ? info.summary : v.state === "failed" ? v.err || "The install stopped." : v.state === "rejected" && v.answer ? v.answer : ""));
     var row = el("div", "sapp__row");
+    if (v.kind && v.kind !== "lib") row.appendChild(el("span", "stag", { tool: "tool", node: "node", lang: "language", plugin: "plugin" }[v.kind] || v.kind));
     if (v.version) row.appendChild(el("span", "sapp__ver", v.version));
     var tag = stateTag(v);
     if (tag) row.appendChild(tag);
@@ -188,12 +212,31 @@
     }
   }
 
+  var INTRO = {
+    lib: "Python libraries from conda-forge. Installed once on the server; your terminals import them when you switch them on.",
+    tool: "Programs from conda-forge (jq and the like), on the PATH of your terminals when switched on.",
+    node: "Node libraries from npm (scripts of the packages are not run). Your terminals can require() them when switched on.",
+    lang: "Languages (Lua, Ruby, Julia, R...): a program a terminal can run. They are large, so an admin installs them; ask for the one you need. These are samples.",
+    plugin: "Editor plugins that come with the server (samples). An admin installs one; once it is on for you it shows in the editor's status bar. A plugin runs in a sandboxed frame: it can read the text of your editor and show one line of text, nothing else."
+  };
+  var searchTimer = 0;
+
+  function searchKey(q, kind) { return (kind || "") + "|" + q; }
+  function runSearch(q, kind) {
+    var key = searchKey(q, kind);
+    if (S.hits[key]) return;
+    S.hits[key] = { loading: true };
+    store("search?q=" + encodeURIComponent(q) + "&kind=" + encodeURIComponent(kind || "")).then(function (j) { S.hits[key] = { list: j.hits || [], error: j.error || "" }; renderSoon(); },
+      function (e) { S.hits[key] = { list: [], error: e.message }; renderSoon(); });
+  }
+
   function viewBrowse(kind) {
     var wrap = el("div", "store__list");
     wrap.style.cssText = "display:flex;flex-direction:column;gap:12px";
+    if (kind && INTRO[kind]) wrap.appendChild(el("p", "store__legend", INTRO[kind]));
     var tools = el("div", "store__tools");
     var input = el("input"); input.type = "search"; input.id = "store-search"; input.value = S.q;
-    input.placeholder = "Search the store, or type the name of a conda-forge package";
+    input.placeholder = kind === "plugin" || kind === "lang" ? "Search" : "Search the store, conda-forge and npm by name";
     input.setAttribute("aria-label", "Search the apps"); input.autocomplete = "off"; input.spellcheck = false;
     tools.appendChild(input);
     wrap.appendChild(tools);
@@ -209,9 +252,29 @@
     var list = S.views.filter(function (v) { return matches(v, q) && chipOk(v) && (!kind || (v.kind || "lib") === kind); });
     var grid = el("div", "store__grid");
     list.forEach(function (v) { grid.appendChild(card(v)); });
-    if (!list.length && q && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(q) && !kind) grid.appendChild(lookupCard(q));
     wrap.appendChild(grid);
-    if (!list.length && !(q && !kind)) wrap.appendChild(el("p", "store__legend", "Nothing matches here."));
+    if (!list.length && !q) wrap.appendChild(el("p", "store__legend", "Nothing matches here."));
+    // what the whole of conda-forge and npm have under that name (the plugins and languages of the store are searched in the store)
+    if (q.length >= 2 && /^[a-z0-9][a-z0-9._-]{0,40}$/.test(q) && S.chip === "all") {
+      var key = searchKey(q, kind), h = S.hits[key];
+      var have = {};
+      list.forEach(function (v) { have[v.name + "/" + (v.kind || "lib")] = true; });
+      var box = el("div", "store__hits");
+      box.appendChild(el("h3", "store__h3", "Found for \u201c" + q + "\u201d" + (kind === "node" ? " on npm" : kind === "plugin" ? "" : kind ? " on conda-forge" : " on conda-forge and npm")));
+      if (!h) { box.appendChild(el("p", "store__legend", "Searching\u2026")); searchTimer = 0; }
+      else if (h.loading) box.appendChild(el("p", "store__legend", "Searching\u2026 (the first search of conda-forge can take a minute)"));
+      else {
+        if (h.error) box.appendChild(el("p", "store__legend", h.error));
+        var g2 = el("div", "store__grid"), n = 0;
+        (h.list || []).forEach(function (x) {
+          if (have[x.name + "/" + (x.kind || "lib")]) return;
+          n++;
+          g2.appendChild(card({ name: x.name, version: x.version, kind: x.kind, state: x.state || "available", safe: x.safe, summary: x.summary }));
+        });
+        if (n) box.appendChild(g2); else if (!h.error) box.appendChild(el("p", "store__legend", "Nothing else was found."));
+      }
+      wrap.appendChild(box);
+    }
     wrap.appendChild(legend());
     input.addEventListener("input", function () {
       S.q = input.value;
@@ -219,7 +282,12 @@
       render();
       var again = document.getElementById("store-search");
       if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (e) { /* not every input has a caret */ } }
+      clearTimeout(searchTimer);
+      var qq = S.q.trim().toLowerCase();
+      if (qq.length >= 2 && /^[a-z0-9][a-z0-9._-]{0,40}$/.test(qq) && S.chip === "all") searchTimer = setTimeout(function () { runSearch(qq, kind); render(); var a2 = document.getElementById("store-search"); if (a2) { a2.focus(); try { a2.setSelectionRange(pos, pos); } catch (e) { /* no caret */ } } }, 450);
     });
+    // a search box that holds text when the page opens (or the section changes): look for it
+    if (q.length >= 2 && /^[a-z0-9][a-z0-9._-]{0,40}$/.test(q) && S.chip === "all" && !S.hits[searchKey(q, kind)]) setTimeout(function () { runSearch(q, kind); render(); }, 0);
     return wrap;
   }
 
@@ -287,16 +355,7 @@
   }
 
   function viewKind(arg) {
-    if (arg === "lib" || arg === "tool") return viewBrowse(arg);
-    var w = el("div", "store__detail");
-    if (arg === "languages") {
-      w.appendChild(el("h2", "", "Languages (admin)"));
-      w.appendChild(el("p", "store__legend", "A new language (a REPL with its compiler or interpreter) is large, and it belongs in the server's image, so an admin adds it there. It is not part of the store yet."));
-    } else {
-      w.appendChild(el("h2", "", "Editor plugins (later)"));
-      w.appendChild(el("p", "store__legend", "Plugins would run inside your own page, so they need a security design of their own first. They are not part of the store yet."));
-    }
-    return w;
+    return viewBrowse(INTRO[arg] ? arg : "lib");
   }
 
   function viewApt() {
@@ -315,7 +374,159 @@
     return w;
   }
 
+  // ---- the admin's part: requests, failures, the servers ---------------------------------------------------------------------
+
+  function reasonModal(title, confirm, then) {
+    modal(function (d) {
+      d.appendChild(heading(title));
+      d.appendChild(el("p", "", "A reason the people who asked will see (optional)"));
+      var t = el("textarea"); t.maxLength = 200; t.setAttribute("aria-label", "Reason"); d.appendChild(t);
+      d.appendChild(dialogButtons([
+        { label: confirm, primary: true, run: function () { closeModal(); then(t.value); } },
+        { label: "Cancel", run: closeModal }
+      ]));
+      t.focus();
+    });
+  }
+
+  function admRow(title, sub, tagText, tagCls) {
+    var r = el("div", "store__row");
+    var d = el("div");
+    d.appendChild(el("b", "", title));
+    d.appendChild(el("small", "", sub));
+    r.appendChild(d);
+    if (tagText) r.appendChild(el("span", "stag " + (tagCls || ""), tagText));
+    return r;
+  }
+  function rbtn(row, text, cls, fn) { var b = el("button", "sbtn" + (cls ? " " + cls : ""), text); b.type = "button"; b.addEventListener("click", fn); row.appendChild(b); }
+
+  function viewAdmin(arg) {
+    var w = el("div", "store__rows");
+    var nb = noteBox(); if (nb) w.appendChild(nb);
+    var d = S.adm;
+    if (!d) { w.appendChild(el("p", "store__legend", "Loading…")); return w; }
+    var dash = el("a", "sbtn", "Open the full admin dashboard"); dash.href = "./admin#store";
+    if (arg === "requests") {
+      w.appendChild(el("h2", "", "Requests"));
+      w.appendChild(el("p", "store__legend", "Apps that users asked for and that are not on the safe list. Approve installs it for everyone and tells the people who asked."));
+      var waiting = d.requests.filter(function (r) { return r.status === "waiting"; });
+      waiting.forEach(function (rq) {
+        var row = admRow(rq.name, kindLabel(rq.kind) + " · " + rq.askers.length + (rq.askers.length === 1 ? " user" : " users") + " · asked " + day(rq.at) + (rq.reason ? " · “" + rq.reason + "”" : ""), "Waiting", "stag--requested");
+        row.setAttribute("data-request", rq.name);
+        rbtn(row, "Approve and install", "is-primary", function () { adminPost({ action: "approve", name: rq.name }, rq.name + " is being installed."); });
+        rbtn(row, "Reject", "is-danger", function () { reasonModal("Reject " + rq.name + "?", "Reject", function (why) { adminPost({ action: "reject", name: rq.name, answer: why }, rq.name + " was rejected."); }); });
+        w.appendChild(row);
+      });
+      if (!waiting.length) w.appendChild(el("p", "store__legend", "Nobody is waiting for an answer."));
+    } else if (arg === "failures") {
+      w.appendChild(el("h2", "", "Failures reported"));
+      w.appendChild(el("p", "store__legend", "Installs that stopped, and that a user told you about. Every answer is sent to everyone who reported it."));
+      var open = d.reports.filter(function (r) { return r.status === "open"; });
+      open.forEach(function (rp) {
+        var row = admRow(rp.name + (rp.version ? " " + rp.version : ""), rp.reporters.length + (rp.reporters.length === 1 ? " user" : " users") + (rp.node ? " · on " + rp.node : "") + " · stopped at: " + (rp.step || "").split(":")[0] + (rp.note ? " · “" + rp.note + "”" : ""), "Failed", "stag--failed");
+        row.setAttribute("data-report", rp.name);
+        rbtn(row, "Try again", "is-primary", function () { adminPost({ action: "retry", name: rp.name }, "Trying " + rp.name + " again."); });
+        rbtn(row, "Pick another version", "", function () { go("#app/" + encodeURIComponent(rp.name)); });
+        rbtn(row, "Mark installed", "", function () { adminPost({ action: "installed", name: rp.name }, rp.name + " is marked installed."); });
+        rbtn(row, "Reject", "is-danger", function () { reasonModal("Reject the report about " + rp.name + "?", "Reject", function (why) { adminPost({ action: "rejectreport", name: rp.name, answer: why }, "Rejected."); }); });
+        w.appendChild(row);
+        if (rp.log) w.appendChild(el("pre", "store__code", rp.log));
+      });
+      if (!open.length) w.appendChild(el("p", "store__legend", "No failures are waiting for you."));
+    } else {
+      w.appendChild(el("h2", "", "Servers and installs"));
+      w.appendChild(el("p", "store__legend", "Every server (the gateway and each worker) with what it has, how big it is and what it is fetching now. A worker asks the gateway for the catalog every minute."));
+      d.nodes.forEach(function (n) {
+        var pct = Math.min(100, Math.round(100 * n.sizeMB / d.limitMB));
+        var box = el("div", "store__node");
+        box.setAttribute("data-node", n.node);
+        var head = el("div", "store__nodehead");
+        head.appendChild(el("b", "", n.node));
+        head.appendChild(el("span", "store__legend", Math.round(n.sizeMB) + " MB of " + d.limitMB + " MB (" + pct + "%)" + (n.seen ? " · answered " + new Date(n.seen).toLocaleTimeString() : "")));
+        box.appendChild(head);
+        var bar = el("div", "store-dialog__bar"); var fill = el("i"); fill.style.width = pct + "%"; bar.appendChild(fill); box.appendChild(bar);
+        var ids = d.apps.filter(function (a) { return a.state === "installed"; });
+        ids.forEach(function (a) {
+          var have = n.have.indexOf(a.id) >= 0, f = n.fetching && n.fetching[a.id], bad = n.failed && n.failed[a.id];
+          var status = have ? "ready" : f != null ? "fetching " + f + "%" : bad ? "failed" : "missing";
+          var row = admRow(a.name + " " + a.version, kindLabel(a.kind) + (have && n.sizes && n.sizes[a.id] ? " · " + Math.round(n.sizes[a.id]) + " MB" : "") + (bad ? " · " + bad : ""), status, have ? "stag--installed" : f != null ? "stag--installing" : bad ? "stag--failed" : "stag--requested");
+          row.setAttribute("data-bundle", a.id);
+          if (have || bad) rbtn(row, "Reinstall here", "", function () { adminPost({ action: "reinstall", node: n.node, id: a.id }, "Asked " + n.node + " to make " + a.name + " again" + (n.node === "gateway" ? "." : " (within a minute).")); });
+          box.appendChild(row);
+        });
+        if (!ids.length) box.appendChild(el("p", "store__legend", "Nothing is installed yet."));
+        Object.keys(n.failed || {}).filter(function (k) { return k.indexOf("apt:") === 0 || k.indexOf("user:") === 0 || k === "store"; }).forEach(function (k) { box.appendChild(el("p", "store__legend", k + ": " + n.failed[k])); });
+        if (n.pending && n.pending.length) box.appendChild(el("p", "store__legend", "Waiting for " + n.node + " to ask: " + n.pending.join(", ")));
+        w.appendChild(box);
+      });
+      // installed apps and who uses them: remove for everyone
+      w.appendChild(el("h3", "store__h3", "Installed apps"));
+      d.apps.forEach(function (a) {
+        var users = d.users[a.id] || 0;
+        var row = admRow(a.name + " " + (a.version || ""), kindLabel(a.kind) + " · " + a.state + " · on for " + users + (users === 1 ? " user" : " users") + (a.size ? " · " + Math.round(a.size / 1048576) + " MB" : ""), a.state === "installed" ? "Installed" : a.state, a.state === "installed" ? "stag--installed" : "stag--failed");
+        rbtn(row, "Open", "", function () { go("#app/" + encodeURIComponent(a.name)); });
+        rbtn(row, "Uninstall for everyone", "is-danger", function () {
+          modal(function (dd) {
+            dd.appendChild(heading("Uninstall " + a.name + "?"));
+            dd.appendChild(el("p", "", users ? users + " users have it on. It is switched off for them and deleted on every server." : "Nobody has it on. It is deleted on every server."));
+            dd.appendChild(dialogButtons([{ label: "Uninstall", primary: true, run: function () { closeModal(); adminPost({ action: "remove", name: a.name }, a.name + " was uninstalled."); } }, { label: "Cancel", run: closeModal }]));
+          });
+        });
+        w.appendChild(row);
+      });
+    }
+    w.appendChild(dash);
+    return w;
+  }
+
   // ---- an app's page --------------------------------------------------------------------------------------------------------
+
+  function useLine(v) {
+    var mod = moduleOf(v.name);
+    switch (v.kind) {
+      case "tool": return "$ " + v.name + " --version";
+      case "node": return "$ node -e \"console.log(require('" + v.name + "'))\"";
+      case "lang": return "$ " + (v.name === "r-base" ? "R" : v.name) + " --version";
+      case "plugin": return "It shows in the status bar of the editor once it is on for you.";
+      default: return "$ python3 -c \"import " + mod + "\"";
+    }
+  }
+  function kindLabel(k) { return { lib: "Python library", tool: "Tool", node: "Node library", lang: "Language", plugin: "Editor plugin" }[k] || "Python library"; }
+  function needs(v) {
+    switch (v.kind) {
+      case "node": return "Node.js (the server's), from npm";
+      case "plugin": return "Nothing: it comes with the server";
+      case "tool": case "lang": return "Nothing else: it brings what it needs, from conda-forge";
+      default: return S.python ? "Python " + S.python + " (the server's), from conda-forge" : "the server's Python, from conda-forge";
+    }
+  }
+
+  function loadSize(v) {
+    var key = (v.kind || "lib") + ":" + v.name;
+    if (S.sizes[key] || v.kind === "plugin" || v.state === "installed") return;
+    S.sizes[key] = { loading: true };
+    store("size?name=" + encodeURIComponent(v.name) + "&kind=" + encodeURIComponent(v.kind || "lib")).then(function (j) { S.sizes[key] = j; renderSoon(); }, function (e) { S.sizes[key] = { error: e.message }; renderSoon(); });
+  }
+
+  // uninstall: a user may when nobody else has it on; an admin always
+  function uninstallDialog(v) {
+    modal(function (d) {
+      d.appendChild(heading((S.admin ? "Uninstall " : "Uninstall ") + v.name + "?"));
+      d.appendChild(el("p", "", S.admin
+        ? "It is deleted from every server, and switched off for the " + (v.othersOn ? v.othersOn + " other users" : "users") + " that have it on. They can install it again from the store."
+        : "It is deleted from the server (nobody else has it on). You can install it again from the store."));
+      d.appendChild(dialogButtons([
+        { label: "Uninstall", primary: true, run: function () {
+          closeModal();
+          var done = function () { say(v.name + " was uninstalled.", "info"); return load().then(function () { go("#browse"); }); };
+          var fail = function (e) { say(e.message, "bad"); load().then(render); };
+          if (S.admin) api("/admin/store", { action: "remove", name: v.name }, true).then(done, fail);
+          else store("uninstall", { name: v.name }).then(done, fail);
+        } },
+        { label: "Cancel", run: closeModal }
+      ]));
+    });
+  }
 
   function viewApp(name) {
     var v = find(name) || { name: name, kind: "lib", state: "unknown", safe: false };
@@ -326,24 +537,31 @@
     head.appendChild(el("span", "store__logo", name.charAt(0)));
     var hd = el("div");
     hd.appendChild(el("h2", "", name));
-    hd.appendChild(el("small", "", (v.version ? v.version + " · " : "") + "conda-forge"));
+    hd.appendChild(el("small", "", (v.version ? v.version + " · " : "") + kindLabel(v.kind) + " · " + ({ node: "npm", plugin: "this server" }[v.kind] || "conda-forge")));
     head.appendChild(hd);
     var tag = stateTag(v); if (tag) head.appendChild(tag);
     w.appendChild(head);
     var nb = noteBox(); if (nb) w.appendChild(nb);
     var info = S.info[name];
-    if (!info) loadInfo(name);
-    w.appendChild(el("p", "store__legend", !info || info.loading ? "Looking it up…" : info.error ? info.error : (info.summary || "No description.")));
+    if (!info && !v.summary && (v.kind === "lib" || v.kind === "tool" || !v.kind)) loadInfo(name);
+    w.appendChild(el("p", "store__legend", v.summary ? v.summary : !info || info.loading ? (v.kind === "node" || v.kind === "lang" ? "" : "Looking it up…") : info.error ? info.error : (info.summary || "No description.")));
+    loadSize(v);
+    var sz = S.sizes[(v.kind || "lib") + ":" + name];
     var kv = el("div", "store__kv");
     function kvRow(k, val) { kv.appendChild(el("span", "", k)); kv.appendChild(el("b", "", val)); }
-    kvRow("Size", v.state === "installed" && v.sizeMB ? "about " + v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB on the server" + (v.packages ? " (" + v.packages + " packages)" : "") : "shown when it is installed");
-    kvRow("Needs", S.python ? "Python " + S.python + " (the server's)" : "the server's Python");
-    kvRow("Who can", v.state === "installed" ? "Everyone can switch it on for themselves" : v.safe ? "You, right away (it is on the safe list)" : "An admin approves it first");
+    kvRow("Size", v.state === "installed" && v.sizeMB ? "about " + v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB on the server" + (v.packages ? " (" + v.packages + " packages)" : "")
+      : v.kind === "plugin" ? "a few KB"
+      : !sz || sz.loading ? "working it out…"
+      : sz.error ? "not known (" + sz.error.split("\n")[0].slice(0, 80) + ")"
+      : "download about " + (sz.downloadMB < 10 ? sz.downloadMB.toFixed(1) : Math.round(sz.downloadMB)) + " MB, about " + (sz.diskMB < 10 ? sz.diskMB.toFixed(1) : Math.round(sz.diskMB)) + " MB once installed (" + sz.packages + " packages, version " + sz.version + ")");
+    kvRow("Needs", needs(v));
+    kvRow("Who can", v.state === "installed" ? "Everyone can switch it on for themselves" : v.safe ? "You, right away (it is on the safe list)" : S.admin ? "You, as an admin" : "An admin approves it first");
     w.appendChild(kv);
     var actions = el("div", "sapp__row");
-    var mod = moduleOf(name);
     if (v.state === "available" || (v.state === "unknown" && v.safe)) {
-      var i = el("button", "sbtn is-primary", "Install " + name); i.type = "button"; i.addEventListener("click", function () { install(v); }); actions.appendChild(i);
+      if (v.safe) { var i = el("button", "sbtn is-primary", "Install " + name); i.type = "button"; i.addEventListener("click", function () { install(v); }); actions.appendChild(i); }
+      else if (S.admin) { var ia = el("button", "sbtn is-primary", "Install " + name + " (admin)"); ia.type = "button"; ia.addEventListener("click", function () { adminInstall(v); }); actions.appendChild(ia); }
+      else { var r0 = el("button", "sbtn is-primary", "Request " + name); r0.type = "button"; r0.addEventListener("click", function () { requestDialog(v); }); actions.appendChild(r0); }
     } else if (v.state === "unknown" || v.state === "rejected") {
       var r = el("button", "sbtn is-primary", "Request " + name); r.type = "button"; r.addEventListener("click", function () { requestDialog(v); }); actions.appendChild(r);
     }
@@ -356,26 +574,39 @@
     w.appendChild(actions);
     if (v.state === "installed") {
       var row = el("div", "store__switchrow");
-      var p = el("p"); p.appendChild(el("b", "", "Use it in my terminals")); p.appendChild(document.createElement("br"));
-      p.appendChild(document.createTextNode("Off for you until you turn it on. It takes effect in terminals you start next."));
+      var p = el("p"); p.appendChild(el("b", "", v.kind === "plugin" ? "Use it in my editor" : "Use it in my terminals")); p.appendChild(document.createElement("br"));
+      p.appendChild(document.createTextNode(v.kind === "plugin" ? "Off for you until you turn it on. It shows in the status bar of your editor." : "Off for you until you turn it on. It takes effect in terminals you start next."));
       row.appendChild(p);
       control(v, row);
       w.appendChild(row);
-      w.appendChild(el("pre", "store__code", v.kind === "tool" ? "$ " + name + " --help" : "$ python3 -c \"import " + mod + "\""));
-      if (v.on) {
+      w.appendChild(el("pre", "store__code", useLine(v)));
+      if (v.on && v.kind !== "plugin") {
         var ap = el("button", "sbtn", "Copy the line for an open terminal"); ap.type = "button"; ap.addEventListener("click", function () { copy(". '" + S.envScript + "'"); });
         w.appendChild(ap);
         w.appendChild(el("p", "store__legend", "Turning it off removes it from your terminals only. Other users keep their own switch."));
       }
+      // uninstall
+      var un = el("div", "store__uninstall");
+      var ub = el("button", "sbtn is-danger", S.admin ? "Uninstall for everyone" : "Uninstall"); ub.type = "button";
+      if (!S.admin && v.othersOn > 0) {
+        ub.disabled = true;
+        un.appendChild(ub);
+        un.appendChild(el("p", "store__legend", v.othersOn + (v.othersOn === 1 ? " other user has" : " other users have") + " it on, so it stays. You can switch it off for yourself, or ask an admin to remove it."));
+      } else {
+        ub.addEventListener("click", function () { uninstallDialog(v); });
+        un.appendChild(ub);
+        un.appendChild(el("p", "store__legend", S.admin ? "As an admin you can remove it even when others use it." : "Nobody else has it on, so you can remove it from the server."));
+      }
+      w.appendChild(un);
     } else if (v.state === "available" || v.state === "unknown") {
-      w.appendChild(el("pre", "store__code", "after it is installed and on:\n" + (v.kind === "tool" ? name + " --help" : "import " + mod)));
+      w.appendChild(el("pre", "store__code", "after it is installed and on:\n" + useLine(v).replace(/^\$ /, "")));
     }
     if (v.state === "failed" && v.reported && !v.mine) {
       var me = el("button", "sbtn", "I have this problem too"); me.type = "button";
       me.addEventListener("click", function () { act("report", { name: name, note: "" }, "Added: the admin will see that more than one person is waiting."); });
       w.appendChild(me);
     }
-    if (S.admin) {
+    if (S.admin && v.kind !== "plugin") {
       var pick = el("div", "store__pick");
       pick.appendChild(el("span", "store__legend", "Admin: install another version"));
       var sel = el("select"); sel.setAttribute("aria-label", "Version");
@@ -533,6 +764,7 @@
       case "requests": node = viewRequests(); break;
       case "kind": node = viewKind(r.arg); break;
       case "apt": node = S.admin ? viewApt() : viewBrowse(); break;
+      case "admin": node = S.admin ? viewAdmin(r.arg) : viewBrowse(); break;
       case "app": node = viewApp(r.arg); break;
       default: node = viewBrowse();
     }

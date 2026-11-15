@@ -35,7 +35,10 @@ func moduleOf(dest, name string) string {
 // checkBundle starts the bundle's own Python and imports the package's module (or just starts Python, when the module is not
 // known): a bundle that cannot start is never offered as installed. A bundle with no Python has nothing to start. It runs as the
 // server, not in a terminal's sandbox, in an empty folder, with a time limit.
-func checkBundle(ctx context.Context, dest, name string) error {
+func checkBundle(ctx context.Context, dest, name, kind string) error {
+	if kind == KindNode {
+		return checkNode(ctx, dest, name)
+	}
 	py := filepath.Join(dest, "bin", "python")
 	if _, err := os.Stat(py); err != nil {
 		return nil
@@ -51,6 +54,24 @@ func checkBundle(ctx context.Context, dest, name string) error {
 	out, err := c.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s did not start: %s", name, tail(strings.TrimSpace(string(out)), 400))
+	}
+	return nil
+}
+
+// checkNode requires the module with the node program of the server (when it has one): a Node library that cannot be loaded is
+// never offered as installed.
+func checkNode(ctx context.Context, dest, name string) error {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	c := exec.CommandContext(ctx, node, "-e", "require('"+name+"')")
+	c.Env = append(os.Environ(), "NODE_PATH="+filepath.Join(dest, "node_modules"))
+	c.Dir = os.TempDir()
+	if out, err := c.CombinedOutput(); err != nil {
+		return fmt.Errorf("%s could not be loaded: %s", name, tail(strings.TrimSpace(string(out)), 400))
 	}
 	return nil
 }

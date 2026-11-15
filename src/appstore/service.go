@@ -32,8 +32,11 @@ const (
 
 // The kinds of an app.
 const (
-	KindLib  = "lib"
-	KindTool = "tool"
+	KindLib    = "lib"    // a Python library (conda-forge)
+	KindTool   = "tool"   // a program (conda-forge)
+	KindNode   = "node"   // a Node library (npm)
+	KindLang   = "lang"   // a language: a program that runs code (conda-forge); an admin installs it
+	KindPlugin = "plugin" // an editor plugin that comes with the server; an admin installs it
 )
 
 // Errors a caller turns into a message.
@@ -45,6 +48,7 @@ var (
 	ErrTooSoon       = errors.New("try again in a minute")
 	ErrUnknown       = errors.New("no such app")
 	ErrTooMany       = errors.New("too many apps are on: turn one off first")
+	ErrInUse         = errors.New("other users have it on")
 )
 
 // MaxOn is how many apps one user may have on.
@@ -106,10 +110,12 @@ type Config struct {
 	Apt       AptRunner // installs the Debian packages an admin approved, nil for a node that does not
 	// Fetch gets a finished bundle from the gateway (a worker; see tarball.go). When it is nil, or fails, the node installs the
 	// bundle itself from conda-forge.
-	Fetch   func(ctx context.Context, id, dest string) error
-	Safe    func() []string // the names a user may install without asking
-	LimitMB func() int      // the most the store may use, 0 for no limit
-	Now     func() time.Time
+	Fetch func(ctx context.Context, id, dest string, progress func(pct int)) error
+	// OnProgress is told how far a bundle is fetched (0 to 100), for the gateway to show; nil on a node that tells nobody.
+	OnProgress func(id string, pct int)
+	Safe       func() []string // the names a user may install without asking
+	LimitMB    func() int      // the most the store may use, 0 for no limit
+	Now        func() time.Time
 }
 
 // Service is the App Store of one server (the gateway or a standalone server holds the catalog; a worker only applies it).
@@ -214,7 +220,7 @@ func (s *Service) each(prefix string, fn func(key string, raw []byte)) error {
 
 // Apps lists the apps of the site.
 func (s *Service) Apps() []App {
-	var out []App
+	out := []App{} // never nil: a nil list is "null" in JSON and the pages call .filter on it
 	s.each("app:", func(_ string, raw []byte) {
 		var a App
 		if json.Unmarshal(raw, &a) == nil {
@@ -233,7 +239,7 @@ func (s *Service) app(name string) (App, bool) {
 
 // Requests lists the requests (status waiting or rejected).
 func (s *Service) Requests() []Request {
-	var out []Request
+	out := []Request{}
 	s.each("req:", func(_ string, raw []byte) {
 		var r Request
 		if json.Unmarshal(raw, &r) == nil {
@@ -246,7 +252,7 @@ func (s *Service) Requests() []Request {
 
 // Reports lists the reports of failures.
 func (s *Service) Reports() []Report {
-	var out []Report
+	out := []Report{}
 	s.each("rep:", func(_ string, raw []byte) {
 		var r Report
 		if json.Unmarshal(raw, &r) == nil {
@@ -274,9 +280,15 @@ func (s *Service) setList(home string, ids []string) error {
 // ---- who may install -----------------------------------------------------------------------------------------------------
 
 // IsSafe says whether a user may install the app without asking.
-func (s *Service) IsSafe(name string) bool {
-	for _, n := range s.cfg.Safe() {
-		if strings.EqualFold(strings.TrimSpace(n), name) {
+func (s *Service) IsSafe(name string) bool { return s.isSafe(KindLib, name) }
+
+func (s *Service) isSafe(kind, name string) bool {
+	if !safeKind(kind) {
+		return false
+	}
+	for _, e := range s.cfg.Safe() {
+		k, n := safeEntry(e)
+		if n == name && (k == kind || (kind == KindTool && k == KindLib)) {
 			return true
 		}
 	}
@@ -284,11 +296,28 @@ func (s *Service) IsSafe(name string) bool {
 }
 
 func cleanKind(k string) string {
-	if k == KindTool {
-		return KindTool
+	switch k {
+	case KindTool, KindNode, KindLang, KindPlugin:
+		return k
 	}
 	return KindLib
 }
+
+// safeEntry reads an entry of the safe list: "flask" is a library, "tool:jq" a tool, "npm:express" a Node library.
+func safeEntry(e string) (kind, name string) {
+	e = strings.ToLower(strings.TrimSpace(e))
+	switch {
+	case strings.HasPrefix(e, "npm:"):
+		return KindNode, e[4:]
+	case strings.HasPrefix(e, "tool:"):
+		return KindTool, e[5:]
+	}
+	return KindLib, e
+}
+
+// safeKind says which kinds a user may install without asking (when the name is on the safe list): a language or a plugin is always
+// an admin's to install.
+func safeKind(k string) bool { return k == KindLib || k == KindTool || k == KindNode }
 
 // ---- install -------------------------------------------------------------------------------------------------------------
 
@@ -314,11 +343,15 @@ func (s *Service) install(who, name, kind string, admin bool, version string) er
 	if !ValidName(name) {
 		return fmt.Errorf("%q is not a package name", name)
 	}
-	if !admin && !s.IsSafe(name) {
+	kind = cleanKind(kind)
+	if !admin && !s.isSafe(kind, name) {
 		return ErrNeedsApproval
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if old, ok := s.app(name); ok && old.Kind != "" && cleanKind(old.Kind) != kind && old.State != StateFailed {
+		return fmt.Errorf("%s is installed already, as a %s", name, old.Kind)
+	}
 	if a, ok := s.app(name); ok {
 		switch a.State {
 		case StateInstalled:
@@ -336,10 +369,7 @@ func (s *Service) install(who, name, kind string, admin bool, version string) er
 	if limit := s.cfg.LimitMB(); limit > 0 && s.cfg.Store.Size() > int64(limit)<<20 {
 		return ErrFull
 	}
-	a := App{Name: name, Kind: cleanKind(kind), State: StateInstalling, By: who, At: s.now(), Retried: s.now(), Want: version}
-	if old, ok := s.app(name); ok && old.Kind != "" {
-		a.Kind = old.Kind
-	}
+	a := App{Name: name, Kind: kind, State: StateInstalling, By: who, At: s.now(), Retried: s.now(), Want: version}
 	if err := s.put("app:"+name, a); err != nil {
 		return err
 	}
@@ -394,7 +424,7 @@ func (s *Service) runInstall(a App) {
 		return
 	}
 	s.step(a.Name, 1, "")
-	res, err := s.cfg.Installer.Resolve(ctx, a.Name, a.Want)
+	res, err := s.cfg.Installer.Resolve(ctx, a.Name, a.Want, a.Kind)
 	if err != nil {
 		s.fail(a, "Resolving the dependencies", err, err.Error())
 		return
@@ -411,13 +441,13 @@ func (s *Service) runInstall(a App) {
 	}
 	os.RemoveAll(dest) // a half-made bundle of an earlier try
 	s.step(a.Name, 2, detail)
-	if err := s.cfg.Installer.Install(ctx, a.Name, res.Version, dest, &logb); err != nil {
+	if err := s.cfg.Installer.Install(ctx, a.Name, res.Version, a.Kind, dest, &logb); err != nil {
 		os.RemoveAll(dest)
 		s.fail(a, "Downloading and linking", err, logb.String())
 		return
 	}
 	s.step(a.Name, 3, detail)
-	if err := checkBundle(ctx, dest, a.Name); err != nil {
+	if err := checkBundle(ctx, dest, a.Name, a.Kind); err != nil {
 		os.RemoveAll(dest)
 		s.fail(a, "Checking that it works", err, err.Error())
 		return
@@ -677,6 +707,8 @@ func (s *Service) Switch(home, id string, on bool) error {
 
 // View is one app as a user sees it.
 type View struct {
+	OthersOn int        `json:"othersOn,omitempty"` // how many other users have it on: a user may uninstall it only when this is 0
+	Summary  string     `json:"summary,omitempty"`  // for the samples, which are not looked up
 	At       int64      `json:"at,omitempty"`       // when it was installed or asked for
 	Steps    []StepView `json:"steps,omitempty"`    // while installing: the list with what is done
 	Pct      int        `json:"pct,omitempty"`      // how far the install is
@@ -733,11 +765,26 @@ func (s *Service) Views(who, home string) []View {
 	for _, id := range s.MyList(home) {
 		my[id] = true
 	}
+	// how many other users have each bundle on (a user may uninstall an app only when nobody else has it on)
+	others := map[string]int{}
+	if home != "" {
+		s.each("user:", func(key string, raw []byte) {
+			if strings.TrimPrefix(key, "user:") == home {
+				return
+			}
+			var ids []string
+			if json.Unmarshal(raw, &ids) == nil {
+				for _, id := range ids {
+					others[id]++
+				}
+			}
+		})
+	}
 	seen := map[string]bool{}
-	var out []View
+	out := []View{}
 	for _, a := range s.Apps() {
-		v := View{At: a.At, Name: a.Name, Version: a.Version, ID: a.ID, Kind: a.Kind, State: a.State, Safe: s.IsSafe(a.Name),
-			On: my[a.ID], SizeMB: float64(a.Size) / (1 << 20), Mine: a.By == who}
+		v := View{At: a.At, Name: a.Name, Version: a.Version, ID: a.ID, Kind: a.Kind, State: a.State, Safe: s.isSafe(cleanKind(a.Kind), a.Name),
+			On: my[a.ID], SizeMB: float64(a.Size) / (1 << 20), Mine: a.By == who, OthersOn: others[a.ID]}
 		v.Packages = a.Packages
 		if a.State == StateInstalling {
 			if j, ok := s.Job(a.Name); ok {
@@ -779,13 +826,26 @@ func (s *Service) Views(who, home string) []View {
 		seen[r.Name] = true
 		out = append(out, v)
 	}
-	for _, n := range s.cfg.Safe() {
-		n = strings.ToLower(strings.TrimSpace(n))
+	for _, e := range s.cfg.Safe() {
+		k, n := safeEntry(e)
 		if n == "" || seen[n] || !ValidName(n) {
 			continue
 		}
 		seen[n] = true
-		out = append(out, View{Name: n, Kind: KindLib, State: "available", Safe: true})
+		out = append(out, View{Name: n, Kind: k, State: "available", Safe: true})
+	}
+	// the samples of the kinds an admin installs: languages and the plugins that come with the server
+	for _, l := range SampleLanguages {
+		if !seen[l.Name] {
+			seen[l.Name] = true
+			out = append(out, View{Name: l.Name, Kind: KindLang, State: "available", Summary: l.Summary})
+		}
+	}
+	for _, p := range Plugins {
+		if !seen[p.Name] {
+			seen[p.Name] = true
+			out = append(out, View{Name: p.Name, Kind: KindPlugin, State: "available", Version: p.Version, Summary: p.Summary})
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -799,6 +859,9 @@ type Snapshot struct {
 	Users map[string][]string `json:"users"`
 	Apt   []string            `json:"apt,omitempty"`
 	Full  bool                `json:"full"` // the list is complete: a bundle that is not in it may be removed
+	// Reinstall are bundles an admin asked this node to make again (the gateway adds them when it answers a worker): the node
+	// deletes its copy of each, and the replay that follows fetches it again.
+	Reinstall []string `json:"reinstall,omitempty"`
 }
 
 // Snapshot takes the catalog of this server.
@@ -834,6 +897,8 @@ type NodeState struct {
 	Failed map[string]string `json:"failed,omitempty"`
 	SizeMB float64           `json:"sizeMB"`
 	At     int64             `json:"at"`
+	// Sizes is the size of each bundle this node has, in MB (from its marker), for the admin's table of a server.
+	Sizes map[string]float64 `json:"sizes,omitempty"`
 }
 
 // Apply makes this node's store match a snapshot: the bundles that are missing are installed (the same pinned versions), the
@@ -841,6 +906,11 @@ type NodeState struct {
 // node does at its start, when it joins and when the catalog changes (a worker gets the snapshot from the gateway).
 func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 	st := NodeState{Failed: map[string]string{}, At: s.now()}
+	for _, id := range snap.Reinstall {
+		if ValidBundle(id) {
+			s.cfg.Store.RemoveBundle(id) // the loop below makes it again, from the gateway or from conda-forge
+		}
+	}
 	if err := s.cfg.Store.Ready(); err != nil {
 		st.Failed["store"] = err.Error()
 		return st
@@ -861,13 +931,13 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		var err error
 		if s.cfg.Fetch != nil {
 			// a worker takes the finished bundle from the gateway: it needs neither the internet nor the time of a solve
-			if err = s.cfg.Fetch(ctx, a.ID, dest); err != nil {
+			if err = s.cfg.Fetch(ctx, a.ID, dest, func(pct int) { s.progress(a.ID, pct) }); err != nil {
 				log.Printf("appstore: replay: %s could not be fetched from the gateway (%v); installing it here", a.ID, err)
 				os.RemoveAll(dest)
 			}
 		}
 		if s.cfg.Fetch == nil || err != nil {
-			err = s.cfg.Installer.Install(ctx, a.Name, a.Version, dest, &logb)
+			err = s.cfg.Installer.Install(ctx, a.Name, a.Version, a.Kind, dest, &logb)
 		}
 		if err == nil {
 			_, err = s.cfg.Store.Finish(a.ID, a.Name, a.Version)
@@ -909,6 +979,10 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 	}
 	s.applyApt(ctx, snap.Apt, &st)
 	st.Have = s.cfg.Store.Bundles()
+	st.Sizes = map[string]float64{}
+	for _, id := range st.Have {
+		st.Sizes[id] = float64(s.cfg.Store.BundleSize(id)) / (1 << 20)
+	}
 	st.SizeMB = float64(s.cfg.Store.Size()) / (1 << 20)
 	return st
 }
@@ -927,8 +1001,11 @@ func (s *Service) Recover() {
 
 // Apt is the list of Debian packages an admin approved for every user.
 func (s *Service) Apt() []string {
-	var l []string
+	l := []string{}
 	s.get("apt", &l)
+	if l == nil {
+		l = []string{}
+	}
 	return l
 }
 
@@ -1024,4 +1101,116 @@ func (s *Service) Ack(who, name string) {
 		rep.Seen = append(rep.Seen, who)
 		s.put("rep:"+name, rep)
 	}
+}
+
+// ---- what an install would cost, search, and the progress of a fetch ----------------------------------------------------------
+
+type estimate struct {
+	r   Resolved
+	at  time.Time
+	err string
+}
+
+var (
+	estMu    sync.Mutex
+	estCache = map[string]estimate{}
+)
+
+// Estimate says what an install of an app would bring: its version, the packages and about how many MB (a solve without installing; the
+// answer is kept for an hour).
+func (s *Service) Estimate(ctx context.Context, name, kind string) (Resolved, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	kind = cleanKind(kind)
+	if !ValidName(name) {
+		return Resolved{}, fmt.Errorf("%q is not a package name", name)
+	}
+	key := kind + ":" + name
+	estMu.Lock()
+	if e, ok := estCache[key]; ok && time.Since(e.at) < time.Hour {
+		estMu.Unlock()
+		if e.err != "" {
+			return Resolved{}, errors.New(e.err)
+		}
+		return e.r, nil
+	}
+	estMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	r, err := s.cfg.Installer.Resolve(ctx, name, "", kind)
+	e := estimate{r: r, at: time.Now()}
+	if err != nil {
+		e.err = err.Error()
+	}
+	estMu.Lock()
+	estCache[key] = e
+	estMu.Unlock()
+	return r, err
+}
+
+// Hit is one answer of a search, with what the store knows of the app.
+type Hit struct {
+	Found
+	State string `json:"state"` // available, installing, installed, failed, requested, rejected
+	Safe  bool   `json:"safe"`
+}
+
+// Search looks for apps by a few letters of the name, in the catalogs the installer has (conda-forge, npm, the plugins), and says for
+// each what the store knows of it. An app the store has already is first.
+func (s *Service) Search(ctx context.Context, q, kind string) ([]Hit, error) {
+	found, err := s.cfg.Installer.Search(ctx, q, kind)
+	known := map[string]View{}
+	for _, v := range s.Views("", "") {
+		known[v.Name] = v
+	}
+	var hits []Hit
+	seen := map[string]bool{}
+	add := func(f Found) {
+		if seen[f.Name+f.Kind] {
+			return
+		}
+		seen[f.Name+f.Kind] = true
+		h := Hit{Found: f, State: "available", Safe: s.isSafe(cleanKind(f.Kind), f.Name)}
+		if v, ok := known[f.Name]; ok && (v.Kind == f.Kind || v.Kind == "") {
+			h.State = v.State
+			if v.Summary != "" && h.Summary == "" {
+				h.Summary = v.Summary
+			}
+		}
+		hits = append(hits, h)
+	}
+	for _, f := range found {
+		add(f)
+	}
+	return hits, err
+}
+
+func (s *Service) progress(id string, pct int) {
+	if s.cfg.OnProgress != nil {
+		s.cfg.OnProgress(id, pct)
+	}
+}
+
+// Uninstall removes an installed app on a user's own word: it is allowed only when no other user has it on (the user's own switch does
+// not count: it goes with the app). An admin removes an app anyway (Remove). It says how many other users had it on when it refuses.
+func (s *Service) Uninstall(who, home, name string) error {
+	name = strings.ToLower(strings.TrimSpace(name))
+	a, ok := s.app(name)
+	if !ok || a.State != StateInstalled {
+		return ErrUnknown
+	}
+	others := 0
+	s.each("user:", func(key string, raw []byte) {
+		if strings.TrimPrefix(key, "user:") == home {
+			return
+		}
+		var ids []string
+		if json.Unmarshal(raw, &ids) == nil && has(ids, a.ID) {
+			others++
+		}
+	})
+	if others > 0 {
+		return fmt.Errorf("%w: %d other users", ErrInUse, others)
+	}
+	_, err := s.Remove(who, name)
+	return err
 }
