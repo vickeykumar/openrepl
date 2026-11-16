@@ -3,6 +3,7 @@
 // Part of the page script: webpack bundles src/js/src/page/*.js into js/scribbler.js.
 
 import { missingFrom } from "./lib-store-hint.mjs";
+import { matches, chipsFor, languages, narrow, pushRecent, importsOf, needed } from "./lib-store-filter.mjs";
 
 var tab = "browse";          // browse | mine
 var views = [];              // what the server says: one for each app
@@ -19,6 +20,16 @@ var changed = false;         // the user switched something since the dialog ope
 var watching = {};           // apps that are being installed: a notice says when they are done
 var pollTimer = 0;
 var loaded = false;
+var category = "";           // the chosen category chip ("" is All; "Built in" is the built-in programs of My apps)
+var repl = "";               // the chosen language ("" is all)
+var confirming = null;       // { v, act }: a big app that the user is asked about before it is installed or asked for
+
+// the browser's storage may be blocked: what is kept there is only a convenience
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* no storage: nothing is remembered */ } }
+function recentList() { try { var a = JSON.parse(lsGet("appstore-recent") || "[]"); return Array.isArray(a) ? a.filter(function (x) { return typeof x === "string"; }).slice(0, 3) : []; } catch (e) { return []; } }
+function noteRecent(name) { lsSet("appstore-recent", JSON.stringify(pushRecent(recentList(), name, 3))); }
+function setTab(t) { tab = t; lsSet("appstore-tab", t); }
 
 function el(id) { return document.getElementById(id); }
 function signedIn() { return document.body.classList.contains("is-signed-in"); }
@@ -111,6 +122,19 @@ function act(path, body, ok) {
 
 function install(v) { return act("install", { name: v.name, kind: v.kind || "lib" }); }
 
+// what the open file imports: its text and its language (the language menu of the editor)
+function editorText() {
+  try { var e = window["editor"]; var ed = e && e.env && e.env.editor; return ed ? String(ed.getValue()).slice(0, 200000) : ""; } catch (x) { return ""; }
+}
+function editorLang() { var s = el("select-lang"); return s ? String(s.value || "") : ""; }
+
+// a big app asks first: its size on the disk and the memory it needs when it is used
+function bigApp(v) { return (v.instMB || 0) > 150 || (v.ramMB || 0) >= 100; }
+function guarded(what, v) {
+  if (what !== "switch" && bigApp(v)) { confirming = { v: v, act: what }; render(); return; }
+  if (what === "install") install(v); else if (what === "request") request(v);
+}
+
 // "Install and turn on": a safe app is installed and, when it is done, switched on (an installed one is only switched on)
 function installAndOn(name) {
   name = String(name || "").toLowerCase();
@@ -138,7 +162,7 @@ function switchApp(v, on) {
   if (checking) return Promise.resolve();
   checking = v.id; useFail = null; say("Checking that " + v.name + " works in your terminals…"); render();
   return api("switch", { id: v.id, on: true }).then(function (j) {
-    checking = ""; take(j); say(v.name + " is on for your terminals. It was checked and works."); render();
+    checking = ""; take(j); noteRecent(v.name); say(v.name + " is on for your terminals. It was checked and works."); render();
   }, function (e) {
     checking = "";
     if (e.code === "verify" && e.body) {
@@ -205,6 +229,7 @@ function card(v) {
     if (v.log) { var pre = h("pre", "appstore__log", v.log); c.appendChild(pre); }
   }
   if (v.state === "rejected" && v.answer) c.appendChild(h("p", "appstore__sum", v.answer));
+  if (v.use && (v.state === "installed" || v.state === "available" || v.state === "installing")) c.appendChild(h("code", "appstore__use", v.use)); // how to use it, one line
   if (v.summary && !(info && info.info)) c.appendChild(h("p", "appstore__sum", v.summary));
   var row = h("div", "appstore__row");
   function button(text, fn, primary) {
@@ -214,7 +239,7 @@ function card(v) {
     row.appendChild(b);
     return b;
   }
-  if (v.state === "available") button("Install", function () { install(v); }, true);
+  if (v.state === "available") button(v.safe ? "Install" : "Request", function () { guarded(v.safe ? "install" : "request", v); }, true);
   if (v.state === "installed") {
     var sw = h("button", "appstore__switch" + (v.on ? " is-on" : ""), checking === v.id ? "Checking…" : v.on ? "On" : "Off");
     sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", v.on ? "true" : "false");
@@ -238,7 +263,7 @@ function card(v) {
     if (v.reported) row.appendChild(h("span", "appstore__tag", v.mine ? "You told the admin" : "Reported, the admin is looking at it"));
     else button("Report to admin", function () { report(v); });
   }
-  if (v.state === "rejected") button("Ask again", function () { request(v); });
+  if (v.state === "rejected") button("Ask again", function () { guarded("request", v); });
   if (v.docs) {
     var dl = h("a", "appstore__btn", "Docs"); dl.href = v.docs; dl.target = "_blank"; dl.rel = "noopener noreferrer"; row.appendChild(dl);
   }
@@ -285,6 +310,139 @@ function lookupCard(name) {
   return c;
 }
 
+// ---- the filters, the suggestions, the question about a big app --------------------------------------------------------------
+
+function chip(label, count, on, fn) {
+  var b = h("button", "appstore__chip" + (on ? " is-on" : ""), label);
+  b.type = "button";
+  b.setAttribute("aria-pressed", on ? "true" : "false");
+  b.setAttribute("data-category", label);
+  if (count !== undefined) b.appendChild(h("b", "", String(count)));
+  if (count === 0) b.classList.add("is-empty");
+  b.addEventListener("click", fn);
+  return b;
+}
+
+function renderFilters(chips, total, builtinCount, langs, shownCount) {
+  var box = el("appstore-filters");
+  if (!box) return;
+  box.textContent = "";
+  box.hidden = false;
+  var head = h("div", "appstore__filterhead");
+  head.appendChild(h("span", "appstore__cap", "Category"));
+  if (category || repl) {
+    var clr = h("button", "appstore__link", "Clear filter"); clr.type = "button";
+    clr.addEventListener("click", function () { category = ""; repl = ""; render(); });
+    head.appendChild(clr);
+  }
+  box.appendChild(head);
+  var row = h("div", "appstore__chips"); row.setAttribute("role", "group"); row.setAttribute("aria-label", "Category");
+  row.appendChild(chip("All", total + (tab === "mine" ? builtinCount : 0), !category, function () { category = ""; render(); }));
+  chips.forEach(function (c) { row.appendChild(chip(c.name, c.count, category === c.name, function () { category = category === c.name ? "" : c.name; render(); })); });
+  if (tab === "mine" && builtinCount) row.appendChild(chip("Built in", builtinCount, category === "Built in", function () { category = category === "Built in" ? "" : "Built in"; render(); }));
+  // the arrow keys move along the chips; Tab leaves the group
+  row.addEventListener("keydown", function (e) {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    var all = Array.prototype.slice.call(row.querySelectorAll("button")), i = all.indexOf(document.activeElement);
+    if (i < 0) return;
+    e.preventDefault();
+    all[(i + (e.key === "ArrowRight" ? 1 : all.length - 1)) % all.length].focus();
+  });
+  box.appendChild(row);
+  var langRow = h("div", "appstore__langrow");
+  var lab = h("label", "appstore__cap", "Language ");
+  var sel = h("select", "appstore__select"); sel.setAttribute("aria-label", "Language");
+  var o0 = h("option", "", "all"); o0.value = ""; sel.appendChild(o0);
+  langs.forEach(function (l) { var o = h("option", "", l); o.value = l; sel.appendChild(o); });
+  sel.value = repl; if (sel.value !== repl) repl = "";
+  sel.addEventListener("change", function () { repl = sel.value; render(); });
+  lab.appendChild(sel);
+  langRow.appendChild(lab);
+  if (category || repl) {
+    var n = category === "Built in" ? builtinCount : shownCount;
+    langRow.appendChild(h("span", "appstore__showing", "Showing " + n + (n === 1 ? " app" : " apps") + (category ? " in " + category : "") + (repl ? " for " + repl : "") + "."));
+  }
+  box.appendChild(langRow);
+}
+
+function emptyFilter(q) {
+  var c = h("div", "appstore__empty");
+  c.setAttribute("data-empty", "1");
+  var what = (q ? "Nothing called \u201c" + q + "\u201d" : "Nothing") + (category ? " in " + category : "") + (repl ? " for " + repl : "") + ".";
+  c.appendChild(h("p", "appstore__sum", what));
+  var row = h("div", "appstore__row");
+  if (category && q) { var a = h("button", "appstore__btn", "Search all categories"); a.type = "button"; a.addEventListener("click", function () { category = ""; render(); }); row.appendChild(a); }
+  var b = h("button", "appstore__btn", "Clear filter"); b.type = "button"; b.addEventListener("click", function () { category = ""; repl = ""; render(); }); row.appendChild(b);
+  c.appendChild(row);
+  return c;
+}
+
+// "Your file uses ...": apps the open file imports and that are not on; "Recently switched on": the last three apps the user used (My apps)
+function renderSuggest() {
+  var box = el("appstore-suggest");
+  if (!box) return;
+  box.textContent = "";
+  var any = false;
+  var need = needed(importsOf(editorText(), editorLang()), views).slice(0, 3);
+  if (need.length) {
+    any = true;
+    var s1 = h("div", "appstore__sugg"); s1.setAttribute("data-suggest", "file");
+    s1.appendChild(h("span", "appstore__cap", "Suggested for this file"));
+    need.forEach(function (v) {
+      var r = h("div", "appstore__row");
+      r.appendChild(h("span", "", "Your file uses "));
+      var n = h("b", "", v.name.replace(/^(gomod|jar|crate|py27)-/, "")); r.appendChild(n);
+      r.appendChild(h("span", "appstore__sp"));
+      var b = h("button", "appstore__btn is-primary", v.state === "installed" ? "Turn it on" : v.safe ? "Install" : "Request"); b.type = "button";
+      b.addEventListener("click", function () { if (v.state === "installed") switchApp(v, true).catch(function () {}); else guarded(v.safe ? "install" : "request", v); });
+      r.appendChild(b);
+      s1.appendChild(r);
+    });
+    box.appendChild(s1);
+  }
+  if (tab === "mine") {
+    var rec = recentList().map(function (n) { return views.filter(function (x) { return x.name === n && x.state === "installed"; })[0]; }).filter(Boolean);
+    if (rec.length) {
+      any = true;
+      var s2 = h("div", "appstore__sugg"); s2.setAttribute("data-suggest", "recent");
+      s2.appendChild(h("span", "appstore__cap", "Recently switched on"));
+      var row = h("div", "appstore__row");
+      rec.forEach(function (v) {
+        var b = h("button", "appstore__chip" + (v.on ? " is-on" : ""), v.name.replace(/^(gomod|jar|crate|py27)-/, "")); b.type = "button";
+        b.setAttribute("aria-pressed", v.on ? "true" : "false");
+        b.title = v.on ? "On: click to turn it off" : "Off: click to turn it on";
+        b.addEventListener("click", function () { switchApp(v, !v.on).catch(function () {}); });
+        row.appendChild(b);
+      });
+      s2.appendChild(row);
+      box.appendChild(s2);
+    }
+  }
+  box.hidden = !any;
+}
+
+function confirmPanel(c) {
+  var v = c.v, p = h("div", "appstore__confirm");
+  p.setAttribute("role", "alertdialog"); p.setAttribute("aria-label", (c.act === "install" ? "Install " : "Request ") + v.name);
+  p.appendChild(h("b", "", (c.act === "install" ? "Install " : "Request ") + v.name.replace(/^(gomod|jar|crate|py27)-/, "") + "?"));
+  var bits = [];
+  if (v.instMB) bits.push("is " + v.instMB + " MB on the server");
+  if (v.ramMB) bits.push("needs about " + v.ramMB + " MB of memory when used");
+  p.appendChild(h("p", "appstore__sum", "It " + (bits.join(" and ") || "is big") + ". Your terminal may be stopped if it runs out of memory." + (c.act === "request" ? " An admin has to approve it." : "")));
+  var row = h("div", "appstore__row");
+  var go = h("button", "appstore__btn is-primary", c.act === "install" ? "Install it" : "Request it"); go.type = "button";
+  go.addEventListener("click", function () { confirming = null; if (c.act === "install") install(v); else request(v); });
+  var no = h("button", "appstore__btn", "Cancel"); no.type = "button"; no.addEventListener("click", function () { confirming = null; render(); });
+  row.appendChild(go); row.appendChild(no);
+  if (v.category) {
+    var sm = h("button", "appstore__link", "What is smaller?"); sm.type = "button";
+    sm.addEventListener("click", function () { confirming = null; category = v.category; render(); });
+    row.appendChild(sm);
+  }
+  p.appendChild(row);
+  return p;
+}
+
 function render(err) {
   var list = el("appstore-list"), foot = el("appstore-foot");
   if (!list) return;
@@ -293,7 +451,16 @@ function render(err) {
     var b = el("appstore-tab-" + t);
     if (b) { b.setAttribute("aria-selected", tab === t ? "true" : "false"); b.classList.toggle("is-on", tab === t); }
   });
+  var mt = el("appstore-tab-mine");
+  if (mt) { // how many apps are on for the user, on the tab itself
+    var on = views.filter(function (v) { return v.on; }).length;
+    mt.textContent = "My apps";
+    if (loaded && signedIn() && on) mt.appendChild(h("i", "appstore__count", String(on)));
+  }
   var tools = el("appstore-tools"); if (tools) tools.hidden = tab !== "browse";
+  var fl = el("appstore-filters"), sg = el("appstore-suggest");
+  if (fl) fl.hidden = true;
+  if (sg) sg.hidden = true;
   if (!signedIn() || (err && err.code === "signin")) {
     var g = h("div", "appstore__guest");
     g.appendChild(h("b", "", "Sign in to use the App Store"));
@@ -309,15 +476,28 @@ function render(err) {
   if (err) { list.appendChild(h("p", "appstore__sum", err.message || "The App Store is not available.")); return; }
   if (!loaded) { list.appendChild(h("p", "appstore__sum", "Loading…")); return; }
   var q = query.trim().toLowerCase();
-  var shown = views.filter(function (v) {
-    if (tab === "mine") return v.on || v.state === "requested" || v.state === "rejected" || (v.state === "failed" && v.mine) || (v.state === "installing" && v.mine);
-    return !q || v.name.indexOf(q) >= 0;
-  });
+  var mineOk = function (v) { return v.on || v.state === "requested" || v.state === "rejected" || (v.state === "failed" && v.mine) || (v.state === "installing" && v.mine); };
+  var pool = tab === "mine" ? views.filter(mineOk) : views;                 // what the tab is about
+  var searched = tab === "browse" ? pool.filter(function (v) { return matches(v, q); }) : pool;
+  var inLang = narrow(searched, "", repl);                                  // the counts of the chips follow the search and the language
+  var biList = tab === "mine" ? builtins.filter(function (b) { return !repl || (b.used || []).indexOf(repl) >= 0; }) : [];
+  // every category of the tab's list is a chip (the counts follow the search, a category the search emptied is dimmed); a chosen category that
+  // the tab does not have at all (the language changed) is dropped
+  var chips = chipsFor(narrow(pool, "", repl), inLang);
+  if (category && category !== "Built in" && !chips.some(function (c) { return c.name === category; })) category = "";
+  if (category === "Built in" && !biList.length) category = "";
+  var shown = category === "Built in" ? [] : narrow(searched, category, repl);
+  var biShown = tab === "mine" && (category === "" || category === "Built in") ? biList : [];
+  renderSuggest();
+  renderFilters(chips, inLang.length, biList.length, languages(pool), shown.length);
+  if (confirming) list.appendChild(confirmPanel(confirming));
   shown.forEach(function (v) { list.appendChild(card(v)); });
-  if (tab === "mine") builtins.forEach(function (b) { list.appendChild(builtinCard(b)); });
+  biShown.forEach(function (b) { list.appendChild(builtinCard(b)); });
   // a name that nothing in the store matches can still be looked up on conda-forge and asked for
-  if (tab === "browse" && q && !shown.length && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(q)) list.appendChild(lookupCard(q));
-  if (!shown.length && !(tab === "mine" && builtins.length) && !(tab === "browse" && q)) list.appendChild(h("p", "appstore__sum", tab === "mine" ? "Nothing is on for you yet. Browse the store and switch an app on." : "No apps yet."));
+  if (tab === "browse" && q && !shown.length && !category && !repl && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(q)) list.appendChild(lookupCard(q));
+  if (!shown.length && !biShown.length && (category || repl || (tab === "browse" && q))) {
+    if (tab !== "browse" || category || repl) list.appendChild(emptyFilter(q));
+  } else if (!shown.length && !biShown.length) list.appendChild(h("p", "appstore__sum", tab === "mine" ? "Nothing is on for you yet. Browse the store and switch an app on." : "No apps yet."));
   if (foot) {
     foot.textContent = "";
     if (changed && tab === "mine") {
@@ -343,7 +523,8 @@ function open(name) {
   var d = el("appstore-dialog");
   if (!d) return;
   if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute("open", ""); }
-  tab = "browse";
+  tab = !name && lsGet("appstore-tab") === "mine" ? "mine" : "browse"; // a user who works in My apps lands there; a name from Genie or the terminal opens Browse
+  category = ""; repl = ""; confirming = null;                           // the filters start at All every time
   query = name ? String(name).toLowerCase() : "";
   var s = el("appstore-search"); if (s) s.value = query;
   say("");
@@ -409,8 +590,8 @@ function init() {
   d.dataset.ready = "1";
   el("appstore-close").addEventListener("click", close);
   d.addEventListener("click", function (e) { if (e.target === d) close(); });
-  el("appstore-tab-browse").addEventListener("click", function () { tab = "browse"; say(""); render(); });
-  el("appstore-tab-mine").addEventListener("click", function () { tab = "mine"; say(""); render(); });
+  el("appstore-tab-browse").addEventListener("click", function () { setTab("browse"); say(""); render(); });
+  el("appstore-tab-mine").addEventListener("click", function () { setTab("mine"); say(""); render(); });
   el("appstore-search").addEventListener("input", function (e) { query = e.target.value; render(); });
   var b = el("appstore-button");
   if (b) b.addEventListener("click", function () { open(); });

@@ -463,3 +463,41 @@ func TestMirrorBundlesReachTheTerminalsEnvironment(t *testing.T) {
 		t.Errorf("env.sh:\n%s", sc)
 	}
 }
+
+func TestUseLinesAndModulesOfTheCatalogue(t *testing.T) {
+	entries, _ := DefaultCatalogue()
+	byID := map[string]Entry{}
+	for _, e := range entries {
+		byID[e.ID] = e
+	}
+	for id, want := range map[string][2]string{
+		"scikit-learn":     {"import sklearn", "sklearn"},
+		"pandas":           {"import pandas", "pandas"},
+		"ripgrep":          {"rg --version", ""},
+		"eigen":            {"#include <eigen3/...>", ""},
+		"npm:lodash":       {"const x = require('lodash')", "lodash"},
+		"go:cobra":         {"go get github.com/spf13/cobra", "github.com/spf13/cobra"},
+		"jar:gson":         {"import com.google.gson.Gson;", "com.google.gson"},
+		"crate:serde_json": {":dep serde_json = \"*\"", "serde_json"},
+		"py27-six":         {"python2.7 -c \"import six\"", "six"},
+	} {
+		e, ok := byID[id]
+		if !ok {
+			t.Errorf("%s is not in the catalogue", id)
+			continue
+		}
+		if e.UseLine() != want[0] || e.Module() != want[1] {
+			t.Errorf("%s: use %q module %q, want %q %q", id, e.UseLine(), e.Module(), want[0], want[1])
+		}
+	}
+	svc, _ := newService(t, Fake{})
+	found := false
+	for _, v := range svc.Views("ann", "ann") {
+		if v.Name == "pandas" && v.Use == "import pandas" && v.Mod == "pandas" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the list carries the use line and the module of an app")
+	}
+}

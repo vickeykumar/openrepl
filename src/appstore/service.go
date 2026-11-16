@@ -1065,12 +1065,14 @@ type View struct {
 	Manager  string   `json:"manager,omitempty"`
 	Place    string   `json:"place,omitempty"`
 	Source   string   `json:"source,omitempty"` // the package at its manager: a module path, group:artifact, a crate
+	Use      string   `json:"use,omitempty"`    // the first line of how to use it
+	Mod      string   `json:"mod,omitempty"`    // the name a program imports it by (to find what an open file needs)
 }
 
 func (v *View) fromEntry(e Entry) {
 	v.Entry, v.Docs, v.Repls, v.Category, v.Level, v.Labels = e.ID, e.Docs, e.Repls, e.Category, e.Level, e.Labels
 	v.RAMMB, v.InstMB, v.Licence, v.Manager, v.Place = e.RAMMB, e.InstMB, e.Licence, e.Manager, e.Place
-	v.Source = e.Source()
+	v.Source, v.Use, v.Mod = e.Source(), e.UseLine(), e.Module()
 	if v.Summary == "" {
 		v.Summary = e.Summary
 	}

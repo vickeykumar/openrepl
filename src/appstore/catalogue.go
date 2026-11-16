@@ -210,6 +210,69 @@ func (e Entry) PackageName() string {
 // IsMirrorKind says whether an app kind is kept in a mirror folder of the store (Go modules, jars, crates).
 func IsMirrorKind(k string) bool { return k == KindGoMod || k == KindJar || k == KindCrate }
 
+// UseLine is the first line of how to use an app once it is on, for its card: an import, a command, an include.
+func (e Entry) UseLine() string {
+	src := e.Source()
+	switch e.Kind {
+	case CKLib:
+		return "import " + e.Module()
+	case CKLib27:
+		return "python2.7 -c \"import " + e.Module() + "\""
+	case CKTool:
+		if e.CheckArg != "" {
+			return e.CheckArg + " --version"
+		}
+		return e.PackageName() + " --version"
+	case CKCLib:
+		switch e.Category {
+		case "Perl modules":
+			return "perl -e 'use " + strings.ReplaceAll(strings.TrimPrefix(e.Name, "perl-"), "-", "::") + "'"
+		case "Tcl":
+			return "package require " + e.Name
+		case "SQLite extensions":
+			return ".load <the path on the app page>"
+		}
+		if strings.HasPrefix(e.CheckArg, "include/") {
+			return "#include <" + strings.TrimPrefix(e.CheckArg, "include/") + "/...>"
+		}
+		return "#include <" + e.Name + "/...>"
+	case CKNode:
+		return "const x = require('" + src + "')"
+	case CKGoMod:
+		return "go get " + src
+	case CKJar:
+		if e.CheckArg != "" {
+			return "import " + e.CheckArg + ";"
+		}
+	case CKCrate:
+		return ":dep " + src + " = \"*\""
+	}
+	return ""
+}
+
+// Module is the name a program uses to import the app: the Python module of a library, the npm package, the Go module path, the Java package
+// of a jar, the Rust crate (with underscores). "" for what is not imported (a tool, a browser library, a plugin).
+func (e Entry) Module() string {
+	switch e.Kind {
+	case CKLib, CKLib27:
+		if e.CheckArg != "" {
+			return e.CheckArg
+		}
+		return strings.NewReplacer("-", "_", ".", "_").Replace(e.Source())
+	case CKNode:
+		return e.Source()
+	case CKGoMod:
+		return e.Source()
+	case CKJar:
+		if i := strings.LastIndexByte(e.CheckArg, '.'); i > 0 {
+			return e.CheckArg[:i]
+		}
+	case CKCrate:
+		return strings.ReplaceAll(e.Source(), "-", "_")
+	}
+	return ""
+}
+
 // InstallKind is the kind the installer uses for the entry, or "" for one that cannot be installed on this server yet.
 func (e Entry) InstallKind() string {
 	switch e.Kind {
