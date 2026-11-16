@@ -351,6 +351,9 @@ if [ $cleanup_tools -eq 1 ]; then
 	# the caches of what was installed above (none is needed to run: a program starts its own, in its scratch folder): apt's lists, the Go build
 	# cache and downloads, npm's cache, the crates that evcxr was built from, pip's cache and the temporary files of the build
 	rm -rf /var/lib/apt/lists/* /root/.cache /root/.npm /root/.cargo/registry /root/.cargo/git /root/go/pkg
+	# the other managers: nvm, gem and bundler, cpan, the Go module cache of GOPATH, pip and conda/pixi (under /root/.cache), apt's own caches and logs
+	rm -rf /root/.nvm/.cache /root/.gem /root/.bundle /root/.cpan /root/.cpanm /opt/gotty/pkg/mod /var/cache/apt /var/cache/debconf/*-old /var/log/apt /var/log/dpkg.log
+	npm cache clean --force 2>/dev/null || true
 	find /tmp -mindepth 1 -maxdepth 1 ! -name home -exec rm -rf {} + 2>/dev/null || true
 fi
 
