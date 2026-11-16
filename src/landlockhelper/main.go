@@ -158,11 +158,6 @@ func makeScratch(root, workspace string) string {
 			os.Setenv(kv[:i], kv[i+1:])
 		}
 	}
-	jo := scratch.JavaOption(dir)
-	if cur := os.Getenv("JAVA_TOOL_OPTIONS"); cur != "" {
-		jo = cur + " " + jo
-	}
-	os.Setenv("JAVA_TOOL_OPTIONS", jo)
 	return dir
 }
 

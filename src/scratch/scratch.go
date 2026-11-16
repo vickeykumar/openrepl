@@ -86,9 +86,6 @@ func Vars(dir string) []string {
 	}
 }
 
-// JavaOption is added to JAVA_TOOL_OPTIONS (java has no variable for its temporary folder).
-func JavaOption(dir string) string { return "-Djava.io.tmpdir=" + filepath.Join(dir, "tmp") }
-
 // Usage is the physical size of a folder in bytes (a file with several hard links counts once).
 func Usage(dir string) int64 {
 	var n int64
