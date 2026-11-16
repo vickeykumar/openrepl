@@ -2467,7 +2467,8 @@
     }
     // the status of one app on one server: ready, installing (a server that is behind and answered lately), failed, missing
     function status(n, id, now) {
-      if ((n.have || []).indexOf(id) >= 0) return h('span', { class: 'ok', text: 'ready' });
+      if ((n.have || []).indexOf(id) >= 0) return h('span', { class: 'ok', title: n.versions && n.versions[id] ? 'This server installed ' + n.versions[id] + ', the best version that exists for its CPU type' : '', text: n.versions && n.versions[id] ? 'ready (' + n.versions[id] + ', best for this CPU)' : 'ready' });
+      if (n.failed && n.failed[id] && n.gaveUp && n.gaveUp[id]) return h('span', { class: 'bad', title: n.failed[id], text: 'not available here, or gave up: Reinstall here tries again' });
       if (n.failed && n.failed[id]) {
         var left = n.retry && n.retry[id] ? Math.max(1, Math.ceil((n.retry[id] - now) / 60)) : 0;
         return h('span', { class: 'bad', title: n.failed[id], text: left ? 'failed, next try in ' + left + ' min' : 'failed' });
@@ -2548,7 +2549,7 @@
       if (tab === 'installed') {
         out.appendChild(h('h3', { text: 'Installed apps, and where' }));
         var cols = [
-          { key: 'name', label: 'App', cell: function (a) { return h('div', null, h('b', { text: a.name }), h('div', { class: 'sub', text: a.version + ' · ' + a.state + (a.state === 'installed' && a.kind !== 'node' && a.kind !== 'plugin' ? (a.locked ? ' · locked' : ' · no lock (made before pixi)') : '') })); } },
+          { key: 'name', label: 'App', cell: function (a) { return h('div', null, h('b', { text: a.name }), h('div', { class: 'sub', text: a.version + ' · ' + (a.waiting ? 'waiting for another install' : a.state) + (a.state === 'installed' && a.kind !== 'node' && a.kind !== 'plugin' ? (a.locked ? ' · locked' : ' · no lock (made before pixi)') : '') })); } },
           { key: 'size', label: 'Size', cell: function (a) { return a.size ? (a.size / 1048576).toFixed(0) + ' MB' : ''; } },
           { key: 'users', label: 'On for', cell: function (a) {
             var n = d.users[a.id] || 0, idle = d.now - Math.max(a.at || 0, a.lastUsed || 0);
@@ -2559,7 +2560,7 @@
                 onclick: function () { post({ action: 'default', name: a.name, on: !everyone }, a.name + (everyone ? ' is no longer on for everyone.' : ' is on for every signed-in user now.')); } })) : null);
           } }
         ];
-        d.nodes.forEach(function (n) { cols.push({ key: 'n-' + n.node, label: n.node, cell: function (a) { return a.state === 'installed' ? status(n, a.id, d.now) : h('span', { class: 'sub', text: a.state }); } }); });
+        d.nodes.forEach(function (n) { cols.push({ key: 'n-' + n.node, label: n.node, cell: function (a) { return a.state === 'installed' ? status(n, a.id, d.now) : h('span', { class: 'sub', text: a.waiting ? 'waiting for another install' : a.state }); } }); });
         cols.push({ key: 'act', label: '', cell: function (a) {
           return h('div', null, a.state === 'installed' && a.kind !== 'node' && a.kind !== 'plugin' ? h('button', { class: 'btn', type: 'button', text: 'New lock', title: 'Solve it again for every CPU type and make it again on every server: the same version, with the packages that exist today',
             onclick: function () {
@@ -2793,7 +2794,7 @@
         var k = e.kind === 'lib' ? 'lib' : (e.kind === 'node' || e.kind === 'weblib' || (e.kind === 'plugin' && !e.internal)) ? 'node' : e.kind === 'tool' || e.kind === 'clib' ? 'tool' : '';
         var a = k && d.apps.filter(function (x) { return x.name === (e.package || e.name).toLowerCase() && x.kind === k; })[0];
         if (!a) return { app: null, node: h('span', { class: 'sub', text: k ? 'listed, not installed' : 'listed' }) };
-        if (a.state !== 'installed') return { app: a, node: pill(a.state, a.state === 'failed' ? 'bad' : 'warn') };
+        if (a.state !== 'installed') return { app: a, node: pill(a.waiting ? 'waiting for another install' : a.state, a.state === 'failed' ? 'bad' : 'warn') };
         var span = h('span');
         d.nodes.forEach(function (n) { var ok = (n.have || []).indexOf(a.id) >= 0; span.appendChild(pill(n.node + (ok ? '' : (n.failed && n.failed[a.id]) ? ' failed' : ' missing'), ok ? 'ok' : (n.failed && n.failed[a.id]) ? 'bad' : 'warn')); span.appendChild(document.createTextNode(' ')); });
         return { app: a, node: span };

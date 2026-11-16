@@ -1,7 +1,6 @@
 package appstore
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -65,7 +64,7 @@ func trimOptionsFor(e Entry, o Option) TrimOptions {
 
 // installBundle makes the bundle of an app with one manager: install, trim, run the check, and when the check fails after a trim, make it again
 // with no trim and say so (the entry is then marked full). It returns what the trim did and whether the bundle is full.
-func (s *Service) installBundle(ctx context.Context, a App, manager, dest string, logb *bytes.Buffer) (TrimReport, bool, error) {
+func (s *Service) installBundle(ctx context.Context, a App, manager, dest string, logb *workLog) (TrimReport, bool, error) {
 	ctx = WithManager(ctx, manager)
 	e, haveEntry := s.EntryFor(a.Name, cleanKind(a.Kind))
 	o, _ := e.OptionOf(manager)
@@ -83,7 +82,11 @@ func (s *Service) installBundle(ctx context.Context, a App, manager, dest string
 	}
 	// the app does not run after the trim: make it again whole, and tell the admin which entry needs `full`
 	first := err
+	lock, hadLock := ReadLock(dest) // a node that installs from the gateway's lock keeps it for the second try
 	os.RemoveAll(dest)
+	if hadLock {
+		WriteLock(dest, lock)
+	}
 	logb.Reset()
 	if err := s.cfg.Installer.Install(ctx, a.Name, a.Version, a.Kind, dest, logb); err != nil {
 		return TrimReport{}, false, err

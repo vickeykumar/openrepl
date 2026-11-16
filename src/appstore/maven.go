@@ -155,9 +155,16 @@ func (m Maven) pick(ctx context.Context, src, pin string) (string, error) {
 	}
 	major := m.javaMajor(ctx)
 	vs := []string{pin}
+	bound, bounded := upperBound(pin)
+	if bounded {
+		pin = ""
+	}
 	if pin == "" {
 		if vs, err = m.versions(ctx, group, artifact); err != nil {
 			return "", err
+		}
+		if bounded {
+			vs = olderThan(vs, bound)
 		}
 	}
 	var last error

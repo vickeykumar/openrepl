@@ -97,7 +97,7 @@ var tomlName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 // of the server, so that what the lock holds can be imported by it. A tool or a language brings the Python it needs, if any, and does not
 // drag one in.
 func (p Pixi) Manifest(name, version, kind string) (string, error) {
-	if !ValidName(name) || !tomlName.MatchString(name) || (version != "" && !ValidVersion(version)) {
+	if !ValidName(name) || !tomlName.MatchString(name) || !validWant(version) {
 		return "", fmt.Errorf("%q %q is not a package", name, version)
 	}
 	var b strings.Builder
@@ -118,7 +118,9 @@ func (p Pixi) Manifest(name, version, kind string) (string, error) {
 		name = strings.TrimPrefix(name, "py27-")
 	}
 	spec := "*"
-	if version != "" {
+	if b, ok := upperBound(version); ok {
+		spec = "<" + b
+	} else if version != "" {
 		spec = "==" + version
 	}
 	if build := p.build(name); build != "" && kind == KindTool && buildString.MatchString(build) {
@@ -134,6 +136,17 @@ func (p Pixi) Manifest(name, version, kind string) (string, error) {
 		}
 	}
 	return b.String(), nil
+}
+
+// forCtx is the Pixi for one install: for this node's CPU type only when the context says so (what cannot be solved for every CPU type is installed
+// as the best version that exists for this one).
+func (p Pixi) forCtx(ctx context.Context) Pixi {
+	if singleCPU(ctx) {
+		if pl := CondaPlatform(); pl != "" {
+			p.Platforms = []string{pl}
+		}
+	}
+	return p
 }
 
 func (p Pixi) build(name string) string {
@@ -159,11 +172,12 @@ func (p Pixi) tempProject(manifest string) (string, error) {
 // Resolve solves the app for every CPU type of the lock (nothing is downloaded or installed) and reads, for this node's CPU type, the
 // version, how many packages it brings and how big they are. A CPU type conda-forge cannot solve it for fails it here, naming the CPU.
 func (p Pixi) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	p = p.forCtx(ctx)
 	manifest, err := p.Manifest(name, version, kind)
 	if err != nil {
 		return Resolved{}, err
 	}
-	ctx, cancel := p.withTimeout(ctx, 10*time.Minute)
+	ctx, cancel := p.withTimeout(ctx, SolveLimit)
 	defer cancel()
 	d, err := p.tempProject(manifest)
 	if err != nil {
@@ -311,6 +325,7 @@ func LockPackages(raw []byte, platform string) ([]LockedPackage, error) {
 // a pixi.lock in the folder (the node got it from the catalog) it installs exactly that and fails if the lock does not fit the
 // manifest; without one it solves, and the lock it writes is what the caller keeps. The activation variables of the packages are saved.
 func (p Pixi) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
+	p = p.forCtx(ctx)
 	ctx, cancel := p.withTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	if err := os.MkdirAll(dest, 0755); err != nil {
@@ -324,6 +339,21 @@ func (p Pixi) Install(ctx context.Context, name, version, kind, dest string, log
 		}
 		if err := os.WriteFile(mf, []byte(manifest), 0644); err != nil {
 			return err
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dest, lockFile)); err != nil {
+		// no lock to follow: the solve is made here, and it has its own limit (the install that follows is only downloading and linking)
+		lctx, lcancel := context.WithTimeout(ctx, SolveLimit)
+		var lout bytes.Buffer
+		lc := p.cmd(lctx, dest, "lock", "--manifest-path", mf)
+		lc.Stdout, lc.Stderr = &lout, &lout
+		err := lc.Run()
+		lcancel()
+		if err != nil {
+			if lctx.Err() != nil {
+				return fmt.Errorf("conda-forge did not answer in %s while solving %s (timed out)", SolveLimit, name)
+			}
+			return fmt.Errorf("conda-forge could not solve %s: %s", name, tail(solveReason(lout.String()), 600))
 		}
 	}
 	args := []string{"install", "--manifest-path", mf}

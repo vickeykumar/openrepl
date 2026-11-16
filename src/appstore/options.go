@@ -24,6 +24,7 @@ type Option struct {
 	Package    string             `json:"package,omitempty"`    // the name at this manager
 	MinVersion string             `json:"minVersion,omitempty"` // the oldest version that is good enough for the entry; an older one makes the option unusable
 	Build      string             `json:"build,omitempty"`      // pixi: a build string that pins a variant (for example one without a GUI)
+	Links      map[string]string  `json:"links,omitempty"`      // apt: a name the package does not have, made as a link to one it has (bat -> batcat): relative paths inside the bundle
 	Keep       []string           `json:"keep,omitempty"`       // paths (globs, relative to the bundle) the trim leaves alone, on top of the built-in keep-list
 	Full       bool               `json:"full,omitempty"`       // no trim: the app failed its check after the trim
 	Env        map[string]string  `json:"env,omitempty"`        // variables the bundle needs; {bundle} stands for the folder of the bundle
@@ -144,6 +145,7 @@ type AptPkg struct {
 	Version string `json:"version"`
 	Section string `json:"section,omitempty"`
 	SHA256  string `json:"sha256,omitempty"`
+	Arch    string `json:"arch,omitempty"`   // the CPU type the checksum is of: another CPU type has its own file, so it is not checked there
 	SizeKB  int    `json:"sizeKB,omitempty"` // installed size
 }
 
@@ -217,6 +219,11 @@ func ValidateOptions(e Entry) error {
 				return fmt.Errorf("the keep path %q is not usable", k)
 			}
 		}
+		for k, v := range o.Links {
+			if o.Manager != MgrApt || !validBundlePath(k) || !validBundlePath(v) {
+				return fmt.Errorf("the link %q to %q of the %s option is not usable", k, v, o.Manager)
+			}
+		}
 		for k, v := range o.Env {
 			if !ValidExtra(k, strings.ReplaceAll(v, "{bundle}", "/store/apps/x")) {
 				return fmt.Errorf("the variable %q of the %s option is not allowed", k, o.Manager)
@@ -254,4 +261,9 @@ func thisArch() string {
 		return ArchARM64
 	}
 	return ArchAMD64
+}
+
+// validBundlePath says whether a path is a plain relative path inside a bundle.
+func validBundlePath(p string) bool {
+	return p != "" && !strings.HasPrefix(p, "/") && !strings.Contains(p, "..") && !strings.ContainsAny(p, "\\\r\n\x00 ") && len(p) < 200
 }

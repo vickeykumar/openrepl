@@ -401,6 +401,8 @@ func (s *Service) checkApp(ctx context.Context, dest string, a App) error {
 			return checkFiles(dest, e)
 		case e.Kind == CKCLib && e.Check == "file-exists" && e.CheckArg != "":
 			return fileExists(PrefixOf(dest), e.CheckArg)
+		case e.Kind == CKTool && e.Check == "version-flag" && progPattern.MatchString(e.CheckArg):
+			return verifyToolAs(ctx, dest, e.CheckArg, a.Name, a.Version) // the program the entry names, by the name a user types
 		case e.Kind == CKGoMod:
 			return GoMod{Dir: s.cfg.Store.Dir}.check(ctx, dest, e, a.Version)
 		case e.Kind == CKJar:

@@ -101,8 +101,12 @@ func (n Npm) nodeVersion(ctx context.Context) string {
 }
 
 func (n Npm) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
-	if !ValidName(name) || (version != "" && !ValidVersion(version)) {
+	if !ValidName(name) || !validWant(version) {
 		return Resolved{}, fmt.Errorf("%q %q is not a package", name, version)
+	}
+	bound, bounded := upperBound(version)
+	if bounded {
+		version = ""
 	}
 	ctx, cancel := n.with(ctx, 5*time.Minute)
 	defer cancel()
@@ -128,6 +132,9 @@ func (n Npm) Resolve(ctx context.Context, name, version, kind string) (Resolved,
 		return Resolved{}, err
 	}
 	cands := npmCandidates(raw)
+	if bounded {
+		cands = olderThan(cands, bound)
+	}
 	if len(cands) == 0 {
 		return Resolved{}, fmt.Errorf("npm lists no version of %s", name)
 	}
@@ -322,6 +329,9 @@ func (m Multi) Name() string {
 }
 
 func (m Multi) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	// finding out what to install takes at most SolveLimit, whatever the manager (a slow solver makes every install behind it wait)
+	ctx, cancel := context.WithTimeout(ctx, SolveLimit)
+	defer cancel()
 	return m.pickFor(ctx, kind).Resolve(ctx, name, version, kind)
 }
 

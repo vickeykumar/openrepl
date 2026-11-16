@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -33,13 +34,36 @@ func verifyExe(dest, name string) string {
 	if e, ok := exeOf[name]; ok {
 		cands = []string{e, name}
 	}
+	exe, _ := findExe(dest, cands...)
+	return exe
+}
+
+// exeDirs are the folders of a bundle that hold programs, and the library folders they need (an apt bundle keeps them in usr/bin and usr/lib).
+func exeDirs(dest string) (bins, libs []string) {
+	if IsAptBundle(dest) {
+		b, l, _, _ := AptDirs(dest)
+		return b, l
+	}
+	return []string{filepath.Join(PrefixOf(dest), "bin")}, nil
+}
+
+// findExe finds the first of the programs that the bundle has, and the folder it is in.
+func findExe(dest string, cands ...string) (exe, dir string) {
+	bins, _ := exeDirs(dest)
 	for _, c := range cands {
-		if fi, err := os.Stat(filepath.Join(PrefixOf(dest), "bin", c)); err == nil && !fi.IsDir() {
-			return c
+		if c == "" {
+			continue
+		}
+		for _, b := range bins {
+			if fi, err := os.Stat(filepath.Join(b, c)); err == nil && !fi.IsDir() {
+				return c, b
+			}
 		}
 	}
-	return ""
+	return "", ""
 }
+
+var progPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,60}$`)
 
 // VerifyArgs is the command that proves an app works, run with the environment of a user who has it on (PATH, PYTHONPATH, NODE_PATH),
 // and ok=false when there is nothing to run (an editor plugin is a file; a package of data). Each form is a list of commands, the first
@@ -134,17 +158,42 @@ func lastWords(argv []string) int {
 // verifyTool starts a tool or a language of a bundle with the first version flag that works: a bundle whose program does not run is never
 // offered as installed. It runs as the server, in an empty folder, with the bundle's own bin first on the PATH.
 func verifyTool(ctx context.Context, dest, name, version string) error {
-	exe := verifyExe(dest, name)
+	return verifyToolAs(ctx, dest, "", name, version)
+}
+
+// verifyToolAs proves that a tool runs: the program the entry names (prog, the name a user types), else the one of the package. A bundle of apt that
+// does not have the program the entry names fails: Ubuntu renames some (batcat, fdfind) and the entry has to say how to get the name back.
+func verifyToolAs(ctx context.Context, dest, prog, name, version string) error {
+	cands := []string{prog}
+	if e, ok := exeOf[name]; ok {
+		cands = append(cands, e)
+	}
+	cands = append(cands, name)
+	exe, dir := findExe(dest, cands...)
 	if exe == "" {
+		if IsAptBundle(dest) && prog != "" {
+			return fmt.Errorf("%s is not in the bundle: the package of %s does not install a program of that name (Ubuntu renames some, such as batcat): add a link to the entry", prog, name)
+		}
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
+	bins, libs := exeDirs(dest)
+	env := append(os.Environ(), "PATH="+strings.Join(bins, string(os.PathListSeparator))+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if len(libs) > 0 {
+		ld := os.Getenv("LD_LIBRARY_PATH")
+		if ld != "" {
+			ld += ":"
+		}
+		env = append(env, "LD_LIBRARY_PATH="+ld+strings.Join(libs, ":")) // the bundle's libraries after the image's, as a terminal gets them
+	}
+	for k, v := range readActivation(dest) {
+		env = append(env, k+"="+strings.ReplaceAll(v, "{bundle}", dest))
+	}
 	var last string
 	for _, f := range versionFlags {
-		bin := filepath.Join(PrefixOf(dest), "bin")
-		c := exec.CommandContext(ctx, filepath.Join(bin, exe), f...)
-		c.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		c := exec.CommandContext(ctx, filepath.Join(dir, exe), f...)
+		c.Env = env
 		c.Dir = os.TempDir()
 		out, err := c.CombinedOutput()
 		if err == nil || printsVersion(out, version) {

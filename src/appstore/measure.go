@@ -96,7 +96,7 @@ func (m MeasureEnv) measureOne(ctx context.Context, e Entry, o *Option, kind str
 	dest := filepath.Join(m.Work, strings.ReplaceAll(o.Manager, " ", "-")+"-"+a.ID)
 	os.RemoveAll(dest)
 	defer os.RemoveAll(dest)
-	var logb bytes.Buffer
+	var logb workLog
 	start := time.Now()
 	rep, full, err := m.Svc.installBundle(ctx, a, o.Manager, dest, &logb)
 	if err != nil {
@@ -244,7 +244,7 @@ func MergeMeasured(base []byte, parts ...[]Entry) ([]byte, error) {
 					}
 				}
 				if k < 0 {
-					merged = append(merged, Option{Manager: o.Manager, Package: o.Package, MinVersion: o.MinVersion, Build: o.Build, Keep: o.Keep, Env: o.Env, Includes: o.Includes})
+					merged = append(merged, Option{Manager: o.Manager, Package: o.Package, MinVersion: o.MinVersion, Build: o.Build, Keep: o.Keep, Env: o.Env, Links: o.Links, Includes: o.Includes})
 					k = len(merged) - 1
 				}
 				m := &merged[k]

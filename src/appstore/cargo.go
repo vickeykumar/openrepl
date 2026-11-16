@@ -42,7 +42,9 @@ func project(dir, crate, pin string) error {
 		return fmt.Errorf("%q is not a crate name", crate)
 	}
 	spec := "*"
-	if pin != "" {
+	if b, ok := upperBound(pin); ok {
+		spec = "<" + b // the newest below it (cargo's resolver, with the rust-version fallback, picks it)
+	} else if pin != "" {
 		spec = "=" + pin
 	}
 	manifest := fmt.Sprintf("[package]\nname = \"openrepl-mirror\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\n%s = %q\n", crate, spec)

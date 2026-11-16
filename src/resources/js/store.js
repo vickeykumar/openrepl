@@ -137,7 +137,7 @@
 
   function stateTag(v) {
     if (v.state === "builtin") return el("span", "stag stag--builtin", "Built in" + (v.version ? " (" + v.version + ")" : ""));
-    var t = { installed: "Installed", installing: "Installing" + (v.pct ? " " + v.pct + "%" : ""), failed: "Failed", requested: "Needs approval", rejected: "Not available" }[v.state];
+    var t = { installed: "Installed", installing: v.waiting ? "Waiting for another install" : "Installing" + (v.pct ? " " + v.pct + "%" : ""), failed: "Failed", requested: "Needs approval", rejected: "Not available" }[v.state];
     return t ? el("span", "stag stag--" + v.state, t) : null;
   }
 
@@ -166,7 +166,11 @@
       sw.setAttribute("aria-label", "Use " + v.name + " in my terminals");
       sw.addEventListener("click", function (e) { e.stopPropagation(); switchApp(v, !v.on); });
       row.appendChild(sw);
-    } else if (v.state === "failed") btn("Details", function () { failure(v.name); });
+    } else if (v.state === "failed") {
+      // a user can try again at once (the server asks them to wait a minute after the last try); an app that needs an admin is asked for again
+      btn("Try again", function () { if (v.safe) install(v); else if (S.admin) adminInstall(v); else requestDialog(v); }, "is-primary");
+      btn("Details", function () { failure(v.name); });
+    }
     else if (v.state === "rejected") btn("Ask again", function () { requestDialog(v); });
     else if (v.state === "requested") btn("Details", function () { go("#app/" + encodeURIComponent(v.name)); });
   }
@@ -698,7 +702,7 @@
     var kv = el("div", "store__kv");
     function kvRow(k, val) { kv.appendChild(el("span", "", k)); kv.appendChild(el("b", "", val)); }
     var mirror = v.kind === "gomod" || v.kind === "jar" || v.kind === "crate";
-    kvRow("Size", v.smallest && v.state !== "installed" && v.instMB ? "about " + v.instMB + " MB once installed" + (v.estimate ? " (an estimate)" : "") + (v.smallest === "apt" ? " (from the Ubuntu archive)" : "") + (v.includes ? ", " + v.includes : "") : mirror && v.state !== "installed" ? (v.instMB ? "about " + v.instMB + " MB, with what it needs" : "worked out when it is installed") : v.state === "installed" && v.sizeMB ? "about " + v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB on the server" + (v.packages ? " (" + v.packages + " packages)" : "")
+    kvRow("Size", v.smallest && v.state !== "installed" && v.instMB ? "about " + v.instMB + " MB once installed" + (v.estimate ? " (an estimate)" : "") + (v.partial ? " (the version can differ on a server with another CPU type)" : "") + (v.smallest === "apt" ? " (from the Ubuntu archive)" : "") + (v.includes ? ", " + v.includes : "") : mirror && v.state !== "installed" ? (v.instMB ? "about " + v.instMB + " MB, with what it needs" : "worked out when it is installed") : v.state === "installed" && v.sizeMB ? "about " + v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB on the server" + (v.packages ? " (" + v.packages + " packages)" : "")
       : v.kind === "plugin" ? "a few KB"
       : !sz || sz.loading ? "working it out…"
       : sz.error ? "not known (" + sz.error.split("\n")[0].slice(0, 80) + ")"
@@ -728,6 +732,7 @@
     if (v.state === "rejected" && v.answer) actions.appendChild(el("span", "stag stag--rejected", "Not available: " + v.answer));
     if (v.state === "installing") { var d = el("button", "sbtn", "See the progress"); d.type = "button"; d.addEventListener("click", function () { progress(name); }); actions.appendChild(d); }
     if (v.state === "failed") {
+      var t2 = el("button", "sbtn is-primary", "Try again"); t2.type = "button"; t2.addEventListener("click", function () { if (v.safe) install(v); else if (S.admin) adminInstall(v); else requestDialog(v); }); actions.appendChild(t2);
       var d2 = el("button", "sbtn", "See why it failed"); d2.type = "button"; d2.addEventListener("click", function () { failure(name); }); actions.appendChild(d2);
     }
     w.appendChild(actions);

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -758,5 +759,102 @@ func TestInstallOfAnUnmeasuredToolChoosesByDryRun(t *testing.T) {
 	}
 	if kept, _ := svc.Entry("zzauto"); kept.Minimal == nil || kept.Manager != MgrApt {
 		t.Fatalf("the choice was not kept: %+v", kept)
+	}
+}
+
+// A worker makes a bundle with the manager the gateway used: pixi cannot solve an apt version (the Raspberry Pi workers failed with "No candidates were
+// found for git ==2.34.1-1ubuntu1.18" when they asked pixi for it).
+func TestAWorkerInstallsAnAptBundleWithApt(t *testing.T) {
+	svc, st := newService(t, Multi{Conda: brokenPixi{}, Apt: Fake{Version: "2.34.1-1ubuntu1.18"}, Plugin: PluginInstaller{}})
+	app := App{ID: "zzgit-2.34.1-1ubuntu1.18", Name: "zzgit", Version: "2.34.1-1ubuntu1.18", Kind: KindTool, Manager: MgrApt, State: StateInstalled}
+	got := svc.Apply(context.Background(), Snapshot{Apps: []App{app}})
+	if len(got.Failed) != 0 || !st.HasBundle(app.ID) {
+		t.Fatalf("the worker did not make the apt bundle: %+v", got.Failed)
+	}
+	// and an app with no manager (made before the managers) keeps the way it always had
+	old := App{ID: "zzold-1.0.0", Name: "zzold", Version: "1.0.0", Kind: KindTool, State: StateInstalled}
+	svc2, st2 := newService(t, Multi{Conda: Fake{}, Apt: brokenPixi{}, Plugin: PluginInstaller{}})
+	if got := svc2.Apply(context.Background(), Snapshot{Apps: []App{old}}); len(got.Failed) != 0 || !st2.HasBundle(old.ID) {
+		t.Fatalf("an app with no manager: %+v", got.Failed)
+	}
+}
+
+// The lock of an apt bundle travels like the lock of a pixi bundle: the packages and versions, with the checksum kept only for the CPU type it is of.
+func TestTheLockOfAnAptBundleTravels(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "b")
+	os.MkdirAll(dir, 0755)
+	os.WriteFile(filepath.Join(dir, aptLockFile), []byte(`[{"name":"git","version":"1:2.34","sha256":"abc","arch":"amd64"}]`), 0644)
+	os.WriteFile(filepath.Join(dir, aptManifestFile), []byte(`{"package":"git"}`), 0644)
+	l, ok := ReadLock(dir)
+	if !ok || l.Manager != MgrApt || !strings.Contains(l.Lock, "git") {
+		t.Fatalf("the lock was not read: %+v %v", l, ok)
+	}
+	other := filepath.Join(t.TempDir(), "c")
+	if err := WriteLock(other, l); err != nil {
+		t.Fatal(err)
+	}
+	if !IsAptBundle(other) {
+		t.Fatal("the lock files of an apt bundle were not written")
+	}
+	if _, err := os.Stat(filepath.Join(other, lockFile)); err == nil {
+		t.Fatal("an apt lock must not be written as a pixi lock")
+	}
+}
+
+// An apt bundle that does not have the program the entry names fails its check (the package installs it under another name); the entry's link
+// makes it right, and the program is found in usr/bin, where apt puts it.
+func TestAnAptToolMustHaveTheProgramTheEntryNames(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "bat-0.19")
+	os.MkdirAll(filepath.Join(dest, "usr", "bin"), 0755)
+	os.WriteFile(filepath.Join(dest, aptLockFile), []byte(`[{"name":"bat","version":"0.19"}]`), 0644)
+	os.WriteFile(filepath.Join(dest, "usr", "bin", "batcat"), []byte("#!/bin/sh\necho bat 0.19\n"), 0755)
+	err := verifyToolAs(context.Background(), dest, "bat", "bat", "0.19")
+	if err == nil || !strings.Contains(err.Error(), "is not in the bundle") {
+		t.Fatalf("a missing program passed: %v", err)
+	}
+	makeLink(dest, "/usr/bin/bat", "/usr/bin/batcat")
+	if err := verifyToolAs(context.Background(), dest, "bat", "bat", "0.19"); err != nil {
+		t.Fatalf("with the link: %v", err)
+	}
+	// a pixi bundle with no such program is left alone (as before)
+	pix := t.TempDir()
+	if err := verifyToolAs(context.Background(), pix, "nothing", "nothing", "1"); err != nil {
+		t.Fatalf("a pixi bundle: %v", err)
+	}
+	// the links of an option are checked: apt only, paths inside the bundle
+	e := Entry{ID: "zz", Name: "zz", Summary: "x", Kind: CKTool, Level: "optional", Manager: MgrApt, Install: "anyone", Repls: []string{"bash"}}
+	e.Options = []Option{{Manager: MgrApt, Links: map[string]string{"usr/bin/bat": "usr/bin/batcat"}}}
+	if err := ValidateOptions(e); err != nil {
+		t.Fatalf("a good link: %v", err)
+	}
+	for _, bad := range []map[string]string{{"../x": "usr/bin/y"}, {"usr/bin/x": "/etc/passwd"}, {"": "usr/bin/y"}} {
+		e.Options = []Option{{Manager: MgrApt, Links: bad}}
+		if ValidateOptions(e) == nil {
+			t.Errorf("link %v accepted", bad)
+		}
+	}
+}
+
+// versionSeen records the version each install is asked for.
+type versionSeen struct {
+	Fake
+	got *[]string
+}
+
+func (v versionSeen) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
+	*v.got = append(*v.got, version)
+	return v.Fake.Install(ctx, name, version, kind, dest, log)
+}
+
+// A worker that installs a partial bundle does not ask for the gateway's version (it may not exist for its CPU type): it asks for the best one.
+func TestAWorkerInstallsAPartialBundleUnpinned(t *testing.T) {
+	var got []string
+	svc, st := newService(t, Multi{Conda: versionSeen{Fake: Fake{Version: "1.14.5"}, got: &got}, Plugin: PluginInstaller{}})
+	app := App{ID: "zzpart-1.16.5", Name: "zzpart", Version: "1.16.5", Kind: KindLib, Partial: true, State: StateInstalled}
+	if res := svc.Apply(context.Background(), Snapshot{Apps: []App{app}}); len(res.Failed) != 0 || !st.HasBundle(app.ID) {
+		t.Fatalf("the worker did not install it: %+v", res.Failed)
+	}
+	if len(got) != 1 || got[0] != "" {
+		t.Fatalf("the worker asked for %q, not for the best version", got)
 	}
 }

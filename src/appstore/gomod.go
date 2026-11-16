@@ -22,7 +22,7 @@ type GoMod struct {
 
 // goVer is a version as Go writes it (v1.2.3); the store keeps it without the v (a bundle's version starts with a digit).
 func goVer(v string) string {
-	if v != "" && !strings.HasPrefix(v, "v") {
+	if v != "" && !strings.HasPrefix(v, "v") && !strings.HasPrefix(v, "<") {
 		return "v" + v
 	}
 	return v
@@ -104,10 +104,17 @@ func (g GoMod) candidates(ctx context.Context, tmp, mod string) ([]string, error
 // pick finds the newest version that downloads and builds with this Go (or the pinned one), leaving what it fetched in cache.
 func (g GoMod) pick(ctx context.Context, tmp, cache, mod, pin string) (string, error) {
 	vs := []string{pin}
+	bound, bounded := upperBound(strings.TrimPrefix(pin, "v"))
+	if bounded {
+		pin = ""
+	}
 	if pin == "" {
 		var err error
 		if vs, err = g.candidates(ctx, tmp, mod); err != nil {
 			return "", err
+		}
+		if bounded {
+			vs = olderThan(vs, bound)
 		}
 	}
 	var last error
@@ -221,7 +228,11 @@ func (g GoMod) check(ctx context.Context, dest string, e Entry, version string) 
 		return fmt.Errorf("go get from the mirror: %s", tail(strings.TrimSpace(string(out)), 300))
 	}
 	if out, err := run(ctx, tmp, env, goBin, "build", "-o", filepath.Join(tmp, "t"), "."); err != nil {
-		return fmt.Errorf("a program that imports %s does not build: %s", imp, tail(strings.TrimSpace(string(out)), 400))
+		why := strings.TrimSpace(string(out))
+		if why == "" {
+			why = err.Error() // nothing was printed: a program that was killed (memory, time) says so here
+		}
+		return fmt.Errorf("a program that imports %s does not build: %s", imp, tail(why, 400))
 	}
 	return nil
 }
