@@ -5,7 +5,7 @@ set -euo pipefail
 GO_VERSION=${GO_VERSION:-1.23.12}
 YAEGI_VERSION=${YAEGI_VERSION:-v0.16.1}
 RUST_VERSION=${RUST_VERSION:-1.85.1}
-JDK_PACKAGE=${JDK_PACKAGE:-openjdk-21-jdk}
+JDK_PACKAGE=${JDK_PACKAGE:-openjdk-21-jdk-headless}
 arch=$(dpkg --print-architecture)
 
 # Go: the official release, ahead of the apt one on the PATH

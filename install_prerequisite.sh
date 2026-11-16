@@ -66,9 +66,9 @@ apt-get update -y
 GO_VERSION=1.23.12
 YAEGI_VERSION=v0.16.1
 RUST_VERSION=1.85.1
-apt-get install -y --no-install-recommends make gcc g++ openjdk-21-jdk git
+apt-get install -y --no-install-recommends make gcc g++ openjdk-21-jdk-headless git
 # the Java REPL is jshell (utils/interactive.go): part of the JDK since 9, but fail early if it is missing
-command -v jshell >/dev/null || { echo "jshell was not installed with openjdk-21-jdk"; exit 1; }
+command -v jshell >/dev/null || { echo "jshell was not installed with openjdk-21-jdk-headless"; exit 1; }
 # the JDK 21 is the one of the PATH (a JDK of an older version may be there too)
 update-alternatives --set java "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/java" || true
 update-alternatives --set javac "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/javac" || true
@@ -99,6 +99,8 @@ apt-get install -y --no-install-recommends curl ca-certificates
 curl -fsSL "https://go.dev/dl/go$GO_VERSION.linux-$GO_ARCH.tar.gz" | tar -C /usr/local -xz
 ln -sf /usr/local/go/bin/go /usr/local/bin/go
 ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+# what a user's program does not need (the size of the image is limited)
+rm -rf /usr/local/go/test /usr/local/go/doc /usr/local/go/api /usr/local/go/misc
 
 #install yaegi go repl: its standard library is the one of the Go that built it, so it is built with the new Go
 YAEGI_DIR=$(mktemp -d)
@@ -192,11 +194,13 @@ if [ -e "/usr/local/bin/evcxr" ]; then
     echo "File /usr/local/bin/evcxr exists."
 else
     echo "File /usr/local/bin/evcxr does not exist. installing..."
-    apt-get install -y --no-install-recommends rustc
-    apt-get install -y --no-install-recommends rust-gdb
-    apt-get install -y --no-install-recommends cargo
-    # the Rust toolchain of the REPL: rustup's (cargo and evcxr in ~/.cargo/bin come first on the PATH of the REPL)
+    # the Rust toolchain of the REPL is rustup's (the apt one is old and would double the size of the image): rustc, cargo and rust-gdb are
+    # linked into /usr/local/bin, so they are on every PATH
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUST_VERSION"
+    for t in rustc cargo rustup rust-gdb; do
+        [ -e "$HOME/.cargo/bin/$t" ] && ln -sf "$HOME/.cargo/bin/$t" "/usr/local/bin/$t"
+    done
+    rm -rf "$HOME"/.rustup/downloads "$HOME"/.rustup/tmp "$HOME"/.rustup/toolchains/*/share/doc "$HOME"/.rustup/toolchains/*/share/man
     if [ "$DEB_ARCH" = amd64 ]; then
         EVCXR_ARCHIVE="evcxr-v0.17.0-$EVCXR_TARGET.tar.gz"
         wget "https://github.com/evcxr/evcxr/releases/download/v0.17.0/$EVCXR_ARCHIVE"
