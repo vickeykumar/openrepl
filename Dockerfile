@@ -18,7 +18,8 @@ RUN ./install_prerequisite.sh --cleanup-tools --run-tests
 FROM builder as build-image
 
 #install the requisites to build the APP
-RUN apt-get install -y --no-install-recommends make gcc git npm && npm install -g npm@8.5.1
+# the builder stage clears the package lists (install_prerequisite.sh), so they are fetched again here
+RUN apt-get update -y && apt-get install -y --no-install-recommends make gcc git npm && npm install -g npm@8.5.1 && rm -rf /var/lib/apt/lists/*
 COPY . /opt/openrepl/
 WORKDIR /opt/openrepl/src
 ENV GOROOT=/opt/go
