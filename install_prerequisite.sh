@@ -348,6 +348,10 @@ if [ $cleanup_tools -eq 1 ]; then
 	apt-get -y --purge remove npm
 	apt-get -y clean
 	apt-get -y autoremove
+	# the caches of what was installed above (none is needed to run: a program starts its own, in its scratch folder): apt's lists, the Go build
+	# cache and downloads, npm's cache, the crates that evcxr was built from, pip's cache and the temporary files of the build
+	rm -rf /var/lib/apt/lists/* /root/.cache /root/.npm /root/.cargo/registry /root/.cargo/git /root/go/pkg
+	find /tmp -mindepth 1 -maxdepth 1 ! -name home -exec rm -rf {} + 2>/dev/null || true
 fi
 
 # finally give the ownership to username 
