@@ -70,7 +70,7 @@ func main() {
 		if *storeDir != "" && *workspace != "" {
 			storeFolders(*storeDir, *workspace, *storeExtra)
 		}
-		runWithoutPolicy(*netEmulation, finishEnv(makeScratch(*scratchRoot, *workspace), flag.Args()))
+		runWithoutPolicy(*netEmulation, finishEnv(makeScratch(*scratchRoot, *workspace), *workspace, flag.Args()))
 		return
 	}
 	abi, err := landlock.ABI()
@@ -97,7 +97,7 @@ func main() {
 	if sd != "" {
 		rwExtra = []string{sd}
 	}
-	args = finishEnv(sd, args)
+	args = finishEnv(sd, *workspace, args)
 	policy, err := landlock.Build(landlock.Options{Workspace: *workspace, HomeRoot: *homeRoot, ABI: abi, Self: landlock.Self(), Debug: *debug,
 		ScopeSignals: *scopeSignals && landlock.ScopeSupported(), ExtraRO: extra, ExtraRW: rwExtra}, nil)
 	if err != nil {
@@ -164,7 +164,7 @@ func makeScratch(root, workspace string) string {
 // finishEnv does what the lists of the user's apps need once the scratch folder is there: a Python 2.7 terminal gets the libraries of Python
 // 2.7 and none of Python 3's, and the crates of the user's Rust apps replace crates.io for cargo (a cargo home in the scratch folder, with a
 // folder of links to the vendored crates, and no network).
-func finishEnv(scratchDir string, args []string) []string {
+func finishEnv(scratchDir, workspace string, args []string) []string {
 	if len(args) > 0 && strings.HasPrefix(filepath.Base(args[0]), "python2") {
 		if p := os.Getenv("OPENREPL_PY27PATH"); p != "" {
 			os.Setenv("PYTHONPATH", p)
@@ -172,7 +172,7 @@ func finishEnv(scratchDir string, args []string) []string {
 			os.Unsetenv("PYTHONPATH")
 		}
 	}
-	args = jshellWithJars(args)
+	args = jshellWithJars(args, workspace)
 	v := os.Getenv("OPENREPL_CRATE_VENDORS")
 	if v == "" || scratchDir == "" {
 		return args
@@ -207,9 +207,15 @@ func finishEnv(scratchDir string, args []string) []string {
 
 // jshellWithJars gives jshell the jars of the user's Java apps. The REPL runs the snippets in the tool's own JVM (--execution local, to save memory),
 // which does not read CLASSPATH: the jars go on the compile path (--class-path) and, one by one, on the boot class path of that JVM.
-func jshellWithJars(args []string) []string {
+func jshellWithJars(args []string, workspace string) []string {
+	if len(args) == 0 || filepath.Base(args[0]) != "jshell" {
+		return args
+	}
+	// Java takes the user's home from the account (/root), not from $HOME, and jshell keeps its preferences there: the sandbox does not let it, and
+	// JDK 21 then prints "Could not lock User prefs" and does not exit. The workspace is the home of the terminal.
+	args = append([]string{args[0], "-J-Duser.home=" + workspace}, args[1:]...)
 	cp := os.Getenv("CLASSPATH")
-	if len(args) == 0 || filepath.Base(args[0]) != "jshell" || cp == "" {
+	if cp == "" {
 		return args
 	}
 	var jars []string
