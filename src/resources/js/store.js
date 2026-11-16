@@ -4,7 +4,7 @@
 (function () {
   "use strict";
 
-  var S = { views: [], on: [], home: "", envScript: "", admin: false, python: "", loaded: false, error: null, q: "", chip: "all", info: {}, note: null, watch: null, hits: {}, sizes: {}, adm: null };
+  var S = { views: [], on: [], home: "", envScript: "", admin: false, python: "", loaded: false, error: null, q: "", chip: "all", info: {}, note: null, watch: null, hits: {}, sizes: {}, adm: null, builtins: [], cat: null, repl: "", category: "", level: "" };
   var side = document.getElementById("store-side");
   var main = document.getElementById("store-main");
   var dlg = document.getElementById("store-dialog");
@@ -47,11 +47,19 @@
   function take(j) {
     if (j.views) S.views = j.views;
     if (j.on) S.on = j.on;
+    if (j.builtins) S.builtins = j.builtins;
+    if (j.requestsPerDay) { S.perDay = j.requestsPerDay; S.today = j.requestsToday || 0; }
     ["home", "envScript", "admin", "python", "sandbox"].forEach(function (k) { if (j[k] !== undefined) S[k] = j[k]; });
     S.loaded = true; S.error = null;
   }
   function load() {
     return store("list").then(function (j) { take(j); }, function (e) { S.error = e; S.loaded = true; }).then(function () { return S.admin ? loadAdmin() : null; });
+  }
+  // the catalogue entries the store lists apart from the installable ones: browser libraries and the plugins of the preview
+  function loadCat() {
+    if (S.cat) return;
+    S.cat = { loading: true };
+    store("catalogue?browser=1").then(function (j) { S.cat = j; renderSoon(); }, function (e) { S.cat = { entries: [], error: e.message }; renderSoon(); });
   }
   // what an admin sees besides the store: requests, failures, the servers (GET /admin/store)
   function loadAdmin() {
@@ -96,9 +104,10 @@
     var counts = { mine: S.views.filter(function (v) { return v.on; }).length, req: S.views.filter(function (v) { return v.mine && (v.state === "requested" || v.state === "rejected" || v.state === "failed"); }).length };
     link("Browse", "#browse", 0, r.name === "browse" || r.name === "app");
     link("My apps", "#mine", counts.mine, r.name === "mine");
+    if (S.builtins.length) { var mine = side.lastChild; mine.appendChild(el("small", "store__builtincount", "+ " + S.builtins.length + " built in")); }
     link("My requests", "#requests", counts.req, r.name === "requests");
     side.appendChild(el("h2", "", "Kinds"));
-    [["lib", "Python libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
+    [["lib", "Python libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["browser", "Browser libraries and plugins"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
       link(k[1], "#kind/" + k[0], 0, r.name === "kind" && r.arg === k[0]);
     });
     if (S.admin) {
@@ -127,6 +136,7 @@
   }
 
   function stateTag(v) {
+    if (v.state === "builtin") return el("span", "stag stag--builtin", "Built in" + (v.version ? " (" + v.version + ")" : ""));
     var t = { installed: "Installed", installing: "Installing" + (v.pct ? " " + v.pct + "%" : ""), failed: "Failed", requested: "Needs approval", rejected: "Not available" }[v.state];
     return t ? el("span", "stag stag--" + v.state, t) : null;
   }
@@ -141,6 +151,8 @@
 
   function control(v, row) {
     function btn(text, fn, cls) { var b = el("button", "sbtn" + (cls ? " " + cls : ""), text); b.type = "button"; b.addEventListener("click", function (e) { e.stopPropagation(); fn(); }); row.appendChild(b); return b; }
+    if (v.state === "builtin") return;
+    if (v.soon) { row.appendChild(el("span", "stag", "Listed, not installable yet")); return; }
     if (v.state === "available") {
       if (v.safe) btn("Install", function () { install(v); }, "is-primary");
       else if (S.admin) btn("Install (admin)", function () { adminInstall(v); }, "is-primary");
@@ -174,7 +186,10 @@
     if (!info && !v.summary && (v.kind === "lib" || v.kind === "tool")) loadInfo(v.name);
     c.appendChild(el("p", "sapp__sum", v.summary ? v.summary : info && info.summary ? info.summary : v.state === "failed" ? v.err || "The install stopped." : v.state === "rejected" && v.answer ? v.answer : ""));
     var row = el("div", "sapp__row");
-    row.appendChild(el("span", "stag", { lib: "python", tool: "tool", node: "node", lang: "language", plugin: "plugin" }[v.kind || "lib"] || v.kind));
+    row.appendChild(el("span", "stag", { lib: "python", tool: "tool", node: "node", lang: "language", plugin: "plugin", weblib: "browser", clib: "C/C++", lib27: "python 2.7" }[v.kind || "lib"] || v.kind));
+    if (v.level && v.level !== "optional") row.appendChild(el("span", "stag stag--level", v.level));
+    if (v.ramMB >= 100) row.appendChild(el("span", "stag stag--warn", v.ramMB + " MB when used"));
+    if (v.state !== "installed" && v.instMB >= 100) row.appendChild(el("span", "sapp__size", v.instMB + " MB"));
     if (v.version) row.appendChild(el("span", "sapp__ver", v.version));
     var tag = stateTag(v);
     if (tag) row.appendChild(tag);
@@ -220,6 +235,7 @@
     tool: "Programs from conda-forge (jq and the like), on the PATH of your terminals when switched on.",
     node: "Node libraries from npm (scripts of the packages are not run). Your terminals can require() them when switched on.",
     lang: "Languages (Lua, Ruby, Julia, R...): a program a terminal can run. They are large, so an admin installs them; ask for the one you need. These are samples.",
+    browser: "Libraries for the pages you preview (html, css, javascript) and the plugins of the preview browser. They are served by this site, with their checksums checked.",
     plugin: "Editor plugins that come with the server (samples). An admin installs one; once it is on for you it shows in the editor's status bar. A plugin runs in a sandboxed frame: it can read the text of your editor and show one line of text, nothing else."
   };
   var searchTimer = 0;
@@ -250,9 +266,11 @@
       chips.appendChild(b);
     });
     wrap.appendChild(chips);
+    if (kind !== "plugin" && kind !== "lang") wrap.appendChild(filters(kind));
     var nb = noteBox(); if (nb) wrap.appendChild(nb);
     var q = S.q.trim().toLowerCase();
-    var list = S.views.filter(function (v) { return matches(v, q) && chipOk(v) && (!kind || (v.kind || "lib") === kind); });
+    var list = S.views.filter(function (v) { return matches(v, q) && chipOk(v) && filterOk(v) && (!kind || (v.kind || "lib") === kind); });
+    if (kind === "browser") return viewBrowser(wrap, q);
     var grid = el("div", "store__grid");
     list.forEach(function (v) { grid.appendChild(card(v)); });
     wrap.appendChild(grid);
@@ -294,6 +312,78 @@
     return wrap;
   }
 
+  // language (REPL), category and level: they narrow the list the page already holds
+  function filterOk(v) {
+    if (S.repl && !(v.repls && v.repls.indexOf(S.repl) >= 0)) return false;
+    if (S.category && v.category !== S.category) return false;
+    if (S.level && v.level !== S.level) return false;
+    return true;
+  }
+  function filters(kind) {
+    var row = el("div", "store__filters");
+    var repls = {}, cats = {};
+    S.views.forEach(function (v) { (v.repls || []).forEach(function (r) { repls[r] = true; }); if (v.category) cats[v.category] = true; });
+    function sel(label, key, values) {
+      var l = el("label", "store__filter", label + " ");
+      var s = el("select"); s.setAttribute("aria-label", label); s.setAttribute("data-filter", key);
+      var o0 = el("option", "", "all"); o0.value = ""; s.appendChild(o0);
+      values.forEach(function (x) { var o = el("option", "", x); o.value = x; s.appendChild(o); });
+      s.value = S[key]; if (s.value !== S[key]) S[key] = "";
+      s.addEventListener("change", function () { S[key] = s.value; render(); });
+      l.appendChild(s); row.appendChild(l);
+    }
+    sel("Language", "repl", Object.keys(repls).sort());
+    sel("Category", "category", Object.keys(cats).sort());
+    sel("Level", "level", ["core", "popular", "optional"]);
+    return row;
+  }
+
+  // browser libraries and the plugins of the preview (from the catalogue: they are not installed by the user's switch of a terminal)
+  function loadPP() {
+    if (S.pp) return;
+    S.pp = { loading: true };
+    store("preview-plugins").then(function (j) { S.pp = { list: j.plugins || [] }; renderSoon(); }, function (e) { S.pp = { list: [], error: e.code }; renderSoon(); });
+  }
+  function ppOf(id) { var l = (S.pp && S.pp.list) || []; for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
+  function viewBrowser(wrap, q) {
+    loadCat(); loadPP();
+    var grid = el("div", "store__grid");
+    var entries = (S.cat && S.cat.entries) || [];
+    if (S.cat && S.cat.loading) wrap.appendChild(el("p", "store__legend", "Loading…"));
+    entries.filter(function (e) { return !q || e.name.toLowerCase().indexOf(q) >= 0 || (e.summary || "").toLowerCase().indexOf(q) >= 0; })
+      .filter(function (e) { return (!S.level || e.level === S.level) && (!S.repl || (e.repls || []).indexOf(S.repl) >= 0 || e.kind === "plugin"); })
+      .forEach(function (e) {
+        var c = el("article", "sapp is-" + e.state);
+        c.setAttribute("data-app", e.id);
+        var a = el("a", "sapp__name", e.name); a.href = "#app/" + encodeURIComponent(e.id); c.appendChild(a);
+        c.appendChild(el("p", "sapp__sum", e.summary || ""));
+        var row = el("div", "sapp__row");
+        row.appendChild(el("span", "stag", e.kind === "plugin" ? "plugin: " + e.place : "browser library"));
+        if (e.internal) row.appendChild(el("span", "stag stag--installed", "ours"));
+        else if (e.publisher) row.appendChild(el("span", "stag", "third party"));
+        row.appendChild(el("span", "stag stag--level", e.level));
+        row.appendChild(el("span", "sapp__sp"));
+        if (e.kind === "plugin" && e.place === "preview") {
+          var pp = ppOf(e.id);
+          if (pp && pp.ready) {
+            var sw = el("button", "sswitch" + (pp.on ? " is-on" : ""), pp.on ? "On" : "Off"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", pp.on ? "true" : "false");
+            sw.setAttribute("aria-label", "Use " + e.name + " in my preview");
+            sw.addEventListener("click", function () {
+              store("plugin-switch", { id: e.id, on: !pp.on }).then(function () { S.pp = null; if (window.PreviewPlugins) window.PreviewPlugins.reload(); render(); }, function (er) { say(er.message, "bad"); render(); });
+            });
+            row.appendChild(sw);
+          } else if (pp) row.appendChild(el("span", "stag", S.admin ? "Not installed: install it in the admin Catalogue" : "An admin installs it first"));
+        }
+        if (e.docs) { var d = el("a", "sbtn", "Documentation"); d.href = e.docs; if (e.docs.indexOf("https://") === 0) { d.target = "_blank"; d.rel = "noopener noreferrer"; } row.appendChild(d); }
+        c.appendChild(row);
+        grid.appendChild(c);
+      });
+    wrap.appendChild(grid);
+    if (S.cat && !S.cat.loading && !entries.length) wrap.appendChild(el("p", "store__legend", "Nothing matches here."));
+    wrap.appendChild(el("p", "store__legend", "Browser libraries are served from this site to your preview at /preview/lib/<name>/<file>: nothing is loaded from another site. A plugin of the preview shows in the preview toolbar once it is on for you."));
+    return wrap;
+  }
+
   function legend() {
     var l = el("p", "store__legend");
     var b = el("b", "", "States: ");
@@ -319,6 +409,24 @@
       wrap.appendChild(r);
     });
     if (!mineList.length) wrap.appendChild(el("p", "store__legend", "Nothing is on for you yet. Browse the store and switch an app on."));
+    // what the image has built in: listed with the apps, always on, nothing to install or remove
+    if (S.builtins.length) wrap.appendChild(el("h3", "store__h3", "Built in"));
+    S.builtins.forEach(function (b) {
+      var r = el("div", "store__row is-builtin");
+      r.setAttribute("data-builtin", b.name);
+      var d = el("div");
+      var a = el("span", "sapp__name", b.name + (b.version ? " " + b.version : ""));
+      d.appendChild(a);
+      d.appendChild(el("small", "", "Built in" + (b.used && b.used.length ? " · used by " + b.used.join(", ") : "")));
+      r.appendChild(d);
+      r.appendChild(el("span", "stag stag--builtin", "Built in"));
+      var sw = el("button", "sswitch is-on", "On"); sw.type = "button"; sw.disabled = true; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", "true");
+      sw.title = "Built in: always on"; sw.setAttribute("aria-label", b.name + " is built in and always on");
+      r.appendChild(sw);
+      var u = el("button", "sbtn", "Uninstall"); u.type = "button"; u.disabled = true; u.title = "Built in: it comes with the server"; r.appendChild(u);
+      if (b.docs) { var dl = el("a", "sbtn", "Documentation"); dl.href = b.docs; dl.target = "_blank"; dl.rel = "noopener noreferrer"; r.appendChild(dl); }
+      wrap.appendChild(r);
+    });
     // what the switches do to terminals that are open
     var apply = el("div", "store__note is-info");
     if (S.sandbox && !S.admin) {
@@ -505,6 +613,11 @@
 
   function useLine(v) {
     var mod = moduleOf(v.name);
+    // a library of C and C++ (headers and a library), of Perl, Tcl or SQLite: there is no program to run
+    if (v.category === "C and C++ libraries") return "#include <" + v.name + "/...>   (headers)\n$ g++ file.cc -l" + v.name.replace(/^lib/, "") + "   (when it has a library to link)";
+    if (v.category === "Perl modules") return "$ perl -e 'use " + v.name.replace(/^perl-/, "").split("-").map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join("::") + "'";
+    if (v.category === "Tcl") return "% package require " + v.name;
+    if (v.category === "SQLite extensions") return "sqlite> .load <the path shown on the app page>";
     switch (v.kind) {
       case "tool": return "$ " + v.name + " --version";
       case "node": return "$ node -e \"console.log(require('" + v.name + "'))\"";
@@ -535,7 +648,7 @@
     modal(function (d) {
       d.appendChild(heading((S.admin ? "Uninstall " : "Uninstall ") + v.name + "?"));
       d.appendChild(el("p", "", S.admin
-        ? "It is deleted from every server, and switched off for the " + (v.othersOn ? v.othersOn + " other users" : "users") + " that have it on. They can install it again from the store."
+        ? "It is deleted from every server, and switched off for the users that have it on. They can install it again from the store."
         : "It is deleted from the server (nobody else has it on). You can install it again from the store."));
       d.appendChild(dialogButtons([
         { label: "Uninstall", primary: true, run: function () {
@@ -552,6 +665,7 @@
 
   function viewApp(name) {
     var v = find(name) || { name: name, kind: "lib", state: "unknown", safe: false };
+    for (var bi = 0; bi < S.builtins.length; bi++) if (S.builtins[bi].name === name && v.state === "unknown") v = { name: name, kind: "tool", state: "builtin", version: S.builtins[bi].version, docs: S.builtins[bi].docs, summary: "Built in: the server already has it.", safe: false };
     var w = el("div", "store__detail");
     w.setAttribute("data-app", name);
     var back = el("a", "store__back", "← Back to the store"); back.href = "#browse"; w.appendChild(back);
@@ -577,6 +691,16 @@
       : sz.error ? "not known (" + sz.error.split("\n")[0].slice(0, 80) + ")"
       : "download about " + (sz.downloadMB < 10 ? sz.downloadMB.toFixed(1) : Math.round(sz.downloadMB)) + " MB, about " + (sz.diskMB < 10 ? sz.diskMB.toFixed(1) : Math.round(sz.diskMB)) + " MB once installed (" + sz.packages + " packages, version " + sz.version + ")");
     kvRow("Needs", needs(v));
+    if (v.repls && v.repls.length) kvRow("Works with", v.repls.join(", "));
+    if (v.category) kvRow("Category", v.category);
+    if (v.licence) kvRow("Licence", v.licence);
+    if (v.ramMB) kvRow("Memory when used", "about " + v.ramMB + " MB");
+    if (v.docs) {
+      kv.appendChild(el("span", "", "Documentation"));
+      var db = el("b"); var da = el("a", "", v.docs.indexOf("/docs/") === 0 ? "How to use it (on this site)" : v.docs); da.href = v.docs;
+      if (v.docs.indexOf("https://") === 0) { da.target = "_blank"; da.rel = "noopener noreferrer"; }
+      db.appendChild(da); kv.appendChild(db);
+    }
     kvRow("Who can", v.state === "installed" ? "Everyone can switch it on for themselves" : v.safe ? "You, right away (it is on the safe list)" : S.admin ? "You, as an admin" : "An admin approves it first");
     w.appendChild(kv);
     var actions = el("div", "sapp__row");
@@ -621,7 +745,7 @@
       if (!S.admin && v.othersOn > 0) {
         ub.disabled = true;
         un.appendChild(ub);
-        un.appendChild(el("p", "store__legend", v.othersOn + (v.othersOn === 1 ? " other user has" : " other users have") + " it on, so it stays. You can switch it off for yourself, or ask an admin to remove it."));
+        un.appendChild(el("p", "store__legend", "Other users have it on, so it stays. You can switch it off for yourself, or ask an admin to remove it."));
       } else {
         ub.addEventListener("click", function () { uninstallDialog(v); });
         un.appendChild(ub);
@@ -748,8 +872,15 @@
       d.appendChild(heading("Request " + v.name));
       d.appendChild(el("p", "", "An admin decides, and you will see the answer here. Why do you need it? (optional)"));
       var t = el("textarea"); t.maxLength = 200; t.setAttribute("aria-label", "Why do you need it?"); d.appendChild(t);
+      var rl = el("label", "store__filter", "For which language "); var rs = el("select"); rs.setAttribute("aria-label", "For which language"); rs.setAttribute("data-request-repl", "1");
+      var r0 = el("option", "", "any"); r0.value = ""; rs.appendChild(r0);
+      var known = {}; S.views.forEach(function (x) { (x.repls || []).forEach(function (r) { known[r] = true; }); });
+      Object.keys(known).sort().forEach(function (r) { var o = el("option", "", r); o.value = r; rs.appendChild(o); });
+      if (v.repls && v.repls[0]) rs.value = v.repls[0];
+      rl.appendChild(rs); d.appendChild(rl);
+      if (S.perDay) d.appendChild(el("p", "store__legend", "One request for each app: if someone asked already, you are added to it. You can send " + S.perDay + " requests a day (" + (S.today || 0) + " used). An admin sees the name, the language, the kind and your reason."));
       d.appendChild(dialogButtons([
-        { label: "Send request", primary: true, run: function () { closeModal(); act("request", { name: v.name, kind: v.kind || "lib", reason: t.value }, "Asked. An admin will decide; you will see the answer here."); } },
+        { label: "Send request", primary: true, run: function () { closeModal(); act("request", { name: v.name, kind: v.kind || "lib", repl: rs.value, reason: t.value }, "Asked. An admin will decide; you will see the answer here."); } },
         { label: "Cancel", run: closeModal }
       ]));
       t.focus();

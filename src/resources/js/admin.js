@@ -2451,9 +2451,10 @@
     function post(body, okText) {
       return api.post('admin/store', body).then(function () { if (okText) toast(okText); return load(); }, fail);
     }
-    function reasonDialog(title, confirm) {
+    function reasonDialog(title, confirm, required) {
       var input = h('input', { type: 'text', placeholder: 'A reason the people who asked will see', maxlength: '200' });
-      return ask({ title: title, content: input, confirm: confirm, danger: true }).then(function (ok) { return ok ? input.value : null; });
+      return ask({ title: title, content: input, confirm: confirm, danger: true, validate: required ? function () { return input.value.trim() ? '' : 'A reason is required: the people who asked see it.'; } : null })
+        .then(function (ok) { return ok ? input.value : null; });
     }
     function pickVersion(name) {
       return api.get('store/api/info?name=' + encodeURIComponent(name)).then(function (info) {
@@ -2477,7 +2478,7 @@
     }
     function tabs(d, counts) {
       var bar = h('div', { class: 'toolbar' });
-      [['requests', 'Requests'], ['failures', 'Failures'], ['installed', 'Installed'], ['servers', 'Servers'], ['settings', 'Settings']].forEach(function (t) {
+      [['requests', 'Requests'], ['failures', 'Failures'], ['catalogue', 'Catalogue'], ['installed', 'Installed'], ['servers', 'Servers'], ['settings', 'Settings']].forEach(function (t) {
         var label = t[1] + (counts[t[0]] ? ' (' + counts[t[0]] + ')' : '');
         bar.appendChild(h('button', { class: 'btn' + (tab === t[0] ? ' primary' : ''), type: 'button', text: label, onclick: function () { tab = t[0]; box.__key = null; load(); } }));
       });
@@ -2497,12 +2498,28 @@
         out.appendChild(table([
           { key: 'name', label: 'App', cell: function (r) { return h('div', null, h('b', { text: r.name }), h('div', { class: 'sub' }, r.kind + ' · asked ', when(new Date(r.at * 1000).toISOString()))); } },
           { key: 'askers', label: 'Asked by', cell: function (r) { return r.askers.length + (r.askers.length === 1 ? ' user' : ' users'); } },
+          { key: 'repl', label: 'For', cell: function (r) { return r.repl || 'any'; } },
+          { key: 'look', label: 'Lookup', cell: function (r) {
+            var out2 = h('div', { class: 'sub', 'data-lookup': r.name });
+            return h('div', null, h('button', { class: 'btn', type: 'button', text: 'Look it up', onclick: function () {
+              out2.textContent = 'Looking it up\u2026';
+              api.post('admin/store/catalogue', { action: 'lookup', name: r.name, kind: r.kind }).then(function (x) {
+                out2.textContent = x.solves ? 'solves: ' + x.version + ', about ' + x.diskMB + ' MB installed' + ((x.left || []).some(function (l) { return l.belowReserve; }) ? ' (a server would drop below the reserve)' : '') : 'does not solve: ' + (x.error || '').slice(0, 120);
+              }, function (e) { out2.textContent = e.message; });
+            } }), out2);
+          } },
           { key: 'reason', label: 'Why', cell: function (r) { return h('span', { class: 'wrap-text', text: r.reason || '' }); } },
           { key: 'status', label: 'Status', cell: function () { return pill('Waiting', 'warn'); } },
           { key: 'act', label: 'Decide', cell: function (r) {
             return h('div', { class: 'row-actions' },
-              h('button', { class: 'btn primary', type: 'button', text: 'Approve and install', onclick: function () { post({ action: 'approve', name: r.name }, r.name + ' is being installed.'); } }),
-              h('button', { class: 'btn danger', type: 'button', text: 'Reject', onclick: function () { reasonDialog('Reject ' + r.name + '?', 'Reject').then(function (why) { if (why !== null) post({ action: 'reject', name: r.name, answer: why }); }); } }));
+              h('button', { class: 'btn primary', type: 'button', text: 'Approve', title: 'Opens the Add form with everything filled in; you decide and press Add and install', onclick: function () {
+                var cat = d.cat || { repls: [], checks: [], places: [] };
+                var inCat = (cat.entries || []).filter(function (e) { return (e.package || e.name).toLowerCase() === r.name; })[0];
+                if (inCat) { post({ action: 'approve', name: r.name }, r.name + ' is being installed.'); return; }
+                tab = 'catalogue'; box.__key = null;
+                addAppDialog(cat, { name: r.name, package: r.name, kind: r.kind === 'node' ? 'node' : r.kind === 'tool' ? 'tool' : 'lib', manager: r.kind === 'node' ? 'npm' : 'pixi', repls: [r.repl || 'python'], level: 'optional', install: 'approval', check: r.kind === 'node' ? 'node-require' : r.kind === 'tool' ? 'version-flag' : 'python-import', checkArg: r.name.replace(/-/g, '_') });
+              } }),
+              h('button', { class: 'btn danger', type: 'button', text: 'Reject', onclick: function () { reasonDialog('Reject ' + r.name + '?', 'Reject with this reason', true).then(function (why) { if (why !== null) post({ action: 'reject', name: r.name, answer: why }); }); } }));
           } }
         ], waiting, { empty: 'Nobody is waiting for an answer.' }));
         out.appendChild(h('p', { class: 'sub', text: 'Approve and install runs the install at once and tells the people who asked. Reject asks for a line of reason, which they see on the app\'s card. Every decision goes to the audit log.' }));
@@ -2527,6 +2544,7 @@
         ], open, { empty: 'No failures are waiting for you.' }));
         out.appendChild(h('p', { class: 'sub', text: 'Try again, Pick another version, Mark installed and Reject all end the item and send the answer to everyone who reported it.' }));
       }
+      if (tab === 'catalogue') catalogueTab(out, d);
       if (tab === 'installed') {
         out.appendChild(h('h3', { text: 'Installed apps, and where' }));
         var cols = [
@@ -2596,12 +2614,20 @@
         var safe = h('textarea', { rows: '6', 'aria-label': 'Safe list' }); safe.value = d.safeList.join('\n');
         var limit = h('input', { type: 'number', min: '100', step: '100', value: String(d.limitSet || ''), placeholder: String(d.limitMB), 'aria-label': 'Size limit in MB' });
         var off = h('input', { type: 'checkbox' }); off.checked = !d.enabled;
+        var cs = (d.cat && d.cat.settings) || {};
+        var reserve = h('input', { type: 'number', min: '0', step: '256', value: '', placeholder: String(cs.reserveMB || 3072), 'aria-label': 'Reserve in MB' });
+        var perDay = h('input', { type: 'number', min: '0', value: '', placeholder: String(cs.perDay || 10), 'aria-label': 'Requests a day for each user' });
+        var scratchSoft = h('input', { type: 'number', min: '0', step: '64', value: '', placeholder: String(cs.scratchSoftMB || 256), 'aria-label': 'Scratch for each terminal (MB)' });
+        var scratchServer = h('input', { type: 'number', min: '0', value: '', placeholder: String(cs.scratchServerMB || 2048), 'aria-label': 'Scratch on a server, all terminals (MB)' });
         out.appendChild(h('p', { class: 'sub', text: 'Safe list: users install these without asking, one name per line: flask (a Python library), tool:jq (a program), npm:express (a Node library). Languages and plugins are always an admin\'s.' }));
         out.appendChild(safe);
         out.appendChild(h('div', { class: 'toolbar' }, h('label', null, 'Most the store may use on a server (MB): ', limit), h('label', null, 'Channels: ', h('input', { type: 'text', value: d.channel, disabled: 'disabled', 'aria-label': 'Channels (not editable)' })),
           h('label', null, off, ' Switch the App Store off for everyone'), h('span', { class: 'grow' }),
           h('button', { class: 'btn primary', type: 'button', text: 'Save settings', onclick: function () {
-            post({ action: 'settings', safeList: safe.value.split(/\s+/).filter(Boolean), limitMB: parseInt(limit.value, 10) || 0, off: off.checked }, 'Saved.'); } })));
+            post({ action: 'settings', safeList: safe.value.split(/\s+/).filter(Boolean), limitMB: parseInt(limit.value, 10) || 0, off: off.checked,
+              reserveMB: parseInt(reserve.value, 10) || 0, perDay: parseInt(perDay.value, 10) || 0, scratchSoftMB: parseInt(scratchSoft.value, 10) || 0, scratchServerMB: parseInt(scratchServer.value, 10) || 0 }, 'Saved.'); } })));
+        out.appendChild(h('div', { class: 'toolbar' }, h('label', null, 'Reserve kept free for installs (MB): ', reserve), h('label', null, 'Requests a day for each user: ', perDay),
+          h('label', null, 'Scratch for each terminal (MB, a soft cap): ', scratchSoft), h('label', null, 'Scratch on a server, all terminals (MB): ', scratchServer)));
         out.appendChild(h('h3', { text: 'apt packages (installed on every server, for all users)' }));
         var apt = h('textarea', { rows: '3', 'aria-label': 'apt packages, one per line' }); apt.value = (d.apt || []).join('\n');
         out.appendChild(apt);
@@ -2610,7 +2636,199 @@
       }
       return out;
     }
-    function load() { return api.get('admin/store').then(function (d) { render(box, JSON.stringify([d, tab]), draw(d)); }); }
+    // ---- the catalogue (LLD 18): what the store lists. Listing or importing an app never installs it.
+    function catPost(body, okText) {
+      return api.post('admin/store/catalogue', body).then(function (r) { if (okText) toast(okText); return load().then(function () { return r; }); }, fail);
+    }
+    function field(label, input, hint) { return h('div', { class: 'field' }, h('label', null, label, input), hint ? h('div', { class: 'sub', text: hint }) : null); }
+    function opts(list, cur) { return list.map(function (x) { var o = h('option', { value: x[0], text: x[1] }); if (x[0] === cur) o.selected = true; return o; }); }
+    var KINDS = [['lib', 'Library (Python, pixi)'], ['lib27', 'Library (Python 2.7, pixi)'], ['tool', 'Tool (pixi)'], ['clib', 'C/C++/Tcl/Perl/SQLite library (pixi)'], ['node', 'Node library (npm)'], ['weblib', 'Browser library (npm)'], ['gomod', 'Go module (mirror)'], ['jar', 'Maven jar (mirror)'], ['crate', 'Rust crate (mirror)']];
+    var MGRS = [['pixi', 'pixi (conda-forge)'], ['npm', 'npm'], ['apt', 'apt'], ['go mirror', 'Go module mirror'], ['maven mirror', 'Maven mirror'], ['cargo mirror', 'Cargo mirror']];
+    function addAppDialog(cat, e0, plugin) {
+      var e = e0 || {};
+      var repl = h('select', { 'aria-label': 'REPL' }, opts(cat.repls.map(function (r) { return [r, r]; }), (e.repls || ['python'])[0]));
+      var kind = h('select', { 'aria-label': 'Kind' }, opts(KINDS, e.kind || 'lib'));
+      var mgr = h('select', { 'aria-label': 'Manager' }, opts(MGRS, e.manager || 'pixi'));
+      var pkg = h('input', { type: 'text', value: e.package || e.name || '', 'aria-label': 'Package name' });
+      var ver = h('input', { type: 'text', value: e.version || '', placeholder: 'newest that solves', 'aria-label': 'Version' });
+      var level = h('select', { 'aria-label': 'Level' }, opts([['core', 'core'], ['popular', 'popular'], ['optional', 'optional']], e.level || 'optional'));
+      var who = h('select', { 'aria-label': 'Who may install' }, opts([['anyone', 'anyone'], ['approval', 'needs approval'], ['admin', 'admin only']], e.install || 'approval'));
+      var check = h('select', { 'aria-label': 'Check after install' }, opts(cat.checks.map(function (c) { return [c, c]; }), e.check || 'python-import'));
+      var arg = h('input', { type: 'text', value: e.checkArg || '', 'aria-label': 'Check argument' });
+      var docs = h('input', { type: 'text', value: e.docs || '', 'aria-label': 'Documentation link' });
+      var summary = h('input', { type: 'text', value: e.summary || '', 'aria-label': 'Summary', maxlength: '300' });
+      var licence = h('input', { type: 'text', value: e.licence || '', 'aria-label': 'Licence' });
+      var result = h('div', { class: 'card', 'data-lookup': '1' });
+      var now = false;
+      var look = h('button', { class: 'btn', type: 'button', text: 'Look it up', onclick: function () {
+        result.textContent = 'Looking it up…';
+        api.post('admin/store/catalogue', { action: 'lookup', name: pkg.value.trim().toLowerCase(), kind: kind.value === 'tool' || kind.value === 'clib' ? 'tool' : kind.value === 'node' ? 'node' : 'lib' }).then(function (r) {
+          result.textContent = '';
+          if (!r.solves) { result.appendChild(h('div', { class: 'bad', text: 'It does not solve: ' + (r.error || '') })); return; }
+          result.appendChild(h('div', null, h('b', { text: pkg.value + ' ' + r.version }), ' ', pill('solves', 'ok'), ' ' + r.packages + ' packages, about ' + r.diskMB + ' MB installed'));
+          (r.left || []).forEach(function (l) { result.appendChild(h('div', { class: l.belowReserve ? 'warn' : 'sub', text: l.node + ': ' + (l.leftMB / 1024).toFixed(1) + ' GB left' + (l.belowReserve ? ' (below the reserve)' : '') })); });
+        }, function (err) { result.textContent = err.message; });
+      } });
+      var form = h('div', { class: 'form' },
+        field('REPL', repl), field('Kind', kind), field('Manager', mgr, 'pixi, npm or apt as today, and the mirrors for Go modules, Maven jars and Rust crates. The check below is one of fixed templates: there is no field that takes a shell command.'),
+        field('Package name', pkg), field('Version (optional pin)', ver), field('Level', level), field('Who may install', who),
+        field('Check after install', check), field('Check argument', arg), field('Summary', summary), field('Licence', licence),
+        field('Documentation link', docs, 'Official page, or /docs/... of this site for an app of ours. Shown on the app page.'),
+        h('div', { class: 'toolbar' }, look, h('button', { class: 'btn primary', type: 'button', text: 'Add and install', onclick: function () { now = true; $('dialog').querySelector('.buttons .btn.primary').click(); } })), result);
+      return ask({ title: (e0 ? 'Edit ' + (e0.name) : plugin ? 'Add a plugin' : 'Add an app to the catalogue'), content: form, confirm: 'Add to catalogue', wide: true }).then(function (ok) {
+        if (!ok && !now) return;
+        var entry = { id: e.id || (kind.value === 'node' ? 'npm:' : kind.value === 'weblib' ? 'web:' : '') + pkg.value.trim().toLowerCase(), name: e.name || pkg.value.trim().toLowerCase(), summary: summary.value || 'Added by an admin.',
+          kind: kind.value, repls: [repl.value], level: level.value, manager: mgr.value, package: pkg.value.trim().toLowerCase(), version: ver.value.trim(), install: who.value, check: check.value, checkArg: arg.value, docs: docs.value.trim(), licence: licence.value, category: e.category || '' };
+        return catPost({ action: 'add', entry: entry, install: now }, entry.name + ' is in the catalogue' + (now ? ' and being installed.' : '. Nothing was installed.'));
+      });
+    }
+    function addPluginDialog(cat) {
+      var pkg = h('input', { type: 'text', value: '', placeholder: 'npm package, e.g. eruda', 'aria-label': 'npm package' });
+      var ver = h('input', { type: 'text', value: '', placeholder: 'exact version', 'aria-label': 'Exact version' });
+      var level = h('select', { 'aria-label': 'Level' }, opts([['popular', 'popular'], ['optional', 'optional'], ['core', 'core']], 'popular'));
+      var adapter = h('select', { 'aria-label': 'Adapter type' }, opts([['preview-page-tool', 'Preview-page tool (runs in the previewed page)'], ['preview-toolbar', 'Preview toolbar item'], ['editor-status', 'Editor status item'], ['panel-frame', 'Panel in a sandboxed frame'], ['editor-extension', 'Editor extension (runs in the page)']], 'preview-page-tool'));
+      var place = h('select', { 'aria-label': 'Place' }, opts(cat.places.map(function (x) { return [x, x]; }), 'preview'));
+      var entry = h('input', { type: 'text', value: '', placeholder: 'entry file, e.g. eruda.js', 'aria-label': 'Entry file' });
+      var docs = h('input', { type: 'text', value: '', 'aria-label': 'Documentation link' });
+      var trust = h('input', { type: 'checkbox', 'aria-label': 'I checked the publisher and the licence' });
+      var ext = h('input', { type: 'checkbox', 'aria-label': 'I understand this plugin runs in the page' });
+      var form = h('div', { class: 'form' }, field('npm package', pkg), field('Exact version', ver), field('Level', level),
+        field('Adapter type', adapter, 'Fixed types: editor extension (runs in the page), preview-page tool, panel in a sandboxed frame. If none fits, the plugin is not added.'),
+        field('Place', place), field('Entry file', entry), field('Documentation link', docs, 'Official page, taken from the package when it has one. For a plugin of ours: its page on this site.'),
+        h('label', { class: 'check' }, trust, ' I checked the publisher and the licence, and I want this exact version.'),
+        h('label', { class: 'check' }, ext, ' I understand this plugin runs in the page (needed for an editor extension).'));
+      return ask({ title: 'Add a plugin from npm', content: form, confirm: 'Add plugin', wide: true, validate: function () {
+        if (!pkg.value.trim() || !ver.value.trim() || !entry.value.trim()) return 'The package, the exact version and the entry file are needed.';
+        if (!trust.checked) return 'Tick that you checked the publisher and the licence.';
+        if (adapter.value === 'editor-extension' && !ext.checked) return 'An editor extension runs in the page: tick that you understand it.';
+      } }).then(function (ok) {
+        if (!ok) return;
+        var id = 'plugin:' + pkg.value.trim().toLowerCase();
+        return catPost({ action: 'add', entry: { id: id, name: pkg.value.trim(), summary: 'A plugin from npm (' + pkg.value.trim() + ').', kind: 'plugin', place: place.value, level: level.value, manager: 'npm', package: pkg.value.trim().toLowerCase(),
+          version: ver.value.trim(), install: 'admin', adapter: adapter.value, files: [entry.value.trim()], check: 'file-exists', checkArg: entry.value.trim(), docs: docs.value.trim(), licence: 'see the package', publisher: 'npm' } }, 'The plugin is in the catalogue. Nothing was installed.');
+      });
+    }
+    function bulkDialog(cat) {
+      var repl = h('select', { 'aria-label': 'REPL' }, opts(cat.repls.map(function (r) { return [r, r]; }), 'python'));
+      var kind = h('select', { 'aria-label': 'Kind' }, opts([['lib', 'Library (conda-forge)'], ['tool', 'Tool (conda-forge)'], ['node', 'Node library (npm)']], 'lib'));
+      var level = h('select', { 'aria-label': 'Level' }, opts([['optional', 'optional'], ['popular', 'popular'], ['core', 'core']], 'optional'));
+      var names = h('textarea', { rows: '3', 'aria-label': 'Names, one for each line or separated by spaces' });
+      var table_ = h('div', { 'data-bulk': '1' });
+      var did = false, nowFlag = false;
+      var run = h('button', { class: 'btn primary', type: 'button', text: 'Dry run', onclick: function () {
+        table_.textContent = 'Working…';
+        api.post('admin/store/catalogue', { action: 'bulkdry', kind: kind.value, names: names.value.split(/\s+/).filter(Boolean) }).then(function (r) {
+          did = true; table_.textContent = '';
+          var rows = r.rows || [];
+          table_.appendChild(table([
+            { key: 'name', label: 'Name', cell: function (x) { return h('b', { text: x.name }); } },
+            { key: 'solves', label: 'Solves', cell: function (x) { return pill(x.solves ? 'solves' : 'no', x.solves ? 'ok' : 'bad'); } },
+            { key: 'size', label: 'Installed', cell: function (x) { return x.sizeMB ? x.sizeMB + ' MB' : '\u2013'; } },
+            { key: 'result', label: 'Result', cell: function (x) { return h('span', { class: 'wrap-text', text: (x.version ? x.version + ': ' : '') + x.result }); } }
+          ], rows, { empty: 'No names.' }));
+          table_.appendChild(h('p', { class: 'sub', text: rows.filter(function (x) { return x.solves; }).length + ' ready. A name that does not solve never blocks you.' }));
+        }, function (err) { table_.textContent = err.message; });
+      } });
+      var form = h('div', { class: 'form' }, field('REPL', repl), field('Kind', kind), field('Level', level), field('Names', names), h('div', { class: 'toolbar' }, run, h('span', { class: 'sub', text: 'Nothing is added or installed by a dry run.' })), table_);
+      return ask({ title: 'Bulk add (dry run first)', content: form, confirm: 'Add what solved', wide: true, validate: function () { if (!did) return 'Run the dry run first.'; } }).then(function (ok) {
+        if (!ok) return;
+        return catPost({ action: 'bulkadd', kind: kind.value, repls: [repl.value], level: level.value, names: names.value.split(/\s+/).filter(Boolean), install: false }, 'Added to the catalogue. Nothing was installed.');
+      });
+    }
+    function packsDialog(cat) {
+      var box = h('div', { 'data-packs': '1' });
+      (cat.packs || []).forEach(function (p) {
+        var missing = p.entries.filter(function (id) { var e = cat.entries.filter(function (x) { return x.id === id; })[0]; if (!e) return true; var k = e.kind === 'lib' ? 'lib' : e.kind === 'node' ? 'node' : 'tool'; return !d0.apps.some(function (a) { return a.name === (e.package || e.name).toLowerCase() && a.kind === k && a.state === 'installed'; }); });
+        box.appendChild(h('div', { class: 'card', 'data-pack': p.id }, h('b', { text: p.name }), ' ', pill(p.entries.length + ' apps'), ' ', pill(missing.length ? missing.length + ' not installed' : 'installed', missing.length ? 'warn' : 'ok'),
+          h('div', { class: 'sub wrap-text', text: p.entries.join(', ') }),
+          h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'button', text: missing.length ? 'Install ' + missing.length + ' missing' : 'Install missing', onclick: function () { $('dialog').close(); catPost({ action: 'packinstall', id: p.id }, 'The missing apps of ' + p.name + ' are being installed.'); } }),
+            h('button', { class: 'btn danger', type: 'button', text: 'Remove pack', onclick: function () { $('dialog').close(); catPost({ action: 'packremove', id: p.id }, 'Pack removed.'); } }))));
+      });
+      return ask({ title: 'Packs: a named set, in one action', content: box, confirm: 'Close', cancel: false, wide: true });
+    }
+    function importDialog() {
+      var area = h('textarea', { rows: '8', 'aria-label': 'A catalogue file (JSON)' });
+      var rep = h('div');
+      var fileIn = h('input', { type: 'file', accept: 'application/json,.json', 'aria-label': 'Choose a catalogue file' });
+      fileIn.addEventListener('change', function () { var f = fileIn.files[0]; if (!f) return; var rd = new FileReader(); rd.onload = function () { area.value = String(rd.result).slice(0, 2 << 20); }; rd.readAsText(f); });
+      var dry = h('button', { class: 'btn', type: 'button', text: 'Check it (nothing is saved)', onclick: function () {
+        var data; try { data = JSON.parse(area.value); } catch (e) { rep.textContent = 'This is not JSON.'; return; }
+        api.post('admin/store/catalogue', { action: 'import', data: data, dry: true }).then(function (r) { rep.textContent = r.report.added + ' apps and ' + r.report.packs + ' packs are valid' + (r.report.rejected.length ? '. Refused: ' + r.report.rejected.join('; ') : '.'); }, function (e) { rep.textContent = e.message; });
+      } });
+      return ask({ title: 'Import a catalogue', body: 'Every entry is checked like one typed in the form. Importing never installs anything.', content: h('div', { class: 'form' }, fileIn, area, dry, rep), confirm: 'Import', wide: true, validate: function () { if (!area.value.trim()) return 'Choose a file or paste one.'; } }).then(function (ok) {
+        if (!ok) return;
+        var data; try { data = JSON.parse(area.value); } catch (e) { toast('This is not JSON.', 'error'); return; }
+        return catPost({ action: 'import', data: data, dry: false }, 'Imported. Nothing was installed.');
+      });
+    }
+    function verifyNow() {
+      toast('Checking every installed app on the gateway…');
+      return api.post('admin/store/catalogue', { action: 'verify' }).then(function (r) {
+        var bad = (r.results || []).filter(function (x) { return x.state !== 'ok'; });
+        toast(bad.length ? bad.length + ' failed: ' + bad.map(function (x) { return x.name; }).join(', ') + '. See Failures.' : 'All ' + (r.results || []).length + ' apps work.', bad.length ? 'error' : undefined);
+        return load();
+      }, fail);
+    }
+    var d0 = null, filterRepl = '', filterLevel = '';
+    function catalogueTab(out, d) {
+      d0 = d;
+      var cat = d.cat;
+      if (!cat) { out.appendChild(h('p', { class: 'sub', text: 'The catalogue could not be loaded.' })); return; }
+      cat.packs = cat.packs || [];
+      var bar = h('div', { class: 'toolbar' },
+        h('button', { class: 'btn primary', type: 'button', text: 'Add app', onclick: function () { addAppDialog(cat); } }),
+        h('button', { class: 'btn', type: 'button', text: 'Add plugin', onclick: function () { addPluginDialog(cat); } }),
+        h('button', { class: 'btn', type: 'button', text: 'Bulk add', onclick: function () { bulkDialog(cat); } }),
+        h('button', { class: 'btn', type: 'button', text: 'Packs', onclick: function () { packsDialog(cat); } }),
+        h('a', { class: 'btn', href: '/admin/store/catalogue?export=1', text: 'Export', download: 'openrepl-catalogue.json' }),
+        h('button', { class: 'btn', type: 'button', text: 'Import', onclick: function () { importDialog(); } }),
+        h('button', { class: 'btn', type: 'button', text: 'Verify now', onclick: verifyNow }),
+        h('span', { class: 'grow' }),
+        h('label', null, 'REPL ', h('select', { 'aria-label': 'Filter by REPL', onchange: function (ev) { filterRepl = ev.target.value; box.__key = null; load(); } }, opts([['', 'all']].concat(cat.repls.map(function (r) { return [r, r]; })), filterRepl))),
+        h('label', null, 'Level ', h('select', { 'aria-label': 'Filter by level', onchange: function (ev) { filterLevel = ev.target.value; box.__key = null; load(); } }, opts([['', 'all'], ['core', 'core'], ['popular', 'popular'], ['optional', 'optional']], filterLevel))));
+      out.appendChild(bar);
+      var list = cat.entries.filter(function (e) { return (!filterRepl || (e.repls || []).indexOf(filterRepl) >= 0 || e.kind === 'plugin') && (!filterLevel || e.level === filterLevel); });
+      var NAMES = { lib: 'library', lib27: 'library (2.7)', tool: 'tool', clib: 'C library', node: 'library', weblib: 'browser lib', plugin: 'plugin', gomod: 'library', jar: 'library', crate: 'crate' };
+      function stateOf(e) {
+        var k = e.kind === 'lib' ? 'lib' : (e.kind === 'node' || e.kind === 'weblib' || (e.kind === 'plugin' && !e.internal)) ? 'node' : e.kind === 'tool' || e.kind === 'clib' ? 'tool' : '';
+        var a = k && d.apps.filter(function (x) { return x.name === (e.package || e.name).toLowerCase() && x.kind === k; })[0];
+        if (!a) return { app: null, node: h('span', { class: 'sub', text: k ? 'listed, not installed' : 'listed' }) };
+        if (a.state !== 'installed') return { app: a, node: pill(a.state, a.state === 'failed' ? 'bad' : 'warn') };
+        var span = h('span');
+        d.nodes.forEach(function (n) { var ok = (n.have || []).indexOf(a.id) >= 0; span.appendChild(pill(n.node + (ok ? '' : (n.failed && n.failed[a.id]) ? ' failed' : ' missing'), ok ? 'ok' : (n.failed && n.failed[a.id]) ? 'bad' : 'warn')); span.appendChild(document.createTextNode(' ')); });
+        return { app: a, node: span };
+      }
+      out.appendChild(table([
+        { key: 'name', label: 'App', cell: function (e) { return h('div', null, h('b', { text: e.name }), e.docs ? h('div', { class: 'sub' }, h('a', { href: e.docs, target: '_blank', rel: 'noopener noreferrer', text: 'docs' })) : null); } },
+        { key: 'repl', label: 'REPL', cell: function (e) { return e.kind === 'plugin' ? e.place : (e.repls || []).join(', '); } },
+        { key: 'kind', label: 'Kind', cell: function (e) { return NAMES[e.kind] || e.kind; } },
+        { key: 'level', label: 'Level', cell: function (e) { return pill(e.level); } },
+        { key: 'mgr', label: 'Manager', cell: function (e) { return e.manager; } },
+        { key: 'who', label: 'Who may install', cell: function (e) { return { anyone: 'anyone', approval: 'needs approval', admin: 'admin only' }[e.install] || e.install; } },
+        { key: 'state', label: 'State on the servers', cell: function (e) { return stateOf(e).node; } },
+        { key: 'act', label: '', cell: function (e) {
+          var st = stateOf(e), canInstall = (['lib', 'tool', 'clib', 'node', 'weblib'].indexOf(e.kind) >= 0 || (e.kind === 'plugin' && !e.internal)) && e.python !== '2.7' && !st.app;
+          return h('div', { class: 'row-actions' }, h('button', { class: 'btn', type: 'button', text: 'Edit', onclick: function () { addAppDialog(cat, e, e.kind === 'plugin'); } }),
+            canInstall ? h('button', { class: 'btn primary', type: 'button', text: 'Install', onclick: function () { catPost({ action: 'install', id: e.id }, 'Installing ' + e.name + '.'); } }) : null,
+            h('button', { class: 'btn danger', type: 'button', text: 'Remove', title: 'Take it off the list (an installed app stays installed)', onclick: function () { ask({ title: 'Remove ' + e.name + ' from the catalogue?', body: 'It is no longer listed. An installed copy stays installed until you remove it under Installed.', confirm: 'Remove', danger: true }).then(function (ok) { if (ok) catPost({ action: 'remove', id: e.id }, e.name + ' was taken off the list.'); }); } }));
+        } }
+      ], list, { empty: 'No entry matches.' }));
+      // the disk of every server
+      out.appendChild(h('h3', { text: 'Disk of the store, on every server' }));
+      out.appendChild(h('p', { class: 'sub', text: 'Physical size (shared files count once). An install is refused when it would leave less than the reserve.' }));
+      (cat.disk || []).forEach(function (n) {
+        var pct = Math.min(100, Math.round(100 * n.usedMB / n.limitMB));
+        out.appendChild(h('div', { class: 'card', 'data-disk': n.node }, h('b', { text: n.node }), ' ' + (n.usedMB / 1024).toFixed(1) + ' GB used \u00b7 ' + (n.limitMB / 1024).toFixed(0) + ' GB \u00b7 ' + (n.reserveMB / 1024).toFixed(0) + ' GB reserve', n.belowReserve ? h('span', { class: 'bad', text: ' \u00b7 free below reserve soon' }) : null,
+          h('div', { style: 'height:8px;border-radius:4px;background:var(--line,#2b2d26);overflow:hidden;margin-top:4px' }, h('i', { style: 'display:block;height:100%;width:' + pct + '%;background:var(--accent,#b6e03a)' }))));
+      });
+      out.appendChild(h('p', { class: 'sub', text: 'The limit is checked on the gateway and on each worker. Admin only: a user never sees node names or disk.' }));
+    }
+    function load() {
+      return Promise.all([api.get('admin/store'), api.get('admin/store/catalogue').catch(function () { return null; })]).then(function (r) {
+        var d = r[0]; d.cat = r[1];
+        render(box, JSON.stringify([d, tab, filterRepl, filterLevel]), draw(d));
+      });
+    }
     return { root: root, refresh: load, poll: true };
   }
 

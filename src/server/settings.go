@@ -76,6 +76,14 @@ type SiteSettings struct {
 	StoreSafeList []string `json:"storeSafeList,omitempty"`
 	StoreLimitMB  int      `json:"storeLimitMB"`
 	StoreOff      bool     `json:"storeOff"`
+	// StoreReserveMB is kept free on each server for installs in progress (0 for the built-in 3072); StoreRequestsPerDay is how many apps
+	// one user may ask for in a day (0 for the built-in 5). ScratchSoftMB is the size at which a terminal's scratch folder is
+	// at which the caches are cleared first and then a terminal that still fills it is stopped (a soft cap: no quota, no mount; 0 for the built-in 256);
+	// ScratchServerMB is the same for all the scratch folders of a server (0 for the built-in 2048).
+	StoreReserveMB      int `json:"storeReserveMB,omitempty"`
+	StoreRequestsPerDay int `json:"storeRequestsPerDay,omitempty"`
+	ScratchSoftMB       int `json:"scratchSoftMB,omitempty"`
+	ScratchServerMB     int `json:"scratchServerMB,omitempty"`
 	// PreviewLinkGuestMinutes and PreviewLinkUserMinutes are how long the address of a preview (its token) works for a guest and for
 	// a signed-in user, in minutes, from 10 to 1440; 0 means the built-in 60 (guest) and 180 (signed in: 3 hours). The pane asks
 	// for a new one before it ends; a link opened in a tab of its own ends with it.
@@ -225,6 +233,10 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	}
 	if s.StoreLimitMB != 0 && (s.StoreLimitMB < 100 || s.StoreLimitMB > 1048576) {
 		return s, fmt.Errorf("the size of the App Store must be between 100 and 1048576 MB (or empty)")
+	}
+	if s.StoreReserveMB < 0 || s.StoreReserveMB > 102400 || s.StoreRequestsPerDay < 0 || s.StoreRequestsPerDay > 1000 ||
+		s.ScratchSoftMB < 0 || s.ScratchSoftMB > 102400 || s.ScratchServerMB < 0 || s.ScratchServerMB > 1048576 {
+		return s, fmt.Errorf("the reserve, the requests a day, the scratch size or the scratch time is out of range")
 	}
 	if len(s.StoreSafeList) > 300 {
 		return s, fmt.Errorf("the safe list of the App Store holds at most 300 names")

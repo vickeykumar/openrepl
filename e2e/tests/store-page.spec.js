@@ -178,7 +178,7 @@ test("a request asks for a reason; My requests lists what was asked; the answers
   await expect(page.locator("#store-dialog h3")).toHaveText("Request zzz-new-extra");
   await page.locator("#store-dialog textarea").fill("for my project");
   await page.locator("#store-dialog button", { hasText: "Send request" }).click();
-  expect(st.calls.at(-1)).toEqual(["request", { name: "zzz-new-extra", kind: "lib", reason: "for my project" }]);
+  expect(st.calls.at(-1)).toEqual(["request", { name: "zzz-new-extra", kind: "lib", repl: "", reason: "for my project" }]);
   await page.goto("/store#requests");
   await expect(page.locator(".store__row")).toHaveCount(2); // ffmpeg and zzz-new (pillow failed but is not mine)
   await expect(page.locator('[data-app="ffmpeg"]')).toContainText("waiting for an admin");
@@ -213,7 +213,7 @@ test("a user may uninstall an app only when nobody else has it on; an admin alwa
   const st = fake(page);
   await page.goto("/store#app/shared");
   await expect(page.locator(".store__uninstall button")).toBeDisabled();
-  await expect(page.locator(".store__uninstall")).toContainText("2 other users have it on, so it stays");
+  await expect(page.locator(".store__uninstall")).toContainText("Other users have it on, so it stays");
   // numpy has nobody else: the user may remove it
   await page.goto("/store#app/numpy");
   await expect(page.locator(".store__uninstall button")).toBeEnabled();

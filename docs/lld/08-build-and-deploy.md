@@ -54,7 +54,7 @@ For a local build and test loop on macOS (Colima with Rosetta, plus a dev contai
 It has three stages, all based on `ubuntu:22.04`:
 
 1. **`builder`:** copies `install_prerequisite.sh`, `bin/gdb` and the debug helpers (`scripts/ptrace-probe.c`, `scripts/openrepl-gdb`, `scripts/openrepl-rappel`), then runs `./install_prerequisite.sh --cleanup-tools --run-tests`. This installs every REPL runtime:
-   - from apt: gcc/g++, default-jdk, python2.7/3, ipython/ipython3, golang, yaegi, npm/nvm/node, ruby, perl, tcl, sqlite3, jq, rustc/cargo, rust-gdb, nasm, rlwrap, net-tools, libcap2-bin;
+   - from apt: gcc/g++, openjdk-21-jdk, python2.7/3, ipython/ipython3, Go 1.23 (official release), yaegi (built with it), npm/nvm/node, ruby, perl, tcl, sqlite3, jq, rustc/cargo, rust-gdb, nasm, rlwrap, net-tools, libcap2-bin;
    - prebuilt: cling (`repls/cling-Ubuntu-22.04-x86_64-*.tar.bz2`) and evcxr;
    - from source: gomacro (built with a Go 1.23 toolchain downloaded for that step and removed after it; the commit is pinned), jq-repl, perli, rappel;
    - from npm: `typescript@4.9.5` and `ts-node`;

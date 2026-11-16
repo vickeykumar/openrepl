@@ -35,7 +35,13 @@ const APPSTORE_DB = utils.GOTTY_PATH + "/appstore.db"
 // defaultSafeList is what a signed-in user may install without asking, until an admin saves a list of their own.
 var defaultSafeList = appstore.DefaultSafeList
 
-const defaultStoreLimitMB = 2048
+const defaultStoreLimitMB = 15360 // 15 GB for each node (physical size)
+
+// defaultStoreReserveMB is kept free for installs in progress; defaultRequestsPerDay is how many apps one user may ask for in a day.
+const (
+	defaultStoreReserveMB = 3072
+	defaultRequestsPerDay = 5
+)
 
 var (
 	appStoreMu  sync.Mutex
@@ -75,6 +81,20 @@ func storeLimitMB() int {
 	return defaultStoreLimitMB
 }
 
+func storeReserveMB() int {
+	if n := GetSiteSettings().StoreReserveMB; n > 0 {
+		return n
+	}
+	return defaultStoreReserveMB
+}
+
+func storeRequestsPerDay() int {
+	if n := GetSiteSettings().StoreRequestsPerDay; n > 0 {
+		return n
+	}
+	return defaultRequestsPerDay
+}
+
 // newInstaller picks the installer: the fake one for tests and development (OPENREPL_STORE_INSTALLER=fake), else pixi
 // (OPENREPL_PIXI, or the PATH), else one that says what is missing.
 func newInstaller(dir string) appstore.Installer {
@@ -91,7 +111,7 @@ func newInstaller(dir string) appstore.Installer {
 		if py == "" {
 			py = appstore.PythonOf("python3")
 		}
-		multi.Conda = appstore.Pixi{Bin: bin, Dir: dir, Python: py}
+		multi.Conda = appstore.Pixi{Bin: bin, Dir: dir, Python: py, Constraints: runtimeConstraints}
 	}
 	if npm := findNpm(); npm != "" {
 		multi.Node = appstore.Npm{Bin: npm, Dir: dir}
@@ -160,6 +180,7 @@ func (k *memKV) Each(fn func(k, v []byte) bool) error {
 
 // startAppStore makes the service and keeps this node's store in step with the catalog until ctx ends.
 func (server *Server) startAppStore(ctx context.Context) {
+	startScratch(ctx)
 	dir := utils.StoreDir()
 	if dir == "" {
 		log.Printf("appstore: switched off (%s=off)", utils.EnvStoreDir)
@@ -182,8 +203,9 @@ func (server *Server) startAppStore(ctx context.Context) {
 		}
 		kv = db
 	}
-	cfg := appstore.Config{Store: appstore.Store{Dir: dir}, KV: kv, Installer: newInstaller(dir), Safe: storeSafeList, LimitMB: storeLimitMB, Apt: aptRunner()}
+	cfg := appstore.Config{Store: appstore.Store{Dir: dir}, KV: kv, Installer: newInstaller(dir), Safe: storeSafeList, LimitMB: storeLimitMB, ReserveMB: storeReserveMB, PerDay: storeRequestsPerDay, Apt: aptRunner()}
 	svc := appstore.New(cfg)
+	go func() { svc.SetBuiltins(appstore.DetectBuiltins(ctx)) }() // what the image already has, found at start
 	appStoreMu.Lock()
 	appStoreSvc, appStoreKV = svc, kv
 	appStoreMu.Unlock()
@@ -249,6 +271,14 @@ type storeCall struct {
 	On     bool   `json:"on"`
 	Reason string `json:"reason"`
 	Note   string `json:"note"`
+	Repl   string `json:"repl"`
+}
+
+func builtinsOrEmpty(svc *appstore.Service) []appstore.Builtin {
+	if b := svc.Builtins(); b != nil {
+		return b
+	}
+	return []appstore.Builtin{}
 }
 
 func storeError(w http.ResponseWriter, err error) {
@@ -259,6 +289,9 @@ func storeError(w http.ResponseWriter, err error) {
 	case appstore.ErrFull:
 		code = http.StatusInsufficientStorage
 	case appstore.ErrTooSoon:
+		code = http.StatusTooManyRequests
+	}
+	if errors.Is(err, appstore.ErrDaily) {
 		code = http.StatusTooManyRequests
 	}
 	if errors.Is(err, appstore.ErrInUse) {
@@ -273,6 +306,10 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 	if i := strings.Index(r.URL.Path, "store/api/"); i >= 0 {
 		what = strings.Trim(r.URL.Path[i+len("store/api/"):], "/")
 	}
+	if what == "space" && r.Method == http.MethodGet {
+		server.handleStoreSpace(w, r) // the status bar of a terminal: also for a guest, and with the App Store off
+		return
+	}
 	uid, home, svc := server.storeUser(w, r)
 	if svc == nil {
 		return
@@ -280,11 +317,18 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		switch what {
 		case "list":
-			dir := svc.Store().Dir
-			writeJSON(w, http.StatusOK, map[string]interface{}{
-				"views": svc.Views(uid, home), "on": svc.MyList(home), "home": home, "envScript": filepath.Join(dir, "envs", home, "env.sh"), "sandbox": containers.LandlockStatus().Active,
-				"installer": svc.Installer().Name(), "maxOn": appstore.MaxOn, "admin": IsUserAdmin(w, r), "python": storePython(),
-			})
+			admin := IsUserAdmin(w, r)
+			out := map[string]interface{}{
+				"views": storeViews(svc, uid, home, admin), "on": svc.MyList(home), "sandbox": containers.LandlockStatus().Active,
+				"maxOn": appstore.MaxOn, "admin": admin, "requestsToday": svc.RequestsToday(uid), "requestsPerDay": storeRequestsPerDay(), "python": storePython(), "builtins": builtinsOrEmpty(svc),
+			}
+			if admin {
+				// a path, the home folder and the installer are for the admin: a user is told none of them
+				out["home"] = home
+				out["envScript"] = filepath.Join(svc.Store().Dir, "envs", home, "env.sh")
+				out["installer"] = svc.Installer().Name()
+			}
+			writeJSON(w, http.StatusOK, out)
 		case "notices":
 			n := svc.Notices(uid)
 			if n == nil {
@@ -324,6 +368,10 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]interface{}{"version": res.Version, "packages": res.Packages, "downloadMB": res.DownloadMB, "diskMB": res.DiskMB})
 		case "plugins":
 			writeJSON(w, http.StatusOK, map[string]interface{}{"plugins": storePlugins(svc, home)})
+		case "preview-plugins":
+			writeJSON(w, http.StatusOK, map[string]interface{}{"plugins": svc.PreviewPlugins(home)})
+		case "catalogue":
+			writeJSON(w, http.StatusOK, catalogueFor(svc, uid, home, queryFilter(r)))
 		default:
 			http.NotFound(w, r)
 		}
@@ -339,13 +387,14 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var err error
+	admin := IsUserAdmin(w, r)
 	switch what {
 	case "install", "retry":
 		if err = svc.Install(uid, c.Name, c.Kind, false); err == nil {
 			kickStore()
 		}
 	case "request":
-		_, err = svc.Request(uid, c.Name, c.Kind, c.Reason)
+		_, err = svc.RequestFor(uid, c.Name, c.Kind, c.Repl, c.Reason)
 	case "switch":
 		if err = svc.Switch(home, c.ID, c.On); err != nil || !c.On {
 			break
@@ -355,12 +404,12 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 			node, wait, verr := server.verifyOnNode(r.Context(), svc, home, a)
 			if verr != nil {
 				svc.Switch(home, c.ID, false)
-				body := map[string]interface{}{"error": "verify", "name": a.Name, "log": verr.Error(), "node": node, "wait": wait,
-					"views": svc.Views(uid, home), "on": svc.MyList(home)}
+				// the user gets a short plain message; the node and the raw log go only to the admin's failure list
+				body := map[string]interface{}{"error": "verify", "name": a.Name, "wait": wait, "views": storeViews(svc, uid, home, admin), "on": svc.MyList(home)}
 				if wait {
 					body["message"] = a.Name + " is not ready on your server yet. Try again in a minute."
 				} else {
-					rememberUseFailure(uid, a.Name, node, verr.Error())
+					svc.NoteCheckFailure(a.Name, node, verr.Error())
 					body["message"] = a.Name + " did not work for your terminals, so it is off."
 				}
 				writeJSON(w, http.StatusUnprocessableEntity, body)
@@ -370,15 +419,16 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 	case "report":
 		err = svc.Report(uid, c.Name, c.Note)
 		if errors.Is(err, appstore.ErrUnknown) {
-			if f, ok := takeUseFailure(uid, c.Name); ok {
-				err = svc.ReportUse(uid, c.Name, f.node, "Turning it on", f.log, c.Note)
-			}
+			// an app that is installed but did not work for this user: add them to the entry the failed check made
+			err = svc.ReportUse(uid, c.Name, "", "Turning it on", "", c.Note)
 		}
 	case "uninstall":
 		err = svc.Uninstall(uid, home, c.Name)
 		if err == nil {
 			kickStore()
 		}
+	case "plugin-switch":
+		err = svc.SwitchPlugin(home, c.ID, c.On)
 	case "ack":
 		svc.Ack(uid, c.Name)
 	default:
@@ -389,7 +439,15 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 		storeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "views": svc.Views(uid, home), "on": svc.MyList(home)})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "views": storeViews(svc, uid, home, admin), "on": svc.MyList(home)})
+}
+
+// storeViews are the apps as a user may see them: an admin gets the full version (errors, logs, the server a failure ran on).
+func storeViews(svc *appstore.Service, uid, home string, admin bool) []appstore.View {
+	if admin {
+		return svc.ViewsFull(uid, home)
+	}
+	return svc.Views(uid, home)
 }
 
 // ---- the lookup of one package (what a user sees before installing) ----------------------------------------------------
@@ -527,17 +585,21 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var c struct {
-		Action  string   `json:"action"`
-		Node    string   `json:"node"`
-		ID      string   `json:"id"`
-		Version string   `json:"version"`
-		Name    string   `json:"name"`
-		Kind    string   `json:"kind"`
-		Answer  string   `json:"answer"`
-		Apt     []string `json:"apt"`
-		Safe    []string `json:"safeList"`
-		Limit   int      `json:"limitMB"`
-		Off     bool     `json:"off"`
+		Action          string   `json:"action"`
+		Node            string   `json:"node"`
+		ID              string   `json:"id"`
+		Version         string   `json:"version"`
+		Name            string   `json:"name"`
+		Kind            string   `json:"kind"`
+		Answer          string   `json:"answer"`
+		Apt             []string `json:"apt"`
+		Safe            []string `json:"safeList"`
+		Limit           int      `json:"limitMB"`
+		Off             bool     `json:"off"`
+		ReserveMB       int      `json:"reserveMB"`
+		PerDay          int      `json:"perDay"`
+		ScratchSoftMB   int      `json:"scratchSoftMB"`
+		ScratchServerMB int      `json:"scratchServerMB"`
 		// Everyone: with an install, turn the app on for every signed-in user (default is the same, for an app that is installed)
 		Everyone bool `json:"everyone"`
 		On       bool `json:"on"`
@@ -612,6 +674,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 	case "settings":
 		s := GetSiteSettings()
 		s.StoreSafeList, s.StoreLimitMB, s.StoreOff = c.Safe, c.Limit, c.Off
+		s.StoreReserveMB, s.StoreRequestsPerDay, s.ScratchSoftMB, s.ScratchServerMB = c.ReserveMB, c.PerDay, c.ScratchSoftMB, c.ScratchServerMB
 		if err = SaveSiteSettings(s); err == nil {
 			detail = "safe list, size limit, switch"
 		}
@@ -761,4 +824,16 @@ func hasString(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// runtimeConstraints are the versions the image's REPLs require of an app (appstore.Runtimes), for the entry the catalogue lists under that name.
+func runtimeConstraints(name string) [][2]string {
+	svc := storeService()
+	if svc == nil {
+		return nil
+	}
+	if e, ok := svc.EntryFor(name, appstore.KindTool); ok {
+		return appstore.ConstraintsFor(e)
+	}
+	return nil
 }

@@ -85,6 +85,8 @@ type Options struct {
 	ScopeSignals bool
 	// ExtraRO are more folders that may be read and run: the bundles of the App Store that are on for this user (LLD 18).
 	ExtraRO []string
+	// ExtraRW are more folders that may be read and written: the scratch folder of this terminal (LLD 18), and nothing else.
+	ExtraRW []string
 }
 
 // Policy is what Build returns.
@@ -242,6 +244,11 @@ func Build(o Options, fs FS) (*Policy, error) {
 	for _, d := range o.ExtraRO {
 		if filepath.IsAbs(d) {
 			add(d, ro)
+		}
+	}
+	for _, d := range o.ExtraRW {
+		if filepath.IsAbs(d) {
+			add(d, rw)
 		}
 	}
 	for _, f := range deviceFiles {

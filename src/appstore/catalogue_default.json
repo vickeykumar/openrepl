@@ -1,0 +1,3371 @@
+{
+ "version": 1,
+ "entries": [
+  {
+   "id": "numpy",
+   "name": "numpy",
+   "summary": "Arrays and fast maths: the base of most Python libraries.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "ramMB": 26,
+   "instMB": 88,
+   "docs": "https://numpy.org/doc/stable/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "numpy"
+  },
+  {
+   "id": "pandas",
+   "name": "pandas",
+   "summary": "Tables and time series: read, clean, group and join data.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "ramMB": 64,
+   "instMB": 158,
+   "docs": "https://pandas.pydata.org/docs/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "pandas"
+  },
+  {
+   "id": "scipy",
+   "name": "scipy",
+   "summary": "Science and engineering routines: statistics, optimisation, signals.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "ramMB": 24,
+   "instMB": 164,
+   "docs": "https://docs.scipy.org/doc/scipy/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "scipy"
+  },
+  {
+   "id": "matplotlib-base",
+   "name": "matplotlib-base",
+   "summary": "Plots saved as images (no window): use savefig.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "ramMB": 66,
+   "instMB": 164,
+   "docs": "https://matplotlib.org/stable/",
+   "licence": "PSF-based",
+   "check": "python-import",
+   "checkArg": "matplotlib",
+   "labels": [
+    "writes its cache to scratch"
+   ]
+  },
+  {
+   "id": "pillow",
+   "name": "pillow",
+   "summary": "Open, change and save images.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "ramMB": 7,
+   "instMB": 48,
+   "docs": "https://pillow.readthedocs.io/",
+   "licence": "HPND",
+   "check": "python-import",
+   "checkArg": "PIL"
+  },
+  {
+   "id": "requests",
+   "name": "requests",
+   "summary": "HTTP client. Terminals have no internet: use it against your own server.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Web",
+   "ramMB": 27,
+   "instMB": 33,
+   "docs": "https://requests.readthedocs.io/",
+   "licence": "Apache-2.0",
+   "check": "python-import",
+   "checkArg": "requests"
+  },
+  {
+   "id": "flask",
+   "name": "flask",
+   "summary": "A small web framework: serve a page in the preview.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Web",
+   "ramMB": 32,
+   "instMB": 3,
+   "docs": "https://flask.palletsprojects.com/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "flask"
+  },
+  {
+   "id": "sqlalchemy",
+   "name": "sqlalchemy",
+   "summary": "SQL toolkit and object mapper.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data",
+   "ramMB": 35,
+   "instMB": 43,
+   "docs": "https://docs.sqlalchemy.org/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "sqlalchemy"
+  },
+  {
+   "id": "pytest",
+   "name": "pytest",
+   "summary": "Write and run tests.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "ramMB": 31,
+   "instMB": 7,
+   "docs": "https://docs.pytest.org/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "pytest",
+   "labels": [
+    "cache in scratch"
+   ]
+  },
+  {
+   "id": "beautifulsoup4",
+   "name": "beautifulsoup4",
+   "summary": "Read and search HTML and XML.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Web",
+   "ramMB": 20,
+   "instMB": 1,
+   "docs": "https://www.crummy.com/software/BeautifulSoup/bs4/doc/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "bs4"
+  },
+  {
+   "id": "lxml",
+   "name": "lxml",
+   "summary": "Fast XML and HTML parsing.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Web",
+   "ramMB": 7,
+   "instMB": 14,
+   "docs": "https://lxml.de/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "lxml"
+  },
+  {
+   "id": "pyyaml",
+   "name": "pyyaml",
+   "summary": "Read and write YAML.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data",
+   "ramMB": 10,
+   "instMB": 1,
+   "docs": "https://pyyaml.org/wiki/PyYAMLDocumentation",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "yaml"
+  },
+  {
+   "id": "jinja2",
+   "name": "jinja2",
+   "summary": "Templates for text and HTML.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Web",
+   "ramMB": 18,
+   "instMB": 1,
+   "docs": "https://jinja.palletsprojects.com/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "jinja2"
+  },
+  {
+   "id": "click",
+   "name": "click",
+   "summary": "Build command-line programs.",
+   "kind": "lib",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "ramMB": 11,
+   "instMB": 1,
+   "docs": "https://click.palletsprojects.com/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "click"
+  },
+  {
+   "id": "rich",
+   "name": "rich",
+   "summary": "Colour, tables and progress bars in the terminal.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "ramMB": 8,
+   "instMB": 5,
+   "docs": "https://rich.readthedocs.io/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "rich"
+  },
+  {
+   "id": "httpx",
+   "name": "httpx",
+   "summary": "HTTP client with async support.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Web",
+   "ramMB": 29,
+   "instMB": 3,
+   "docs": "https://www.python-httpx.org/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "httpx"
+  },
+  {
+   "id": "scikit-learn",
+   "name": "scikit-learn",
+   "summary": "Machine learning: models, scoring, pipelines.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "ramMB": 122,
+   "instMB": 210,
+   "docs": "https://scikit-learn.org/stable/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "sklearn"
+  },
+  {
+   "id": "sympy",
+   "name": "sympy",
+   "summary": "Symbolic maths.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "ramMB": 51,
+   "instMB": 61,
+   "docs": "https://docs.sympy.org/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "sympy"
+  },
+  {
+   "id": "networkx",
+   "name": "networkx",
+   "summary": "Graphs and networks.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "ramMB": 33,
+   "instMB": 5,
+   "docs": "https://networkx.org/documentation/stable/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "networkx"
+  },
+  {
+   "id": "pydantic",
+   "name": "pydantic",
+   "summary": "Data validation with type hints.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "ramMB": 16,
+   "instMB": 10,
+   "docs": "https://docs.pydantic.dev/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "pydantic"
+  },
+  {
+   "id": "tqdm",
+   "name": "tqdm",
+   "summary": "Progress bars for loops.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "ramMB": 16,
+   "instMB": 1,
+   "docs": "https://tqdm.github.io/",
+   "licence": "MPL-2.0 AND MIT",
+   "check": "python-import",
+   "checkArg": "tqdm"
+  },
+  {
+   "id": "black",
+   "name": "black",
+   "summary": "Format Python code.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "ramMB": 28,
+   "instMB": 4,
+   "docs": "https://black.readthedocs.io/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "black",
+   "labels": [
+    "cache in scratch"
+   ]
+  },
+  {
+   "id": "ruff",
+   "name": "ruff",
+   "summary": "Very fast Python linter and formatter (a program, not a module).",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "instMB": 37,
+   "docs": "https://docs.astral.sh/ruff/",
+   "licence": "MIT",
+   "check": "version-flag",
+   "checkArg": "ruff",
+   "labels": [
+    "cache in scratch"
+   ]
+  },
+  {
+   "id": "mypy",
+   "name": "mypy",
+   "summary": "Check types in Python code.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "ramMB": 18,
+   "instMB": 100,
+   "docs": "https://mypy.readthedocs.io/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "mypy",
+   "labels": [
+    "cache in scratch"
+   ]
+  },
+  {
+   "id": "fastapi",
+   "name": "fastapi",
+   "summary": "A modern web framework with automatic docs.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Web",
+   "ramMB": 39,
+   "instMB": 34,
+   "docs": "https://fastapi.tiangolo.com/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "fastapi"
+  },
+  {
+   "id": "uvicorn",
+   "name": "uvicorn",
+   "summary": "A fast server for fastapi.",
+   "kind": "lib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Web",
+   "ramMB": 24,
+   "instMB": 1,
+   "docs": "https://www.uvicorn.org/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "uvicorn"
+  },
+  {
+   "id": "polars",
+   "name": "polars",
+   "summary": "Fast tables written in Rust: an alternative to pandas.",
+   "kind": "lib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "ramMB": 42,
+   "instMB": 221,
+   "docs": "https://docs.pola.rs/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "polars"
+  },
+  {
+   "id": "seaborn-base",
+   "name": "seaborn-base",
+   "summary": "Statistical plots (brings pandas, scipy and matplotlib).",
+   "kind": "lib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "instMB": 310,
+   "docs": "https://seaborn.pydata.org/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "seaborn"
+  },
+  {
+   "id": "statsmodels",
+   "name": "statsmodels",
+   "summary": "Statistics and regression.",
+   "kind": "lib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "instMB": 285,
+   "docs": "https://www.statsmodels.org/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "statsmodels"
+  },
+  {
+   "id": "pyarrow",
+   "name": "pyarrow",
+   "summary": "Columnar data and Parquet files.",
+   "kind": "lib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data",
+   "instMB": 250,
+   "docs": "https://arrow.apache.org/docs/python/",
+   "licence": "Apache-2.0",
+   "check": "python-import",
+   "checkArg": "pyarrow"
+  },
+  {
+   "id": "numba",
+   "name": "numba",
+   "summary": "Compile Python functions for speed.",
+   "kind": "lib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "instMB": 300,
+   "docs": "https://numba.readthedocs.io/",
+   "licence": "BSD-2-Clause",
+   "check": "python-import",
+   "checkArg": "numba",
+   "labels": [
+    "cache in scratch"
+   ]
+  },
+  {
+   "id": "cryptography",
+   "name": "cryptography",
+   "summary": "Encryption and hashing.",
+   "kind": "lib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "instMB": 10,
+   "docs": "https://cryptography.io/",
+   "licence": "Apache-2.0 OR BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "cryptography"
+  },
+  {
+   "id": "paramiko",
+   "name": "paramiko",
+   "summary": "SSH client (terminals have no internet).",
+   "kind": "lib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "instMB": 19,
+   "docs": "https://docs.paramiko.org/",
+   "licence": "LGPL-2.1",
+   "check": "python-import",
+   "checkArg": "paramiko"
+  },
+  {
+   "id": "psutil",
+   "name": "psutil",
+   "summary": "Processes and system information.",
+   "kind": "lib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Dev tools",
+   "instMB": 3,
+   "docs": "https://psutil.readthedocs.io/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "psutil"
+  },
+  {
+   "id": "pytorch-cpu",
+   "name": "pytorch-cpu",
+   "summary": "Deep learning. Large: 747 MB, importing it takes 226 MB of memory.",
+   "kind": "lib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "category": "Data science",
+   "ramMB": 226,
+   "instMB": 747,
+   "docs": "https://pytorch.org/docs/stable/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "torch",
+   "labels": [
+    "needs a 4 GB server"
+   ]
+  },
+  {
+   "id": "py27-six",
+   "name": "six (Python 2.7)",
+   "summary": "Python 2 and 3 compatibility helpers.",
+   "kind": "lib27",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python2.7"
+   ],
+   "package": "six",
+   "category": "Legacy",
+   "docs": "https://six.readthedocs.io/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "six",
+   "labels": [
+    "legacy (Python 2.7)"
+   ],
+   "python": "2.7"
+  },
+  {
+   "id": "py27-requests",
+   "name": "requests (Python 2.7)",
+   "summary": "HTTP client (version 2.25).",
+   "kind": "lib27",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python2.7"
+   ],
+   "package": "requests",
+   "category": "Legacy",
+   "instMB": 8,
+   "docs": "https://requests.readthedocs.io/en/v2.25.1/",
+   "licence": "Apache-2.0",
+   "check": "python-import",
+   "checkArg": "requests",
+   "labels": [
+    "legacy (Python 2.7)"
+   ],
+   "python": "2.7"
+  },
+  {
+   "id": "py27-numpy",
+   "name": "numpy (Python 2.7)",
+   "summary": "Arrays (version 1.16).",
+   "kind": "lib27",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "python2.7"
+   ],
+   "package": "numpy",
+   "category": "Legacy",
+   "instMB": 55,
+   "docs": "https://numpy.org/doc/1.16/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "numpy",
+   "labels": [
+    "legacy (Python 2.7)"
+   ],
+   "python": "2.7"
+  },
+  {
+   "id": "cmake",
+   "name": "cmake",
+   "summary": "Build systems for C and C++.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "Build tools",
+   "instMB": 229,
+   "docs": "https://cmake.org/cmake/help/latest/",
+   "licence": "BSD-3-Clause",
+   "check": "version-flag",
+   "checkArg": "cmake",
+   "labels": [
+    "build in scratch"
+   ]
+  },
+  {
+   "id": "ninja",
+   "name": "ninja",
+   "summary": "A small fast build tool.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "Build tools",
+   "instMB": 35,
+   "docs": "https://ninja-build.org/manual.html",
+   "licence": "Apache-2.0",
+   "check": "version-flag",
+   "checkArg": "ninja",
+   "labels": [
+    "build in scratch"
+   ]
+  },
+  {
+   "id": "pkg-config",
+   "name": "pkg-config",
+   "summary": "Find libraries for the compiler.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "package": "pkg-config",
+   "category": "Build tools",
+   "instMB": 7,
+   "docs": "https://www.freedesktop.org/wiki/Software/pkg-config/",
+   "licence": "GPL-2.0",
+   "check": "version-flag",
+   "checkArg": "pkg-config"
+  },
+  {
+   "id": "cppcheck",
+   "name": "cppcheck",
+   "summary": "Find mistakes in C and C++ code.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "Analysis",
+   "instMB": 220,
+   "docs": "https://cppcheck.sourceforge.io/manual.html",
+   "licence": "GPL-3.0",
+   "check": "version-flag",
+   "checkArg": "cppcheck"
+  },
+  {
+   "id": "clang-format",
+   "name": "clang-format",
+   "summary": "Format C and C++ code.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "Analysis",
+   "instMB": 330,
+   "docs": "https://clang.llvm.org/docs/ClangFormat.html",
+   "licence": "Apache-2.0 WITH LLVM-exception",
+   "check": "version-flag",
+   "checkArg": "clang-format"
+  },
+  {
+   "id": "clang-tools",
+   "name": "clang-tools",
+   "summary": "clang-tidy and friends (a linter for C++).",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "package": "clang-tools",
+   "category": "Analysis",
+   "instMB": 500,
+   "docs": "https://clang.llvm.org/extra/clang-tidy/",
+   "licence": "Apache-2.0 WITH LLVM-exception",
+   "check": "version-flag",
+   "checkArg": "clang-tidy"
+  },
+  {
+   "id": "valgrind",
+   "name": "valgrind",
+   "summary": "Find memory errors (needs ptrace on the host).",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "Analysis",
+   "instMB": 240,
+   "docs": "https://valgrind.org/docs/manual/",
+   "licence": "GPL-2.0",
+   "check": "version-flag",
+   "checkArg": "valgrind"
+  },
+  {
+   "id": "ccache",
+   "name": "ccache",
+   "summary": "Compiler cache.",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "Build tools",
+   "instMB": 40,
+   "docs": "https://ccache.dev/manual/latest.html",
+   "licence": "GPL-3.0",
+   "check": "version-flag",
+   "checkArg": "ccache",
+   "labels": [
+    "cache in scratch"
+   ]
+  },
+  {
+   "id": "eigen",
+   "name": "eigen",
+   "summary": "Linear algebra (header-only).",
+   "kind": "clib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 6,
+   "docs": "https://eigen.tuxfamily.org/dox/",
+   "licence": "MPL-2.0",
+   "check": "file-exists",
+   "checkArg": "include/eigen3",
+   "labels": [
+    "header-only: just #include it"
+   ]
+  },
+  {
+   "id": "nlohmann_json",
+   "name": "nlohmann_json",
+   "summary": "JSON for C++ (header-only).",
+   "kind": "clib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 1,
+   "docs": "https://json.nlohmann.me/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "include/nlohmann",
+   "labels": [
+    "header-only: just #include it"
+   ]
+  },
+  {
+   "id": "glm",
+   "name": "glm",
+   "summary": "Maths for graphics (header-only).",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 35,
+   "docs": "https://glm.g-truc.net/0.9.9/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "include/glm",
+   "labels": [
+    "header-only: just #include it"
+   ]
+  },
+  {
+   "id": "cli11",
+   "name": "cli11",
+   "summary": "Command-line parsing (header-only).",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 35,
+   "docs": "https://cliutils.github.io/CLI11/book/",
+   "licence": "BSD-3-Clause",
+   "check": "file-exists",
+   "checkArg": "include/CLI",
+   "labels": [
+    "header-only: just #include it"
+   ]
+  },
+  {
+   "id": "fmt",
+   "name": "fmt",
+   "summary": "Fast text formatting.",
+   "kind": "clib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 20,
+   "docs": "https://fmt.dev/latest/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "include/fmt",
+   "labels": [
+    "needs the library path: the store sets it"
+   ]
+  },
+  {
+   "id": "spdlog",
+   "name": "spdlog",
+   "summary": "Fast logging.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 30,
+   "docs": "https://github.com/gabime/spdlog/wiki",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "include/spdlog",
+   "labels": [
+    "needs the library path: the store sets it"
+   ]
+  },
+  {
+   "id": "catch2",
+   "name": "catch2",
+   "summary": "Tests for C++.",
+   "kind": "clib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 30,
+   "docs": "https://github.com/catchorg/Catch2/tree/devel/docs",
+   "licence": "BSL-1.0",
+   "check": "file-exists",
+   "checkArg": "include/catch2",
+   "labels": [
+    "needs the library path: the store sets it"
+   ]
+  },
+  {
+   "id": "gtest",
+   "name": "gtest",
+   "summary": "Google Test.",
+   "kind": "clib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 30,
+   "docs": "https://google.github.io/googletest/",
+   "licence": "BSD-3-Clause",
+   "check": "file-exists",
+   "checkArg": "include/gtest",
+   "labels": [
+    "needs the library path: the store sets it"
+   ]
+  },
+  {
+   "id": "doctest",
+   "name": "doctest",
+   "summary": "Tests in one header.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 30,
+   "docs": "https://github.com/doctest/doctest/tree/master/doc/markdown",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "include/doctest",
+   "labels": [
+    "needs the library path: the store sets it"
+   ]
+  },
+  {
+   "id": "benchmark",
+   "name": "benchmark",
+   "summary": "Micro-benchmarks.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 30,
+   "docs": "https://github.com/google/benchmark/blob/main/docs/user_guide.md",
+   "licence": "Apache-2.0",
+   "check": "file-exists",
+   "checkArg": "include/benchmark",
+   "labels": [
+    "needs the library path: the store sets it"
+   ]
+  },
+  {
+   "id": "libboost-devel",
+   "name": "libboost-devel",
+   "summary": "Boost libraries.",
+   "kind": "clib",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 180,
+   "docs": "https://www.boost.org/doc/libs/",
+   "licence": "BSL-1.0",
+   "check": "file-exists",
+   "checkArg": "include/boost",
+   "labels": [
+    "mostly headers"
+   ]
+  },
+  {
+   "id": "openssl",
+   "name": "openssl",
+   "summary": "Encryption library (headers and libraries).",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 20,
+   "docs": "https://www.openssl.org/docs/",
+   "licence": "Apache-2.0",
+   "check": "file-exists",
+   "checkArg": "include/openssl"
+  },
+  {
+   "id": "zlib",
+   "name": "zlib",
+   "summary": "Compression library.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 5,
+   "docs": "https://zlib.net/manual.html",
+   "licence": "Zlib",
+   "check": "file-exists",
+   "checkArg": "include/zlib.h"
+  },
+  {
+   "id": "libpng",
+   "name": "libpng",
+   "summary": "PNG library.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "category": "C and C++ libraries",
+   "instMB": 8,
+   "docs": "https://www.libpng.org/pub/png/libpng-manual.txt",
+   "licence": "libpng-2.0",
+   "check": "file-exists",
+   "checkArg": "include/png.h"
+  },
+  {
+   "id": "git",
+   "name": "git",
+   "summary": "Version control. The .git folder of your repository lives in the workspace.",
+   "kind": "tool",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 290,
+   "docs": "https://git-scm.com/doc",
+   "licence": "GPL-2.0",
+   "check": "version-flag",
+   "checkArg": "git",
+   "labels": [
+    "its .git folder is in your workspace"
+   ]
+  },
+  {
+   "id": "ripgrep",
+   "name": "ripgrep",
+   "summary": "Very fast search in files.",
+   "kind": "tool",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 10,
+   "docs": "https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md",
+   "licence": "MIT OR Unlicense",
+   "check": "version-flag",
+   "checkArg": "rg"
+  },
+  {
+   "id": "fd-find",
+   "name": "fd-find",
+   "summary": "Find files by name.",
+   "kind": "tool",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 12,
+   "docs": "https://github.com/sharkdp/fd#readme",
+   "licence": "MIT OR Apache-2.0",
+   "check": "version-flag",
+   "checkArg": "fd"
+  },
+  {
+   "id": "tree",
+   "name": "tree",
+   "summary": "Show folders as a tree.",
+   "kind": "tool",
+   "level": "core",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 5,
+   "docs": "https://oldmanprogrammer.net/source.php?dir=projects/tree",
+   "licence": "GPL-2.0",
+   "check": "version-flag",
+   "checkArg": "tree"
+  },
+  {
+   "id": "bat",
+   "name": "bat",
+   "summary": "cat with colours and line numbers.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 18,
+   "docs": "https://github.com/sharkdp/bat#readme",
+   "licence": "MIT OR Apache-2.0",
+   "check": "version-flag",
+   "checkArg": "bat"
+  },
+  {
+   "id": "fzf",
+   "name": "fzf",
+   "summary": "Fuzzy finder.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 17,
+   "docs": "https://github.com/junegunn/fzf#readme",
+   "licence": "MIT",
+   "check": "version-flag",
+   "checkArg": "fzf"
+  },
+  {
+   "id": "hyperfine",
+   "name": "hyperfine",
+   "summary": "Benchmark commands.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 8,
+   "docs": "https://github.com/sharkdp/hyperfine#readme",
+   "licence": "MIT OR Apache-2.0",
+   "check": "version-flag",
+   "checkArg": "hyperfine"
+  },
+  {
+   "id": "file",
+   "name": "file",
+   "summary": "Tell what kind of file it is.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 8,
+   "docs": "https://www.darwinsys.com/file/",
+   "licence": "BSD-2-Clause",
+   "check": "version-flag",
+   "checkArg": "file"
+  },
+  {
+   "id": "zip",
+   "name": "zip",
+   "summary": "Make zip files.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 6,
+   "docs": "https://infozip.sourceforge.net/Zip.html",
+   "licence": "Info-ZIP",
+   "check": "version-flag",
+   "checkArg": "zip"
+  },
+  {
+   "id": "unzip",
+   "name": "unzip",
+   "summary": "Open zip files.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 6,
+   "docs": "https://infozip.sourceforge.net/UnZip.html",
+   "licence": "Info-ZIP",
+   "check": "version-flag",
+   "checkArg": "unzip"
+  },
+  {
+   "id": "go-yq",
+   "name": "go-yq",
+   "summary": "Read and change YAML, JSON and XML.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "package": "go-yq",
+   "category": "Terminal tools",
+   "instMB": 30,
+   "docs": "https://mikefarah.gitbook.io/yq/",
+   "licence": "MIT",
+   "check": "version-flag",
+   "checkArg": "yq"
+  },
+  {
+   "id": "shellcheck",
+   "name": "shellcheck",
+   "summary": "Find mistakes in shell scripts.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 25,
+   "docs": "https://www.shellcheck.net/wiki/",
+   "licence": "GPL-3.0",
+   "check": "version-flag",
+   "checkArg": "shellcheck"
+  },
+  {
+   "id": "go-shfmt",
+   "name": "go-shfmt",
+   "summary": "Format shell scripts.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 8,
+   "docs": "https://github.com/mvdan/sh#shfmt",
+   "licence": "BSD-3-Clause",
+   "check": "version-flag",
+   "checkArg": "shfmt"
+  },
+  {
+   "id": "htop",
+   "name": "htop",
+   "summary": "See what is running.",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 15,
+   "docs": "https://htop.dev/",
+   "licence": "GPL-2.0",
+   "check": "version-flag",
+   "checkArg": "htop"
+  },
+  {
+   "id": "tmux",
+   "name": "tmux",
+   "summary": "Several terminals in one.",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 25,
+   "docs": "https://github.com/tmux/tmux/wiki",
+   "licence": "ISC",
+   "check": "version-flag",
+   "checkArg": "tmux",
+   "labels": [
+    "socket in scratch"
+   ]
+  },
+  {
+   "id": "vim",
+   "name": "vim",
+   "summary": "A text editor.",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 330,
+   "docs": "https://www.vim.org/docs.php",
+   "licence": "Vim",
+   "check": "version-flag",
+   "checkArg": "vim",
+   "labels": [
+    "undo files in scratch"
+   ]
+  },
+  {
+   "id": "neovim",
+   "name": "neovim",
+   "summary": "A text editor.",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 200,
+   "docs": "https://neovim.io/doc/",
+   "licence": "Apache-2.0",
+   "check": "version-flag",
+   "checkArg": "nvim",
+   "labels": [
+    "undo files in scratch"
+   ]
+  },
+  {
+   "id": "duckdb",
+   "name": "duckdb",
+   "summary": "SQL on files, from the shell.",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 330,
+   "docs": "https://duckdb.org/docs/",
+   "licence": "MIT",
+   "check": "version-flag",
+   "checkArg": "duckdb"
+  },
+  {
+   "id": "litecli",
+   "name": "litecli",
+   "summary": "A friendly SQLite shell.",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 200,
+   "docs": "https://litecli.com/",
+   "licence": "BSD-3-Clause",
+   "check": "version-flag",
+   "checkArg": "litecli"
+  },
+  {
+   "id": "sqlite-utils",
+   "name": "sqlite-utils",
+   "summary": "Work with SQLite from the shell.",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "bash"
+   ],
+   "category": "Terminal tools",
+   "instMB": 170,
+   "docs": "https://sqlite-utils.datasette.io/",
+   "licence": "Apache-2.0",
+   "check": "version-flag",
+   "checkArg": "sqlite-utils"
+  },
+  {
+   "id": "gopls",
+   "name": "gopls",
+   "summary": "The Go language server.",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "go",
+    "yaegi"
+   ],
+   "category": "Go tools",
+   "instMB": 45,
+   "docs": "https://pkg.go.dev/golang.org/x/tools/gopls",
+   "licence": "BSD-3-Clause",
+   "check": "version-flag",
+   "checkArg": "gopls",
+   "labels": [
+    "binaries are 2 to 15 MB each"
+   ]
+  },
+  {
+   "id": "golangci-lint",
+   "name": "golangci-lint",
+   "summary": "Many Go linters in one.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "go",
+    "yaegi"
+   ],
+   "category": "Go tools",
+   "instMB": 60,
+   "docs": "https://golangci-lint.run/",
+   "licence": "GPL-3.0",
+   "check": "version-flag",
+   "checkArg": "golangci-lint",
+   "labels": [
+    "binaries are 2 to 15 MB each"
+   ]
+  },
+  {
+   "id": "staticcheck",
+   "name": "staticcheck",
+   "summary": "A Go linter.",
+   "kind": "tool",
+   "level": "popular",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "go",
+    "yaegi"
+   ],
+   "category": "Go tools",
+   "instMB": 18,
+   "docs": "https://staticcheck.dev/docs/",
+   "licence": "MIT",
+   "check": "version-flag",
+   "checkArg": "staticcheck",
+   "labels": [
+    "binaries are 2 to 15 MB each"
+   ]
+  },
+  {
+   "id": "delve",
+   "name": "delve",
+   "summary": "The Go debugger (needs ptrace on the host).",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "go",
+    "yaegi"
+   ],
+   "category": "Go tools",
+   "instMB": 25,
+   "docs": "https://github.com/go-delve/delve/tree/master/Documentation",
+   "licence": "MIT",
+   "check": "version-flag",
+   "checkArg": "delve",
+   "labels": [
+    "binaries are 2 to 15 MB each"
+   ]
+  },
+  {
+   "id": "rust-analyzer",
+   "name": "rust-analyzer",
+   "summary": "The Rust language server.",
+   "kind": "tool",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "evcxr"
+   ],
+   "category": "Rust tools",
+   "instMB": 50,
+   "docs": "https://rust-analyzer.github.io/manual.html",
+   "licence": "MIT OR Apache-2.0",
+   "check": "version-flag",
+   "checkArg": "rust-analyzer"
+  },
+  {
+   "id": "libspatialite",
+   "name": "libspatialite",
+   "summary": "Spatial functions for SQLite: load the extension.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "sqlite3"
+   ],
+   "category": "SQLite extensions",
+   "instMB": 145,
+   "docs": "https://www.gaia-gis.it/fossil/libspatialite/index",
+   "licence": "MPL-1.1 OR GPL-2.0 OR LGPL-2.1",
+   "check": "file-exists",
+   "checkArg": "lib/mod_spatialite.so",
+   "labels": [
+    "select load_extension('<path shown on the app page>')"
+   ]
+  },
+  {
+   "id": "tcllib",
+   "name": "tcllib",
+   "summary": "Tcl standard library: json, md5, base64, many more.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "anyone",
+   "repls": [
+    "tclsh"
+   ],
+   "category": "Tcl",
+   "instMB": 30,
+   "docs": "https://core.tcl-lang.org/tcllib/doc/trunk/embedded/index.md",
+   "licence": "TCL",
+   "check": "file-exists",
+   "checkArg": "lib"
+  },
+  {
+   "id": "perl-text-csv",
+   "name": "perl-text-csv",
+   "summary": "Read and write CSV.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "perli"
+   ],
+   "category": "Perl modules",
+   "instMB": 93,
+   "docs": "https://metacpan.org/pod/Text::CSV",
+   "licence": "Artistic-1.0-Perl OR GPL-1.0-or-later",
+   "check": "file-exists",
+   "checkArg": "lib/perl5",
+   "labels": [
+    "brings its own Perl 5.32 (information only)"
+   ]
+  },
+  {
+   "id": "perl-mojolicious",
+   "name": "perl-mojolicious",
+   "summary": "A web framework.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "perli"
+   ],
+   "category": "Perl modules",
+   "instMB": 93,
+   "docs": "https://docs.mojolicious.org/",
+   "licence": "Artistic-1.0-Perl OR GPL-1.0-or-later",
+   "check": "file-exists",
+   "checkArg": "lib/perl5",
+   "labels": [
+    "brings its own Perl 5.32 (information only)"
+   ]
+  },
+  {
+   "id": "perl-try-tiny",
+   "name": "perl-try-tiny",
+   "summary": "try and catch for Perl.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "perli"
+   ],
+   "category": "Perl modules",
+   "instMB": 93,
+   "docs": "https://metacpan.org/pod/Try::Tiny",
+   "licence": "Artistic-1.0-Perl OR GPL-1.0-or-later",
+   "check": "file-exists",
+   "checkArg": "lib/perl5",
+   "labels": [
+    "brings its own Perl 5.32 (information only)"
+   ]
+  },
+  {
+   "id": "perl-path-tiny",
+   "name": "perl-path-tiny",
+   "summary": "Files and paths.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "perli"
+   ],
+   "category": "Perl modules",
+   "instMB": 93,
+   "docs": "https://metacpan.org/pod/Path::Tiny",
+   "licence": "Artistic-1.0-Perl OR GPL-1.0-or-later",
+   "check": "file-exists",
+   "checkArg": "lib/perl5",
+   "labels": [
+    "brings its own Perl 5.32 (information only)"
+   ]
+  },
+  {
+   "id": "perl-json-maybexs",
+   "name": "perl-json-maybexs",
+   "summary": "JSON with the fastest module available.",
+   "kind": "clib",
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "repls": [
+    "perli"
+   ],
+   "category": "Perl modules",
+   "instMB": 93,
+   "docs": "https://metacpan.org/pod/JSON::MaybeXS",
+   "licence": "Artistic-1.0-Perl OR GPL-1.0-or-later",
+   "check": "file-exists",
+   "checkArg": "lib/perl5",
+   "labels": [
+    "brings its own Perl 5.32 (information only)"
+   ]
+  },
+  {
+   "id": "npm:axios",
+   "name": "axios",
+   "summary": "HTTP client.",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "axios",
+   "category": "JavaScript libraries",
+   "instMB": 4,
+   "docs": "https://axios-http.com/docs/intro",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "axios"
+  },
+  {
+   "id": "npm:node-fetch",
+   "name": "node-fetch",
+   "summary": "fetch() for Node (version 2).",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "node-fetch",
+   "version": "2",
+   "category": "JavaScript libraries",
+   "instMB": 1,
+   "docs": "https://github.com/node-fetch/node-fetch/tree/2.x#readme",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "node-fetch"
+  },
+  {
+   "id": "npm:got",
+   "name": "got",
+   "summary": "HTTP client (version 11).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "got",
+   "version": "11",
+   "category": "JavaScript libraries",
+   "instMB": 4,
+   "docs": "https://github.com/sindresorhus/got/tree/v11#readme",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "got"
+  },
+  {
+   "id": "npm:ws",
+   "name": "ws",
+   "summary": "WebSocket client and server.",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "ws",
+   "category": "JavaScript libraries",
+   "instMB": 1,
+   "docs": "https://github.com/websockets/ws#readme",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "ws"
+  },
+  {
+   "id": "npm:socket.io",
+   "name": "socket.io",
+   "summary": "Realtime web sockets.",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "socket.io",
+   "category": "JavaScript libraries",
+   "instMB": 6,
+   "docs": "https://socket.io/docs/v4/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "socket.io"
+  },
+  {
+   "id": "npm:lodash",
+   "name": "lodash",
+   "summary": "Utility functions.",
+   "kind": "node",
+   "level": "core",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "lodash",
+   "category": "JavaScript libraries",
+   "instMB": 5,
+   "docs": "https://lodash.com/docs/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "lodash"
+  },
+  {
+   "id": "npm:ramda",
+   "name": "ramda",
+   "summary": "Functional programming helpers.",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "ramda",
+   "category": "JavaScript libraries",
+   "instMB": 3,
+   "docs": "https://ramdajs.com/docs/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "ramda"
+  },
+  {
+   "id": "npm:rxjs",
+   "name": "rxjs",
+   "summary": "Reactive programming.",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "rxjs",
+   "category": "JavaScript libraries",
+   "instMB": 12,
+   "docs": "https://rxjs.dev/guide/overview",
+   "licence": "Apache-2.0",
+   "check": "node-require",
+   "checkArg": "rxjs"
+  },
+  {
+   "id": "npm:immutable",
+   "name": "immutable",
+   "summary": "Immutable data.",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "immutable",
+   "category": "JavaScript libraries",
+   "instMB": 1,
+   "docs": "https://immutable-js.com/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "immutable"
+  },
+  {
+   "id": "npm:dayjs",
+   "name": "dayjs",
+   "summary": "Dates and times.",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "dayjs",
+   "category": "JavaScript libraries",
+   "instMB": 2,
+   "docs": "https://day.js.org/docs/en/get-set/get",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "dayjs"
+  },
+  {
+   "id": "npm:moment",
+   "name": "moment",
+   "summary": "Dates and times (older).",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "moment",
+   "category": "JavaScript libraries",
+   "instMB": 6,
+   "docs": "https://momentjs.com/docs/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "moment"
+  },
+  {
+   "id": "npm:date-fns",
+   "name": "date-fns",
+   "summary": "Dates and times (version 2).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "date-fns",
+   "version": "2",
+   "category": "JavaScript libraries",
+   "instMB": 35,
+   "docs": "https://date-fns.org/v2.30.0/docs/Getting-Started",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "date-fns"
+  },
+  {
+   "id": "npm:express",
+   "name": "express",
+   "summary": "A web server for the preview (version 4).",
+   "kind": "node",
+   "level": "core",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "express",
+   "version": "4",
+   "category": "JavaScript libraries",
+   "instMB": 5,
+   "docs": "https://expressjs.com/en/4x/api.html",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "express"
+  },
+  {
+   "id": "npm:uuid",
+   "name": "uuid",
+   "summary": "Unique ids (version 8).",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "uuid",
+   "version": "8",
+   "category": "JavaScript libraries",
+   "instMB": 1,
+   "docs": "https://github.com/uuidjs/uuid/tree/v8.3.2#readme",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "uuid"
+  },
+  {
+   "id": "npm:chalk",
+   "name": "chalk",
+   "summary": "Colours in the terminal (version 4).",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "chalk",
+   "version": "4",
+   "category": "JavaScript libraries",
+   "instMB": 1,
+   "docs": "https://github.com/chalk/chalk/tree/v4.1.2#readme",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "chalk"
+  },
+  {
+   "id": "npm:commander",
+   "name": "commander",
+   "summary": "Command-line programs (version 9).",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "commander",
+   "version": "9",
+   "category": "JavaScript libraries",
+   "instMB": 1,
+   "docs": "https://github.com/tj/commander.js/tree/v9.5.0#readme",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "commander"
+  },
+  {
+   "id": "npm:dotenv",
+   "name": "dotenv",
+   "summary": "Read .env files.",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "dotenv",
+   "category": "JavaScript libraries",
+   "instMB": 1,
+   "docs": "https://github.com/motdotla/dotenv#readme",
+   "licence": "BSD-2-Clause",
+   "check": "node-require",
+   "checkArg": "dotenv"
+  },
+  {
+   "id": "npm:yaml",
+   "name": "yaml",
+   "summary": "YAML (version 1).",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "yaml",
+   "version": "1",
+   "category": "JavaScript libraries",
+   "instMB": 1,
+   "docs": "https://eemeli.org/yaml/v1/",
+   "licence": "ISC",
+   "check": "node-require",
+   "checkArg": "yaml"
+  },
+  {
+   "id": "npm:papaparse",
+   "name": "papaparse",
+   "summary": "Read CSV.",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "papaparse",
+   "category": "JavaScript libraries",
+   "instMB": 1,
+   "docs": "https://www.papaparse.com/docs",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "papaparse"
+  },
+  {
+   "id": "npm:marked",
+   "name": "marked",
+   "summary": "Markdown to HTML (version 4).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "marked",
+   "version": "4",
+   "category": "JavaScript libraries",
+   "instMB": 1,
+   "docs": "https://marked.js.org/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "marked"
+  },
+  {
+   "id": "npm:cheerio",
+   "name": "cheerio",
+   "summary": "Read and change HTML (version 1.0.0-rc.12).",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "cheerio",
+   "version": "1.0.0-rc.12",
+   "category": "JavaScript libraries",
+   "instMB": 5,
+   "docs": "https://cheerio.js.org/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "cheerio"
+  },
+  {
+   "id": "npm:jsdom",
+   "name": "jsdom",
+   "summary": "A web page without a browser (version 16).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "jsdom",
+   "version": "16",
+   "category": "JavaScript libraries",
+   "instMB": 19,
+   "docs": "https://github.com/jsdom/jsdom/tree/16.7.0#readme",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "jsdom"
+  },
+  {
+   "id": "npm:mathjs",
+   "name": "mathjs",
+   "summary": "Maths and units (version 11).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "mathjs",
+   "version": "11",
+   "category": "JavaScript libraries",
+   "instMB": 21,
+   "docs": "https://mathjs.org/docs/",
+   "licence": "Apache-2.0",
+   "check": "node-require",
+   "checkArg": "mathjs"
+  },
+  {
+   "id": "npm:mocha",
+   "name": "mocha",
+   "summary": "Tests (version 9).",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "mocha",
+   "version": "9",
+   "category": "JavaScript libraries",
+   "instMB": 9,
+   "docs": "https://mochajs.org/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "mocha"
+  },
+  {
+   "id": "npm:jest",
+   "name": "jest",
+   "summary": "Tests (version 27).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "jest",
+   "version": "27",
+   "category": "JavaScript libraries",
+   "instMB": 55,
+   "docs": "https://jestjs.io/docs/27.x/getting-started",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "jest",
+   "labels": [
+    "the biggest one: 55 MB"
+   ]
+  },
+  {
+   "id": "npm:chai",
+   "name": "chai",
+   "summary": "Assertions for tests (version 4).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "chai",
+   "version": "4",
+   "category": "JavaScript libraries",
+   "instMB": 2,
+   "docs": "https://www.chaijs.com/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "chai"
+  },
+  {
+   "id": "npm:sinon",
+   "name": "sinon",
+   "summary": "Spies and mocks (version 9).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "sinon",
+   "version": "9",
+   "category": "JavaScript libraries",
+   "instMB": 8,
+   "docs": "https://sinonjs.org/",
+   "licence": "BSD-3-Clause",
+   "check": "node-require",
+   "checkArg": "sinon"
+  },
+  {
+   "id": "npm:eslint",
+   "name": "eslint",
+   "summary": "Find problems in JavaScript (version 8).",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "eslint",
+   "version": "8",
+   "category": "JavaScript libraries",
+   "instMB": 16,
+   "docs": "https://eslint.org/docs/v8.x/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "eslint"
+  },
+  {
+   "id": "npm:prettier",
+   "name": "prettier",
+   "summary": "Format code (version 2).",
+   "kind": "node",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "prettier",
+   "version": "2",
+   "category": "JavaScript libraries",
+   "instMB": 11,
+   "docs": "https://prettier.io/docs/en/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "prettier"
+  },
+  {
+   "id": "npm:nodemon",
+   "name": "nodemon",
+   "summary": "Restart on change (version 2).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "nodemon",
+   "version": "2",
+   "category": "JavaScript libraries",
+   "instMB": 2,
+   "docs": "https://github.com/remy/nodemon#readme",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "nodemon"
+  },
+  {
+   "id": "npm:esbuild",
+   "name": "esbuild",
+   "summary": "Bundle and compile (version 0.14).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "esbuild",
+   "version": "0.14",
+   "category": "JavaScript libraries",
+   "instMB": 8,
+   "docs": "https://esbuild.github.io/",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "esbuild"
+  },
+  {
+   "id": "npm:sharp",
+   "name": "sharp",
+   "summary": "Resize and convert images (version 0.30).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "sharp",
+   "version": "0.30",
+   "category": "JavaScript libraries",
+   "instMB": 29,
+   "docs": "https://sharp.pixelplumbing.com/",
+   "licence": "Apache-2.0",
+   "check": "node-require",
+   "checkArg": "sharp"
+  },
+  {
+   "id": "npm:better-sqlite3",
+   "name": "better-sqlite3",
+   "summary": "SQLite for Node (version 7, prebuilt).",
+   "kind": "node",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "node",
+    "ts-node"
+   ],
+   "package": "better-sqlite3",
+   "version": "7",
+   "category": "JavaScript libraries",
+   "instMB": 13,
+   "docs": "https://github.com/WiseLibs/better-sqlite3/tree/v7.6.2#readme",
+   "licence": "MIT",
+   "check": "node-require",
+   "checkArg": "better-sqlite3"
+  },
+  {
+   "id": "web:bootstrap",
+   "name": "bootstrap",
+   "summary": "Ready-made styles and components.",
+   "kind": "weblib",
+   "level": "core",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "bootstrap",
+   "category": "Browser libraries",
+   "instMB": 9,
+   "docs": "https://getbootstrap.com/docs/5.3/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dist/css/bootstrap.min.css",
+   "files": [
+    "dist/css/bootstrap.min.css",
+    "dist/js/bootstrap.bundle.min.js"
+   ]
+  },
+  {
+   "id": "web:@picocss/pico",
+   "name": "@picocss/pico",
+   "summary": "Clean styles with no classes.",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "@picocss/pico",
+   "category": "Browser libraries",
+   "instMB": 19,
+   "docs": "https://picocss.com/docs",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "css/pico.min.css",
+   "files": [
+    "css/pico.min.css"
+   ]
+  },
+  {
+   "id": "web:water.css",
+   "name": "water.css",
+   "summary": "Make plain HTML look good: one line.",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "water.css",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://watercss.kognise.dev/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "out/water.min.css",
+   "files": [
+    "out/water.min.css"
+   ]
+  },
+  {
+   "id": "web:normalize.css",
+   "name": "normalize.css",
+   "summary": "Make browsers agree.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "normalize.css",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://github.com/necolas/normalize.css#readme",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "normalize.css",
+   "files": [
+    "normalize.css"
+   ]
+  },
+  {
+   "id": "web:animate.css",
+   "name": "animate.css",
+   "summary": "Ready-made animations.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "animate.css",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://animate.style/",
+   "licence": "Hippocratic-2.1",
+   "check": "file-exists",
+   "checkArg": "animate.min.css",
+   "files": [
+    "animate.min.css"
+   ]
+  },
+  {
+   "id": "web:@tailwindcss/browser",
+   "name": "@tailwindcss/browser",
+   "summary": "Tailwind CSS in the browser, no build step.",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "@tailwindcss/browser",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://tailwindcss.com/docs",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dist/index.global.js",
+   "files": [
+    "dist/index.global.js"
+   ]
+  },
+  {
+   "id": "web:alpinejs",
+   "name": "alpinejs",
+   "summary": "Small interactions in the HTML.",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "alpinejs",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://alpinejs.dev/start-here",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dist/cdn.min.js",
+   "files": [
+    "dist/cdn.min.js"
+   ]
+  },
+  {
+   "id": "web:htmx.org",
+   "name": "htmx.org",
+   "summary": "Server-driven pages.",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "htmx.org",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://htmx.org/docs/",
+   "licence": "0BSD",
+   "check": "file-exists",
+   "checkArg": "dist/htmx.min.js",
+   "files": [
+    "dist/htmx.min.js"
+   ]
+  },
+  {
+   "id": "web:jquery",
+   "name": "jquery",
+   "summary": "DOM helpers.",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "jquery",
+   "category": "Browser libraries",
+   "instMB": 3,
+   "docs": "https://api.jquery.com/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dist/jquery.min.js",
+   "files": [
+    "dist/jquery.min.js"
+   ]
+  },
+  {
+   "id": "web:react",
+   "name": "react",
+   "summary": "React (version 18).",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "react",
+   "version": "18",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://react.dev/reference/react",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "umd/react.production.min.js",
+   "labels": [
+    "pin 18: version 19 has no browser build"
+   ],
+   "files": [
+    "umd/react.production.min.js"
+   ]
+  },
+  {
+   "id": "web:react-dom",
+   "name": "react-dom",
+   "summary": "React DOM (version 18).",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "react-dom",
+   "version": "18",
+   "category": "Browser libraries",
+   "instMB": 5,
+   "docs": "https://react.dev/reference/react-dom",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "umd/react-dom.production.min.js",
+   "files": [
+    "umd/react-dom.production.min.js"
+   ]
+  },
+  {
+   "id": "web:preact",
+   "name": "preact",
+   "summary": "A small React (version 10).",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "preact",
+   "version": "10",
+   "category": "Browser libraries",
+   "instMB": 2,
+   "docs": "https://preactjs.com/guide/v10/getting-started",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dist/preact.min.js",
+   "files": [
+    "dist/preact.min.js"
+   ]
+  },
+  {
+   "id": "web:vue",
+   "name": "vue",
+   "summary": "Vue (global build).",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "vue",
+   "category": "Browser libraries",
+   "instMB": 3,
+   "docs": "https://vuejs.org/guide/introduction.html",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dist/vue.global.prod.js",
+   "files": [
+    "dist/vue.global.prod.js"
+   ]
+  },
+  {
+   "id": "web:lodash",
+   "name": "lodash",
+   "summary": "Utility functions.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "lodash",
+   "category": "Browser libraries",
+   "instMB": 2,
+   "docs": "https://lodash.com/docs/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "lodash.min.js",
+   "files": [
+    "lodash.min.js"
+   ]
+  },
+  {
+   "id": "web:dayjs",
+   "name": "dayjs",
+   "summary": "Dates and times.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "dayjs",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://day.js.org/docs/en/get-set/get",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dayjs.min.js",
+   "files": [
+    "dayjs.min.js"
+   ]
+  },
+  {
+   "id": "web:axios",
+   "name": "axios",
+   "summary": "HTTP client for pages.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "axios",
+   "category": "Browser libraries",
+   "instMB": 3,
+   "docs": "https://axios-http.com/docs/intro",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dist/axios.min.js",
+   "files": [
+    "dist/axios.min.js"
+   ]
+  },
+  {
+   "id": "web:d3",
+   "name": "d3",
+   "summary": "Charts and data drawings.",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "d3",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://d3js.org/",
+   "licence": "ISC",
+   "check": "file-exists",
+   "checkArg": "dist/d3.min.js",
+   "files": [
+    "dist/d3.min.js"
+   ]
+  },
+  {
+   "id": "web:chart.js",
+   "name": "chart.js",
+   "summary": "Simple charts.",
+   "kind": "weblib",
+   "level": "popular",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "chart.js",
+   "category": "Browser libraries",
+   "instMB": 7,
+   "docs": "https://www.chartjs.org/docs/latest/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dist/chart.umd.js",
+   "files": [
+    "dist/chart.umd.js"
+   ]
+  },
+  {
+   "id": "web:katex",
+   "name": "katex",
+   "summary": "Maths in the page.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "katex",
+   "category": "Browser libraries",
+   "instMB": 4,
+   "docs": "https://katex.org/docs/browser",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dist/katex.min.js",
+   "labels": [
+    "needs its fonts folder, served with it"
+   ],
+   "files": [
+    "dist/katex.min.js",
+    "dist/katex.min.css"
+   ]
+  },
+  {
+   "id": "web:leaflet",
+   "name": "leaflet",
+   "summary": "Maps (tiles need the internet).",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "leaflet",
+   "category": "Browser libraries",
+   "instMB": 4,
+   "docs": "https://leafletjs.com/reference.html",
+   "licence": "BSD-2-Clause",
+   "check": "file-exists",
+   "checkArg": "dist/leaflet.js",
+   "files": [
+    "dist/leaflet.js",
+    "dist/leaflet.css"
+   ]
+  },
+  {
+   "id": "web:matter-js",
+   "name": "matter-js",
+   "summary": "2D physics.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "matter-js",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://brm.io/matter-js/docs/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "build/matter.min.js",
+   "files": [
+    "build/matter.min.js"
+   ]
+  },
+  {
+   "id": "web:sortablejs",
+   "name": "sortablejs",
+   "summary": "Drag and drop lists.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "sortablejs",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://sortablejs.github.io/Sortable/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "Sortable.min.js",
+   "files": [
+    "Sortable.min.js"
+   ]
+  },
+  {
+   "id": "web:swiper",
+   "name": "swiper",
+   "summary": "Sliders.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "swiper",
+   "category": "Browser libraries",
+   "instMB": 4,
+   "docs": "https://swiperjs.com/swiper-api",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "swiper-bundle.min.js",
+   "files": [
+    "swiper-bundle.min.js",
+    "swiper-bundle.min.css"
+   ]
+  },
+  {
+   "id": "web:marked",
+   "name": "marked",
+   "summary": "Markdown to HTML.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "marked",
+   "category": "Browser libraries",
+   "instMB": 1,
+   "docs": "https://marked.js.org/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "lib/marked.umd.js",
+   "files": [
+    "lib/marked.umd.js"
+   ]
+  },
+  {
+   "id": "web:mathjs",
+   "name": "mathjs",
+   "summary": "Maths and units.",
+   "kind": "weblib",
+   "level": "optional",
+   "manager": "npm",
+   "install": "anyone",
+   "repls": [
+    "html",
+    "css",
+    "javascript"
+   ],
+   "package": "mathjs",
+   "category": "Browser libraries",
+   "instMB": 10,
+   "docs": "https://mathjs.org/docs/",
+   "licence": "Apache-2.0",
+   "check": "file-exists",
+   "checkArg": "lib/browser/math.js",
+   "files": [
+    "lib/browser/math.js"
+   ]
+  },
+  {
+   "id": "plugin:viewport",
+   "name": "Viewport switcher",
+   "summary": "Phone, tablet and desktop widths for the preview.",
+   "kind": "plugin",
+   "level": "core",
+   "manager": "ours",
+   "install": "admin",
+   "place": "preview",
+   "category": "Plugins",
+   "docs": "/docs/plugins/viewport-switcher",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "main.js",
+   "publisher": "OpenREPL",
+   "adapter": "preview-toolbar",
+   "internal": true
+  },
+  {
+   "id": "plugin:outline",
+   "name": "Outline",
+   "summary": "The headings and landmarks of the previewed page.",
+   "kind": "plugin",
+   "level": "core",
+   "manager": "ours",
+   "install": "admin",
+   "place": "preview",
+   "category": "Plugins",
+   "docs": "/docs/plugins/outline",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "main.js",
+   "publisher": "OpenREPL",
+   "adapter": "preview-page-tool",
+   "internal": true
+  },
+  {
+   "id": "plugin:console",
+   "name": "Console",
+   "summary": "console messages and errors of the previewed page.",
+   "kind": "plugin",
+   "level": "core",
+   "manager": "ours",
+   "install": "admin",
+   "place": "preview",
+   "category": "Plugins",
+   "docs": "/docs/plugins/console",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "main.js",
+   "publisher": "OpenREPL",
+   "adapter": "preview-page-tool",
+   "internal": true
+  },
+  {
+   "id": "plugin:wordcount",
+   "name": "Word count",
+   "summary": "Words, lines and characters of the editor in the status bar.",
+   "kind": "plugin",
+   "level": "popular",
+   "manager": "ours",
+   "install": "admin",
+   "place": "editor",
+   "category": "Plugins",
+   "docs": "/docs/plugins/wordcount",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "main.js",
+   "publisher": "OpenREPL",
+   "adapter": "editor-status",
+   "internal": true
+  },
+  {
+   "id": "plugin:clock",
+   "name": "Clock",
+   "summary": "The time in the status bar, for a long session.",
+   "kind": "plugin",
+   "level": "optional",
+   "manager": "ours",
+   "install": "admin",
+   "place": "editor",
+   "category": "Plugins",
+   "docs": "/docs/plugins/clock",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "main.js",
+   "publisher": "OpenREPL",
+   "adapter": "editor-status",
+   "internal": true
+  },
+  {
+   "id": "plugin:eruda",
+   "name": "Eruda console",
+   "summary": "Developer tools inside the preview page: console, elements, network.",
+   "kind": "plugin",
+   "level": "popular",
+   "manager": "npm",
+   "install": "admin",
+   "place": "preview",
+   "package": "eruda",
+   "version": "3.4.3",
+   "category": "Plugins",
+   "instMB": 2,
+   "docs": "https://eruda.liriliri.io/docs/",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "eruda.js",
+   "publisher": "liriliri",
+   "adapter": "preview-page-tool",
+   "files": [
+    "eruda.js"
+   ]
+  },
+  {
+   "id": "plugin:vconsole",
+   "name": "vConsole",
+   "summary": "A small console and network list for the preview page.",
+   "kind": "plugin",
+   "level": "popular",
+   "manager": "npm",
+   "install": "admin",
+   "place": "preview",
+   "package": "vconsole",
+   "version": "3.15.1",
+   "category": "Plugins",
+   "instMB": 1,
+   "docs": "https://github.com/Tencent/vConsole#readme",
+   "licence": "MIT",
+   "check": "file-exists",
+   "checkArg": "dist/vconsole.min.js",
+   "publisher": "Tencent",
+   "adapter": "preview-page-tool",
+   "files": [
+    "dist/vconsole.min.js"
+   ]
+  }
+ ],
+ "packs": [
+  {
+   "id": "data-science",
+   "name": "Data science",
+   "repls": [
+    "python",
+    "ipython3"
+   ],
+   "entries": [
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib-base",
+    "pillow",
+    "requests",
+    "sqlalchemy",
+    "lxml",
+    "pyyaml",
+    "jinja2",
+    "click",
+    "rich"
+   ]
+  },
+  {
+   "id": "web-preview",
+   "name": "Web preview",
+   "repls": [
+    "html",
+    "css",
+    "javascript",
+    "python"
+   ],
+   "entries": [
+    "web:bootstrap",
+    "web:@picocss/pico",
+    "web:alpinejs",
+    "web:htmx.org",
+    "web:chart.js",
+    "flask",
+    "npm:express",
+    "plugin:eruda",
+    "plugin:viewport"
+   ]
+  },
+  {
+   "id": "cpp-developer",
+   "name": "C++ developer",
+   "repls": [
+    "c",
+    "cpp"
+   ],
+   "entries": [
+    "cmake",
+    "ninja",
+    "pkg-config",
+    "cppcheck",
+    "clang-format",
+    "eigen",
+    "fmt",
+    "nlohmann_json",
+    "catch2",
+    "gtest",
+    "libboost-devel"
+   ]
+  }
+ ]
+}

@@ -121,6 +121,9 @@ func (c *container) AddProcesstoNewSubCgroup(pid int, iscompiled bool) {
 	memlimit := Commands2memLimitMap[c.Name] * MB // mem limit in MBs
 	if iscompiled {
 		memlimit = int64(math.Floor(3.0 * float64(memlimit)))
+		if floor := CompileFloorMB[c.Name] * MB; floor > memlimit {
+			memlimit = floor
+		}
 		log.Println("effective memlimit: ", memlimit)
 	}
 	control, err := c.Control.NewChild(pidstr, &cgroup2.Resources{

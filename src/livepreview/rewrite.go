@@ -167,6 +167,9 @@ func HTMLHookWith(prefix string, st *StorageInfo, scope string) func(*http.Respo
 		if s := st.script(scope); s != "" {
 			out = injectAtTop(out, s)
 		}
+		if t := st.tools(); t != "" {
+			out = injectAtTop(out, t)
+		}
 		res.Body = io.NopCloser(bytes.NewReader(out))
 		res.ContentLength = int64(len(out))
 		res.Header.Set("Content-Length", strconv.Itoa(len(out)))
@@ -192,7 +195,7 @@ wrap("WebSocket");wrap("EventSource");
 // BridgeScript is added to every page the preview shows (a program's and a file of the workspace): it reports what the page
 // does to the pane around it with postMessage, and passes the keys that the editor uses. The pane takes messages only from
 // its own frame. What it reports: the address and title of the page (Back and Forward, the address bar), what it writes to the
-// console and its uncaught errors (the Console tab), the calls it makes with fetch and XMLHttpRequest (the Requests tab).
+// console and its uncaught errors (the Console tab), the calls it makes with fetch and XMLHttpRequest (the Requests tab), and the headings and landmarks of the page (the Outline tab).
 const BridgeScript = `<script>(function(){var M="openrepl";
 function post(m){try{m[M]=m.t;parent.postMessage(m,"*")}catch(e){}}
 function str(v){try{if(typeof v==="string")return v;if(v instanceof Error)return v.stack||String(v);return JSON.stringify(v)}catch(e){return String(v)}}
@@ -205,6 +208,11 @@ addEventListener("unhandledrejection",function(e){post({t:"console",level:"error
 var F=window.fetch;if(F){window.fetch=function(i,o){var t0=Date.now(),m=(o&&o.method)||(i&&i.method)||"GET",u=typeof i==="string"?i:(i&&i.url)||"";return F.apply(this,arguments).then(function(r){post({t:"request",method:m,url:u,status:r.status,ms:Date.now()-t0});return r},function(e){post({t:"request",method:m,url:u,status:0,ms:Date.now()-t0});throw e})}}
 var XO=XMLHttpRequest.prototype.open,XS=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.open=function(m,u){this._or=[m,u];return XO.apply(this,arguments)};
 XMLHttpRequest.prototype.send=function(){var x=this,t0=Date.now();x.addEventListener("loadend",function(){var r=x._or||["GET",""];post({t:"request",method:r[0],url:String(r[1]),status:x.status,ms:Date.now()-t0})});return XS.apply(this,arguments)};
+var ot=0;function outline(){clearTimeout(ot);ot=setTimeout(function(){try{var it=[],q=document.querySelectorAll("h1,h2,h3,h4,h5,h6,nav,main,header,footer,aside,[role=banner],[role=navigation],[role=main],[role=contentinfo],[role=complementary]");
+for(var i=0;i<q.length&&it.length<200;i++){var e=q[i],n=e.tagName.toLowerCase(),h=/^h[1-6]$/.test(n);it.push({i:i,l:h?+n.charAt(1):0,tag:n,text:(h?(e.textContent||""):(e.getAttribute("aria-label")||n)).replace(/\s+/g," ").trim().slice(0,120)})}
+post({t:"outline",items:it})}catch(e){}},300)}
+addEventListener("load",outline);try{new MutationObserver(outline).observe(document.documentElement,{childList:true,subtree:true,characterData:true})}catch(e){}
+addEventListener("message",function(e){var d=e.data;if(e.source!==parent||!d||d.openreplScroll===undefined)return;var q=document.querySelectorAll("h1,h2,h3,h4,h5,h6,nav,main,header,footer,aside,[role=banner],[role=navigation],[role=main],[role=contentinfo],[role=complementary]"),t=q[+d.openreplScroll|0];if(t&&t.scrollIntoView)t.scrollIntoView({block:"start"})});
 var esc=0;
 addEventListener("keydown",function(e){var k=e.key;
 if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&!e.metaKey&&(k==="` + "`" + `"||e.code==="Backquote")){e.preventDefault();post({t:"key",key:"terminal"});return}

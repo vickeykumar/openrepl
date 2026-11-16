@@ -19,11 +19,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"appstore"
 	"landlock"
 	"netemu"
+	"scratch"
 )
 
 const failed = 126
@@ -38,6 +40,7 @@ func main() {
 	noLandlock := flag.Bool("no-landlock", false, "no filesystem policy: only the network emulation (--net-emulation)")
 	netEmulation := flag.Bool("net-emulation", false, "the REPL gets the private network of its workspace (LLD 16); the server gave this process a socket as descriptor 3")
 	storeDir := flag.String("store-dir", "", "the App Store's folder (LLD 18): the bundles on the user's list are readable and on the PATH")
+	scratchRoot := flag.String("scratch-root", "", "the folder of the scratch folders: this terminal gets one of its own, writable by it alone (LLD 18)")
 	storeExtra := flag.String("store-extra", "", "one more App Store bundle that is readable and on the PATH for this run (the server checks that an app works for a user before it is on for them)")
 	netProbe := flag.Bool("net-probe", false, "the self test of the network emulation, run by the server at start")
 	netSelftest := flag.Bool("net-selftest", false, "internal: the second half of --net-probe")
@@ -67,6 +70,7 @@ func main() {
 		if *storeDir != "" && *workspace != "" {
 			storeFolders(*storeDir, *workspace, *storeExtra)
 		}
+		makeScratch(*scratchRoot, *workspace)
 		runWithoutPolicy(*netEmulation, flag.Args())
 		return
 	}
@@ -89,8 +93,12 @@ func main() {
 		os.Exit(failed)
 	}
 	extra := storeFolders(*storeDir, *workspace, *storeExtra)
+	var rwExtra []string
+	if sd := makeScratch(*scratchRoot, *workspace); sd != "" {
+		rwExtra = []string{sd}
+	}
 	policy, err := landlock.Build(landlock.Options{Workspace: *workspace, HomeRoot: *homeRoot, ABI: abi, Self: landlock.Self(), Debug: *debug,
-		ScopeSignals: *scopeSignals && landlock.ScopeSupported(), ExtraRO: extra}, nil)
+		ScopeSignals: *scopeSignals && landlock.ScopeSupported(), ExtraRO: extra, ExtraRW: rwExtra}, nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Landlock sandbox not applied:", err)
 		os.Exit(failed)
@@ -104,8 +112,8 @@ func main() {
 			os.Exit(failed)
 		}
 	}
-	if policy.TmpClosed {
-		// the workspaces are in /tmp, which is therefore closed: temporary files go in the workspace
+	if policy.TmpClosed && len(rwExtra) == 0 {
+		// the workspaces are in /tmp, which is therefore closed: temporary files go in the workspace (with a scratch folder, there)
 		tmp := filepath.Join(*workspace, ".tmp")
 		if err := os.MkdirAll(tmp, 0700); err == nil {
 			for _, k := range []string{"TMPDIR", "TMP", "TEMP"} {
@@ -130,6 +138,31 @@ func main() {
 		fmt.Fprintln(os.Stderr, "landlock-helper: exec", path+":", err)
 		os.Exit(127)
 	}
+}
+
+// makeScratch makes the scratch folder of this terminal and puts its variables on the environment (they replace the server's: the caches and
+// the builds of the terminal go there, not into the workspace). It returns the folder, or "" when there is no scratch on this server. A
+// terminal that cannot get one starts without it: scratch is a convenience, never a reason for a terminal not to start.
+func makeScratch(root, workspace string) string {
+	if root == "" || workspace == "" {
+		return ""
+	}
+	dir, err := scratch.Make(root, filepath.Base(filepath.Clean(workspace)))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "landlock-helper: no scratch folder:", err)
+		return ""
+	}
+	for _, kv := range scratch.Vars(dir) {
+		if i := strings.IndexByte(kv, '='); i > 0 {
+			os.Setenv(kv[:i], kv[i+1:])
+		}
+	}
+	jo := scratch.JavaOption(dir)
+	if cur := os.Getenv("JAVA_TOOL_OPTIONS"); cur != "" {
+		jo = cur + " " + jo
+	}
+	os.Setenv("JAVA_TOOL_OPTIONS", jo)
+	return dir
 }
 
 // installNetwork puts the private network of the workspace on this process (and so on the REPL it becomes). As

@@ -312,3 +312,24 @@ func TestStoreBundlesGetReadAndExecuteOnly(t *testing.T) {
 		}
 	}
 }
+
+// The scratch folder of a terminal (LLD 18): it alone is writable outside the workspace, the folder that holds all the scratch folders and the
+// other terminals' folders get no rule, and a folder that holds the workspaces never gets one.
+func TestTheScratchFolderOfATerminalIsTheOnlyExtraFolderThatIsWritable(t *testing.T) {
+	fs := newFS("/home/openrepl", "/home/openrepl/ann")
+	fs.dirs["/scratch/ann/t-0a1b2c3d"] = true
+	fs.dirs["/scratch/ann/t-ffffffff"] = true
+	p, err := Build(Options{Workspace: "/home/openrepl/ann", HomeRoot: "/home/openrepl", ABI: 4, ExtraRW: []string{"/scratch/ann/t-0a1b2c3d", "relative", "/home/openrepl"}}, fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := paths(p)
+	if m["/scratch/ann/t-0a1b2c3d"]&WriteFile == 0 || m["/scratch/ann/t-0a1b2c3d"]&MakeReg == 0 || m["/scratch/ann/t-0a1b2c3d"]&Execute == 0 {
+		t.Errorf("its own scratch folder must be read and write: %b", m["/scratch/ann/t-0a1b2c3d"])
+	}
+	for _, d := range []string{"/scratch", "/scratch/ann", "/scratch/ann/t-ffffffff", "relative", "/home/openrepl"} {
+		if _, ok := m[d]; ok {
+			t.Errorf("%s must have no rule", d)
+		}
+	}
+}

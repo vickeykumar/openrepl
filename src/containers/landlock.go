@@ -148,8 +148,18 @@ func wrapWithLandlock(command []string, workspace string, debug, scopeSignals bo
 				wrapped = append(wrapped, "--store-dir", dir) // the user's App Store bundles (LLD 18)
 			}
 		}
+		if sd := utils.ScratchDir(); sd != "" {
+			wrapped = append(wrapped, "--scratch-root", sd) // a scratch folder for this terminal (LLD 18)
+		}
 	} else {
-		wrapped = append([]string{NetEmuStatus().Helper, "--no-landlock"}, storeArgs(workspace)...)
+		sa := storeArgs(workspace)
+		if sd := utils.ScratchDir(); sd != "" {
+			if len(sa) == 0 {
+				sa = []string{"--workspace", workspace}
+			}
+			sa = append(sa, "--scratch-root", sd)
+		}
+		wrapped = append([]string{NetEmuStatus().Helper, "--no-landlock"}, sa...)
 	}
 	if net {
 		wrapped = append(wrapped, "--net-emulation")
@@ -192,6 +202,12 @@ func storeArgs(workspace string) []string {
 // there is no store or no helper.
 func wrapStoreEnv(command []string, workspace string) []string {
 	args := storeArgs(workspace)
+	if sd := utils.ScratchDir(); sd != "" && workspace != "" {
+		if len(args) == 0 {
+			args = []string{"--workspace", workspace}
+		}
+		args = append(args, "--scratch-root", sd)
+	}
 	helper := findHelper()
 	if len(args) == 0 || helper == "" || len(command) == 0 {
 		return command

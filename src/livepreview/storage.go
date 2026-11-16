@@ -96,6 +96,15 @@ type StorageInfo struct {
 	Home   string
 	Viewer string
 	URL    string // "/preview/<token>/s"
+	Tools  string // HTML added to every page: the tools of the preview that the visitor has on (scripts of this site)
+}
+
+// tools is the HTML of the tools the visitor has on; "" when there is none.
+func (si *StorageInfo) tools() string {
+	if si == nil {
+		return ""
+	}
+	return si.Tools
 }
 
 // script is the script that gives a page its storage, for the scope; "" when there is no store.

@@ -405,21 +405,16 @@ func TestAnAppIsCheckedForTheUserBeforeItIsOnAndAFailureCanBeReported(t *testing
 	if _, wait, err := srv.verifyOnNode(context.Background(), svc, "ann", ghost); err == nil || !wait {
 		t.Errorf("a node that does not have it yet says to wait: %v %v", wait, err)
 	}
-	// the report of a failure the user saw reaches the admin, once, with what the check said
-	rememberUseFailure("uid-1", "zzcli", "gateway", err2s(err))
-	f, ok := takeUseFailure("uid-1", "zzcli")
-	if !ok {
-		t.Fatal("the failure is kept")
+	// the failed check goes to the admin's list by itself, with the node and the log; a user who then reports it is added to the same entry
+	if e := svc.NoteCheckFailure("zzcli", node, err.Error()); e != nil {
+		t.Fatal(e)
 	}
-	if e := svc.ReportUse("uid-1", "zzcli", f.node, "Turning it on", f.log, "it does not start for me"); e != nil {
+	if e := svc.ReportUse("uid-1", "zzcli", "", "Turning it on", "", "it does not start for me"); e != nil {
 		t.Fatal(e)
 	}
 	reps := svc.Reports()
-	if len(reps) != 1 || reps[0].Step != "Turning it on" || !strings.Contains(reps[0].Log, "libonig missing") || reps[0].Note != "it does not start for me" {
+	if len(reps) != 1 || reps[0].Step != "Turning it on" || !strings.Contains(reps[0].Log, "libonig missing") || reps[0].Note != "it does not start for me" || reps[0].Node != "gateway" || reps[0].Fails != 1 || reps[0].Auto || len(reps[0].Reporters) != 1 {
 		t.Fatalf("the report: %+v", reps)
-	}
-	if _, ok := takeUseFailure("uid-1", "zzcli"); ok {
-		t.Error("a failure is reported once")
 	}
 
 	// the worker's side: through the tunnel and with the token
@@ -441,11 +436,4 @@ func TestAnAppIsCheckedForTheUserBeforeItIsOnAndAFailureCanBeReported(t *testing
 		verifyRequest{Home: "ann", ID: "zzcli-1.0.0", Name: "zzcli", Kind: "tool"}); derr == nil {
 		t.Error("a request outside the tunnel must be refused")
 	}
-}
-
-func err2s(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }

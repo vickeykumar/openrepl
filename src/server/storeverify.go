@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"appstore"
@@ -115,38 +114,4 @@ func callWorkerVerify(ctx context.Context, token string, dial func(context.Conte
 		return rep, errors.New("it answered " + res.Status)
 	}
 	return rep, json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&rep)
-}
-
-// useFailures remember, for a short while, what the check said when a user could not turn an app on, so that "Report to admin" can
-// send it (the user's report names the app, not the log).
-var useFailures = struct {
-	sync.Mutex
-	m map[string]useFailure
-}{m: map[string]useFailure{}}
-
-type useFailure struct {
-	node, log string
-	at        time.Time
-}
-
-func rememberUseFailure(uid, name, node, log string) {
-	useFailures.Lock()
-	defer useFailures.Unlock()
-	for k, f := range useFailures.m {
-		if time.Since(f.at) > time.Hour {
-			delete(useFailures.m, k)
-		}
-	}
-	useFailures.m[uid+"|"+name] = useFailure{node: node, log: log, at: time.Now()}
-}
-
-func takeUseFailure(uid, name string) (useFailure, bool) {
-	useFailures.Lock()
-	defer useFailures.Unlock()
-	f, ok := useFailures.m[uid+"|"+name]
-	if ok && time.Since(f.at) > time.Hour {
-		ok = false
-	}
-	delete(useFailures.m, uid+"|"+name)
-	return f, ok
 }

@@ -142,7 +142,7 @@ func TestDirSizeCountsHardLinksOnce(t *testing.T) {
 
 func TestInstallSafeAndRequest(t *testing.T) {
 	svc, st := newService(t, Fake{}, "flask")
-	if err := svc.Install("ann", "numpy", "lib", false); !errors.Is(err, ErrNeedsApproval) {
+	if err := svc.Install("ann", "polars", "lib", false); !errors.Is(err, ErrNeedsApproval) {
 		t.Fatalf("not on the safe list: %v", err)
 	}
 	if err := svc.Install("ann", "Flask", "lib", false); err != nil {
@@ -157,15 +157,15 @@ func TestInstallSafeAndRequest(t *testing.T) {
 		t.Fatalf("again: %v", err)
 	}
 	// a request is joined by a second asker, then approved: installed, and the request is gone
-	r, err := svc.Request("ann", "numpy", "lib", "arrays")
+	r, err := svc.Request("ann", "polars", "lib", "arrays")
 	if err != nil || r.Status != "waiting" {
 		t.Fatal(r, err)
 	}
-	svc.Request("bob", "numpy", "lib", "")
+	svc.Request("bob", "polars", "lib", "")
 	if reqs := svc.Requests(); len(reqs) != 1 || len(reqs[0].Askers) != 2 || reqs[0].Reason != "arrays" {
 		t.Fatalf("requests %+v", reqs)
 	}
-	if err := svc.Approve("root", "numpy"); err != nil {
+	if err := svc.Approve("root", "polars"); err != nil {
 		t.Fatal(err)
 	}
 	svc.Wait()
@@ -652,9 +652,9 @@ func TestAUserMayUninstallAnAppOnlyWhenNobodyElseHasItOn(t *testing.T) {
 	svc.Wait()
 	svc.Switch("ann", "flask-1.0.0", true)
 	svc.Switch("bob", "flask-1.0.0", true)
-	// bob has it on too: ann cannot uninstall it, and is told how many others use it
+	// bob has it on too: ann cannot uninstall it, and is told so without a count (how many others use it is not hers to know)
 	err := svc.Uninstall("ann", "ann", "flask")
-	if !errors.Is(err, ErrInUse) || !strings.Contains(err.Error(), "1 other users") || !st.HasBundle("flask-1.0.0") {
+	if !errors.Is(err, ErrInUse) || !strings.Contains(err.Error(), "other users have it on") || strings.ContainsAny(err.Error(), "0123456789") || !st.HasBundle("flask-1.0.0") {
 		t.Fatalf("%v", err)
 	}
 	var v View
@@ -1234,5 +1234,38 @@ func TestAnAdminCanMakeAFreshLockOfAnInstalledApp(t *testing.T) {
 	}
 	if _, err := svc.Relock("root", "nothing"); err == nil {
 		t.Error("an app that is not installed")
+	}
+}
+
+// What the image has built in is found at the start, listed with its version, and a built-in name cannot be installed or asked for.
+func TestBuiltInAppsAreListedAndTheirNamesCannotBeInstalled(t *testing.T) {
+	got := DetectBuiltins(context.Background())
+	byName := map[string]Builtin{}
+	for _, b := range got {
+		byName[b.Name] = b
+	}
+	if p, ok := byName["Python"]; !ok || !strings.HasPrefix(p.Version, "3.") || len(p.Used) == 0 || p.Docs == "" {
+		t.Errorf("python3 is on this machine: %+v", got)
+	}
+	svc, _ := newService(t, Fake{}, "flask")
+	svc.SetBuiltins([]Builtin{{Name: "Ruby", Version: "3.0.2", Used: []string{"irb"}, Names: []string{"ruby", "irb"}}})
+	if err := svc.Install("ann", "ruby", KindLang, true); !errors.Is(err, ErrBuiltin) {
+		t.Errorf("a built-in name must not be installed, not even by an admin: %v", err)
+	}
+	if _, err := svc.Request("ann", "ruby", KindLang, "please"); !errors.Is(err, ErrBuiltin) {
+		t.Errorf("or asked for: %v", err)
+	}
+	if err := svc.Install("ann", "flask", KindLib, false); err != nil {
+		t.Errorf("an ordinary name: %v", err)
+	}
+	svc.Wait()
+	hits, _ := svc.Search(context.Background(), "ru", "")
+	for _, h := range hits {
+		if h.Name == "ruby" && h.State != "builtin" {
+			t.Errorf("a search shows a built-in name as built in: %+v", h)
+		}
+	}
+	if b, ok := svc.BuiltinNamed("IRB"); !ok || b.Name != "Ruby" {
+		t.Errorf("%+v %v", b, ok)
 	}
 }

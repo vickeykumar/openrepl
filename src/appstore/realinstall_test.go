@@ -381,3 +381,77 @@ func TestThePackagesActivationVariablesReachTheUsersEnvironment(t *testing.T) {
 		t.Errorf("projinfo: %v\n%s", err, tailOf(out))
 	}
 }
+
+// The core of the catalogue (every entry of level core that anyone may install) is installed, checked with the entry's own check, and used the way a
+// terminal does with its scratch folder: a Python library that is imported leaves nothing in the workspace (the bytecode goes to scratch), and a
+// browser library has the files the preview serves. This is the "workspace growth" check, on both CPU types in CI.
+func TestTheCoreOfTheCatalogueInstallsAndLeavesTheWorkspaceAlone(t *testing.T) {
+	svc, st := realService(t)
+	only := os.Getenv("OPENREPL_REAL_ONLY")
+	for _, e := range svc.Catalogue() {
+		k := e.InstallKind()
+		if e.Level != "core" || e.Install != "anyone" || k == "" || k == KindPlugin || e.Python == "2.7" {
+			continue
+		}
+		if only != "" && !strings.Contains(","+only+",", ","+e.PackageName()+",") {
+			continue
+		}
+		e := e
+		t.Run(e.ID, func(t *testing.T) {
+			if k == KindNode && findRealNpm() == "" {
+				t.Skip("npm is not here")
+			}
+			if err := svc.InstallEntry("ci", e); err != nil {
+				t.Fatal(err)
+			}
+			svc.Wait()
+			var app App
+			for _, a := range svc.Apps() {
+				if a.Name == e.PackageName() && cleanKind(a.Kind) == k {
+					app = a
+				}
+			}
+			if app.State != StateInstalled {
+				t.Fatalf("not installed: %+v", app)
+			}
+			if err := svc.checkApp(context.Background(), st.BundlePath(app.ID), app); err != nil {
+				t.Fatalf("the entry's check: %v", err)
+			}
+			if e.Kind == CKWeb {
+				for _, f := range e.Files {
+					if _, ok := svc.LibFile(e.PackageName(), f); !ok {
+						t.Errorf("the preview cannot serve %s", f)
+					}
+				}
+				return
+			}
+			if e.Kind != CKLib {
+				return
+			}
+			workspace, scratchDir := t.TempDir(), t.TempDir()
+			env := append(VarsFor(st.Dir, []string{app.ID}).Apply(os.Environ()), "PYTHONPYCACHEPREFIX="+filepath.Join(scratchDir, "pycache"), "MPLCONFIGDIR="+filepath.Join(scratchDir, "mpl"), "HOME="+workspace)
+			mod := e.CheckArg
+			if mod == "" {
+				mod = moduleOf(st.BundlePath(app.ID), e.PackageName())
+			}
+			if mod == "" {
+				return
+			}
+			c := exec.Command("python3", "-c", "import "+mod)
+			c.Env, c.Dir = env, workspace
+			if out, err := c.CombinedOutput(); err != nil {
+				t.Fatalf("python3 cannot import %s: %v\n%s", mod, err, tailOf(out))
+			}
+			var grown []string
+			filepath.WalkDir(workspace, func(p string, d os.DirEntry, err error) error {
+				if err == nil && p != workspace {
+					grown = append(grown, strings.TrimPrefix(p, workspace))
+				}
+				return nil
+			})
+			if len(grown) > 0 {
+				t.Errorf("importing %s wrote in the workspace: %v", mod, grown)
+			}
+		})
+	}
+}

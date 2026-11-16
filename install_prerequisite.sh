@@ -62,9 +62,17 @@ cd ~
 export TZ=Etc/UTC
 
 apt-get update -y
-apt-get install -y --no-install-recommends make gcc g++ default-jdk git
+# The language toolchains are kept current: Go, yaegi, JDK and Rust below (the versions are variables, one place each)
+GO_VERSION=1.23.12
+YAEGI_VERSION=v0.16.1
+RUST_VERSION=1.85.1
+apt-get install -y --no-install-recommends make gcc g++ openjdk-21-jdk git
 # the Java REPL is jshell (utils/interactive.go): part of the JDK since 9, but fail early if it is missing
-command -v jshell >/dev/null || { echo "jshell was not installed with default-jdk"; exit 1; }
+command -v jshell >/dev/null || { echo "jshell was not installed with openjdk-21-jdk"; exit 1; }
+# the JDK 21 is the one of the PATH (a JDK of an older version may be there too)
+update-alternatives --set java "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/java" || true
+update-alternatives --set javac "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/javac" || true
+update-alternatives --set jshell "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/jshell" || true
 
 #install ipython2.7
 apt-get install -y --no-install-recommends python2.7
@@ -86,12 +94,17 @@ chmod 4755 /usr/bin/nsenter
 # add export NODE_OPTIONS=--max_old_space_size=2048 to .bashrc
 apt-get install -y --no-install-recommends net-tools
 
-#install golang
-apt-get install -y --no-install-recommends golang
+#install golang: the official release (the apt one is 1.18), first on the PATH
+apt-get install -y --no-install-recommends curl ca-certificates
+curl -fsSL "https://go.dev/dl/go$GO_VERSION.linux-$GO_ARCH.tar.gz" | tar -C /usr/local -xz
+ln -sf /usr/local/go/bin/go /usr/local/bin/go
+ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
-#install yaegi go repl, >= go1.18
-#go install github.com/traefik/yaegi/cmd/yaegi@latest
-apt-get install -y --no-install-recommends yaegi
+#install yaegi go repl: its standard library is the one of the Go that built it, so it is built with the new Go
+YAEGI_DIR=$(mktemp -d)
+env -u GOROOT GO111MODULE=on GOFLAGS= GOTOOLCHAIN=local GOPATH="$YAEGI_DIR/gopath" GOBIN=/usr/local/bin \
+    /usr/local/go/bin/go install "github.com/traefik/yaegi/cmd/yaegi@$YAEGI_VERSION" || { echo "ERROR: yaegi could not be built"; exit 1; }
+chmod -R u+w "$YAEGI_DIR" && rm -rf "$YAEGI_DIR"
 
 #install npm
 apt-get install -y --no-install-recommends npm
@@ -182,6 +195,8 @@ else
     apt-get install -y --no-install-recommends rustc
     apt-get install -y --no-install-recommends rust-gdb
     apt-get install -y --no-install-recommends cargo
+    # the Rust toolchain of the REPL: rustup's (cargo and evcxr in ~/.cargo/bin come first on the PATH of the REPL)
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUST_VERSION"
     if [ "$DEB_ARCH" = amd64 ]; then
         EVCXR_ARCHIVE="evcxr-v0.17.0-$EVCXR_TARGET.tar.gz"
         wget "https://github.com/evcxr/evcxr/releases/download/v0.17.0/$EVCXR_ARCHIVE"
@@ -192,7 +207,6 @@ else
         rm -rf "evcxr-v0.17.0-$EVCXR_TARGET"
     else
         # Build natively because the upstream prebuilt asset is x86_64 only.
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.74.1
         . "$HOME/.cargo/env"
         cargo install --locked --version 0.17.0 evcxr_repl
         ln -sf "$HOME/.cargo/bin/evcxr" /usr/local/bin/evcxr

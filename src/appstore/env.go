@@ -18,6 +18,12 @@ type Vars struct {
 	PathAdd    []string // bin folders
 	PythonPath []string // site-packages folders
 	NodePath   []string // lib/node_modules folders
+	// the libraries of C, C++, Tcl and Perl (a bundle with no Python of its own: a header or a library, not a program that brings Python)
+	Include   []string // include folders: CPLUS_INCLUDE_PATH and C_INCLUDE_PATH
+	Lib       []string // lib folders: LIBRARY_PATH (link time) and LD_RUN_PATH
+	PkgConfig []string // lib/pkgconfig and share/pkgconfig: PKG_CONFIG_PATH
+	Perl      []string // PERL5LIB
+	Tcl       []string // TCLLIBPATH
 	// Extra are the variables the packages set when they are activated (JAVA_HOME, PROJ_DATA, ...), read from each bundle's
 	// activate.json; the first bundle on the list wins a name two of them set.
 	Extra map[string]string
@@ -140,6 +146,31 @@ func VarsFor(dir string, ids []string) Vars {
 		if isDir(filepath.Join(root, "lib", "node_modules")) {
 			v.NodePath = append(v.NodePath, filepath.Join(root, "lib", "node_modules"))
 		}
+		if len(sp) == 0 && root != bundle { // a conda prefix that has no Python of its own
+			if isDir(filepath.Join(root, "include")) {
+				v.Include = append(v.Include, filepath.Join(root, "include"))
+				if isDir(filepath.Join(root, "lib")) {
+					v.Lib = append(v.Lib, filepath.Join(root, "lib"))
+				}
+			}
+			for _, pc := range []string{"lib/pkgconfig", "share/pkgconfig"} {
+				if isDir(filepath.Join(root, pc)) {
+					v.PkgConfig = append(v.PkgConfig, filepath.Join(root, pc))
+				}
+			}
+			if tcl, _ := filepath.Glob(filepath.Join(root, "lib", "tcllib*")); len(tcl) > 0 {
+				v.Tcl = append(v.Tcl, filepath.Join(root, "lib"))
+			}
+			for _, pat := range []string{"lib/perl5/site_perl/*", "lib/perl5/[0-9]*"} {
+				pl, _ := filepath.Glob(filepath.Join(root, filepath.FromSlash(pat)))
+				sort.Strings(pl)
+				for _, p := range pl {
+					if isDir(p) {
+						v.Perl = append(v.Perl, p)
+					}
+				}
+			}
+		}
 		// a Node bundle made by npm: <bundle>/node_modules, with its .bin
 		if isDir(filepath.Join(bundle, "node_modules")) {
 			v.NodePath = append(v.NodePath, filepath.Join(bundle, "node_modules"))
@@ -208,6 +239,17 @@ func (v Vars) Apply(env []string) []string {
 	if len(v.NodePath) > 0 {
 		set("NODE_PATH", join(v.NodePath, get("NODE_PATH")))
 	}
+	for _, x := range []struct {
+		names []string
+		dirs  []string
+	}{{[]string{"CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH"}, v.Include}, {[]string{"LIBRARY_PATH", "LD_RUN_PATH"}, v.Lib}, {[]string{"PKG_CONFIG_PATH"}, v.PkgConfig},
+		{[]string{"PERL5LIB"}, v.Perl}, {[]string{"TCLLIBPATH"}, v.Tcl}} {
+		for _, n := range x.names {
+			if len(x.dirs) > 0 {
+				set(n, join(x.dirs, get(n)))
+			}
+		}
+	}
 	for k, val := range v.Extra {
 		set(k, val)
 	}
@@ -228,6 +270,17 @@ func EnvScript(dir string, ids []string) string {
 	}
 	if len(v.NodePath) > 0 {
 		fmt.Fprintf(&b, "export NODE_PATH=%s${NODE_PATH:+:$NODE_PATH}\n", q(strings.Join(v.NodePath, ":")))
+	}
+	for _, x := range []struct {
+		names []string
+		dirs  []string
+	}{{[]string{"CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH"}, v.Include}, {[]string{"LIBRARY_PATH", "LD_RUN_PATH"}, v.Lib}, {[]string{"PKG_CONFIG_PATH"}, v.PkgConfig},
+		{[]string{"PERL5LIB"}, v.Perl}, {[]string{"TCLLIBPATH"}, v.Tcl}} {
+		for _, n := range x.names {
+			if len(x.dirs) > 0 {
+				fmt.Fprintf(&b, "export %s=%s${%s:+:$%s}\n", n, q(strings.Join(x.dirs, ":")), n, n)
+			}
+		}
 	}
 	keys := make([]string, 0, len(v.Extra))
 	for k := range v.Extra {

@@ -6,6 +6,7 @@ import { missingFrom } from "./lib-store-hint.mjs";
 
 var tab = "browse";          // browse | mine
 var views = [];              // what the server says: one for each app
+var builtins = [];           // what the image has built in (listed in My apps, always on)
 var onList = [];             // the bundles that are on for this user
 var sandbox = false;         // terminals run in a sandbox that is fixed when they start
 var envScript = "";          // the file a shell can run to use what was switched on
@@ -51,6 +52,7 @@ function say(text, bad) {
 function take(j) {
   if (j.views) views = j.views;
   if (j.on) onList = j.on;
+  if (j.builtins) builtins = j.builtins;
   if (j.envScript) envScript = j.envScript;
   if (j.sandbox !== undefined) sandbox = !!j.sandbox;
   if (j.installer) installer = j.installer;
@@ -203,6 +205,7 @@ function card(v) {
     if (v.log) { var pre = h("pre", "appstore__log", v.log); c.appendChild(pre); }
   }
   if (v.state === "rejected" && v.answer) c.appendChild(h("p", "appstore__sum", v.answer));
+  if (v.summary && !(info && info.info)) c.appendChild(h("p", "appstore__sum", v.summary));
   var row = h("div", "appstore__row");
   function button(text, fn, primary) {
     var b = h("button", "appstore__btn" + (primary ? " is-primary" : ""), text);
@@ -236,6 +239,28 @@ function card(v) {
     else button("Report to admin", function () { report(v); });
   }
   if (v.state === "rejected") button("Ask again", function () { request(v); });
+  if (v.docs) {
+    var dl = h("a", "appstore__btn", "Docs"); dl.href = v.docs; dl.target = "_blank"; dl.rel = "noopener noreferrer"; row.appendChild(dl);
+  }
+  c.appendChild(row);
+  return c;
+}
+
+// an app the image has built in: listed with the apps, tagged, always on, nothing to install or remove
+function builtinCard(b) {
+  var c = h("div", "appstore__app is-builtin");
+  c.setAttribute("data-builtin", b.name);
+  var top = h("div", "appstore__top");
+  top.appendChild(h("span", "appstore__name", b.name));
+  top.appendChild(h("span", "appstore__tag appstore__tag--builtin", "Built in"));
+  if (b.version) top.appendChild(h("span", "appstore__ver", b.version));
+  c.appendChild(top);
+  if (b.used && b.used.length) c.appendChild(h("p", "appstore__sum", "Used by " + b.used.join(", ") + ". It comes with the server."));
+  var row = h("div", "appstore__row");
+  var sw = h("button", "appstore__switch is-on", "On"); sw.type = "button"; sw.disabled = true; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", "true");
+  sw.title = "Built in: always on"; row.appendChild(sw);
+  var u = h("button", "appstore__btn", "Uninstall"); u.type = "button"; u.disabled = true; u.title = "Built in: it comes with the server"; row.appendChild(u);
+  if (b.docs) { var dl = h("a", "appstore__btn", "Docs"); dl.href = b.docs; dl.target = "_blank"; dl.rel = "noopener noreferrer"; row.appendChild(dl); }
   c.appendChild(row);
   return c;
 }
@@ -289,9 +314,10 @@ function render(err) {
     return !q || v.name.indexOf(q) >= 0;
   });
   shown.forEach(function (v) { list.appendChild(card(v)); });
+  if (tab === "mine") builtins.forEach(function (b) { list.appendChild(builtinCard(b)); });
   // a name that nothing in the store matches can still be looked up on conda-forge and asked for
   if (tab === "browse" && q && !shown.length && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(q)) list.appendChild(lookupCard(q));
-  if (!shown.length && !(tab === "browse" && q)) list.appendChild(h("p", "appstore__sum", tab === "mine" ? "Nothing is on for you yet. Browse the store and switch an app on." : "No apps yet."));
+  if (!shown.length && !(tab === "mine" && builtins.length) && !(tab === "browse" && q)) list.appendChild(h("p", "appstore__sum", tab === "mine" ? "Nothing is on for you yet. Browse the store and switch an app on." : "No apps yet."));
   if (foot) {
     foot.textContent = "";
     if (changed && tab === "mine") {

@@ -36,6 +36,26 @@ const (
 // that a REPL writes (RLIMIT_FSIZE, set by the sandbox helper): one number for both.
 const WorkspaceQuotaMB = 50
 
+// EnvScratchDir is the folder of the scratch folders of the terminals (LLD 18): one for each terminal, outside the workspace. Default
+// /scratch; the server makes it at start, and where it cannot, terminals start with no scratch.
+const EnvScratchDir = "OPENREPL_SCRATCH_DIR"
+
+// ScratchDir is the scratch folder's root when it is there (a folder the server made), else "".
+func ScratchDir() string {
+	d := strings.TrimSpace(os.Getenv(EnvScratchDir))
+	if d == "" {
+		d = "/scratch"
+	}
+	d = filepath.Clean(d)
+	if !filepath.IsAbs(d) || forbiddenHomeDirs[d] {
+		return ""
+	}
+	if fi, err := os.Stat(d); err != nil || !fi.IsDir() {
+		return ""
+	}
+	return d
+}
+
 const defaultHomeDir = "/tmp/home/"
 
 // HOME_DIR holds the workspaces. It ends with a slash. It is the default until

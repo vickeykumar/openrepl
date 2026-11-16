@@ -161,3 +161,28 @@ test("switching an app on is checked first, and a failure is shown and can be re
   await expect(sw).toHaveAttribute("aria-checked", "true");
   await expect(page.locator("#appstore-note")).toContainText("checked and works");
 });
+
+test("the quick dialog lists the built-in apps in My apps, tagged, always on, with nothing to install or remove, and a Docs link on the cards", async ({ page }) => {
+  await ready(page);
+  await page.route("**/store/api/**", async (route) => {
+    const what = new URL(route.request().url()).pathname.split("/store/api/")[1];
+    const views = [{ name: "numpy", version: "2.1", id: "numpy-2.1", kind: "lib", state: "installed", safe: true, on: true, docs: "https://numpy.org/doc/stable/" }, { name: "polars", kind: "lib", state: "available", safe: false, docs: "https://docs.pola.rs/", summary: "Fast tables." }];
+    const builtins = [{ name: "Go", version: "go1.18", used: ["go", "yaegi"], docs: "https://go.dev/doc/" }, { name: "Perl", version: "5.34", used: ["perli"], docs: "https://perldoc.perl.org/" }];
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, views, on: ["numpy-2.1"], builtins, envScript: "/store/envs/me/env.sh", installer: "fake", sandbox: true }) });
+  });
+  await page.evaluate(() => document.body.classList.add("is-signed-in"));
+  await page.locator("#appstore-button").click();
+  await expect(page.locator('[data-app="polars"] a', { hasText: "Docs" })).toHaveAttribute("href", "https://docs.pola.rs/");
+  await expect(page.locator('[data-app="polars"]')).toContainText("Fast tables.");
+  await page.locator("#appstore-tab-mine").click();
+  const go = page.locator('[data-builtin="Go"]');
+  await expect(go).toContainText("Built in");
+  await expect(go).toContainText("go1.18");
+  await expect(go).toContainText("Used by go, yaegi");
+  await expect(go.locator(".appstore__switch")).toBeDisabled();
+  await expect(go.locator(".appstore__switch")).toHaveAttribute("aria-checked", "true");
+  await expect(go.getByRole("button", { name: "Uninstall" })).toBeDisabled();
+  await expect(go.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://go.dev/doc/");
+  await expect(page.locator('[data-builtin="Perl"]')).toBeVisible();
+  await expect(page.locator('[data-app="numpy"]')).toBeVisible();
+});

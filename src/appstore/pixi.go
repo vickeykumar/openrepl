@@ -29,6 +29,9 @@ type Pixi struct {
 	Python    string   // the Python of the server, as "3.10": every library is solved with it
 	Platforms []string // the CPU types the lock covers: linux-64 and linux-aarch64 when empty
 	Timeout   time.Duration
+	// Constraints gives, for an app, what the image's runtimes require of it (see Runtimes): conda packages and version specs added to the
+	// solve, so that the newest version that works with the image's compilers and languages is the one that gets pinned. nil: none.
+	Constraints func(name string) [][2]string
 }
 
 func (p Pixi) Name() string { return "pixi (conda-forge)" }
@@ -110,6 +113,13 @@ func (p Pixi) Manifest(name, version, kind string) (string, error) {
 		spec = "==" + version
 	}
 	fmt.Fprintf(&b, "%q = %q\n", name, spec)
+	if kind == KindTool && p.Constraints != nil {
+		for _, c := range p.Constraints(name) {
+			if tomlName.MatchString(c[0]) && c[0] != name {
+				fmt.Fprintf(&b, "%q = %q\n", c[0], c[1])
+			}
+		}
+	}
 	return b.String(), nil
 }
 

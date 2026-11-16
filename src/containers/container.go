@@ -54,6 +54,10 @@ func init() {
 	Commands2memLimitMap["bash"] = largest
 }
 
+// CompileFloorMB is the least a run that compiles may use, when three times the REPL's own limit is less: the Go 1.23 toolchain compiles the
+// standard library into the terminal's own (cold) build cache and needs more than the small REPL of gomacro.
+var CompileFloorMB = map[string]int64{"gomacro": 384}
+
 var memLimitMutex sync.Mutex
 
 // To get wieght of a command in MB.

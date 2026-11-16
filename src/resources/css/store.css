@@ -56,7 +56,14 @@
 .stag--installed { background: var(--st-ok-bg); color: var(--st-ok); }
 .stag--installing { background: var(--st-info-bg); color: var(--st-info); }
 .stag--failed, .stag--rejected { background: var(--st-bad-bg); color: var(--st-bad); }
-.stag--requested { background: var(--st-warn-bg); color: var(--st-warn); }
+.stag--requested, .stag--warn { background: var(--st-warn-bg); color: var(--st-warn); }
+.stag--builtin { background: var(--st-info-bg); color: var(--st-info); }
+.stag--level { text-transform: capitalize; }
+.store__builtincount { margin-left: 6px; font-size: 11px; color: var(--st-faint); }
+.store__filters { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 2px 0 6px; }
+.store__filter { font-size: 12.5px; color: var(--st-muted); display: inline-flex; align-items: center; gap: 6px; }
+.store__filter select { background: var(--st-hover); color: var(--st-text); border: 1px solid var(--st-line2); border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 12.5px; }
+.store__row.is-builtin .sapp__name { text-decoration: none; cursor: default; }
 .sbtn { background: var(--st-hover); color: var(--st-text); border: 1px solid var(--st-line2); border-radius: 8px; padding: 6px 13px; font: inherit; font-size: 12.5px; cursor: pointer; }
 .sbtn:hover { border-color: var(--st-faint); }
 .sbtn.is-primary { background: var(--accent-color, #b6e03a); color: #15190a; border-color: transparent; font-weight: 600; }
