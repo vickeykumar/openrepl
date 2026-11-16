@@ -14,3 +14,9 @@ bin/gotty
 .env
 .env.*
 !.env.example
+
+# what a real-install test may leave next to the sources if a bundle path is empty
+src/appstore/gomod/
+src/appstore/jars/
+src/appstore/vendor/
+src/appstore/mirror.json
