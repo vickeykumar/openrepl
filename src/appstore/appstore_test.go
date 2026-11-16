@@ -755,8 +755,8 @@ func (c countingInstaller) Install(ctx context.Context, name, version, kind, des
 	return c.Fake.Install(ctx, name, version, kind, dest, log)
 }
 
-// A failed install is tried again after 1, 2, 5, 15, then 60 minutes, not at every apply; a command from the admin and a catalog without
-// the app end the waiting.
+// A failed install that may pass is tried again after 5, 15, 30 and 60 minutes, not at every apply, and then given up; a command from the admin and a
+// catalog without the app end the waiting.
 func TestAFailedInstallWaitsLongerAndLongerBeforeItIsTriedAgain(t *testing.T) {
 	a, _ := newService(t, Fake{}, "flask")
 	a.Install("ann", "flask", "lib", false)
@@ -767,7 +767,7 @@ func TestAFailedInstallWaitsLongerAndLongerBeforeItIsTriedAgain(t *testing.T) {
 	now := time.Unix(1800000000, 0)
 	b.cfg.Now = func() time.Time { return now }
 	ctx := context.Background()
-	want := []time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour, time.Hour}
+	want := []time.Duration{5 * time.Minute, 15 * time.Minute, 30 * time.Minute, time.Hour}
 	for i, w := range want {
 		st := b.Apply(ctx, snap)
 		if st.Failed["flask-1.0.0"] == "" || st.Retry["flask-1.0.0"] != now.Add(w).Unix() {
@@ -783,6 +783,15 @@ func TestAFailedInstallWaitsLongerAndLongerBeforeItIsTriedAgain(t *testing.T) {
 	}
 	if next, ok := b.NextRetry(); !ok || next.Before(now) {
 		t.Errorf("the next retry: %v %v", next, ok)
+	}
+	// the fifth failure is the last: it is given up, and asking again makes no new try
+	if st := b.Apply(ctx, snap); st.Failed["flask-1.0.0"] == "" || !st.GaveUp["flask-1.0.0"] || st.Retry["flask-1.0.0"] != 0 {
+		t.Fatalf("it should be given up: %+v", st)
+	}
+	before := tries
+	now = now.Add(24 * time.Hour)
+	if st := b.Apply(ctx, snap); !st.GaveUp["flask-1.0.0"] || tries != before {
+		t.Fatalf("a bundle that was given up was tried again")
 	}
 	// the admin's command ends the waiting, and a success ends the story
 	b.cfg.Installer = Fake{}
@@ -1268,4 +1277,219 @@ func TestBuiltInAppsAreListedAndTheirNamesCannotBeInstalled(t *testing.T) {
 	if b, ok := svc.BuiltinNamed("IRB"); !ok || b.Name != "Ruby" {
 		t.Errorf("%+v %v", b, ok)
 	}
+}
+
+// A failure that cannot pass (nothing to install for this CPU type) is not tried again by itself at all; the admin's Reinstall tries once more.
+func TestAFailureThatCannotPassIsNotTriedAgain(t *testing.T) {
+	a, _ := newService(t, Fake{}, "flask")
+	a.Install("ann", "flask", "lib", false)
+	a.Wait()
+	snap := a.Snapshot()
+	b, bst := newService(t, permFail{})
+	ctx := context.Background()
+	st := b.Apply(ctx, snap)
+	if st.Failed["flask-1.0.0"] == "" || !st.GaveUp["flask-1.0.0"] || st.Retry["flask-1.0.0"] != 0 {
+		t.Fatalf("a failure that cannot pass was kept for a retry: %+v", st)
+	}
+	if !strings.Contains(st.Failed["flask-1.0.0"], "Not available on this server") {
+		t.Errorf("the admin should be told why: %q", st.Failed["flask-1.0.0"])
+	}
+	b.cfg.Installer = Fake{}
+	snap.Reinstall = []string{"flask-1.0.0"}
+	if st := b.Apply(ctx, snap); len(st.Failed) != 0 || !bst.HasBundle("flask-1.0.0") {
+		t.Fatalf("after Reinstall: %+v", st)
+	}
+}
+
+// permFail cannot install anything for its CPU type.
+type permFail struct{ Fake }
+
+func (permFail) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
+	return errors.New("Cannot solve the request because of: No candidates were found for " + name)
+}
+
+// A solve that has no answer for every CPU type is made for this CPU type only, and the app is marked partial; a worker solves for its own.
+type cpuPixi struct {
+	Fake
+	failAll bool // it cannot solve unless the install is for one CPU type
+	single  *int
+}
+
+func (c cpuPixi) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	if c.failAll && !singleCPU(ctx) {
+		return Resolved{}, errors.New("conda-forge could not solve " + name + ": no candidates for linux-aarch64")
+	}
+	if singleCPU(ctx) {
+		*c.single++
+	}
+	return c.Fake.Resolve(ctx, name, version, kind)
+}
+
+func TestWhatCannotBeSolvedForEveryCPUIsInstalledForThisOne(t *testing.T) {
+	n := 0
+	svc, st := newService(t, Multi{Conda: cpuPixi{failAll: true, single: &n}, Plugin: PluginInstaller{}}, "py27lib")
+	if err := svc.Install("ann", "py27lib", KindLib, true); err != nil {
+		t.Fatal(err)
+	}
+	svc.Wait()
+	var app App
+	for _, a := range svc.Apps() {
+		if a.Name == "py27lib" {
+			app = a
+		}
+	}
+	if app.State != StateInstalled || !app.Partial || app.Locked || n == 0 || !st.HasBundle(app.ID) {
+		t.Fatalf("the best version for this CPU type was not installed: %+v (single solves %d)", app, n)
+	}
+	// a worker of another CPU type installs its own best version of the same bundle id
+	w, wst := newService(t, Multi{Conda: cpuPixi{failAll: true, single: &n}, Plugin: PluginInstaller{}})
+	got := w.Apply(context.Background(), svc.Snapshot())
+	if len(got.Failed) != 0 || !wst.HasBundle(app.ID) {
+		t.Fatalf("the worker did not install its own: %+v", got.Failed)
+	}
+}
+
+// The gateway tries a failure that may pass again by itself, a few times, and not one that cannot pass.
+func TestTheGatewayTriesAgainByItselfOnlyWhatMayPass(t *testing.T) {
+	old := Backoff
+	Backoff = []time.Duration{20 * time.Millisecond, 20 * time.Millisecond}
+	defer func() { Backoff = old }()
+	tries := 0
+	svc, _ := newService(t, netFail{n: &tries}, "flask")
+	svc.Install("ann", "flask", KindLib, false)
+	svc.Wait()
+	time.Sleep(300 * time.Millisecond)
+	svc.Wait()
+	if tries != 3 { // the first try and two retries, then it is given up
+		t.Fatalf("tries: %d", tries)
+	}
+	for _, a := range svc.Apps() {
+		if a.Name == "flask" && (a.State != StateFailed || !strings.Contains(a.Err, "gave up")) {
+			t.Fatalf("it should be given up: %+v", a)
+		}
+	}
+	tries = 0
+	svc2, _ := newService(t, permFail{}, "flask")
+	svc2.Install("ann", "flask", KindLib, false)
+	svc2.Wait()
+	time.Sleep(100 * time.Millisecond)
+	for _, a := range svc2.Apps() {
+		if a.Name == "flask" && !strings.Contains(a.Err, "no automatic retry") {
+			t.Fatalf("a failure that cannot pass: %+v", a)
+		}
+	}
+}
+
+// The classification of a failure.
+func TestPermanentAndTransientFailures(t *testing.T) {
+	for _, m := range []string{"Cannot solve the request because of: No candidates were found for git ==2.34", "conda-forge could not solve bat: x", "no recent version of jest works with this server's Node v12", "E: Version '2.34' for 'git' was not found"} {
+		if !IsPermanent(errors.New(m)) {
+			t.Errorf("%q should be permanent", m)
+		}
+	}
+	for _, m := range []string{"Get https://x: connection reset by peer", "no space left on device", "context deadline exceeded", "the solver failed", "i/o timeout", "403 Forbidden"} {
+		if IsPermanent(errors.New(m)) {
+			t.Errorf("%q should be transient", m)
+		}
+	}
+	if IsPermanent(errNoProgress) || IsPermanent(nil) {
+		t.Error("a stopped install and no error are not permanent")
+	}
+}
+
+// resolveCounter counts the solves it is asked for.
+type resolveCounter struct {
+	Fake
+	n *int
+}
+
+func (c resolveCounter) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	*c.n++
+	return c.Fake.Resolve(ctx, name, version, kind)
+}
+
+// netFail has no network: every solve fails in a way that may pass later.
+type netFail struct {
+	Fake
+	n *int
+}
+
+func (c netFail) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	*c.n++
+	return Resolved{}, errors.New("Get https://conda.anaconda.org: connection reset by peer")
+}
+
+// slowInstaller answers a solve slowly and an install not at all (until it is stopped).
+type slowInstaller struct {
+	Fake
+	solve time.Duration
+	hang  bool
+}
+
+func (s slowInstaller) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	select {
+	case <-time.After(s.solve):
+		return s.Fake.Resolve(ctx, name, version, kind)
+	case <-ctx.Done():
+		return Resolved{}, ctx.Err()
+	}
+}
+
+func (s slowInstaller) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
+	if s.hang {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return s.Fake.Install(ctx, name, version, kind, dest, log)
+}
+
+// A solve that has not answered in SolveLimit is stopped, whatever the manager.
+func TestASolveIsLimitedInTime(t *testing.T) {
+	old := SolveLimit
+	SolveLimit = 40 * time.Millisecond
+	defer func() { SolveLimit = old }()
+	start := time.Now()
+	_, err := Multi{Conda: slowInstaller{solve: 5 * time.Second}}.Resolve(context.Background(), "flask", "", KindLib)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > time.Second {
+		t.Fatalf("the solve was not limited: %v after %s", err, time.Since(start))
+	}
+	if IsPermanent(err) {
+		t.Error("a timeout may pass: it is not a permanent failure")
+	}
+}
+
+// An install that shows no sign of life is stopped, and the lock is free for the next.
+func TestAnInstallWithNoProgressIsStopped(t *testing.T) {
+	oldN, oldT := NoProgress, watchTick
+	NoProgress, watchTick = 60*time.Millisecond, 10*time.Millisecond
+	defer func() { NoProgress, watchTick = oldN, oldT }()
+	svc, _ := newService(t, slowInstaller{hang: true}, "flask")
+	svc.Install("ann", "flask", KindLib, false)
+	svc.Wait()
+	for _, a := range svc.Apps() {
+		if a.Name == "flask" && (a.State != StateFailed || !strings.Contains(a.Err, "no progress")) {
+			t.Fatalf("a hung install was not stopped: %+v", a)
+		}
+	}
+}
+
+// An app that only waits for its turn is shown as waiting, not as installing.
+func TestAnAppThatWaitsForItsTurnIsShownAsWaiting(t *testing.T) {
+	svc, _ := newService(t, Fake{Delay: 300 * time.Millisecond}, "flask", "numpy")
+	svc.Install("ann", "flask", KindLib, false)
+	time.Sleep(60 * time.Millisecond) // flask has the lock
+	svc.Install("ann", "numpy", KindLib, false)
+	waiting := map[string]bool{}
+	for _, a := range svc.AppsWithWaiting() {
+		waiting[a.Name] = a.Waiting
+	}
+	if waiting["flask"] || !waiting["numpy"] {
+		t.Fatalf("flask runs and numpy waits: %v", waiting)
+	}
+	for _, v := range svc.Views("ann", "ann") {
+		if v.Name == "numpy" && (v.State != StateInstalling || !v.Waiting) {
+			t.Fatalf("the view of numpy: %+v", v)
+		}
+	}
+	svc.Wait()
 }

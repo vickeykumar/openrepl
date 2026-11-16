@@ -322,6 +322,9 @@ func (m Multi) Name() string {
 }
 
 func (m Multi) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	// finding out what to install takes at most SolveLimit, whatever the manager (a slow solver makes every install behind it wait)
+	ctx, cancel := context.WithTimeout(ctx, SolveLimit)
+	defer cancel()
 	return m.pickFor(ctx, kind).Resolve(ctx, name, version, kind)
 }
 

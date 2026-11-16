@@ -269,7 +269,9 @@ func (a AptBundle) Install(ctx context.Context, name, version, kind, dest string
 	}
 	// the lock of the catalog (a node that installs what the gateway chose) or a fresh plan
 	var pkgs []AptPkg
+	fromLock := false
 	if raw, err := os.ReadFile(filepath.Join(dest, aptLockFile)); err == nil {
+		fromLock = true
 		if json.Unmarshal(raw, &pkgs) != nil || len(pkgs) == 0 {
 			return fmt.Errorf("the lock of %s cannot be read", name)
 		}
@@ -279,6 +281,11 @@ func (a AptBundle) Install(ctx context.Context, name, version, kind, dest string
 	} else if pkgs, err = a.plan(ctx, o.Package, ""); err != nil {
 		return err
 	}
+	return a.installPlan(ctx, o, pkgs, dest, log, fromLock)
+}
+
+// installPlan downloads and unpacks the packages of a plan (or of a lock) into the bundle.
+func (a AptBundle) installPlan(ctx context.Context, o Option, pkgs []AptPkg, dest string, log io.Writer, fromLock bool) error {
 	tmp, err := os.MkdirTemp(a.Dir, "apt-install-")
 	if err != nil {
 		return err
@@ -292,6 +299,18 @@ func (a AptBundle) Install(ctx context.Context, name, version, kind, dest string
 	var links [][2]string
 	for _, p := range pkgs {
 		if out, err := a.apt(ctx, tmp, "apt-get", "download", p.Name+"="+p.Version); err != nil {
+			if fromLock && strings.Contains(string(out), "was not found") {
+				// this CPU type's archive does not have the version the gateway locked (the archives of the CPU types are not always in step): this node makes its
+				// own plan and installs the best version it has
+				fmt.Fprintf(log, "%s %s is not in this archive: planning for this node\n", p.Name, p.Version)
+				os.RemoveAll(dest)
+				os.MkdirAll(dest, 0755)
+				plan, perr := a.plan(ctx, o.Package, "")
+				if perr != nil {
+					return perr
+				}
+				return a.installPlan(ctx, o, plan, dest, log, false)
+			}
 			return fmt.Errorf("%s %s could not be downloaded (the archive may have a newer version: make a new lock): %s", p.Name, p.Version, tail(strings.TrimSpace(string(out)), 200))
 		}
 		deb, _ := filepath.Glob(filepath.Join(tmp, p.Name+"_*.deb"))
@@ -316,6 +335,10 @@ func (a AptBundle) Install(ctx context.Context, name, version, kind, dest string
 	}
 	for _, l := range links {
 		makeLink(dest, l[0], l[1])
+	}
+	// the names the entry adds (Ubuntu's batcat is bat for the user)
+	for name, target := range o.Links {
+		makeLink(dest, "/"+name, "/"+target)
 	}
 	// what the bundle needs to run: the entry's variables, with the place of the bundle in them
 	if len(o.Env) > 0 {

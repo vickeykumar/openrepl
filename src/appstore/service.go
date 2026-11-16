@@ -1,7 +1,6 @@
 package appstore
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -83,6 +82,8 @@ type App struct {
 	Manager  string  `json:"manager,omitempty"`  // what made the bundle (pixi, npm, apt, ...): a node makes it the same way
 	Full     bool    `json:"full,omitempty"`     // the app did not run after the trim, so its bundle is whole
 	Trimmed  int     `json:"trimmed,omitempty"`  // files the trim deleted
+	Partial  bool    `json:"partial,omitempty"`  // solved for the gateway's CPU type only: every node installs the best version that exists for its own CPU type
+	Waiting  bool    `json:"waiting,omitempty"`  // shown, not kept: it waits for another install (this node installs one at a time)
 }
 
 // Request is a user's ask for an app that is not on the safe list. One for each app: a second asker is added to it.
@@ -147,19 +148,23 @@ type Service struct {
 	remote   []Entry   // the gateway's admin entries, on a node that has no catalog (guarded by remoteMu)
 	remoteMu sync.Mutex
 
+	gwFails map[string]int  // the gateway's own failed installs of an app in a row (for Backoff)
+	retryOf map[string]bool // an install that is the gateway's own retry (it does not reset the count)
 	retryMu sync.Mutex
 	retry   map[string]retryEntry // the bundles that failed to install here: when to try again (memory only: a restart tries at once)
 }
 
 // retryEntry is a failed install of one bundle on this node.
 type retryEntry struct {
-	fails int
-	next  time.Time
-	err   string
+	fails  int
+	next   time.Time
+	err    string
+	gaveUp bool // not tried again by itself: a failure that cannot pass, or the last try was made
 }
 
-// Backoff is how long a node waits before it tries a bundle again after its 1st, 2nd, ... failure; the last value stays.
-var Backoff = []time.Duration{1 * time.Minute, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute, 60 * time.Minute}
+// Backoff is how long a node waits before it tries a bundle again after its 1st, 2nd, ... failure that may pass (the network, the disk); after the last it gives
+// up and waits for an admin (Reinstall). A failure that cannot pass (no candidates for this CPU) is not tried again at all.
+var Backoff = []time.Duration{5 * time.Minute, 15 * time.Minute, 30 * time.Minute, 60 * time.Minute}
 
 // Job is an install that is going on.
 type Job struct {
@@ -188,7 +193,7 @@ func New(cfg Config) *Service {
 		cfg.PerDay = func() int { return 0 }
 	}
 	cfg.KV = &lockedKV{inner: cfg.KV}
-	return &Service{cfg: cfg, jobs: map[string]*Job{}, retry: map[string]retryEntry{}}
+	return &Service{cfg: cfg, jobs: map[string]*Job{}, retry: map[string]retryEntry{}, gwFails: map[string]int{}, retryOf: map[string]bool{}}
 }
 
 // lockedKV makes every call of the store one at a time (a callback of Each must not call the store again).
@@ -268,6 +273,19 @@ func (s *Service) Apps() []App {
 		}
 	})
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// AppsWithWaiting is Apps with Waiting set on the ones that are only waiting for their turn (the job has not started its first step).
+func (s *Service) AppsWithWaiting() []App {
+	out := s.Apps()
+	for i := range out {
+		if out[i].State == StateInstalling {
+			if j, ok := s.Job(out[i].Name); ok && j.Index < 0 {
+				out[i].Waiting = true
+			}
+		}
+	}
 	return out
 }
 
@@ -539,6 +557,11 @@ func (s *Service) installWith(who, name, kind string, admin bool, version string
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.retryOf[name] {
+		delete(s.retryOf, name)
+	} else {
+		delete(s.gwFails, name) // somebody asked: the count of failed tries starts again
+	}
 	if old, ok := s.app(name); ok && old.Kind != "" && cleanKind(old.Kind) != kind && old.State != StateFailed {
 		return fmt.Errorf("%s is installed already, as a %s", name, old.Kind)
 	}
@@ -600,20 +623,66 @@ func (s *Service) fail(a App, step string, err error, log string) {
 	a.State, a.Err, a.Node = StateFailed, step+": "+tail(err.Error(), 300), hostName()
 	a.Log = CleanLog(log, s.cfg.Store.Dir)
 	s.mu.Lock()
+	// a failure that may pass is tried again by itself a few times (Backoff), then given up; one that cannot pass (no candidates, not for this CPU) is not
+	n := s.gwFails[a.Name] + 1
+	var wait time.Duration
+	switch {
+	case IsPermanent(err):
+		a.Err += " (not available here: no automatic retry)"
+	case n <= len(Backoff):
+		wait = Backoff[n-1]
+		a.Err += fmt.Sprintf(" (trying again in %s)", wait)
+	default:
+		a.Err += " (gave up: press Retry)"
+	}
+	s.gwFails[a.Name] = n
 	s.put("app:"+a.Name, a)
 	s.mu.Unlock()
 	s.finishJob(a.Name)
+	if wait > 0 {
+		name, kind, want, who := a.Name, a.Kind, a.Want, a.By
+		time.AfterFunc(wait, func() { s.retryInstall(name, kind, want, who) })
+	}
+}
+
+// retryInstall is the gateway's own try again of an install that failed in a way that may pass; it does nothing when the app is not failed any more
+// (an admin retried it, it was removed) .
+func (s *Service) retryInstall(name, kind, want, who string) {
+	s.mu.Lock()
+	a, ok := s.app(name)
+	if !ok || a.State != StateFailed {
+		s.mu.Unlock()
+		return
+	}
+	s.retryOf[name] = true
+	s.mu.Unlock()
+	if err := s.installWith(who, name, kind, true, want, false); err != nil {
+		s.mu.Lock()
+		delete(s.retryOf, name)
+		s.mu.Unlock()
+	}
 }
 
 func (s *Service) runInstall(a App) {
 	s.inst.Lock() // one at a time
 	defer s.inst.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-	var logb bytes.Buffer
+	ctx0, cancel0 := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel0()
+	ctx, cancel := context.WithCancelCause(ctx0)
+	defer cancel(nil)
+	var logb workLog
 	if err := s.cfg.Store.Ready(); err != nil {
 		s.fail(a, "Preparing the store", err, "")
 		return
+	}
+	stopWatch := watch(cancel, &logb, watchDirs(s.cfg.Store.Dir)...)
+	defer stopWatch()
+	// an install that was stopped for no progress says so, not "signal: killed"
+	cause := func(err error) error {
+		if c := context.Cause(ctx); errors.Is(c, errNoProgress) {
+			return c
+		}
+		return err
 	}
 	s.step(a.Name, 1, "")
 	// the managers that can make it, the chosen one first: when it fails the next one is tried, and the admin is told
@@ -633,16 +702,27 @@ func (s *Service) runInstall(a App) {
 	var trimRep TrimReport
 	for i, mgr := range order {
 		a.Manager = mgr
-		res, err := s.cfg.Installer.Resolve(WithManager(ctx, mgr), a.Name, a.Want, a.Kind)
+		mctx := WithManager(ctx, mgr)
+		res, err := s.cfg.Installer.Resolve(mctx, a.Name, a.Want, a.Kind)
+		partial := false
+		if err != nil && (mgr == "" || mgr == MgrPixi) && condaKind(a.Kind) && (IsPermanent(err) || solveTimedOut(err)) {
+			// it cannot be solved for every CPU type (a build that exists for one only): the best version for this CPU type is installed, and every other
+			// node does the same for its own
+			first := err
+			if r2, e2 := s.cfg.Installer.Resolve(WithSingleCPU(mctx), a.Name, a.Want, a.Kind); e2 == nil {
+				res, err, partial = r2, nil, true
+				failures = append(failures, mgr+": not solved for every CPU type ("+tail(first.Error(), 120)+"): installed the best version for this CPU type")
+			}
+		}
 		if err != nil {
 			failures = append(failures, mgr+": "+tail(err.Error(), 200))
 			if i == len(order)-1 {
-				s.fail(a, "Resolving the dependencies", err, err.Error())
+				s.fail(a, "Resolving the dependencies", cause(err), err.Error())
 				return
 			}
 			continue
 		}
-		a.Version, a.ID, a.Packages, a.Download = res.Version, BundleID(a.Name, res.Version), res.Packages, res.DownloadMB
+		a.Version, a.ID, a.Packages, a.Download, a.Partial = res.Version, BundleID(a.Name, res.Version), res.Packages, res.DownloadMB, partial
 		dest = s.cfg.Store.BundlePath(a.ID)
 		if dest == "" {
 			s.fail(a, "Resolving the dependencies", fmt.Errorf("%s is not a usable version", res.Version), "")
@@ -655,12 +735,17 @@ func (s *Service) runInstall(a App) {
 		os.RemoveAll(dest) // a half-made bundle of an earlier try
 		s.step(a.Name, 2, detail)
 		logb.Reset()
+		ictx := ctx
+		if partial {
+			ictx = WithSingleCPU(ctx)
+		}
 		var full bool
-		trimRep, full, err = s.installBundle(ctx, a, mgr, dest, &logb)
+		trimRep, full, err = s.installBundle(ictx, a, mgr, dest, &logb)
 		if err == nil {
 			a.Full, a.Trimmed = full, trimRep.Files
 			break
 		}
+		err = cause(err)
 		os.RemoveAll(dest)
 		failures = append(failures, mgr+": "+tail(err.Error(), 200))
 		if i == len(order)-1 {
@@ -679,8 +764,9 @@ func (s *Service) runInstall(a App) {
 		return
 	}
 	a.State, a.Size, a.Err, a.Log, a.Node = StateInstalled, m.Size, "", "", hostName()
-	a.Locked = s.captureLock(a.ID, dest)
+	a.Locked = !a.Partial && s.captureLock(a.ID, dest) // a lock of one CPU type is no use to the others: they solve for themselves
 	s.mu.Lock()
+	delete(s.gwFails, a.Name)
 	s.put("app:"+a.Name, a)
 	// the people who asked, and who reported the failure, are told (Notices); the request is kept until they have seen it
 	var req Request
@@ -1067,6 +1153,8 @@ type View struct {
 	Steps    []StepView `json:"steps,omitempty"`    // while installing: the list with what is done
 	Pct      int        `json:"pct,omitempty"`      // how far the install is
 	Detail   string     `json:"detail,omitempty"`   // what the solve found ("14 packages, 41 MB")
+	Partial  bool       `json:"partial,omitempty"`  // the version may differ by the CPU type of a server
+	Waiting  bool       `json:"waiting,omitempty"`  // it is only waiting for another install to end (this server installs one at a time)
 	Packages int        `json:"packages,omitempty"` // what an installed app brought
 	Node     string     `json:"node,omitempty"`     // where a failed install ran
 	Name     string     `json:"name"`
@@ -1200,13 +1288,14 @@ func (s *Service) views(who, home string, full bool) []View {
 		}
 		v := View{Default: def[a.Name], At: a.At, Name: a.Name, Version: a.Version, ID: a.ID, Kind: a.Kind, State: a.State, Safe: s.isSafe(cleanKind(a.Kind), a.Name),
 			On: my[a.ID], SizeMB: float64(a.Size) / (1 << 20), Mine: a.By == who, OthersOn: others[a.ID]}
-		v.Packages = a.Packages
+		v.Packages, v.Partial = a.Packages, a.Partial
 		if !full && v.OthersOn > 1 {
 			v.OthersOn = 1
 		}
 		if a.State == StateInstalling {
 			if j, ok := s.Job(a.Name); ok {
 				v.Step = j.Step
+				v.Waiting = j.Index < 0
 				v.Steps, v.Pct = stepViews(j)
 				v.Detail = j.Detail
 			} else {
@@ -1365,6 +1454,10 @@ type NodeState struct {
 	Sizes map[string]float64 `json:"sizes,omitempty"`
 	// Retry is when (unix seconds) the node tries a failed bundle again; it does not try before that, however often it is asked.
 	Retry map[string]int64 `json:"retry,omitempty"`
+	// GaveUp are the bundles this node does not try again by itself (not available for its CPU type, or tried enough): an admin's Reinstall tries again.
+	GaveUp map[string]bool `json:"gaveUp,omitempty"`
+	// Versions are the versions this node really installed where they are not the gateway's (its best for its own CPU type).
+	Versions map[string]string `json:"versions,omitempty"`
 }
 
 // SetOnStep sets what is told after each bundle of an Apply ended (see Config.OnStep).
@@ -1418,6 +1511,15 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		s.retryMu.Lock()
 		r, waiting := s.retry[a.ID]
 		s.retryMu.Unlock()
+		if waiting && r.gaveUp {
+			// not tried again by itself (not available here, or tried enough): an admin's Reinstall makes it again
+			st.Failed[a.ID] = r.err
+			if st.GaveUp == nil {
+				st.GaveUp = map[string]bool{}
+			}
+			st.GaveUp[a.ID] = true
+			continue
+		}
 		if waiting && s.cfg.Now().Before(r.next) {
 			// it failed lately: not before its time, however often the catalog is applied
 			st.Failed[a.ID] = r.err
@@ -1430,12 +1532,16 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		s.inst.Lock()
 		dest := s.cfg.Store.BundlePath(a.ID)
 		os.RemoveAll(dest)
-		var logb bytes.Buffer
+		var logb workLog
+		ictx0, icancel0 := context.WithTimeout(ctx, 30*time.Minute)
+		ictx, icancel := context.WithCancelCause(ictx0)
+		stopWatch := watch(icancel, &logb, watchDirs(s.cfg.Store.Dir)...)
 		// a node always installs a bundle itself (conda-forge / npm over its own internet): a bundle holds programs for one CPU and the
 		// gateway's egress is not given away. It installs exactly what the lock of the bundle says, or nothing: a bundle that is not
-		// the same everywhere is worse than one that is late.
+		// the same everywhere is worse than one that is late. A bundle that is partial (the gateway could not solve it for every CPU type) has
+		// no lock to follow: this node solves for its own CPU type and installs the best version that exists for it.
 		var err error
-		if a.Locked {
+		if a.Locked && !a.Partial {
 			var l Lock
 			if l, err = s.lockFor(ctx, a.ID); err == nil {
 				err = WriteLock(dest, l)
@@ -1443,33 +1549,70 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 				err = fmt.Errorf("the lock of %s could not be had: %v", a.ID, err)
 			}
 		}
+		runCtx := ictx
+		if a.Partial {
+			runCtx = WithSingleCPU(ictx)
+		}
 		if err == nil {
 			// the node makes the bundle with the manager the gateway used (an apt bundle is not solved by pixi), trims it the same way and proves
 			// that what it installed works before it says it has it
-			_, _, err = s.installBundle(ctx, a, a.Manager, dest, &logb)
+			_, _, err = s.installBundle(runCtx, a, a.Manager, dest, &logb)
+			if c := context.Cause(ictx); err != nil && errors.Is(c, errNoProgress) {
+				err = c
+			}
 		}
+		stopWatch()
+		icancel(nil)
+		icancel0()
+		var actual string
 		if err == nil {
-			_, err = s.cfg.Store.Finish(a.ID, a.Name, a.Version)
+			// the version it really holds (a partial bundle may hold another than the gateway's)
+			actual = a.Version
+			if a.Partial || a.Manager == "" || a.Manager == MgrPixi {
+				if v := installedVersion(dest, a.Name); v != "" {
+					actual = v
+				}
+			}
+			_, err = s.cfg.Store.Finish(a.ID, a.Name, actual)
 		}
 		if err != nil {
 			os.RemoveAll(dest)
 			msg := tail(err.Error()+" "+logb.String(), 300)
-			st.Failed[a.ID] = msg
+			perm := IsPermanent(err)
 			s.retryMu.Lock()
 			fails := s.retry[a.ID].fails + 1
-			wait := Backoff[len(Backoff)-1]
-			if fails <= len(Backoff) {
-				wait = Backoff[fails-1]
+			e := retryEntry{fails: fails, err: msg}
+			switch {
+			case perm:
+				// not available for this CPU type (or this archive): trying again cannot help, an admin's Reinstall tries once more
+				e.gaveUp, e.err = true, "Not available on this server: "+msg
+			case fails > len(Backoff):
+				e.gaveUp, e.err = true, fmt.Sprintf("Gave up after %d tries: %s", fails, msg)
+			default:
+				e.next = s.cfg.Now().Add(Backoff[fails-1])
 			}
-			next := s.cfg.Now().Add(wait)
-			s.retry[a.ID] = retryEntry{fails: fails, next: next, err: msg}
+			s.retry[a.ID] = e
 			s.retryMu.Unlock()
-			if st.Retry == nil {
-				st.Retry = map[string]int64{}
+			st.Failed[a.ID] = e.err
+			if e.gaveUp {
+				if st.GaveUp == nil {
+					st.GaveUp = map[string]bool{}
+				}
+				st.GaveUp[a.ID] = true
+			} else {
+				if st.Retry == nil {
+					st.Retry = map[string]int64{}
+				}
+				st.Retry[a.ID] = e.next.Unix()
 			}
-			st.Retry[a.ID] = next.Unix()
-			log.Printf("appstore: replay: %s could not be installed here (try %d): %v; next try in %s", a.ID, fails, err, wait)
+			log.Printf("appstore: replay: %s could not be installed here (try %d, permanent=%v): %v", a.ID, fails, perm, err)
 		} else {
+			if actual != "" && actual != a.Version {
+				if st.Versions == nil {
+					st.Versions = map[string]string{}
+				}
+				st.Versions[a.ID] = actual
+			}
 			s.retryMu.Lock()
 			delete(s.retry, a.ID)
 			s.retryMu.Unlock()

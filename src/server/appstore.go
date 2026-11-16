@@ -557,14 +557,16 @@ func lookupApp(ctx context.Context, name string) (appInfo, error) {
 // ---- the admin's side ----------------------------------------------------------------------------------------------------
 
 type storeNodeRow struct {
-	Node    string             `json:"node"`
-	Have    []string           `json:"have"`
-	Failed  map[string]string  `json:"failed,omitempty"`
-	SizeMB  float64            `json:"sizeMB"`
-	Seen    string             `json:"seen,omitempty"`
-	Sizes   map[string]float64 `json:"sizes,omitempty"`   // MB of each bundle on the node
-	Pending []string           `json:"pending,omitempty"` // bundles an admin asked it to make again, not taken yet
-	Retry   map[string]int64   `json:"retry,omitempty"`   // when (unix seconds) the node tries a failed bundle again
+	Node     string             `json:"node"`
+	Have     []string           `json:"have"`
+	Failed   map[string]string  `json:"failed,omitempty"`
+	SizeMB   float64            `json:"sizeMB"`
+	Seen     string             `json:"seen,omitempty"`
+	Sizes    map[string]float64 `json:"sizes,omitempty"`    // MB of each bundle on the node
+	Pending  []string           `json:"pending,omitempty"`  // bundles an admin asked it to make again, not taken yet
+	Retry    map[string]int64   `json:"retry,omitempty"`    // when (unix seconds) the node tries a failed bundle again
+	GaveUp   map[string]bool    `json:"gaveUp,omitempty"`   // bundles the node does not try again by itself (not available for its CPU type, or tried enough)
+	Versions map[string]string  `json:"versions,omitempty"` // the version a node really installed where it is not the gateway's (its best for its own CPU type)
 }
 
 // handleAdminStore is the Apps page of the dashboard: GET the whole picture, POST one decision.
@@ -580,7 +582,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 			local.Sizes[id] = float64(svc.Store().BundleSize(id)) / (1 << 20)
 		}
 		appStoreMu.Lock()
-		rows := []storeNodeRow{{Node: "gateway", Have: local.Have, Failed: appLocal.Failed, Retry: appLocal.Retry, SizeMB: local.SizeMB, Sizes: local.Sizes}}
+		rows := []storeNodeRow{{Node: "gateway", Have: local.Have, Failed: appLocal.Failed, Retry: appLocal.Retry, GaveUp: appLocal.GaveUp, Versions: appLocal.Versions, SizeMB: local.SizeMB, Sizes: local.Sizes}}
 		ids := make([]string, 0, len(appNodes))
 		for id := range appNodes {
 			ids = append(ids, id)
@@ -592,7 +594,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 			if have == nil {
 				have = []string{} // a worker that has only reported a fetch has not told what it has: an empty list, not null
 			}
-			rows = append(rows, storeNodeRow{Node: id, Have: have, Failed: n.Failed, Retry: n.Retry, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339), Sizes: n.Sizes,
+			rows = append(rows, storeNodeRow{Node: id, Have: have, Failed: n.Failed, Retry: n.Retry, GaveUp: n.GaveUp, Versions: n.Versions, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339), Sizes: n.Sizes,
 				Pending: append([]string(nil), appCommands[id]...)})
 		}
 		appStoreMu.Unlock()
@@ -606,7 +608,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 		s := GetSiteSettings()
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"enabled": !s.StoreOff, "installer": svc.Installer().Name(), "dir": svc.Store().Dir,
-			"apps": svc.Apps(), "defaults": svc.Defaults(), "requests": svc.Requests(), "reports": svc.Reports(), "apt": svc.Apt(), "users": users, "nodes": rows,
+			"apps": svc.AppsWithWaiting(), "defaults": svc.Defaults(), "requests": svc.Requests(), "reports": svc.Reports(), "apt": svc.Apt(), "users": users, "nodes": rows,
 			"safeList": storeSafeList(), "limitMB": storeLimitMB(), "limitSet": s.StoreLimitMB, "safeSet": len(s.StoreSafeList) > 0,
 			"sizeMB": local.SizeMB, "channel": "conda-forge", "python": storePython(), "now": time.Now().Unix(),
 		})

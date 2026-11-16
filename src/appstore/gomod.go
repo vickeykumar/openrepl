@@ -221,7 +221,11 @@ func (g GoMod) check(ctx context.Context, dest string, e Entry, version string) 
 		return fmt.Errorf("go get from the mirror: %s", tail(strings.TrimSpace(string(out)), 300))
 	}
 	if out, err := run(ctx, tmp, env, goBin, "build", "-o", filepath.Join(tmp, "t"), "."); err != nil {
-		return fmt.Errorf("a program that imports %s does not build: %s", imp, tail(strings.TrimSpace(string(out)), 400))
+		why := strings.TrimSpace(string(out))
+		if why == "" {
+			why = err.Error() // nothing was printed: a program that was killed (memory, time) says so here
+		}
+		return fmt.Errorf("a program that imports %s does not build: %s", imp, tail(why, 400))
 	}
 	return nil
 }

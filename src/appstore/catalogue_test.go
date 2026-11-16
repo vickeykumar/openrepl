@@ -799,3 +799,37 @@ func TestTheLockOfAnAptBundleTravels(t *testing.T) {
 		t.Fatal("an apt lock must not be written as a pixi lock")
 	}
 }
+
+// An apt bundle that does not have the program the entry names fails its check (the package installs it under another name); the entry's link
+// makes it right, and the program is found in usr/bin, where apt puts it.
+func TestAnAptToolMustHaveTheProgramTheEntryNames(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "bat-0.19")
+	os.MkdirAll(filepath.Join(dest, "usr", "bin"), 0755)
+	os.WriteFile(filepath.Join(dest, aptLockFile), []byte(`[{"name":"bat","version":"0.19"}]`), 0644)
+	os.WriteFile(filepath.Join(dest, "usr", "bin", "batcat"), []byte("#!/bin/sh\necho bat 0.19\n"), 0755)
+	err := verifyToolAs(context.Background(), dest, "bat", "bat", "0.19")
+	if err == nil || !strings.Contains(err.Error(), "is not in the bundle") {
+		t.Fatalf("a missing program passed: %v", err)
+	}
+	makeLink(dest, "/usr/bin/bat", "/usr/bin/batcat")
+	if err := verifyToolAs(context.Background(), dest, "bat", "bat", "0.19"); err != nil {
+		t.Fatalf("with the link: %v", err)
+	}
+	// a pixi bundle with no such program is left alone (as before)
+	pix := t.TempDir()
+	if err := verifyToolAs(context.Background(), pix, "nothing", "nothing", "1"); err != nil {
+		t.Fatalf("a pixi bundle: %v", err)
+	}
+	// the links of an option are checked: apt only, paths inside the bundle
+	e := Entry{ID: "zz", Name: "zz", Summary: "x", Kind: CKTool, Level: "optional", Manager: MgrApt, Install: "anyone", Repls: []string{"bash"}}
+	e.Options = []Option{{Manager: MgrApt, Links: map[string]string{"usr/bin/bat": "usr/bin/batcat"}}}
+	if err := ValidateOptions(e); err != nil {
+		t.Fatalf("a good link: %v", err)
+	}
+	for _, bad := range []map[string]string{{"../x": "usr/bin/y"}, {"usr/bin/x": "/etc/passwd"}, {"": "usr/bin/y"}} {
+		e.Options = []Option{{Manager: MgrApt, Links: bad}}
+		if ValidateOptions(e) == nil {
+			t.Errorf("link %v accepted", bad)
+		}
+	}
+}

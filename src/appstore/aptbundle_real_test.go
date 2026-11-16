@@ -65,3 +65,52 @@ func firstLine(s string) string {
 	}
 	return s
 }
+
+// Every tool of the catalogue that apt makes is installed, trimmed and run by the name a user types (OPENREPL_APT_ALL=1, in the image, with the
+// internet): the programs Ubuntu renames (batcat, fdfind) have to be linked by their entries.
+func TestAptToolsRunByTheirNames(t *testing.T) {
+	if os.Getenv("OPENREPL_APT_ALL") == "" {
+		t.Skip("set OPENREPL_APT_ALL=1 to install every apt tool of the catalogue")
+	}
+	entries, _ := DefaultCatalogue()
+	byName := map[string]Entry{}
+	for _, e := range entries {
+		byName[e.PackageName()] = e
+	}
+	store := t.TempDir()
+	a := AptBundle{Dir: store, Lookup: func(kind, app string) (Entry, bool) { e, ok := byName[app]; return e, ok }}
+	var bad []string
+	only := os.Getenv("OPENREPL_APT_ONLY")
+	for _, e := range entries {
+		if e.Manager != MgrApt || e.Kind != CKTool || (only != "" && !strings.Contains(","+only+",", ","+e.ID+",")) {
+			continue
+		}
+		ctx := WithManager(context.Background(), MgrApt)
+		res, err := a.Resolve(ctx, e.PackageName(), "", KindTool)
+		if err != nil {
+			if strings.Contains(err.Error(), "already") {
+				t.Logf("%s: %v", e.ID, err)
+				continue
+			}
+			bad = append(bad, e.ID+": resolve: "+err.Error())
+			continue
+		}
+		dest := filepath.Join(store, "apps", BundleID(e.PackageName(), res.Version))
+		var log workLog
+		if err := a.Install(ctx, e.PackageName(), res.Version, KindTool, dest, &log); err != nil {
+			bad = append(bad, e.ID+": install: "+err.Error())
+			continue
+		}
+		o, _ := e.OptionOf(MgrApt)
+		TrimBundle(dest, TrimOptions{Keep: o.Keep})
+		if err := verifyToolAs(ctx, dest, e.CheckArg, e.PackageName(), res.Version); err != nil {
+			bad = append(bad, e.ID+": "+err.Error())
+			continue
+		}
+		t.Logf("%s: %s runs", e.ID, e.CheckArg)
+		os.RemoveAll(dest)
+	}
+	if len(bad) > 0 {
+		t.Errorf("tools that do not run by the name a user types:\n  %s", strings.Join(bad, "\n  "))
+	}
+}

@@ -1930,11 +1930,11 @@
     "cpp"
    ],
    "level": "optional",
-   "manager": "apt",
+   "manager": "pixi",
    "package": "clang-tools",
    "install": "approval",
    "category": "Analysis",
-   "instMB": 266,
+   "instMB": 465,
    "docs": "https://clang.llvm.org/extra/clang-tidy/",
    "licence": "Apache-2.0 WITH LLVM-exception",
    "check": "version-flag",
@@ -1951,32 +1951,13 @@
       "linux-64": 466.7,
       "linux-aarch64": 426.7
      }
-    },
-    {
-     "manager": "apt",
-     "package": "clang-tools",
-     "version": "14.0-55-exp2",
-     "size": {
-      "linux-64": 265.4,
-      "linux-aarch64": 234.1
-     },
-     "before": {
-      "linux-64": 311.8,
-      "linux-aarch64": 268.9
-     }
     }
    ],
    "minimal": {
-    "manager": "apt",
+    "manager": "pixi",
     "size": {
-     "linux-64": 265.4,
-     "linux-aarch64": 234.1
-    },
-    "others": {
-     "pixi": {
-      "linux-64": 464.8,
-      "linux-aarch64": 424.9
-     }
+     "linux-64": 464.8,
+     "linux-aarch64": 424.9
     },
     "at": "2026-11-16"
    }
@@ -2015,6 +1996,9 @@
     {
      "manager": "apt",
      "package": "valgrind",
+     "env": {
+      "VALGRIND_LIB": "{bundle}/usr/libexec/valgrind"
+     },
      "version": "3.18.1-1ubuntu2",
      "size": {
       "linux-64": 77.8,
@@ -2848,6 +2832,9 @@
     {
      "manager": "apt",
      "package": "fd-find",
+     "links": {
+      "usr/bin/fd": "usr/bin/fdfind"
+     },
      "version": "8.3.1-1ubuntu0.1",
      "size": {
       "linux-64": 2.4,
@@ -2966,6 +2953,9 @@
     {
      "manager": "apt",
      "package": "bat",
+     "links": {
+      "usr/bin/bat": "usr/bin/batcat"
+     },
      "version": "0.19.0-1ubuntu0.1",
      "size": {
       "linux-64": 6.3,
@@ -3988,7 +3978,7 @@
    "docs": "https://github.com/go-delve/delve/tree/master/Documentation",
    "licence": "MIT",
    "check": "version-flag",
-   "checkArg": "delve",
+   "checkArg": "dlv",
    "labels": [
     "binaries are 2 to 15 MB each"
    ],
