@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -831,5 +832,29 @@ func TestAnAptToolMustHaveTheProgramTheEntryNames(t *testing.T) {
 		if ValidateOptions(e) == nil {
 			t.Errorf("link %v accepted", bad)
 		}
+	}
+}
+
+// versionSeen records the version each install is asked for.
+type versionSeen struct {
+	Fake
+	got *[]string
+}
+
+func (v versionSeen) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
+	*v.got = append(*v.got, version)
+	return v.Fake.Install(ctx, name, version, kind, dest, log)
+}
+
+// A worker that installs a partial bundle does not ask for the gateway's version (it may not exist for its CPU type): it asks for the best one.
+func TestAWorkerInstallsAPartialBundleUnpinned(t *testing.T) {
+	var got []string
+	svc, st := newService(t, Multi{Conda: versionSeen{Fake: Fake{Version: "1.14.5"}, got: &got}, Plugin: PluginInstaller{}})
+	app := App{ID: "zzpart-1.16.5", Name: "zzpart", Version: "1.16.5", Kind: KindLib, Partial: true, State: StateInstalled}
+	if res := svc.Apply(context.Background(), Snapshot{Apps: []App{app}}); len(res.Failed) != 0 || !st.HasBundle(app.ID) {
+		t.Fatalf("the worker did not install it: %+v", res.Failed)
+	}
+	if len(got) != 1 || got[0] != "" {
+		t.Fatalf("the worker asked for %q, not for the best version", got)
 	}
 }

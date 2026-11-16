@@ -22,7 +22,7 @@ type GoMod struct {
 
 // goVer is a version as Go writes it (v1.2.3); the store keeps it without the v (a bundle's version starts with a digit).
 func goVer(v string) string {
-	if v != "" && !strings.HasPrefix(v, "v") {
+	if v != "" && !strings.HasPrefix(v, "v") && !strings.HasPrefix(v, "<") {
 		return "v" + v
 	}
 	return v
@@ -104,10 +104,17 @@ func (g GoMod) candidates(ctx context.Context, tmp, mod string) ([]string, error
 // pick finds the newest version that downloads and builds with this Go (or the pinned one), leaving what it fetched in cache.
 func (g GoMod) pick(ctx context.Context, tmp, cache, mod, pin string) (string, error) {
 	vs := []string{pin}
+	bound, bounded := upperBound(strings.TrimPrefix(pin, "v"))
+	if bounded {
+		pin = ""
+	}
 	if pin == "" {
 		var err error
 		if vs, err = g.candidates(ctx, tmp, mod); err != nil {
 			return "", err
+		}
+		if bounded {
+			vs = olderThan(vs, bound)
 		}
 	}
 	var last error

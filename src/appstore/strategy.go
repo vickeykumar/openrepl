@@ -174,3 +174,47 @@ func solveTimedOut(err error) bool {
 	m := strings.ToLower(err.Error())
 	return errors.Is(err, context.DeadlineExceeded) || strings.Contains(m, "deadline exceeded") || strings.Contains(m, "timed out") || strings.Contains(m, "signal: killed")
 }
+
+// The version ladder (LLD 18, section 12): when the newest version of an app installs but does not work (it fails its check, or its download fails),
+// the install tries the newest version OLDER than the one that failed, a few times, so that the best version that works is what the user gets, with
+// no one having to read an error. A version is asked for as "<1.2.3" (the newest below it): every manager answers that from its own list.
+
+// MaxLadder is how many older versions an install tries after the first (a variable for tests).
+var MaxLadder = 5
+
+// upperBound reads "<1.2.3": the version below which the newest is wanted.
+func upperBound(want string) (string, bool) {
+	if strings.HasPrefix(want, "<") && ValidVersion(want[1:]) {
+		return want[1:], true
+	}
+	return "", false
+}
+
+// validWant says whether a wanted version is a version or an upper bound.
+func validWant(want string) bool {
+	if want == "" || ValidVersion(want) {
+		return true
+	}
+	_, ok := upperBound(want)
+	return ok
+}
+
+// olderThan keeps, of the versions (newest first), the ones below bound; one that cannot be read as a number is kept out.
+func olderThan(vs []string, bound string) []string {
+	b, ok := parseVersion(bound)
+	if !ok {
+		return vs
+	}
+	var out []string
+	for _, v := range vs {
+		if x, ok := parseVersion(v); ok && x.cmp(b) < 0 {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// ladderOK says whether an install of this manager and kind may be tried again with an older version (apt has one version in an archive; a plugin one).
+func ladderOK(manager, kind string) bool {
+	return manager != MgrApt && cleanKind(kind) != KindPlugin
+}

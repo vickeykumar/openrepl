@@ -703,58 +703,74 @@ func (s *Service) runInstall(a App) {
 	for i, mgr := range order {
 		a.Manager = mgr
 		mctx := WithManager(ctx, mgr)
-		res, err := s.cfg.Installer.Resolve(mctx, a.Name, a.Want, a.Kind)
-		partial := false
-		if err != nil && (mgr == "" || mgr == MgrPixi) && condaKind(a.Kind) && (IsPermanent(err) || solveTimedOut(err)) {
-			// it cannot be solved for every CPU type (a build that exists for one only): the best version for this CPU type is installed, and every other
-			// node does the same for its own
-			first := err
-			if r2, e2 := s.cfg.Installer.Resolve(WithSingleCPU(mctx), a.Name, a.Want, a.Kind); e2 == nil {
-				res, err, partial = r2, nil, true
-				failures = append(failures, mgr+": not solved for every CPU type ("+tail(first.Error(), 120)+"): installed the best version for this CPU type")
+		want := a.Want
+		var lastErr error
+		var lastStage, lastLog string
+		done := false
+		// the version ladder: the newest version is tried; when it does not install or does not work, the newest one below it, up to MaxLadder times
+		for steps := 0; ; steps++ {
+			res, err := s.cfg.Installer.Resolve(mctx, a.Name, want, a.Kind)
+			partial := false
+			if err != nil && (mgr == "" || mgr == MgrPixi) && condaKind(a.Kind) && (IsPermanent(err) || solveTimedOut(err)) {
+				// it cannot be solved for every CPU type (a build that exists for one only): the best version for this CPU type is installed, and every
+				// other node does the same for its own
+				firstErr := err
+				if r2, e2 := s.cfg.Installer.Resolve(WithSingleCPU(mctx), a.Name, want, a.Kind); e2 == nil {
+					res, err, partial = r2, nil, true
+					failures = append(failures, mgr+": not solved for every CPU type ("+tail(firstErr.Error(), 120)+"): installed the best version for this CPU type")
+				}
 			}
-		}
-		if err != nil {
-			failures = append(failures, mgr+": "+tail(err.Error(), 200))
-			if i == len(order)-1 {
-				s.fail(a, "Resolving the dependencies", cause(err), err.Error())
-				return
+			if err != nil {
+				failures = append(failures, mgr+": "+tail(err.Error(), 200))
+				if steps == 0 {
+					lastErr, lastStage, lastLog = cause(err), "Resolving the dependencies", err.Error()
+				} // no older version to try: the error of the version that failed stays
+				break
 			}
-			continue
-		}
-		a.Version, a.ID, a.Packages, a.Download, a.Partial = res.Version, BundleID(a.Name, res.Version), res.Packages, res.DownloadMB, partial
-		dest = s.cfg.Store.BundlePath(a.ID)
-		if dest == "" {
-			s.fail(a, "Resolving the dependencies", fmt.Errorf("%s is not a usable version", res.Version), "")
-			return
-		}
-		detail = fmt.Sprintf("%d packages", res.Packages)
-		if res.DownloadMB > 0 {
-			detail += fmt.Sprintf(", %.0f MB", res.DownloadMB)
-		}
-		os.RemoveAll(dest) // a half-made bundle of an earlier try
-		s.step(a.Name, 2, detail)
-		logb.Reset()
-		ictx := ctx
-		if partial {
-			ictx = WithSingleCPU(ctx)
-		}
-		var full bool
-		trimRep, full, err = s.installBundle(ictx, a, mgr, dest, &logb)
-		if err == nil {
-			a.Full, a.Trimmed = full, trimRep.Files
+			a.Version, a.ID, a.Packages, a.Download, a.Partial = res.Version, BundleID(a.Name, res.Version), res.Packages, res.DownloadMB, partial
+			dest = s.cfg.Store.BundlePath(a.ID)
+			if dest == "" {
+				lastErr, lastStage, lastLog = fmt.Errorf("%s is not a usable version", res.Version), "Resolving the dependencies", ""
+				break
+			}
+			detail = fmt.Sprintf("%d packages", res.Packages)
+			if res.DownloadMB > 0 {
+				detail += fmt.Sprintf(", %.0f MB", res.DownloadMB)
+			}
+			os.RemoveAll(dest) // a half-made bundle of an earlier try
+			s.step(a.Name, 2, detail)
+			logb.Reset()
+			ictx := ctx
+			if partial {
+				ictx = WithSingleCPU(ctx)
+			}
+			var full bool
+			trimRep, full, err = s.installBundle(ictx, a, mgr, dest, &logb)
+			if err == nil {
+				a.Full, a.Trimmed = full, trimRep.Files
+				done = true
+				break
+			}
+			err = cause(err)
+			os.RemoveAll(dest)
+			failures = append(failures, mgr+" "+res.Version+": "+tail(err.Error(), 200))
+			lastErr, lastStage, lastLog = err, "Downloading and linking", logb.String()+"\n"+strings.Join(failures, "\n")
+			if ladderOK(mgr, a.Kind) && steps < MaxLadder && ctx.Err() == nil && !errors.Is(err, errNoProgress) {
+				want = "<" + res.Version // the newest version below the one that failed
+				continue
+			}
 			break
 		}
-		err = cause(err)
-		os.RemoveAll(dest)
-		failures = append(failures, mgr+": "+tail(err.Error(), 200))
+		if done {
+			break
+		}
 		if i == len(order)-1 {
-			s.fail(a, "Downloading and linking", err, logb.String()+"\n"+strings.Join(failures, "\n"))
+			s.fail(a, lastStage, lastErr, lastLog+"\n"+strings.Join(failures, "\n"))
 			return
 		}
 	}
 	if len(failures) > 0 {
-		s.NoteCheckFailure(a.Name, hostName(), "the first manager failed, "+a.Manager+" made it: "+strings.Join(failures, "; "))
+		s.NoteCheckFailure(a.Name, hostName(), "installed "+a.Version+" with "+a.Manager+" after: "+strings.Join(failures, "; "))
 	}
 	s.step(a.Name, 3, detail)
 	m, err := s.cfg.Store.Finish(a.ID, a.Name, a.Version)
@@ -1550,15 +1566,45 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 			}
 		}
 		runCtx := ictx
+		ia := a // what this node installs (the ladder may lower its version)
 		if a.Partial {
 			runCtx = WithSingleCPU(ictx)
 		}
 		if err == nil {
 			// the node makes the bundle with the manager the gateway used (an apt bundle is not solved by pixi), trims it the same way and proves
 			// that what it installed works before it says it has it
-			_, _, err = s.installBundle(runCtx, a, a.Manager, dest, &logb)
-			if c := context.Cause(ictx); err != nil && errors.Is(c, errNoProgress) {
-				err = c
+			if a.Partial {
+				ia.Version = "" // not the gateway's version (it may not exist for this CPU type): the best one that does
+			}
+			for steps := 0; ; steps++ {
+				_, _, err = s.installBundle(runCtx, ia, a.Manager, dest, &logb)
+				if c := context.Cause(ictx); err != nil && errors.Is(c, errNoProgress) {
+					err = c
+				}
+				if err == nil || steps >= MaxLadder || !ladderOK(a.Manager, a.Kind) || ictx.Err() != nil || errors.Is(err, errNoProgress) {
+					break
+				}
+				// the version does not work on this node (it does not install, or its check fails here): the newest one below it, for this node's CPU
+				// type, as the gateway does; the bundle keeps the gateway's id and holds the version this node got
+				failedVer := ia.Version
+				if failedVer == "" {
+					failedVer = installedVersion(dest, a.Name)
+					if failedVer == "" {
+						failedVer = a.Version
+					}
+				}
+				rctx := WithManager(ictx, a.Manager)
+				if (a.Manager == "" || a.Manager == MgrPixi) && condaKind(a.Kind) {
+					rctx = WithSingleCPU(rctx)
+					runCtx = WithSingleCPU(ictx)
+				}
+				res, rerr := s.cfg.Installer.Resolve(rctx, a.Name, "<"+failedVer, a.Kind)
+				if rerr != nil {
+					break // nothing older: the error of the version that failed stays
+				}
+				fmt.Fprintf(&logb, "\n%s %s does not work on this node (%s): trying %s\n", a.Name, failedVer, tail(err.Error(), 120), res.Version)
+				os.RemoveAll(dest) // the lock of the version that failed goes with it
+				ia.Version, ia.Partial = res.Version, true
 			}
 		}
 		stopWatch()
@@ -1568,6 +1614,9 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		if err == nil {
 			// the version it really holds (a partial bundle may hold another than the gateway's)
 			actual = a.Version
+			if ia.Version != "" && ia.Version != a.Version {
+				actual = ia.Version // an older version, found by the ladder
+			}
 			if a.Partial || a.Manager == "" || a.Manager == MgrPixi {
 				if v := installedVersion(dest, a.Name); v != "" {
 					actual = v

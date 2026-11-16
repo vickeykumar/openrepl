@@ -97,7 +97,7 @@ var tomlName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 // of the server, so that what the lock holds can be imported by it. A tool or a language brings the Python it needs, if any, and does not
 // drag one in.
 func (p Pixi) Manifest(name, version, kind string) (string, error) {
-	if !ValidName(name) || !tomlName.MatchString(name) || (version != "" && !ValidVersion(version)) {
+	if !ValidName(name) || !tomlName.MatchString(name) || !validWant(version) {
 		return "", fmt.Errorf("%q %q is not a package", name, version)
 	}
 	var b strings.Builder
@@ -118,7 +118,9 @@ func (p Pixi) Manifest(name, version, kind string) (string, error) {
 		name = strings.TrimPrefix(name, "py27-")
 	}
 	spec := "*"
-	if version != "" {
+	if b, ok := upperBound(version); ok {
+		spec = "<" + b
+	} else if version != "" {
 		spec = "==" + version
 	}
 	if build := p.build(name); build != "" && kind == KindTool && buildString.MatchString(build) {

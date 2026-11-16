@@ -1493,3 +1493,135 @@ func TestAnAppThatWaitsForItsTurnIsShownAsWaiting(t *testing.T) {
 	}
 	svc.Wait()
 }
+
+// ladderFake has the versions 3.0.0, 2.0.0 and 1.0.0 of every app, answers a bound ("<2.0.0": the newest below it), and cannot install the versions
+// that are in bad.
+type ladderFake struct {
+	Fake
+	bad   map[string]bool
+	asked *[]string
+}
+
+func (l ladderFake) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	if kind == KindPlugin {
+		return l.Fake.Resolve(ctx, name, version, kind)
+	}
+	all := []string{"3.0.0", "2.0.0", "1.0.0"}
+	if b, ok := upperBound(version); ok {
+		all = olderThan(all, b)
+	} else if version != "" {
+		all = []string{version}
+	}
+	if len(all) == 0 {
+		return Resolved{}, errors.New("no version below that")
+	}
+	return Resolved{Version: all[0], Packages: 1, DownloadMB: 1, DiskMB: 2}, nil
+}
+
+func (l ladderFake) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
+	if l.asked != nil {
+		*l.asked = append(*l.asked, version)
+	}
+	if l.bad[version] {
+		return errors.New(name + " did not start: cannot run " + version)
+	}
+	return l.Fake.Install(ctx, name, version, kind, dest, log)
+}
+
+// When the newest version does not install, the newest one below it is tried, so that the user gets the best version that works.
+func TestTheInstallLaddersDownToAVersionThatWorks(t *testing.T) {
+	var asked []string
+	svc, st := newService(t, ladderFake{bad: map[string]bool{"3.0.0": true, "2.0.0": true}, asked: &asked}, "flask")
+	svc.Install("ann", "flask", KindLib, false)
+	svc.Wait()
+	var app App
+	for _, a := range svc.Apps() {
+		if a.Name == "flask" {
+			app = a
+		}
+	}
+	if app.State != StateInstalled || app.Version != "1.0.0" || !st.HasBundle("flask-1.0.0") {
+		t.Fatalf("the best version that works was not installed: %+v (asked %v)", app, asked)
+	}
+	if strings.Join(asked, ",") != "3.0.0,2.0.0,1.0.0" {
+		t.Errorf("versions tried: %v", asked)
+	}
+}
+
+// The ladder has a limit, and an app with no working version fails with the error of the newest one.
+func TestTheLadderHasALimitAndFailsWithTheError(t *testing.T) {
+	old := MaxLadder
+	MaxLadder = 1
+	defer func() { MaxLadder = old }()
+	var asked []string
+	svc, _ := newService(t, ladderFake{bad: map[string]bool{"3.0.0": true, "2.0.0": true, "1.0.0": true}, asked: &asked}, "flask")
+	svc.Install("ann", "flask", KindLib, false)
+	svc.Wait()
+	if len(asked) != 2 {
+		t.Fatalf("one try and one step down, not %v", asked)
+	}
+	for _, a := range svc.Apps() {
+		if a.Name == "flask" && (a.State != StateFailed || !strings.Contains(a.Err, "did not start")) {
+			t.Fatalf("it should be failed: %+v", a)
+		}
+	}
+}
+
+// The bound is understood by the helpers every manager uses.
+func TestTheOlderThanBound(t *testing.T) {
+	if b, ok := upperBound("<1.2.3"); !ok || b != "1.2.3" {
+		t.Fatalf("bound: %q %v", b, ok)
+	}
+	if _, ok := upperBound("1.2.3"); ok {
+		t.Error("a version is not a bound")
+	}
+	got := olderThan([]string{"v1.10.0", "v1.9.2", "v1.9.0", "v0.5.0"}, "1.9.2")
+	if strings.Join(got, ",") != "v1.9.0,v0.5.0" {
+		t.Errorf("older than 1.9.2: %v", got)
+	}
+	if !validWant("<2.0") || !validWant("1.2") || !validWant("") || validWant("<; rm") {
+		t.Error("validWant")
+	}
+}
+
+// The manifest of pixi and the project of cargo carry the bound.
+func TestTheBoundIsPassedToPixiAndCargo(t *testing.T) {
+	m, err := Pixi{}.Manifest("numpy", "<2.0", KindTool)
+	if err != nil || !strings.Contains(m, `"numpy" = "<2.0"`) {
+		t.Fatalf("pixi: %v %q", err, m)
+	}
+	dir := t.TempDir()
+	if err := project(dir, "serde", "<1.0.200"); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, "Cargo.toml"))
+	if !strings.Contains(string(raw), `serde = "<1.0.200"`) {
+		t.Fatalf("cargo: %s", raw)
+	}
+}
+
+// A worker walks down the ladder by itself: the gateway's version does not work on this node, so it installs the newest one below it, in the bundle
+// of the gateway's id, and reports the version it holds.
+func TestAWorkerLaddersDownToAVersionThatWorksOnIt(t *testing.T) {
+	gw, _ := newService(t, ladderFake{}, "flask")
+	gw.Install("ann", "flask", KindLib, false)
+	gw.Wait()
+	snap := gw.Snapshot()
+	var asked []string
+	w, wst := newService(t, ladderFake{bad: map[string]bool{"3.0.0": true}, asked: &asked})
+	st := w.Apply(context.Background(), snap)
+	if len(st.Failed) != 0 || !wst.HasBundle("flask-3.0.0") {
+		t.Fatalf("the worker did not get a version that works: %+v (asked %v)", st.Failed, asked)
+	}
+	if st.Versions["flask-3.0.0"] != "2.0.0" {
+		t.Errorf("it should report the version it holds: %v", st.Versions)
+	}
+	if strings.Join(asked, ",") != "3.0.0,2.0.0" {
+		t.Errorf("versions tried: %v", asked)
+	}
+	// nothing older that works: it fails with the error of the version that failed
+	w2, _ := newService(t, ladderFake{bad: map[string]bool{"3.0.0": true, "2.0.0": true, "1.0.0": true}})
+	if st := w2.Apply(context.Background(), snap); st.Failed["flask-3.0.0"] == "" {
+		t.Fatalf("it should fail: %+v", st)
+	}
+}
