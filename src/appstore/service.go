@@ -1444,11 +1444,9 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 			}
 		}
 		if err == nil {
-			err = s.cfg.Installer.Install(ctx, a.Name, a.Version, a.Kind, dest, &logb)
-		}
-		if err == nil {
-			// the node proves that what it installed works before it says it has it
-			err = s.checkApp(ctx, dest, a)
+			// the node makes the bundle with the manager the gateway used (an apt bundle is not solved by pixi), trims it the same way and proves
+			// that what it installed works before it says it has it
+			_, _, err = s.installBundle(ctx, a, a.Manager, dest, &logb)
 		}
 		if err == nil {
 			_, err = s.cfg.Store.Finish(a.ID, a.Name, a.Version)
@@ -1790,6 +1788,7 @@ func (s *Service) Uninstall(who, home, name string) error {
 type Lock struct {
 	Manifest string `json:"manifest"`
 	Lock     string `json:"lock"`
+	Manager  string `json:"manager,omitempty"` // "apt": the files are apt.json and apt.lock (the packages and versions of a rootless apt bundle)
 }
 
 // lockFiles are the two files of a bundle that make its Lock.
@@ -1800,6 +1799,14 @@ const (
 
 // ReadLock reads the lock files of a bundle folder; false when it has none (an app made before the move to pixi, a Node library, a plugin).
 func ReadLock(bundle string) (Lock, bool) {
+	if IsAptBundle(bundle) {
+		m, err1 := os.ReadFile(filepath.Join(bundle, aptManifestFile))
+		l, err2 := os.ReadFile(filepath.Join(bundle, aptLockFile))
+		if err1 != nil || err2 != nil || len(l) == 0 || len(m) > 256<<10 || len(l) > 4<<20 {
+			return Lock{}, false
+		}
+		return Lock{Manifest: string(m), Lock: string(l), Manager: MgrApt}, true
+	}
 	m, err1 := os.ReadFile(filepath.Join(bundle, manifestFile))
 	l, err2 := os.ReadFile(filepath.Join(bundle, lockFile))
 	if err1 != nil || err2 != nil || len(l) == 0 || len(m) > 256<<10 || len(l) > 4<<20 {
@@ -1812,6 +1819,12 @@ func ReadLock(bundle string) (Lock, bool) {
 func WriteLock(bundle string, l Lock) error {
 	if err := os.MkdirAll(bundle, 0755); err != nil {
 		return err
+	}
+	if l.Manager == MgrApt {
+		if err := os.WriteFile(filepath.Join(bundle, aptManifestFile), []byte(l.Manifest), 0644); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(bundle, aptLockFile), []byte(l.Lock), 0644)
 	}
 	if err := os.WriteFile(filepath.Join(bundle, manifestFile), []byte(l.Manifest), 0644); err != nil {
 		return err

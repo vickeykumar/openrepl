@@ -144,6 +144,7 @@ type AptPkg struct {
 	Version string `json:"version"`
 	Section string `json:"section,omitempty"`
 	SHA256  string `json:"sha256,omitempty"`
+	Arch    string `json:"arch,omitempty"`   // the CPU type the checksum is of: another CPU type has its own file, so it is not checked there
 	SizeKB  int    `json:"sizeKB,omitempty"` // installed size
 }
 

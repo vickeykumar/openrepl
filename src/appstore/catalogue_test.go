@@ -760,3 +760,42 @@ func TestInstallOfAnUnmeasuredToolChoosesByDryRun(t *testing.T) {
 		t.Fatalf("the choice was not kept: %+v", kept)
 	}
 }
+
+// A worker makes a bundle with the manager the gateway used: pixi cannot solve an apt version (the Raspberry Pi workers failed with "No candidates were
+// found for git ==2.34.1-1ubuntu1.18" when they asked pixi for it).
+func TestAWorkerInstallsAnAptBundleWithApt(t *testing.T) {
+	svc, st := newService(t, Multi{Conda: brokenPixi{}, Apt: Fake{Version: "2.34.1-1ubuntu1.18"}, Plugin: PluginInstaller{}})
+	app := App{ID: "zzgit-2.34.1-1ubuntu1.18", Name: "zzgit", Version: "2.34.1-1ubuntu1.18", Kind: KindTool, Manager: MgrApt, State: StateInstalled}
+	got := svc.Apply(context.Background(), Snapshot{Apps: []App{app}})
+	if len(got.Failed) != 0 || !st.HasBundle(app.ID) {
+		t.Fatalf("the worker did not make the apt bundle: %+v", got.Failed)
+	}
+	// and an app with no manager (made before the managers) keeps the way it always had
+	old := App{ID: "zzold-1.0.0", Name: "zzold", Version: "1.0.0", Kind: KindTool, State: StateInstalled}
+	svc2, st2 := newService(t, Multi{Conda: Fake{}, Apt: brokenPixi{}, Plugin: PluginInstaller{}})
+	if got := svc2.Apply(context.Background(), Snapshot{Apps: []App{old}}); len(got.Failed) != 0 || !st2.HasBundle(old.ID) {
+		t.Fatalf("an app with no manager: %+v", got.Failed)
+	}
+}
+
+// The lock of an apt bundle travels like the lock of a pixi bundle: the packages and versions, with the checksum kept only for the CPU type it is of.
+func TestTheLockOfAnAptBundleTravels(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "b")
+	os.MkdirAll(dir, 0755)
+	os.WriteFile(filepath.Join(dir, aptLockFile), []byte(`[{"name":"git","version":"1:2.34","sha256":"abc","arch":"amd64"}]`), 0644)
+	os.WriteFile(filepath.Join(dir, aptManifestFile), []byte(`{"package":"git"}`), 0644)
+	l, ok := ReadLock(dir)
+	if !ok || l.Manager != MgrApt || !strings.Contains(l.Lock, "git") {
+		t.Fatalf("the lock was not read: %+v %v", l, ok)
+	}
+	other := filepath.Join(t.TempDir(), "c")
+	if err := WriteLock(other, l); err != nil {
+		t.Fatal(err)
+	}
+	if !IsAptBundle(other) {
+		t.Fatal("the lock files of an apt bundle were not written")
+	}
+	if _, err := os.Stat(filepath.Join(other, lockFile)); err == nil {
+		t.Fatal("an apt lock must not be written as a pixi lock")
+	}
+}

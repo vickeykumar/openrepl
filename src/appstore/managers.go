@@ -83,7 +83,11 @@ func (s *Service) installBundle(ctx context.Context, a App, manager, dest string
 	}
 	// the app does not run after the trim: make it again whole, and tell the admin which entry needs `full`
 	first := err
+	lock, hadLock := ReadLock(dest) // a node that installs from the gateway's lock keeps it for the second try
 	os.RemoveAll(dest)
+	if hadLock {
+		WriteLock(dest, lock)
+	}
 	logb.Reset()
 	if err := s.cfg.Installer.Install(ctx, a.Name, a.Version, a.Kind, dest, logb); err != nil {
 		return TrimReport{}, false, err

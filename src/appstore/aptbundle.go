@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -125,6 +126,7 @@ func (a AptBundle) plan(ctx context.Context, pkg, version string) ([]AptPkg, err
 			return nil, fmt.Errorf("apt-cache show %s: %s", pkgs[i].Name, tail(strings.TrimSpace(string(show)), 200))
 		}
 		pkgs[i].Section, pkgs[i].SHA256, pkgs[i].SizeKB = parseShow(string(show))
+		pkgs[i].Arch = aptArch()
 	}
 	return pkgs, nil
 }
@@ -296,7 +298,7 @@ func (a AptBundle) Install(ctx context.Context, name, version, kind, dest string
 		if len(deb) != 1 {
 			return fmt.Errorf("the file of %s was not downloaded", p.Name)
 		}
-		if p.SHA256 != "" {
+		if p.SHA256 != "" && (p.Arch == "" || p.Arch == aptArch()) {
 			if sum, err := fileSHA256(deb[0]); err != nil || sum != p.SHA256 {
 				return fmt.Errorf("the checksum of %s does not match the archive's", p.Name)
 			}
@@ -417,4 +419,12 @@ func AptDirs(bundle string) (bins, libs, includes, pkgcfg []string) {
 func IsAptBundle(bundle string) bool {
 	_, err := os.Stat(filepath.Join(bundle, aptLockFile))
 	return err == nil
+}
+
+// aptArch is the Debian name of this machine's CPU type.
+func aptArch() string {
+	if runtime.GOARCH == "arm64" {
+		return "arm64"
+	}
+	return runtime.GOARCH
 }
