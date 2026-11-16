@@ -1,0 +1,17 @@
+# What the image build never reads. The build context is everything not listed here, so a change to a file listed here does not change the
+# context of "COPY ." and does not make the build layer (and all that follow) run again.
+.github
+.gitignore
+.gitleaks.toml
+.env
+.env.example
+CLAUDE.local.md
+docs
+e2e
+*.md
+screenshot.gif
+favicon.psd
+**/node_modules
+# NOT listed: .git. The build puts the commit id in the binary (git rev-parse in the Makefile), so it needs it.
+# the local Go toolchains of a developer (several hundred MB); the image downloads its own
+go_1.23
