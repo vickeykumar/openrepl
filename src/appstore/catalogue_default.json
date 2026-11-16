@@ -15,7 +15,7 @@
    "install": "anyone",
    "category": "Data science",
    "ramMB": 26,
-   "instMB": 177,
+   "instMB": 228,
    "docs": "https://numpy.org/doc/stable/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -25,16 +25,20 @@
      "manager": "pixi",
      "version": "2.2.6",
      "size": {
+      "linux-64": 227.4,
       "linux-aarch64": 176.5
      },
      "before": {
+      "linux-64": 227.4,
       "linux-aarch64": 176.5
-     }
+     },
+     "includes": "its own Python (about 70 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 227.4,
      "linux-aarch64": 176.5
     },
     "at": "2026-11-16"
@@ -54,7 +58,7 @@
    "install": "anyone",
    "category": "Data science",
    "ramMB": 64,
-   "instMB": 236,
+   "instMB": 287,
    "docs": "https://pandas.pydata.org/docs/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -64,16 +68,20 @@
      "manager": "pixi",
      "version": "2.3.3",
      "size": {
+      "linux-64": 286.7,
       "linux-aarch64": 235.4
      },
      "before": {
+      "linux-64": 286.7,
       "linux-aarch64": 235.4
-     }
+     },
+     "includes": "its own Python (about 130 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 286.7,
      "linux-aarch64": 235.4
     },
     "at": "2026-11-16"
@@ -93,7 +101,7 @@
    "install": "anyone",
    "category": "Data science",
    "ramMB": 24,
-   "instMB": 249,
+   "instMB": 298,
    "docs": "https://docs.scipy.org/doc/scipy/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -103,16 +111,20 @@
      "manager": "pixi",
      "version": "1.15.2",
      "size": {
+      "linux-64": 297.2,
       "linux-aarch64": 248.6
      },
      "before": {
+      "linux-64": 297.2,
       "linux-aarch64": 248.6
-     }
+     },
+     "includes": "its own Python (about 140 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 297.2,
      "linux-aarch64": 248.6
     },
     "at": "2026-11-16"
@@ -132,7 +144,7 @@
    "install": "anyone",
    "category": "Data science",
    "ramMB": 66,
-   "instMB": 248,
+   "instMB": 295,
    "docs": "https://matplotlib.org/stable/",
    "licence": "PSF-based",
    "check": "python-import",
@@ -145,16 +157,20 @@
      "manager": "pixi",
      "version": "3.10.9",
      "size": {
+      "linux-64": 294.1,
       "linux-aarch64": 247.1
      },
      "before": {
+      "linux-64": 294.1,
       "linux-aarch64": 247.1
-     }
+     },
+     "includes": "its own Python (about 120 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 294.1,
      "linux-aarch64": 247.1
     },
     "at": "2026-11-16"
@@ -174,7 +190,7 @@
    "install": "anyone",
    "category": "Data science",
    "ramMB": 7,
-   "instMB": 137,
+   "instMB": 161,
    "docs": "https://pillow.readthedocs.io/",
    "licence": "HPND",
    "check": "python-import",
@@ -184,16 +200,20 @@
      "manager": "pixi",
      "version": "12.3.0",
      "size": {
+      "linux-64": 160.5,
       "linux-aarch64": 136.7
      },
      "before": {
+      "linux-64": 160.5,
       "linux-aarch64": 136.7
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 160.5,
      "linux-aarch64": 136.7
     },
     "at": "2026-11-16"
@@ -213,7 +233,7 @@
    "install": "anyone",
    "category": "Web",
    "ramMB": 27,
-   "instMB": 121,
+   "instMB": 149,
    "docs": "https://requests.readthedocs.io/",
    "licence": "Apache-2.0",
    "check": "python-import",
@@ -223,16 +243,20 @@
      "manager": "pixi",
      "version": "2.34.2",
      "size": {
+      "linux-64": 148.2,
       "linux-aarch64": 120.9
      },
      "before": {
+      "linux-64": 148.2,
       "linux-aarch64": 120.9
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 148.2,
      "linux-aarch64": 120.9
     },
     "at": "2026-11-16"
@@ -252,7 +276,7 @@
    "install": "anyone",
    "category": "Web",
    "ramMB": 32,
-   "instMB": 97,
+   "instMB": 124,
    "docs": "https://flask.palletsprojects.com/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -262,16 +286,20 @@
      "manager": "pixi",
      "version": "3.1.3",
      "size": {
+      "linux-64": 123.2,
       "linux-aarch64": 96.7
      },
      "before": {
+      "linux-64": 123.2,
       "linux-aarch64": 96.7
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 123.2,
      "linux-aarch64": 96.7
     },
     "at": "2026-11-16"
@@ -291,7 +319,7 @@
    "install": "anyone",
    "category": "Data",
    "ramMB": 35,
-   "instMB": 133,
+   "instMB": 159,
    "docs": "https://docs.sqlalchemy.org/",
    "licence": "MIT",
    "check": "python-import",
@@ -301,16 +329,20 @@
      "manager": "pixi",
      "version": "2.0.52",
      "size": {
+      "linux-64": 158.8,
       "linux-aarch64": 132.3
      },
      "before": {
+      "linux-64": 158.8,
       "linux-aarch64": 132.3
-     }
+     },
+     "includes": "its own Python (about 60 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 158.8,
      "linux-aarch64": 132.3
     },
     "at": "2026-11-16"
@@ -330,7 +362,7 @@
    "install": "anyone",
    "category": "Dev tools",
    "ramMB": 31,
-   "instMB": 101,
+   "instMB": 128,
    "docs": "https://docs.pytest.org/",
    "licence": "MIT",
    "check": "python-import",
@@ -343,16 +375,20 @@
      "manager": "pixi",
      "version": "9.2.0",
      "size": {
+      "linux-64": 127.5,
       "linux-aarch64": 101
      },
      "before": {
+      "linux-64": 127.5,
       "linux-aarch64": 101
-     }
+     },
+     "includes": "its own Python (about 50 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 127.5,
      "linux-aarch64": 101
     },
     "at": "2026-11-16"
@@ -372,7 +408,7 @@
    "install": "anyone",
    "category": "Web",
    "ramMB": 20,
-   "instMB": 95,
+   "instMB": 121,
    "docs": "https://www.crummy.com/software/BeautifulSoup/bs4/doc/",
    "licence": "MIT",
    "check": "python-import",
@@ -382,16 +418,20 @@
      "manager": "pixi",
      "version": "4.15.0",
      "size": {
+      "linux-64": 120.8,
       "linux-aarch64": 94.3
      },
      "before": {
+      "linux-64": 120.8,
       "linux-aarch64": 94.3
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 120.8,
      "linux-aarch64": 94.3
     },
     "at": "2026-11-16"
@@ -411,7 +451,7 @@
    "install": "anyone",
    "category": "Web",
    "ramMB": 7,
-   "instMB": 105,
+   "instMB": 130,
    "docs": "https://lxml.de/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -421,16 +461,20 @@
      "manager": "pixi",
      "version": "6.1.2",
      "size": {
+      "linux-64": 129.9,
       "linux-aarch64": 104.3
      },
      "before": {
+      "linux-64": 129.9,
       "linux-aarch64": 104.3
-     }
+     },
+     "includes": "its own Python (about 50 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 129.9,
      "linux-aarch64": 104.3
     },
     "at": "2026-11-16"
@@ -450,7 +494,7 @@
    "install": "anyone",
    "category": "Data",
    "ramMB": 10,
-   "instMB": 94,
+   "instMB": 121,
    "docs": "https://pyyaml.org/wiki/PyYAMLDocumentation",
    "licence": "MIT",
    "check": "python-import",
@@ -460,16 +504,20 @@
      "manager": "pixi",
      "version": "6.0.3",
      "size": {
+      "linux-64": 120.1,
       "linux-aarch64": 93.6
      },
      "before": {
+      "linux-64": 120.1,
       "linux-aarch64": 93.6
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 120.1,
      "linux-aarch64": 93.6
     },
     "at": "2026-11-16"
@@ -489,7 +537,7 @@
    "install": "anyone",
    "category": "Web",
    "ramMB": 18,
-   "instMB": 94,
+   "instMB": 121,
    "docs": "https://jinja.palletsprojects.com/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -499,16 +547,20 @@
      "manager": "pixi",
      "version": "3.1.6",
      "size": {
+      "linux-64": 120.1,
       "linux-aarch64": 93.6
      },
      "before": {
+      "linux-64": 120.1,
       "linux-aarch64": 93.6
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 120.1,
      "linux-aarch64": 93.6
     },
     "at": "2026-11-16"
@@ -528,7 +580,7 @@
    "install": "anyone",
    "category": "Dev tools",
    "ramMB": 11,
-   "instMB": 94,
+   "instMB": 120,
    "docs": "https://click.palletsprojects.com/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -538,16 +590,20 @@
      "manager": "pixi",
      "version": "8.4.2",
      "size": {
+      "linux-64": 119.8,
       "linux-aarch64": 93.3
      },
      "before": {
+      "linux-64": 119.8,
       "linux-aarch64": 93.3
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 119.8,
      "linux-aarch64": 93.3
     },
     "at": "2026-11-16"
@@ -567,7 +623,7 @@
    "install": "anyone",
    "category": "Dev tools",
    "ramMB": 8,
-   "instMB": 99,
+   "instMB": 126,
    "docs": "https://rich.readthedocs.io/",
    "licence": "MIT",
    "check": "python-import",
@@ -577,16 +633,20 @@
      "manager": "pixi",
      "version": "15.0.0",
      "size": {
+      "linux-64": 125.4,
       "linux-aarch64": 98.9
      },
      "before": {
+      "linux-64": 125.4,
       "linux-aarch64": 98.9
-     }
+     },
+     "includes": "its own Python (about 50 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 125.4,
      "linux-aarch64": 98.9
     },
     "at": "2026-11-16"
@@ -606,7 +666,7 @@
    "install": "anyone",
    "category": "Web",
    "ramMB": 29,
-   "instMB": 98,
+   "instMB": 124,
    "docs": "https://www.python-httpx.org/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -616,16 +676,20 @@
      "manager": "pixi",
      "version": "0.28.1",
      "size": {
+      "linux-64": 124,
       "linux-aarch64": 97.5
      },
      "before": {
+      "linux-64": 124,
       "linux-aarch64": 97.5
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 124,
      "linux-aarch64": 97.5
     },
     "at": "2026-11-16"
@@ -645,7 +709,7 @@
    "install": "anyone",
    "category": "Data science",
    "ramMB": 122,
-   "instMB": 291,
+   "instMB": 340,
    "docs": "https://scikit-learn.org/stable/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -655,16 +719,20 @@
      "manager": "pixi",
      "version": "1.7.2",
      "size": {
+      "linux-64": 339.3,
       "linux-aarch64": 290.9
      },
      "before": {
+      "linux-64": 339.3,
       "linux-aarch64": 290.9
-     }
+     },
+     "includes": "its own Python (about 190 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 339.3,
      "linux-aarch64": 290.9
     },
     "at": "2026-11-16"
@@ -684,7 +752,7 @@
    "install": "anyone",
    "category": "Data science",
    "ramMB": 51,
-   "instMB": 161,
+   "instMB": 185,
    "docs": "https://docs.sympy.org/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -694,16 +762,20 @@
      "manager": "pixi",
      "version": "1.14.0",
      "size": {
+      "linux-64": 184.5,
       "linux-aarch64": 160.3
      },
      "before": {
+      "linux-64": 184.5,
       "linux-aarch64": 160.3
-     }
+     },
+     "includes": "its own Python (about 80 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 184.5,
      "linux-aarch64": 160.3
     },
     "at": "2026-11-16"
@@ -723,7 +795,7 @@
    "install": "anyone",
    "category": "Data science",
    "ramMB": 33,
-   "instMB": 103,
+   "instMB": 129,
    "docs": "https://networkx.org/documentation/stable/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -733,16 +805,20 @@
      "manager": "pixi",
      "version": "3.4.2",
      "size": {
+      "linux-64": 128.7,
       "linux-aarch64": 102.2
      },
      "before": {
+      "linux-64": 128.7,
       "linux-aarch64": 102.2
-     }
+     },
+     "includes": "its own Python (about 50 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 128.7,
      "linux-aarch64": 102.2
     },
     "at": "2026-11-16"
@@ -762,7 +838,7 @@
    "install": "anyone",
    "category": "Dev tools",
    "ramMB": 16,
-   "instMB": 101,
+   "instMB": 128,
    "docs": "https://docs.pydantic.dev/",
    "licence": "MIT",
    "check": "python-import",
@@ -772,16 +848,20 @@
      "manager": "pixi",
      "version": "2.13.5",
      "size": {
+      "linux-64": 127.3,
       "linux-aarch64": 100.3
      },
      "before": {
+      "linux-64": 127.3,
       "linux-aarch64": 100.3
-     }
+     },
+     "includes": "its own Python (about 50 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 127.3,
      "linux-aarch64": 100.3
     },
     "at": "2026-11-16"
@@ -801,7 +881,7 @@
    "install": "anyone",
    "category": "Dev tools",
    "ramMB": 16,
-   "instMB": 94,
+   "instMB": 120,
    "docs": "https://tqdm.github.io/",
    "licence": "MPL-2.0 AND MIT",
    "check": "python-import",
@@ -811,16 +891,20 @@
      "manager": "pixi",
      "version": "4.70.0",
      "size": {
+      "linux-64": 119.6,
       "linux-aarch64": 93.1
      },
      "before": {
+      "linux-64": 119.6,
       "linux-aarch64": 93.1
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 119.6,
      "linux-aarch64": 93.1
     },
     "at": "2026-11-16"
@@ -840,7 +924,7 @@
    "install": "anyone",
    "category": "Dev tools",
    "ramMB": 28,
-   "instMB": 97,
+   "instMB": 124,
    "docs": "https://black.readthedocs.io/",
    "licence": "MIT",
    "check": "python-import",
@@ -853,16 +937,20 @@
      "manager": "pixi",
      "version": "26.5.1",
      "size": {
+      "linux-64": 123.2,
       "linux-aarch64": 96.8
      },
      "before": {
+      "linux-64": 123.2,
       "linux-aarch64": 96.8
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 123.2,
      "linux-aarch64": 96.8
     },
     "at": "2026-11-16"
@@ -881,7 +969,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "Dev tools",
-   "instMB": 27,
+   "instMB": 31,
    "docs": "https://docs.astral.sh/ruff/",
    "licence": "MIT",
    "check": "version-flag",
@@ -894,9 +982,11 @@
      "manager": "pixi",
      "version": "0.17.5",
      "size": {
+      "linux-64": 30.3,
       "linux-aarch64": 26.5
      },
      "before": {
+      "linux-64": 30.7,
       "linux-aarch64": 26.9
      }
     }
@@ -904,6 +994,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 30.3,
      "linux-aarch64": 26.5
     },
     "at": "2026-11-16"
@@ -923,7 +1014,7 @@
    "install": "anyone",
    "category": "Dev tools",
    "ramMB": 18,
-   "instMB": 192,
+   "instMB": 201,
    "docs": "https://mypy.readthedocs.io/",
    "licence": "MIT",
    "check": "python-import",
@@ -936,16 +1027,20 @@
      "manager": "pixi",
      "version": "2.3.1",
      "size": {
+      "linux-64": 200.9,
       "linux-aarch64": 191.3
      },
      "before": {
+      "linux-64": 200.9,
       "linux-aarch64": 191.3
-     }
+     },
+     "includes": "its own Python (about 120 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 200.9,
      "linux-aarch64": 191.3
     },
     "at": "2026-11-16"
@@ -965,7 +1060,7 @@
    "install": "anyone",
    "category": "Web",
    "ramMB": 39,
-   "instMB": 127,
+   "instMB": 153,
    "docs": "https://fastapi.tiangolo.com/",
    "licence": "MIT",
    "check": "python-import",
@@ -975,16 +1070,20 @@
      "manager": "pixi",
      "version": "0.141.1",
      "size": {
+      "linux-64": 153,
       "linux-aarch64": 126.4
      },
      "before": {
+      "linux-64": 153,
       "linux-aarch64": 126.4
-     }
+     },
+     "includes": "its own Python (about 70 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 153,
      "linux-aarch64": 126.4
     },
     "at": "2026-11-16"
@@ -1004,7 +1103,7 @@
    "install": "anyone",
    "category": "Web",
    "ramMB": 24,
-   "instMB": 95,
+   "instMB": 121,
    "docs": "https://www.uvicorn.org/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -1014,16 +1113,20 @@
      "manager": "pixi",
      "version": "0.52.4",
      "size": {
+      "linux-64": 120.6,
       "linux-aarch64": 94.1
      },
      "before": {
+      "linux-64": 120.6,
       "linux-aarch64": 94.1
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 120.6,
      "linux-aarch64": 94.1
     },
     "at": "2026-11-16"
@@ -1043,7 +1146,7 @@
    "install": "approval",
    "category": "Data science",
    "ramMB": 42,
-   "instMB": 317,
+   "instMB": 357,
    "docs": "https://docs.pola.rs/",
    "licence": "MIT",
    "check": "python-import",
@@ -1053,16 +1156,20 @@
      "manager": "pixi",
      "version": "1.44.1",
      "size": {
+      "linux-64": 356.2,
       "linux-aarch64": 316.2
      },
      "before": {
+      "linux-64": 356.2,
       "linux-aarch64": 316.2
-     }
+     },
+     "includes": "its own Python (about 250 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 356.2,
      "linux-aarch64": 316.2
     },
     "at": "2026-11-16"
@@ -1081,7 +1188,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "Data science",
-   "instMB": 380,
+   "instMB": 425,
    "docs": "https://seaborn.pydata.org/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -1091,16 +1198,20 @@
      "manager": "pixi",
      "version": "0.13.2",
      "size": {
+      "linux-64": 424.5,
       "linux-aarch64": 379.4
      },
      "before": {
+      "linux-64": 424.5,
       "linux-aarch64": 379.4
-     }
+     },
+     "includes": "its own Python (about 250 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 424.5,
      "linux-aarch64": 379.4
     },
     "at": "2026-11-16"
@@ -1119,7 +1230,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "Data science",
-   "instMB": 365,
+   "instMB": 414,
    "docs": "https://www.statsmodels.org/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -1129,16 +1240,20 @@
      "manager": "pixi",
      "version": "0.15.0",
      "size": {
+      "linux-64": 413.6,
       "linux-aarch64": 364.8
      },
      "before": {
+      "linux-64": 413.6,
       "linux-aarch64": 364.8
-     }
+     },
+     "includes": "its own Python (about 260 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 413.6,
      "linux-aarch64": 364.8
     },
     "at": "2026-11-16"
@@ -1157,7 +1272,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "Data",
-   "instMB": 361,
+   "instMB": 379,
    "docs": "https://arrow.apache.org/docs/python/",
    "licence": "Apache-2.0",
    "check": "python-import",
@@ -1167,16 +1282,20 @@
      "manager": "pixi",
      "version": "25.0.0",
      "size": {
+      "linux-64": 379,
       "linux-aarch64": 360.2
      },
      "before": {
+      "linux-64": 379,
       "linux-aarch64": 360.2
-     }
+     },
+     "includes": "its own Python (about 70 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 379,
      "linux-aarch64": 360.2
     },
     "at": "2026-11-16"
@@ -1195,7 +1314,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "Data science",
-   "instMB": 357,
+   "instMB": 392,
    "docs": "https://numba.readthedocs.io/",
    "licence": "BSD-2-Clause",
    "check": "python-import",
@@ -1208,16 +1327,20 @@
      "manager": "pixi",
      "version": "0.67.0",
      "size": {
+      "linux-64": 391.4,
       "linux-aarch64": 356.3
      },
      "before": {
+      "linux-64": 391.4,
       "linux-aarch64": 356.3
-     }
+     },
+     "includes": "its own Python (about 240 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 391.4,
      "linux-aarch64": 356.3
     },
     "at": "2026-11-16"
@@ -1236,7 +1359,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "Dev tools",
-   "instMB": 102,
+   "instMB": 128,
    "docs": "https://cryptography.io/",
    "licence": "Apache-2.0 OR BSD-3-Clause",
    "check": "python-import",
@@ -1246,16 +1369,20 @@
      "manager": "pixi",
      "version": "50.0.0",
      "size": {
+      "linux-64": 127.9,
       "linux-aarch64": 101.7
      },
      "before": {
+      "linux-64": 127.9,
       "linux-aarch64": 101.7
-     }
+     },
+     "includes": "its own Python (about 50 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 127.9,
      "linux-aarch64": 101.7
     },
     "at": "2026-11-16"
@@ -1274,7 +1401,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "Dev tools",
-   "instMB": 106,
+   "instMB": 133,
    "docs": "https://docs.paramiko.org/",
    "licence": "LGPL-2.1",
    "check": "python-import",
@@ -1284,16 +1411,20 @@
      "manager": "pixi",
      "version": "5.0.0",
      "size": {
+      "linux-64": 132.1,
       "linux-aarch64": 105.9
      },
      "before": {
+      "linux-64": 132.1,
       "linux-aarch64": 105.9
-     }
+     },
+     "includes": "its own Python (about 50 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 132.1,
      "linux-aarch64": 105.9
     },
     "at": "2026-11-16"
@@ -1312,7 +1443,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "Dev tools",
-   "instMB": 94,
+   "instMB": 120,
    "docs": "https://psutil.readthedocs.io/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -1322,16 +1453,20 @@
      "manager": "pixi",
      "version": "7.2.2",
      "size": {
+      "linux-64": 119.8,
       "linux-aarch64": 93.3
      },
      "before": {
+      "linux-64": 119.8,
       "linux-aarch64": 93.3
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 119.8,
      "linux-aarch64": 93.3
     },
     "at": "2026-11-16"
@@ -1351,7 +1486,7 @@
    "install": "approval",
    "category": "Data science",
    "ramMB": 226,
-   "instMB": 787,
+   "instMB": 1508,
    "docs": "https://pytorch.org/docs/stable/",
    "licence": "BSD-3-Clause",
    "check": "python-import",
@@ -1364,16 +1499,20 @@
      "manager": "pixi",
      "version": "2.13.0",
      "size": {
+      "linux-64": 1507.3,
       "linux-aarch64": 786.5
      },
      "before": {
+      "linux-64": 1507.3,
       "linux-aarch64": 786.5
-     }
+     },
+     "includes": "its own Python (about 200 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 1507.3,
      "linux-aarch64": 786.5
     },
     "at": "2026-11-16"
@@ -1406,9 +1545,11 @@
      "manager": "pixi",
      "version": "1.16.0",
      "size": {
+      "linux-64": 98.5,
       "linux-aarch64": 100.5
      },
      "before": {
+      "linux-64": 98.5,
       "linux-aarch64": 100.5
      }
     }
@@ -1416,6 +1557,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 98.5,
      "linux-aarch64": 100.5
     },
     "at": "2026-11-16"
@@ -1448,9 +1590,11 @@
      "manager": "pixi",
      "version": "2.25.1",
      "size": {
+      "linux-64": 106.3,
       "linux-aarch64": 108.2
      },
      "before": {
+      "linux-64": 106.3,
       "linux-aarch64": 108.2
      }
     }
@@ -1458,6 +1602,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 106.3,
      "linux-aarch64": 108.2
     },
     "at": "2026-11-16"
@@ -1484,26 +1629,7 @@
    "labels": [
     "legacy (Python 2.7)"
    ],
-   "python": "2.7",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "1.16.4",
-     "size": {
-      "linux-aarch64": 151.3
-     },
-     "before": {
-      "linux-aarch64": 151.3
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-aarch64": 151.3
-    },
-    "at": "2026-11-16"
-   }
+   "python": "2.7"
   },
   {
    "id": "cmake",
@@ -1518,7 +1644,7 @@
    "manager": "apt",
    "install": "anyone",
    "category": "Build tools",
-   "instMB": 26,
+   "instMB": 31,
    "docs": "https://cmake.org/cmake/help/latest/",
    "licence": "BSD-3-Clause",
    "check": "version-flag",
@@ -1531,9 +1657,11 @@
      "manager": "pixi",
      "version": "4.5.0",
      "size": {
+      "linux-64": 196.7,
       "linux-aarch64": 198.7
      },
      "before": {
+      "linux-64": 199.5,
       "linux-aarch64": 201.6
      }
     },
@@ -1542,20 +1670,24 @@
      "package": "cmake",
      "version": "3.22.1-1ubuntu1.22.04.2",
      "size": {
-      "linux-aarch64": 25.4
+      "linux-64": 30.6,
+      "linux-aarch64": 27.2
      },
      "before": {
-      "linux-aarch64": 26
+      "linux-64": 31.3,
+      "linux-aarch64": 27.9
      }
     }
    ],
    "minimal": {
     "manager": "apt",
     "size": {
-     "linux-aarch64": 25.4
+     "linux-64": 30.6,
+     "linux-aarch64": 27.2
     },
     "others": {
      "pixi": {
+      "linux-64": 196.7,
       "linux-aarch64": 198.7
      }
     },
@@ -1575,7 +1707,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "Build tools",
-   "instMB": 27,
+   "instMB": 28,
    "docs": "https://ninja-build.org/manual.html",
    "licence": "Apache-2.0",
    "check": "version-flag",
@@ -1588,9 +1720,11 @@
      "manager": "pixi",
      "version": "1.13.2",
      "size": {
+      "linux-64": 27.8,
       "linux-aarch64": 26.5
      },
      "before": {
+      "linux-64": 28.2,
       "linux-aarch64": 26.9
      }
     }
@@ -1598,6 +1732,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 27.8,
      "linux-aarch64": 26.5
     },
     "at": "2026-11-16"
@@ -1627,9 +1762,11 @@
      "manager": "pixi",
      "version": "0.29.2",
      "size": {
+      "linux-64": 4.9,
       "linux-aarch64": 4.4
      },
      "before": {
+      "linux-64": 5.3,
       "linux-aarch64": 4.8
      }
     },
@@ -1638,9 +1775,11 @@
      "package": "pkg-config",
      "version": "0.29.2-1ubuntu3",
      "size": {
+      "linux-64": 0.7,
       "linux-aarch64": 0.7
      },
      "before": {
+      "linux-64": 0.8,
       "linux-aarch64": 0.8
      }
     }
@@ -1648,10 +1787,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 0.7,
      "linux-aarch64": 0.7
     },
     "others": {
      "pixi": {
+      "linux-64": 4.9,
       "linux-aarch64": 4.4
      }
     },
@@ -1671,7 +1812,7 @@
    "manager": "apt",
    "install": "anyone",
    "category": "Analysis",
-   "instMB": 22,
+   "instMB": 24,
    "docs": "https://cppcheck.sourceforge.io/manual.html",
    "licence": "GPL-3.0",
    "check": "version-flag",
@@ -1681,20 +1822,25 @@
      "manager": "pixi",
      "version": "2.22.0",
      "size": {
+      "linux-64": 167.7,
       "linux-aarch64": 167.5
      },
      "before": {
+      "linux-64": 184.8,
       "linux-aarch64": 184.6
-     }
+     },
+     "includes": "its own Python (about 50 MB)"
     },
     {
      "manager": "apt",
      "package": "cppcheck",
      "version": "2.7-1",
      "size": {
+      "linux-64": 23.9,
       "linux-aarch64": 21.7
      },
      "before": {
+      "linux-64": 23.9,
       "linux-aarch64": 21.7
      }
     }
@@ -1702,10 +1848,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 23.9,
      "linux-aarch64": 21.7
     },
     "others": {
      "pixi": {
+      "linux-64": 167.7,
       "linux-aarch64": 167.5
      }
     },
@@ -1725,7 +1873,7 @@
    "manager": "apt",
    "install": "anyone",
    "category": "Analysis",
-   "instMB": 150,
+   "instMB": 163,
    "docs": "https://clang.llvm.org/docs/ClangFormat.html",
    "licence": "Apache-2.0 WITH LLVM-exception",
    "check": "version-flag",
@@ -1735,9 +1883,11 @@
      "manager": "pixi",
      "version": "23.1.5",
      "size": {
+      "linux-64": 359.2,
       "linux-aarch64": 315.4
      },
      "before": {
+      "linux-64": 361.1,
       "linux-aarch64": 317.2
      }
     },
@@ -1746,20 +1896,24 @@
      "package": "clang-format",
      "version": "14.0-55-exp2",
      "size": {
-      "linux-aarch64": 149.6
+      "linux-64": 162.2,
+      "linux-aarch64": 151.5
      },
      "before": {
-      "linux-aarch64": 149.6
+      "linux-64": 162.2,
+      "linux-aarch64": 151.5
      }
     }
    ],
    "minimal": {
     "manager": "apt",
     "size": {
-     "linux-aarch64": 149.6
+     "linux-64": 162.2,
+     "linux-aarch64": 151.5
     },
     "others": {
      "pixi": {
+      "linux-64": 359.2,
       "linux-aarch64": 315.4
      }
     },
@@ -1780,7 +1934,7 @@
    "package": "clang-tools",
    "install": "approval",
    "category": "Analysis",
-   "instMB": 233,
+   "instMB": 266,
    "docs": "https://clang.llvm.org/extra/clang-tidy/",
    "licence": "Apache-2.0 WITH LLVM-exception",
    "check": "version-flag",
@@ -1790,9 +1944,11 @@
      "manager": "pixi",
      "version": "23.1.5",
      "size": {
+      "linux-64": 464.8,
       "linux-aarch64": 424.9
      },
      "before": {
+      "linux-64": 466.7,
       "linux-aarch64": 426.7
      }
     },
@@ -1801,20 +1957,24 @@
      "package": "clang-tools",
      "version": "14.0-55-exp2",
      "size": {
-      "linux-aarch64": 232.3
+      "linux-64": 265.4,
+      "linux-aarch64": 234.1
      },
      "before": {
-      "linux-aarch64": 267
+      "linux-64": 311.8,
+      "linux-aarch64": 268.9
      }
     }
    ],
    "minimal": {
     "manager": "apt",
     "size": {
-     "linux-aarch64": 232.3
+     "linux-64": 265.4,
+     "linux-aarch64": 234.1
     },
     "others": {
      "pixi": {
+      "linux-64": 464.8,
       "linux-aarch64": 424.9
      }
     },
@@ -1834,7 +1994,7 @@
    "manager": "apt",
    "install": "approval",
    "category": "Analysis",
-   "instMB": 39,
+   "instMB": 78,
    "docs": "https://valgrind.org/docs/manual/",
    "licence": "GPL-2.0",
    "check": "version-flag",
@@ -1844,9 +2004,11 @@
      "manager": "pixi",
      "version": "3.27.1",
      "size": {
+      "linux-64": 158,
       "linux-aarch64": 145.9
      },
      "before": {
+      "linux-64": 228.9,
       "linux-aarch64": 233.7
      }
     },
@@ -1855,9 +2017,11 @@
      "package": "valgrind",
      "version": "3.18.1-1ubuntu2",
      "size": {
+      "linux-64": 77.8,
       "linux-aarch64": 38.6
      },
      "before": {
+      "linux-64": 104,
       "linux-aarch64": 54.9
      }
     }
@@ -1865,10 +2029,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 77.8,
      "linux-aarch64": 38.6
     },
     "others": {
      "pixi": {
+      "linux-64": 158,
       "linux-aarch64": 145.9
      }
     },
@@ -1888,7 +2054,7 @@
    "manager": "apt",
    "install": "approval",
    "category": "Build tools",
-   "instMB": 1,
+   "instMB": 2,
    "docs": "https://ccache.dev/manual/latest.html",
    "licence": "GPL-3.0",
    "check": "version-flag",
@@ -1901,9 +2067,11 @@
      "manager": "pixi",
      "version": "4.14.3",
      "size": {
+      "linux-64": 32.2,
       "linux-aarch64": 31
      },
      "before": {
+      "linux-64": 32.6,
       "linux-aarch64": 31.4
      }
     },
@@ -1912,9 +2080,11 @@
      "package": "ccache",
      "version": "4.5.1-1",
      "size": {
+      "linux-64": 1.1,
       "linux-aarch64": 0.9
      },
      "before": {
+      "linux-64": 1.3,
       "linux-aarch64": 1.1
      }
     }
@@ -1922,10 +2092,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 1.1,
      "linux-aarch64": 0.9
     },
     "others": {
      "pixi": {
+      "linux-64": 32.2,
       "linux-aarch64": 31
      }
     },
@@ -1958,9 +2130,11 @@
      "manager": "pixi",
      "version": "5.0.1",
      "size": {
+      "linux-64": 9.7,
       "linux-aarch64": 9.7
      },
      "before": {
+      "linux-64": 9.7,
       "linux-aarch64": 9.7
      }
     }
@@ -1968,6 +2142,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 9.7,
      "linux-aarch64": 9.7
     },
     "at": "2026-11-16"
@@ -1999,9 +2174,11 @@
      "manager": "pixi",
      "version": "3.12.0",
      "size": {
+      "linux-64": 0.9,
       "linux-aarch64": 0.9
      },
      "before": {
+      "linux-64": 0.9,
       "linux-aarch64": 0.9
      }
     }
@@ -2009,6 +2186,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 0.9,
      "linux-aarch64": 0.9
     },
     "at": "2026-11-16"
@@ -2027,7 +2205,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "C and C++ libraries",
-   "instMB": 29,
+   "instMB": 31,
    "docs": "https://glm.g-truc.net/0.9.9/",
    "licence": "MIT",
    "check": "file-exists",
@@ -2040,9 +2218,11 @@
      "manager": "pixi",
      "version": "1.0.3",
      "size": {
+      "linux-64": 30.3,
       "linux-aarch64": 29
      },
      "before": {
+      "linux-64": 30.7,
       "linux-aarch64": 29.4
      }
     }
@@ -2050,6 +2230,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 30.3,
      "linux-aarch64": 29
     },
     "at": "2026-11-16"
@@ -2068,7 +2249,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "C and C++ libraries",
-   "instMB": 27,
+   "instMB": 28,
    "docs": "https://cliutils.github.io/CLI11/book/",
    "licence": "BSD-3-Clause",
    "check": "file-exists",
@@ -2081,9 +2262,11 @@
      "manager": "pixi",
      "version": "2.7.2",
      "size": {
+      "linux-64": 27.9,
       "linux-aarch64": 26.6
      },
      "before": {
+      "linux-64": 28.3,
       "linux-aarch64": 27
      }
     }
@@ -2091,6 +2274,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 27.9,
      "linux-aarch64": 26.6
     },
     "at": "2026-11-16"
@@ -2109,7 +2293,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "C and C++ libraries",
-   "instMB": 27,
+   "instMB": 29,
    "docs": "https://fmt.dev/latest/",
    "licence": "MIT",
    "check": "file-exists",
@@ -2122,9 +2306,11 @@
      "manager": "pixi",
      "version": "12.2.1",
      "size": {
+      "linux-64": 28.1,
       "linux-aarch64": 26.9
      },
      "before": {
+      "linux-64": 28.5,
       "linux-aarch64": 27.3
      }
     }
@@ -2132,6 +2318,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 28.1,
      "linux-aarch64": 26.9
     },
     "at": "2026-11-16"
@@ -2150,7 +2337,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "C and C++ libraries",
-   "instMB": 28,
+   "instMB": 30,
    "docs": "https://github.com/gabime/spdlog/wiki",
    "licence": "MIT",
    "check": "file-exists",
@@ -2163,9 +2350,11 @@
      "manager": "pixi",
      "version": "1.17.0",
      "size": {
+      "linux-64": 29.1,
       "linux-aarch64": 27.8
      },
      "before": {
+      "linux-64": 29.5,
       "linux-aarch64": 28.2
      }
     }
@@ -2173,6 +2362,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 29.1,
      "linux-aarch64": 27.8
     },
     "at": "2026-11-16"
@@ -2191,7 +2381,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "C and C++ libraries",
-   "instMB": 29,
+   "instMB": 30,
    "docs": "https://github.com/catchorg/Catch2/tree/devel/docs",
    "licence": "BSL-1.0",
    "check": "file-exists",
@@ -2204,9 +2394,11 @@
      "manager": "pixi",
      "version": "3.16.1",
      "size": {
+      "linux-64": 29.5,
       "linux-aarch64": 28.2
      },
      "before": {
+      "linux-64": 30.3,
       "linux-aarch64": 29
      }
     }
@@ -2214,6 +2406,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 29.5,
      "linux-aarch64": 28.2
     },
     "at": "2026-11-16"
@@ -2232,7 +2425,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "C and C++ libraries",
-   "instMB": 28,
+   "instMB": 30,
    "docs": "https://google.github.io/googletest/",
    "licence": "BSD-3-Clause",
    "check": "file-exists",
@@ -2245,9 +2438,11 @@
      "manager": "pixi",
      "version": "1.18.0",
      "size": {
+      "linux-64": 29.2,
       "linux-aarch64": 28
      },
      "before": {
+      "linux-64": 29.6,
       "linux-aarch64": 28.4
      }
     }
@@ -2255,6 +2450,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 29.2,
      "linux-aarch64": 28
     },
     "at": "2026-11-16"
@@ -2280,26 +2476,7 @@
    "checkArg": "include/doctest",
    "labels": [
     "needs the library path: the store sets it"
-   ],
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "2.4.11",
-     "size": {
-      "linux-aarch64": 26.4
-     },
-     "before": {
-      "linux-aarch64": 26.8
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-aarch64": 26.4
-    },
-    "at": "2026-11-16"
-   }
+   ]
   },
   {
    "id": "benchmark",
@@ -2314,7 +2491,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "C and C++ libraries",
-   "instMB": 27,
+   "instMB": 29,
    "docs": "https://github.com/google/benchmark/blob/main/docs/user_guide.md",
    "licence": "Apache-2.0",
    "check": "file-exists",
@@ -2327,9 +2504,11 @@
      "manager": "pixi",
      "version": "1.10.0",
      "size": {
+      "linux-64": 28.1,
       "linux-aarch64": 26.9
      },
      "before": {
+      "linux-64": 28.7,
       "linux-aarch64": 27.5
      }
     }
@@ -2337,6 +2516,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 28.1,
      "linux-aarch64": 26.9
     },
     "at": "2026-11-16"
@@ -2368,9 +2548,11 @@
      "manager": "pixi",
      "version": "1.92.0",
      "size": {
+      "linux-64": 258.4,
       "linux-aarch64": 261.7
      },
      "before": {
+      "linux-64": 258.9,
       "linux-aarch64": 262.1
      }
     }
@@ -2378,6 +2560,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 258.4,
      "linux-aarch64": 261.7
     },
     "at": "2026-11-16"
@@ -2396,7 +2579,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "C and C++ libraries",
-   "instMB": 16,
+   "instMB": 17,
    "docs": "https://www.openssl.org/docs/",
    "licence": "Apache-2.0",
    "check": "file-exists",
@@ -2406,9 +2589,11 @@
      "manager": "pixi",
      "version": "4.1.0",
      "size": {
+      "linux-64": 16.6,
       "linux-aarch64": 16
      },
      "before": {
+      "linux-64": 17,
       "linux-aarch64": 16.4
      }
     }
@@ -2416,6 +2601,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 16.6,
      "linux-aarch64": 16
     },
     "at": "2026-11-16"
@@ -2444,9 +2630,11 @@
      "manager": "pixi",
      "version": "1.3.2",
      "size": {
+      "linux-64": 0.4,
       "linux-aarch64": 0.4
      },
      "before": {
+      "linux-64": 0.4,
       "linux-aarch64": 0.4
      }
     }
@@ -2454,6 +2642,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 0.4,
      "linux-aarch64": 0.4
     },
     "at": "2026-11-16"
@@ -2472,7 +2661,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "C and C++ libraries",
-   "instMB": 5,
+   "instMB": 6,
    "docs": "https://www.libpng.org/pub/png/libpng-manual.txt",
    "licence": "libpng-2.0",
    "check": "file-exists",
@@ -2482,9 +2671,11 @@
      "manager": "pixi",
      "version": "1.6.59",
      "size": {
+      "linux-64": 5.6,
       "linux-aarch64": 4.8
      },
      "before": {
+      "linux-64": 6.3,
       "linux-aarch64": 5.4
      }
     }
@@ -2492,6 +2683,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 5.6,
      "linux-aarch64": 4.8
     },
     "at": "2026-11-16"
@@ -2527,9 +2719,11 @@
      },
      "version": "2.34.1-1ubuntu1.18",
      "size": {
+      "linux-64": 13.4,
       "linux-aarch64": 13.1
      },
      "before": {
+      "linux-64": 16.2,
       "linux-aarch64": 15.9
      }
     },
@@ -2537,20 +2731,25 @@
      "manager": "pixi",
      "version": "2.56.1",
      "size": {
+      "linux-64": 195.1,
       "linux-aarch64": 218.8
      },
      "before": {
+      "linux-64": 238.9,
       "linux-aarch64": 262.7
-     }
+     },
+     "includes": "its own Perl (about 60 MB)"
     }
    ],
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 13.4,
      "linux-aarch64": 13.1
     },
     "others": {
      "pixi": {
+      "linux-64": 195.1,
       "linux-aarch64": 218.8
      }
     },
@@ -2579,9 +2778,11 @@
      "manager": "pixi",
      "version": "15.2.0",
      "size": {
+      "linux-64": 9.7,
       "linux-aarch64": 8.5
      },
      "before": {
+      "linux-64": 10.2,
       "linux-aarch64": 9
      }
     },
@@ -2590,9 +2791,11 @@
      "package": "ripgrep",
      "version": "13.0.0-2ubuntu0.1",
      "size": {
+      "linux-64": 4,
       "linux-aarch64": 3.5
      },
      "before": {
+      "linux-64": 4,
       "linux-aarch64": 3.5
      }
     }
@@ -2600,10 +2803,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 4,
      "linux-aarch64": 3.5
     },
     "others": {
      "pixi": {
+      "linux-64": 9.7,
       "linux-aarch64": 8.5
      }
     },
@@ -2632,9 +2837,11 @@
      "manager": "pixi",
      "version": "10.5.2",
      "size": {
+      "linux-64": 8.5,
       "linux-aarch64": 7.1
      },
      "before": {
+      "linux-64": 8.9,
       "linux-aarch64": 7.5
      }
     },
@@ -2643,9 +2850,11 @@
      "package": "fd-find",
      "version": "8.3.1-1ubuntu0.1",
      "size": {
+      "linux-64": 2.4,
       "linux-aarch64": 2.1
      },
      "before": {
+      "linux-64": 2.4,
       "linux-aarch64": 2.1
      }
     }
@@ -2653,10 +2862,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 2.4,
      "linux-aarch64": 2.1
     },
     "others": {
      "pixi": {
+      "linux-64": 8.5,
       "linux-aarch64": 7.1
      }
     },
@@ -2685,9 +2896,11 @@
      "manager": "pixi",
      "version": "2.3.2",
      "size": {
+      "linux-64": 4.7,
       "linux-aarch64": 3.7
      },
      "before": {
+      "linux-64": 5.1,
       "linux-aarch64": 4.1
      }
     },
@@ -2696,9 +2909,11 @@
      "package": "tree",
      "version": "2.0.2-1",
      "size": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      },
      "before": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      }
     }
@@ -2706,10 +2921,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 0.1,
      "linux-aarch64": 0.1
     },
     "others": {
      "pixi": {
+      "linux-64": 4.7,
       "linux-aarch64": 3.7
      }
     },
@@ -2728,7 +2945,7 @@
    "manager": "apt",
    "install": "anyone",
    "category": "Terminal tools",
-   "instMB": 6,
+   "instMB": 7,
    "docs": "https://github.com/sharkdp/bat#readme",
    "licence": "MIT OR Apache-2.0",
    "check": "version-flag",
@@ -2738,9 +2955,11 @@
      "manager": "pixi",
      "version": "0.26.1",
      "size": {
+      "linux-64": 11,
       "linux-aarch64": 9.7
      },
      "before": {
+      "linux-64": 11.4,
       "linux-aarch64": 10.1
      }
     },
@@ -2749,20 +2968,24 @@
      "package": "bat",
      "version": "0.19.0-1ubuntu0.1",
      "size": {
-      "linux-aarch64": 5.5
+      "linux-64": 6.3,
+      "linux-aarch64": 5.8
      },
      "before": {
-      "linux-aarch64": 5.5
+      "linux-64": 6.3,
+      "linux-aarch64": 5.8
      }
     }
    ],
    "minimal": {
     "manager": "apt",
     "size": {
-     "linux-aarch64": 5.5
+     "linux-64": 6.3,
+     "linux-aarch64": 5.8
     },
     "others": {
      "pixi": {
+      "linux-64": 11,
       "linux-aarch64": 9.7
      }
     },
@@ -2791,9 +3014,11 @@
      "manager": "pixi",
      "version": "0.75.0",
      "size": {
+      "linux-64": 8.3,
       "linux-aarch64": 8
      },
      "before": {
+      "linux-64": 8.4,
       "linux-aarch64": 8
      }
     },
@@ -2802,9 +3027,11 @@
      "package": "fzf",
      "version": "0.29.0-1ubuntu0.1",
      "size": {
+      "linux-64": 2.3,
       "linux-aarch64": 2.3
      },
      "before": {
+      "linux-64": 2.4,
       "linux-aarch64": 2.4
      }
     }
@@ -2812,10 +3039,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 2.3,
      "linux-aarch64": 2.3
     },
     "others": {
      "pixi": {
+      "linux-64": 8.3,
       "linux-aarch64": 8
      }
     },
@@ -2844,9 +3073,11 @@
      "manager": "pixi",
      "version": "2.0.0",
      "size": {
+      "linux-64": 5.9,
       "linux-aarch64": 4.7
      },
      "before": {
+      "linux-64": 6.3,
       "linux-aarch64": 5.2
      }
     },
@@ -2855,9 +3086,11 @@
      "package": "hyperfine",
      "version": "1.12.0-3ubuntu0.1",
      "size": {
+      "linux-64": 1.4,
       "linux-aarch64": 1.2
      },
      "before": {
+      "linux-64": 1.4,
       "linux-aarch64": 1.2
      }
     }
@@ -2865,10 +3098,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 1.4,
      "linux-aarch64": 1.2
     },
     "others": {
      "pixi": {
+      "linux-64": 5.9,
       "linux-aarch64": 4.7
      }
     },
@@ -2897,9 +3132,11 @@
      "manager": "pixi",
      "version": "5.48",
      "size": {
+      "linux-64": 15.2,
       "linux-aarch64": 14.3
      },
      "before": {
+      "linux-64": 15.7,
       "linux-aarch64": 14.7
      }
     },
@@ -2908,9 +3145,11 @@
      "package": "file",
      "version": "5.41-3ubuntu0.1",
      "size": {
+      "linux-64": 7.1,
       "linux-aarch64": 7.1
      },
      "before": {
+      "linux-64": 7.1,
       "linux-aarch64": 7.1
      }
     }
@@ -2918,10 +3157,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 7.1,
      "linux-aarch64": 7.1
     },
     "others": {
      "pixi": {
+      "linux-64": 15.2,
       "linux-aarch64": 14.3
      }
     },
@@ -2950,9 +3191,11 @@
      "manager": "pixi",
      "version": "3.0",
      "size": {
+      "linux-64": 5.1,
       "linux-aarch64": 4.3
      },
      "before": {
+      "linux-64": 5.6,
       "linux-aarch64": 4.7
      }
     },
@@ -2961,9 +3204,11 @@
      "package": "zip",
      "version": "3.0-12build2",
      "size": {
+      "linux-64": 0.4,
       "linux-aarch64": 0.4
      },
      "before": {
+      "linux-64": 0.4,
       "linux-aarch64": 0.4
      }
     }
@@ -2971,10 +3216,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 0.4,
      "linux-aarch64": 0.4
     },
     "others": {
      "pixi": {
+      "linux-64": 5.1,
       "linux-aarch64": 4.3
      }
     },
@@ -3003,9 +3250,11 @@
      "manager": "pixi",
      "version": "6.0",
      "size": {
+      "linux-64": 5,
       "linux-aarch64": 4.1
      },
      "before": {
+      "linux-64": 5.5,
       "linux-aarch64": 4.6
      }
     },
@@ -3014,9 +3263,11 @@
      "package": "unzip",
      "version": "6.0-26ubuntu3.2",
      "size": {
+      "linux-64": 0.3,
       "linux-aarch64": 0.2
      },
      "before": {
+      "linux-64": 0.3,
       "linux-aarch64": 0.3
      }
     }
@@ -3024,10 +3275,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 0.3,
      "linux-aarch64": 0.2
     },
     "others": {
      "pixi": {
+      "linux-64": 5,
       "linux-aarch64": 4.1
      }
     },
@@ -3047,7 +3300,7 @@
    "package": "go-yq",
    "install": "anyone",
    "category": "Terminal tools",
-   "instMB": 19,
+   "instMB": 21,
    "docs": "https://mikefarah.gitbook.io/yq/",
    "licence": "MIT",
    "check": "version-flag",
@@ -3057,9 +3310,11 @@
      "manager": "pixi",
      "version": "4.54.3",
      "size": {
+      "linux-64": 20.7,
       "linux-aarch64": 18.6
      },
      "before": {
+      "linux-64": 21.3,
       "linux-aarch64": 19.2
      }
     }
@@ -3067,6 +3322,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 20.7,
      "linux-aarch64": 18.6
     },
     "at": "2026-11-16"
@@ -3094,9 +3350,11 @@
      "manager": "pixi",
      "version": "0.11.0",
      "size": {
+      "linux-64": 15.5,
       "linux-aarch64": 52.5
      },
      "before": {
+      "linux-64": 15.5,
       "linux-aarch64": 52.5
      }
     },
@@ -3105,9 +3363,11 @@
      "package": "shellcheck",
      "version": "0.8.0-2",
      "size": {
+      "linux-64": 15.5,
       "linux-aarch64": 19.5
      },
      "before": {
+      "linux-64": 15.5,
       "linux-aarch64": 19.5
      }
     }
@@ -3115,10 +3375,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 15.5,
      "linux-aarch64": 19.5
     },
     "others": {
      "pixi": {
+      "linux-64": 15.5,
       "linux-aarch64": 52.5
      }
     },
@@ -3147,9 +3409,11 @@
      "manager": "pixi",
      "version": "3.14.1",
      "size": {
+      "linux-64": 7.3,
       "linux-aarch64": 7.2
      },
      "before": {
+      "linux-64": 7.3,
       "linux-aarch64": 7.2
      }
     }
@@ -3157,6 +3421,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 7.3,
      "linux-aarch64": 7.2
     },
     "at": "2026-11-16"
@@ -3184,9 +3449,11 @@
      "manager": "pixi",
      "version": "3.5.3",
      "size": {
+      "linux-64": 12.6,
       "linux-aarch64": 15.6
      },
      "before": {
+      "linux-64": 15.7,
       "linux-aarch64": 18.6
      }
     },
@@ -3195,9 +3462,11 @@
      "package": "htop",
      "version": "3.0.5-7build2",
      "size": {
+      "linux-64": 0.5,
       "linux-aarch64": 0.4
      },
      "before": {
+      "linux-64": 0.5,
       "linux-aarch64": 0.5
      }
     }
@@ -3205,10 +3474,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 0.5,
      "linux-aarch64": 0.4
     },
     "others": {
      "pixi": {
+      "linux-64": 12.6,
       "linux-aarch64": 15.6
      }
     },
@@ -3240,9 +3511,11 @@
      "manager": "pixi",
      "version": "3.8_",
      "size": {
+      "linux-64": 23.9,
       "linux-aarch64": 24.6
      },
      "before": {
+      "linux-64": 24.9,
       "linux-aarch64": 25.6
      }
     },
@@ -3251,9 +3524,11 @@
      "package": "tmux",
      "version": "3.2a-4ubuntu0.3",
      "size": {
+      "linux-64": 1.2,
       "linux-aarch64": 1.1
      },
      "before": {
+      "linux-64": 1.2,
       "linux-aarch64": 1.2
      }
     }
@@ -3261,10 +3536,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 1.2,
      "linux-aarch64": 1.1
     },
     "others": {
      "pixi": {
+      "linux-64": 23.9,
       "linux-aarch64": 24.6
      }
     },
@@ -3300,9 +3577,11 @@
      },
      "version": "8.2.3995-1ubuntu2.36",
      "size": {
+      "linux-64": 34.9,
       "linux-aarch64": 34.7
      },
      "before": {
+      "linux-64": 35,
       "linux-aarch64": 34.8
      }
     },
@@ -3311,20 +3590,25 @@
      "gui": "libxcb",
      "version": "9.2.1252",
      "size": {
+      "linux-64": 281,
       "linux-aarch64": 285.7
      },
      "before": {
+      "linux-64": 320.8,
       "linux-aarch64": 325.5
-     }
+     },
+     "includes": "its own Python and Perl (about 90 MB)"
     }
    ],
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 34.9,
      "linux-aarch64": 34.7
     },
     "others": {
      "pixi": {
+      "linux-64": 281,
       "linux-aarch64": 285.7
      }
     },
@@ -3356,20 +3640,25 @@
      "manager": "pixi",
      "version": "0.3.1",
      "size": {
+      "linux-64": 151.5,
       "linux-aarch64": 151.6
      },
      "before": {
+      "linux-64": 168.3,
       "linux-aarch64": 168.5
-     }
+     },
+     "includes": "its own Python (about 40 MB)"
     },
     {
      "manager": "apt",
      "package": "neovim",
      "version": "0.6.1-3",
      "size": {
+      "linux-64": 21,
       "linux-aarch64": 20.6
      },
      "before": {
+      "linux-64": 24.6,
       "linux-aarch64": 24.2
      }
     }
@@ -3377,10 +3666,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 21,
      "linux-aarch64": 20.6
     },
     "others": {
      "pixi": {
+      "linux-64": 151.5,
       "linux-aarch64": 151.6
      }
     },
@@ -3399,7 +3690,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "Terminal tools",
-   "instMB": 264,
+   "instMB": 289,
    "docs": "https://duckdb.org/docs/",
    "licence": "MIT",
    "check": "version-flag",
@@ -3409,16 +3700,20 @@
      "manager": "pixi",
      "version": "2.0.0",
      "size": {
+      "linux-64": 288.9,
       "linux-aarch64": 263.8
      },
      "before": {
+      "linux-64": 325.3,
       "linux-aarch64": 300.2
-     }
+     },
+     "includes": "its own Python (about 130 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 288.9,
      "linux-aarch64": 263.8
     },
     "at": "2026-11-16"
@@ -3446,20 +3741,25 @@
      "manager": "pixi",
      "version": "1.17.1",
      "size": {
+      "linux-64": 186.2,
       "linux-aarch64": 186.3
      },
      "before": {
+      "linux-64": 189.3,
       "linux-aarch64": 189.4
-     }
+     },
+     "includes": "its own Python (about 100 MB)"
     },
     {
      "manager": "apt",
      "package": "litecli",
      "version": "1.7.0-1",
      "size": {
+      "linux-64": 0.9,
       "linux-aarch64": 0.9
      },
      "before": {
+      "linux-64": 1,
       "linux-aarch64": 1
      }
     }
@@ -3467,10 +3767,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 0.9,
      "linux-aarch64": 0.9
     },
     "others": {
      "pixi": {
+      "linux-64": 186.2,
       "linux-aarch64": 186.3
      }
     },
@@ -3499,16 +3801,20 @@
      "manager": "pixi",
      "version": "4.2.1",
      "size": {
+      "linux-64": 140.9,
       "linux-aarch64": 141.3
      },
      "before": {
+      "linux-64": 151.4,
       "linux-aarch64": 151.8
-     }
+     },
+     "includes": "its own Python (about 60 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 140.9,
      "linux-aarch64": 141.3
     },
     "at": "2026-11-16"
@@ -3527,7 +3833,7 @@
    "manager": "apt",
    "install": "anyone",
    "category": "Go tools",
-   "instMB": 16,
+   "instMB": 17,
    "docs": "https://pkg.go.dev/golang.org/x/tools/gopls",
    "licence": "BSD-3-Clause",
    "check": "version-flag",
@@ -3540,9 +3846,11 @@
      "manager": "pixi",
      "version": "0.23.0",
      "size": {
+      "linux-64": 32.9,
       "linux-aarch64": 30.7
      },
      "before": {
+      "linux-64": 32.9,
       "linux-aarch64": 30.7
      }
     },
@@ -3551,9 +3859,11 @@
      "package": "gopls",
      "version": "0.1.9+ds-2ubuntu2.2",
      "size": {
+      "linux-64": 16.8,
       "linux-aarch64": 16
      },
      "before": {
+      "linux-64": 16.9,
       "linux-aarch64": 16
      }
     }
@@ -3561,10 +3871,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 16.8,
      "linux-aarch64": 16
     },
     "others": {
      "pixi": {
+      "linux-64": 32.9,
       "linux-aarch64": 30.7
      }
     },
@@ -3584,7 +3896,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "Go tools",
-   "instMB": 44,
+   "instMB": 46,
    "docs": "https://golangci-lint.run/",
    "licence": "GPL-3.0",
    "check": "version-flag",
@@ -3597,9 +3909,11 @@
      "manager": "pixi",
      "version": "2.15.0",
      "size": {
+      "linux-64": 46,
       "linux-aarch64": 43.5
      },
      "before": {
+      "linux-64": 46,
       "linux-aarch64": 43.5
      }
     }
@@ -3607,6 +3921,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 46,
      "linux-aarch64": 43.5
     },
     "at": "2026-11-16"
@@ -3625,7 +3940,7 @@
    "manager": "pixi",
    "install": "anyone",
    "category": "Go tools",
-   "instMB": 12,
+   "instMB": 13,
    "docs": "https://staticcheck.dev/docs/",
    "licence": "MIT",
    "check": "version-flag",
@@ -3638,9 +3953,11 @@
      "manager": "pixi",
      "version": "2026.2.2",
      "size": {
+      "linux-64": 12.5,
       "linux-aarch64": 11.7
      },
      "before": {
+      "linux-64": 12.5,
       "linux-aarch64": 11.7
      }
     }
@@ -3648,6 +3965,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 12.5,
      "linux-aarch64": 11.7
     },
     "at": "2026-11-16"
@@ -3666,7 +3984,7 @@
    "manager": "apt",
    "install": "approval",
    "category": "Go tools",
-   "instMB": 10,
+   "instMB": 12,
    "docs": "https://github.com/go-delve/delve/tree/master/Documentation",
    "licence": "MIT",
    "check": "version-flag",
@@ -3679,9 +3997,11 @@
      "manager": "pixi",
      "version": "1.27.2",
      "size": {
+      "linux-64": 18,
       "linux-aarch64": 15.6
      },
      "before": {
+      "linux-64": 18,
       "linux-aarch64": 15.6
      }
     },
@@ -3690,9 +4010,11 @@
      "package": "delve",
      "version": "1.8.1-1ubuntu0.1",
      "size": {
+      "linux-64": 11.6,
       "linux-aarch64": 9.8
      },
      "before": {
+      "linux-64": 11.7,
       "linux-aarch64": 9.9
      }
     }
@@ -3700,10 +4022,12 @@
    "minimal": {
     "manager": "apt",
     "size": {
+     "linux-64": 11.6,
      "linux-aarch64": 9.8
     },
     "others": {
      "pixi": {
+      "linux-64": 18,
       "linux-aarch64": 15.6
      }
     },
@@ -3722,7 +4046,7 @@
    "manager": "pixi",
    "install": "approval",
    "category": "Rust tools",
-   "instMB": 33,
+   "instMB": 37,
    "docs": "https://rust-analyzer.github.io/manual.html",
    "licence": "MIT OR Apache-2.0",
    "check": "version-flag",
@@ -3732,9 +4056,11 @@
      "manager": "pixi",
      "version": "2026.08.24",
      "size": {
+      "linux-64": 36.9,
       "linux-aarch64": 32.6
      },
      "before": {
+      "linux-64": 37.3,
       "linux-aarch64": 33
      }
     }
@@ -3742,6 +4068,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 36.9,
      "linux-aarch64": 32.6
     },
     "at": "2026-11-16"
@@ -3772,9 +4099,11 @@
      "manager": "pixi",
      "version": "5.1.0",
      "size": {
+      "linux-64": 121.8,
       "linux-aarch64": 126.3
      },
      "before": {
+      "linux-64": 126.1,
       "linux-aarch64": 130.6
      }
     }
@@ -3782,6 +4111,7 @@
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 121.8,
      "linux-aarch64": 126.3
     },
     "at": "2026-11-16"
@@ -3803,26 +4133,7 @@
    "docs": "https://core.tcl-lang.org/tcllib/doc/trunk/embedded/index.md",
    "licence": "TCL",
    "check": "file-exists",
-   "checkArg": "lib",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "1.21",
-     "size": {
-      "linux-aarch64": 25.2
-     },
-     "before": {
-      "linux-aarch64": 25.6
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-aarch64": 25.2
-    },
-    "at": "2026-11-16"
-   }
+   "checkArg": "lib"
   },
   {
    "id": "perl-text-csv",
@@ -3849,16 +4160,20 @@
      "manager": "pixi",
      "version": "2.02",
      "size": {
+      "linux-64": 62.3,
       "linux-aarch64": 63.2
      },
      "before": {
+      "linux-64": 62.9,
       "linux-aarch64": 63.8
-     }
+     },
+     "includes": "its own Perl (about 60 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 62.3,
      "linux-aarch64": 63.2
     },
     "at": "2026-11-16"
@@ -3889,16 +4204,20 @@
      "manager": "pixi",
      "version": "9.51",
      "size": {
+      "linux-64": 64.1,
       "linux-aarch64": 65
      },
      "before": {
+      "linux-64": 64.5,
       "linux-aarch64": 65.4
-     }
+     },
+     "includes": "its own Perl (about 60 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 64.1,
      "linux-aarch64": 65
     },
     "at": "2026-11-16"
@@ -3929,16 +4248,20 @@
      "manager": "pixi",
      "version": "0.32",
      "size": {
+      "linux-64": 57.5,
       "linux-aarch64": 58.3
      },
      "before": {
+      "linux-64": 76.4,
       "linux-aarch64": 77.2
-     }
+     },
+     "includes": "its own Perl (about 50 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 57.5,
      "linux-aarch64": 58.3
     },
     "at": "2026-11-16"
@@ -3969,16 +4292,20 @@
      "manager": "pixi",
      "version": "0.150",
      "size": {
+      "linux-64": 61.8,
       "linux-aarch64": 62.7
      },
      "before": {
+      "linux-64": 62.3,
       "linux-aarch64": 63.2
-     }
+     },
+     "includes": "its own Perl (about 60 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 61.8,
      "linux-aarch64": 62.7
     },
     "at": "2026-11-16"
@@ -4009,16 +4336,20 @@
      "manager": "pixi",
      "version": "1.004004",
      "size": {
+      "linux-64": 62.4,
       "linux-aarch64": 63.3
      },
      "before": {
+      "linux-64": 62.9,
       "linux-aarch64": 63.8
-     }
+     },
+     "includes": "its own Perl (about 60 MB)"
     }
    ],
    "minimal": {
     "manager": "pixi",
     "size": {
+     "linux-64": 62.4,
      "linux-aarch64": 63.3
     },
     "at": "2026-11-16"
@@ -4048,9 +4379,11 @@
      "manager": "npm",
      "version": "1.21.1",
      "size": {
+      "linux-64": 1.7,
       "linux-aarch64": 1.7
      },
      "before": {
+      "linux-64": 2.9,
       "linux-aarch64": 2.9
      }
     }
@@ -4058,6 +4391,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 1.7,
      "linux-aarch64": 1.7
     },
     "at": "2026-11-16"
@@ -4129,9 +4463,11 @@
      "manager": "npm",
      "version": "8.23.0",
      "size": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      },
      "before": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      }
     }
@@ -4139,6 +4475,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.1,
      "linux-aarch64": 0.1
     },
     "at": "2026-11-16"
@@ -4168,9 +4505,11 @@
      "manager": "npm",
      "version": "4.8.4",
      "size": {
+      "linux-64": 3.8,
       "linux-aarch64": 3.8
      },
      "before": {
+      "linux-64": 4.8,
       "linux-aarch64": 4.8
      }
     }
@@ -4178,6 +4517,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 3.8,
      "linux-aarch64": 3.8
     },
     "at": "2026-11-16"
@@ -4207,9 +4547,11 @@
      "manager": "npm",
      "version": "4.18.1",
      "size": {
+      "linux-64": 1.3,
       "linux-aarch64": 1.3
      },
      "before": {
+      "linux-64": 1.3,
       "linux-aarch64": 1.3
      }
     }
@@ -4217,6 +4559,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 1.3,
      "linux-aarch64": 1.3
     },
     "at": "2026-11-16"
@@ -4246,9 +4589,11 @@
      "manager": "npm",
      "version": "0.32.0",
      "size": {
+      "linux-64": 1.1,
       "linux-aarch64": 1.1
      },
      "before": {
+      "linux-64": 1.1,
       "linux-aarch64": 1.1
      }
     }
@@ -4256,6 +4601,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 1.1,
      "linux-aarch64": 1.1
     },
     "at": "2026-11-16"
@@ -4285,9 +4631,11 @@
      "manager": "npm",
      "version": "7.8.2",
      "size": {
+      "linux-64": 2.5,
       "linux-aarch64": 2.5
      },
      "before": {
+      "linux-64": 4.4,
       "linux-aarch64": 4.4
      }
     }
@@ -4295,6 +4643,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 2.5,
      "linux-aarch64": 2.5
     },
     "at": "2026-11-16"
@@ -4324,9 +4673,11 @@
      "manager": "npm",
      "version": "5.2.1",
      "size": {
+      "linux-64": 0.7,
       "linux-aarch64": 0.7
      },
      "before": {
+      "linux-64": 0.7,
       "linux-aarch64": 0.7
      }
     }
@@ -4334,6 +4685,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.7,
      "linux-aarch64": 0.7
     },
     "at": "2026-11-16"
@@ -4363,9 +4715,11 @@
      "manager": "npm",
      "version": "1.11.23",
      "size": {
+      "linux-64": 0.6,
       "linux-aarch64": 0.6
      },
      "before": {
+      "linux-64": 0.7,
       "linux-aarch64": 0.7
      }
     }
@@ -4373,6 +4727,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.6,
      "linux-aarch64": 0.6
     },
     "at": "2026-11-16"
@@ -4402,9 +4757,11 @@
      "manager": "npm",
      "version": "2.31.0",
      "size": {
+      "linux-64": 3.7,
       "linux-aarch64": 3.7
      },
      "before": {
+      "linux-64": 4.3,
       "linux-aarch64": 4.3
      }
     }
@@ -4412,6 +4769,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 3.7,
      "linux-aarch64": 3.7
     },
     "at": "2026-11-16"
@@ -4463,9 +4821,11 @@
      "manager": "npm",
      "version": "4.22.3",
      "size": {
+      "linux-64": 1.3,
       "linux-aarch64": 1.3
      },
      "before": {
+      "linux-64": 2.3,
       "linux-aarch64": 2.3
      }
     }
@@ -4473,6 +4833,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 1.3,
      "linux-aarch64": 1.3
     },
     "at": "2026-11-16"
@@ -4545,9 +4906,11 @@
      "manager": "npm",
      "version": "9.5.0",
      "size": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      },
      "before": {
+      "linux-64": 0.2,
       "linux-aarch64": 0.2
      }
     }
@@ -4555,6 +4918,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.1,
      "linux-aarch64": 0.1
     },
     "at": "2026-11-16"
@@ -4584,9 +4948,11 @@
      "manager": "npm",
      "version": "18.0.10",
      "size": {
+      "linux-64": 0,
       "linux-aarch64": 0
      },
      "before": {
+      "linux-64": 0,
       "linux-aarch64": 0
      }
     }
@@ -4594,6 +4960,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0,
      "linux-aarch64": 0
     },
     "at": "2026-11-16"
@@ -4624,9 +4991,11 @@
      "manager": "npm",
      "version": "1.10.3",
      "size": {
+      "linux-64": 0.4,
       "linux-aarch64": 0.4
      },
      "before": {
+      "linux-64": 0.4,
       "linux-aarch64": 0.4
      }
     }
@@ -4634,6 +5003,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.4,
      "linux-aarch64": 0.4
     },
     "at": "2026-11-16"
@@ -4663,9 +5033,11 @@
      "manager": "npm",
      "version": "5.7.1",
      "size": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      },
      "before": {
+      "linux-64": 0.3,
       "linux-aarch64": 0.3
      }
     }
@@ -4673,6 +5045,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.1,
      "linux-aarch64": 0.1
     },
     "at": "2026-11-16"
@@ -4724,9 +5097,11 @@
      "manager": "npm",
      "version": "0.22.0",
      "size": {
+      "linux-64": 0.8,
       "linux-aarch64": 0.8
      },
      "before": {
+      "linux-64": 1,
       "linux-aarch64": 1
      }
     }
@@ -4734,6 +5109,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.8,
      "linux-aarch64": 0.8
     },
     "at": "2026-11-16"
@@ -4806,9 +5182,11 @@
      "manager": "npm",
      "version": "9.2.2",
      "size": {
+      "linux-64": 4.1,
       "linux-aarch64": 4.1
      },
      "before": {
+      "linux-64": 6.6,
       "linux-aarch64": 6.6
      }
     }
@@ -4816,6 +5194,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 4.1,
      "linux-aarch64": 4.1
     },
     "at": "2026-11-16"
@@ -4975,9 +5354,11 @@
      "manager": "npm",
      "version": "0.21.5",
      "size": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      },
      "before": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      }
     }
@@ -4985,6 +5366,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.1,
      "linux-aarch64": 0.1
     },
     "at": "2026-11-16"
@@ -5036,9 +5418,11 @@
      "manager": "npm",
      "version": "11.10.0",
      "size": {
+      "linux-64": 10.2,
       "linux-aarch64": 10.2
      },
      "before": {
+      "linux-64": 10.5,
       "linux-aarch64": 10.5
      }
     }
@@ -5046,6 +5430,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 10.2,
      "linux-aarch64": 10.2
     },
     "at": "2026-11-16"
@@ -5080,9 +5465,11 @@
      "manager": "npm",
      "version": "5.3.9",
      "size": {
+      "linux-64": 3.5,
       "linux-aarch64": 3.5
      },
      "before": {
+      "linux-64": 10.6,
       "linux-aarch64": 10.6
      }
     }
@@ -5090,6 +5477,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 3.5,
      "linux-aarch64": 3.5
     },
     "at": "2026-11-16"
@@ -5147,9 +5535,11 @@
      "manager": "npm",
      "version": "2.1.1",
      "size": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      },
      "before": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      }
     }
@@ -5157,6 +5547,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.1,
      "linux-aarch64": 0.1
     },
     "at": "2026-11-16"
@@ -5190,9 +5581,11 @@
      "manager": "npm",
      "version": "8.0.1",
      "size": {
+      "linux-64": 0,
       "linux-aarch64": 0
      },
      "before": {
+      "linux-64": 0,
       "linux-aarch64": 0
      }
     }
@@ -5200,6 +5593,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0,
      "linux-aarch64": 0
     },
     "at": "2026-11-16"
@@ -5233,9 +5627,11 @@
      "manager": "npm",
      "version": "4.1.1",
      "size": {
+      "linux-64": 0.3,
       "linux-aarch64": 0.3
      },
      "before": {
+      "linux-64": 0.3,
       "linux-aarch64": 0.3
      }
     }
@@ -5243,6 +5639,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.3,
      "linux-aarch64": 0.3
     },
     "at": "2026-11-16"
@@ -5300,9 +5697,11 @@
      "manager": "npm",
      "version": "3.17.5",
      "size": {
+      "linux-64": 1.1,
       "linux-aarch64": 1.1
      },
      "before": {
+      "linux-64": 1.1,
       "linux-aarch64": 1.1
      }
     }
@@ -5310,6 +5709,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 1.1,
      "linux-aarch64": 1.1
     },
     "at": "2026-11-16"
@@ -5343,9 +5743,11 @@
      "manager": "npm",
      "version": "4.0.1",
      "size": {
+      "linux-64": 0.9,
       "linux-aarch64": 0.9
      },
      "before": {
+      "linux-64": 1.3,
       "linux-aarch64": 1.3
      }
     }
@@ -5353,6 +5755,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.9,
      "linux-aarch64": 0.9
     },
     "at": "2026-11-16"
@@ -5386,9 +5789,11 @@
      "manager": "npm",
      "version": "4.0.0",
      "size": {
+      "linux-64": 2.2,
       "linux-aarch64": 2.2
      },
      "before": {
+      "linux-64": 2.8,
       "linux-aarch64": 2.8
      }
     }
@@ -5396,6 +5801,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 2.2,
      "linux-aarch64": 2.2
     },
     "at": "2026-11-16"
@@ -5507,9 +5913,11 @@
      "manager": "npm",
      "version": "3.5.45",
      "size": {
+      "linux-64": 13.3,
       "linux-aarch64": 13.3
      },
      "before": {
+      "linux-64": 16.5,
       "linux-aarch64": 16.5
      }
     }
@@ -5517,6 +5925,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 13.3,
      "linux-aarch64": 13.3
     },
     "at": "2026-11-16"
@@ -5550,9 +5959,11 @@
      "manager": "npm",
      "version": "4.18.1",
      "size": {
+      "linux-64": 1.3,
       "linux-aarch64": 1.3
      },
      "before": {
+      "linux-64": 1.3,
       "linux-aarch64": 1.3
      }
     }
@@ -5560,6 +5971,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 1.3,
      "linux-aarch64": 1.3
     },
     "at": "2026-11-16"
@@ -5593,9 +6005,11 @@
      "manager": "npm",
      "version": "1.11.23",
      "size": {
+      "linux-64": 0.6,
       "linux-aarch64": 0.6
      },
      "before": {
+      "linux-64": 0.7,
       "linux-aarch64": 0.7
      }
     }
@@ -5603,6 +6017,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.6,
      "linux-aarch64": 0.6
     },
     "at": "2026-11-16"
@@ -5636,9 +6051,11 @@
      "manager": "npm",
      "version": "1.21.1",
      "size": {
+      "linux-64": 1.7,
       "linux-aarch64": 1.7
      },
      "before": {
+      "linux-64": 2.9,
       "linux-aarch64": 2.9
      }
     }
@@ -5646,6 +6063,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 1.7,
      "linux-aarch64": 1.7
     },
     "at": "2026-11-16"
@@ -5679,9 +6097,11 @@
      "manager": "npm",
      "version": "7.9.2",
      "size": {
+      "linux-64": 3.4,
       "linux-aarch64": 3.4
      },
      "before": {
+      "linux-64": 3.5,
       "linux-aarch64": 3.5
      }
     }
@@ -5689,6 +6109,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 3.4,
      "linux-aarch64": 3.4
     },
     "at": "2026-11-16"
@@ -5722,9 +6143,11 @@
      "manager": "npm",
      "version": "4.6.1",
      "size": {
+      "linux-64": 1.7,
       "linux-aarch64": 1.7
      },
      "before": {
+      "linux-64": 6,
       "linux-aarch64": 6
      }
     }
@@ -5732,6 +6155,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 1.7,
      "linux-aarch64": 1.7
     },
     "at": "2026-11-16"
@@ -5769,9 +6193,11 @@
      "manager": "npm",
      "version": "0.19.1",
      "size": {
+      "linux-64": 4,
       "linux-aarch64": 4
      },
      "before": {
+      "linux-64": 4.1,
       "linux-aarch64": 4.1
      }
     }
@@ -5779,6 +6205,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 4,
      "linux-aarch64": 4
     },
     "at": "2026-11-16"
@@ -5813,9 +6240,11 @@
      "manager": "npm",
      "version": "1.9.4",
      "size": {
+      "linux-64": 1.4,
       "linux-aarch64": 1.4
      },
      "before": {
+      "linux-64": 3.6,
       "linux-aarch64": 3.6
      }
     }
@@ -5823,6 +6252,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 1.4,
      "linux-aarch64": 1.4
     },
     "at": "2026-11-16"
@@ -5856,9 +6286,11 @@
      "manager": "npm",
      "version": "0.20.0",
      "size": {
+      "linux-64": 0.8,
       "linux-aarch64": 0.8
      },
      "before": {
+      "linux-64": 0.9,
       "linux-aarch64": 0.9
      }
     }
@@ -5866,6 +6298,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.8,
      "linux-aarch64": 0.8
     },
     "at": "2026-11-16"
@@ -5899,9 +6332,11 @@
      "manager": "npm",
      "version": "1.15.7",
      "size": {
+      "linux-64": 0.6,
       "linux-aarch64": 0.6
      },
      "before": {
+      "linux-64": 0.6,
       "linux-aarch64": 0.6
      }
     }
@@ -5909,6 +6344,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.6,
      "linux-aarch64": 0.6
     },
     "at": "2026-11-16"
@@ -5943,9 +6379,11 @@
      "manager": "npm",
      "version": "14.4.0",
      "size": {
+      "linux-64": 2.8,
       "linux-aarch64": 2.8
      },
      "before": {
+      "linux-64": 3.6,
       "linux-aarch64": 3.6
      }
     }
@@ -5953,6 +6391,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 2.8,
      "linux-aarch64": 2.8
     },
     "at": "2026-11-16"
@@ -6123,9 +6562,11 @@
      "manager": "npm",
      "version": "3.4.3",
      "size": {
+      "linux-64": 0.5,
       "linux-aarch64": 0.5
      },
      "before": {
+      "linux-64": 1.9,
       "linux-aarch64": 1.9
      }
     }
@@ -6133,6 +6574,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 0.5,
      "linux-aarch64": 0.5
     },
     "at": "2026-11-16"
@@ -6165,9 +6607,11 @@
      "manager": "npm",
      "version": "3.15.1",
      "size": {
+      "linux-64": 1.9,
       "linux-aarch64": 1.9
      },
      "before": {
+      "linux-64": 1.9,
       "linux-aarch64": 1.9
      }
     }
@@ -6175,6 +6619,7 @@
    "minimal": {
     "manager": "npm",
     "size": {
+     "linux-64": 1.9,
      "linux-aarch64": 1.9
     },
     "at": "2026-11-16"
@@ -6206,9 +6651,11 @@
      "manager": "go mirror",
      "version": "1.10.2",
      "size": {
+      "linux-64": 0.8,
       "linux-aarch64": 0.8
      },
      "before": {
+      "linux-64": 0.8,
       "linux-aarch64": 0.8
      }
     }
@@ -6216,6 +6663,7 @@
    "minimal": {
     "manager": "go mirror",
     "size": {
+     "linux-64": 0.8,
      "linux-aarch64": 0.8
     },
     "at": "2026-11-16"
@@ -6234,13 +6682,36 @@
    "package": "github.com/spf13/viper",
    "install": "approval",
    "category": "Go modules",
+   "instMB": 18,
    "docs": "https://pkg.go.dev/github.com/spf13/viper",
    "licence": "MIT",
    "check": "file-exists",
    "checkArg": "github.com/spf13/viper",
    "labels": [
     "mirror: used offline, fetched by the server"
-   ]
+   ],
+   "options": [
+    {
+     "manager": "go mirror",
+     "version": "1.21.0",
+     "size": {
+      "linux-64": 17.3,
+      "linux-aarch64": 17.3
+     },
+     "before": {
+      "linux-64": 17.3,
+      "linux-aarch64": 17.3
+     }
+    }
+   ],
+   "minimal": {
+    "manager": "go mirror",
+    "size": {
+     "linux-64": 17.3,
+     "linux-aarch64": 17.3
+    },
+    "at": "2026-11-16"
+   }
   },
   {
    "id": "go:testify",
@@ -6268,9 +6739,11 @@
      "manager": "go mirror",
      "version": "1.12.1",
      "size": {
+      "linux-64": 0.4,
       "linux-aarch64": 0.4
      },
      "before": {
+      "linux-64": 0.4,
       "linux-aarch64": 0.4
      }
     }
@@ -6278,6 +6751,7 @@
    "minimal": {
     "manager": "go mirror",
     "size": {
+     "linux-64": 0.4,
      "linux-aarch64": 0.4
     },
     "at": "2026-11-16"
@@ -6309,9 +6783,11 @@
      "manager": "go mirror",
      "version": "1.6.0",
      "size": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      },
      "before": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      }
     }
@@ -6319,6 +6795,7 @@
    "minimal": {
     "manager": "go mirror",
     "size": {
+     "linux-64": 0.1,
      "linux-aarch64": 0.1
     },
     "at": "2026-11-16"
@@ -6350,9 +6827,11 @@
      "manager": "go mirror",
      "version": "1.8.1",
      "size": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      },
      "before": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      }
     }
@@ -6360,6 +6839,7 @@
    "minimal": {
     "manager": "go mirror",
     "size": {
+     "linux-64": 0.1,
      "linux-aarch64": 0.1
     },
     "at": "2026-11-16"
@@ -6378,13 +6858,36 @@
    "package": "github.com/go-chi/chi/v5",
    "install": "approval",
    "category": "Go modules",
+   "instMB": 1,
    "docs": "https://pkg.go.dev/github.com/go-chi/chi/v5",
    "licence": "MIT",
    "check": "file-exists",
    "checkArg": "github.com/go-chi/chi/v5",
    "labels": [
     "mirror: used offline, fetched by the server"
-   ]
+   ],
+   "options": [
+    {
+     "manager": "go mirror",
+     "version": "5.3.2",
+     "size": {
+      "linux-64": 0.2,
+      "linux-aarch64": 0.2
+     },
+     "before": {
+      "linux-64": 0.2,
+      "linux-aarch64": 0.2
+     }
+    }
+   ],
+   "minimal": {
+    "manager": "go mirror",
+    "size": {
+     "linux-64": 0.2,
+     "linux-aarch64": 0.2
+    },
+    "at": "2026-11-16"
+   }
   },
   {
    "id": "go:yaml",
@@ -6412,9 +6915,11 @@
      "manager": "go mirror",
      "version": "3.0.1",
      "size": {
+      "linux-64": 0.2,
       "linux-aarch64": 0.2
      },
      "before": {
+      "linux-64": 0.2,
       "linux-aarch64": 0.2
      }
     }
@@ -6422,6 +6927,7 @@
    "minimal": {
     "manager": "go mirror",
     "size": {
+     "linux-64": 0.2,
      "linux-aarch64": 0.2
     },
     "at": "2026-11-16"
@@ -6451,11 +6957,13 @@
    "options": [
     {
      "manager": "go mirror",
-     "version": "1.9.4",
+     "version": "1.10.2",
      "size": {
+      "linux-64": 2.3,
       "linux-aarch64": 2.4
      },
      "before": {
+      "linux-64": 2.3,
       "linux-aarch64": 2.4
      }
     }
@@ -6463,6 +6971,7 @@
    "minimal": {
     "manager": "go mirror",
     "size": {
+     "linux-64": 2.3,
      "linux-aarch64": 2.4
     },
     "at": "2026-11-16"
@@ -6481,13 +6990,36 @@
    "package": "go.uber.org/zap",
    "install": "approval",
    "category": "Go modules",
+   "instMB": 1,
    "docs": "https://pkg.go.dev/go.uber.org/zap",
    "licence": "MIT",
    "check": "file-exists",
    "checkArg": "go.uber.org/zap",
    "labels": [
     "mirror: used offline, fetched by the server"
-   ]
+   ],
+   "options": [
+    {
+     "manager": "go mirror",
+     "version": "1.28.0",
+     "size": {
+      "linux-64": 1,
+      "linux-aarch64": 1
+     },
+     "before": {
+      "linux-64": 1,
+      "linux-aarch64": 1
+     }
+    }
+   ],
+   "minimal": {
+    "manager": "go mirror",
+    "size": {
+     "linux-64": 1,
+     "linux-aarch64": 1
+    },
+    "at": "2026-11-16"
+   }
   },
   {
    "id": "go:x-text",
@@ -6509,26 +7041,7 @@
    "checkArg": "golang.org/x/text/language",
    "labels": [
     "mirror: used offline, fetched by the server"
-   ],
-   "options": [
-    {
-     "manager": "go mirror",
-     "version": "0.44.0",
-     "size": {
-      "linux-aarch64": 10
-     },
-     "before": {
-      "linux-aarch64": 10
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "go mirror",
-    "size": {
-     "linux-aarch64": 10
-    },
-    "at": "2026-11-16"
-   }
+   ]
   },
   {
    "id": "jar:gson",
@@ -6556,9 +7069,11 @@
      "manager": "maven mirror",
      "version": "2.15.0",
      "size": {
+      "linux-64": 0.3,
       "linux-aarch64": 0.3
      },
      "before": {
+      "linux-64": 0.3,
       "linux-aarch64": 0.3
      }
     }
@@ -6566,6 +7081,7 @@
    "minimal": {
     "manager": "maven mirror",
     "size": {
+     "linux-64": 0.3,
      "linux-aarch64": 0.3
     },
     "at": "2026-11-16"
@@ -6597,9 +7113,11 @@
      "manager": "maven mirror",
      "version": "3.22.0",
      "size": {
+      "linux-64": 0.7,
       "linux-aarch64": 0.7
      },
      "before": {
+      "linux-64": 0.7,
       "linux-aarch64": 0.7
      }
     }
@@ -6607,6 +7125,7 @@
    "minimal": {
     "manager": "maven mirror",
     "size": {
+     "linux-64": 0.7,
      "linux-aarch64": 0.7
     },
     "at": "2026-11-16"
@@ -6638,9 +7157,11 @@
      "manager": "maven mirror",
      "version": "2.22.0",
      "size": {
+      "linux-64": 0.6,
       "linux-aarch64": 0.6
      },
      "before": {
+      "linux-64": 0.6,
       "linux-aarch64": 0.6
      }
     }
@@ -6648,6 +7169,7 @@
    "minimal": {
     "manager": "maven mirror",
     "size": {
+     "linux-64": 0.6,
      "linux-aarch64": 0.6
     },
     "at": "2026-11-16"
@@ -6679,9 +7201,11 @@
      "manager": "maven mirror",
      "version": "23.0",
      "size": {
+      "linux-64": 2.5,
       "linux-aarch64": 2.5
      },
      "before": {
+      "linux-64": 2.5,
       "linux-aarch64": 2.5
      }
     }
@@ -6689,6 +7213,7 @@
    "minimal": {
     "manager": "maven mirror",
     "size": {
+     "linux-64": 2.5,
      "linux-aarch64": 2.5
     },
     "at": "2026-11-16"
@@ -6720,9 +7245,11 @@
      "manager": "maven mirror",
      "version": "2.23.0",
      "size": {
+      "linux-64": 2.3,
       "linux-aarch64": 2.3
      },
      "before": {
+      "linux-64": 2.3,
       "linux-aarch64": 2.3
      }
     }
@@ -6730,6 +7257,7 @@
    "minimal": {
     "manager": "maven mirror",
     "size": {
+     "linux-64": 2.3,
      "linux-aarch64": 2.3
     },
     "at": "2026-11-16"
@@ -6761,9 +7289,11 @@
      "manager": "maven mirror",
      "version": "2.15.1",
      "size": {
+      "linux-64": 0.6,
       "linux-aarch64": 0.6
      },
      "before": {
+      "linux-64": 0.6,
       "linux-aarch64": 0.6
      }
     }
@@ -6771,6 +7301,7 @@
    "minimal": {
     "manager": "maven mirror",
     "size": {
+     "linux-64": 0.6,
      "linux-aarch64": 0.6
     },
     "at": "2026-11-16"
@@ -6802,9 +7333,11 @@
      "manager": "maven mirror",
      "version": "6.1.3",
      "size": {
+      "linux-64": 1.4,
       "linux-aarch64": 1.4
      },
      "before": {
+      "linux-64": 1.4,
       "linux-aarch64": 1.4
      }
     }
@@ -6812,6 +7345,7 @@
    "minimal": {
     "manager": "maven mirror",
     "size": {
+     "linux-64": 1.4,
      "linux-aarch64": 1.4
     },
     "at": "2026-11-16"
@@ -6843,9 +7377,11 @@
      "manager": "maven mirror",
      "version": "2.0.20",
      "size": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      },
      "before": {
+      "linux-64": 0.1,
       "linux-aarch64": 0.1
      }
     }
@@ -6853,6 +7389,7 @@
    "minimal": {
     "manager": "maven mirror",
     "size": {
+     "linux-64": 0.1,
      "linux-aarch64": 0.1
     },
     "at": "2026-11-16"
@@ -6884,17 +7421,20 @@
      "manager": "cargo mirror",
      "version": "1.0.229",
      "size": {
-      "linux-aarch64": 4.1
+      "linux-64": 4.2,
+      "linux-aarch64": 4.2
      },
      "before": {
-      "linux-aarch64": 4.1
+      "linux-64": 4.2,
+      "linux-aarch64": 4.2
      }
     }
    ],
    "minimal": {
     "manager": "cargo mirror",
     "size": {
-     "linux-aarch64": 4.1
+     "linux-64": 4.2,
+     "linux-aarch64": 4.2
     },
     "at": "2026-11-16"
    }
@@ -6925,17 +7465,20 @@
      "manager": "cargo mirror",
      "version": "1.0.154",
      "size": {
-      "linux-aarch64": 5.5
+      "linux-64": 5.6,
+      "linux-aarch64": 5.6
      },
      "before": {
-      "linux-aarch64": 5.5
+      "linux-64": 5.6,
+      "linux-aarch64": 5.6
      }
     }
    ],
    "minimal": {
     "manager": "cargo mirror",
     "size": {
-     "linux-aarch64": 5.5
+     "linux-64": 5.6,
+     "linux-aarch64": 5.6
     },
     "at": "2026-11-16"
    }
@@ -6953,13 +7496,36 @@
    "package": "rand",
    "install": "approval",
    "category": "Rust crates",
+   "instMB": 6,
    "docs": "https://docs.rs/rand",
    "licence": "MIT OR Apache-2.0",
    "check": "file-exists",
    "checkArg": "vendor",
    "labels": [
     "mirror: used offline, fetched by the server"
-   ]
+   ],
+   "options": [
+    {
+     "manager": "cargo mirror",
+     "version": "0.10.4",
+     "size": {
+      "linux-64": 5.6,
+      "linux-aarch64": 5.6
+     },
+     "before": {
+      "linux-64": 5.6,
+      "linux-aarch64": 5.6
+     }
+    }
+   ],
+   "minimal": {
+    "manager": "cargo mirror",
+    "size": {
+     "linux-64": 5.6,
+     "linux-aarch64": 5.6
+    },
+    "at": "2026-11-16"
+   }
   },
   {
    "id": "crate:regex",
@@ -6987,17 +7553,20 @@
      "manager": "cargo mirror",
      "version": "1.13.1",
      "size": {
-      "linux-aarch64": 6.2
+      "linux-64": 6.3,
+      "linux-aarch64": 6.3
      },
      "before": {
-      "linux-aarch64": 6.2
+      "linux-64": 6.3,
+      "linux-aarch64": 6.3
      }
     }
    ],
    "minimal": {
     "manager": "cargo mirror",
     "size": {
-     "linux-aarch64": 6.2
+     "linux-64": 6.3,
+     "linux-aarch64": 6.3
     },
     "at": "2026-11-16"
    }
@@ -7028,9 +7597,11 @@
      "manager": "cargo mirror",
      "version": "0.15.0",
      "size": {
+      "linux-64": 0.9,
       "linux-aarch64": 0.9
      },
      "before": {
+      "linux-64": 0.9,
       "linux-aarch64": 0.9
      }
     }
@@ -7038,6 +7609,7 @@
    "minimal": {
     "manager": "cargo mirror",
     "size": {
+     "linux-64": 0.9,
      "linux-aarch64": 0.9
     },
     "at": "2026-11-16"
@@ -7069,17 +7641,20 @@
      "manager": "cargo mirror",
      "version": "0.4.45",
      "size": {
-      "linux-aarch64": 16.4
+      "linux-64": 16.6,
+      "linux-aarch64": 16.6
      },
      "before": {
-      "linux-aarch64": 16.4
+      "linux-64": 16.6,
+      "linux-aarch64": 16.6
      }
     }
    ],
    "minimal": {
     "manager": "cargo mirror",
     "size": {
-     "linux-aarch64": 16.4
+     "linux-64": 16.6,
+     "linux-aarch64": 16.6
     },
     "at": "2026-11-16"
    }
@@ -7110,9 +7685,11 @@
      "manager": "cargo mirror",
      "version": "1.0.104",
      "size": {
+      "linux-64": 0.2,
       "linux-aarch64": 0.2
      },
      "before": {
+      "linux-64": 0.2,
       "linux-aarch64": 0.2
      }
     }
@@ -7120,6 +7697,7 @@
    "minimal": {
     "manager": "cargo mirror",
     "size": {
+     "linux-64": 0.2,
      "linux-aarch64": 0.2
     },
     "at": "2026-11-16"
@@ -7138,13 +7716,36 @@
    "package": "thiserror",
    "install": "approval",
    "category": "Rust crates",
+   "instMB": 4,
    "docs": "https://docs.rs/thiserror",
    "licence": "MIT OR Apache-2.0",
    "check": "file-exists",
    "checkArg": "vendor",
    "labels": [
     "mirror: used offline, fetched by the server"
-   ]
+   ],
+   "options": [
+    {
+     "manager": "cargo mirror",
+     "version": "2.0.21",
+     "size": {
+      "linux-64": 3.2,
+      "linux-aarch64": 3.2
+     },
+     "before": {
+      "linux-64": 3.2,
+      "linux-aarch64": 3.2
+     }
+    }
+   ],
+   "minimal": {
+    "manager": "cargo mirror",
+    "size": {
+     "linux-64": 3.2,
+     "linux-aarch64": 3.2
+    },
+    "at": "2026-11-16"
+   }
   }
  ],
  "packs": [

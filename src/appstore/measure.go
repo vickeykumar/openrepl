@@ -218,9 +218,15 @@ func MergeMeasured(base []byte, parts ...[]Entry) ([]byte, error) {
 	}
 	entries := f.Entries
 	got := map[string][]Entry{}
+	archs := map[string]bool{} // the CPU types the runs measured
 	for _, p := range parts {
 		for _, e := range p {
 			got[e.ID] = append(got[e.ID], e)
+			for _, o := range e.Options {
+				for a := range o.Size {
+					archs[a] = true
+				}
+			}
 		}
 	}
 	for i, e := range entries {
@@ -275,6 +281,19 @@ func MergeMeasured(base []byte, parts ...[]Entry) ([]byte, error) {
 			}
 			if o.Err != "" && len(o.Size) == 0 {
 				continue
+			}
+			// with both CPU types measured, an option that has a size for one only failed on the other: a bundle of one manager is made on every
+			// node, so it is not claimed (the entry keeps what it had; the merge program lists it)
+			if len(archs) > 1 {
+				missing := false
+				for a := range archs {
+					if _, ok := o.Size[a]; !ok {
+						missing = true
+					}
+				}
+				if missing {
+					continue
+				}
 			}
 			o.Err = ""
 			kept = append(kept, o)
@@ -361,6 +380,32 @@ func includesOf(dest string) string {
 // MeasureFailures lists the options that could not be measured (entry id, manager, why), for the report of the merge.
 func MeasureFailures(parts ...[]Entry) []string {
 	var out []string
+	have := map[string]map[string]map[string]bool{} // entry -> manager -> CPU types with a size
+	archs := map[string]bool{}
+	for _, p := range parts {
+		for _, e := range p {
+			for _, o := range e.Options {
+				for a := range o.Size {
+					archs[a] = true
+					if have[e.ID] == nil {
+						have[e.ID] = map[string]map[string]bool{}
+					}
+					if have[e.ID][o.Manager] == nil {
+						have[e.ID][o.Manager] = map[string]bool{}
+					}
+					have[e.ID][o.Manager][a] = true
+				}
+			}
+		}
+	}
+	for id, ms := range have {
+		for mgr, as := range ms {
+			if len(archs) > 1 && len(as) < len(archs) {
+				out = append(out, fmt.Sprintf("%s (%s): measured on one CPU type only, so it is not claimed", id, mgr))
+			}
+		}
+	}
+	sort.Strings(out)
 	for _, p := range parts {
 		for _, e := range p {
 			for _, o := range e.Options {
