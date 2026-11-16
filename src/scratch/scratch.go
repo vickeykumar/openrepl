@@ -73,6 +73,7 @@ func Vars(dir string) []string {
 		"RUFF_CACHE_DIR=" + filepath.Join(c, "ruff"),
 		"GOCACHE=" + filepath.Join(c, "go-build"),
 		"GOTMPDIR=" + filepath.Join(dir, "gotmp"),
+		"GOMODCACHE=" + filepath.Join(c, "gomod"), // modules are unpacked here, from the mirror
 		"CARGO_TARGET_DIR=" + filepath.Join(dir, "build", "cargo-target"),
 		"EVCXR_TMPDIR=" + filepath.Join(dir, "build", "evcxr"),
 		"EVCXR_TARGET_DIR=" + filepath.Join(dir, "build", "evcxr"),

@@ -116,6 +116,16 @@ func newInstaller(dir string) appstore.Installer {
 	if npm := findNpm(); npm != "" {
 		multi.Node = appstore.Npm{Bin: npm, Dir: dir}
 	}
+	// the mirrors (LLD 18): the image's own go, java and cargo fetch the libraries; the catalogue says which package an app is
+	lookup := func(kind, app string) (appstore.Entry, bool) {
+		if svc := storeService(); svc != nil {
+			return svc.EntryFor(app, kind)
+		}
+		return appstore.Entry{}, false
+	}
+	multi.GoMod = appstore.GoMod{Dir: dir, Lookup: lookup}
+	multi.Jar = appstore.Maven{Dir: dir, Lookup: lookup}
+	multi.Crate = appstore.Cargo{Dir: dir, Lookup: lookup}
 	return multi
 }
 
@@ -360,6 +370,11 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{"hits": hits, "error": msg})
 		case "size":
+			if k := r.URL.Query().Get("kind"); appstore.IsMirrorKind(k) {
+				// a mirror is fetched to be measured: that is done by the install, not by a visitor of the page
+				writeJSON(w, http.StatusOK, map[string]string{"error": "worked out when it is installed"})
+				return
+			}
 			res, err := svc.Estimate(r.Context(), r.URL.Query().Get("name"), r.URL.Query().Get("kind"))
 			if err != nil {
 				writeJSON(w, http.StatusOK, map[string]string{"error": err.Error()})

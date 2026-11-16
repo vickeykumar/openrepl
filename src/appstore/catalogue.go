@@ -183,13 +183,32 @@ func ValidateEntry(e Entry) error {
 	return nil
 }
 
-// PackageName is the name at the manager.
-func (e Entry) PackageName() string {
+// Source is the name of the package at its manager: the module path of a Go module, group:artifact of a jar, the crate, the conda package.
+func (e Entry) Source() string {
 	if e.Package != "" {
 		return strings.ToLower(e.Package)
 	}
 	return strings.ToLower(e.Name)
 }
+
+// mirrorPrefix is the start of the name of an app of a kind that has a name of its own in the store: a module, a jar and a crate can have the
+// name of a library of another kind (a Python and a Rust "regex"), so the app says what it is.
+var mirrorPrefix = map[string]string{CKGoMod: "gomod-", CKJar: "jar-", CKCrate: "crate-", CKLib27: "py27-"}
+
+// PackageName is the name of the app in the store (and of its bundle): the package name for most kinds, "gomod-cobra" for a Go module.
+func (e Entry) PackageName() string {
+	if px, ok := mirrorPrefix[e.Kind]; ok {
+		n := strings.ToLower(e.Name)
+		if e.Kind == CKLib27 {
+			n = e.Source()
+		}
+		return px + n
+	}
+	return e.Source()
+}
+
+// IsMirrorKind says whether an app kind is kept in a mirror folder of the store (Go modules, jars, crates).
+func IsMirrorKind(k string) bool { return k == KindGoMod || k == KindJar || k == KindCrate }
 
 // InstallKind is the kind the installer uses for the entry, or "" for one that cannot be installed on this server yet.
 func (e Entry) InstallKind() string {
@@ -198,6 +217,14 @@ func (e Entry) InstallKind() string {
 		return KindLib
 	case CKTool, CKCLib:
 		return KindTool
+	case CKGoMod:
+		return KindGoMod
+	case CKJar:
+		return KindJar
+	case CKCrate:
+		return KindCrate
+	case CKLib27:
+		return KindPy27
 	case CKNode, CKWeb:
 		return KindNode // a browser library is an npm package, served to the preview; the bundle is the same as a Node library's
 	case CKPlugin:
@@ -218,7 +245,7 @@ func (s *Service) InstallEntry(who string, e Entry) error {
 	if k == "" {
 		return errors.New("this kind of entry cannot be installed on this server yet")
 	}
-	if e.Version != "" && k == KindNode {
+	if e.Version != "" && (k == KindNode || IsMirrorKind(k) || k == KindPy27) {
 		return s.InstallVersion(who, e.PackageName(), k, e.Version)
 	}
 	return s.Install(who, e.PackageName(), k, true)
@@ -282,7 +309,7 @@ func (e Entry) asset() bool { return e.Kind == CKWeb || (e.Kind == CKPlugin && !
 func (s *Service) EntryFor(name, kind string) (Entry, bool) {
 	var asset *Entry
 	for _, e := range s.Catalogue() {
-		if e.InstallKind() == kind && e.PackageName() == name && e.Python != "2.7" {
+		if e.InstallKind() == kind && e.PackageName() == name {
 			if e.asset() {
 				e := e
 				asset = &e
@@ -308,6 +335,22 @@ func (s *Service) checkApp(ctx context.Context, dest string, a App) error {
 			return checkFiles(dest, e)
 		case e.Kind == CKCLib && e.Check == "file-exists" && e.CheckArg != "":
 			return fileExists(PrefixOf(dest), e.CheckArg)
+		case e.Kind == CKGoMod:
+			return GoMod{Dir: s.cfg.Store.Dir}.check(ctx, dest, e, a.Version)
+		case e.Kind == CKJar:
+			return Maven{Dir: s.cfg.Store.Dir}.check(ctx, dest, e)
+		case e.Kind == CKCrate:
+			return Cargo{Dir: s.cfg.Store.Dir}.check(ctx, dest, e, a.Version)
+		case e.Kind == CKLib27 && identPattern.MatchString(e.CheckArg):
+			py := filepath.Join(PrefixOf(dest), "bin", "python")
+			cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			defer cancel()
+			c := exec.CommandContext(cctx, py, "-c", "import "+e.CheckArg)
+			c.Dir = os.TempDir()
+			if out, err := c.CombinedOutput(); err != nil {
+				return fmt.Errorf("%s did not start in Python 2.7: %s", a.Name, tail(strings.TrimSpace(string(out)), 400))
+			}
+			return nil
 		case e.Kind == CKLib && e.Check == "python-import" && identPattern.MatchString(e.CheckArg):
 			py := filepath.Join(PrefixOf(dest), "bin", "python")
 			if _, err := os.Stat(py); err == nil {

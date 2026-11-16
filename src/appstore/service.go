@@ -38,6 +38,10 @@ const (
 	KindNode   = "node"   // a Node library (npm)
 	KindLang   = "lang"   // a language: a program that runs code (conda-forge); an admin installs it
 	KindPlugin = "plugin" // an editor plugin that comes with the server; an admin installs it
+	KindGoMod  = "gomod"  // a Go module, mirrored from the Go module proxy (LLD 18, "mirrors")
+	KindJar    = "jar"    // a Java library: its jars and what they need, from Maven Central
+	KindCrate  = "crate"  // a Rust crate, vendored from crates.io
+	KindPy27   = "py27"   // a Python 2.7 library (conda-forge, in an environment with Python 2.7)
 )
 
 // Errors a caller turns into a message.
@@ -415,7 +419,7 @@ func (s *Service) isSafe(kind, name string) bool {
 	}
 	// an entry of the catalogue that anyone may install
 	for _, e := range s.Catalogue() {
-		if e.Install == "anyone" && e.InstallKind() == kind && e.PackageName() == name && e.Python != "2.7" {
+		if e.Install == "anyone" && e.InstallKind() == kind && e.PackageName() == name {
 			return true
 		}
 	}
@@ -424,7 +428,7 @@ func (s *Service) isSafe(kind, name string) bool {
 
 func cleanKind(k string) string {
 	switch k {
-	case KindTool, KindNode, KindLang, KindPlugin:
+	case KindTool, KindNode, KindLang, KindPlugin, KindGoMod, KindJar, KindCrate, KindPy27:
 		return k
 	}
 	return KindLib
@@ -444,7 +448,9 @@ func safeEntry(e string) (kind, name string) {
 
 // safeKind says which kinds a user may install without asking (when the name is on the safe list): a language or a plugin is always
 // an admin's to install.
-func safeKind(k string) bool { return k == KindLib || k == KindTool || k == KindNode }
+func safeKind(k string) bool {
+	return k == KindLib || k == KindTool || k == KindNode || IsMirrorKind(k) || k == KindPy27
+}
 
 // ---- install -------------------------------------------------------------------------------------------------------------
 
@@ -1058,11 +1064,13 @@ type View struct {
 	Licence  string   `json:"licence,omitempty"`
 	Manager  string   `json:"manager,omitempty"`
 	Place    string   `json:"place,omitempty"`
+	Source   string   `json:"source,omitempty"` // the package at its manager: a module path, group:artifact, a crate
 }
 
 func (v *View) fromEntry(e Entry) {
 	v.Entry, v.Docs, v.Repls, v.Category, v.Level, v.Labels = e.ID, e.Docs, e.Repls, e.Category, e.Level, e.Labels
 	v.RAMMB, v.InstMB, v.Licence, v.Manager, v.Place = e.RAMMB, e.InstMB, e.Licence, e.Manager, e.Place
+	v.Source = e.Source()
 	if v.Summary == "" {
 		v.Summary = e.Summary
 	}
@@ -1190,7 +1198,7 @@ func (s *Service) views(who, home string, full bool) []View {
 	for _, e := range s.Catalogue() {
 		k := e.InstallKind()
 		n := e.PackageName()
-		if k == "" || k == KindPlugin || e.asset() || seen[n] || e.Python == "2.7" || !ValidName(n) {
+		if k == "" || k == KindPlugin || e.asset() || seen[n] || !ValidName(n) {
 			continue
 		}
 		if _, isBuiltin := s.BuiltinNamed(n); isBuiltin && k != KindNode {

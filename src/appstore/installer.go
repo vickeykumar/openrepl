@@ -263,6 +263,7 @@ func (n Npm) Search(ctx context.Context, q, kind string) ([]Found, error) {
 // editor plugins to the ones that come with the server.
 type Multi struct {
 	Conda, Node, Plugin Installer
+	GoMod, Jar, Crate   Installer // the mirrors (mirror.go)
 }
 
 func (m Multi) pick(kind string) Installer {
@@ -277,6 +278,21 @@ func (m Multi) pick(kind string) Installer {
 			return m.Plugin
 		}
 		return Missing{Reason: "no editor plugins come with this server"}
+	case KindGoMod:
+		if m.GoMod != nil {
+			return m.GoMod
+		}
+		return Missing{Reason: "Go is not installed on this server"}
+	case KindJar:
+		if m.Jar != nil {
+			return m.Jar
+		}
+		return Missing{Reason: "Java is not installed on this server"}
+	case KindCrate:
+		if m.Crate != nil {
+			return m.Crate
+		}
+		return Missing{Reason: "Rust (cargo) is not installed on this server"}
 	}
 	if m.Conda != nil {
 		return m.Conda

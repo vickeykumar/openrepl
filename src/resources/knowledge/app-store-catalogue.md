@@ -11,6 +11,8 @@ C and C++: cmake, ninja, cppcheck, clang-format, eigen, fmt, nlohmann_json, catc
 
 bash: git, ripgrep, fd, bat, fzf, shellcheck, tmux, vim. Go: gopls, staticcheck. Perl: Mojolicious, Text::CSV. Tcl: tcllib. SQLite: spatialite.
 
+Go modules (cobra, testify, uuid, mux), Java jars (gson, guava, commons-lang3, junit) and Rust crates (serde, serde_json, rand, regex) are fetched by the server and used offline: go run, javac and java, and evcxr :dep. Python 2.7 libraries (six, requests) work in the Python 2.7 terminal only.
+
 HTML, CSS, JavaScript pages: bootstrap, pico, tailwind, htmx, alpine, react 18, vue, d3, chart.js. They are served from this site to the preview, so a page can load them by address with no internet.
 
 Built in already (never install): Python and Python 2.7, Node.js, TypeScript, Go, OpenJDK, Rust, gcc, g++, cling, Ruby, Perl, Tcl, SQLite, jq and nasm.

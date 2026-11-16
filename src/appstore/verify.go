@@ -60,8 +60,8 @@ func VerifyArgs(dest, kind, name string) (cmds [][]string, ok bool) {
 			cmds = append(cmds, append([]string{exe}, f...))
 		}
 		return cmds, true
-	case KindPlugin:
-		return nil, false
+	case KindPlugin, KindGoMod, KindJar, KindCrate, KindPy27:
+		return nil, false // proved when it was installed (a mirror is a folder; a Python 2.7 library is used by the Python 2.7 REPL only)
 	default: // a Python library
 		if mod := moduleOf(dest, name); mod != "" {
 			return [][]string{{"python3", "-c", "import " + mod}}, true

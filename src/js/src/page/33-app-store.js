@@ -175,7 +175,7 @@ function lookup(name) {
 
 var STATE_TEXT = { available: "", installing: "Installing", installed: "Installed", failed: "Failed", requested: "Waiting for an admin", rejected: "Not available" };
 
-var KIND_TEXT = { lib: "python", tool: "tool", node: "node", lang: "language", plugin: "plugin" };
+var KIND_TEXT = { lib: "python", tool: "tool", node: "node", lang: "language", plugin: "plugin", py27: "python 2.7", gomod: "go", jar: "java", crate: "rust" };
 
 // the name of an app opens its page in the App Store (a new tab: the editor and its terminals stay as they are)
 function nameLink(name) {

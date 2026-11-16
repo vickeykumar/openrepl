@@ -108,6 +108,11 @@ func (p Pixi) Manifest(name, version, kind string) (string, error) {
 	if kind == KindLib || kind == "" {
 		fmt.Fprintf(&b, "python = %q\n", p.py()+".*")
 	}
+	if kind == KindPy27 {
+		// a Python 2.7 library: its own environment, solved with Python 2.7 (the app is named py27-<package>)
+		b.WriteString("python = \"2.7.*\"\n")
+		name = strings.TrimPrefix(name, "py27-")
+	}
 	spec := "*"
 	if version != "" {
 		spec = "==" + version
@@ -160,7 +165,7 @@ func (p Pixi) Resolve(ctx context.Context, name, version, kind string) (Resolved
 	if err != nil {
 		return Resolved{}, errors.New("pixi made no lock")
 	}
-	return resolvedFrom(raw, name, CondaPlatform())
+	return resolvedFrom(raw, strings.TrimPrefix(name, map[bool]string{true: "py27-", false: ""}[kind == KindPy27]), CondaPlatform())
 }
 
 // solveReason is the part of a failed solve that says why (pixi's own words, without its tree drawing).

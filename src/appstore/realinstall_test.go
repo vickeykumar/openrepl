@@ -455,3 +455,127 @@ func TestTheCoreOfTheCatalogueInstallsAndLeavesTheWorkspaceAlone(t *testing.T) {
 		})
 	}
 }
+
+// The mirrors, for real (go, java and cargo of the image, the real registries): one library of each kind is installed from the default catalogue,
+// passes its own check, and is then USED THE WAY A TERMINAL DOES, with no internet: a Go program that imports the module builds with GOPROXY=file://,
+// javac compiles and java runs a class that uses the jar from the CLASSPATH, and cargo builds a crate that depends on the vendored crate.
+func TestTheMirrorsInstallAndAreUsedOffline(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	byID := map[string]Entry{}
+	entries, _ := DefaultCatalogue()
+	for _, e := range entries {
+		byID[e.ID] = e
+	}
+	lookup := func(kind, app string) (Entry, bool) {
+		for _, e := range entries {
+			if e.InstallKind() == kind && e.PackageName() == app {
+				return e, true
+			}
+		}
+		return Entry{}, false
+	}
+	only := os.Getenv("OPENREPL_REAL_ONLY")
+	want := func(id string) bool { return only == "" || strings.Contains(","+only+",", ","+id+",") }
+	install := func(t *testing.T, in Installer, e Entry) (string, string) {
+		t.Helper()
+		k := e.InstallKind()
+		res, err := in.Resolve(context.Background(), e.PackageName(), "", k)
+		if err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		t.Logf("%s resolves to %s (%d packages, %.1f MB)", e.ID, res.Version, res.Packages, res.DiskMB)
+		dest := st.BundlePath(BundleID(e.PackageName(), res.Version))
+		var log bytes.Buffer
+		if err := in.Install(context.Background(), e.PackageName(), res.Version, k, dest, &log); err != nil {
+			t.Fatalf("install: %v\n%s", err, log.String())
+		}
+		t.Log(strings.TrimSpace(log.String()))
+		return dest, res.Version
+	}
+	run := func(t *testing.T, dir string, env []string, prog string, args ...string) string {
+		t.Helper()
+		c := exec.Command(prog, args...)
+		c.Dir, c.Env = dir, append(os.Environ(), env...)
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s %v: %v\n%s", prog, args, err, tailOf(out))
+		}
+		return string(out)
+	}
+	if want("go:cobra") {
+		t.Run("go:cobra", func(t *testing.T) {
+			e := byID["go:cobra"]
+			g := GoMod{Dir: st.Dir, Lookup: lookup}
+			dest, v := install(t, g, e)
+			if err := g.check(context.Background(), dest, e, v); err != nil {
+				t.Fatal(err)
+			}
+			// a user's program, with only the mirror
+			ws := t.TempDir()
+			os.WriteFile(filepath.Join(ws, "main.go"), []byte("package main\nimport (\"fmt\"; \"github.com/spf13/cobra\")\nfunc main(){ c := &cobra.Command{Use:\"hi\"}; fmt.Println(c.Use) }\n"), 0644)
+			env := VarsFor(st.Dir, []string{BundleID(e.PackageName(), v)}).Apply([]string{"GOTOOLCHAIN=local", "GOMODCACHE=" + filepath.Join(ws, "m"), "GOCACHE=" + filepath.Join(ws, "c"), "GOPATH=" + filepath.Join(ws, "p"), "GO111MODULE=on"})
+			run(t, ws, env, "go", "mod", "init", "x")
+			run(t, ws, env, "go", "get", "github.com/spf13/cobra@v"+v)
+			if out := run(t, ws, env, "go", "run", "."); !strings.Contains(out, "hi") {
+				t.Errorf("the program printed %q", out)
+			}
+		})
+	}
+	if want("jar:gson") {
+		t.Run("jar:gson", func(t *testing.T) {
+			e := byID["jar:gson"]
+			m := Maven{Dir: st.Dir, Lookup: lookup}
+			dest, v := install(t, m, e)
+			if err := m.check(context.Background(), dest, e); err != nil {
+				t.Fatal(err)
+			}
+			ws := t.TempDir()
+			os.WriteFile(filepath.Join(ws, "T.java"), []byte("public class T { public static void main(String[] a){ System.out.println(new com.google.gson.Gson().toJson(java.util.List.of(1,2))); } }\n"), 0644)
+			env := VarsFor(st.Dir, []string{BundleID(e.PackageName(), v)}).Apply([]string{"HOME=" + ws})
+			run(t, ws, env, "javac", "T.java")
+			if out := run(t, ws, env, "java", "T"); !strings.Contains(out, "[1,2]") {
+				t.Errorf("java printed %q", out)
+			}
+		})
+	}
+	if want("crate:serde_json") {
+		t.Run("crate:serde_json", func(t *testing.T) {
+			e := byID["crate:serde_json"]
+			c := Cargo{Dir: st.Dir, Lookup: lookup}
+			dest, v := install(t, c, e)
+			if err := c.check(context.Background(), dest, e, v); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	if want("py27:six") {
+		t.Run("py27:six", func(t *testing.T) {
+			bin := os.Getenv("OPENREPL_PIXI")
+			if bin == "" {
+				bin, _ = exec.LookPath("pixi")
+			}
+			if bin == "" {
+				t.Skip("pixi is not here")
+			}
+			e := byID["py27-six"]
+			svc := New(Config{Store: st, KV: newKV(), Installer: Multi{Conda: Pixi{Bin: bin, Dir: st.Dir, Python: PythonOf("python3")}}, Safe: func() []string { return nil }})
+			if err := svc.InstallEntry("ci", e); err != nil {
+				t.Fatal(err)
+			}
+			svc.Wait()
+			var app App
+			for _, a := range svc.Apps() {
+				if a.Name == e.PackageName() {
+					app = a
+				}
+			}
+			if app.State != StateInstalled {
+				t.Fatalf("not installed: %+v", app)
+			}
+			py := filepath.Join(PrefixOf(st.BundlePath(app.ID)), "bin", "python")
+			if out := run(t, t.TempDir(), nil, py, "-c", "import six, sys; sys.stdout.write(str(sys.version_info[0]) + ' ' + six.__version__)"); !strings.HasPrefix(out, "2 ") {
+				t.Errorf("python 2.7 printed %q", out)
+			}
+		})
+	}
+}

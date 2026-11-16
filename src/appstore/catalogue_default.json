@@ -3300,6 +3300,552 @@
    "files": [
     "dist/vconsole.min.js"
    ]
+  },
+  {
+   "id": "go:cobra",
+   "name": "cobra",
+   "summary": "Command-line programs. (a Go module, run with go run)",
+   "kind": "gomod",
+   "repls": [
+    "go"
+   ],
+   "level": "popular",
+   "manager": "go mirror",
+   "install": "approval",
+   "category": "Go modules",
+   "docs": "https://pkg.go.dev/github.com/spf13/cobra",
+   "licence": "Apache-2.0",
+   "package": "github.com/spf13/cobra",
+   "check": "file-exists",
+   "checkArg": "github.com/spf13/cobra",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "go:viper",
+   "name": "viper",
+   "summary": "Configuration files and environment. (a Go module, run with go run)",
+   "kind": "gomod",
+   "repls": [
+    "go"
+   ],
+   "level": "optional",
+   "manager": "go mirror",
+   "install": "approval",
+   "category": "Go modules",
+   "docs": "https://pkg.go.dev/github.com/spf13/viper",
+   "licence": "MIT",
+   "package": "github.com/spf13/viper",
+   "check": "file-exists",
+   "checkArg": "github.com/spf13/viper",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "go:testify",
+   "name": "testify",
+   "summary": "Assertions and mocks for tests. (a Go module, run with go run)",
+   "kind": "gomod",
+   "repls": [
+    "go"
+   ],
+   "level": "popular",
+   "manager": "go mirror",
+   "install": "approval",
+   "category": "Go modules",
+   "docs": "https://pkg.go.dev/github.com/stretchr/testify",
+   "licence": "MIT",
+   "package": "github.com/stretchr/testify",
+   "check": "file-exists",
+   "checkArg": "github.com/stretchr/testify/assert",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "go:uuid",
+   "name": "uuid",
+   "summary": "Unique ids. (a Go module, run with go run)",
+   "kind": "gomod",
+   "repls": [
+    "go"
+   ],
+   "level": "popular",
+   "manager": "go mirror",
+   "install": "approval",
+   "category": "Go modules",
+   "docs": "https://pkg.go.dev/github.com/google/uuid",
+   "licence": "BSD-3-Clause",
+   "package": "github.com/google/uuid",
+   "check": "file-exists",
+   "checkArg": "github.com/google/uuid",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "go:mux",
+   "name": "mux",
+   "summary": "A router for web servers. (a Go module, run with go run)",
+   "kind": "gomod",
+   "repls": [
+    "go"
+   ],
+   "level": "popular",
+   "manager": "go mirror",
+   "install": "approval",
+   "category": "Go modules",
+   "docs": "https://pkg.go.dev/github.com/gorilla/mux",
+   "licence": "BSD-3-Clause",
+   "package": "github.com/gorilla/mux",
+   "check": "file-exists",
+   "checkArg": "github.com/gorilla/mux",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "go:chi",
+   "name": "chi",
+   "summary": "A small router for web servers. (a Go module, run with go run)",
+   "kind": "gomod",
+   "repls": [
+    "go"
+   ],
+   "level": "optional",
+   "manager": "go mirror",
+   "install": "approval",
+   "category": "Go modules",
+   "docs": "https://pkg.go.dev/github.com/go-chi/chi/v5",
+   "licence": "MIT",
+   "package": "github.com/go-chi/chi/v5",
+   "check": "file-exists",
+   "checkArg": "github.com/go-chi/chi/v5",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "go:yaml",
+   "name": "yaml",
+   "summary": "Read and write YAML. (a Go module, run with go run)",
+   "kind": "gomod",
+   "repls": [
+    "go"
+   ],
+   "level": "optional",
+   "manager": "go mirror",
+   "install": "approval",
+   "category": "Go modules",
+   "docs": "https://pkg.go.dev/gopkg.in/yaml.v3",
+   "licence": "Apache-2.0 AND MIT",
+   "package": "gopkg.in/yaml.v3",
+   "check": "file-exists",
+   "checkArg": "gopkg.in/yaml.v3",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "go:logrus",
+   "name": "logrus",
+   "summary": "Structured logging. (a Go module, run with go run)",
+   "kind": "gomod",
+   "repls": [
+    "go"
+   ],
+   "level": "optional",
+   "manager": "go mirror",
+   "install": "approval",
+   "category": "Go modules",
+   "docs": "https://pkg.go.dev/github.com/sirupsen/logrus",
+   "licence": "MIT",
+   "package": "github.com/sirupsen/logrus",
+   "check": "file-exists",
+   "checkArg": "github.com/sirupsen/logrus",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "go:zap",
+   "name": "zap",
+   "summary": "Fast structured logging. (a Go module, run with go run)",
+   "kind": "gomod",
+   "repls": [
+    "go"
+   ],
+   "level": "optional",
+   "manager": "go mirror",
+   "install": "approval",
+   "category": "Go modules",
+   "docs": "https://pkg.go.dev/go.uber.org/zap",
+   "licence": "MIT",
+   "package": "go.uber.org/zap",
+   "check": "file-exists",
+   "checkArg": "go.uber.org/zap",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "go:x-text",
+   "name": "x-text",
+   "summary": "Text, languages and encodings. (a Go module, run with go run)",
+   "kind": "gomod",
+   "repls": [
+    "go"
+   ],
+   "level": "optional",
+   "manager": "go mirror",
+   "install": "approval",
+   "category": "Go modules",
+   "docs": "https://pkg.go.dev/golang.org/x/text",
+   "licence": "BSD-3-Clause",
+   "package": "golang.org/x/text",
+   "check": "file-exists",
+   "checkArg": "golang.org/x/text/language",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "jar:gson",
+   "name": "gson",
+   "summary": "JSON for Java objects. (jars on the class path of javac, java and jshell)",
+   "kind": "jar",
+   "repls": [
+    "java"
+   ],
+   "level": "popular",
+   "manager": "maven mirror",
+   "install": "approval",
+   "category": "Java libraries",
+   "docs": "https://github.com/google/gson/blob/main/UserGuide.md",
+   "licence": "Apache-2.0",
+   "package": "com.google.code.gson:gson",
+   "check": "file-exists",
+   "checkArg": "com.google.gson.Gson",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "jar:commons-lang3",
+   "name": "commons-lang3",
+   "summary": "Helpers for strings, numbers and dates. (jars on the class path of javac, java and jshell)",
+   "kind": "jar",
+   "repls": [
+    "java"
+   ],
+   "level": "popular",
+   "manager": "maven mirror",
+   "install": "approval",
+   "category": "Java libraries",
+   "docs": "https://commons.apache.org/proper/commons-lang/",
+   "licence": "Apache-2.0",
+   "package": "org.apache.commons:commons-lang3",
+   "check": "file-exists",
+   "checkArg": "org.apache.commons.lang3.StringUtils",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "jar:commons-io",
+   "name": "commons-io",
+   "summary": "Helpers for files and streams. (jars on the class path of javac, java and jshell)",
+   "kind": "jar",
+   "repls": [
+    "java"
+   ],
+   "level": "optional",
+   "manager": "maven mirror",
+   "install": "approval",
+   "category": "Java libraries",
+   "docs": "https://commons.apache.org/proper/commons-io/",
+   "licence": "Apache-2.0",
+   "package": "commons-io:commons-io",
+   "check": "file-exists",
+   "checkArg": "org.apache.commons.io.FileUtils",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "jar:guava",
+   "name": "guava",
+   "summary": "Collections and helpers from Google. (jars on the class path of javac, java and jshell)",
+   "kind": "jar",
+   "repls": [
+    "java"
+   ],
+   "level": "popular",
+   "manager": "maven mirror",
+   "install": "approval",
+   "category": "Java libraries",
+   "docs": "https://github.com/google/guava/wiki",
+   "licence": "Apache-2.0",
+   "package": "com.google.guava:guava",
+   "check": "file-exists",
+   "checkArg": "com.google.common.collect.Lists",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "jar:jackson-databind",
+   "name": "jackson-databind",
+   "summary": "JSON with Jackson. (jars on the class path of javac, java and jshell)",
+   "kind": "jar",
+   "repls": [
+    "java"
+   ],
+   "level": "optional",
+   "manager": "maven mirror",
+   "install": "approval",
+   "category": "Java libraries",
+   "docs": "https://github.com/FasterXML/jackson-docs",
+   "licence": "Apache-2.0",
+   "package": "com.fasterxml.jackson.core:jackson-databind",
+   "check": "file-exists",
+   "checkArg": "com.fasterxml.jackson.databind.ObjectMapper",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "jar:joda-time",
+   "name": "joda-time",
+   "summary": "Dates and times (before java.time). (jars on the class path of javac, java and jshell)",
+   "kind": "jar",
+   "repls": [
+    "java"
+   ],
+   "level": "optional",
+   "manager": "maven mirror",
+   "install": "approval",
+   "category": "Java libraries",
+   "docs": "https://www.joda.org/joda-time/",
+   "licence": "Apache-2.0",
+   "package": "joda-time:joda-time",
+   "check": "file-exists",
+   "checkArg": "org.joda.time.DateTime",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "jar:junit-jupiter",
+   "name": "junit-jupiter",
+   "summary": "Tests with JUnit 5. (jars on the class path of javac, java and jshell)",
+   "kind": "jar",
+   "repls": [
+    "java"
+   ],
+   "level": "popular",
+   "manager": "maven mirror",
+   "install": "approval",
+   "category": "Java libraries",
+   "docs": "https://junit.org/junit5/docs/current/user-guide/",
+   "licence": "EPL-2.0",
+   "package": "org.junit.jupiter:junit-jupiter",
+   "check": "file-exists",
+   "checkArg": "org.junit.jupiter.api.Test",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "jar:slf4j-simple",
+   "name": "slf4j-simple",
+   "summary": "Logging to the console. (jars on the class path of javac, java and jshell)",
+   "kind": "jar",
+   "repls": [
+    "java"
+   ],
+   "level": "optional",
+   "manager": "maven mirror",
+   "install": "approval",
+   "category": "Java libraries",
+   "docs": "https://www.slf4j.org/manual.html",
+   "licence": "MIT",
+   "package": "org.slf4j:slf4j-simple",
+   "check": "file-exists",
+   "checkArg": "org.slf4j.simple.SimpleLogger",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "crate:serde",
+   "name": "serde",
+   "summary": "Serialize and deserialize data. (a Rust crate: :dep serde in evcxr)",
+   "kind": "crate",
+   "repls": [
+    "evcxr"
+   ],
+   "level": "popular",
+   "manager": "cargo mirror",
+   "install": "approval",
+   "category": "Rust crates",
+   "docs": "https://serde.rs/",
+   "licence": "MIT OR Apache-2.0",
+   "package": "serde",
+   "check": "file-exists",
+   "checkArg": "vendor",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "crate:serde_json",
+   "name": "serde_json",
+   "summary": "JSON for serde. (a Rust crate: :dep serde_json in evcxr)",
+   "kind": "crate",
+   "repls": [
+    "evcxr"
+   ],
+   "level": "popular",
+   "manager": "cargo mirror",
+   "install": "approval",
+   "category": "Rust crates",
+   "docs": "https://docs.rs/serde_json",
+   "licence": "MIT OR Apache-2.0",
+   "package": "serde_json",
+   "check": "file-exists",
+   "checkArg": "vendor",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "crate:rand",
+   "name": "rand",
+   "summary": "Random numbers. (a Rust crate: :dep rand in evcxr)",
+   "kind": "crate",
+   "repls": [
+    "evcxr"
+   ],
+   "level": "popular",
+   "manager": "cargo mirror",
+   "install": "approval",
+   "category": "Rust crates",
+   "docs": "https://docs.rs/rand",
+   "licence": "MIT OR Apache-2.0",
+   "package": "rand",
+   "check": "file-exists",
+   "checkArg": "vendor",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "crate:regex",
+   "name": "regex",
+   "summary": "Regular expressions. (a Rust crate: :dep regex in evcxr)",
+   "kind": "crate",
+   "repls": [
+    "evcxr"
+   ],
+   "level": "popular",
+   "manager": "cargo mirror",
+   "install": "approval",
+   "category": "Rust crates",
+   "docs": "https://docs.rs/regex",
+   "licence": "MIT OR Apache-2.0",
+   "package": "regex",
+   "check": "file-exists",
+   "checkArg": "vendor",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "crate:itertools",
+   "name": "itertools",
+   "summary": "More iterator adapters. (a Rust crate: :dep itertools in evcxr)",
+   "kind": "crate",
+   "repls": [
+    "evcxr"
+   ],
+   "level": "optional",
+   "manager": "cargo mirror",
+   "install": "approval",
+   "category": "Rust crates",
+   "docs": "https://docs.rs/itertools",
+   "licence": "MIT OR Apache-2.0",
+   "package": "itertools",
+   "check": "file-exists",
+   "checkArg": "vendor",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "crate:chrono",
+   "name": "chrono",
+   "summary": "Dates and times. (a Rust crate: :dep chrono in evcxr)",
+   "kind": "crate",
+   "repls": [
+    "evcxr"
+   ],
+   "level": "optional",
+   "manager": "cargo mirror",
+   "install": "approval",
+   "category": "Rust crates",
+   "docs": "https://docs.rs/chrono",
+   "licence": "MIT OR Apache-2.0",
+   "package": "chrono",
+   "check": "file-exists",
+   "checkArg": "vendor",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "crate:anyhow",
+   "name": "anyhow",
+   "summary": "Easy error handling. (a Rust crate: :dep anyhow in evcxr)",
+   "kind": "crate",
+   "repls": [
+    "evcxr"
+   ],
+   "level": "optional",
+   "manager": "cargo mirror",
+   "install": "approval",
+   "category": "Rust crates",
+   "docs": "https://docs.rs/anyhow",
+   "licence": "MIT OR Apache-2.0",
+   "package": "anyhow",
+   "check": "file-exists",
+   "checkArg": "vendor",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
+  },
+  {
+   "id": "crate:thiserror",
+   "name": "thiserror",
+   "summary": "Derive error types. (a Rust crate: :dep thiserror in evcxr)",
+   "kind": "crate",
+   "repls": [
+    "evcxr"
+   ],
+   "level": "optional",
+   "manager": "cargo mirror",
+   "install": "approval",
+   "category": "Rust crates",
+   "docs": "https://docs.rs/thiserror",
+   "licence": "MIT OR Apache-2.0",
+   "package": "thiserror",
+   "check": "file-exists",
+   "checkArg": "vendor",
+   "labels": [
+    "mirror: used offline, fetched by the server"
+   ]
   }
  ],
  "packs": [

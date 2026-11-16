@@ -70,8 +70,7 @@ func main() {
 		if *storeDir != "" && *workspace != "" {
 			storeFolders(*storeDir, *workspace, *storeExtra)
 		}
-		makeScratch(*scratchRoot, *workspace)
-		runWithoutPolicy(*netEmulation, flag.Args())
+		runWithoutPolicy(*netEmulation, finishEnv(makeScratch(*scratchRoot, *workspace), flag.Args()))
 		return
 	}
 	abi, err := landlock.ABI()
@@ -94,9 +93,11 @@ func main() {
 	}
 	extra := storeFolders(*storeDir, *workspace, *storeExtra)
 	var rwExtra []string
-	if sd := makeScratch(*scratchRoot, *workspace); sd != "" {
+	sd := makeScratch(*scratchRoot, *workspace)
+	if sd != "" {
 		rwExtra = []string{sd}
 	}
+	args = finishEnv(sd, args)
 	policy, err := landlock.Build(landlock.Options{Workspace: *workspace, HomeRoot: *homeRoot, ABI: abi, Self: landlock.Self(), Debug: *debug,
 		ScopeSignals: *scopeSignals && landlock.ScopeSupported(), ExtraRO: extra, ExtraRW: rwExtra}, nil)
 	if err != nil {
@@ -163,6 +164,73 @@ func makeScratch(root, workspace string) string {
 	}
 	os.Setenv("JAVA_TOOL_OPTIONS", jo)
 	return dir
+}
+
+// finishEnv does what the lists of the user's apps need once the scratch folder is there: a Python 2.7 terminal gets the libraries of Python
+// 2.7 and none of Python 3's, and the crates of the user's Rust apps replace crates.io for cargo (a cargo home in the scratch folder, with a
+// folder of links to the vendored crates, and no network).
+func finishEnv(scratchDir string, args []string) []string {
+	if len(args) > 0 && strings.HasPrefix(filepath.Base(args[0]), "python2") {
+		if p := os.Getenv("OPENREPL_PY27PATH"); p != "" {
+			os.Setenv("PYTHONPATH", p)
+		} else {
+			os.Unsetenv("PYTHONPATH")
+		}
+	}
+	args = jshellWithJars(args)
+	v := os.Getenv("OPENREPL_CRATE_VENDORS")
+	if v == "" || scratchDir == "" {
+		return args
+	}
+	farm := filepath.Join(scratchDir, "cargo-vendor")
+	home := filepath.Join(scratchDir, "cargo-home")
+	if os.MkdirAll(farm, 0700) != nil || os.MkdirAll(home, 0700) != nil {
+		return args
+	}
+	for _, dir := range strings.Split(v, ":") {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				os.Symlink(filepath.Join(dir, e.Name()), filepath.Join(farm, e.Name())) // the same crate twice is the same files
+			}
+		}
+	}
+	if os.WriteFile(filepath.Join(home, "config.toml"), []byte(appstore.CargoConfig(farm)), 0600) != nil {
+		return args
+	}
+	os.Setenv("CARGO_HOME", home)
+	if os.Getenv("RUSTUP_HOME") == "" { // the toolchains stay where rustup put them, whatever the cargo home is
+		if fi, err := os.Stat("/root/.rustup"); err == nil && fi.IsDir() {
+			os.Setenv("RUSTUP_HOME", "/root/.rustup")
+		}
+	}
+	return args
+}
+
+// jshellWithJars gives jshell the jars of the user's Java apps. The REPL runs the snippets in the tool's own JVM (--execution local, to save memory),
+// which does not read CLASSPATH: the jars go on the compile path (--class-path) and, one by one, on the boot class path of that JVM.
+func jshellWithJars(args []string) []string {
+	cp := os.Getenv("CLASSPATH")
+	if len(args) == 0 || filepath.Base(args[0]) != "jshell" || cp == "" {
+		return args
+	}
+	var jars []string
+	for _, e := range strings.Split(cp, ":") {
+		if strings.HasSuffix(e, "/*") {
+			m, _ := filepath.Glob(filepath.Join(strings.TrimSuffix(e, "/*"), "*.jar"))
+			jars = append(jars, m...)
+		} else if strings.HasSuffix(e, ".jar") {
+			jars = append(jars, e)
+		}
+	}
+	if len(jars) == 0 {
+		return args
+	}
+	out := []string{args[0], "--class-path", cp, "-J-Xbootclasspath/a:" + strings.Join(jars, ":")}
+	return append(out, args[1:]...)
 }
 
 // installNetwork puts the private network of the workspace on this process (and so on the REPL it becomes). As

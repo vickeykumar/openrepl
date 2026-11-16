@@ -24,6 +24,11 @@ type Vars struct {
 	PkgConfig []string // lib/pkgconfig and share/pkgconfig: PKG_CONFIG_PATH
 	Perl      []string // PERL5LIB
 	Tcl       []string // TCLLIBPATH
+	// the mirrors and Python 2.7 (LLD 18)
+	GoProxy      []string // file:// proxies of Go module bundles: GOPROXY
+	ClassPath    []string // <bundle>/jars/*: CLASSPATH
+	CrateVendors []string // vendored crates: the helper makes a cargo home that replaces crates.io with them
+	Py27Path     []string // site-packages of Python 2.7 libraries: OPENREPL_PY27PATH, and PYTHONPATH of a Python 2.7 terminal (the helper)
 	// Extra are the variables the packages set when they are activated (JAVA_HOME, PROJ_DATA, ...), read from each bundle's
 	// activate.json; the first bundle on the list wins a name two of them set.
 	Extra map[string]string
@@ -143,6 +148,18 @@ func VarsFor(dir string, ids []string) Vars {
 				v.Extra[k] = val
 			}
 		}
+		if isDir(filepath.Join(bundle, "gomod", "cache", "download")) {
+			v.GoProxy = append(v.GoProxy, "file://"+filepath.Join(bundle, "gomod", "cache", "download"))
+		}
+		if isDir(filepath.Join(bundle, "jars")) {
+			v.ClassPath = append(v.ClassPath, filepath.Join(bundle, "jars", "*"))
+		}
+		if isDir(filepath.Join(bundle, "vendor")) {
+			v.CrateVendors = append(v.CrateVendors, filepath.Join(bundle, "vendor"))
+		}
+		if p27, _ := filepath.Glob(filepath.Join(root, "lib", "python2.7", "site-packages")); len(p27) > 0 {
+			v.Py27Path = append(v.Py27Path, p27...)
+		}
 		if isDir(filepath.Join(root, "lib", "node_modules")) {
 			v.NodePath = append(v.NodePath, filepath.Join(root, "lib", "node_modules"))
 		}
@@ -250,6 +267,24 @@ func (v Vars) Apply(env []string) []string {
 			}
 		}
 	}
+	if len(v.GoProxy) > 0 {
+		set("GOPROXY", strings.Join(v.GoProxy, ",")+",off") // only the mirrors: a terminal has no internet
+		set("GOFLAGS", "-mod=mod")
+		set("GOSUMDB", "off") // the modules were checked against the checksum database when the server fetched them
+	}
+	if len(v.ClassPath) > 0 {
+		cp := get("CLASSPATH")
+		if cp == "" {
+			cp = "." // a CLASSPATH takes the place of the default one: the folder of the program stays on it
+		}
+		set("CLASSPATH", join(v.ClassPath, cp))
+	}
+	if len(v.CrateVendors) > 0 {
+		set("OPENREPL_CRATE_VENDORS", strings.Join(v.CrateVendors, ":"))
+	}
+	if len(v.Py27Path) > 0 {
+		set("OPENREPL_PY27PATH", strings.Join(v.Py27Path, ":"))
+	}
 	for k, val := range v.Extra {
 		set(k, val)
 	}
@@ -281,6 +316,15 @@ func EnvScript(dir string, ids []string) string {
 				fmt.Fprintf(&b, "export %s=%s${%s:+:$%s}\n", n, q(strings.Join(x.dirs, ":")), n, n)
 			}
 		}
+	}
+	if len(v.GoProxy) > 0 {
+		fmt.Fprintf(&b, "export GOPROXY=%s GOFLAGS=-mod=mod GOSUMDB=off\n", q(strings.Join(v.GoProxy, ",")+",off"))
+	}
+	if len(v.ClassPath) > 0 {
+		fmt.Fprintf(&b, "export CLASSPATH=%s:${CLASSPATH:-.}\n", q(strings.Join(v.ClassPath, ":")))
+	}
+	if len(v.Py27Path) > 0 {
+		fmt.Fprintf(&b, "export OPENREPL_PY27PATH=%s\n", q(strings.Join(v.Py27Path, ":")))
 	}
 	keys := make([]string, 0, len(v.Extra))
 	for k := range v.Extra {

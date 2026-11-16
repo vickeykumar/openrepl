@@ -1,6 +1,8 @@
 package appstore
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -377,5 +379,87 @@ func TestAWorkerGetsTheAdminsEntriesWithTheSnapshot(t *testing.T) {
 	w.Apply(context.Background(), snap)
 	if e, ok := w.EntryFor("zzlib", KindNode); !ok || !e.asset() {
 		t.Errorf("after the snapshot the worker picks the file check of a browser library: %+v %v", e, ok)
+	}
+}
+
+func TestMirrorsNamesVersionsAndHelpers(t *testing.T) {
+	e := Entry{ID: "go:cobra", Name: "cobra", Kind: CKGoMod, Package: "github.com/spf13/cobra"}
+	if e.PackageName() != "gomod-cobra" || e.Source() != "github.com/spf13/cobra" || e.InstallKind() != KindGoMod || !ValidName(e.PackageName()) {
+		t.Errorf("go module: %s %s %s", e.PackageName(), e.Source(), e.InstallKind())
+	}
+	if p := (Entry{Name: "gson", Kind: CKJar, Package: "com.google.code.gson:gson"}).PackageName(); p != "jar-gson" {
+		t.Error(p)
+	}
+	if p := (Entry{Name: "serde_json", Kind: CKCrate}).PackageName(); p != "crate-serde_json" || !ValidName(p) {
+		t.Error(p)
+	}
+	if p := (Entry{Name: "six (Python 2.7)", Kind: CKLib27, Package: "six"}).PackageName(); p != "py27-six" {
+		t.Error(p)
+	}
+	// the same name in two ecosystems is two apps
+	if (Entry{Name: "regex", Kind: CKCrate}).PackageName() == (Entry{Name: "regex", Kind: CKLib}).PackageName() {
+		t.Error("a crate and a Python library of one name must not collide")
+	}
+	if got := stable([]string{"v1.2.0", "v1.3.0-rc.1", "v2.0.0+incompatible", "1.4", "2.0.0-SNAPSHOT", "v1.10.2"}); strings.Join(got, ",") != "v1.2.0,1.4,v1.10.2" {
+		t.Errorf("stable: %v", got)
+	}
+	if goVer("1.2.3") != "v1.2.3" || goVer("v1.2.3") != "v1.2.3" {
+		t.Error("goVer")
+	}
+	if lockedVersion("[[package]]\nname = \"itoa\"\nversion = \"1.0.1\"\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.200\"\n", "serde") != "1.0.200" {
+		t.Error("lockedVersion")
+	}
+	cfg := CargoConfig("/s/v")
+	if !strings.Contains(cfg, `replace-with = "vendored-sources"`) || !strings.Contains(cfg, `directory = "/s/v"`) || !strings.Contains(cfg, "offline = true") {
+		t.Errorf("cargo config:\n%s", cfg)
+	}
+	if _, _, err := splitGA("nogroup"); err == nil {
+		t.Error("group:artifact")
+	}
+	// a jar's class file version: 61 is Java 17
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, _ := zw.Create("a/B.class")
+	w.Write([]byte{0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 61})
+	zw.Close()
+	if m, err := classMajor(buf.Bytes()); err != nil || m != 61 {
+		t.Errorf("class major %d %v", m, err)
+	}
+}
+
+func TestMirrorBundlesReachTheTerminalsEnvironment(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	mk := func(id string, dirs ...string) {
+		for _, d := range dirs {
+			os.MkdirAll(filepath.Join(st.AppsDir(), id, filepath.FromSlash(d)), 0755)
+		}
+	}
+	mk("gomod-cobra-1.10.2", "gomod/cache/download")
+	mk("jar-gson-2.11.0", "jars")
+	mk("crate-serde-1.0.200", "vendor")
+	mk("py27-six-1.16.0", ".pixi/envs/default/lib/python2.7/site-packages")
+	mk("numpy-2.0", ".pixi/envs/default/lib/python3.10/site-packages")
+	ids := []string{"gomod-cobra-1.10.2", "jar-gson-2.11.0", "crate-serde-1.0.200", "py27-six-1.16.0", "numpy-2.0"}
+	v := VarsFor(st.Dir, ids)
+	env := map[string]string{}
+	for _, e := range v.Apply([]string{"PATH=/usr/bin"}) {
+		if i := strings.IndexByte(e, '='); i > 0 {
+			env[e[:i]] = e[i+1:]
+		}
+	}
+	if !strings.HasPrefix(env["GOPROXY"], "file://") || !strings.HasSuffix(env["GOPROXY"], ",off") || env["GOFLAGS"] != "-mod=mod" || env["GOSUMDB"] != "off" {
+		t.Errorf("go: %v", env)
+	}
+	if !strings.HasSuffix(env["CLASSPATH"], "/jars/*:.") {
+		t.Errorf("the class path keeps the current folder: %q", env["CLASSPATH"])
+	}
+	if !strings.Contains(env["OPENREPL_CRATE_VENDORS"], "crate-serde-1.0.200/vendor") || !strings.Contains(env["OPENREPL_PY27PATH"], "python2.7/site-packages") {
+		t.Errorf("crates and python 2.7: %v", env)
+	}
+	if strings.Contains(env["PYTHONPATH"], "python2.7") || !strings.Contains(env["PYTHONPATH"], "python3.10") {
+		t.Errorf("Python 2.7 libraries must not be on the path of Python 3: %q", env["PYTHONPATH"])
+	}
+	if sc := EnvScript(st.Dir, ids); !strings.Contains(sc, "GOPROXY") || !strings.Contains(sc, "CLASSPATH") || !strings.Contains(sc, "OPENREPL_PY27PATH") {
+		t.Errorf("env.sh:\n%s", sc)
 	}
 }

@@ -107,7 +107,7 @@
     if (S.builtins.length) { var mine = side.lastChild; mine.appendChild(el("small", "store__builtincount", "+ " + S.builtins.length + " built in")); }
     link("My requests", "#requests", counts.req, r.name === "requests");
     side.appendChild(el("h2", "", "Kinds"));
-    [["lib", "Python libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["browser", "Browser libraries and plugins"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
+    [["lib", "Python libraries"], ["py27", "Python 2.7 libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["gomod", "Go modules"], ["jar", "Java libraries"], ["crate", "Rust crates"], ["browser", "Browser libraries and plugins"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
       link(k[1], "#kind/" + k[0], 0, r.name === "kind" && r.arg === k[0]);
     });
     if (S.admin) {
@@ -186,7 +186,7 @@
     if (!info && !v.summary && (v.kind === "lib" || v.kind === "tool")) loadInfo(v.name);
     c.appendChild(el("p", "sapp__sum", v.summary ? v.summary : info && info.summary ? info.summary : v.state === "failed" ? v.err || "The install stopped." : v.state === "rejected" && v.answer ? v.answer : ""));
     var row = el("div", "sapp__row");
-    row.appendChild(el("span", "stag", { lib: "python", tool: "tool", node: "node", lang: "language", plugin: "plugin", weblib: "browser", clib: "C/C++", lib27: "python 2.7" }[v.kind || "lib"] || v.kind));
+    row.appendChild(el("span", "stag", { lib: "python", tool: "tool", node: "node", lang: "language", plugin: "plugin", weblib: "browser", clib: "C/C++", lib27: "python 2.7", py27: "python 2.7", gomod: "go", jar: "java", crate: "rust" }[v.kind || "lib"] || v.kind));
     if (v.level && v.level !== "optional") row.appendChild(el("span", "stag stag--level", v.level));
     if (v.ramMB >= 100) row.appendChild(el("span", "stag stag--warn", v.ramMB + " MB when used"));
     if (v.state !== "installed" && v.instMB >= 100) row.appendChild(el("span", "sapp__size", v.instMB + " MB"));
@@ -231,6 +231,10 @@
   }
 
   var INTRO = {
+    py27: "Libraries for the Python 2.7 REPL, from conda-forge, in an environment of their own. Only a Python 2.7 terminal sees them: in bash, run PYTHONPATH=$OPENREPL_PY27PATH python2.7.",
+    gomod: "Go modules, fetched by the server from the Go module proxy with their checksums checked, and used with no internet. The version is the newest that builds with this server's Go. Use go run; a Go REPL cannot import them.",
+    jar: "Java libraries (jars and what they need) from Maven Central, checksums checked, on the class path of javac, java and jshell. The version is the newest this server's Java can load.",
+    crate: "Rust crates, fetched by the server from crates.io with their checksums checked. In evcxr use :dep name = \"version\". The version is the newest that builds with this server's Rust.",
     lib: "Python libraries from conda-forge. Installed once on the server; your terminals import them when you switch them on.",
     tool: "Programs from conda-forge (jq and the like), on the PATH of your terminals when switched on.",
     node: "Node libraries from npm (scripts of the packages are not run). Your terminals can require() them when switched on.",
@@ -619,6 +623,10 @@
     if (v.category === "Tcl") return "% package require " + v.name;
     if (v.category === "SQLite extensions") return "sqlite> .load <the path shown on the app page>";
     switch (v.kind) {
+      case "gomod": return "$ go mod init demo && go get " + (v.source || v.name) + "   (from the mirror, no internet needed)\n$ go run .";
+      case "jar": return "$ javac Main.java && java Main   (the jars are on the CLASSPATH of this terminal)";
+      case "crate": return "evcxr> :dep " + (v.source || v.name) + " = \"" + (v.version || "*") + "\"";
+      case "py27": return "$ python2.7 -c \"import " + moduleOf(v.source || v.name.replace(/^py27-/, "")) + "\"";
       case "tool": return "$ " + v.name + " --version";
       case "node": return "$ node -e \"console.log(require('" + v.name + "'))\"";
       case "lang": return "$ " + (v.name === "r-base" ? "R" : v.name) + " --version";
@@ -626,11 +634,15 @@
       default: return "$ python3 -c \"import " + mod + "\"";
     }
   }
-  function kindLabel(k) { return { lib: "Python library", tool: "Tool", node: "Node library", lang: "Language", plugin: "Editor plugin" }[k] || "Python library"; }
+  function kindLabel(k) { return { lib: "Python library", tool: "Tool", node: "Node library", lang: "Language", plugin: "Editor plugin", gomod: "Go module", jar: "Java library", crate: "Rust crate", py27: "Python 2.7 library" }[k] || "Python library"; }
   function needs(v) {
     switch (v.kind) {
       case "node": return "Node.js (the server's), from npm";
       case "plugin": return "Nothing: it comes with the server";
+      case "gomod": return "Go (the server's), from the Go module proxy";
+      case "jar": return "Java (the server's), from Maven Central";
+      case "crate": return "Rust (the server's), from crates.io";
+      case "py27": return "Python 2.7, from conda-forge";
       case "tool": case "lang": return "Nothing else: it brings what it needs, from conda-forge";
       default: return S.python ? "Python " + S.python + " (the server's), from conda-forge" : "the server's Python, from conda-forge";
     }
@@ -638,7 +650,7 @@
 
   function loadSize(v) {
     var key = (v.kind || "lib") + ":" + v.name;
-    if (S.sizes[key] || v.kind === "plugin" || v.state === "installed") return;
+    if (S.sizes[key] || v.kind === "plugin" || v.state === "installed" || v.kind === "gomod" || v.kind === "jar" || v.kind === "crate") return; // a mirror's size is known after the install
     S.sizes[key] = { loading: true };
     store("size?name=" + encodeURIComponent(v.name) + "&kind=" + encodeURIComponent(v.kind || "lib")).then(function (j) { S.sizes[key] = j; renderSoon(); }, function (e) { S.sizes[key] = { error: e.message }; renderSoon(); });
   }
@@ -673,7 +685,7 @@
     head.appendChild(el("span", "store__logo", name.charAt(0)));
     var hd = el("div");
     hd.appendChild(el("h2", "", name));
-    hd.appendChild(el("small", "", (v.version ? v.version + " · " : "") + kindLabel(v.kind) + " · " + ({ node: "npm", plugin: "this server" }[v.kind] || "conda-forge")));
+    hd.appendChild(el("small", "", (v.version ? v.version + " · " : "") + kindLabel(v.kind) + " · " + ({ node: "npm", plugin: "this server", gomod: "Go module proxy", jar: "Maven Central", crate: "crates.io" }[v.kind] || "conda-forge")));
     head.appendChild(hd);
     var tag = stateTag(v); if (tag) head.appendChild(tag);
     w.appendChild(head);
@@ -685,7 +697,8 @@
     var sz = S.sizes[(v.kind || "lib") + ":" + name];
     var kv = el("div", "store__kv");
     function kvRow(k, val) { kv.appendChild(el("span", "", k)); kv.appendChild(el("b", "", val)); }
-    kvRow("Size", v.state === "installed" && v.sizeMB ? "about " + v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB on the server" + (v.packages ? " (" + v.packages + " packages)" : "")
+    var mirror = v.kind === "gomod" || v.kind === "jar" || v.kind === "crate";
+    kvRow("Size", mirror && v.state !== "installed" ? (v.instMB ? "about " + v.instMB + " MB, with what it needs" : "worked out when it is installed") : v.state === "installed" && v.sizeMB ? "about " + v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB on the server" + (v.packages ? " (" + v.packages + " packages)" : "")
       : v.kind === "plugin" ? "a few KB"
       : !sz || sz.loading ? "working it out…"
       : sz.error ? "not known (" + sz.error.split("\n")[0].slice(0, 80) + ")"
