@@ -1,7 +1,7 @@
 # App Store catalogue: step 1 research report (2026-11-15)
 
 Status: **research only, no code.** It waits for your approval before step 2.
-The measurements behind every number are in `docs/app-store-research-notes.txt` (sections 2 to 6); that is not repeated here. This
+The numbers come from runs in a throwaway container on 2026-11-15 (the raw log is not kept); the sizes the store uses now are measured by `scripts/measure-catalogue.sh` and are in `catalogue_default.json`. This
 session added only what the notes did not have: how each REPL finds packages offline (tested with the image's own interpreters),
 what each REPL writes into the workspace (measured), licences and publishers of the plugin and browser-library candidates, and the scratch
 folder design. Everything ran in the image `openrepl:pixi-app-store` (Ubuntu 22.04, aarch64; Python 3.10.12, Node 12.22.9, Go 1.18.1,

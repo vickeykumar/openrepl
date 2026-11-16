@@ -163,7 +163,7 @@ Every app of kind lib, tool or language is a small pixi project in its own bundl
 
 ## 10. The curated catalogue (2026-11-15; canvas "App Store catalogue: all screens", claude.ai/artifact/Xd9Tgt2bzeWxoEHAorMWKd)
 
-Research that the catalogue stands on: `docs/app-store-catalogue-research.md` (per-REPL tables, what each toolchain can build, disk totals). The owner's own notes are `docs/app-store-research-notes.txt` (not rerun).
+Research that the catalogue stands on: `docs/app-store-catalogue-research.md` (per-REPL tables, what each toolchain can build, disk totals). The raw log of that research is not kept; the sizes the store uses now come from `scripts/measure-catalogue.sh` (section 11).
 
 **What it is.** A list of what the store offers, as data: `src/appstore/catalogue_default.json` (embedded, 157 entries and 3 packs: python/ipython3 libraries, python2.7 legacy, C/C++ tools and libraries, bash tools, Go and Rust tools, Perl, Tcl, SQLite, Node libraries, browser libraries, plugins) plus the admin's changes in the catalog database (`cat:<id>` add or replace, `catdel:<id>` hide, `pack:`, `packdel:`). Only the REPL ids of the spec are accepted (`CatalogueRepls`). An entry: id, name, summary, kind, REPLs (or the place of a plugin), level (core, popular, optional), manager, package, optional pin, who may install (anyone, approval, admin), category, RAM and disk labels, documentation link, licence, check template, labels. `ValidateEntry` checks every field against a fixed list or a pattern; the check is one of four templates (python-import, node-require, version-flag, file-exists) and there is **no field that takes a shell command**.
 
