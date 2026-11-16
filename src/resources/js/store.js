@@ -698,7 +698,7 @@
     var kv = el("div", "store__kv");
     function kvRow(k, val) { kv.appendChild(el("span", "", k)); kv.appendChild(el("b", "", val)); }
     var mirror = v.kind === "gomod" || v.kind === "jar" || v.kind === "crate";
-    kvRow("Size", mirror && v.state !== "installed" ? (v.instMB ? "about " + v.instMB + " MB, with what it needs" : "worked out when it is installed") : v.state === "installed" && v.sizeMB ? "about " + v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB on the server" + (v.packages ? " (" + v.packages + " packages)" : "")
+    kvRow("Size", v.smallest && v.state !== "installed" && v.instMB ? "about " + v.instMB + " MB once installed" + (v.estimate ? " (an estimate)" : "") + (v.smallest === "apt" ? " (from the Ubuntu archive)" : "") + (v.includes ? ", " + v.includes : "") : mirror && v.state !== "installed" ? (v.instMB ? "about " + v.instMB + " MB, with what it needs" : "worked out when it is installed") : v.state === "installed" && v.sizeMB ? "about " + v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB on the server" + (v.packages ? " (" + v.packages + " packages)" : "")
       : v.kind === "plugin" ? "a few KB"
       : !sz || sz.loading ? "working it out…"
       : sz.error ? "not known (" + sz.error.split("\n")[0].slice(0, 80) + ")"

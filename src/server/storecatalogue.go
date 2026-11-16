@@ -1,12 +1,17 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"appstore"
@@ -51,6 +56,7 @@ func catalogueFor(svc *appstore.Service, uid, home string, f appstore.Filter) ma
 	}
 	items := []catalogueItem{}
 	for _, e := range f.Apply(all) {
+		e.Options, e.Minimal = nil, nil // the sizes by CPU type and the options are the admin's: a user is never told what CPUs the servers have
 		it := catalogueItem{Entry: e, State: "available", Safe: e.Install == "anyone"}
 		k := e.InstallKind()
 		if k == "" || e.Python == "2.7" {
@@ -172,6 +178,29 @@ func (server *Server) handleAdminCatalogue(w http.ResponseWriter, r *http.Reques
 			err = svc.InstallEntry(who, e)
 		}
 		detail = c.ID
+	case "compare":
+		// the dry runs only (the apt plan and the pixi solve): seconds, nothing is installed; the sizes are marked as estimates
+		e, ok := svc.Entry(c.ID)
+		if !ok {
+			err = appstore.ErrUnknown
+			break
+		}
+		ce, rows := svc.Compare(r.Context(), e)
+		if ce.Minimal != nil {
+			if err = svc.AddEntry(who, ce); err != nil {
+				break
+			}
+		}
+		out["rows"], out["summary"] = rows, appstore.SummaryOf(rows)
+		detail = c.ID
+	case "measure":
+		e, ok := svc.Entry(c.ID)
+		if !ok {
+			err = appstore.ErrUnknown
+		} else if !startMeasure(svc, who, e) {
+			err = fmt.Errorf("%s is being measured already", e.Name)
+		}
+		detail = c.ID
 	case "plugin-default":
 		err = svc.SetPluginDefault(who, c.ID, c.Install)
 	case "lookup":
@@ -279,4 +308,35 @@ func scratchServerMB() int {
 		return n
 	}
 	return 2048
+}
+
+// measuring is the entries that are being measured (one run for each at a time).
+var measuring sync.Map
+
+// startMeasure measures an entry on this server, in the background (it installs the entry with every manager that can, which takes minutes): the
+// same code as scripts/measure-catalogue.sh, for the CPU type of this server. The result (the options with their sizes, the smallest chosen, the size
+// shown) is saved as the admin's copy of the entry; the sizes of the other CPU type stay as they were. It returns false when it is already running.
+func startMeasure(svc *appstore.Service, who string, e appstore.Entry) bool {
+	if _, busy := measuring.LoadOrStore(e.ID, true); busy {
+		return false
+	}
+	arch := appstore.ArchAMD64
+	if runtime.GOARCH == "arm64" {
+		arch = appstore.ArchARM64
+	}
+	go func() {
+		defer measuring.Delete(e.ID)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		work := filepath.Join(svc.Store().Dir, "measure")
+		m := appstore.MeasureEnv{Svc: svc, Work: work, Arch: arch, AptPackage: appstore.AptHas}
+		r := m.Measure(ctx, e)
+		if sz := r.ShownMB(); sz > 0 {
+			r.InstMB = int(sz + 0.999)
+		}
+		if err := svc.AddEntry(who, r); err != nil {
+			log.Printf("app store: the measurement of %s could not be saved: %v", e.ID, err)
+		}
+	}()
+	return true
 }

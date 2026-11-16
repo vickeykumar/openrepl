@@ -32,6 +32,8 @@ type Pixi struct {
 	// Constraints gives, for an app, what the image's runtimes require of it (see Runtimes): conda packages and version specs added to the
 	// solve, so that the newest version that works with the image's compilers and languages is the one that gets pinned. nil: none.
 	Constraints func(name string) [][2]string
+	// Builds gives, for an app, the build string its catalogue option pins (a variant with no GUI libraries), "" for none.
+	Builds func(name string) string
 }
 
 func (p Pixi) Name() string { return "pixi (conda-forge)" }
@@ -87,6 +89,8 @@ func (p Pixi) cmd(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	return c
 }
 
+var buildString = regexp.MustCompile(`^[A-Za-z0-9_.*]{1,80}$`)
+
 var tomlName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 
 // Manifest is the pixi.toml of one app: the app pinned to version ("" is the newest) and, for a library (kind lib, or empty), the Python
@@ -117,7 +121,11 @@ func (p Pixi) Manifest(name, version, kind string) (string, error) {
 	if version != "" {
 		spec = "==" + version
 	}
-	fmt.Fprintf(&b, "%q = %q\n", name, spec)
+	if build := p.build(name); build != "" && kind == KindTool && buildString.MatchString(build) {
+		fmt.Fprintf(&b, "%q = { version = %q, build = %q }\n", name, spec, build)
+	} else {
+		fmt.Fprintf(&b, "%q = %q\n", name, spec)
+	}
 	if kind == KindTool && p.Constraints != nil {
 		for _, c := range p.Constraints(name) {
 			if tomlName.MatchString(c[0]) && c[0] != name {
@@ -126,6 +134,13 @@ func (p Pixi) Manifest(name, version, kind string) (string, error) {
 		}
 	}
 	return b.String(), nil
+}
+
+func (p Pixi) build(name string) string {
+	if p.Builds == nil {
+		return ""
+	}
+	return p.Builds(name)
 }
 
 // tempProject makes a folder with the manifest in it, for a solve that installs nothing.
@@ -165,7 +180,11 @@ func (p Pixi) Resolve(ctx context.Context, name, version, kind string) (Resolved
 	if err != nil {
 		return Resolved{}, errors.New("pixi made no lock")
 	}
-	return resolvedFrom(raw, strings.TrimPrefix(name, map[bool]string{true: "py27-", false: ""}[kind == KindPy27]), CondaPlatform())
+	res, err := resolvedFrom(raw, strings.TrimPrefix(name, map[bool]string{true: "py27-", false: ""}[kind == KindPy27]), CondaPlatform())
+	if err == nil && kind == KindTool {
+		res.GUI = GUIOfPixi(PixiLockNames(string(raw))) // noted, not refused (the measurement keeps the catalogue free of graphical programs)
+	}
+	return res, err
 }
 
 // solveReason is the part of a failed solve that says why (pixi's own words, without its tree drawing).
@@ -312,6 +331,14 @@ func (p Pixi) Install(ctx context.Context, name, version, kind, dest string, log
 		args = append(args, "--locked")
 	}
 	c := p.cmd(ctx, dest, args...)
+	if kind == KindTool {
+		// a program gets a cache of its own, removed afterwards: the files of its prefix are hard links into the cache, and with a shared cache
+		// the trim of the bundle would free nothing (the cache keeps its copy). The download is not shared with other apps, which a tool accepts.
+		pc := filepath.Join(p.Dir, "tmp", "cache-"+filepath.Base(dest))
+		os.MkdirAll(pc, 0755)
+		defer os.RemoveAll(pc)
+		c.Env = append(c.Env, "PIXI_CACHE_DIR="+pc, "RATTLER_CACHE_DIR="+pc)
+	}
 	c.Stdout, c.Stderr = log, log
 	if err := c.Run(); err != nil {
 		return err

@@ -80,6 +80,9 @@ type App struct {
 	Packages int     `json:"packages,omitempty"` // what the solve brought with it
 	Locked   bool    `json:"locked,omitempty"`   // the exact packages of the install are saved (a Lock): every node installs those
 	Download float64 `json:"download,omitempty"` // MB fetched for it
+	Manager  string  `json:"manager,omitempty"`  // what made the bundle (pixi, npm, apt, ...): a node makes it the same way
+	Full     bool    `json:"full,omitempty"`     // the app did not run after the trim, so its bundle is whole
+	Trimmed  int     `json:"trimmed,omitempty"`  // files the trim deleted
 }
 
 // Request is a user's ask for an app that is not on the safe list. One for each app: a second asker is added to it.
@@ -613,34 +616,62 @@ func (s *Service) runInstall(a App) {
 		return
 	}
 	s.step(a.Name, 1, "")
-	res, err := s.cfg.Installer.Resolve(ctx, a.Name, a.Want, a.Kind)
-	if err != nil {
-		s.fail(a, "Resolving the dependencies", err, err.Error())
-		return
+	// the managers that can make it, the chosen one first: when it fails the next one is tried, and the admin is told
+	order := []string{""}
+	if e, ok := s.EntryFor(a.Name, cleanKind(a.Kind)); ok && cleanKind(a.Kind) != KindPlugin {
+		if e.Minimal == nil && e.Kind == CKTool && s.canApt() {
+			// never measured (an admin added it): the dry runs choose, once, and the choice is kept in the entry
+			if ce, _ := s.Compare(ctx, e); ce.Minimal != nil {
+				s.AddEntry("system", ce)
+				e = ce
+			}
+		}
+		order = managerOrder(e)
 	}
-	a.Version, a.ID, a.Packages, a.Download = res.Version, BundleID(a.Name, res.Version), res.Packages, res.DownloadMB
-	dest := s.cfg.Store.BundlePath(a.ID)
-	if dest == "" {
-		s.fail(a, "Resolving the dependencies", fmt.Errorf("%s is not a usable version", res.Version), "")
-		return
-	}
-	detail := fmt.Sprintf("%d packages", res.Packages)
-	if res.DownloadMB > 0 {
-		detail += fmt.Sprintf(", %.0f MB", res.DownloadMB)
-	}
-	os.RemoveAll(dest) // a half-made bundle of an earlier try
-	s.step(a.Name, 2, detail)
-	if err := s.cfg.Installer.Install(ctx, a.Name, res.Version, a.Kind, dest, &logb); err != nil {
+	var dest, detail string
+	var failures []string
+	var trimRep TrimReport
+	for i, mgr := range order {
+		a.Manager = mgr
+		res, err := s.cfg.Installer.Resolve(WithManager(ctx, mgr), a.Name, a.Want, a.Kind)
+		if err != nil {
+			failures = append(failures, mgr+": "+tail(err.Error(), 200))
+			if i == len(order)-1 {
+				s.fail(a, "Resolving the dependencies", err, err.Error())
+				return
+			}
+			continue
+		}
+		a.Version, a.ID, a.Packages, a.Download = res.Version, BundleID(a.Name, res.Version), res.Packages, res.DownloadMB
+		dest = s.cfg.Store.BundlePath(a.ID)
+		if dest == "" {
+			s.fail(a, "Resolving the dependencies", fmt.Errorf("%s is not a usable version", res.Version), "")
+			return
+		}
+		detail = fmt.Sprintf("%d packages", res.Packages)
+		if res.DownloadMB > 0 {
+			detail += fmt.Sprintf(", %.0f MB", res.DownloadMB)
+		}
+		os.RemoveAll(dest) // a half-made bundle of an earlier try
+		s.step(a.Name, 2, detail)
+		logb.Reset()
+		var full bool
+		trimRep, full, err = s.installBundle(ctx, a, mgr, dest, &logb)
+		if err == nil {
+			a.Full, a.Trimmed = full, trimRep.Files
+			break
+		}
 		os.RemoveAll(dest)
-		s.fail(a, "Downloading and linking", err, logb.String())
-		return
+		failures = append(failures, mgr+": "+tail(err.Error(), 200))
+		if i == len(order)-1 {
+			s.fail(a, "Downloading and linking", err, logb.String()+"\n"+strings.Join(failures, "\n"))
+			return
+		}
+	}
+	if len(failures) > 0 {
+		s.NoteCheckFailure(a.Name, hostName(), "the first manager failed, "+a.Manager+" made it: "+strings.Join(failures, "; "))
 	}
 	s.step(a.Name, 3, detail)
-	if err := s.checkApp(ctx, dest, a); err != nil {
-		os.RemoveAll(dest)
-		s.fail(a, "Checking that it works", err, err.Error())
-		return
-	}
 	m, err := s.cfg.Store.Finish(a.ID, a.Name, a.Version)
 	if err != nil {
 		os.RemoveAll(dest)
@@ -1067,12 +1098,22 @@ type View struct {
 	Source   string   `json:"source,omitempty"` // the package at its manager: a module path, group:artifact, a crate
 	Use      string   `json:"use,omitempty"`    // the first line of how to use it
 	Mod      string   `json:"mod,omitempty"`    // the name a program imports it by (to find what an open file needs)
+	// the measured install (minimal.go): the manager that is the smallest, what it brings that a user may not expect, and (the options with their sizes per CPU type are the admin's only: a user is never told what CPUs the servers have)
+	Smallest string `json:"smallest,omitempty"`
+	Includes string `json:"includes,omitempty"`
+	Estimate bool   `json:"estimate,omitempty"` // the size is a dry-run estimate, not a measurement
 }
 
 func (v *View) fromEntry(e Entry) {
 	v.Entry, v.Docs, v.Repls, v.Category, v.Level, v.Labels = e.ID, e.Docs, e.Repls, e.Category, e.Level, e.Labels
 	v.RAMMB, v.InstMB, v.Licence, v.Manager, v.Place = e.RAMMB, e.InstMB, e.Licence, e.Manager, e.Place
 	v.Source, v.Use, v.Mod = e.Source(), e.UseLine(), e.Module()
+	if e.Minimal != nil {
+		v.Smallest, v.Estimate = e.Minimal.Manager, e.Minimal.Estimate
+		if o, ok := e.OptionOf(e.Minimal.Manager); ok {
+			v.Includes = o.Includes
+		}
+	}
 	if v.Summary == "" {
 		v.Summary = e.Summary
 	}

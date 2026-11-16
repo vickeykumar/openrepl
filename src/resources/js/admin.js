@@ -2803,12 +2803,23 @@
         { key: 'repl', label: 'REPL', cell: function (e) { return e.kind === 'plugin' ? e.place : (e.repls || []).join(', '); } },
         { key: 'kind', label: 'Kind', cell: function (e) { return NAMES[e.kind] || e.kind; } },
         { key: 'level', label: 'Level', cell: function (e) { return pill(e.level); } },
-        { key: 'mgr', label: 'Manager', cell: function (e) { return e.manager; } },
+        { key: 'mgr', label: 'Manager, size', cell: function (e) {
+          var m = e.minimal;
+          if (!m) return e.manager;
+          // the smallest option, its size per CPU type, and the others that were tried (before the trim, where there is one)
+          var arch = { 'linux-64': 'amd64', 'linux-aarch64': 'arm64' }, sz = Object.keys(m.size || {}).sort().map(function (k) { return arch[k] + ' ' + m.size[k] + ' MB'; }).join(', ');
+          var others = Object.keys(m.others || {}).map(function (k) { return k + ' ' + Object.keys(m.others[k]).sort().map(function (a) { return arch[a] + ' ' + m.others[k][a] + ' MB'; }).join(', '); });
+          var before = ((e.options || []).filter(function (o) { return o.manager === m.manager; })[0] || {}).before;
+          var bt = before ? 'before the trim: ' + Object.keys(before).sort().map(function (a) { return arch[a] + ' ' + before[a] + ' MB'; }).join(', ') : '';
+          return h('div', null, h('b', { text: m.manager + (m.estimate ? ' (estimate)' : '') }), h('div', { class: 'sub', text: sz }), bt ? h('div', { class: 'sub', text: bt }) : null, others.length ? h('div', { class: 'sub', text: 'not chosen: ' + others.join('; ') }) : null);
+        } },
         { key: 'who', label: 'Who may install', cell: function (e) { return { anyone: 'anyone', approval: 'needs approval', admin: 'admin only' }[e.install] || e.install; } },
         { key: 'state', label: 'State on the servers', cell: function (e) { return stateOf(e).node; } },
         { key: 'act', label: '', cell: function (e) {
           var st = stateOf(e), canInstall = (['lib', 'tool', 'clib', 'node', 'weblib'].indexOf(e.kind) >= 0 || (e.kind === 'plugin' && !e.internal)) && e.python !== '2.7' && !st.app;
           return h('div', { class: 'row-actions' }, h('button', { class: 'btn', type: 'button', text: 'Edit', onclick: function () { addAppDialog(cat, e, e.kind === 'plugin'); } }),
+            e.kind === 'tool' ? h('button', { class: 'btn', type: 'button', text: 'Compare', title: 'The dry runs only (the apt plan and the pixi solve): seconds, nothing is installed. The sizes are estimates until you press Measure.', onclick: function () { api.post('admin/store/catalogue', { action: 'compare', id: e.id }).then(function (r) { toast(r.summary); return load(); }, fail); } }) : null,
+            (['tool', 'lib', 'clib', 'node', 'weblib', 'gomod', 'jar', 'crate', 'lib27'].indexOf(e.kind) >= 0) ? h('button', { class: 'btn', type: 'button', text: 'Measure', title: 'Install it with every manager that can on this server, trim it, and keep the sizes: the smallest is chosen. Takes minutes; this server\'s CPU type only.', onclick: function () { catPost({ action: 'measure', id: e.id }, 'Measuring ' + e.name + ' in the background: reload this list in a few minutes.'); } }) : null,
             canInstall ? h('button', { class: 'btn primary', type: 'button', text: 'Install', onclick: function () { catPost({ action: 'install', id: e.id }, 'Installing ' + e.name + '.'); } }) : null,
             h('button', { class: 'btn danger', type: 'button', text: 'Remove', title: 'Take it off the list (an installed app stays installed)', onclick: function () { ask({ title: 'Remove ' + e.name + ' from the catalogue?', body: 'It is no longer listed. An installed copy stays installed until you remove it under Installed.', confirm: 'Remove', danger: true }).then(function (ok) { if (ok) catPost({ action: 'remove', id: e.id }, e.name + ' was taken off the list.'); }); } }));
         } }

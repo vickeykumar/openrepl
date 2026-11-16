@@ -38,6 +38,7 @@ type Resolved struct {
 	Packages   int     // how many packages (the app and its dependencies) are linked
 	DownloadMB float64 // what has to be fetched, when the solver says
 	DiskMB     float64 // about what it takes on the disk once installed
+	GUI        string  // a graphics library it brings (the store does not refuse it: the measurement notes it, so that the catalogue lists none)
 }
 
 // Found is one answer of a search.
@@ -218,7 +219,7 @@ func (n Npm) Install(ctx context.Context, name, version, kind, dest string, log 
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		return err
 	}
-	c := n.cmd(ctx, "install", "--prefix", dest, "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund", "--no-package-lock", "--loglevel=error", name+"@"+version)
+	c := n.cmd(ctx, "install", "--prefix", dest, "--ignore-scripts", "--omit=dev", "--omit=optional", "--no-audit", "--no-fund", "--no-package-lock", "--loglevel=error", name+"@"+version)
 	c.Stdout, c.Stderr = log, log
 	return c.Run()
 }
@@ -264,9 +265,21 @@ func (n Npm) Search(ctx context.Context, q, kind string) ([]Found, error) {
 type Multi struct {
 	Conda, Node, Plugin Installer
 	GoMod, Jar, Crate   Installer // the mirrors (mirror.go)
+	Apt                 Installer // a program of the Ubuntu archive, unpacked into a bundle (aptbundle.go): chosen by the manager in the context
 }
 
 func (m Multi) pick(kind string) Installer {
+	return m.pickFor(context.Background(), kind)
+}
+
+// pickFor is pick for an install whose context may name the manager (apt) that makes it.
+func (m Multi) pickFor(ctx context.Context, kind string) Installer {
+	if managerOf(ctx) == MgrApt && (kind == KindTool || kind == KindLib) {
+		if m.Apt != nil {
+			return m.Apt
+		}
+		return Missing{Reason: "apt is not available on this server"}
+	}
 	switch kind {
 	case KindNode:
 		if m.Node != nil {
@@ -309,11 +322,11 @@ func (m Multi) Name() string {
 }
 
 func (m Multi) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
-	return m.pick(kind).Resolve(ctx, name, version, kind)
+	return m.pickFor(ctx, kind).Resolve(ctx, name, version, kind)
 }
 
 func (m Multi) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
-	return m.pick(kind).Install(ctx, name, version, kind, dest, log)
+	return m.pickFor(ctx, kind).Install(ctx, name, version, kind, dest, log)
 }
 
 // Search asks every installer that has packages of the kind (all of them when kind is empty); one that fails does not stop the others.

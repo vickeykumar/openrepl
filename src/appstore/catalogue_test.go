@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -499,5 +500,263 @@ func TestUseLinesAndModulesOfTheCatalogue(t *testing.T) {
 	}
 	if !found {
 		t.Error("the list carries the use line and the module of an app")
+	}
+}
+
+func TestTheManagerIsTheSmallestUsableOptionAndAptGetsAGrace(t *testing.T) {
+	sz := func(a, b float64) map[string]float64 { return map[string]float64{ArchAMD64: a, ArchARM64: b} }
+	vim := Entry{Options: []Option{{Manager: MgrPixi, Size: sz(330, 356), GUI: "tk"}, {Manager: MgrApt, Size: sz(38, 40)}}}
+	if m, ok := Choose(vim, ArchARM64); !ok || m != MgrApt {
+		t.Errorf("the only usable option is apt: %s %v", m, ok)
+	}
+	// an option with a GUI library, an error, or no size for the CPU type is never chosen
+	if m, _ := Choose(Entry{Options: []Option{{Manager: MgrPixi, Size: sz(1, 1), GUI: "xorg-libx11"}, {Manager: MgrApt, Size: sz(500, 500)}}}, ArchAMD64); m != MgrApt {
+		t.Errorf("a smaller option with a GUI library is refused: %s", m)
+	}
+	if _, ok := Choose(Entry{Options: []Option{{Manager: MgrPixi, Err: "does not solve", Size: sz(1, 1)}, {Manager: MgrApt, Size: map[string]float64{ArchAMD64: 5}}}}, ArchARM64); ok {
+		t.Error("nothing is usable on arm64")
+	}
+	// apt wins inside its grace (20 percent and 5 MB), pixi outside it
+	near := Entry{Options: []Option{{Manager: MgrPixi, Size: sz(10, 10)}, {Manager: MgrApt, Size: sz(16, 16)}}} // 10*1.2+5 = 17
+	if m, _ := Choose(near, ArchAMD64); m != MgrApt {
+		t.Errorf("apt within the grace: %s", m)
+	}
+	far := Entry{Options: []Option{{Manager: MgrPixi, Size: sz(10, 10)}, {Manager: MgrApt, Size: sz(18, 18)}}}
+	if m, _ := Choose(far, ArchAMD64); m != MgrPixi {
+		t.Errorf("apt outside the grace: %s", m)
+	}
+	// npm and pixi: the smaller; a tie goes to the name that sorts first, so the choice is the same on every run
+	if m, _ := Choose(Entry{Options: []Option{{Manager: MgrNPM, Size: sz(4, 4)}, {Manager: MgrPixi, Size: sz(9, 9)}}}, ArchAMD64); m != MgrNPM {
+		t.Errorf("the smaller of npm and pixi: %s", m)
+	}
+	// one manager for both CPU types: an option usable on one only is left out
+	one := Entry{Options: []Option{{Manager: MgrApt, Size: map[string]float64{ArchARM64: 3}}, {Manager: MgrPixi, Size: sz(30, 31)}}}
+	if m, ok := ChooseAll(one); !ok || m != MgrPixi {
+		t.Errorf("both CPU types: %s %v", m, ok)
+	}
+	// before the amd64 run has been made, what was measured decides
+	if m, ok := ChooseAll(Entry{Options: []Option{{Manager: MgrApt, Size: map[string]float64{ArchARM64: 3}}}}); !ok || m != MgrApt {
+		t.Errorf("one CPU type measured: %s %v", m, ok)
+	}
+}
+
+func TestGUIPackagesAreRecognisedForAptAndPixi(t *testing.T) {
+	vimPixi := []string{"vim", "libxcb", "tk", "xorg-libice", "python"}
+	if g := GUIOfPixi(vimPixi); g != "libxcb" {
+		t.Errorf("pixi vim: %q", g)
+	}
+	if g := GUIOfPixi([]string{"tmux", "libevent", "ncurses", "libgcc-ng", "qt-main"}); g != "qt-main" {
+		t.Errorf("a Qt package: %q", g)
+	}
+	for _, ok := range []string{"ripgrep", "libgcc-ng", "libexpat", "libxml2", "libxslt", "xz", "libsodium", "git", "openssl", "libgit2", "tk-demo-not"} {
+		if g := GUIOfPixi([]string{ok}); g != "" && ok != "tk-demo-not" {
+			t.Errorf("%s is not a GUI package: %q", ok, g)
+		}
+	}
+	if g := GUIOfApt([]AptPkg{{Name: "vim"}, {Name: "libgpm2"}, {Name: "libsodium23"}, {Name: "vim-runtime", Section: "editors"}}); g != "" {
+		t.Errorf("apt vim has no GUI package: %q", g)
+	}
+	for _, bad := range []AptPkg{{Name: "libx11-6"}, {Name: "libgtk-3-0"}, {Name: "libqt5core5a"}, {Name: "libgl1"}, {Name: "mesa-vulkan-drivers"}, {Name: "libwayland-client0"}, {Name: "x11-common"}, {Name: "gimp", Section: "graphics"}, {Name: "fonty", Section: "universe/x11"}, {Name: "gedit", Section: "gnome"}, {Name: "kate", Section: "kde"}} {
+		if g := GUIOfApt([]AptPkg{{Name: "tool"}, bad}); g != bad.Name {
+			t.Errorf("%+v is a GUI package, got %q", bad, g)
+		}
+	}
+	lock := "packages:\n- conda: https://conda.anaconda.org/conda-forge/linux-aarch64/vim-9.1.0-py312_h1.conda\n- conda: https://conda.anaconda.org/conda-forge/linux-aarch64/xorg-libice-1.1.2-h80f16a2_0.conda\n- conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.12-1_cp312.conda\n- conda: https://conda.anaconda.org/conda-forge/linux-aarch64/libgcc-ng-14.2.0-h1.tar.bz2\n"
+	names := PixiLockNames(lock)
+	if strings.Join(names, ",") != "libgcc-ng,python_abi,vim,xorg-libice" {
+		t.Errorf("names of a lock: %v", names)
+	}
+	if GUIOfPixi(names) != "xorg-libice" {
+		t.Error("the lock of vim has a GUI library")
+	}
+}
+
+func TestTheTrimDeletesWhatAnAppDoesNotNeedAndNeverALicence(t *testing.T) {
+	b := t.TempDir()
+	put := func(rel string, size int) {
+		p := filepath.Join(b, filepath.FromSlash(rel))
+		os.MkdirAll(filepath.Dir(p), 0755)
+		os.WriteFile(p, make([]byte, size), 0644)
+	}
+	for rel, size := range map[string]int{
+		"usr/bin/vim.basic": 5000, "usr/share/vim/vim82/syntax/c.vim": 3000, // what the program needs
+		"usr/share/doc/vim/copyright": 100, "usr/share/doc/vim/README.gz": 4000, "usr/share/man/man1/vim.1.gz": 4000, "usr/share/locale/de/LC_MESSAGES/vim.mo": 4000,
+		"usr/lib/libfoo.a": 4000, ".pixi/envs/default/lib/python3.10/site-packages/pkg/__pycache__/x.pyc": 4000,
+		".pixi/envs/default/lib/python3.10/site-packages/pkg/tests/test_x.py": 4000, ".pixi/envs/default/lib/python3.10/site-packages/pkg/core.py": 100,
+		".pixi/envs/default/share/doc/pkg/LICENSE.txt": 50, ".pixi/envs/default/man/man1/x.1": 4000,
+		"node_modules/lib/index.js": 100, "node_modules/lib/index.js.map": 4000, "node_modules/lib/README.md": 4000, "node_modules/lib/LICENSE.md": 50, "node_modules/lib/package.json": 50,
+		"usr/include/eigen3/Eigen/Core": 100, "usr/lib/libfmt.a": 4000,
+	} {
+		put(rel, size)
+	}
+	rep := TrimBundle(b, TrimOptions{Keep: []string{"usr/lib/libfmt.a"}})
+	exists := func(rel string) bool { _, err := os.Stat(filepath.Join(b, filepath.FromSlash(rel))); return err == nil }
+	for _, gone := range []string{"usr/share/doc/vim/README.gz", "usr/share/man", "usr/share/locale", "usr/lib/libfoo.a", ".pixi/envs/default/lib/python3.10/site-packages/pkg/__pycache__",
+		".pixi/envs/default/lib/python3.10/site-packages/pkg/tests", ".pixi/envs/default/man", "node_modules/lib/index.js.map", "node_modules/lib/README.md"} {
+		if exists(gone) {
+			t.Errorf("%s should have been deleted", gone)
+		}
+	}
+	for _, kept := range []string{"usr/bin/vim.basic", "usr/share/vim/vim82/syntax/c.vim", "usr/share/doc/vim/copyright", ".pixi/envs/default/share/doc/pkg/LICENSE.txt",
+		".pixi/envs/default/lib/python3.10/site-packages/pkg/core.py", "node_modules/lib/index.js", "node_modules/lib/LICENSE.md", "node_modules/lib/package.json",
+		"usr/include/eigen3/Eigen/Core", "usr/lib/libfmt.a"} {
+		if !exists(kept) {
+			t.Errorf("%s must stay (a licence, a file the program needs, or on the keep list)", kept)
+		}
+	}
+	if rep.AfterMB > rep.BeforeMB || rep.Files < 8 {
+		t.Errorf("report %+v", rep)
+	}
+	// a library of C or C++ keeps its static libraries
+	b2 := t.TempDir()
+	os.MkdirAll(filepath.Join(b2, "usr/lib"), 0755)
+	os.WriteFile(filepath.Join(b2, "usr/lib/libx.a"), []byte("x"), 0644)
+	TrimBundle(b2, TrimOptions{KeepStatic: true})
+	if _, err := os.Stat(filepath.Join(b2, "usr/lib/libx.a")); err != nil {
+		t.Error("a static library of a C library is kept")
+	}
+}
+
+func TestAptAlternativesFromPostinst(t *testing.T) {
+	post := "#!/bin/sh\npkg=vim\nvariant=basic\nadd() {\n  update-alternatives --install /usr/bin/vim vim /usr/bin/vim.$variant $1\n  for i in vi view ; do\n    update-alternatives --install /usr/bin/$i $i /usr/bin/vim.$variant $1\n  done\n  update-alternatives --install /usr/bin/x x /usr/bin/$other 1\n}\n"
+	got := alternatives(post)
+	want := map[string]string{"/usr/bin/vim": "/usr/bin/vim.basic", "/usr/bin/vi": "/usr/bin/vim.basic", "/usr/bin/view": "/usr/bin/vim.basic"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for _, l := range got {
+		if want[l[0]] != l[1] {
+			t.Errorf("link %v", l)
+		}
+	}
+}
+
+// brokenPixi is a pixi that cannot solve any tool.
+type brokenPixi struct{ Fake }
+
+func (g brokenPixi) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	return Resolved{}, errors.New("conda-forge could not solve " + name + " (fake)")
+}
+
+// A tool whose first manager fails is made by the next usable option, and the admin is told.
+func TestRefusedFirstManagerFallsBackToApt(t *testing.T) {
+	svc, st := newService(t, Multi{Conda: brokenPixi{}, Apt: Fake{}, Plugin: PluginInstaller{}})
+	e := Entry{ID: "zzvim", Name: "zzvim", Summary: "x", Kind: CKTool, Level: "optional", Manager: MgrPixi, Install: "anyone", Repls: []string{"bash"},
+		Options: []Option{{Manager: MgrPixi}, {Manager: MgrApt, Package: "zzvim", Size: map[string]float64{ArchARM64: 20, ArchAMD64: 20}}}}
+	if err := svc.AddEntry("admin", e); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.InstallEntry("ann", e); err != nil {
+		t.Fatal(err)
+	}
+	svc.Wait()
+	var app App
+	for _, a := range svc.Apps() {
+		if a.Name == "zzvim" {
+			app = a
+		}
+	}
+	if app.State != StateInstalled || app.Manager != MgrApt {
+		t.Fatalf("not made by apt: %+v", app)
+	}
+	if _, err := os.Stat(filepath.Join(st.BundlePath(app.ID), "bin", "zzvim")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// sizedFake is an installer whose dry run says how big an app would be (for the choice by dry runs).
+type sizedFake struct {
+	Fake
+	mb   float64
+	fail bool
+}
+
+func (f sizedFake) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	if f.fail {
+		return Resolved{}, errors.New("not possible here (fake)")
+	}
+	r, err := f.Fake.Resolve(ctx, name, version, kind)
+	r.DiskMB = f.mb
+	return r, err
+}
+
+func compareService(t *testing.T, pixi, apt Installer) *Service {
+	t.Helper()
+	aptHasFn = func(string) bool { return true }
+	t.Cleanup(func() { aptHasFn = AptHas })
+	svc, _ := newService(t, Multi{Conda: pixi, Apt: apt, Plugin: PluginInstaller{}})
+	return svc
+}
+
+func newTool(id string) Entry {
+	return Entry{ID: id, Name: id, Summary: "x", Kind: CKTool, Level: "optional", Manager: MgrPixi, Install: "anyone", Repls: []string{"bash"}}
+}
+
+// The dry runs choose the smaller manager, apt winning inside its allowance; the sizes are marked as estimates.
+func TestCompareChoosesBySizeAndMarksEstimates(t *testing.T) {
+	cases := []struct {
+		name      string
+		pixi, apt float64
+		aptFails  bool
+		want      string
+	}{
+		{"apt much smaller", 200, 10, false, MgrApt},
+		{"pixi much smaller", 5, 80, false, MgrPixi},
+		{"apt within 20 percent and 5 MB", 10, 16, false, MgrApt},
+		{"apt just outside", 10, 18, false, MgrPixi},
+		{"apt not possible", 50, 1, true, MgrPixi},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			svc := compareService(t, sizedFake{mb: c.pixi}, sizedFake{mb: c.apt, fail: c.aptFails})
+			e, rows := svc.Compare(context.Background(), newTool("zzdry"))
+			if e.Manager != c.want || e.Minimal == nil || !e.Minimal.Estimate {
+				t.Fatalf("chose %q, minimal %+v, rows %+v", e.Manager, e.Minimal, rows)
+			}
+			if len(rows) != 2 || SummaryOf(rows) == "" {
+				t.Fatalf("rows %+v", rows)
+			}
+		})
+	}
+}
+
+// A measured size is never replaced by an estimate; an entry with no apt candidate in the archive is compared on pixi alone.
+func TestCompareKeepsMeasuredSizesAndNeedsTheArchive(t *testing.T) {
+	svc := compareService(t, sizedFake{mb: 500}, sizedFake{mb: 500})
+	e := newTool("zzkeep")
+	e.Options = []Option{{Manager: MgrPixi, Size: map[string]float64{thisArch(): 7}, Version: "1.0.0"}}
+	got, _ := svc.Compare(context.Background(), e)
+	if o, _ := got.OptionOf(MgrPixi); o.Size[thisArch()] != 7 || o.Estimate {
+		t.Fatalf("the measured size was replaced: %+v", o)
+	}
+	aptHasFn = func(string) bool { return false }
+	only, rows := svc.Compare(context.Background(), newTool("zznoapt"))
+	if _, has := only.OptionOf(MgrApt); has || len(rows) != 1 || only.Manager != MgrPixi {
+		t.Fatalf("no apt candidate expected: %+v %+v", only.Options, rows)
+	}
+}
+
+// An entry that was never measured gets its manager from the dry runs when it is installed, and the choice is kept.
+func TestInstallOfAnUnmeasuredToolChoosesByDryRun(t *testing.T) {
+	svc := compareService(t, sizedFake{mb: 300}, sizedFake{mb: 3})
+	e := newTool("zzauto")
+	if err := svc.AddEntry("admin", e); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.InstallEntry("ann", e); err != nil {
+		t.Fatal(err)
+	}
+	svc.Wait()
+	var app App
+	for _, a := range svc.Apps() {
+		if a.Name == "zzauto" {
+			app = a
+		}
+	}
+	if app.State != StateInstalled || app.Manager != MgrApt {
+		t.Fatalf("not made by apt: %+v", app)
+	}
+	if kept, _ := svc.Entry("zzauto"); kept.Minimal == nil || kept.Manager != MgrApt {
+		t.Fatalf("the choice was not kept: %+v", kept)
 	}
 }

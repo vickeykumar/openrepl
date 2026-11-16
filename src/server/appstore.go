@@ -102,6 +102,16 @@ func newInstaller(dir string) appstore.Installer {
 		return appstore.Fake{}
 	}
 	multi := appstore.Multi{Plugin: appstore.PluginInstaller{}}
+	pixiBuild := func(app string) string {
+		if svc := storeService(); svc != nil {
+			if e, ok := svc.EntryFor(app, appstore.KindTool); ok {
+				if o, ok := e.OptionOf(appstore.MgrPixi); ok {
+					return o.Build
+				}
+			}
+		}
+		return ""
+	}
 	bin := os.Getenv("OPENREPL_PIXI")
 	if bin == "" {
 		bin, _ = exec.LookPath("pixi")
@@ -111,7 +121,7 @@ func newInstaller(dir string) appstore.Installer {
 		if py == "" {
 			py = appstore.PythonOf("python3")
 		}
-		multi.Conda = appstore.Pixi{Bin: bin, Dir: dir, Python: py, Constraints: runtimeConstraints}
+		multi.Conda = appstore.Pixi{Bin: bin, Dir: dir, Python: py, Constraints: runtimeConstraints, Builds: pixiBuild}
 	}
 	if npm := findNpm(); npm != "" {
 		multi.Node = appstore.Npm{Bin: npm, Dir: dir}
@@ -126,6 +136,9 @@ func newInstaller(dir string) appstore.Installer {
 	multi.GoMod = appstore.GoMod{Dir: dir, Lookup: lookup}
 	multi.Jar = appstore.Maven{Dir: dir, Lookup: lookup}
 	multi.Crate = appstore.Cargo{Dir: dir, Lookup: lookup}
+	if _, err := exec.LookPath("apt-get"); err == nil {
+		multi.Apt = appstore.AptBundle{Dir: dir, Lookup: lookup}
+	}
 	return multi
 }
 

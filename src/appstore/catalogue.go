@@ -77,6 +77,9 @@ type Entry struct {
 	Files     []string `json:"files,omitempty"`   // a browser library or a plugin: the files served
 	Internal  bool     `json:"internal,omitempty"`
 	Python    string   `json:"python,omitempty"`
+	// the install options and the smallest of them (options.go); Manager and Package above are the chosen one
+	Options []Option `json:"options,omitempty"`
+	Minimal *Minimal `json:"minimal,omitempty"`
 }
 
 // Pack is a named set of entries that an admin installs in one action.
@@ -180,7 +183,7 @@ func ValidateEntry(e Entry) error {
 			return fmt.Errorf("the file %q is not usable", f)
 		}
 	}
-	return nil
+	return ValidateOptions(e)
 }
 
 // Source is the name of the package at its manager: the module path of a Go module, group:artifact of a jar, the crate, the conda package.

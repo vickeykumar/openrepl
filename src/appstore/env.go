@@ -28,6 +28,7 @@ type Vars struct {
 	GoProxy      []string // file:// proxies of Go module bundles: GOPROXY
 	ClassPath    []string // <bundle>/jars/*: CLASSPATH
 	CrateVendors []string // vendored crates: the helper makes a cargo home that replaces crates.io with them
+	LdLib        []string // library folders of rootless apt bundles: LD_LIBRARY_PATH, added at the END so the image's own libraries win
 	Py27Path     []string // site-packages of Python 2.7 libraries: OPENREPL_PY27PATH, and PYTHONPATH of a Python 2.7 terminal (the helper)
 	// Extra are the variables the packages set when they are activated (JAVA_HOME, PROJ_DATA, ...), read from each bundle's
 	// activate.json; the first bundle on the list wins a name two of them set.
@@ -129,6 +130,23 @@ func VarsFor(dir string, ids []string) Vars {
 			continue
 		}
 		bundle := filepath.Join(dir, "apps", id)
+		if IsAptBundle(bundle) {
+			bins, libs, incs, pcs := AptDirs(bundle)
+			v.PathAdd = append(v.PathAdd, bins...)
+			v.LdLib = append(v.LdLib, libs...)
+			v.Include = append(v.Include, incs...)
+			v.PkgConfig = append(v.PkgConfig, pcs...)
+			v.Lib = append(v.Lib, libs...)
+			for k, val := range readActivation(bundle) {
+				if v.Extra == nil {
+					v.Extra = map[string]string{}
+				}
+				if _, taken := v.Extra[k]; !taken {
+					v.Extra[k] = strings.ReplaceAll(val, "{bundle}", bundle)
+				}
+			}
+			continue
+		}
 		root := PrefixOf(bundle)
 		if isDir(filepath.Join(root, "bin")) {
 			v.PathAdd = append(v.PathAdd, filepath.Join(root, "bin"))
@@ -267,6 +285,13 @@ func (v Vars) Apply(env []string) []string {
 			}
 		}
 	}
+	if len(v.LdLib) > 0 {
+		l := get("LD_LIBRARY_PATH")
+		if l != "" {
+			l += ":"
+		}
+		set("LD_LIBRARY_PATH", l+strings.Join(v.LdLib, ":"))
+	}
 	if len(v.GoProxy) > 0 {
 		set("GOPROXY", strings.Join(v.GoProxy, ",")+",off") // only the mirrors: a terminal has no internet
 		set("GOFLAGS", "-mod=mod")
@@ -316,6 +341,9 @@ func EnvScript(dir string, ids []string) string {
 				fmt.Fprintf(&b, "export %s=%s${%s:+:$%s}\n", n, q(strings.Join(x.dirs, ":")), n, n)
 			}
 		}
+	}
+	if len(v.LdLib) > 0 {
+		fmt.Fprintf(&b, "export LD_LIBRARY_PATH=\"${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}\"%s\n", q(strings.Join(v.LdLib, ":")))
 	}
 	if len(v.GoProxy) > 0 {
 		fmt.Fprintf(&b, "export GOPROXY=%s GOFLAGS=-mod=mod GOSUMDB=off\n", q(strings.Join(v.GoProxy, ",")+",off"))

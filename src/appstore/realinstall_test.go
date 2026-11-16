@@ -18,10 +18,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 var realOnce sync.Once
@@ -59,6 +61,8 @@ func realService(t *testing.T) (*Service, Store) {
 		py := PythonOf("python3")
 		realStore = Store{Dir: dir}
 		inst := Multi{Conda: Pixi{Bin: bin, Dir: dir, Python: py}, Plugin: PluginInstaller{}}
+		// a program of the Ubuntu archive (rootless apt bundle): the entries that were measured to be smaller that way
+		inst.Apt = AptBundle{Dir: dir, Lookup: func(kind, app string) (Entry, bool) { return realSvc.EntryFor(app, kind) }}
 		if npm := findRealNpm(); npm != "" {
 			inst.Node = Npm{Bin: npm, Dir: dir}
 		}
@@ -578,4 +582,78 @@ func TestTheMirrorsInstallAndAreUsedOffline(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The minimal installs (LLD 18): a program that the catalogue says apt makes smallest (vim, tmux) and a Node library are installed with the manager the
+// catalogue chose, after the trim, and run the way a terminal runs them (the variables of the bundles that are on). vim must find its runtime files.
+func TestTheMinimalInstallsRun(t *testing.T) {
+	svc, st := realService(t)
+	cases := []struct{ id, manager, cmd string }{
+		{"vim", MgrApt, `vim -es -u NONE -c "if empty(globpath(&rtp,'syntax/c.vim'))|cq|endif|q"`},
+		{"tmux", MgrApt, `tmux -V`},
+		{"npm:lodash", MgrNPM, ``},
+	}
+	for _, c := range cases {
+		if c.id == "" {
+			continue
+		}
+		c := c
+		t.Run(c.id, func(t *testing.T) {
+			e, ok := svc.Entry(c.id)
+			if !ok {
+				t.Fatalf("%s is not in the catalogue", c.id)
+			}
+			if err := svc.InstallEntry("ci", e); err != nil && !errors.Is(err, ErrInstalled) {
+				t.Fatal(err)
+			}
+			svc.Wait()
+			var app App
+			for _, a := range svc.Apps() {
+				if a.Name == e.PackageName() && cleanKind(a.Kind) == e.InstallKind() {
+					app = a
+				}
+			}
+			if app.State != StateInstalled {
+				t.Fatalf("not installed: %+v", app)
+			}
+			if app.Manager != c.manager && app.Manager != "" {
+				t.Errorf("made by %s, the catalogue chose %s", app.Manager, c.manager)
+			}
+			t.Logf("%s: made by %q, %.1f MB, full=%v, trimmed %d files", c.id, app.Manager, dirMB(st.BundlePath(app.ID)), app.Full, app.Trimmed)
+			if c.cmd == "" {
+				return
+			}
+			cmd := exec.Command("sh", "-c", c.cmd)
+			cmd.Env = VarsFor(st.Dir, []string{app.ID}).Apply(os.Environ())
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("%s does not run from its bundle: %v\n%s", c.id, err, out)
+			}
+		})
+	}
+}
+
+// The sizes of the tools the owner asked about, for each manager that can install them, as a table in the log of the job. A tool that is not in the
+// catalogue (nano, jq) is measured as a program all the same.
+func TestTheSizeTableOfTheNamedTools(t *testing.T) {
+	if os.Getenv("OPENREPL_SIZE_TABLE") == "" {
+		t.Skip("set OPENREPL_SIZE_TABLE=1")
+	}
+	svc, st := realService(t)
+	arch := ArchAMD64
+	if runtime.GOARCH == "arm64" {
+		arch = ArchARM64
+	}
+	m := MeasureEnv{Svc: svc, Work: st.Dir + "/measure", Arch: arch, AptPackage: AptHas}
+	os.MkdirAll(m.Work, 0755)
+	var rows []Entry
+	for _, n := range []string{"vim", "nano", "tmux", "htop", "git", "jq", "ripgrep"} {
+		e := Entry{ID: n, Name: n, Summary: "x", Kind: CKTool, Level: "optional", Manager: MgrPixi, Install: "anyone", Repls: []string{"bash"}, Check: "version-flag", CheckArg: n}
+		if c, ok := svc.Entry(n); ok {
+			e = c
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+		rows = append(rows, m.Measure(ctx, e))
+		cancel()
+	}
+	t.Log("\nsize after the trim, " + arch + "\n" + SizeTable(rows, arch))
 }
