@@ -10,7 +10,7 @@
 
     
 [![Workflow](https://github.com/vickeykumar/openrepl/actions/workflows/docker-image.yml/badge.svg?style=flat-square)][docker-image]
-[![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)][license]
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg?style=flat-square)][license]
 
 [docker-image]: https://github.com/vickeykumar/openrepl/actions/workflows/docker-image.yml
 [license]: https://github.com/vickeykumar/openrepl/blob/master/LICENSE
@@ -779,4 +779,6 @@ GoTTY's original design notes still apply to the terminal core. It uses [xterm.j
 
 # License
 
-The MIT License
+OpenREPL is licensed under the [GNU Affero General Public License v3.0](LICENSE). A [commercial licence](COMMERCIAL-LICENSING.md) is available for organisations that cannot use the AGPL, and for additional features.
+
+GoTTY-derived files remain MIT (Copyright (c) 2015-2017 Iwasaki Yudai); third-party components keep their own licences (see [NOTICE](NOTICE)). Releases published before this change were under the BSD 3-Clause licence ([LICENSES/BSD-3-Clause-OpenREPL-legacy.txt](LICENSES/BSD-3-Clause-OpenREPL-legacy.txt)). "OpenREPL" and its logo are not licensed by the AGPL.
