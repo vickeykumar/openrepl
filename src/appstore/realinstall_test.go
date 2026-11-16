@@ -401,7 +401,7 @@ func TestTheCoreOfTheCatalogueInstallsAndLeavesTheWorkspaceAlone(t *testing.T) {
 			if k == KindNode && findRealNpm() == "" {
 				t.Skip("npm is not here")
 			}
-			if err := svc.InstallEntry("ci", e); err != nil {
+			if err := svc.InstallEntry("ci", e); err != nil && !errors.Is(err, ErrInstalled) { // an app that an earlier test of the run installed is used as it is
 				t.Fatal(err)
 			}
 			svc.Wait()
