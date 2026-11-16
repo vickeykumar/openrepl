@@ -181,8 +181,9 @@ const startPrimaryTerminal = () => {
         });
     };
 
-    window.addEventListener("unload", (e: any) => {
-        console.log("Window unload event: closing connections");
+    // "pagehide" and not "unload": browsers are phasing unload out and a permissions policy may block it ("unload is not allowed in this document")
+    window.addEventListener("pagehide", (e: any) => {
+        console.log("Window pagehide event: closing connections");
         const tabsContainer = document.getElementById('terminal-tabs') as HTMLElement;
         const tabs = tabsContainer.querySelectorAll('.tab');
         for (let i = 0; i < tabs.length; i++) {

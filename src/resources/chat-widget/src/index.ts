@@ -324,7 +324,7 @@ function isMaster() : boolean {
 }
 
 // A viewer going away says so. The page may be gone before it is sent, so it is
-// tried on pagehide (which browsers still run) as well as on unload, once; a page
+// tried on pagehide (which browsers still run), once; a page
 // that comes back from the back/forward cache joins again (pageshow).
 let toldLeft = false;
 function sayLeft() {
@@ -488,7 +488,7 @@ async function init() {
   setupFBListener();
 }
 window.addEventListener("load", init);
-window.addEventListener("unload", cleanup);
+window.addEventListener("pagehide", cleanup); // not "unload": browsers are phasing it out and a permissions policy may block it
 
 const containerElement = document.createElement("div");
 containerElement.id = WIDGET_CONTAINER_ID;
