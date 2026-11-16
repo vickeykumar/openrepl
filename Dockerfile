@@ -20,28 +20,23 @@ FROM builder as build-image
 #install the requisites to build the APP
 # the builder stage clears the package lists (install_prerequisite.sh), so they are fetched again here
 RUN apt-get update -y && apt-get install -y --no-install-recommends make gcc git npm && npm install -g npm@8.5.1 && rm -rf /var/lib/apt/lists/*
-COPY . /opt/openrepl/
 WORKDIR /opt/openrepl/src
 ENV GOROOT=/opt/go
+# The Go toolchain and go-bindata come BEFORE the source is copied: they do not change with the code, so a change to the code reruns only "make" below
+# (the layers up to here are kept from the last build).
 # dpkg names the image's architecture (amd64, arm64) with or without BuildKit, unlike TARGETARCH
 RUN curl -fsSL "https://go.dev/dl/go1.23.12.linux-$(dpkg --print-architecture).tar.gz" -o /tmp/go.tar.gz && \
     mkdir -p "$GOROOT" && tar -C "$GOROOT" --strip-components=1 -xzf /tmp/go.tar.gz && \
     rm /tmp/go.tar.gz && \
-    GOBIN=/opt/openrepl/bin "$GOROOT/bin/go" install github.com/jteeuwen/go-bindata/go-bindata@v3.0.7+incompatible && \
-    make GOROOT="$GOROOT" all
+    GOBIN=/opt/openrepl/bin "$GOROOT/bin/go" install github.com/jteeuwen/go-bindata/go-bindata@v3.0.7+incompatible
+COPY . /opt/openrepl/
+RUN make GOROOT="$GOROOT" all
 
 FROM builder
 #install the app
 
 RUN mkdir -p /gottyTraces && mkdir -p /opt/gotty && \
 mkdir -p /opt/scripts
-
-COPY --from=build-image /opt/openrepl/bin/gotty /usr/local/bin/
-# puts the filesystem sandbox on a REPL before it runs: beside gotty, which looks for it there
-COPY --from=build-image /opt/openrepl/bin/landlock-helper /usr/local/bin/
-COPY --from=build-image /opt/openrepl/scripts/run_app.sh /opt/scripts/
-
-RUN chmod 755 /usr/local/bin/gotty /usr/local/bin/landlock-helper && chmod 755 /opt/scripts/run_app.sh
 
 # The App Store (LLD 18) installs libraries and tools from conda-forge with pixi, a single static program, into /store
 # (outside /opt, which the filesystem sandbox lets every REPL read). The version is pinned (every node of a site must read the same
@@ -57,6 +52,14 @@ RUN mkdir -p /store && arch="$(dpkg --print-architecture)" && \
        tar -xzf "$f" -C /usr/local/bin pixi && chmod 755 /usr/local/bin/pixi && rm -f "$f" "$f.sha256" && pixi --version) || \
       echo "pixi was not installed: the App Store cannot install until it is"; \
     fi
+
+# the app itself comes last: it changes with every commit, the layers above do not
+COPY --from=build-image /opt/openrepl/bin/gotty /usr/local/bin/
+# puts the filesystem sandbox on a REPL before it runs: beside gotty, which looks for it there
+COPY --from=build-image /opt/openrepl/bin/landlock-helper /usr/local/bin/
+COPY --from=build-image /opt/openrepl/scripts/run_app.sh /opt/scripts/
+
+RUN chmod 755 /usr/local/bin/gotty /usr/local/bin/landlock-helper && chmod 755 /opt/scripts/run_app.sh
 
 WORKDIR /opt/openrepl
 
