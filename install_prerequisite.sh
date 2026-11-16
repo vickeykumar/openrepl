@@ -62,9 +62,17 @@ cd ~
 export TZ=Etc/UTC
 
 apt-get update -y
-apt-get install -y --no-install-recommends make gcc g++ default-jdk git
+# The language toolchains are kept current: Go, yaegi, JDK and Rust below (the versions are variables, one place each)
+GO_VERSION=1.23.12
+YAEGI_VERSION=v0.16.1
+RUST_VERSION=1.85.1
+apt-get install -y --no-install-recommends make gcc g++ openjdk-21-jdk-headless git
 # the Java REPL is jshell (utils/interactive.go): part of the JDK since 9, but fail early if it is missing
-command -v jshell >/dev/null || { echo "jshell was not installed with default-jdk"; exit 1; }
+command -v jshell >/dev/null || { echo "jshell was not installed with openjdk-21-jdk-headless"; exit 1; }
+# the JDK 21 is the one of the PATH (a JDK of an older version may be there too)
+update-alternatives --set java "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/java" || true
+update-alternatives --set javac "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/javac" || true
+update-alternatives --set jshell "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/jshell" || true
 
 #install ipython2.7
 apt-get install -y --no-install-recommends python2.7
@@ -86,12 +94,19 @@ chmod 4755 /usr/bin/nsenter
 # add export NODE_OPTIONS=--max_old_space_size=2048 to .bashrc
 apt-get install -y --no-install-recommends net-tools
 
-#install golang
-apt-get install -y --no-install-recommends golang
+#install golang: the official release (the apt one is 1.18), first on the PATH
+apt-get install -y --no-install-recommends curl ca-certificates
+curl -fsSL "https://go.dev/dl/go$GO_VERSION.linux-$GO_ARCH.tar.gz" | tar -C /usr/local -xz
+ln -sf /usr/local/go/bin/go /usr/local/bin/go
+ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+# what a user's program does not need (the size of the image is limited)
+rm -rf /usr/local/go/test /usr/local/go/doc /usr/local/go/api /usr/local/go/misc
 
-#install yaegi go repl, >= go1.18
-#go install github.com/traefik/yaegi/cmd/yaegi@latest
-apt-get install -y --no-install-recommends yaegi
+#install yaegi go repl: its standard library is the one of the Go that built it, so it is built with the new Go
+YAEGI_DIR=$(mktemp -d)
+env -u GOROOT GO111MODULE=on GOFLAGS= GOTOOLCHAIN=local GOPATH="$YAEGI_DIR/gopath" GOBIN=/usr/local/bin \
+    /usr/local/go/bin/go install "github.com/traefik/yaegi/cmd/yaegi@$YAEGI_VERSION" || { echo "ERROR: yaegi could not be built"; exit 1; }
+chmod -R u+w "$YAEGI_DIR" && rm -rf "$YAEGI_DIR"
 
 #install npm
 apt-get install -y --no-install-recommends npm
@@ -179,9 +194,13 @@ if [ -e "/usr/local/bin/evcxr" ]; then
     echo "File /usr/local/bin/evcxr exists."
 else
     echo "File /usr/local/bin/evcxr does not exist. installing..."
-    apt-get install -y --no-install-recommends rustc
-    apt-get install -y --no-install-recommends rust-gdb
-    apt-get install -y --no-install-recommends cargo
+    # the Rust toolchain of the REPL is rustup's (the apt one is old and would double the size of the image): rustc, cargo and rust-gdb are
+    # linked into /usr/local/bin, so they are on every PATH
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUST_VERSION"
+    for t in rustc cargo rustup rust-gdb; do
+        [ -e "$HOME/.cargo/bin/$t" ] && ln -sf "$HOME/.cargo/bin/$t" "/usr/local/bin/$t"
+    done
+    rm -rf "$HOME"/.rustup/downloads "$HOME"/.rustup/tmp "$HOME"/.rustup/toolchains/*/share/doc "$HOME"/.rustup/toolchains/*/share/man
     if [ "$DEB_ARCH" = amd64 ]; then
         EVCXR_ARCHIVE="evcxr-v0.17.0-$EVCXR_TARGET.tar.gz"
         wget "https://github.com/evcxr/evcxr/releases/download/v0.17.0/$EVCXR_ARCHIVE"
@@ -192,7 +211,6 @@ else
         rm -rf "evcxr-v0.17.0-$EVCXR_TARGET"
     else
         # Build natively because the upstream prebuilt asset is x86_64 only.
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.74.1
         . "$HOME/.cargo/env"
         cargo install --locked --version 0.17.0 evcxr_repl
         ln -sf "$HOME/.cargo/bin/evcxr" /usr/local/bin/evcxr
@@ -330,6 +348,13 @@ if [ $cleanup_tools -eq 1 ]; then
 	apt-get -y --purge remove npm
 	apt-get -y clean
 	apt-get -y autoremove
+	# the caches of what was installed above (none is needed to run: a program starts its own, in its scratch folder): apt's lists, the Go build
+	# cache and downloads, npm's cache, the crates that evcxr was built from, pip's cache and the temporary files of the build
+	rm -rf /var/lib/apt/lists/* /root/.cache /root/.npm /root/.cargo/registry /root/.cargo/git /root/go/pkg
+	# the other managers: nvm, gem and bundler, cpan, the Go module cache of GOPATH, pip and conda/pixi (under /root/.cache), apt's own caches and logs
+	rm -rf /root/.nvm/.cache /root/.gem /root/.bundle /root/.cpan /root/.cpanm /opt/gotty/pkg/mod /var/cache/apt /var/cache/debconf/*-old /var/log/apt /var/log/dpkg.log
+	npm cache clean --force 2>/dev/null || true
+	find /tmp -mindepth 1 -maxdepth 1 ! -name home -exec rm -rf {} + 2>/dev/null || true
 fi
 
 # finally give the ownership to username 

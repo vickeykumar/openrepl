@@ -27,6 +27,7 @@ var cur = -1;
 var navTo = "";           // an address the pane itself set (Back, Forward): the page reporting it is not a new page
 var popout = null;        // the window of a popped-out preview
 var consoleOn = false, consoleTab = "console";
+var plug = { viewport: true, outline: true, console: true }; // the plugins of ours (App Store): on unless the user turned one off
 var viewer = Math.random().toString(36).slice(2, 12) + Date.now().toString(36).slice(-4); // this pane's id: its own cookies in a shared session
 function readOpt(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : v === "1"; } catch (e) { return d; } }
 function saveOpt(k, v) { try { localStorage.setItem(k, v ? "1" : "0"); } catch (e) {} }
@@ -410,9 +411,22 @@ function renderConsole() {
   var c1 = el("preview-tab-console-n"), c2 = el("preview-tab-requests-n");
   if (c1) c1.textContent = tb && tb.logs.length ? "(" + tb.logs.length + ")" : "";
   if (c2) c2.textContent = tb && tb.reqs.length ? "(" + tb.reqs.length + ")" : "";
+  var oc = el("preview-tab-outline-n"); if (oc) oc.textContent = tb && tb.outline && tb.outline.length ? "(" + tb.outline.length + ")" : "";
   var body = el("preview-console-body");
   if (!body || !consoleOn) return;
   body.textContent = "";
+  if (consoleTab === "outline") {
+    var items = (tb && tb.outline) || [];
+    if (!items.length) { var e0 = document.createElement("div"); e0.className = "preview-console__empty"; e0.textContent = "The page has no headings or landmarks yet."; body.appendChild(e0); return; }
+    items.forEach(function (it) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "preview-console__row preview-outline__item"; b.setAttribute("data-outline", String(it.i));
+      b.style.cssText = "display:block;width:100%;text-align:left;background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding-left:" + (8 + Math.max(0, (it.l || 1) - 1) * 14) + "px";
+      b.textContent = (it.l ? "h" + it.l + "  " : "\u25a1  ") + it.text;
+      b.addEventListener("click", function () { var f = el("preview-frame"); if (f && f.contentWindow) f.contentWindow.postMessage({ openreplScroll: it.i }, "*"); });
+      body.appendChild(b);
+    });
+    return;
+  }
   var rows = tb ? (consoleTab === "console" ? tb.logs : tb.reqs) : [];
   if (!rows.length) {
     var e = document.createElement("div"); e.className = "preview-console__empty";
@@ -431,6 +445,31 @@ function renderConsole() {
   });
   body.scrollTop = body.scrollHeight;
 }
+
+// the plugins of the preview that are ours (Viewport switcher, Outline, Console): a user turns each on or off in the App Store
+function applyPlugins() {
+  var size = el("preview-size"), cbtn = el("preview-console-button"), obtn = el("preview-tab-outline"), cons = el("preview-tab-console"), req = el("preview-tab-requests");
+  if (size) size.hidden = !plug.viewport;
+  if (!plug.viewport && size && size.value !== "fit") { size.value = "fit"; size.dispatchEvent(new Event("change")); }
+  if (cbtn) cbtn.hidden = !plug.console && !plug.outline;
+  if (cons) cons.hidden = !plug.console; if (req) req.hidden = !plug.console; if (obtn) obtn.hidden = !plug.outline;
+  if (!plug.console && consoleTab !== "outline") consoleTab = "outline";
+  if (!plug.outline && consoleTab === "outline") consoleTab = "console";
+  if (!plug.console && !plug.outline) toggleConsole(false);
+  if (cbtn) cbtn.textContent = plug.console ? "Console" : "Outline";
+}
+function loadPlugins() {
+  if (!document.body.classList.contains("is-signed-in")) return;
+  fetch(url0("/store/api/preview-plugins"), { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+    if (!j || !j.plugins) return;
+    var next = { viewport: true, outline: true, console: true };
+    j.plugins.forEach(function (p) { if (p.ours) next[p.id.replace("plugin:", "")] = !!p.on; });
+    plug = next; applyPlugins();
+    var c = el("preview-console-count"); if (c && !plug.console) c.hidden = true;
+  }, function () {});
+}
+function url0(path) { return typeof window.preprocessurl === "function" ? window.preprocessurl(path) : path; }
+window.PreviewPlugins = { reload: loadPlugins, state: function () { return plug; } };
 
 function toggleConsole(force) {
   consoleOn = typeof force === "boolean" ? force : !consoleOn;
@@ -841,6 +880,7 @@ function firstUse() {
 
 function openPane(path) {
   if (disabled()) return;
+  loadPlugins();
   var file = path || fileOf();
   if (canShow(file)) return show({ kind: "f", path: String(file) });
   // no page to show: a program that listens is, else the list of ports
@@ -957,6 +997,7 @@ function init() {
     if (d.openrepl === "nav") onNav(tb, String(d.href || ""), String(d.title || ""));
     else if (d.openrepl === "console") addLog(tb, { level: ["log", "info", "warn", "error", "debug"].indexOf(d.level) >= 0 ? d.level : "log", text: String(d.text || "").slice(0, 2000) });
     else if (d.openrepl === "request") addReq(tb, { method: String(d.method || "GET").slice(0, 8), url: String(d.url || "").slice(0, 500), status: +d.status || 0, ms: +d.ms || 0 });
+    else if (d.openrepl === "outline" && Array.isArray(d.items)) { tb.outline = d.items.slice(0, 200).map(function (x) { return { i: +x.i || 0, l: +x.l || 0, tag: String(x.tag || "").slice(0, 12), text: String(x.text || "").slice(0, 120) }; }); if (consoleOn && consoleTab === "outline") renderConsole(); }
     else if (d.openrepl === "key") onKey(String(d.key));
   });
   var addr = el("preview-address"), input = el("preview-address-input");
@@ -985,9 +1026,10 @@ function init() {
   el("preview-console-button").addEventListener("click", function () { toggleConsole(); });
   el("preview-console-close").addEventListener("click", function () { toggleConsole(false); });
   el("preview-console-clear").addEventListener("click", function () { var tb = tab(); if (!tb) return; if (consoleTab === "console") { tb.logs = []; tb.errs = 0; } else tb.reqs = []; renderConsole(); });
-  [["console", "preview-tab-console"], ["requests", "preview-tab-requests"]].forEach(function (x) {
+  [["console", "preview-tab-console"], ["requests", "preview-tab-requests"], ["outline", "preview-tab-outline"]].forEach(function (x) {
     el(x[1]).addEventListener("click", function () {
       consoleTab = x[0];
+      el("preview-tab-outline").classList.toggle("is-on", consoleTab === "outline"); el("preview-tab-outline").setAttribute("aria-selected", consoleTab === "outline" ? "true" : "false");
       el("preview-tab-console").classList.toggle("is-on", consoleTab === "console"); el("preview-tab-console").setAttribute("aria-selected", consoleTab === "console" ? "true" : "false");
       el("preview-tab-requests").classList.toggle("is-on", consoleTab === "requests"); el("preview-tab-requests").setAttribute("aria-selected", consoleTab === "requests" ? "true" : "false");
       renderConsole();

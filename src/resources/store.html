@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>App Store | OpenREPL</title>
+    <link rel="icon" type="image/svg+xml" href="./images/favicon.svg">
+    <link rel="icon" type="image/x-icon" sizes="48x48" href="./images/favicon.ico">
+    <link rel="apple-touch-icon" href="./images/apple-touch-icon.png">
+    <link rel="manifest" href="./images/manifest.json">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./css/scribbler-global.css">
+    <link rel="stylesheet" href="./css/ui-refresh.css">
+    <link rel="stylesheet" href="./css/store.css">
+    <script src="./js/theme.js"></script>
+    <script src="./settings.js"></script>
+    <script src="./js/preprocessing.js"></script>
+  </head>
+  <body class="store-page">
+    <nav class="site-nav site-nav--simple" aria-label="Primary">
+      <a class="brand" href="./" aria-label="OpenREPL home"><span class="brand__open">open</span><span class="brand__repl">repl</span></a>
+      <span class="site-nav__right"><a class="store-back" href="./">Back to the editor</a> <button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button></span>
+    </nav>
+
+    <main class="store" id="store">
+      <header class="store__head">
+        <h1>App Store</h1>
+        <p>Libraries and tools for your terminals. They are installed once on the server and shared; switching one on changes your own terminals only.</p>
+      </header>
+      <div class="store__win">
+        <nav class="store__side" id="store-side" aria-label="App Store sections"></nav>
+        <section class="store__main" id="store-main" aria-live="polite"><p class="store__loading">Loading&hellip;</p></section>
+      </div>
+      <noscript><p>The App Store needs JavaScript.</p></noscript>
+    </main>
+
+    <dialog class="store-dialog" id="store-dialog" aria-labelledby="store-dialog-title"></dialog>
+
+    <footer class="site-footer site-footer--simple">
+      <div class="site-footer__inner site-footer__bottom">
+        <span>&copy; <span id="copyright_year"></span> OpenREPL</span>
+        <div class="site-footer__social">
+          <a href="./privacy.html">Privacy policy</a>
+          <a href="./terms.html">Terms of use</a>
+          <a href="./about.html">About</a>
+          <a href="https://github.com/vickeykumar/openrepl">GitHub</a>
+        </div>
+      </div>
+      <script>document.getElementById('copyright_year').textContent = new Date().getFullYear();</script>
+    </footer>
+    <script src="./js/store.js"></script>
+  </body>
+</html>

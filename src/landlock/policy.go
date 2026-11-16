@@ -83,6 +83,10 @@ type Options struct {
 	Debug bool
 	// ScopeSignals asks for the signal scope. It is applied only where the kernel has it (ABI 6 or newer).
 	ScopeSignals bool
+	// ExtraRO are more folders that may be read and run: the bundles of the App Store that are on for this user (LLD 18).
+	ExtraRO []string
+	// ExtraRW are more folders that may be read and written: the scratch folder of this terminal (LLD 18), and nothing else.
+	ExtraRW []string
 }
 
 // Policy is what Build returns.
@@ -235,6 +239,16 @@ func Build(o Options, fs FS) (*Policy, error) {
 			if e.IsDir() && e.Name() != "openrepl" && e.Name() != "gotty" && e.Name() != "cling" {
 				add("/opt/"+e.Name(), ro)
 			}
+		}
+	}
+	for _, d := range o.ExtraRO {
+		if filepath.IsAbs(d) {
+			add(d, ro)
+		}
+	}
+	for _, d := range o.ExtraRW {
+		if filepath.IsAbs(d) {
+			add(d, rw)
 		}
 	}
 	for _, f := range deviceFiles {

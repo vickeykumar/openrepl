@@ -720,6 +720,18 @@ export class AgentRunner {
           detail: "tab closed; now on tab " + now.active + " of " + now.count + "; Run uses the language in the picker (" + this.pickerLanguage() + ")",
         };
       }
+      case "store_suggest": {
+        // the user said yes on the permission card: a safe app is installed and switched on; one that needs an admin is only offered
+        const S = (window as any).AppStore;
+        if (!S || typeof S.available !== "function" || !S.available()) return { type: a.type, status: "failed", detail: "the App Store is only for signed-in users, and this one is not signed in or it is switched off" };
+        try {
+          const r = await S.installAndOn(String(a.name || ""));
+          return { type: a.type, status: "done", detail: r === "on" ? a.name + " was already installed and is on now; new terminals have it, an open terminal needs the line shown under My apps in the App Store" : a.name + " is being installed and is switched on when it is done (a minute or two); tell the user to run their program again after that" };
+        } catch (e) {
+          S.suggest(String(a.name || ""));
+          return { type: a.type, status: "done", detail: String((e as Error).message || e) + "; the App Store is open on " + a.name + " for the user to decide" };
+        }
+      }
       case "preview_open":
       case "preview_close":
       case "preview_reload":

@@ -67,6 +67,7 @@ func (server *Server) runWorker(ctx context.Context, handlers http.Handler, coun
 		},
 		OnSyncStream: func(c net.Conn) { server.serveWorkerSync(ctx, client)(c) },
 		OnConfig: applyWorkerConfig,
+		OnStore:  server.workerStoreUpdate,
 		OnRegistered: func(rep tunnel.RegisterReply) {
 			if rep.WorkspaceSync {
 				atomic.StoreInt32(&server.workerSync.enabled, 1)
@@ -79,6 +80,7 @@ func (server *Server) runWorker(ctx context.Context, handlers http.Handler, coun
 				cookie.SECRET_KEY = rep.CookieSecret
 				cookie.Init_SessionStore(rep.CookieSecret)
 			}
+			storeResend() // a gateway that has just started knows nothing of what this worker has
 			server.setCredential(rep.AuthToken)
 			// the gateway's OPENREPL_SECRET, in memory only, like the cookie secret
 			utils.SetSecretFromGateway(rep.Secret)
@@ -88,6 +90,7 @@ func (server *Server) runWorker(ctx context.Context, handlers http.Handler, coun
 		return errors.Wrap(err, "failed to set up the worker tunnel")
 	}
 	server.routes = newRouteTracker(client)
+	server.startWorkerStore(ctx, storeService(), client)
 
 	srv := &http.Server{Handler: handlers, ConnContext: trustTunnel}
 	go srv.Serve(client.Listener())

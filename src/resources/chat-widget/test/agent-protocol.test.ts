@@ -130,6 +130,7 @@ test("the list of actions is the one in the server's prompt", () => {
     "preview_close",
     "preview_reload",
     "preview_state",
+    "store_suggest",
     "finish",
   ]);
 });
@@ -538,4 +539,18 @@ test("a shell command typed into a language's REPL is recognised, the language's
     assert.equal(shellWordOf(line), "", line);
   }
   assert.ok(SHELL_REPLS.includes("bash") && !SHELL_REPLS.includes("python"));
+});
+
+test("store_suggest names a conda-forge package and asks the user: it installs and turns on the app", () => {
+  const types = (j: string) => ok(j).actions;
+  assert.deepEqual(types('{"actions":[{"type":"store_suggest","name":"Flask"}]}'), [{ type: "store_suggest", name: "flask" }]);
+  for (const bad of ['{"type":"store_suggest"}', '{"type":"store_suggest","name":"../x"}', '{"type":"store_suggest","name":"a b"}', '{"type":"store_suggest","name":5}']) {
+    const s = ok('{"actions":[' + bad + "]}");
+    assert.equal(s.actions.length, 0, bad);
+    assert.equal(s.dropped.length, 1, bad);
+  }
+  assert.equal(scopeOf({ type: "store_suggest", name: "flask" }), "store");
+  assert.match(scopeQuestion("store"), /App Store/);
+  assert.match(scopeDetail("store", { type: "store_suggest", name: "flask" }), /flask/);
+  assert.match(describe({ type: "store_suggest", name: "flask" }), /flask/);
 });

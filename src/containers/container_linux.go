@@ -121,6 +121,9 @@ func (c *container) AddProcesstoNewSubCgroup(pid int, iscompiled bool) {
 	memlimit := Commands2memLimitMap[c.Name] * MB // mem limit in MBs
 	if iscompiled {
 		memlimit = int64(math.Floor(3.0 * float64(memlimit)))
+		if floor := CompileFloorMB[c.Name] * MB; floor > memlimit {
+			memlimit = floor
+		}
 		log.Println("effective memlimit: ", memlimit)
 	}
 	control, err := c.Control.NewChild(pidstr, &cgroup2.Resources{
@@ -314,11 +317,16 @@ func GetCommandArgsIn(command string, argv []string, ppid int, params map[string
 	// An admin's REPL has no filesystem sandbox. The signal scope is for a REPL that has no PID namespace of
 	// its own (no cgroup sandbox for its command): with one it cannot see the other processes anyway, and
 	// the tabs of a fork share it.
+	adminWorkspace := ""
 	if utils.IsUserAdmin(params) {
-		workspace = ""
+		adminWorkspace, workspace = workspace, ""
 	}
 	_, ownNamespaces := Containers[command]
 	commandlist = wrapWithLandlock(commandlist, workspace, utils.Iscompiled(params) && utils.GetCompilerOption(params) == "debug", !ownNamespaces)
+	if adminWorkspace != "" {
+		// no sandbox for an admin, but the apps that are on for them are still on their environment
+		commandlist = wrapStoreEnv(commandlist, adminWorkspace)
+	}
 	if ppid == -1 {
 		commandArgs = append(commandArgs, commandlist...)
 	} else {

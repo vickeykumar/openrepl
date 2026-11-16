@@ -249,6 +249,29 @@ function noteFirstFork() {
   window.notify("This terminal ends when the first terminal ends.", { type: "info", title: "Forked terminal" });
 }
 
+// the workspace and the scratch folder, bottom right beside "Connected" (LLD 18): the numbers are the user's own
+function spaceLevel(used, limit) { return !limit ? "ok" : used >= limit ? "bad" : used >= limit * 0.8 ? "warn" : "ok"; }
+function updateSpace() {
+  var box = document.getElementById("term-footer-space");
+  if (!box) return;
+  var elem = activeTermElem();
+  if (!elem || elem.__ttyState !== "connected") { box.hidden = true; return; }
+  var u = typeof window.preprocessurl === "function" ? window.preprocessurl("/store/api/space") : "/store/api/space";
+  fetch(u, { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+    if (!j) { box.hidden = true; return; }
+    var ws = document.getElementById("term-footer-ws"), sc = document.getElementById("term-footer-scratch");
+    ws.textContent = "Workspace " + j.workspaceMB + " / " + j.workspaceLimitMB + " MB"; ws.setAttribute("data-level", spaceLevel(j.workspaceMB, j.workspaceLimitMB));
+    sc.hidden = !j.scratch;
+    sc.textContent = "Scratch " + j.scratchMB + " / " + j.scratchLimitMB + " MB"; sc.setAttribute("data-level", spaceLevel(j.scratchMB, j.scratchLimitMB));
+    sc.title = "A folder for caches and builds, outside your workspace. It is not saved or synced, and is removed when this terminal ends. The caches are cleared first if it fills up.";
+    ws.title = "The size of your workspace, against its limit.";
+    box.hidden = false;
+  }, function () { box.hidden = true; });
+}
+window.__updateSpace = updateSpace; // the tests ask for a fresh number
+setInterval(updateSpace, 10000);
+setTimeout(updateSpace, 2500);
+
 function updateTermFooter() {
   var f = document.getElementById("term-footer");
   var t = document.getElementById("term-footer-text");

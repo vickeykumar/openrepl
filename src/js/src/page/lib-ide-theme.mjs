@@ -252,7 +252,7 @@ export function derivePalette(theme) {
 // (--ink-*, --paper, --muted-*) are remapped inside the IDE and what opens over
 // it, and the few colours written out in ui-refresh.css are overridden.
 export const THEMED_SCOPE =
-  "html[data-ide-theme] :is(.ide-shell, .vakata-context, .vakata-context ul, .ctx-menu, .sm-menu, .palette, .ide-tip, .run-menu)";
+  "html[data-ide-theme] :is(.ide-shell, .vakata-context, .vakata-context ul, .ctx-menu, .sm-menu, .palette, .appstore, .ide-tip, .run-menu)";
 
 export function paletteCss(p) {
   const dark = p.dark;

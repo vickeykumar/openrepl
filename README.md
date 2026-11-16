@@ -10,7 +10,7 @@
 
     
 [![Workflow](https://github.com/vickeykumar/openrepl/actions/workflows/docker-image.yml/badge.svg?style=flat-square)][docker-image]
-[![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)][license]
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg?style=flat-square)][license]
 
 [docker-image]: https://github.com/vickeykumar/openrepl/actions/workflows/docker-image.yml
 [license]: https://github.com/vickeykumar/openrepl/blob/master/LICENSE
@@ -658,6 +658,7 @@ The server-side settings come from environment variables, and gotty can load the
 | `OPENREPL_HOST` | The origin the chat proxy accepts. Default `localhost`. | `user.host` |
 | `OPENREPL_HOME_DIR` | The folder that holds the users' workspaces, one folder each. Default `/tmp/home/`. The Docker image sets `/home/openrepl/`, so that `/tmp` can stay open to the REPLs under the filesystem sandbox. It must be the same on a gateway and its workers. | |
 | `OPENREPL_LANDLOCK` | The filesystem sandbox of the REPLs (LLD 14): `auto` (the default) applies it where the kernel has Landlock and says in the log and on the admin health page where it does not, `off` switches it off, `require` refuses to start a REPL without it. | |
+| `OPENREPL_STORE_DIR` | The folder of the App Store (LLD 18), where libraries and tools are installed once and shared by the users that switch them on: `/store` by default, `off` switches the store off. Keep it outside `/opt` (the sandbox lets every REPL read the other folders of `/opt`). `OPENREPL_PIXI` is the path of pixi (default: the PATH), `OPENREPL_STORE_PYTHON` the Python the bundles are solved with (default: read from `python3`), `OPENREPL_STORE_INSTALLER=fake` makes tiny test bundles. | |
 | `OPENREPL_NET_ISOLATION` | The private network of a workspace for REPLs that have no kernel network namespace of their own (LLD 16): `auto` (the default) turns it on where a start-up probe passes and says in the log and on the admin health page where it does not, `off` switches it off, `require` refuses to start a REPL without it. | |
 | `OPENREPL_TMP_MAX_AGE` | A duration such as `1h`: the server deletes from `/tmp` what nobody has touched for that long. The Docker image sets `1h`. Not set: never. | |
 | `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Required for sign-in, shared sessions and the shared editor: there is no built-in project, and a server without it says so in its log and in the console of the page. See below. | |
@@ -778,4 +779,6 @@ GoTTY's original design notes still apply to the terminal core. It uses [xterm.j
 
 # License
 
-The MIT License
+OpenREPL is licensed under the [GNU Affero General Public License v3.0](LICENSE). A [commercial licence](COMMERCIAL-LICENSING.md) is available for organisations that cannot use the AGPL, and for additional features.
+
+GoTTY-derived files remain MIT (Copyright (c) 2015-2017 Iwasaki Yudai); third-party components keep their own licences (see [NOTICE](NOTICE)). Releases published before this change were under the BSD 3-Clause licence ([LICENSES/BSD-3-Clause-OpenREPL-legacy.txt](LICENSES/BSD-3-Clause-OpenREPL-legacy.txt)). "OpenREPL" and its logo are not licensed by the AGPL.

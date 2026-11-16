@@ -287,3 +287,49 @@ func TestTheDevicesAreAnAllowlist(t *testing.T) {
 		t.Error("/dev itself has a rule")
 	}
 }
+
+// The App Store (LLD 18): only the bundles on the user's list are readable and runnable, never writable, and a folder that
+// holds the workspaces never gets a rule.
+func TestStoreBundlesGetReadAndExecuteOnly(t *testing.T) {
+	fs := newFS("/home/openrepl", "/home/openrepl/ann")
+	fs.dirs["/store/apps/flask-3.0.2"] = true
+	fs.dirs["/store/apps/numpy-2.1.0"] = true
+	fs.dirs["/store/envs/ann"] = true
+	p, err := Build(Options{Workspace: "/home/openrepl/ann", HomeRoot: "/home/openrepl", ABI: 4,
+		ExtraRO: []string{"/store/apps/flask-3.0.2", "/store/envs/ann", "relative/path", "/home/openrepl"}}, fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := paths(p)
+	for _, d := range []string{"/store/apps/flask-3.0.2", "/store/envs/ann"} {
+		if m[d]&Execute == 0 || m[d]&ReadFile == 0 || m[d]&WriteFile != 0 || m[d]&MakeReg != 0 {
+			t.Errorf("%s has %b: it must be read and execute only", d, m[d])
+		}
+	}
+	for _, d := range []string{"/store/apps/numpy-2.1.0", "/store", "relative/path", "/home/openrepl"} {
+		if _, ok := m[d]; ok {
+			t.Errorf("%s must have no rule", d)
+		}
+	}
+}
+
+// The scratch folder of a terminal (LLD 18): it alone is writable outside the workspace, the folder that holds all the scratch folders and the
+// other terminals' folders get no rule, and a folder that holds the workspaces never gets one.
+func TestTheScratchFolderOfATerminalIsTheOnlyExtraFolderThatIsWritable(t *testing.T) {
+	fs := newFS("/home/openrepl", "/home/openrepl/ann")
+	fs.dirs["/scratch/ann/t-0a1b2c3d"] = true
+	fs.dirs["/scratch/ann/t-ffffffff"] = true
+	p, err := Build(Options{Workspace: "/home/openrepl/ann", HomeRoot: "/home/openrepl", ABI: 4, ExtraRW: []string{"/scratch/ann/t-0a1b2c3d", "relative", "/home/openrepl"}}, fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := paths(p)
+	if m["/scratch/ann/t-0a1b2c3d"]&WriteFile == 0 || m["/scratch/ann/t-0a1b2c3d"]&MakeReg == 0 || m["/scratch/ann/t-0a1b2c3d"]&Execute == 0 {
+		t.Errorf("its own scratch folder must be read and write: %b", m["/scratch/ann/t-0a1b2c3d"])
+	}
+	for _, d := range []string{"/scratch", "/scratch/ann", "/scratch/ann/t-ffffffff", "relative", "/home/openrepl"} {
+		if _, ok := m[d]; ok {
+			t.Errorf("%s must have no rule", d)
+		}
+	}
+}

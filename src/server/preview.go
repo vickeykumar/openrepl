@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -113,6 +115,10 @@ func (server *Server) handlePreview(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	token, kind := parts[0], parts[1]
+	if token == "lib" {
+		server.handlePreviewLib(rw, req, strings.TrimPrefix(path[i+len("/preview/"):], "lib/"))
+		return
+	}
 	rest := ""
 	if len(parts) == 3 {
 		rest = parts[2]
@@ -131,6 +137,9 @@ func (server *Server) handlePreview(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	st := &livepreview.StorageInfo{Store: previewStore, Home: home, Viewer: viewer, URL: "/preview/" + token + "/s"}
+	if svc := storeService(); svc != nil && !GetSiteSettings().StoreOff {
+		st.Tools = svc.PreviewHead(filepath.Base(home), path[:i]) // the tools of the preview this visitor has on (Eruda, vConsole): scripts of this site
+	}
 	switch kind {
 	case "f":
 		livepreview.ServeFileWith(rw, req, home, rest, st)
@@ -141,6 +150,44 @@ func (server *Server) handlePreview(rw http.ResponseWriter, req *http.Request) {
 	default:
 		http.NotFound(rw, req)
 	}
+}
+
+// handlePreviewLib serves /preview/lib/<package>/<file>: a file of an installed browser library or third party plugin of the catalogue. It is
+// public (the page that asks is a sandboxed frame with no cookies), read only, and limited to what the catalogue names; everything else is 404.
+func (server *Server) handlePreviewLib(rw http.ResponseWriter, req *http.Request, rest string) {
+	svc := storeService()
+	if svc == nil || GetSiteSettings().StoreOff || (req.Method != http.MethodGet && req.Method != http.MethodHead) {
+		http.NotFound(rw, req)
+		return
+	}
+	pkg, file := rest, ""
+	// a scoped package (@picocss/pico) has a slash in its name
+	if strings.HasPrefix(rest, "@") {
+		seg := strings.SplitN(rest, "/", 3)
+		if len(seg) < 3 {
+			http.NotFound(rw, req)
+			return
+		}
+		pkg, file = seg[0]+"/"+seg[1], seg[2]
+	} else if j := strings.Index(rest, "/"); j > 0 {
+		pkg, file = rest[:j], rest[j+1:]
+	}
+	p, ok := svc.LibFile(pkg, file)
+	if !ok {
+		http.NotFound(rw, req)
+		return
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		http.NotFound(rw, req)
+		return
+	}
+	defer f.Close()
+	fi, _ := f.Stat()
+	rw.Header().Set("Access-Control-Allow-Origin", "*") // fonts of a library are asked for by a page with no origin
+	rw.Header().Set("X-Content-Type-Options", "nosniff")
+	rw.Header().Set("Cache-Control", "public, max-age=3600")
+	http.ServeContent(rw, req, filepath.Base(p), fi.ModTime(), f)
 }
 
 // previewJar keeps the cookies of the programs that are previewed (the page in the frame cannot keep them).

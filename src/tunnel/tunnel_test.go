@@ -807,3 +807,76 @@ func TestAWorkerSaysWhetherItsHostCanTracePrograms(t *testing.T) {
 		t.Fatalf("ptrace = %q", got)
 	}
 }
+
+// ---- the App Store catalog a worker gets ----------------------------------------------
+
+// The catalog is sent when the worker has not got it, not again while it is up to date, once more when it changes, and what the worker
+// says of itself reaches the gateway.
+func TestAWorkerGetsTheStoreCatalogOnlyWhenItChangesAndAnswersOverTheTunnel(t *testing.T) {
+	var mu sync.Mutex
+	rev := int64(5)
+	var asked []int64
+	var states []string
+	gw := newGateway(t, func(c *ServerConfig) {
+		c.Store = func(w *Worker, have int64) *StoreUpdate {
+			mu.Lock()
+			defer mu.Unlock()
+			asked = append(asked, have)
+			if have == rev {
+				return nil
+			}
+			return &StoreUpdate{Rev: rev, Catalog: []byte(`{"apps":[]}`)}
+		}
+		c.OnStoreState = func(w *Worker, raw json.RawMessage) {
+			mu.Lock()
+			states = append(states, w.ID()+":"+string(raw))
+			mu.Unlock()
+		}
+	})
+	var got []int64
+	var gmu sync.Mutex
+	wk := newWorker(t, gw.url, "worker-1", nil, func(c *ClientConfig) {
+		c.OnStore = func(u *StoreUpdate) { gmu.Lock(); got = append(got, u.Rev); gmu.Unlock() }
+	})
+	waitFor(t, "the first catalog", func() bool { gmu.Lock(); defer gmu.Unlock(); return len(got) == 1 })
+	time.Sleep(250 * time.Millisecond) // several heartbeats with nothing new
+	gmu.Lock()
+	n := len(got)
+	gmu.Unlock()
+	if n != 1 {
+		t.Fatalf("the same catalog was handed over %d times", n)
+	}
+	mu.Lock()
+	rev = 6
+	mu.Unlock()
+	waitFor(t, "the changed catalog", func() bool { gmu.Lock(); defer gmu.Unlock(); return len(got) == 2 && got[1] == 6 })
+	if !wk.client.SendStoreState(map[string]int{"sizeMB": 3}) {
+		t.Fatal("the gateway did not take the state")
+	}
+	waitFor(t, "the state", func() bool { mu.Lock(); defer mu.Unlock(); return len(states) == 1 })
+	if states[0] != `worker-1:{"sizeMB":3}` {
+		t.Errorf("the state: %v", states)
+	}
+}
+
+// A worker can ask the gateway for the lock of one bundle over the tunnel, and is told when there is none.
+func TestAWorkerCanAskTheGatewayForTheLockOfABundle(t *testing.T) {
+	gw := newGateway(t, func(c *ServerConfig) {
+		c.StoreLock = func(w *Worker, id string) (json.RawMessage, bool) {
+			if id == "flask-3.0.2" {
+				return json.RawMessage(`{"manifest":"m","lock":"l"}`), true
+			}
+			return nil, false
+		}
+	})
+	wk := newWorker(t, gw.url, "worker-1", nil, nil)
+	<-wk.reply
+	waitFor(t, "registration", func() bool { return gw.srv.Worker("worker-1") != nil })
+	raw, err := wk.client.StoreLock("flask-3.0.2")
+	if err != nil || string(raw) != `{"manifest":"m","lock":"l"}` {
+		t.Fatalf("the lock: %s %v", raw, err)
+	}
+	if _, err := wk.client.StoreLock("nothing-1.0"); err == nil {
+		t.Error("a bundle with no lock must be an error")
+	}
+}

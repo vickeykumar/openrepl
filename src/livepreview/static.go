@@ -123,6 +123,9 @@ func ServeFileWith(rw http.ResponseWriter, req *http.Request, home, rel string, 
 			if sc := st.script(storageScope(rel)); sc != "" {
 				out = injectAtTop(out, sc)
 			}
+			if t := st.tools(); t != "" {
+				out = injectAtTop(out, t)
+			}
 			rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 			rw.Header().Set("Content-Length", strconv.Itoa(len(out)))
 			rw.Write(out)
