@@ -274,7 +274,7 @@ Worker nodes install the exact version the gateway chose. Proven with real downl
 The store keeps its Python 2.7 libraries page (kind py27), with its three entries.
 The catalogue's Remove button is now Retire. A retired entry is listed in the admin's Retired apps panel (with those cut from the default file), where Restore brings back what the default file still has and Delete record removes the database record of the rest.
 
-The Apps button is on the terminal's header (before Hide), not in the editor toolbar (2026-11-17). While the workspace is maximized the floating Ask Genie button is not drawn, and the "Got an error?" hint opens Genie pinned. Maximizing with Genie already open leaves it as it is.
+The Apps button is in the IDE's top bar (before Ask Genie), not in the editor toolbar (2026-11-17; it was on the terminal's header for a day, but that is hidden when the terminal is collapsed). While the workspace is maximized the floating Ask Genie button is not drawn, and the "Got an error?" hint opens Genie pinned. Maximizing with Genie already open leaves it as it is.
 
 ## 16. Details for users (2026-11-17; canvas claude.ai/artifact/AgpRVbmXkKX5acjhb9HaSh)
 

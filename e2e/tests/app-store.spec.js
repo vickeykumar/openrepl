@@ -187,9 +187,9 @@ test("the quick dialog lists the built-in apps in My apps, tagged, always on, wi
   await expect(page.locator('[data-app="numpy"]')).toBeVisible();
 });
 
-test("the Apps button is on the terminal's header; the floating Genie button is not drawn while maximized", async ({ page }) => {
+test("the Apps button is on the main top bar; the floating Genie button is not drawn while maximized", async ({ page }) => {
   await ready(page);
-  await expect(page.locator("#terminal-tabs #appstore-button")).toBeVisible();
+  await expect(page.locator(".app-bar #appstore-button")).toBeVisible();
   await expect(page.locator(".genie-fab")).toBeVisible();
   await page.evaluate(() => window.ToggleFunction());
   await expect(page.locator("body")).toHaveClass(/ide-maximized/);

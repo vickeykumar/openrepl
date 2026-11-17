@@ -3,7 +3,7 @@ title: App Store (libraries and tools)
 keywords: app store, install library, install package, pip install, npm install, flask, numpy, requests, conda, no module named, module not found, command not found, install tool, apps button, built in, request an app
 link: /about.html
 ---
-The App Store lets signed-in users add libraries and tools to their terminals. Open it with the Apps button on the terminal's header (a quick dialog; full page: /store) or the command menu. Guests are asked to sign in.
+The App Store lets signed-in users add libraries and tools to their terminals. Open it with the Apps button in the top bar (a quick dialog; full page: /store) or the command menu. Guests are asked to sign in.
 
 pip install does not work in the terminals (they have no internet). Use the store instead: find the app (for example flask), press Install, then turn its switch On. New terminals have it; an open one keeps what it had. Then python3 can import it.
 
