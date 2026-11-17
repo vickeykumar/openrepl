@@ -174,6 +174,7 @@ func (m Maven) pick(ctx context.Context, src, pin string) (string, error) {
 		}
 		if err := m.jarOK(ctx, group, artifact, v, major); err != nil {
 			last = err
+			logf(ctx, "look up", "warn", "maven: %s:%s %s did not work: %s", group, artifact, v, tail(err.Error(), 200))
 			continue
 		}
 		return v, nil

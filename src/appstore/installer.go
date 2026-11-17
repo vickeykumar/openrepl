@@ -108,6 +108,7 @@ func (n Npm) Resolve(ctx context.Context, name, version, kind string) (Resolved,
 	if bounded {
 		version = ""
 	}
+	name = NpmName(name) // a scoped package is "scope__name" in the store
 	ctx, cancel := n.with(ctx, 5*time.Minute)
 	defer cancel()
 	view := func(spec string, fields ...string) ([]byte, error) {
@@ -140,25 +141,84 @@ func (n Npm) Resolve(ctx context.Context, name, version, kind string) (Resolved,
 	}
 	node := n.nodeVersion(ctx)
 	var lastErr error
-	for i, v := range cands {
-		if i >= 40 || ctx.Err() != nil {
-			break
-		}
+	// One version of each MAJOR is looked at, newest major first (the engines of a library rise with its majors), not the newest 40 releases: a library whose last
+	// release that this Node can run is older than that (eslint 7, jest 27, prettier 2 on Node 12) is found in a few lookups. In a major the newest release is
+	// asked; a lookup that fails goes on to the next older; when the newest of a major needs too new a Node but its oldest does not, the major is walked down.
+	views := 0
+	look := func(v string) (Resolved, bool, bool) { // the version, whether this Node can run it, whether it could be looked up
+		views++
 		raw, err := view(name+"@"+v, "engines.node", "dist.unpackedSize")
 		if err != nil {
 			// this version could not be looked up (the registry does not know it yet, a hiccup): the next older one is tried, not the whole install given up
 			lastErr = err
-			continue
+			logf(ctx, "look up", "warn", "npm: %s@%s could not be looked up (%s): trying the next older one", name, v, tail(err.Error(), 160))
+			return Resolved{}, false, false
 		}
 		rng, mb := npmEngines(raw)
-		if node == "" || NodeSatisfies(rng, node) {
-			return Resolved{Version: v, Packages: 1, DownloadMB: mb / 3, DiskMB: mb}, nil
+		ok := node == "" || NodeSatisfies(rng, node)
+		if !ok {
+			logf(ctx, "look up", "info", "npm: %s@%s needs Node %s, this server has %s", name, v, rng, node)
+		}
+		return Resolved{Version: v, Packages: 1, DownloadMB: mb / 3, DiskMB: mb}, ok, true
+	}
+	for _, g := range groupByMajor(cands) {
+		if views >= npmMaxViews || ctx.Err() != nil {
+			break
+		}
+		engineFailed := false
+		at := 0
+		for tries := 0; at < len(g) && tries < 3; at, tries = at+1, tries+1 {
+			res, ok, looked := look(g[at])
+			if !looked {
+				continue
+			}
+			if ok {
+				return res, nil
+			}
+			engineFailed = true
+			at++
+			break
+		}
+		if !engineFailed || at >= len(g) || views >= npmMaxViews {
+			continue
+		}
+		// the newest of this major is too new for this Node: if its oldest is not, the newest that is lies between
+		if _, ok, looked := look(g[len(g)-1]); looked && ok {
+			for k := at; k < len(g) && views < npmMaxViews; k += 1 + len(g)/6 {
+				if res, ok, looked := look(g[k]); looked && ok {
+					return res, nil
+				}
+			}
+			if res, ok, looked := look(g[len(g)-1]); looked && ok {
+				return res, nil
+			}
 		}
 	}
 	if lastErr != nil {
 		return Resolved{}, fmt.Errorf("no recent version of %s could be looked up that this server's Node %s can run (the last: %v)", name, node, lastErr)
 	}
 	return Resolved{}, fmt.Errorf("no recent version of %s works with this server's Node %s", name, node)
+}
+
+// npmMaxViews is the most lookups of single versions that choosing a version of one package may take (each is a request to the registry).
+const npmMaxViews = 30
+
+// groupByMajor splits versions (newest first) into the runs of one major version, the newest major first.
+func groupByMajor(vs []string) [][]string {
+	var out [][]string
+	last := -1
+	for _, v := range vs {
+		x, ok := parseVersion(v)
+		if !ok {
+			continue
+		}
+		if x[0] != last || len(out) == 0 {
+			out = append(out, nil)
+			last = x[0]
+		}
+		out[len(out)-1] = append(out[len(out)-1], v)
+	}
+	return out
 }
 
 // npmCandidates reads `npm view <name> versions --json` (a list, or one string): the versions without a prerelease, the newest first.
@@ -227,14 +287,18 @@ func (n Npm) Install(ctx context.Context, name, version, kind, dest string, log 
 	if !ValidName(name) || !ValidVersion(version) {
 		return fmt.Errorf("%q %q is not a package", name, version)
 	}
+	name = NpmName(name)
 	ctx, cancel := n.with(ctx, 20*time.Minute)
 	defer cancel()
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		return err
 	}
-	c := n.cmd(ctx, "install", "--prefix", dest, "--ignore-scripts", "--omit=dev", "--omit=optional", "--no-audit", "--no-fund", "--no-package-lock", "--loglevel=error", name+"@"+version)
+	c := n.cmd(ctx, "install", "--prefix", dest, "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund", "--no-package-lock", "--loglevel=error", name+"@"+version)
 	c.Stdout, c.Stderr = log, log
-	return c.Run()
+	t0 := time.Now()
+	err := c.Run()
+	logCommand(log, "npm", []string{"install", "--prefix", "<bundle>", name + "@" + version}, err, time.Since(t0))
+	return err
 }
 
 func (n Npm) Search(ctx context.Context, q, kind string) ([]Found, error) {

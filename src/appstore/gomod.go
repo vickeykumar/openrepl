@@ -125,6 +125,7 @@ func (g GoMod) pick(ctx context.Context, tmp, cache, mod, pin string) (string, e
 		os.RemoveAll(cache)
 		if err := g.try(ctx, tmp, cache, mod, v); err != nil {
 			last = err
+			logf(ctx, "look up", "warn", "go: %s@%s did not work with this Go: %s", mod, v, tail(err.Error(), 200))
 			continue
 		}
 		return v, nil
@@ -213,8 +214,12 @@ func (g GoMod) check(ctx context.Context, dest string, e Entry, version string) 
 		return err
 	}
 	defer os.RemoveAll(tmp)
+	// the build cache is kept between checks (the standard library is compiled once, not for every check: that was minutes and a lot of memory each time) and is
+	// emptied when it grows past a limit
+	gocache := filepath.Join(g.Dir, "gocache")
+	capCache(gocache, goCacheMaxMB)
 	env := []string{"GOTOOLCHAIN=local", "GOFLAGS=-mod=mod", "GO111MODULE=on", "GOPROXY=" + ProxyOf(dest) + ",off", "GOSUMDB=off", "GONOSUMDB=*",
-		"GOMODCACHE=" + filepath.Join(tmp, "mod"), "GOCACHE=" + filepath.Join(tmp, "build"), "GOPATH=" + filepath.Join(tmp, "path"), "CGO_ENABLED=0"}
+		"GOMODCACHE=" + filepath.Join(tmp, "mod"), "GOCACHE=" + gocache, "GOPATH=" + filepath.Join(tmp, "path"), "CGO_ENABLED=0", "GOMAXPROCS=2"}
 	imp := e.CheckArg
 	if imp == "" {
 		imp = e.Source()
@@ -227,7 +232,7 @@ func (g GoMod) check(ctx context.Context, dest string, e Entry, version string) 
 	if out, err := run(ctx, tmp, env, goBin, "get", e.Source()+"@"+goVer(version)); err != nil {
 		return fmt.Errorf("go get from the mirror: %s", tail(strings.TrimSpace(string(out)), 300))
 	}
-	if out, err := run(ctx, tmp, env, goBin, "build", "-o", filepath.Join(tmp, "t"), "."); err != nil {
+	if out, err := run(ctx, tmp, env, goBin, "build", "-p", "1", "-ldflags", "-s -w", "-o", filepath.Join(tmp, "t"), "."); err != nil { // one compile at a time and no symbols: far less memory
 		why := strings.TrimSpace(string(out))
 		if why == "" {
 			why = err.Error() // nothing was printed: a program that was killed (memory, time) says so here

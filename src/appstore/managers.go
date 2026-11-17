@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 )
 
 // The manager of an install travels in the context: the installers are chosen by the kind of an app, and a tool can be made by apt or by pixi.
@@ -68,20 +69,34 @@ func (s *Service) installBundle(ctx context.Context, a App, manager, dest string
 	ctx = WithManager(ctx, manager)
 	e, haveEntry := s.EntryFor(a.Name, cleanKind(a.Kind))
 	o, _ := e.OptionOf(manager)
+	t0 := time.Now()
+	logb.Step("install", "info", "%s: installing %s %s", manager, a.Name, a.Version)
 	if err := s.cfg.Installer.Install(ctx, a.Name, a.Version, a.Kind, dest, logb); err != nil {
+		logb.Step("install", "error", "%s: the install failed after %s: %s", manager, time.Since(t0).Round(100*time.Millisecond), tail(err.Error(), 300))
 		return TrimReport{}, false, err
 	}
+	logb.Step("install", "info", "%s: installed in %s", manager, time.Since(t0).Round(100*time.Millisecond))
 	var rep TrimReport
 	trimmed := haveEntry && trimmable(cleanKind(a.Kind), manager, o)
 	if trimmed {
 		rep = TrimBundle(dest, trimOptionsFor(e, o))
+		logb.Step("trim", "info", "trimmed %.1f MB to %.1f MB (%d files removed)", rep.BeforeMB, rep.AfterMB, rep.Files)
+	} else {
+		logb.Step("trim", "info", "not trimmed (%.1f MB)", dirMB(dest))
 	}
+	t1 := time.Now()
 	err := s.checkApp(ctx, dest, a)
 	if err == nil || !trimmed {
+		if err == nil {
+			logb.Step("check", "info", "it works (%s)", time.Since(t1).Round(100*time.Millisecond))
+		} else {
+			logb.Step("check", "error", "it does not work: %s", tail(strings.TrimSpace(err.Error()), 300))
+		}
 		return rep, false, err
 	}
 	// the app does not run after the trim: make it again whole, and tell the admin which entry needs `full`
 	first := err
+	logb.Step("check", "warn", "it does not work after the trim (%s): installing it whole", tail(strings.TrimSpace(err.Error()), 300))
 	lock, hadLock := ReadLock(dest) // a node that installs from the gateway's lock keeps it for the second try
 	os.RemoveAll(dest)
 	if hadLock {
@@ -92,8 +107,10 @@ func (s *Service) installBundle(ctx context.Context, a App, manager, dest string
 		return TrimReport{}, false, err
 	}
 	if err := s.checkApp(ctx, dest, a); err != nil {
+		logb.Step("check", "error", "it does not work whole either: %s", tail(strings.TrimSpace(err.Error()), 300))
 		return TrimReport{}, false, err
 	}
+	logb.Step("check", "info", "it works whole; the entry is marked full")
 	s.markFull(e, manager, first)
 	return TrimReport{BeforeMB: dirMB(dest), AfterMB: dirMB(dest)}, true, nil
 }

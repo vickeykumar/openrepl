@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"hash/fnv"
@@ -69,10 +71,84 @@ func storeUpdateFor(svc *appstore.Service, id string, have int64) *tunnel.StoreU
 	cmds := appCommands[id]
 	delete(appCommands, id)
 	appStoreMu.Unlock()
+	appLog.Lock()
+	logs := appLog.reqs[id]
+	delete(appLog.reqs, id)
+	appLog.Unlock()
 	if raw == nil || (have == rev && len(cmds) == 0) {
-		return nil
+		if len(logs) == 0 {
+			return nil
+		}
+		// only the requests for log chunks: the revision is the worker's own, so it does not apply a catalog again
+		return &tunnel.StoreUpdate{Rev: have, Logs: logs}
 	}
-	return &tunnel.StoreUpdate{Rev: rev, Catalog: raw, Reinstall: cmds}
+	return &tunnel.StoreUpdate{Rev: rev, Catalog: raw, Reinstall: cmds, Logs: logs}
+}
+
+// ---- the logs of the installs of a worker (LLD 18, section 13) ---------------------------------------------------------------
+
+// appLog holds the admin's requests for a chunk of a worker's install log until the worker's next heartbeat takes them, and where the answers go.
+var appLog = struct {
+	sync.Mutex
+	reqs  map[string][]tunnel.StoreLogRequest
+	waits map[string]chan json.RawMessage
+}{reqs: map[string][]tunnel.StoreLogRequest{}, waits: map[string]chan json.RawMessage{}}
+
+// logWait is how long the admin's request waits for a worker's answer: a heartbeat to carry the request, and the answer back.
+var logWait = 15 * time.Second
+
+// askWorkerLog asks a worker for a chunk of the log of an install and waits for the answer (taken with the next heartbeat, a few seconds).
+func askWorkerLog(ctx context.Context, node, app string, attempt int, from int64) (json.RawMessage, error) {
+	appStoreMu.Lock()
+	n, known := appNodes[node]
+	appStoreMu.Unlock()
+	if !nodeIDPattern.MatchString(node) || !known {
+		return nil, errors.New("that server is not connected")
+	}
+	if time.Since(n.Seen) > 2*time.Minute {
+		return nil, errors.New("that server has not been heard from for " + time.Since(n.Seen).Round(time.Second).String())
+	}
+	var rb [8]byte
+	rand.Read(rb[:])
+	id := hex.EncodeToString(rb[:])
+	ch := make(chan json.RawMessage, 1)
+	appLog.Lock()
+	appLog.waits[id] = ch
+	appLog.reqs[node] = append(appLog.reqs[node], tunnel.StoreLogRequest{ID: id, App: app, Attempt: attempt, From: from})
+	appLog.Unlock()
+	defer func() {
+		appLog.Lock()
+		delete(appLog.waits, id)
+		appLog.Unlock()
+	}()
+	select {
+	case raw := <-ch:
+		return raw, nil
+	case <-time.After(logWait):
+		return nil, errors.New("the server did not answer in time (it is busy or has just disconnected): try again")
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// gatewayStoreLog takes a chunk that a worker answers to a request, and hands it to the admin request that waits for it.
+func (server *Server) gatewayStoreLog(w *tunnel.Worker, raw json.RawMessage) {
+	var in struct {
+		ID    string          `json:"id"`
+		Chunk json.RawMessage `json:"chunk"`
+	}
+	if json.Unmarshal(raw, &in) != nil || in.ID == "" {
+		return
+	}
+	appLog.Lock()
+	ch := appLog.waits[in.ID]
+	appLog.Unlock()
+	if ch != nil {
+		select {
+		case ch <- in.Chunk:
+		default:
+		}
+	}
 }
 
 // storeStateFrom takes how worker id stands (what it has, what failed and when it tries again) for the admin's table of that server.
@@ -112,6 +188,8 @@ func (server *Server) gatewayStoreState(w *tunnel.Worker, raw json.RawMessage) {
 
 var workerStore struct {
 	sync.Mutex
+	svc     *appstore.Service // for the log chunks the admin asks for
+	client  *tunnel.Client
 	pending *appstore.Snapshot // the newest catalog that has not been applied yet
 	wake    chan struct{}
 	resend  chan struct{}
@@ -125,6 +203,12 @@ func init() {
 // workerStoreUpdate takes the catalog the gateway sent (the tunnel client calls it, so it only queues): the newest wins, but a command
 // to reinstall something is never lost to a newer catalog.
 func (server *Server) workerStoreUpdate(u *tunnel.StoreUpdate) {
+	if len(u.Logs) > 0 {
+		go answerLogRequests(u.Logs)
+		if len(u.Catalog) == 0 && len(u.Reinstall) == 0 {
+			return // only requests for log chunks
+		}
+	}
 	var snap appstore.Snapshot
 	if len(u.Catalog) > 0 {
 		if err := json.Unmarshal(u.Catalog, &snap); err != nil {
@@ -163,6 +247,9 @@ func (server *Server) startWorkerStore(ctx context.Context, svc *appstore.Servic
 	if svc == nil {
 		return
 	}
+	workerStore.Lock()
+	workerStore.svc, workerStore.client = svc, client
+	workerStore.Unlock()
 	var last appstore.NodeState
 	var haveLast bool
 	send := func(st appstore.NodeState) {
@@ -215,4 +302,20 @@ func (server *Server) startWorkerStore(ctx context.Context, svc *appstore.Servic
 			}
 		}
 	}()
+}
+
+// answerLogRequests reads the chunks of install logs that the admin asked this worker for and sends each back over the tunnel.
+func answerLogRequests(reqs []tunnel.StoreLogRequest) {
+	workerStore.Lock()
+	svc, client := workerStore.svc, workerStore.client
+	workerStore.Unlock()
+	if svc == nil || client == nil {
+		return
+	}
+	for _, r := range reqs {
+		if !appstore.ValidName(r.App) || r.From < 0 {
+			continue
+		}
+		client.SendStoreLog(map[string]interface{}{"id": r.ID, "chunk": svc.ReadLog(r.App, r.Attempt, r.From)})
+	}
 }

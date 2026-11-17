@@ -399,6 +399,17 @@ func (c *Client) SendStoreState(v interface{}) bool {
 	return c.send(conn, ReqStoreState, v)
 }
 
+// SendStoreLog gives the gateway a chunk of an install log that an admin asked for (see ReqStoreLog and StoreLogRequest).
+func (c *Client) SendStoreLog(v interface{}) bool {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+	if conn == nil {
+		return false
+	}
+	return c.send(conn, ReqStoreLog, v)
+}
+
 // SyncReady tells the gateway that this worker's homes are reconciled, so it
 // can take new sessions. It reports whether the gateway acknowledged.
 func (c *Client) SyncReady() bool {

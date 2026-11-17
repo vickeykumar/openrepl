@@ -1500,6 +1500,7 @@ type ladderFake struct {
 	Fake
 	bad   map[string]bool
 	asked *[]string
+	vers  []string // the versions it has, newest first (default 3.0.0, 2.0.0, 1.0.0)
 }
 
 func (l ladderFake) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
@@ -1507,6 +1508,9 @@ func (l ladderFake) Resolve(ctx context.Context, name, version, kind string) (Re
 		return l.Fake.Resolve(ctx, name, version, kind)
 	}
 	all := []string{"3.0.0", "2.0.0", "1.0.0"}
+	if len(l.vers) > 0 {
+		all = l.vers
+	}
 	if b, ok := upperBound(version); ok {
 		all = olderThan(all, b)
 	} else if version != "" {
@@ -1683,5 +1687,126 @@ esac
 	os.WriteFile(npm, []byte("#!/bin/sh\ncase \"$2\" in eslint) echo '[\"10.0.3\"]' ;; *) exit 1 ;; esac\n"), 0755)
 	if _, err := (Npm{Bin: npm, Node: node, Dir: dir}).Resolve(context.Background(), "eslint", "", KindNode); err == nil || !strings.Contains(err.Error(), "could be looked up") {
 		t.Fatalf("all versions failed: %v", err)
+	}
+}
+
+// The version of an npm package is looked for per major: a library whose last release that the Node can run is far back (more than 40 releases) is found in a few
+// lookups, and inside a major the newest release the Node can run is found when only the newest ones need a newer Node.
+func TestNpmChoosesPerMajorAndWalksDownAMajor(t *testing.T) {
+	dir := t.TempDir()
+	npm := filepath.Join(dir, "npm")
+	calls := filepath.Join(dir, "calls")
+	// versions: 9.0 to 9.19 and 8.0 to 8.19 (all need Node 18), 7.0 to 7.32 (7.28 and up need Node 18, the rest Node 10), 6.0 to 6.8
+	script := `#!/bin/sh
+echo "$2" >> ` + calls + `
+case "$2" in
+  eslint)
+    echo -n '['
+    first=1
+    for v in 6.0.0 6.8.0 7.0.0 7.5.0 7.10.0 7.15.0 7.20.0 7.27.0 7.28.0 7.30.0 7.32.0 8.0.0 8.10.0 8.19.0 9.0.0 9.10.0 9.19.0; do
+      [ $first = 1 ] || echo -n ','; first=0; echo -n "\"$v\""
+    done
+    echo ']' ;;
+  eslint@9.*|eslint@8.*|eslint@7.28.*|eslint@7.3*) echo '{"engines.node":">=18","dist.unpackedSize":3000000}' ;;
+  eslint@7.*|eslint@6.*) echo '{"engines.node":">=10.12","dist.unpackedSize":2000000}' ;;
+  *) exit 1 ;;
+esac
+`
+	os.WriteFile(npm, []byte(script), 0755)
+	node := filepath.Join(dir, "node")
+	os.WriteFile(node, []byte("#!/bin/sh\necho v12.22.9\n"), 0755)
+	res, err := Npm{Bin: npm, Node: node, Dir: dir}.Resolve(context.Background(), "eslint", "", KindNode)
+	if err != nil || res.Version != "7.27.0" {
+		t.Fatalf("the newest release of major 7 that Node 12 can run is 7.27.0: %+v %v", res, err)
+	}
+	raw, _ := os.ReadFile(calls)
+	if n := strings.Count(string(raw), "\n"); n > 12 {
+		t.Fatalf("%d lookups: one per major, not one per release:\n%s", n, raw)
+	}
+	// a bound: older than 7.27.0 gives 7.20.0
+	res, err = Npm{Bin: npm, Node: node, Dir: dir}.Resolve(context.Background(), "eslint", "<7.27.0", KindNode)
+	if err != nil || res.Version != "7.20.0" {
+		t.Fatalf("below 7.27.0: %+v %v", res, err)
+	}
+	if g := groupByMajor([]string{"9.1.0", "9.0.0", "8.2.0", "7.0.0", "7.0.0-beta"}); len(g) != 3 || len(g[0]) != 2 {
+		t.Fatalf("groups: %v", g)
+	}
+}
+
+// After a second failure the ladder jumps to the next lower major: the steps are not spent on the patch releases of a major that is broken.
+func TestTheLadderJumpsToTheNextLowerMajor(t *testing.T) {
+	if ladderBound("19.2.0", 0) != "<19.2.0" || ladderBound("19.1.0", 1) != "<19.0.0" || ladderBound("0.7.3", 1) != "<0.7.0" || ladderBound("1.0.0", 1) != "<1.0.0" {
+		t.Fatalf("bounds: %s %s %s %s", ladderBound("19.2.0", 0), ladderBound("19.1.0", 1), ladderBound("0.7.3", 1), ladderBound("1.0.0", 1))
+	}
+	var asked []string
+	f := ladderFake{vers: []string{"3.2.0", "3.1.0", "3.0.0", "2.9.0", "2.8.0", "1.5.0"}, bad: map[string]bool{"3.2.0": true, "3.1.0": true, "3.0.0": true, "2.9.0": true, "2.8.0": true}, asked: &asked}
+	svc, st := newService(t, f, "flask")
+	svc.Install("ann", "flask", KindLib, false)
+	svc.Wait()
+	if strings.Join(asked, ",") != "3.2.0,3.1.0,2.9.0,1.5.0" || !st.HasBundle("flask-1.5.0") {
+		t.Fatalf("versions tried: %v", asked)
+	}
+}
+
+// A scoped npm package has a name of the store that is a folder name, npm gets its own name, and the files of a browser library are found under it.
+func TestAScopedNpmPackageWorksInTheStore(t *testing.T) {
+	for in, want := range map[string]string{"@picocss/pico": "picocss__pico", "@tailwindcss/browser": "tailwindcss__browser", "lodash": "lodash", "@x": "@x", "react-dom": "react-dom"} {
+		if got := EncodeNpmName(in); got != want {
+			t.Errorf("EncodeNpmName(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{"picocss__pico": "@picocss/pico", "lodash": "lodash", "@a/b": "@a/b", "a__": "a__"} {
+		if got := NpmName(in); got != want {
+			t.Errorf("NpmName(%q) = %q, want %q", in, got, want)
+		}
+	}
+	e := Entry{ID: "web:@picocss/pico", Name: "@picocss/pico", Kind: CKWeb, Package: "@picocss/pico"}
+	if e.PackageName() != "picocss__pico" || !ValidName(e.PackageName()) {
+		t.Fatalf("the name of the app: %q", e.PackageName())
+	}
+	// the installer asks npm for the real name
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "args")
+	npm := filepath.Join(dir, "npm")
+	os.WriteFile(npm, []byte("#!/bin/sh\necho \"$@\" >> "+argsFile+"\ncase \"$2\" in @picocss/pico) echo '[\"2.0.6\",\"1.5.0\"]' ;; @picocss/pico@2.0.6) echo '{\"engines.node\":\">=12\",\"dist.unpackedSize\":100000}' ;; esac\n"), 0755)
+	node := filepath.Join(dir, "node")
+	os.WriteFile(node, []byte("#!/bin/sh\necho v20.1.0\n"), 0755)
+	n := Npm{Bin: npm, Node: node, Dir: dir}
+	res, err := n.Resolve(context.Background(), "picocss__pico", "", KindNode)
+	if err != nil || res.Version != "2.0.6" {
+		t.Fatalf("resolve: %+v %v", res, err)
+	}
+	n.Install(context.Background(), "picocss__pico", "2.0.6", KindNode, filepath.Join(dir, "b"), io.Discard)
+	raw, _ := os.ReadFile(argsFile)
+	if !strings.Contains(string(raw), "@picocss/pico@2.0.6") || strings.Contains(string(raw), "picocss__pico") {
+		t.Fatalf("npm was asked for: %s", raw)
+	}
+	// the default catalogue has both scoped entries, with valid names
+	entries, _ := DefaultCatalogue()
+	var found int
+	for _, x := range entries {
+		if strings.HasPrefix(x.Source(), "@") {
+			found++
+			if !ValidName(x.PackageName()) {
+				t.Errorf("%s: %q is not a valid name", x.ID, x.PackageName())
+			}
+		}
+	}
+	if found == 0 {
+		t.Error("the default catalogue has scoped entries")
+	}
+}
+
+func TestACacheFolderPastItsLimitIsEmptied(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "gocache")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "a"), make([]byte, 3<<20), 0o644)
+	capCache(dir, 100)
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatal("a small cache must stay")
+	}
+	capCache(dir, 1)
+	if _, err := os.Stat(dir); err == nil {
+		t.Fatal("a cache past its limit must be emptied")
 	}
 }

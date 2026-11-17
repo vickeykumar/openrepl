@@ -257,6 +257,165 @@
     return drawer;
   }
 
+  // ---- the log of the installs of an app, per server (LLD 18, section 13) ---------------------------------------------------------------
+
+  var lastStoreData = null; // the last answer of GET /admin/store: the servers a log can be read on
+
+  // linkToLog makes a server label open the log of that app on that server (a real button for the keyboard too).
+  function linkToLog(el, app, node) {
+    el.classList.add('loglink');
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('title', 'Open the log of ' + app + ' on ' + node);
+    el.addEventListener('click', function () { openLog(app, node); });
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLog(app, node); } });
+    return el;
+  }
+
+  function two(n) { return (n < 10 ? '0' : '') + n; }
+  function clock(ms) { var d = new Date(ms); return two(d.getHours()) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds()); }
+  function lapse(s) { s = Math.max(0, Math.round(s)); return s < 90 ? s + ' s' : Math.floor(s / 60) + ' min ' + two(s % 60) + ' s'; }
+
+  // the steps of an attempt, from its lines: each run of lines of one step (the output and the commands belong to the step before them)
+  function logSteps(lines) {
+    var out = [], cur = null;
+    lines.forEach(function (l) {
+      if (l.s === 'output' || l.s === 'command' || l.s === 'env') { if (cur) cur.last = l.t; return; }
+      if (!cur || cur.name !== l.s) { cur = { name: l.s, first: l.t, last: l.t, bad: false }; out.push(cur); }
+      cur.last = l.t; if (l.l === 'error') cur.bad = true;
+    });
+    for (var i = 0; i < out.length; i++) { out[i].end = i + 1 < out.length ? out[i + 1].first : out[i].last; }
+    return out;
+  }
+
+  function logText(lines) {
+    return lines.map(function (l) { return clock(l.t) + ' [' + l.s + '] ' + l.x; }).join('\n');
+  }
+
+  // what an admin pastes to ask for help: the app, the server, the attempt, the environment, the steps and the last lines
+  function supportText(st) {
+    var i = st.info || {}, lines = st.lines, steps = logSteps(lines);
+    var env = lines.filter(function (l) { return l.s === 'env'; })[0];
+    var t = ['App: ' + st.app + (i.version ? ' ' + i.version : '') + (i.manager ? ' (' + i.manager + ')' : '') + ' on ' + st.node,
+      'Attempt #' + (i.n || '?') + ' · ' + (i.label || '') + ' · ' + (i.result || '?') + (i.start ? ' · started ' + clock(i.start * 1000) : '') + (i.end ? ' · took ' + lapse(i.end - i.start) : ''),
+      env ? 'Environment: ' + env.x : 'Environment: not in the log', i.err ? 'Reason: ' + i.err : '', '', 'Steps:'];
+    steps.forEach(function (s) { t.push('  ' + s.name + ' ' + lapse((s.end - s.first) / 1000) + (s.bad ? ' (error)' : '')); });
+    t.push('', 'Last 40 lines:', logText(lines.slice(-40)));
+    return t.filter(function (x, k) { return x !== '' || k > 0; }).join('\n');
+  }
+
+  function openLog(app, node0) {
+    var st = { app: app, node: node0 || 'gateway', attempt: 0, next: 0, lines: [], info: null, attempts: [], follow: true, filter: 'all', q: '', timer: null, closed: false, error: '', found: false, loading: true };
+    var nodes = ['gateway'];
+    ((lastStoreData && lastStoreData.nodes) || []).forEach(function (n) { if (nodes.indexOf(n.node) < 0) nodes.push(n.node); });
+    if (nodes.indexOf(st.node) < 0) nodes.push(st.node);
+    var body = h('div', { class: 'logpanel' });
+    var view = h('div', { class: 'logview', tabindex: '0', 'aria-label': 'The log' });
+    var head = h('div', { class: 'loghead' }), side = h('div', { class: 'logside' }), bar = h('div', { class: 'logbar' }), foot = h('div', { class: 'logfoot' });
+    var search = h('input', { type: 'search', placeholder: 'Search', 'aria-label': 'Search the log', class: 'logsearch', oninput: function () { st.q = search.value; drawLines(); } });
+    var follow = h('input', { type: 'checkbox', checked: true, onchange: function () { st.follow = follow.checked; if (st.follow) view.scrollTop = view.scrollHeight; } });
+    body.appendChild(head); body.appendChild(h('div', { class: 'logmain' }, side, h('div', { class: 'logright' }, bar, view, foot)));
+
+    function stop() { if (st.timer) { clearTimeout(st.timer); st.timer = null; } }
+    function reset() { st.next = 0; st.lines = []; st.error = ''; st.loading = true; stop(); load(); }
+
+    function drawHead() {
+      head.textContent = '';
+      var i = st.info || {};
+      var tone = i.result === 'installed' ? 'ok' : i.result === 'running' ? 'warn' : i.result ? 'bad' : '';
+      head.appendChild(h('div', { class: 'loghead-row' }, h('b', { text: st.app }), i.version ? mono(i.version) : null, i.manager ? pill(i.manager) : null, i.result ? pill(i.result === 'running' && i.start ? 'running ' + lapse(Date.now() / 1000 - i.start) : i.result, tone) : null,
+        h('span', { class: 'grow' }), h('span', { class: 'sub', text: 'a server\'s log is fetched when you open its tab' })));
+      var tabsRow = h('div', { class: 'loghead-row' }, h('span', { class: 'sub', text: 'Server' }));
+      nodes.forEach(function (n) { tabsRow.appendChild(h('button', { class: 'btn' + (n === st.node ? ' primary' : ''), type: 'button', text: n, onclick: function () { if (n !== st.node) { st.node = n; st.attempt = 0; st.attempts = []; st.info = null; drawHead(); drawSide(); reset(); } } })); });
+      head.appendChild(tabsRow);
+    }
+
+    function drawSide() {
+      side.textContent = '';
+      side.appendChild(h('h3', { text: 'Attempts' }));
+      if (!st.attempts.length) side.appendChild(h('p', { class: 'sub', text: st.loading ? 'Loading…' : 'No install has been logged on this server yet.' }));
+      st.attempts.forEach(function (a) {
+        var sel = (st.attempt === 0 ? a === st.attempts[0] : a.n === st.attempt);
+        side.appendChild(h('button', { class: 'logattempt' + (sel ? ' on' : ''), type: 'button', onclick: function () { st.attempt = a.n; reset(); } },
+          h('b', { text: '#' + a.n }), ' ' + a.label + ' · ' + clock(a.start * 1000) + ' · ', h('span', { class: a.result === 'installed' ? 'ok' : a.result === 'running' ? 'warn' : 'bad', text: a.result }),
+          h('div', { class: 'sub', text: (a.version ? a.version + ' · ' : '') + (a.logGone ? 'the log is gone, only this line is left' : a.err ? a.err : (a.end ? lapse(a.end - a.start) : '')) })));
+      });
+      var steps = logSteps(st.lines);
+      if (steps.length) {
+        side.appendChild(h('h3', { text: 'This attempt' }));
+        steps.forEach(function (s, k) {
+          var done = k + 1 < steps.length || (st.info && st.info.result !== 'running');
+          side.appendChild(h('div', { class: 'logstep' }, h('span', { class: s.bad ? 'bad' : done ? 'ok' : 'warn', text: (s.bad ? '✕ ' : done ? '✓ ' : '● ') + s.name }), h('span', { class: 'sub', text: lapse((s.end - s.first) / 1000) })));
+        });
+      }
+    }
+
+    function visible() {
+      var q = st.q.toLowerCase();
+      return st.lines.filter(function (l) {
+        if (st.filter === 'steps' && (l.s === 'output' || l.s === 'command')) return false;
+        if (st.filter === 'output' && l.s !== 'output' && l.s !== 'command') return false;
+        if (st.filter === 'errors' && l.l !== 'error' && l.l !== 'warn') return false;
+        return !q || (l.x + ' ' + l.s).toLowerCase().indexOf(q) >= 0;
+      });
+    }
+
+    function drawLines() {
+      view.textContent = '';
+      var vs = visible();
+      if (st.error) view.appendChild(h('div', { class: 'logmsg bad', text: st.error }));
+      else if (!st.found && !st.loading) view.appendChild(h('div', { class: 'logmsg', text: st.info && st.info.logGone ? 'The log of this attempt is gone (the disk of the server was wiped). The summary is in the list.' : 'There is no log of this app on this server yet.' }));
+      else if (st.loading && !vs.length) view.appendChild(h('div', { class: 'logmsg', text: 'Loading…' + (st.node !== 'gateway' ? ' (a server answers with its next heartbeat, a few seconds)' : '') }));
+      vs.forEach(function (l) {
+        view.appendChild(h('div', { class: 'logline lv-' + l.l },
+          h('span', { class: 'lt', text: clock(l.t) }), ' ', h('span', { class: 'ls', text: '[' + l.s + ']' }), ' ', h('span', { class: 'lx', text: l.x })));
+      });
+      if (st.info && st.info.result === 'running') view.appendChild(h('div', { class: 'logmsg', text: '▮ live' }));
+      if (st.follow) view.scrollTop = view.scrollHeight;
+      foot.textContent = '';
+      foot.appendChild(h('label', { class: 'logfollow' }, follow, ' Follow the end'));
+      foot.appendChild(h('span', { class: 'sub', text: st.lines.length + ' lines' + (st.info && st.info.bytes ? ' · ' + Math.round(st.info.bytes / 1024) + ' KB' : '') + ' · paths shown as /store, tokens hidden' }));
+    }
+
+    function drawBar() {
+      bar.textContent = '';
+      [['all', 'All'], ['steps', 'Steps'], ['output', 'Output'], ['errors', 'Errors']].forEach(function (f) {
+        bar.appendChild(h('button', { class: 'btn' + (st.filter === f[0] ? ' primary' : ''), type: 'button', text: f[1], onclick: function () { st.filter = f[0]; drawBar(); drawLines(); } }));
+      });
+      bar.appendChild(search);
+      bar.appendChild(h('span', { class: 'grow' }));
+      bar.appendChild(h('button', { class: 'btn primary', type: 'button', text: 'Copy for support', title: 'The app, the server, the environment, the steps and the last 40 lines', onclick: function () { copyText(supportText(st)); } }));
+      bar.appendChild(h('button', { class: 'btn', type: 'button', text: 'Copy all', onclick: function () { copyText(logText(st.lines)); } }));
+      bar.appendChild(h('button', { class: 'btn', type: 'button', text: 'Download .txt', onclick: function () {
+        var url = URL.createObjectURL(new Blob([supportText(st) + '\n\nFull log:\n' + logText(st.lines) + '\n'], { type: 'text/plain' }));
+        var a = h('a', { href: url, download: st.app + '-' + st.node + '-attempt-' + ((st.info && st.info.n) || 0) + '.txt' });
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      } }));
+    }
+
+    function load() {
+      if (st.closed) return;
+      var node = st.node, attempt = st.attempt, from = st.next;
+      api.get('admin/store/log?app=' + encodeURIComponent(st.app) + '&node=' + encodeURIComponent(node) + '&attempt=' + attempt + '&from=' + from).then(function (r) {
+        if (st.closed || node !== st.node || attempt !== st.attempt || from !== st.next) return; // the admin moved on: this answer is stale
+        st.loading = false;
+        if (r.error) { st.error = r.error; drawHead(); drawSide(); drawLines(); st.timer = setTimeout(load, 5000); return; }
+        var c = r.chunk || {};
+        st.error = '';
+        st.attempts = c.attempts || st.attempts; st.info = c.info || st.info; st.found = !!c.found;
+        if (c.found) { st.lines = st.lines.concat(c.lines || []); st.next = c.next; }
+        drawHead(); drawSide(); drawLines();
+        // a running install is read again (a live tail); a finished one is read to its end and then left
+        if (c.found && (c.running || (c.lines || []).length)) st.timer = setTimeout(load, c.running ? (node === 'gateway' ? 2000 : 1500) : 300);
+      }, function (e) { if (!st.closed) { st.loading = false; st.error = e.message || 'The log could not be read.'; drawLines(); st.timer = setTimeout(load, 8000); } });
+    }
+
+    drawHead(); drawSide(); drawBar(); drawLines();
+    ask({ title: 'Install log: ' + app, content: body, cancel: false, confirm: 'Close' }).then(function () { st.closed = true; stop(); });
+    var dlg = $('dialog'); dlg.classList.add('logs');
+    load();
+  }
+
   function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) {
       return navigator.clipboard.writeText(text).then(function () { toast('Copied'); }, fail);
@@ -2467,6 +2626,11 @@
     }
     // the status of one app on one server: ready, installing (a server that is behind and answered lately), failed, missing
     function status(n, id, now, name) {
+      var el = statusRaw(n, id, now, name);
+      if (name) linkToLog(el, name, n.node);
+      return el;
+    }
+    function statusRaw(n, id, now, name) {
       if ((n.have || []).indexOf(id) >= 0) return h('span', { class: 'ok', title: n.versions && n.versions[id] ? 'This server installed ' + n.versions[id] + ', the best version that exists for its CPU type' : '', text: n.versions && n.versions[id] ? 'ready (' + n.versions[id] + ', best for this CPU)' : 'ready' });
       if (n.failed && n.failed[id] && n.gaveUp && n.gaveUp[id]) return h('span', { class: 'bad', title: n.failed[id], text: 'not available here, or gave up: Reinstall here tries again' });
       if (n.failed && n.failed[id]) {
@@ -2491,6 +2655,7 @@
       return bar;
     }
     function draw(d) {
+      lastStoreData = d;
       var out = h('div');
       if (!d.enabled && d.error) { out.appendChild(h('div', { class: 'card' }, h('p', { text: 'The App Store is off: ' + d.error }))); return out; }
       var waiting = d.requests.filter(function (r) { return r.status === 'waiting'; });
@@ -2541,6 +2706,7 @@
           { key: 'act', label: 'Act', cell: function (r) {
             return h('div', { class: 'row-actions' },
               h('button', { class: 'btn primary', type: 'button', text: 'Try again', onclick: function () { post({ action: 'retry', name: r.name }, 'Trying ' + r.name + ' again.'); } }),
+              h('button', { class: 'btn', type: 'button', text: 'Open full log', onclick: function () { openLog(r.name, r.node && r.node !== 'gateway' ? r.node : 'gateway'); } }),
               h('button', { class: 'btn', type: 'button', text: 'Pick another version', onclick: function () { pickVersion(r.name); } }),
               h('button', { class: 'btn', type: 'button', text: 'Mark installed', title: 'You fixed it by hand on the servers', onclick: function () { post({ action: 'installed', name: r.name }); } }),
               h('button', { class: 'btn danger', type: 'button', text: 'Reject', onclick: function () { reasonDialog('Reject the report about ' + r.name + '?', 'Reject').then(function (why) { if (why !== null) post({ action: 'rejectreport', name: r.name, answer: why }); }); } }));
@@ -2563,9 +2729,9 @@
                 onclick: function () { post({ action: 'default', name: a.name, on: !everyone }, a.name + (everyone ? ' is no longer on for everyone.' : ' is on for every signed-in user now.')); } })) : null);
           } }
         ];
-        d.nodes.forEach(function (n) { cols.push({ key: 'n-' + n.node, label: n.node, cell: function (a) { return a.state === 'installed' ? status(n, a.id, d.now, a.name) : h('span', { class: 'sub', text: a.waiting ? 'waiting for another install' : a.state }); } }); });
+        d.nodes.forEach(function (n) { cols.push({ key: 'n-' + n.node, label: n.node, cell: function (a) { return a.state === 'installed' ? status(n, a.id, d.now, a.name) : linkToLog(h('span', { class: 'sub', text: a.waiting ? 'waiting for another install' : a.state }), a.name, n.node); } }); });
         cols.push({ key: 'act', label: '', cell: function (a) {
-          return h('div', null, a.state === 'installed' && a.kind !== 'node' && a.kind !== 'plugin' ? h('button', { class: 'btn', type: 'button', text: 'New lock', title: 'Solve it again for every CPU type and make it again on every server: the same version, with the packages that exist today',
+          return h('div', null, h('button', { class: 'btn' + (a.state === 'installing' ? ' primary' : ''), type: 'button', text: a.state === 'installing' ? 'Log (live)' : 'Log', title: 'What the install of this app did, on each server', onclick: function () { openLog(a.name, 'gateway'); } }), ' ', a.state === 'installed' && a.kind !== 'node' && a.kind !== 'plugin' ? h('button', { class: 'btn', type: 'button', text: 'New lock', title: 'Solve it again for every CPU type and make it again on every server: the same version, with the packages that exist today',
             onclick: function () {
               ask({ title: 'Make a new lock of ' + a.name + '?', body: 'It is solved again for every CPU type and installed again on every server. The people who have it on keep their switch; it is missing for a short while.', confirm: 'New lock' })
                 .then(function (ok) { if (ok) post({ action: 'relock', name: a.name }, 'Making a new lock of ' + a.name + '.'); });
@@ -2799,7 +2965,7 @@
         if (!a) return { app: null, node: h('span', { class: 'sub', text: k ? 'listed, not installed' : 'listed' }) };
         if (a.state !== 'installed') return { app: a, node: pill(a.waiting ? 'waiting for another install' : a.state, a.state === 'failed' ? 'bad' : 'warn') };
         var span = h('span');
-        d.nodes.forEach(function (n) { var ok = (n.have || []).indexOf(a.id) >= 0; span.appendChild(pill(n.node + (ok ? '' : (n.failed && n.failed[a.id]) ? ' failed' : n.doing === a.name ? ' installing' : (n.queued || []).indexOf(a.name) >= 0 ? ' waiting' : ' missing'), ok ? 'ok' : (n.failed && n.failed[a.id]) ? 'bad' : 'warn')); span.appendChild(document.createTextNode(' ')); });
+        d.nodes.forEach(function (n) { var ok = (n.have || []).indexOf(a.id) >= 0; span.appendChild(linkToLog(pill(n.node + (ok ? '' : (n.failed && n.failed[a.id]) ? ' failed' : n.doing === a.name ? ' installing' : (n.queued || []).indexOf(a.name) >= 0 ? ' waiting' : ' missing'), ok ? 'ok' : (n.failed && n.failed[a.id]) ? 'bad' : 'warn'), a.name, n.node)); span.appendChild(document.createTextNode(' ')); });
         return { app: a, node: span };
       }
       out.appendChild(table([

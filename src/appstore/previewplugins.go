@@ -53,8 +53,8 @@ func (s *Service) pluginInstalled(e Entry) bool {
 // else from the folders of the store (a worker has the bundles but not the records).
 func (s *Service) bundleOf(pkg string) string {
 	pkg = strings.ToLower(pkg)
-	name := strings.ReplaceAll(strings.TrimPrefix(pkg, "@"), "/", "-")
-	if a, ok := s.app(pkg); ok && a.State == StateInstalled && cleanKind(a.Kind) == KindNode && a.ID != "" && s.cfg.Store.HasBundle(a.ID) {
+	name := EncodeNpmName(pkg)
+	if a, ok := s.app(name); ok && a.State == StateInstalled && cleanKind(a.Kind) == KindNode && a.ID != "" && s.cfg.Store.HasBundle(a.ID) {
 		return a.ID
 	}
 	for _, id := range s.cfg.Store.Bundles() {
@@ -170,7 +170,7 @@ func (s *Service) LibFile(pkg, file string) (string, bool) {
 		if !allowed {
 			continue
 		}
-		base := filepath.Join(s.cfg.Store.BundlePath(id), "node_modules", filepath.FromSlash(e.PackageName()))
+		base := filepath.Join(s.cfg.Store.BundlePath(id), "node_modules", filepath.FromSlash(e.Source()))
 		p := filepath.Join(base, filepath.FromSlash(file))
 		if r, err := filepath.EvalSymlinks(p); err == nil {
 			if b, err := filepath.EvalSymlinks(base); err == nil && strings.HasPrefix(r, b+string(filepath.Separator)) {

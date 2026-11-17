@@ -281,6 +281,15 @@ func (a AptBundle) Install(ctx context.Context, name, version, kind, dest string
 	} else if pkgs, err = a.plan(ctx, o.Package, ""); err != nil {
 		return err
 	}
+	src := "a plan made now"
+	if fromLock {
+		src = "the lock of the gateway"
+	}
+	var kb int
+	for _, p := range pkgs {
+		kb += p.SizeKB
+	}
+	logStep(log, "look up", "info", "apt: %d packages from %s, %.1f MB installed", len(pkgs), src, float64(kb)/1024)
 	return a.installPlan(ctx, o, pkgs, dest, log, fromLock)
 }
 
@@ -298,7 +307,10 @@ func (a AptBundle) installPlan(ctx context.Context, o Option, pkgs []AptPkg, des
 	}
 	var links [][2]string
 	for _, p := range pkgs {
-		if out, err := a.apt(ctx, tmp, "apt-get", "download", p.Name+"="+p.Version); err != nil {
+		dt := time.Now()
+		out, err := a.apt(ctx, tmp, "apt-get", "download", p.Name+"="+p.Version)
+		logCommand(log, "apt-get", []string{"download", p.Name + "=" + p.Version}, err, time.Since(dt))
+		if err != nil {
 			if fromLock && strings.Contains(string(out), "was not found") {
 				// this CPU type's archive does not have the version the gateway locked (the archives of the CPU types are not always in step): this node makes its
 				// own plan and installs the best version it has

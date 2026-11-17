@@ -97,6 +97,18 @@ func (m MeasureEnv) measureOne(ctx context.Context, e Entry, o *Option, kind str
 	os.RemoveAll(dest)
 	defer os.RemoveAll(dest)
 	var logb workLog
+	mlg := m.Svc.Logs().Begin(e.PackageName(), "measure", hostName())
+	logb.lg = mlg
+	mlg.Line("start", "info", "measure %s with %s on %s", e.PackageName(), o.Manager, hostName())
+	mlg.Line("env", "info", "%s", EnvLine(hostName(), m.Svc.cfg.Store.Dir))
+	defer func() {
+		res, errText := "installed", ""
+		if o.Err != "" {
+			res, errText = "failed", o.Err
+		}
+		m.Svc.endLogOf(mlg, res, o.Version, o.Manager, errText)
+	}()
+	ctx = WithAttemptLog(ctx, &logb)
 	start := time.Now()
 	rep, full, err := m.Svc.installBundle(ctx, a, o.Manager, dest, &logb)
 	if err != nil {

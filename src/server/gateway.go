@@ -198,6 +198,7 @@ func (server *Server) wrapGateway(ctx context.Context, site http.Handler, pathPr
 			WorkerConfig: server.gatewayWorkerConfigFor,
 			Store:        server.gatewayStoreUpdate,
 			OnStoreState: server.gatewayStoreState,
+			OnStoreLog:   server.gatewayStoreLog,
 			StoreLock:    server.gatewayStoreLock,
 		}
 		router.BindTunnel(&tcfg)

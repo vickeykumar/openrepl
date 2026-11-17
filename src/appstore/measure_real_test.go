@@ -29,31 +29,7 @@ func TestMeasureCatalogue(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
 		arch = ArchARM64
 	}
-	dir := os.Getenv("OPENREPL_REAL_STORE")
-	if dir == "" {
-		dir = t.TempDir()
-	}
-	bin := os.Getenv("OPENREPL_PIXI")
-	if bin == "" {
-		bin, _ = exec.LookPath("pixi")
-	}
-	if bin == "" {
-		t.Fatal("pixi was not found: set OPENREPL_PIXI")
-	}
-	var svc *Service
-	lookup := func(kind, app string) (Entry, bool) { return svc.EntryFor(app, kind) }
-	inst := Multi{Conda: Pixi{Bin: bin, Dir: dir, Python: PythonOf("python3"), Constraints: nil, Builds: func(app string) string {
-		if e, ok := svc.EntryFor(app, KindTool); ok {
-			if o, ok := e.OptionOf(MgrPixi); ok {
-				return o.Build
-			}
-		}
-		return ""
-	}}, Plugin: PluginInstaller{}, GoMod: GoMod{Dir: dir, Lookup: lookup}, Jar: Maven{Dir: dir, Lookup: lookup}, Crate: Cargo{Dir: dir, Lookup: lookup}, Apt: AptBundle{Dir: dir, Lookup: lookup}}
-	if npm := findRealNpm(); npm != "" {
-		inst.Node = Npm{Bin: npm, Dir: dir}
-	}
-	svc = New(Config{Store: Store{Dir: dir}, KV: newKV(), Installer: inst, Safe: func() []string { return DefaultSafeList }})
+	svc, dir := realMeasureService(t)
 	m := MeasureEnv{Svc: svc, Work: dir + "/measure", Arch: arch, AptPackage: AptHas}
 	os.MkdirAll(m.Work, 0755)
 	only := map[string]bool{}
@@ -106,3 +82,39 @@ func sizeText(o Option, arch string) string {
 }
 
 func floatText(f float64) string { b, _ := json.Marshal(f); return string(b) }
+
+// realMeasureService is a service with every installer the image has (pixi, npm, apt, the mirrors), on a store of its own, for the tests that install for real.
+func realMeasureService(t *testing.T) (*Service, string) {
+	t.Helper()
+	return realMeasureServiceAt(t, os.Getenv("OPENREPL_REAL_STORE"))
+}
+
+// realMeasureServiceAt is realMeasureService on a store folder of its own ("" : a temporary one).
+func realMeasureServiceAt(t *testing.T, dir string) (*Service, string) {
+	t.Helper()
+	if dir == "" {
+		dir = t.TempDir()
+	}
+	bin := os.Getenv("OPENREPL_PIXI")
+	if bin == "" {
+		bin, _ = exec.LookPath("pixi")
+	}
+	if bin == "" {
+		t.Fatal("pixi was not found: set OPENREPL_PIXI")
+	}
+	var svc *Service
+	lookup := func(kind, app string) (Entry, bool) { return svc.EntryFor(app, kind) }
+	inst := Multi{Conda: Pixi{Bin: bin, Dir: dir, Python: PythonOf("python3"), Constraints: nil, Builds: func(app string) string {
+		if e, ok := svc.EntryFor(app, KindTool); ok {
+			if o, ok := e.OptionOf(MgrPixi); ok {
+				return o.Build
+			}
+		}
+		return ""
+	}}, Plugin: PluginInstaller{}, GoMod: GoMod{Dir: dir, Lookup: lookup}, Jar: Maven{Dir: dir, Lookup: lookup}, Crate: Cargo{Dir: dir, Lookup: lookup}, Apt: AptBundle{Dir: dir, Lookup: lookup}}
+	if npm := findRealNpm(); npm != "" {
+		inst.Node = Npm{Bin: npm, Dir: dir}
+	}
+	svc = New(Config{Store: Store{Dir: dir}, KV: newKV(), Installer: inst, Safe: func() []string { return DefaultSafeList }})
+	return svc, dir
+}
