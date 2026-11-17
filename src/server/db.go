@@ -118,6 +118,7 @@ func scanFeedback() (fblistmap map[int64]feedback, err error) {
 }
 
 func handleLoginSession(rw http.ResponseWriter, req *http.Request) {
+	noStore(rw) // who is signed in is for this visitor only: no browser, proxy or CDN may keep it
 	log.Println("method:", req.Method)
 	homedirjob := func () {
 		uid := cookie.Get_Uid(req)
@@ -224,6 +225,7 @@ func handleLoginSession(rw http.ResponseWriter, req *http.Request) {
 
 
 func handleLogoutSession(rw http.ResponseWriter, req *http.Request) {
+	noStore(rw)
 	log.Println("method:", req.Method)
 	if req.Method == "POST" {
 		req.ParseForm()

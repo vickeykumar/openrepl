@@ -134,8 +134,32 @@ func (up *UserProfile) addSession(session UserSession) {
         up.SessionMap = make(map[string]UserSession)
     }
     up.SessionMap[session.SessionID] = session
+    up.trimSessions(MaxSessionsPerUser, session.SessionID)
 
+}
 
+// MaxSessionsPerUser is how many sessions an account keeps (one for each browser that signed in, valid for days). The record of the
+// account is one value in the database and in the cache, and a value over about 15 KB does not fit the cache; a developer who
+// signs in many times a week got there, and then the newest session was not found. The oldest sessions go first.
+const MaxSessionsPerUser = 10
+
+// trimSessions keeps the `keep` sessions that end last, and always the one named `current`.
+func (up *UserProfile) trimSessions(keep int, current string) {
+    for len(up.SessionMap) > keep {
+        oldest, oldestEnd := "", int64(0)
+        for id, s := range up.SessionMap {
+            if id == current {
+                continue
+            }
+            if oldest == "" || s.ExpirationTime < oldestEnd {
+                oldest, oldestEnd = id, s.ExpirationTime
+            }
+        }
+        if oldest == "" {
+            return
+        }
+        delete(up.SessionMap, oldest)
+    }
 }
 
 func (up *UserProfile) deleteSession(SessionID string) error {

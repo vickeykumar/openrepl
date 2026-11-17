@@ -342,3 +342,31 @@ func TestSessionStateSaysWhyASessionIsNotUsable(t *testing.T) {
 		t.Fatal("IsSessionExpired disagrees with SessionState")
 	}
 }
+
+func TestAnAccountKeepsAtMostTenSessionsAndTheNewestIsOneOfThem(t *testing.T) {
+	open(t)
+	for i := 0; i < 15; i++ {
+		u := &User{Uid: "uid-many", Name: "N", Email: "m@example.com"}
+		u.StsTokenManager.AccessToken = "tok-" + string(rune('a'+i))
+		ss := &UserSession{User: u}
+		ss.Update(u)
+		ss.SessionID = "tok-" + string(rune('a'+i))
+		ss.ExpirationTime = utils.GetUnixMilli() + int64(i+1)*1000 // each ends a little later than the one before
+		if err := UpdateAndStoreSessionData("uid-many", ss.SessionID, ss, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	up, err := FetchUserProfileData("uid-many")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(up.SessionMap) != MaxSessionsPerUser {
+		t.Fatalf("%d sessions kept", len(up.SessionMap))
+	}
+	if _, ok := up.SessionMap["tok-"+string(rune('a'+14))]; !ok {
+		t.Fatal("the newest session was not kept")
+	}
+	if _, ok := up.SessionMap["tok-a"]; ok {
+		t.Fatal("the oldest session was kept")
+	}
+}
