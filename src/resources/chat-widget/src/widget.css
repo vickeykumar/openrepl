@@ -127,6 +127,7 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) {
   color: var(--cw-accent);
 }
 #chat-widget__title_text {
+  flex: 0 0 auto; /* the name stays whole: the note beside it gives way first, in a narrow panel */
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -138,6 +139,8 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 190px;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 #chat-widget__context:empty {
   display: none;
@@ -1648,11 +1651,12 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 
 /* What is allowed for the session (agent.ts: renderBadge, toggleMenu, openPermissions, confirmEverything). Designed in the
    "Genie agent: remember my answers for the session" canvas. */
-#chat-widget__auto { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
+#chat-widget__auto { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; flex-shrink: 0; }
 .cw-auto {
   font: inherit; font-size: 11.5px; font-weight: 500; padding: 2px 9px; cursor: pointer;
   color: var(--cw-accent); background: color-mix(in srgb, var(--cw-accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--cw-accent) 55%, transparent); border-radius: 99px;
+  white-space: nowrap; /* "Auto: 1 of 7 ▾" is one line, however narrow the panel is */
 }
 .cw-auto--risky { color: var(--danger-color, #F07171); background: rgba(240, 113, 113, 0.14); border-color: rgba(240, 113, 113, 0.55); }
 .cw-menu {

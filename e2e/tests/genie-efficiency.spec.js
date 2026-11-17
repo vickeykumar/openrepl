@@ -377,3 +377,23 @@ test("a long chat is summarized by the model in use, and the next question is se
   expect(q5).toContain("five");
   expect(q5).not.toContain("Answer 1.");
 });
+
+test("in a narrow panel the Auto badge is one line and the name Genie is not cut", async ({ page }) => {
+  await openAgent(page, []);
+  const m = await page.evaluate(() => {
+    const box = document.getElementById("chat-widget__container");
+    box.style.width = "340px";
+    const holder = document.getElementById("chat-widget__auto");
+    holder.innerHTML = "";
+    const b = document.createElement("button");
+    b.className = "cw-auto";
+    b.textContent = "Auto: 1 of 7 ▾";
+    holder.appendChild(b);
+    const ctx = document.getElementById("chat-widget__context");
+    if (ctx) ctx.textContent = "Reads script.js and the terminal";
+    const t = document.getElementById("chat-widget__title_text");
+    return { badgeH: b.getBoundingClientRect().height, cut: t.scrollWidth > t.clientWidth, title: t.textContent };
+  });
+  expect(m.badgeH).toBeLessThan(30);
+  expect(m.cut).toBe(false);
+});
