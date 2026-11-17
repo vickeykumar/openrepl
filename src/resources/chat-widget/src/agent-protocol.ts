@@ -1125,3 +1125,22 @@ export function recapOf(task: string, t: { says: string[]; max: number; messages
     "\nIf the user now says to continue or go on, carry on with that task from where it stopped; the editor and the terminal show where it is.]"
   );
 }
+
+// ---- small models and starter chips ------------------------------------------------------
+
+// Whether a model is a small one, from its id: a size of 40B or less ("qwen3-30b", "gemma-4-26b-a4b"), or a "mini",
+// "flash", "lite" or "nano" model. A small model follows the strict action format of Agent mode less well, so the panel
+// says so and offers the model the admin suggests.
+export function isSmallModel(id: string): boolean {
+  const s = String(id || "").toLowerCase();
+  if (/(^|[^a-z0-9])(mini|flash|lite|nano|tiny|small)([^a-z0-9]|$)/.test(s)) return true;
+  const m = s.match(/(^|[^a-z0-9.])(\d{1,3})b([^a-z0-9]|$)/);
+  return !!m && Number(m[2]) <= 40;
+}
+
+// The first-message suggestions under the box of an empty chat: what to ask in that mode.
+export function starterChips(agent: boolean): string[] {
+  return agent
+    ? ["Run this", "Fix the error in my terminal", "Fix this file", "Add comments to my code"]
+    : ["Explain the error in my terminal", "Explain this code", "Review my code", "How do I run this?"];
+}

@@ -7,6 +7,7 @@ import { ChatStore } from "./chat-store";
 import { ChatLine, Restored, TabView, afterClose, clock, filterChats, fitText, groupChats, moveTab, newChatId, restore, sizeText, staleNote, tabMark, tabToClose, titleFrom, toHistory } from "./chat-tabs";
 import { SSEParser, addEvent, answerOf, newStreamed } from "./sse";
 import { definesSomething } from "./chat-send";
+import { isSmallModel, starterChips } from "./agent-protocol";
 import { answerBudget, errorBlock, errorRequest, looksLikeTask, messagesToSend, selectionRequest } from "./chat-send";
 import { CreditUsage, TokenUsage, answerTokens, creditLine, creditRows, tokenRows } from "./tokens";
 import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntry, addItem, gather, hashQuery, itemKey, metaOf, namesLine, problemsLine, rankEntries, removeItem, withAttached, withoutHash } from "./attach";
@@ -312,6 +313,7 @@ function getcurrentIDECode(): MessageType {
 // Function to add a message to the conversation history
 function addMessageToHistory(role: string, content: string, uid: string=UID, history: MessageType[] = conversationHistory): void {
   if (role=="user") {
+    setTimeout(renderGuidance, 0); // the starter chips go once something is asked
     // to handle multiple peer users
     content = `[${role}-${uid}] ` + content;
     if (history.length >= NUM_MANDATORY_ENTRIES) {
@@ -490,6 +492,14 @@ async function init() {
     open({ target } as Event);
   }
 
+  // What the page is, for a model that would not work it out (the agent's prompt says the same: server/agent.go, ideGuide).
+  const CHAT_IDE_GUIDE =
+    "How OpenREPL works: the page has a code editor and a terminal that runs the language chosen in the language picker. " +
+    "The editor code and the last lines of the terminal are given to you in the 'Openrepl IDE real-time context' message, so you CAN read both: " +
+    "use them, and never say you cannot see the terminal or the code (if the terminal text is empty, say nothing has been printed yet). " +
+    "In Chat you answer and explain; you do not type in the terminal or change the editor yourself. When the user wants you to run, install, " +
+    "write into the editor or fix something, tell them in one line to switch to Agent mode (the Chat / Agent switch above the box), where you can " +
+    "do it, and give the code they can use. To run code, the user presses Run. Keep answers short and specific to their code.";
   let welcomeprompt = "welcome to openrepl.com!! you are Genie. An OpenRepl AI";
   // the permanent prompts: who Genie is, (practice: the interviewer prompt), and the editor snapshot
   if (window.location.pathname.includes("practice")) {
@@ -497,6 +507,7 @@ async function init() {
     addMessageToHistory("system", interviewPrompt);
   } else {
     addMessageToHistory("system", welcomeprompt+" Assistant.");
+    addMessageToHistory("system", CHAT_IDE_GUIDE);
   }
   addMessageToHistory("system", "Openrepl IDE/EditorCodeContent: "+ fetchEditorContent());
   NUM_MANDATORY_ENTRIES = conversationHistory.length; // the editor snapshot is the last of them
@@ -1231,6 +1242,7 @@ async function deleteAllChats() {
 }
 
 function renderTabs() {
+  renderGuidance();
   const bar = document.getElementById("chat-widget__tabs");
   if (!bar) return;
   bar.hidden = !tabsOn;
@@ -1866,7 +1878,9 @@ const agentRunner = new AgentRunner(
       // the notes of the site that the step was answered from, as in the chat; a
       // step that used none says nothing (most steps of a task are about code)
       const used = parseContextHeader(context || null);
-      await createNewMessageEntry(text, Date.now(), "system", false, "Agent · " + captionText(), used && used.length ? used : null, null, null, [], t === activeTab ? null : t.frag);
+      const sayTs = Date.now();
+      await createNewMessageEntry(text, sayTs, "system", false, "Agent · " + captionText(), used && used.length ? used : null, null, null, [], t === activeTab ? null : t.frag);
+      persistAnswer(t, text, sayTs, null); // what the agent said is part of the chat that comes back after a reload
     },
     note: async (text: string) => {
       // shown, not remembered: the model must not read an error as its own words
@@ -2437,6 +2451,54 @@ function modePlaceholder(): string {
   return agentMode ? "Describe a task for Genie to carry out" : "Ask about your code";
 }
 
+// The starter chips of an empty chat, and the note that a small model does Agent mode less well (with a button to the model
+// the admin suggests, when there is one and it is on).
+function renderGuidance() {
+  const chips = document.getElementById("chat-widget__starters");
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  if (chips && input) {
+    const show = !activeTab.history.some((m) => m.role === "user") && !activeTab.inFlight && !agentRunner.running;
+    const want = starterChips(agentMode);
+    const key = (agentMode ? "a:" : "c:") + want.length;
+    if (chips.dataset.key !== key) {
+      chips.textContent = "";
+      want.forEach((text) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = text;
+        b.addEventListener("click", () => {
+          input.value = text;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.focus();
+        });
+        chips.appendChild(b);
+      });
+      chips.dataset.key = key;
+    }
+    chips.hidden = !show;
+  }
+  const hint = document.getElementById("chat-widget__modehint");
+  const text = document.getElementById("chat-widget__modehint-text");
+  const sw = document.getElementById("chat-widget__modehint-switch") as HTMLButtonElement | null;
+  if (hint && text && sw) {
+    const m = chosenModel();
+    const small = agentMode && isSmallModel(m.id);
+    hint.hidden = !small;
+    if (small) {
+      text.textContent = `${m.short} is a small model: Agent works best with a stronger one.`;
+      const s = (window as any).site_settings;
+      const sug = s && s.genieAgentModel ? MODELS.filter((x) => x.id === s.genieAgentModel)[0] : null;
+      if (sug && sug.id !== m.id) {
+        sw.hidden = false;
+        sw.textContent = `Switch to ${sug.short}`;
+        sw.onclick = () => MC.set(sug.id);
+      } else {
+        sw.hidden = true;
+      }
+    }
+  }
+}
+
 function setMode(agent: boolean) {
   agentMode = agent;
   const box = document.getElementById("chat-widget__mode");
@@ -2446,6 +2508,7 @@ function setMode(agent: boolean) {
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
   if (input && !agentRunner.running) input.placeholder = modePlaceholder();
   renderUsage(); // the line counts tasks in Agent mode
+  renderGuidance();
 }
 
 let signedSeen: boolean | null = null;
@@ -2720,6 +2783,7 @@ function renderChoice() {
     chip.setAttribute("aria-label", `Model and effort: ${chipText()}`);
   }
   renderLists();
+  renderGuidance();
   const group = document.getElementById("chat-widget__efforts");
   const effortLabel = document.getElementById("cw-effort-label");
   if (group) group.classList.toggle("is-off", !m.reasoning);

@@ -286,7 +286,7 @@ test("built: a task that is done in one step", async () => {
   assert.deepEqual(t.log.said, ["user: hello", "genie: Nothing to do."]);
   assert.deepEqual(t.log.notes, []);
   assert.deepEqual(t.log.states, ["running", "idle"]);
-  assert.equal(t.header(), "Finished");
+  assert.equal(t.messages.querySelectorAll(".cw-agent").length, 0, "an answer with nothing done is not a task card");
   assert.equal(t.runner.running, false);
   // the first request starts a task, with the user's words and the page's context
   assert.equal(t.log.requests[0].context, "agent");
@@ -561,7 +561,7 @@ test("built: Stop ends a task whose model is silent, and the box comes back", as
   // and a new task can start at once
   const again = setup([{ say: "ok", actions: [], done: true }]);
   await again.done(again.runner.start("again"));
-  assert.equal(again.header(), "Finished");
+  assert.equal(again.messages.querySelectorAll(".cw-agent").length, 0, "an answer with nothing done is not a task card");
 });
 
 test("built: Stop while a question is open answers it no, and nothing more is done", async () => {
@@ -809,12 +809,12 @@ test("built: how a task ended is reported with its reason, and an unreadable ans
 });
 
 test("built: the end of a task tells the steps, the tokens and, when a plan counts them, the credits", async () => {
-  const t = setup([{ say: "Yes.", actions: [], done: true }], { credits: 9 });
+  const t = setup([{ say: "Looking.", actions: [{ type: "files_list" }], done: false }, { say: "Yes.", actions: [], done: true }], { credits: 9, answer: () => "Allow for this session" });
   await t.done(t.runner.start("explain"));
   const meta = t.messages.querySelector(".cw-agent__meta").textContent;
-  assert.match(meta, /1 step/);
+  assert.match(meta, /2 steps/);
   assert.match(meta, /9 credits/);
-  const plain = setup([{ say: "Yes.", actions: [], done: true }]);
+  const plain = setup([{ say: "Looking.", actions: [{ type: "files_list" }], done: false }, { say: "Yes.", actions: [], done: true }], { answer: () => "Allow for this session" });
   await plain.done(plain.runner.start("explain"));
   assert.ok(!/credit/.test(plain.messages.querySelector(".cw-agent__meta").textContent));
 });
@@ -952,7 +952,8 @@ test("built: a search with no match, a refusal and a page that cannot look say s
 
 test("built: GENIE.md is read at the start of a task, shown as a step, and sent with the task as the user's own hints", async () => {
   const notes = ["    1  # My project", "    2  Run it with: python3 app.py", "    3  Tests: pytest -q", "    4  Never touch the folder data/"].join("\n") + "\n";
-  const t = setup([{ say: "Done.", actions: [], done: true }], {
+  const t = setup([{ say: "Looking.", actions: [{ type: "files_list" }], done: false }, { say: "Done.", actions: [], done: true }], {
+    answer: () => "Allow for this session",
     readFiles: async (req) => (req.path === "GENIE.md" ? { status: 200, text: notes, total_lines: 4 } : { status: 404 }),
   });
   await t.done(t.runner.start("add a test"));
@@ -975,7 +976,7 @@ test("built: GENIE.md is cut to a few lines of text, and without one the task st
   const none = setup([{ say: "ok", actions: [], done: true }], { readFiles: async () => ({ status: 404 }) });
   await none.done(none.runner.start("go"));
   assert.ok(!/GENIE/.test(none.log.requests[0].messages[0].content));
-  assert.equal(none.steps().length, 1, "a step line for notes that are not there");
+  assert.equal(none.steps().length, 0, "a step line for notes that are not there");
 });
 
 test("built: Undo this task puts the editor back as it was before the task and says Undone", async () => {

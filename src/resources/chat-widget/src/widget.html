@@ -40,6 +40,11 @@
   </div>
   <form id="chat-widget__form">
     <label for="chat-widget__input" class="chat-widget__sr-only">Ask Genie</label>
+    <div id="chat-widget__starters" class="cw-starters" role="group" aria-label="Things to ask" hidden></div>
+    <div id="chat-widget__modehint" class="cw-modehint" role="note" hidden>
+      <span id="chat-widget__modehint-text"></span>
+      <button type="button" id="chat-widget__modehint-switch" class="cw-modehint__btn" hidden></button>
+    </div>
     <div id="chat-widget__field">
       <div id="chat-widget__attached" role="group" aria-label="Added to this message" hidden></div>
       <textarea

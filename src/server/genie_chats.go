@@ -290,7 +290,7 @@ func trimChat(path string, limit int) error {
 	enc := func(ls []map[string]interface{}) []byte {
 		var b []byte
 		for _, l := range ls {
-			j, _ := json.Marshal(l)
+			j := asciiJSON(l)
 			b = append(append(b, j...), '\n')
 		}
 		return b
@@ -464,7 +464,7 @@ func (server *Server) handleGenieChats(rw http.ResponseWriter, req *http.Request
 					return
 				}
 			}
-			j, _ := json.Marshal(l)
+			j := asciiJSON(l)
 			data = append(append(data, j...), '\n')
 		}
 		if isNew && len(listChats(dir)) >= g.chatsMax() {
@@ -602,4 +602,27 @@ func jsonError(rw http.ResponseWriter, status int, code, message string) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(status)
 	json.NewEncoder(rw).Encode(map[string]interface{}{"error": map[string]string{"code": code, "message": message}})
+}
+
+// asciiJSON is json.Marshal with every character above 127 written as \uXXXX (a pair for those past the first plane), so
+// a chat file is plain ASCII: an editor that does not read it as UTF-8 shows the text right, and nothing is garbled.
+// Reading it back gives the same text.
+func asciiJSON(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte("{}")
+	}
+	out := make([]byte, 0, len(b))
+	for _, r := range string(b) {
+		switch {
+		case r < 0x80:
+			out = append(out, byte(r))
+		case r < 0x10000:
+			out = append(out, fmt.Sprintf("\\u%04x", r)...)
+		default:
+			r -= 0x10000
+			out = append(out, fmt.Sprintf("\\u%04x\\u%04x", 0xd800+(r>>10), 0xdc00+(r&0x3ff))...)
+		}
+	}
+	return out
 }

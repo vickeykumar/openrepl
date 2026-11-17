@@ -177,7 +177,7 @@ test("the end of a stretch asks whether to carry on, and carrying on goes on wit
 });
 
 test("GENIE.md is read at the start, shown as a step and sent with the task", async ({ page }) => {
-  const seen = await openAgent(page, [{ say: "Noted.", actions: [], done: true }], {
+  const seen = await openAgent(page, [{ say: "Looking.", actions: [{ type: "files_list", path: "" }], done: false }, { say: "Noted.", actions: [], done: true }], {
     files: (req) => (req.path === "GENIE.md" ? { body: { text: "    1  Run it with python3 app.py\n    2  Never touch data/\n", total_lines: 2 } } : { status: 404 }),
   });
   await agentMode(page);
@@ -318,7 +318,7 @@ test("a viewer of a shared session has no agent of the owner's, and nothing here
 });
 
 test("an answer to a job offers Do this with Agent, and it starts the same words as a task", async ({ page }) => {
-  const seen = await openAgent(page, ["Here is one way:\n```python\nprint('hi')\n```", { say: "On it.", actions: [], done: true }]);
+  const seen = await openAgent(page, ["Here is one way:\n```python\nprint('hi')\n```", { say: "On it.", actions: [{ type: "files_search", query: "hi" }], done: false }, { say: "Done.", actions: [], done: true }]);
   await ask(page, "create a script that prints hi and run it");
   const hand = page.locator(".cw-turn button", { hasText: "Do this with Agent" });
   await expect(hand).toBeVisible({ timeout: 15000 });
@@ -326,4 +326,30 @@ test("an answer to a job offers Do this with Agent, and it starts the same words
   await expect(page.locator(".cw-agent--ended")).toBeVisible({ timeout: 30000 });
   expect(seen.requests[1].context).toBe("agent");
   expect(JSON.stringify(seen.requests[1].messages[0])).toContain("create a script that prints hi and run it");
+});
+
+test("an empty chat offers starter questions; Agent mode with a small model says so and offers the admin's model", async ({ page }) => {
+  await openAgent(page, []);
+  const chips = page.locator("#chat-widget__starters");
+  await expect(chips).toBeVisible();
+  await expect(chips.getByRole("button", { name: "Explain the error in my terminal" })).toBeVisible();
+  await page.locator('#chat-widget__mode button[data-mode="agent"]').click();
+  await expect(chips.getByRole("button", { name: "Run this" })).toBeVisible();
+  await chips.getByRole("button", { name: "Run this" }).click();
+  await expect(page.locator("#chat-widget__input")).toHaveValue("Run this");
+  // a small model
+  const small = await page.evaluate(() => {
+    const m = window.ModelChoice.models.filter((x) => /qwen3-30b|gemma-4-26b|mini|flash/.test(x.id))[0];
+    if (!m) return "";
+    window.site_settings.genieAgentModel = "gpt-6-luna";
+    window.ModelChoice.set(m.id);
+    return m.id;
+  });
+  test.skip(!small, "no small model in the list of this server");
+  const hint = page.locator("#chat-widget__modehint");
+  await expect(hint).toBeVisible();
+  await expect(hint).toContainText("Agent works best with a stronger one");
+  await hint.getByRole("button", { name: /Switch to/ }).click();
+  await expect(hint).toBeHidden();
+  expect(await page.evaluate(() => window.ModelChoice.get().model)).toBe("gpt-6-luna");
 });

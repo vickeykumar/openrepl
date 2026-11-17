@@ -1786,3 +1786,17 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 .cw-tabmenu__none { padding: 8px 6px; color: var(--cw-muted); }
 .cw-stale { font-size: 12px; color: var(--cw-chip-text); border: 1px solid var(--cw-pop-border); border-radius: 10px; background: var(--cw-pop-bg); padding: 8px 12px; margin: 4px 0; }
 .cw-stale b { font-weight: 500; color: var(--cw-strong); }
+
+/* starter chips of an empty chat, and the note about a small model in Agent mode */
+.cw-starters { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 8px; }
+.cw-starters[hidden], .cw-modehint[hidden] { display: none; }
+.cw-starters button {
+  font: inherit; font-size: 12px; cursor: pointer; border-radius: 999px; padding: 4px 11px;
+  color: inherit; background: transparent; border: 1px solid rgba(128, 128, 140, 0.45);
+}
+.cw-starters button:hover, .cw-starters button:focus-visible { border-color: currentColor; }
+.cw-modehint { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; opacity: 0.85; padding: 0 0 8px; }
+.cw-modehint__btn {
+  font: inherit; font-size: 12px; cursor: pointer; border-radius: 6px; padding: 2px 9px;
+  color: inherit; background: transparent; border: 1px solid rgba(128, 128, 140, 0.55);
+}

@@ -8,3 +8,5 @@ In agent mode the card starts with a plan that the agent ticks off as it goes. I
 At the end the card shows what was checked, what changed, the steps and time used, and Undo this task, which puts everything back as it was unless you changed it since.
 
 When a task uses its steps the card pauses and asks. Carry on continues the same task, up to three times. A GENIE.md in your workspace gives it notes about your project (how to run it, the style, what not to touch); its first part is read at the start of a task.
+
+Genie knows how the editor and the terminal work: it sees both, so "run my code" or "what does this error mean" needs no explanation from you. In Chat it answers; for anything that has to be done it points you to Agent. A small model does Agent mode less well, so the panel says so and offers the model the site suggests with one click. An empty chat shows starter questions.

@@ -172,6 +172,9 @@ type GenieSettings struct {
 	// DefaultModel is the model that answers a request naming none, and the one
 	// a visitor starts with. Empty means the built-in choice. It must be on.
 	DefaultModel string `json:"defaultModel"`
+	// AgentModel is the model Genie suggests for Agent mode when the one in use is small ("" is none): the panel offers
+	// to switch to it. It changes nothing by itself.
+	AgentModel string `json:"agentModel"`
 	// FeaturedModels are the models the picker lists first ("Your models") for a visitor who has
 	// not used or pinned any yet; the rest are under "Other models". Empty: the default model and
 	// the first others. Built-in or added models, at most maxFeaturedModels.
@@ -432,6 +435,16 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 			return s, fmt.Errorf("the default model %s is switched off", m.Name)
 		}
 	}
+	s.Genie.AgentModel = strings.TrimSpace(s.Genie.AgentModel)
+	if d := s.Genie.AgentModel; d != "" {
+		m, known := s.Genie.modelByID(d)
+		if !known {
+			return s, fmt.Errorf("%q is not a model", d)
+		}
+		if s.Genie.ModelDisabled(d) {
+			return s, fmt.Errorf("the Agent model %s is switched off", m.Name)
+		}
+	}
 	return s, nil
 }
 
@@ -551,6 +564,7 @@ type publicSettings struct {
 	// the models an admin added that are on, for the picker
 	CustomModels []publicCustomModel `json:"customModels"`
 	DefaultModel string              `json:"defaultModel"`
+	AgentModel   string              `json:"genieAgentModel"` // the model suggested for Agent mode (Genie.AgentModel)
 	// the models the picker starts a new visitor with (empty: its own choice)
 	FeaturedModels []string `json:"featuredModels"`
 	// what Genie reads from the page and keeps (the effective numbers)
@@ -820,6 +834,7 @@ func (s SiteSettings) public() publicSettings {
 		DisabledModels:       models,
 		CustomModels:         s.Genie.publicCustomModels(),
 		DefaultModel:         s.Genie.DefaultModel,
+		AgentModel:           s.Genie.AgentModel,
 		FeaturedModels:       append([]string{}, s.Genie.FeaturedModels...),
 		GenieContext:         s.Genie.context(),
 		AgentEnabled:         !s.Genie.AgentDisabled && !s.Genie.Disabled,
@@ -1040,6 +1055,9 @@ func settingsChanges(a, b SiteSettings) []string {
 		}
 		out = append(out, "default model: "+name)
 	}
+	if a.Genie.AgentModel != b.Genie.AgentModel {
+		out = append(out, "Agent model: "+orStr(b.Genie.AgentModel, "none"))
+	}
 	if a.DBCapacityMB != b.DBCapacityMB {
 		out = append(out, "database capacity changed")
 	}
@@ -1183,4 +1201,11 @@ func currentGenieDefaults() genieDefaults {
 			"agentTasksPerHour": {minAgentTasks, maxAgentTasks}, "agentMaxSteps": {minAgentSteps, maxAgentStepsSet},
 		},
 	}
+}
+
+func orStr(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
 }

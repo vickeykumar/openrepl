@@ -1272,7 +1272,7 @@
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
           customModels: (form.custom || []).map(readCustom),
           featuredModels: featuredNow(),
-          defaultModel: form.defModel.value,
+          defaultModel: form.defModel.value, agentModel: form.agentModel.value,
           contextEditorChars: int(form.ctxEditor.value), contextTerminalChars: int(form.ctxTermChars.value),
           contextTerminalLines: int(form.ctxTermLines.value), historyMessages: int(form.history.value),
           contextAttachItems: int(form.attachItems.value), contextAttachChars: int(form.attachChars.value), contextAttachTotal: int(form.attachTotal.value),
@@ -1357,7 +1357,7 @@
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
           disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
           featuredModels: (s.genie.featuredModels || []).slice(),
-          defaultModel: s.genie.defaultModel || '',
+          defaultModel: s.genie.defaultModel || '', agentModel: s.genie.agentModel || '',
           contextEditorChars: s.genie.contextEditorChars || 0, contextTerminalChars: s.genie.contextTerminalChars || 0,
           contextTerminalLines: s.genie.contextTerminalLines || 0, historyMessages: s.genie.historyMessages || 0,
           contextAttachItems: s.genie.contextAttachItems || 0, contextAttachChars: s.genie.contextAttachChars || 0, contextAttachTotal: s.genie.contextAttachTotal || 0,
@@ -1536,6 +1536,11 @@
       defModel.value = settings.genie.defaultModel || '';
       form.defModel = defModel;
       var wantedDefault = settings.genie.defaultModel || '';
+      var agentModel = h('select', { class: 'field', id: 'f-agentmodel', 'aria-label': 'Model suggested for Agent mode', onchange: update },
+        h('option', { value: '', text: 'None' }));
+      models.forEach(function (m) { agentModel.appendChild(h('option', { value: m.id, text: m.name })); });
+      agentModel.value = settings.genie.agentModel || '';
+      form.agentModel = agentModel;
 
       // the models an admin added: one block each, with its own switch
       form.custom = [];
@@ -1896,6 +1901,7 @@
             return row(t.model.name, what, t.node, h('label', { class: 'cm-check' }, form.featured[t.model.id], h('span', { text: 'Starts in the short list' })));
           }),
           row('Default model', 'The model visitors start with, and the one that answers a request that names none. Built in is Luna for visitors and GPT-4o mini for older callers.', defModel),
+          row('Agent model', 'The model Genie suggests when someone uses Agent mode with a small model (30B or less, mini, flash): the panel shows a Switch button. It changes nothing by itself. A model that is switched off cannot be chosen.', agentModel),
           row('Guests', 'Requests per minute (0 or empty uses the built-in rate).', guest),
           row('Signed-in users', 'Requests per minute (0 or empty uses the built-in rate).', user) ]),
         card('Added models', 'The models above are built in and stay. Add any other model of OpenRouter (find them at openrouter.ai/models), OpenAI or Cloudflare Workers AI by its id, switch it on when you want visitors to have it, and remove it when you do not. A model that is off is not offered, and the server refuses it. Save to apply.', [

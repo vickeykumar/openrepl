@@ -92,6 +92,7 @@ type TaskState = {
   baseline: { file: string; text: string } | null; // the editor as it was before the first change
   endReason: string; // "", "unreadable" or "toolong": why a task failed
   changedLine: string; // what changed, as the end of the task says it (file and lines)
+  ran: number; // actions carried out
   before: Map<string, string>; // each file the task changed, as it was before the first change ("" is the editor with no file)
   after: Map<string, string>; // and as the task left it, to see that nobody changed it since
   original: string; // the file that was open when the task began
@@ -351,6 +352,7 @@ export class AgentRunner {
         baseline: null,
         endReason: "",
         changedLine: "",
+        ran: 0,
         before: new Map<string, string>(),
         after: new Map<string, string>(),
         original: this.openFile(),
@@ -396,6 +398,7 @@ export class AgentRunner {
       // Stop is the user's own doing; anything else that did not finish (an
       // error, a timeout, a second unreadable answer) is a failure
       const outcome = finished ? "done" : this.stopped && !this.timedOut ? "stopped" : "failed";
+      const answeredOnly = finished && !!lastTask && lastTask.ran === 0 && lastTask.steps === 1;
       if (lastTask) {
         const prior = this.lastTaskLine;
         if (prior) this.past = [...this.past, prior].slice(-(MEMORY_TASKS - 1));
@@ -404,6 +407,11 @@ export class AgentRunner {
       }
       try {
         this.host.thinking(false);
+        // a question answered in one step, with nothing done, is an answer and not a task: no card, no line in the history
+        if (answeredOnly && this.card) {
+          this.card.remove();
+          this.card = null;
+        }
         if (lastTask) await this.drawSummary(lastTask, finished);
         this.endCard(finished);
         this.clearHighlight();
@@ -424,7 +432,7 @@ export class AgentRunner {
       this.ctl = null;
       try {
         if (this.host.ended) {
-          this.host.ended(outcome, lastTask ? { task: lastText, steps: lastTask.steps, checked: lastTask.work.checked || "", changed: lastTask.changedLine } : undefined);
+          this.host.ended(outcome, lastTask && !answeredOnly ? { task: lastText, steps: lastTask.steps, checked: lastTask.work.checked || "", changed: lastTask.changedLine } : undefined);
         }
       } catch (e) {
         console.error("agent:", e);
@@ -496,6 +504,7 @@ export class AgentRunner {
     const results: StepResult[] = [];
     for (let i = 0; i < step.actions.length && !this.stopped; i++) {
       const r = await this.run(step.actions[i]);
+      t.ran++;
       t.work.noteAction(step.actions[i], r, this.openFile());
       results.push(r);
     }

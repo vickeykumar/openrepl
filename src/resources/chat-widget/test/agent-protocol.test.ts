@@ -2,6 +2,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  isSmallModel,
+  starterChips,
   ACTIONS,
   MAX_ACTIONS,
   MAX_OUTPUT,
@@ -598,4 +600,19 @@ test("files_search and files_read are read-only: they need no permission, and th
   // a read is never more than the most lines
   const long = parseStep(JSON.stringify({ actions: [{ type: "files_read", path: "a", start_line: 1, end_line: 9000 }] }));
   assert.ok(long.ok && long.step.actions[0].endLine === 400);
+});
+
+
+test("small models are told from their id", () => {
+  for (const id of ["@cf/qwen/qwen3-30b-a3b-fp8", "@cf/google/gemma-4-26b-a4b-it", "gpt-4o-mini", "@cf/zai-org/glm-4.7-flash", "google/gemma-4-31b-it"]) {
+    assert.equal(isSmallModel(id), true, id);
+  }
+  for (const id of ["gpt-6-luna", "anthropic/claude-sonnet", "meta/llama-3.3-70b-instruct", ""]) {
+    assert.equal(isSmallModel(id), false, id);
+  }
+});
+
+test("each mode has its starter chips", () => {
+  assert.ok(starterChips(true).includes("Run this"));
+  assert.ok(starterChips(false).includes("Explain the error in my terminal"));
 });

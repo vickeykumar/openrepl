@@ -332,3 +332,17 @@ func TestTheChatHistorySettingsAreCheckedSavedAndShown(t *testing.T) {
 		t.Errorf("settings.js: %s", pub.Body.String())
 	}
 }
+
+func TestAsciiJSON(t *testing.T) {
+	in := map[string]interface{}{"text": "café — \U0001F600 \"q\" <b>"}
+	b := asciiJSON(in)
+	for _, c := range b {
+		if c >= 0x80 {
+			t.Fatalf("not ascii: %s", b)
+		}
+	}
+	var back map[string]interface{}
+	if err := json.Unmarshal(b, &back); err != nil || back["text"] != in["text"] {
+		t.Fatalf("round trip: %v %v %s", err, back, b)
+	}
+}
