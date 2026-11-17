@@ -4,10 +4,11 @@ import { marked } from "marked";
 import { widgetHTML } from "./widgetHtmlString";
 import { AgentMemory, AgentRunner, AgentState, TaskInfo } from "./agent";
 import { ChatStore } from "./chat-store";
-import { ChatLine, Restored, TabView, afterClose, clock, filterChats, fitText, groupChats, moveTab, newChatId, restore, sizeText, staleNote, tabMark, tabToClose, titleFrom, toHistory } from "./chat-tabs";
+import { ChatLine, Restored, TabView, afterClose, clock, filterChats, fitText, groupChats, moveTab, newChatId, restore, sizeText, staleForAgent, staleNote, staleParts, tabMark, tabToClose, titleFrom, toHistory } from "./chat-tabs";
 import { SSEParser, addEvent, answerOf, newStreamed } from "./sse";
 import { definesSomething } from "./chat-send";
 import { isSmallModel, starterChips } from "./agent-protocol";
+import { chatTurnsText } from "./agent-task";
 import { answerBudget, errorBlock, errorRequest, looksLikeTask, messagesToSend, selectionRequest } from "./chat-send";
 import { CreditUsage, TokenUsage, answerTokens, creditLine, creditRows, tokenRows } from "./tokens";
 import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntry, addItem, gather, hashQuery, itemKey, metaOf, namesLine, problemsLine, rankEntries, removeItem, withAttached, withoutHash } from "./attach";
@@ -818,9 +819,10 @@ function afterShown(tab: ChatTab) {
     const el = document.createElement("div");
     el.className = "cw-stale";
     el.setAttribute("role", "status");
+    const parts = staleParts(tab.ctx, ctxNow());
     const b = document.createElement("b");
-    b.textContent = "This chat was about " + [tab.ctx.file, tab.ctx.language ? "(" + tab.ctx.language + ")" : ""].filter(Boolean).join(" ") + ".";
-    el.append(b, document.createTextNode(" " + note.replace(/^This chat was about [^.]*\. ?/, "")));
+    b.textContent = "This chat was about " + (parts ? parts.was : "") + ".";
+    el.append(b, document.createTextNode(" " + note.slice(note.indexOf(". The editor now has") + 2)));
     messagesHistory.prepend(el);
   }
   if (input) {
@@ -1865,6 +1867,8 @@ const agentRunner = new AgentRunner(
       if (label) label.textContent = chosenModel().reasoning && chosenEffort().id !== "none" ? `${chosenModel().short} is thinking…` : "";
       bodyOf(t).prepend(t.bubble);
     },
+    chatBefore: () => chatTurnsText((runTab || activeTab).history, NUM_MANDATORY_ENTRIES),
+    contextNote: () => staleForAgent((runTab || activeTab).ctx, ctxNow()),
     userSaid: async (text: string) => {
       const t = runTab || activeTab;
       addMessageToHistory("user", text, UID, t.history);

@@ -239,12 +239,31 @@ export function sizeText(bytes: number): string {
   return Math.round(bytes / 104857.6) / 10 + " MB";
 }
 
+// What a chat was about and what the editor has now, in words, when they differ: null when there is nothing to say.
+export function staleParts(chat: { file: string; language: string }, now: { file: string; language: string }): { was: string; is: string } | null {
+  if (!chat.file && !chat.language) return null;
+  const same = (a: string, b: string) => (a || "").trim() === (b || "").trim();
+  if (same(chat.file, now.file) && same(chat.language, now.language)) return null;
+  const was = [chat.file, chat.language ? "(" + chat.language + ")" : ""].filter(Boolean).join(" ");
+  const nowFile = now.file || (now.language ? "an unnamed file" : "");
+  const is = [nowFile, now.language ? "(" + now.language + ")" : ""].filter(Boolean).join(" ") || "something else";
+  return { was, is };
+}
+
 // A line for when a chat is shown again and the editor is not what it was about: "" when there is nothing to say.
 export function staleNote(chat: { file: string; language: string }, now: { file: string; language: string }): string {
-  if (!chat.file && !chat.language) return "";
-  const same = (a: string, b: string) => (a || "").trim() === (b || "").trim();
-  if (same(chat.file, now.file) && same(chat.language, now.language)) return "";
-  const was = [chat.file, chat.language ? "(" + chat.language + ")" : ""].filter(Boolean).join(" ");
-  const is = [now.file, now.language ? "(" + now.language + ")" : ""].filter(Boolean).join(" ") || "something else";
-  return "This chat was about " + was + ". The editor now has " + is + ". Genie reads the editor as it is now when you ask something new.";
+  const p = staleParts(chat, now);
+  if (!p) return "";
+  return "This chat was about " + p.was + ". The editor now has " + p.is + ". Genie reads the editor as it is now when you ask something new.";
+}
+
+// The same, for the agent at the start of a task: it is told, so that it does not work on whatever the editor holds now.
+export function staleForAgent(chat: { file: string; language: string }, now: { file: string; language: string }): string {
+  const p = staleParts(chat, now);
+  if (!p) return "";
+  return (
+    "Note: this chat was about " + p.was + ", but the editor now has " + p.is + " (the page was reloaded or the language changed). " +
+    "If the task continues that work, first switch the language (set_language) and open the file (files_open) it was about; " +
+    "if you are not sure which project is meant, ask the user in \"say\" and set \"done\": true. Do not start a different project in the language that is open now."
+  );
 }

@@ -1,7 +1,7 @@
 // node --test test/   (from src/resources/chat-widget)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { afterClose, clock, filterChats, fitText, groupChats, MAX_LINE_TEXT, moveTab, newChatId, restore, sizeText, staleNote, tabMark, tabToClose, titleFrom, toHistory } from "../src/chat-tabs.ts";
+import { afterClose, clock, filterChats, fitText, groupChats, MAX_LINE_TEXT, moveTab, newChatId, restore, sizeText, staleForAgent, staleNote, staleParts, tabMark, tabToClose, titleFrom, toHistory } from "../src/chat-tabs.ts";
 
 test("a chat id is eight letters and digits, and differs", () => {
   const a = newChatId();
@@ -124,4 +124,12 @@ test("sizes, and the note when the editor is not what the chat was about", () =>
   assert.equal(staleNote({ file: "", language: "" }, { file: "x.go", language: "Go" }), "");
   assert.match(staleNote({ file: "main.py", language: "Python" }, { file: "util.go", language: "Go" }), /This chat was about main\.py \(Python\)\. The editor now has util\.go \(Go\)\./);
   assert.match(staleNote({ file: "", language: "Python" }, { file: "", language: "" }), /The editor now has something else/);
+});
+
+test("the stale note keeps a dot in a file name, and an unnamed file is said so", () => {
+  const p = staleParts({ file: "index.html", language: "JavaScript" }, { file: "", language: "JavaScript" });
+  assert.deepEqual(p, { was: "index.html (JavaScript)", is: "an unnamed file (JavaScript)" });
+  assert.equal(staleParts({ file: "a.py", language: "Python" }, { file: "a.py", language: "Python" }), null);
+  assert.match(staleForAgent({ file: "index.html", language: "JavaScript" }, { file: "main.c", language: "C" }), /about index\.html \(JavaScript\), but the editor now has main\.c \(C\).*set_language.*files_open/);
+  assert.equal(staleForAgent({ file: "", language: "" }, { file: "main.c", language: "C" }), "");
 });

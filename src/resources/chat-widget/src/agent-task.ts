@@ -224,3 +224,23 @@ export function countLines(before: string, after: string): { added: number; remo
 export function changeLine(file: string, d: { added: number; removed: number }): string {
   return file + " +" + d.added + " −" + d.removed;
 }
+
+// ---- the chat before a task ---------------------------------------------------------------
+
+// The last turns of the chat as text for the first message of a task, so that "try again" or "do that" means something:
+// the user's words and Genie's answers, each cut, the newest last. `skip` is the entries at the start of the history that
+// are not turns (the prompts and the editor snapshot). "" when nothing was said before.
+export function chatTurnsText(history: { role: string; content: string }[], skip: number, turns: number = 6, each: number = 700, total: number = 3500): string {
+  const said = history.slice(skip).filter((m) => (m.role === "user" || m.role === "assistant") && String(m.content || "").trim() !== "");
+  const lines = said.slice(-turns).map((m) => {
+    const text = String(m.content).replace(/^\[user-[^\]]*\]\s*/, "").trim();
+    const cut = text.length > each ? text.slice(0, each) + " ..." : text;
+    return (m.role === "user" ? "User: " : "Genie: ") + cut;
+  });
+  let out = lines.join("\n");
+  while (out.length > total && lines.length > 1) {
+    lines.shift();
+    out = lines.join("\n");
+  }
+  return out === "" ? "" : "Earlier in this chat (for context only; the task is the message above, and the editor and the terminal below are what is open now):\n" + out;
+}

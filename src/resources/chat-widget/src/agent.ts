@@ -144,6 +144,10 @@ export interface AgentHost {
   taskCredits?(token: string): Promise<number | null>;
   // Tells the server how a task ended, counts only (POST chat/agent-outcome).
   report?(info: { token: string; outcome: string; changed: boolean; checked: boolean }): void;
+  // The last turns of the chat before this task, and a note when the editor is not what the chat was about (both "" when
+  // there is nothing to say). Asked before userSaid, so the task itself is not in the turns.
+  chatBefore?(): string;
+  contextNote?(): string;
   userSaid(text: string): Promise<void>;
   // context: the X-OpenREPL-Context header of the step, which lists the site notes it was answered from
   genieSaid(text: string, context?: string | null): Promise<void>;
@@ -338,10 +342,12 @@ export class AgentRunner {
     // gives the box back. A task that dies before it starts must not leave the
     // send button disabled.
     try {
+      const before = this.host.chatBefore ? this.host.chatBefore() : "";
+      const ctxNote = this.host.contextNote ? this.host.contextNote() : "";
       await this.host.userSaid(task);
       this.drawCard(); // after the message it belongs to: the newest is shown last
       const task_: TaskState = {
-        messages: [{ role: "user", content: `[user-${this.host.uid()}] ${task}${attached ? "\n\n" + attached : ""}${this.recap ? "\n\n" + this.recap : ""}` }],
+        messages: [{ role: "user", content: `[user-${this.host.uid()}] ${task}${attached ? "\n\n" + attached : ""}${before ? "\n\n" + before : ""}${ctxNote ? "\n\n" + ctxNote : ""}${this.recap ? "\n\n" + this.recap : ""}` }],
         token: "",
         badAnswers: 0,
         max: this.host.maxSteps(),

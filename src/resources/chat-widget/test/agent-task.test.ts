@@ -160,3 +160,22 @@ test("the common slips of a model are mended when the answer cannot be read as i
   assert.equal(extractJSON("no json here"), null);
   assert.equal(extractJSON('{"say": '), null);
 });
+
+import { chatTurnsText } from "../src/agent-task.ts";
+
+test("the chat before a task is the last turns, cut, newest last", () => {
+  const h = [
+    { role: "system", content: "prompt" },
+    { role: "system", content: "editor snapshot" },
+    { role: "user", content: "[user-abc] make a shop site" },
+    { role: "assistant", content: "I'll create the files." },
+    { role: "user", content: "[user-abc] " + "x".repeat(2000) },
+  ];
+  const t = chatTurnsText(h, 2);
+  assert.match(t, /^Earlier in this chat/);
+  assert.match(t, /User: make a shop site\nGenie: I'll create the files\.\nUser: x+ \.\.\./);
+  assert.ok(!t.includes("[user-abc]") && !t.includes("prompt"));
+  assert.equal(chatTurnsText(h.slice(0, 2), 2), "");
+  const many = Array.from({ length: 20 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: "m" + i }));
+  assert.equal(chatTurnsText(many, 0).split("\n").length, 1 + 6);
+});

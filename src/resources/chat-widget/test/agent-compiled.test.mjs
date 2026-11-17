@@ -166,6 +166,8 @@ function setup(script, opts = {}) {
     modelFields: () => ({ model: "test-model" }),
     ideContext: () => ({ role: "system", content: opts.context ? opts.context() : "ide context" }),
     editorText: () => (opts.editorText ? opts.editorText() : ""),
+    chatBefore: () => (opts.chatBefore ? opts.chatBefore() : ""),
+    contextNote: () => (opts.contextNote ? opts.contextNote() : ""),
     stream: () => !!opts.stream,
     readFiles: opts.readFiles ? (req, signal) => opts.readFiles(req, signal) : undefined,
     taskCredits: async () => (opts.credits === undefined ? null : opts.credits),
@@ -1108,4 +1110,17 @@ test("built: editor_replace finds an old text that differs only in white space, 
   assert.match(r[0].detail, /copy from them/);
   assert.match(r[0].detail, /1: def f\(\):|4: def g\(\):/);
   assert.match(r[1].detail, /WHOLE new file/);
+});
+
+test("built: a task is sent the chat before it, and the note that the editor is not what the chat was about", async () => {
+  const t = setup([{ say: "ok", actions: [], done: true }], {
+    chatBefore: () => "Earlier in this chat (for context only):\nUser: make a shop site\nGenie: I will create the files.",
+    contextNote: () => "Note: this chat was about index.html (JavaScript), but the editor now has main.c (C).",
+  });
+  await t.done(t.runner.start("try again"));
+  const first = t.log.requests[0].messages[0].content;
+  assert.match(first, /^\[user-[^\]]*\] try again/);
+  assert.match(first, /User: make a shop site/);
+  assert.match(first, /editor now has main\.c \(C\)/);
+  assert.ok(first.indexOf("try again") < first.indexOf("Earlier in this chat"), "the task comes first");
 });
