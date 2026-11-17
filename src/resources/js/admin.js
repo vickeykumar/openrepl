@@ -2991,25 +2991,30 @@
             e.kind === 'tool' ? h('button', { class: 'btn', type: 'button', text: 'Compare', title: 'The dry runs only (the apt plan and the pixi solve): seconds, nothing is installed. The sizes are estimates until you press Measure.', onclick: function () { api.post('admin/store/catalogue', { action: 'compare', id: e.id }).then(function (r) { toast(r.summary); return load(); }, fail); } }) : null,
             (['tool', 'lib', 'clib', 'node', 'weblib', 'gomod', 'jar', 'crate', 'lib27'].indexOf(e.kind) >= 0) ? h('button', { class: 'btn', type: 'button', text: 'Measure', title: 'Install it with every manager that can on this server, trim it, and keep the sizes: the smallest is chosen. Takes minutes; this server\'s CPU type only.', onclick: function () { catPost({ action: 'measure', id: e.id }, 'Measuring ' + e.name + ' in the background: reload this list in a few minutes.'); } }) : null,
             canInstall ? h('button', { class: 'btn primary', type: 'button', text: 'Install', onclick: function () { catPost({ action: 'install', id: e.id }, 'Installing ' + e.name + '.'); } }) : null,
-            h('button', { class: 'btn danger', type: 'button', text: 'Remove', title: 'Take it off the list (an installed app stays installed)', onclick: function () { ask({ title: 'Remove ' + e.name + ' from the catalogue?', body: 'It is no longer listed. An installed copy stays installed until you remove it under Installed.', confirm: 'Remove', danger: true }).then(function (ok) { if (ok) catPost({ action: 'remove', id: e.id }, e.name + ' was taken off the list.'); }); } }));
+            h('button', { class: 'btn danger', type: 'button', text: 'Retire', title: 'Take it off the list. You can restore it in Retired apps (an installed app stays installed)', onclick: function () { ask({ title: 'Retire ' + e.name + '?', body: 'It is no longer listed. You can restore it under Retired apps. An installed copy stays installed until you remove it under Installed.', confirm: 'Retire', danger: true }).then(function (ok) { if (ok) catPost({ action: 'remove', id: e.id }, e.name + ' was retired.'); }); } }));
         } }
       ], list, { empty: 'No entry matches.' }));
       // retired entries: cut from the default catalogue, but a record in the database still lists them (LLD 18, section 15)
       if ((cat.retired || []).length) {
         out.appendChild(h('h3', { text: 'Retired apps (' + cat.retired.length + ')' }));
-        out.appendChild(h('p', { class: 'sub', text: 'These were cut from the catalogue, but this server still has a record of each, so they are still listed. Pick the ones to remove from the list. An installed copy stays installed (remove it under Installed).' }));
+        out.appendChild(h('p', { class: 'sub', text: 'Apps that were cut from the catalogue or that an admin retired. Restore brings back what the default catalogue still has; Delete record removes the database record of the rest. An installed copy stays installed. An installed copy stays installed (remove it under Installed).' }));
         var picks = {}, rbox = h('div', { class: 'card', 'data-retired': '1' });
         cat.retired.forEach(function (r) {
           var cb = h('input', { type: 'checkbox', 'aria-label': 'Pick ' + r.name, onchange: function (ev) { picks[r.id] = ev.target.checked; } });
-          rbox.appendChild(h('label', { style: 'display:block;margin:2px 0' }, cb, ' ' + r.name + ' ', h('span', { class: 'sub', text: (NAMES[r.kind] || r.kind) + (r.installed ? ' \u00b7 installed' : '') })));
+          rbox.appendChild(h('label', { style: 'display:block;margin:2px 0' }, cb, ' ' + r.name + ' ', h('span', { class: 'sub', text: (NAMES[r.kind] || r.kind) + (r.removed ? ' \u00b7 retired by an admin' : '') + (r.installed ? ' \u00b7 installed' : '') })));
         });
         out.appendChild(rbox);
         out.appendChild(h('div', { class: 'toolbar' },
-          h('button', { class: 'btn', type: 'button', text: 'Select all', onclick: function () { rbox.querySelectorAll('input').forEach(function (c, i) { c.checked = true; picks[cat.retired[i].id] = true; }); } }),
-          h('button', { class: 'btn danger', type: 'button', text: 'Remove selected', onclick: function () {
+          h('button', { class: 'btn', type: 'button', text: 'Restore selected', title: 'Bring back entries that are in the default catalogue', onclick: function () {
             var ids = Object.keys(picks).filter(function (k) { return picks[k]; });
             if (!ids.length) { toast('Pick at least one app.'); return; }
-            ask({ title: 'Remove ' + ids.length + ' retired app' + (ids.length === 1 ? '' : 's') + ' from the list?', body: 'Their records are deleted from the database. Installed copies stay installed.', confirm: 'Remove', danger: true }).then(function (ok) { if (ok) catPost({ action: 'purge-retired', names: ids }, ids.length + ' removed from the list.'); });
+            catPost({ action: 'restore-removed', names: ids }, 'Restored what the default catalogue still has.');
+          } }),
+          h('button', { class: 'btn', type: 'button', text: 'Select all', onclick: function () { rbox.querySelectorAll('input').forEach(function (c, i) { c.checked = true; picks[cat.retired[i].id] = true; }); } }),
+          h('button', { class: 'btn danger', type: 'button', text: 'Delete record', title: 'Delete the database record of the picked apps that are not in the default catalogue', onclick: function () {
+            var ids = Object.keys(picks).filter(function (k) { return picks[k]; });
+            if (!ids.length) { toast('Pick at least one app.'); return; }
+            ask({ title: 'Remove ' + ids.length + ' retired app' + (ids.length === 1 ? '' : 's') + ' from the list?', body: 'Their records are deleted from the database. Installed copies stay installed.', confirm: 'Remove', danger: true }).then(function (ok) { if (ok) catPost({ action: 'purge-retired', names: ids }, 'Deleted the records that could be deleted.'); });
           } })));
       }
       // the disk of every server

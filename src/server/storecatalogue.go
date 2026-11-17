@@ -170,6 +170,9 @@ func (server *Server) handleAdminCatalogue(w http.ResponseWriter, r *http.Reques
 		}
 	case "remove":
 		err = svc.RemoveEntry(who, c.ID)
+	case "restore-removed":
+		out["restored"] = svc.RestoreRemoved(c.Names)
+		detail = strings.Join(c.Names, ",")
 	case "purge-retired":
 		var n int
 		n, err = svc.PurgeRetired(c.Names)

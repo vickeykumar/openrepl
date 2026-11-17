@@ -1835,3 +1835,31 @@ func TestRetiredEntriesAreListedAndRemovedOnlyWhenPicked(t *testing.T) {
 		t.Error("a live entry was taken off")
 	}
 }
+
+func TestAnAdminRemovedEntryIsListedAndCanComeBack(t *testing.T) {
+	svc, _ := newService(t, Fake{})
+	if err := svc.RemoveEntry("admin", "numpy"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := svc.Entry("numpy"); ok {
+		t.Fatal("numpy is still listed after Remove")
+	}
+	var found bool
+	for _, r := range svc.Retired() {
+		if r.ID == "numpy" && r.Removed && r.InDefault {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("a removed entry is not offered for restoring")
+	}
+	if n, _ := svc.PurgeRetired([]string{"numpy"}); n != 0 {
+		t.Error("purge must not touch an entry the default file has")
+	}
+	if svc.RestoreRemoved([]string{"numpy", "pandas"}) != 1 {
+		t.Error("only the removed one comes back")
+	}
+	if _, ok := svc.Entry("numpy"); !ok {
+		t.Error("numpy did not come back")
+	}
+}
