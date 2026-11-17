@@ -4,6 +4,8 @@
 // into js/scribbler.js. Top-level names are page globals (window.*), as they
 // were in the single file: index.html, palette.js and the other parts use them.
 
+import { reconcileWanted } from "./lib-signin.mjs";
+
 window.logout = logout;
 window.renderProfileData = renderProfileData;
 
@@ -602,6 +604,24 @@ $(function() {
       openSignIn(want);
     }
 
+    // The cookie names an account and the browser is still signed in with Firebase, but the server has no record of that session
+    // (it says "not logged in", with a reason): post the sign-in again, once in a while, so that the page and the server agree.
+    // Without it the file browser shows the account's workspace (it follows the cookie) and the page shows a visitor.
+    var RECONCILE_KEY = 'openrepl-login-reconcile';
+    function reconcileSignIn(answer) {
+      var last = 0;
+      try { last = Number(sessionStorage.getItem(RECONCILE_KEY)) || 0; } catch (e) { /* storage off: the 10 minutes are not kept */ }
+      if (!reconcileWanted(answer, last, Date.now())) return;
+      if (!window.firebase || !firebase.auth) return;
+      var stop = firebase.auth().onAuthStateChanged(function (u) {
+        stop();
+        if (!u || u.uid !== answer.uid || !u.emailVerified) return;
+        try { sessionStorage.setItem(RECONCILE_KEY, String(Date.now())); } catch (e) { /* as above */ }
+        note('The server did not know this sign-in (' + answer.reason + '): posting it again');
+        completeLogin({ user: u });
+      });
+    }
+
     // check if already logged in 
     var xhr = new XMLHttpRequest();
     var url = window.location.protocol + "//" + window.location.host + "/login";
@@ -634,7 +654,10 @@ $(function() {
           } else {
             var resumed = takePending();
             if (resumed) openSignIn(resumed); // back from a provider's page; FirebaseUI finishes the sign-in
-            else openFromUrl();
+            else {
+              reconcileSignIn(user);
+              openFromUrl();
+            }
           }
         }
         catch(e) {

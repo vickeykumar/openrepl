@@ -1,6 +1,7 @@
 package user
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -295,5 +296,49 @@ func TestTheAccountListIsScannedOnceUntilSomethingChanges(t *testing.T) {
 	ListAccountsFresh()
 	if accountsCache.Scans() != n+1 {
 		t.Errorf("a fresh list did not scan")
+	}
+}
+
+func TestSessionStateSaysWhyASessionIsNotUsable(t *testing.T) {
+	open(t)
+	signIn(t, "uid-s", "s@example.com", true)
+	if got := SessionState("uid-s", "tok-uid-s"); got != "ok" {
+		t.Fatalf("a stored session: %q", got)
+	}
+	if got := SessionState("uid-s", "another-token"); got != "not_found" {
+		t.Fatalf("a session this server has no record of: %q", got)
+	}
+	if got := SessionState("uid-nobody", "tok"); got != "not_found" {
+		t.Fatalf("an account with no sessions: %q", got)
+	}
+	if got := SessionState("", "tok"); got != "none" {
+		t.Fatalf("no user: %q", got)
+	}
+	if got := SessionState("uid-s", ""); got != "none" {
+		t.Fatalf("no session id: %q", got)
+	}
+	signIn(t, "uid-e", "e@example.com", true)
+	up, err := FetchUserProfileData("uid-e")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := up.SessionMap["tok-uid-e"]
+	old.ExpirationTime = 1 // long ago: the server's own lifetime of the session, not the token's
+	up.SessionMap["tok-uid-e"] = old
+	data, _ := json.Marshal(up)
+	if err := session_db_handle.Store([]byte("uid-e"), data); err != nil {
+		t.Fatal(err)
+	}
+	if got := SessionState("uid-e", "tok-uid-e"); got != "expired" {
+		t.Fatalf("an expired session: %q", got)
+	}
+	if err := SetBlocked("uid-s", true); err != nil {
+		t.Fatal(err)
+	}
+	if got := SessionState("uid-s", "tok-uid-s"); got != "blocked" {
+		t.Fatalf("a blocked account: %q", got)
+	}
+	if !IsSessionExpired("uid-s", "tok-uid-s") || !IsSessionExpired("uid-s", "x") {
+		t.Fatal("IsSessionExpired disagrees with SessionState")
 	}
 }
