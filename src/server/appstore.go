@@ -567,6 +567,9 @@ type storeNodeRow struct {
 	Retry    map[string]int64   `json:"retry,omitempty"`    // when (unix seconds) the node tries a failed bundle again
 	GaveUp   map[string]bool    `json:"gaveUp,omitempty"`   // bundles the node does not try again by itself (not available for its CPU type, or tried enough)
 	Versions map[string]string  `json:"versions,omitempty"` // the version a node really installed where it is not the gateway's (its best for its own CPU type)
+	Doing    string             `json:"doing,omitempty"`    // the app the node installs now
+	Since    int64              `json:"since,omitempty"`    // since when (unix seconds)
+	Queued   []string           `json:"queued,omitempty"`   // the apps that wait for their turn
 }
 
 // handleAdminStore is the Apps page of the dashboard: GET the whole picture, POST one decision.
@@ -581,8 +584,9 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 		for _, id := range local.Have {
 			local.Sizes[id] = float64(svc.Store().BundleSize(id)) / (1 << 20)
 		}
+		gDoing, gSince, gQueued := svc.Activity()
 		appStoreMu.Lock()
-		rows := []storeNodeRow{{Node: "gateway", Have: local.Have, Failed: appLocal.Failed, Retry: appLocal.Retry, GaveUp: appLocal.GaveUp, Versions: appLocal.Versions, SizeMB: local.SizeMB, Sizes: local.Sizes}}
+		rows := []storeNodeRow{{Node: "gateway", Doing: gDoing, Since: gSince, Queued: gQueued, Have: local.Have, Failed: appLocal.Failed, Retry: appLocal.Retry, GaveUp: appLocal.GaveUp, Versions: appLocal.Versions, SizeMB: local.SizeMB, Sizes: local.Sizes}}
 		ids := make([]string, 0, len(appNodes))
 		for id := range appNodes {
 			ids = append(ids, id)
@@ -594,7 +598,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 			if have == nil {
 				have = []string{} // a worker that has only reported a fetch has not told what it has: an empty list, not null
 			}
-			rows = append(rows, storeNodeRow{Node: id, Have: have, Failed: n.Failed, Retry: n.Retry, GaveUp: n.GaveUp, Versions: n.Versions, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339), Sizes: n.Sizes,
+			rows = append(rows, storeNodeRow{Node: id, Have: have, Doing: n.Doing, Since: n.Since, Queued: n.Queued, Failed: n.Failed, Retry: n.Retry, GaveUp: n.GaveUp, Versions: n.Versions, SizeMB: n.SizeMB, Seen: n.Seen.UTC().Format(time.RFC3339), Sizes: n.Sizes,
 				Pending: append([]string(nil), appCommands[id]...)})
 		}
 		appStoreMu.Unlock()

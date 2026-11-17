@@ -148,10 +148,14 @@ type Service struct {
 	remote   []Entry   // the gateway's admin entries, on a node that has no catalog (guarded by remoteMu)
 	remoteMu sync.Mutex
 
-	gwFails map[string]int  // the gateway's own failed installs of an app in a row (for Backoff)
-	retryOf map[string]bool // an install that is the gateway's own retry (it does not reset the count)
-	retryMu sync.Mutex
-	retry   map[string]retryEntry // the bundles that failed to install here: when to try again (memory only: a restart tries at once)
+	actMu     sync.Mutex // what a replay is doing (Activity)
+	actDoing  string
+	actSince  time.Time
+	actQueued []string
+	gwFails   map[string]int  // the gateway's own failed installs of an app in a row (for Backoff)
+	retryOf   map[string]bool // an install that is the gateway's own retry (it does not reset the count)
+	retryMu   sync.Mutex
+	retry     map[string]retryEntry // the bundles that failed to install here: when to try again (memory only: a restart tries at once)
 }
 
 // retryEntry is a failed install of one bundle on this node.
@@ -173,6 +177,7 @@ type Job struct {
 	Index  int    // which of installSteps is going on
 	Detail string // what the solve found, for the step list
 	Start  time.Time
+	Began  time.Time // when it got its turn (its first step began)
 }
 
 // New makes the service.
@@ -601,6 +606,9 @@ func (s *Service) step(name string, index int, detail string) {
 	s.mu.Lock()
 	if j := s.jobs[name]; j != nil {
 		j.Index, j.Detail = index, detail
+		if index >= 0 && j.Began.IsZero() {
+			j.Began = s.cfg.Now()
+		}
 		if index >= 0 && index < len(installSteps) {
 			j.Step = installSteps[index]
 		}
@@ -1472,6 +1480,11 @@ type NodeState struct {
 	Retry map[string]int64 `json:"retry,omitempty"`
 	// GaveUp are the bundles this node does not try again by itself (not available for its CPU type, or tried enough): an admin's Reinstall tries again.
 	GaveUp map[string]bool `json:"gaveUp,omitempty"`
+	// What the node is doing: the app it installs now and since when (unix seconds), and the apps that wait for their turn (names). A server that is
+	// busy sends nothing else for minutes: this is how the admin tells "installing" from "missing".
+	Doing  string   `json:"doing,omitempty"`
+	Since  int64    `json:"since,omitempty"`
+	Queued []string `json:"queued,omitempty"`
 	// Versions are the versions this node really installed where they are not the gateway's (its best for its own CPU type).
 	Versions map[string]string `json:"versions,omitempty"`
 }
@@ -1515,6 +1528,20 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		st.Failed["store"] = err.Error()
 		return st
 	}
+	// the apps this pass is going to make (the ones that wait for their turn are shown as such)
+	var todo []string
+	for _, a := range snap.Apps {
+		if ValidBundle(a.ID) && ValidName(a.Name) && ValidVersion(a.Version) && !s.cfg.Store.HasBundle(a.ID) {
+			s.retryMu.Lock()
+			r, waiting := s.retry[a.ID]
+			s.retryMu.Unlock()
+			if !waiting || (!r.gaveUp && !s.cfg.Now().Before(r.next)) {
+				todo = append(todo, a.Name)
+			}
+		}
+	}
+	s.setQueued(todo)
+	defer func() { s.setQueued(nil); s.clearDoing() }()
 	want := map[string]bool{}
 	for _, a := range snap.Apps {
 		if !ValidBundle(a.ID) || !ValidName(a.Name) || !ValidVersion(a.Version) {
@@ -1546,6 +1573,10 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 			continue
 		}
 		s.inst.Lock()
+		s.setDoing(a.Name)
+		if s.cfg.OnStep != nil {
+			s.cfg.OnStep(s.stateNow(st)) // it began: the gateway is told now, not when the bundle is done (a long install is silent for minutes)
+		}
 		dest := s.cfg.Store.BundlePath(a.ID)
 		os.RemoveAll(dest)
 		var logb workLog
@@ -1666,6 +1697,7 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 			delete(s.retry, a.ID)
 			s.retryMu.Unlock()
 		}
+		s.clearDoing()
 		s.inst.Unlock()
 		if s.cfg.OnStep != nil {
 			s.cfg.OnStep(s.stateNow(st))
@@ -1741,7 +1773,59 @@ func (s *Service) stateNow(st NodeState) NodeState {
 		out.Sizes[id] = float64(s.cfg.Store.BundleSize(id)) / (1 << 20)
 	}
 	out.SizeMB = float64(s.cfg.Store.Size()) / (1 << 20)
+	out.Doing, out.Since, out.Queued = s.Activity()
 	return out
+}
+
+// Activity is what this node is installing now (the name and the time it began, unix seconds) and which apps wait for their turn: the installs
+// of its own (jobs) and the bundles of a replay.
+func (s *Service) Activity() (doing string, since int64, queued []string) {
+	s.mu.Lock()
+	for name, j := range s.jobs {
+		if j.Index >= 0 {
+			doing, since = name, j.Began.Unix()
+		} else {
+			queued = append(queued, name)
+		}
+	}
+	s.mu.Unlock()
+	s.actMu.Lock()
+	if s.actDoing != "" && doing == "" {
+		doing, since = s.actDoing, s.actSince.Unix()
+	}
+	for _, q := range s.actQueued {
+		if q != doing {
+			queued = append(queued, q)
+		}
+	}
+	s.actMu.Unlock()
+	sort.Strings(queued)
+	return doing, since, queued
+}
+
+func (s *Service) setQueued(names []string) {
+	s.actMu.Lock()
+	s.actQueued = append([]string(nil), names...)
+	s.actMu.Unlock()
+}
+
+func (s *Service) setDoing(name string) {
+	s.actMu.Lock()
+	s.actDoing, s.actSince = name, s.cfg.Now()
+	rest := s.actQueued[:0]
+	for _, q := range s.actQueued {
+		if q != name {
+			rest = append(rest, q)
+		}
+	}
+	s.actQueued = rest
+	s.actMu.Unlock()
+}
+
+func (s *Service) clearDoing() {
+	s.actMu.Lock()
+	s.actDoing = ""
+	s.actMu.Unlock()
 }
 
 // Recover is run at start: an install that was going on when the server stopped did not finish.

@@ -2466,13 +2466,16 @@
       }, fail);
     }
     // the status of one app on one server: ready, installing (a server that is behind and answered lately), failed, missing
-    function status(n, id, now) {
+    function status(n, id, now, name) {
       if ((n.have || []).indexOf(id) >= 0) return h('span', { class: 'ok', title: n.versions && n.versions[id] ? 'This server installed ' + n.versions[id] + ', the best version that exists for its CPU type' : '', text: n.versions && n.versions[id] ? 'ready (' + n.versions[id] + ', best for this CPU)' : 'ready' });
       if (n.failed && n.failed[id] && n.gaveUp && n.gaveUp[id]) return h('span', { class: 'bad', title: n.failed[id], text: 'not available here, or gave up: Reinstall here tries again' });
       if (n.failed && n.failed[id]) {
         var left = n.retry && n.retry[id] ? Math.max(1, Math.ceil((n.retry[id] - now) / 60)) : 0;
         return h('span', { class: 'bad', title: n.failed[id], text: left ? 'failed, next try in ' + left + ' min' : 'failed' });
       }
+      // what the server says it is doing: busy with this app (a long install sends nothing else), or waiting for its turn
+      if (name && n.doing === name) return h('span', { class: 'warn', text: 'installing… ' + (n.since ? Math.max(0, Math.floor((now - n.since) / 60)) + ' min' : '') });
+      if (name && (n.queued || []).indexOf(name) >= 0) return h('span', { class: 'sub', text: 'waiting for another install' });
       var seen = n.seen ? Date.parse(n.seen) / 1000 : now;
       if (now - seen < 180) return h('span', { class: 'warn', text: 'installing…' });
       return h('span', { class: 'sub', text: 'missing' });
@@ -2560,7 +2563,7 @@
                 onclick: function () { post({ action: 'default', name: a.name, on: !everyone }, a.name + (everyone ? ' is no longer on for everyone.' : ' is on for every signed-in user now.')); } })) : null);
           } }
         ];
-        d.nodes.forEach(function (n) { cols.push({ key: 'n-' + n.node, label: n.node, cell: function (a) { return a.state === 'installed' ? status(n, a.id, d.now) : h('span', { class: 'sub', text: a.waiting ? 'waiting for another install' : a.state }); } }); });
+        d.nodes.forEach(function (n) { cols.push({ key: 'n-' + n.node, label: n.node, cell: function (a) { return a.state === 'installed' ? status(n, a.id, d.now, a.name) : h('span', { class: 'sub', text: a.waiting ? 'waiting for another install' : a.state }); } }); });
         cols.push({ key: 'act', label: '', cell: function (a) {
           return h('div', null, a.state === 'installed' && a.kind !== 'node' && a.kind !== 'plugin' ? h('button', { class: 'btn', type: 'button', text: 'New lock', title: 'Solve it again for every CPU type and make it again on every server: the same version, with the packages that exist today',
             onclick: function () {
@@ -2594,7 +2597,7 @@
           out.appendChild(table([
             { key: 'app', label: 'App on ' + n.node, cell: function (a) { return h('div', null, h('b', { text: a.name }), h('div', { class: 'sub', text: a.version + ' \u00b7 ' + a.kind })); } },
             { key: 'size', label: 'Size here', cell: function (a) { return n.sizes && n.sizes[a.id] ? Math.round(n.sizes[a.id]) + ' MB' : ''; } },
-            { key: 'status', label: 'Status', cell: function (a) { return status(n, a.id, d.now); } },
+            { key: 'status', label: 'Status', cell: function (a) { return status(n, a.id, d.now, a.name); } },
             { key: 'act', label: '', cell: function (a) {
               var here = (n.have || []).indexOf(a.id) >= 0 || (n.failed && n.failed[a.id]);
               return here ? h('button', { class: 'btn', type: 'button', text: 'Reinstall here', title: 'Delete this server\'s copy and make it again', onclick: function () {
@@ -2796,7 +2799,7 @@
         if (!a) return { app: null, node: h('span', { class: 'sub', text: k ? 'listed, not installed' : 'listed' }) };
         if (a.state !== 'installed') return { app: a, node: pill(a.waiting ? 'waiting for another install' : a.state, a.state === 'failed' ? 'bad' : 'warn') };
         var span = h('span');
-        d.nodes.forEach(function (n) { var ok = (n.have || []).indexOf(a.id) >= 0; span.appendChild(pill(n.node + (ok ? '' : (n.failed && n.failed[a.id]) ? ' failed' : ' missing'), ok ? 'ok' : (n.failed && n.failed[a.id]) ? 'bad' : 'warn')); span.appendChild(document.createTextNode(' ')); });
+        d.nodes.forEach(function (n) { var ok = (n.have || []).indexOf(a.id) >= 0; span.appendChild(pill(n.node + (ok ? '' : (n.failed && n.failed[a.id]) ? ' failed' : n.doing === a.name ? ' installing' : (n.queued || []).indexOf(a.name) >= 0 ? ' waiting' : ' missing'), ok ? 'ok' : (n.failed && n.failed[a.id]) ? 'bad' : 'warn')); span.appendChild(document.createTextNode(' ')); });
         return { app: a, node: span };
       }
       out.appendChild(table([
