@@ -79,3 +79,31 @@ func (server *Server) wrapAdmin(handler http.Handler) http.Handler {
 	    handler.ServeHTTP(rw, req)
 	})
 }
+
+// staticCacheControl is what the files of the site are sent with: a few minutes in a browser or a CDN, then the file may still be used for a day while
+// it is asked for again (stale-while-revalidate). The names of the files have no version, so it is kept short.
+const staticCacheControl = "public, max-age=300, stale-while-revalidate=86400"
+
+// cacheStatic sends the files of the site with a Cache-Control and the ETag of the build (the commit the binary was made from): a file that is asked
+// for again with the same ETag is answered 304, with no body. Without a build commit there is no ETag and the files are only given the Cache-Control
+// (the last-modified time of the files then lets a browser ask again).
+func cacheStatic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Cache-Control", staticCacheControl)
+		if buildCommit != "" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+			etag := `W/"` + buildCommit + `"`
+			h.Set("ETag", etag)
+			if m := r.Header.Get("If-None-Match"); m != "" && (m == etag || m == "*") {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// noStore marks an answer that is made for one visitor (a token, a cookie, a secret): nothing may keep it.
+func noStore(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+}
