@@ -27,6 +27,7 @@ var confirming = null;       // { v, act }: a big app that the user is asked abo
 // the browser's storage may be blocked: what is kept there is only a convenience
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* no storage: nothing is remembered */ } }
+var shownSig = "", shownLimit = 30;
 function recentList() { try { var a = JSON.parse(lsGet("appstore-recent") || "[]"); return Array.isArray(a) ? a.filter(function (x) { return typeof x === "string"; }).slice(0, 3) : []; } catch (e) { return []; } }
 function noteRecent(name) { lsSet("appstore-recent", JSON.stringify(pushRecent(recentList(), name, 3))); }
 function setTab(t) { tab = t; lsSet("appstore-tab", t); }
@@ -539,7 +540,15 @@ function render(err) {
   renderSuggest();
   renderFilters(chips, inLang.length, biList.length, languages(pool), shown.length);
   if (confirming) list.appendChild(confirmPanel(confirming));
-  shown.forEach(function (v) { list.appendChild(card(v)); });
+  // a long list shows 30 cards and a button for 30 more; a new search, tab, category or language starts again at 30
+  var sig = [tab, q, category, repl].join("|");
+  if (sig !== shownSig) { shownSig = sig; shownLimit = 30; }
+  shown.slice(0, shownLimit).forEach(function (v) { list.appendChild(card(v)); });
+  if (shown.length > shownLimit) {
+    var more = h("button", "appstore__btn", "Show " + Math.min(30, shown.length - shownLimit) + " more (" + shownLimit + " of " + shown.length + " shown)"); more.type = "button";
+    more.addEventListener("click", function () { shownLimit += 30; render(); });
+    list.appendChild(more);
+  }
   biShown.forEach(function (b) { list.appendChild(builtinCard(b)); });
   // a name that nothing in the store matches can still be looked up on conda-forge and asked for
   if (tab === "browse" && q && !shown.length && !category && !repl && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(q)) list.appendChild(lookupCard(q));

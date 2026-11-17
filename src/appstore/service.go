@@ -1079,7 +1079,7 @@ func (s *Service) Switch(home, id string, on bool) error {
 		own, off := s.ownList(home), s.offList(home)
 		var nextOwn, nextOff []string
 		for _, x := range own {
-			if x != id {
+			if x != id && s.cfg.Store.HasBundle(x) {
 				nextOwn = append(nextOwn, x)
 			}
 		}
