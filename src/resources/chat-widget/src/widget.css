@@ -1276,7 +1276,8 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
   opacity: 1;
 }
 
-/* Phones: a sheet across the bottom of the screen */
+/* Phones: a sheet across the bottom of the screen, until it is opened in the pane of the page (Editor | Terminal | Genie):
+   there it is in the dock and fills it */
 @media (max-width: 800px) {
   #chat-widget__container {
     left: 8px;
@@ -1284,6 +1285,13 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
     bottom: 8px;
     width: auto !important;
     height: min(80vh, calc(100vh - 16px)) !important;
+  }
+  #chat-widget__container.is-docked {
+    left: auto;
+    right: auto;
+    bottom: auto;
+    width: 100% !important;
+    height: 100% !important;
   }
   .chat-widget__resizer {
     display: none;
@@ -1829,3 +1837,34 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 .cw-jump--pill { padding: 0 12px; font-size: 12px; }
 .cw-jump:hover, .cw-jump:focus-visible { border-color: var(--cw-accent); }
 @media (prefers-reduced-motion: reduce) { .cw-wait__dot, .cw-ring { animation: none; } }
+
+/* ---- Genie as the third pane of a phone (body.is-mobile; the panel is in the dock) -------------------------------------- */
+@media (max-width: 800px) {
+  /* it is always there while its tab is shown: no close, no pin, no drag; the tab switch is the way out */
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__close,
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__pin { display: none; }
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__header { padding-left: 12px; }
+  /* the chats: the one that is shown, the list and the new one (the strip of every tab does not fit) */
+  body.is-mobile #chat-widget__container.is-docked .cw-tab:not(.is-active) { display: none; }
+  body.is-mobile #chat-widget__container.is-docked .cw-tab.is-active { flex: 1; max-width: none; min-height: 40px; }
+  body.is-mobile #chat-widget__container.is-docked .cw-tab__x { display: none; }
+  /* touch: 16 px text in the box (a smaller one makes the browser zoom in), 44 px targets */
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__input { font-size: 16px; }
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__submit { width: 44px; height: 44px; }
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__model-btn,
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__mode button { min-height: 40px; }
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__starters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__starters button { flex: 0 0 auto; min-height: 36px; }
+  body.is-mobile #chat-widget__container.is-docked .cw-agent__ask-buttons button { min-height: 44px; flex: 1 1 auto; }
+  body.is-mobile #chat-widget__container.is-docked .cw-wait__btn { min-height: 44px; }
+  body.is-mobile #chat-widget__container.is-docked .cw-jump { width: 40px; height: 40px; }
+  /* the model and effort list is a sheet over the bottom of the pane, not a small popover */
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__settings {
+    position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); width: auto;
+    max-height: min(70vh, calc(var(--vvh, 100vh) - 24px)); z-index: 2100;
+  }
+  /* long code in an answer scrolls inside its block, not the page */
+  body.is-mobile #chat-widget__container.is-docked pre { max-width: 100%; overflow-x: auto; }
+  /* the home bar */
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__form { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+}

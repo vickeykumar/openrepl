@@ -25,12 +25,20 @@ function ToggleFunction() {
     var on = !shell.classList.contains("is-maximized");
     shell.classList.toggle("is-maximized", on);
     document.body.classList.toggle("ide-maximized", on);
+    document.documentElement.classList.toggle("ide-maximized", on); // (a phone clips the page itself: ui-refresh.css)
     var btn = get("#togglescreen-button");
     if (btn) {
       // an icon button: the pressed state swaps the icon (CSS), the words are for the tooltip and screen readers
       btn.setAttribute("aria-pressed", on ? "true" : "false");
       btn.setAttribute("aria-label", on ? "Restore the workspace" : "Maximize the workspace");
       btn.title = on ? "Restore the workspace (Esc)" : "Maximize the workspace (Esc to restore)";
+    }
+    // on a phone the back button leaves the maximized workspace: one history entry while it is on (13-mobile.js: popstate)
+    if (window.mobileActive) {
+      try {
+        if (on) history.pushState({ ideMaximized: 1 }, "");
+        else if (history.state && history.state.ideMaximized) history.back();
+      } catch (e) {}
     }
     window.dispatchEvent(new Event('resize'));
 }
