@@ -95,3 +95,26 @@ func TestTheAdminLogRouteReadsTheGatewaysLog(t *testing.T) {
 		t.Fatalf("a POST: %d", w.Code)
 	}
 }
+
+// A user is told how far the other servers are, never which ones.
+func TestAUserIsToldHowManyServersHaveAnApp(t *testing.T) {
+	appStoreMu.Lock()
+	appNodes["pi-a"] = appNode{NodeState: appstore.NodeState{Have: []string{"x-1"}}}
+	appNodes["pi-b"] = appNode{NodeState: appstore.NodeState{Failed: map[string]string{"x-1": "no build"}}}
+	appNodes["pi-c"] = appNode{}
+	appStoreMu.Unlock()
+	defer func() {
+		appStoreMu.Lock()
+		delete(appNodes, "pi-a")
+		delete(appNodes, "pi-b")
+		delete(appNodes, "pi-c")
+		appStoreMu.Unlock()
+	}()
+	if total, ready, failed := userServers("x-1"); total != 3 || ready != 1 || failed != 1 {
+		t.Errorf("total %d ready %d failed %d", total, ready, failed)
+	}
+	svc := appstore.New(appstore.Config{Store: appstore.Store{Dir: t.TempDir()}, KV: &memKV{}, Installer: appstore.Fake{}, Safe: func() []string { return nil }})
+	if out := userLogResult(svc, "no-such-app", 0); len(out["lines"].([]appstore.UserLine)) != 0 || out["servers"] != nil {
+		t.Errorf("an app that is not installing gives nothing: %v", out)
+	}
+}

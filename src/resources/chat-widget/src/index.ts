@@ -464,7 +464,7 @@ async function init() {
     .querySelector("[data-chat-widget-button]")
     ?.addEventListener("click", open);
 
-  // a pin kept from earlier: the page stacks the IDE now, and the panel docks when it opens
+  // a pin kept from earlier: the panel docks when it opens (and only then the page stacks the IDE)
   wireDock();
   announcePin();
 
@@ -959,7 +959,8 @@ function requestResize() {
 }
 
 function announcePin() {
-  const now = wantDock();
+  // the page stacks the IDE only while the pinned panel is shown: a pin that is kept but closed leaves the layout as the user chose it
+  const now = wantDock() && isOpen();
   if (now === pinTold) return;
   pinTold = now;
   window.dispatchEvent(new CustomEvent("genie-pin", { detail: { pinned: now } }));
@@ -983,6 +984,7 @@ function placePanel() {
   }
   // the IDE has more or less room only when the dock came or went
   if (was !== document.body.classList.contains("genie-docked")) requestResize();
+  announcePin();
 }
 
 function refreshPin() {
@@ -1787,12 +1789,13 @@ function isOpen(): boolean {
   return containerElement.isConnected;
 }
 
-function open(e?: Event) {
+function open(e?: Event, opts?: { pin?: boolean }) {
   if (isOpen()) {
     // already open: just put the cursor in the box
     (document.getElementById("chat-widget__input") as HTMLTextAreaElement | null)?.focus();
     return;
   }
+  if (opts && opts.pin && canDock() && !pinnedPref) setPinned(true);
   if (config.closeOnOutsideClick) {
     document.body.appendChild(optionalBackdrop);
   }
@@ -1945,6 +1948,7 @@ function close() {
   containerElement.classList.remove("is-docked");
   document.body.classList.remove("genie-docked");
   if (wasDocked) requestResize();
+  announcePin(); // closed: the IDE goes back to the layout it had before the panel was pinned
   renderActivity();
 }
 

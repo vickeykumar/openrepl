@@ -2836,6 +2836,8 @@ body.files-collapsed .files-panel { display: none; }
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s;
 }
+/* Maximized: the app bar has Ask Genie, so the floating one (a second button over the terminal) is not drawn. */
+body.ide-maximized .genie-fab { display: none; }
 .genie-fab:hover {
   transform: translateY(-1px);
   box-shadow: 0 16px 34px -10px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(21, 21, 28, 0.08);
@@ -4434,6 +4436,7 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .appstore__tag--requested { background: color-mix(in srgb, #d9a21f 22%, transparent); color: color-mix(in srgb, #d9a21f 60%, var(--paper)); }
 .appstore__sum { margin: 0; color: var(--muted-1); line-height: 1.45; font-size: 13px; }
 .appstore__log { margin: 0; background: var(--ink-950); border: 1px solid var(--ink-700); border-radius: 8px; padding: 8px 10px; font: 11.5px/1.5 var(--font-code, monospace); color: color-mix(in srgb, #e5604d 65%, var(--paper)); white-space: pre-wrap; max-height: 120px; overflow: auto; }
+.appstore__details { color: var(--paper); max-height: 150px; }
 .appstore__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .appstore__btn { background: var(--ink-800); color: var(--paper); border: 1px solid var(--ink-600); border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
 .appstore__btn.is-primary { background: var(--accent-color, #b6e03a); color: var(--on-accent-color, #15190a); border-color: transparent; font-weight: 600; }
@@ -4448,3 +4451,8 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .appstore__full:hover { text-decoration: underline; }
 .appstore__plugins { display: inline-flex; gap: 12px; margin-left: 12px; color: var(--muted-1); font-size: 12px; }
 .appstore__plugin:empty { display: none; }
+.appstore .boxspin { display: inline-block; width: var(--s, 16px); height: var(--s, 16px); color: var(--lime, #B6F23A); perspective: 200px; vertical-align: -0.25em; flex: none; }
+.appstore .boxspin svg { width: 100%; height: 100%; animation: boxturn 1.8s linear infinite; }
+@keyframes boxturn { to { transform: rotateY(360deg); } }
+.appstore .is-loading { display: flex; align-items: center; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .appstore .boxspin svg { animation: none; } }

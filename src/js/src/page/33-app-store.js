@@ -75,6 +75,46 @@ function refresh() {
   return api("list").then(function (j) { take(j); render(); }, function (e) { loaded = false; render(e); });
 }
 
+// The Apps box icon, turning: the loading mark (CSS only, still for reduced motion). The words stay beside it.
+function spin(px) {
+  var b = h("span", "boxspin");
+  b.style.setProperty("--s", px + "px");
+  b.setAttribute("aria-hidden", "true");
+  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z M3 8l9 5 9-5 M12 13v8"/></svg>';
+  return b;
+}
+function loadingLine(text, px) {
+  var p = h("p", "appstore__sum is-loading");
+  p.setAttribute("role", "status");
+  p.appendChild(spin(px || 16));
+  p.appendChild(h("span", "", text));
+  return p;
+}
+
+// ---- Details: the clean lines of an install that runs (GET /store/api/log); closed unless the user opens them ----------------
+
+var det = { open: false, app: "", next: 0, lines: [], servers: null };
+function clock(ms) { var d = new Date(ms); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2); }
+function pollDetails(name) {
+  return api("log?name=" + encodeURIComponent(name) + "&from=" + det.next).then(function (r) {
+    if (det.app !== name) return;
+    det.lines = det.lines.concat(r.lines || []).slice(-200);
+    det.next = r.next || det.next;
+    det.servers = r.servers || null;
+  }, function () {});
+}
+function toggleDetails(name) {
+  if (det.app === name) det.open = !det.open;
+  else { det.app = name; det.open = true; det.next = 0; det.lines = []; det.servers = null; }
+  if (det.open) pollDetails(name).then(function () { render(); }); else render();
+}
+function detailsText() {
+  var rows = det.lines.map(function (l) { return clock(l.t) + " " + l.x; });
+  var sv = det.servers;
+  if (sv && sv.total) rows.push(sv.failed ? "Other servers: " + sv.ready + " of " + sv.total + " ready, " + sv.failed + (sv.failed === 1 ? " server" : " servers") + " could not copy it" : "Copying to the other servers: " + sv.ready + " of " + sv.total + " ready");
+  return rows.join("\n");
+}
+
 // ---- watching an install --------------------------------------------------------------------------------------------------
 
 function busy() { return views.some(function (v) { return v.state === "installing"; }); }
@@ -84,6 +124,7 @@ function schedulePoll() {
   clearTimeout(pollTimer);
   if (!busy()) return;
   pollTimer = setTimeout(function () {
+    if (det.open) pollDetails(det.app).then(function () { render(); });
     api("list").then(function (j) {
       var before = views;
       take(j);
@@ -223,7 +264,9 @@ function card(v) {
   c.appendChild(top);
   var info = lookups[v.name];
   if (info && info.info && info.info.summary) c.appendChild(h("p", "appstore__sum", info.info.summary));
-  if (v.state === "installing") c.appendChild(h("p", "appstore__sum", (v.step || "Starting") + "…"));
+  if (v.state === "installing") c.appendChild(loadingLine((v.step || "Starting") + "…"));
+  var showDet = (v.state === "installing" || v.state === "failed") && det.open && det.app === v.name;
+  if (showDet) { var dpre = h("pre", "appstore__log appstore__details", detailsText()); if (!det.lines.length) { dpre.appendChild(spin(14)); dpre.appendChild(document.createTextNode(" Waiting for the first lines…")); } c.appendChild(dpre); setTimeout(function () { dpre.scrollTop = dpre.scrollHeight; }, 0); }
   if (v.state === "failed") {
     c.appendChild(h("p", "appstore__sum", v.err || "The install stopped."));
     if (v.log) { var pre = h("pre", "appstore__log", v.log); c.appendChild(pre); }
@@ -240,8 +283,13 @@ function card(v) {
     return b;
   }
   if (v.state === "available") button(v.safe ? "Install" : "Request", function () { guarded(v.safe ? "install" : "request", v); }, true);
+  if (v.state === "installing" || v.state === "failed") {
+    button(showDet ? "Hide details" : "Show details", function () { toggleDetails(v.name); });
+    if (showDet) button("Copy", function () { if (navigator.clipboard) navigator.clipboard.writeText(v.name + "\n" + detailsText()); });
+  }
   if (v.state === "installed") {
-    var sw = h("button", "appstore__switch" + (v.on ? " is-on" : ""), checking === v.id ? "Checking…" : v.on ? "On" : "Off");
+    var sw = h("button", "appstore__switch" + (v.on ? " is-on" : ""), checking === v.id ? "" : v.on ? "On" : "Off");
+    if (checking === v.id) { sw.appendChild(spin(14)); sw.appendChild(document.createTextNode(" Checking…")); }
     sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", v.on ? "true" : "false");
     if (checking === v.id) { sw.disabled = true; sw.title = "Checking that it works in your terminal environment"; }
     sw.setAttribute("aria-label", "Use " + v.name + " in my terminals");
@@ -298,7 +346,7 @@ function lookupCard(name) {
   top.appendChild(nameLink(name));
   top.appendChild(h("span", "appstore__tag", "conda-forge"));
   c.appendChild(top);
-  if (!l || l.loading) { c.appendChild(h("p", "appstore__sum", "Looking it up…")); lookup(name); return c; }
+  if (!l || l.loading) { c.appendChild(loadingLine("Looking it up…")); lookup(name); return c; }
   if (l.error) { c.appendChild(h("p", "appstore__sum", l.error)); return c; }
   c.appendChild(h("p", "appstore__sum", (l.info.summary || "No description.") + (l.info.version ? " Newest: " + l.info.version + "." : "")));
   var row = h("div", "appstore__row");
@@ -474,7 +522,7 @@ function render(err) {
     return;
   }
   if (err) { list.appendChild(h("p", "appstore__sum", err.message || "The App Store is not available.")); return; }
-  if (!loaded) { list.appendChild(h("p", "appstore__sum", "Loading…")); return; }
+  if (!loaded) { list.appendChild(loadingLine("Loading…", 28)); return; }
   var q = query.trim().toLowerCase();
   var mineOk = function (v) { return v.on || v.state === "requested" || v.state === "rejected" || (v.state === "failed" && v.mine) || (v.state === "installing" && v.mine); };
   var pool = tab === "mine" ? views.filter(mineOk) : views;                 // what the tab is about

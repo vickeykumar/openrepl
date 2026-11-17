@@ -1133,220 +1133,6 @@
    }
   },
   {
-   "id": "polars",
-   "name": "polars",
-   "summary": "Fast tables written in Rust: an alternative to pandas.",
-   "kind": "lib",
-   "repls": [
-    "python",
-    "ipython3"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Data science",
-   "ramMB": 42,
-   "instMB": 357,
-   "docs": "https://docs.pola.rs/",
-   "licence": "MIT",
-   "check": "python-import",
-   "checkArg": "polars",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "1.44.1",
-     "size": {
-      "linux-64": 356.2,
-      "linux-aarch64": 316.2
-     },
-     "before": {
-      "linux-64": 356.2,
-      "linux-aarch64": 316.2
-     },
-     "includes": "its own Python (about 250 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 356.2,
-     "linux-aarch64": 316.2
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "seaborn-base",
-   "name": "seaborn-base",
-   "summary": "Statistical plots (brings pandas, scipy and matplotlib).",
-   "kind": "lib",
-   "repls": [
-    "python",
-    "ipython3"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Data science",
-   "instMB": 425,
-   "docs": "https://seaborn.pydata.org/",
-   "licence": "BSD-3-Clause",
-   "check": "python-import",
-   "checkArg": "seaborn",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "0.13.2",
-     "size": {
-      "linux-64": 424.5,
-      "linux-aarch64": 379.4
-     },
-     "before": {
-      "linux-64": 424.5,
-      "linux-aarch64": 379.4
-     },
-     "includes": "its own Python (about 250 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 424.5,
-     "linux-aarch64": 379.4
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "statsmodels",
-   "name": "statsmodels",
-   "summary": "Statistics and regression.",
-   "kind": "lib",
-   "repls": [
-    "python",
-    "ipython3"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Data science",
-   "instMB": 414,
-   "docs": "https://www.statsmodels.org/",
-   "licence": "BSD-3-Clause",
-   "check": "python-import",
-   "checkArg": "statsmodels",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "0.15.0",
-     "size": {
-      "linux-64": 413.6,
-      "linux-aarch64": 364.8
-     },
-     "before": {
-      "linux-64": 413.6,
-      "linux-aarch64": 364.8
-     },
-     "includes": "its own Python (about 260 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 413.6,
-     "linux-aarch64": 364.8
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "pyarrow",
-   "name": "pyarrow",
-   "summary": "Columnar data and Parquet files.",
-   "kind": "lib",
-   "repls": [
-    "python",
-    "ipython3"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Data",
-   "instMB": 379,
-   "docs": "https://arrow.apache.org/docs/python/",
-   "licence": "Apache-2.0",
-   "check": "python-import",
-   "checkArg": "pyarrow",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "25.0.0",
-     "size": {
-      "linux-64": 379,
-      "linux-aarch64": 360.2
-     },
-     "before": {
-      "linux-64": 379,
-      "linux-aarch64": 360.2
-     },
-     "includes": "its own Python (about 70 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 379,
-     "linux-aarch64": 360.2
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "numba",
-   "name": "numba",
-   "summary": "Compile Python functions for speed.",
-   "kind": "lib",
-   "repls": [
-    "python",
-    "ipython3"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Data science",
-   "instMB": 392,
-   "docs": "https://numba.readthedocs.io/",
-   "licence": "BSD-2-Clause",
-   "check": "python-import",
-   "checkArg": "numba",
-   "labels": [
-    "cache in scratch"
-   ],
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "0.67.0",
-     "size": {
-      "linux-64": 391.4,
-      "linux-aarch64": 356.3
-     },
-     "before": {
-      "linux-64": 391.4,
-      "linux-aarch64": 356.3
-     },
-     "includes": "its own Python (about 240 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 391.4,
-     "linux-aarch64": 356.3
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "cryptography",
    "name": "cryptography",
    "summary": "Encryption and hashing.",
@@ -1471,165 +1257,6 @@
     },
     "at": "2026-11-16"
    }
-  },
-  {
-   "id": "pytorch-cpu",
-   "name": "pytorch-cpu",
-   "summary": "Deep learning. Large: 747 MB, importing it takes 226 MB of memory.",
-   "kind": "lib",
-   "repls": [
-    "python",
-    "ipython3"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Data science",
-   "ramMB": 226,
-   "instMB": 1508,
-   "docs": "https://pytorch.org/docs/stable/",
-   "licence": "BSD-3-Clause",
-   "check": "python-import",
-   "checkArg": "torch",
-   "labels": [
-    "needs a 4 GB server"
-   ],
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "2.13.0",
-     "size": {
-      "linux-64": 1507.3,
-      "linux-aarch64": 786.5
-     },
-     "before": {
-      "linux-64": 1507.3,
-      "linux-aarch64": 786.5
-     },
-     "includes": "its own Python (about 200 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 1507.3,
-     "linux-aarch64": 786.5
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "py27-six",
-   "name": "six (Python 2.7)",
-   "summary": "Python 2 and 3 compatibility helpers.",
-   "kind": "lib27",
-   "repls": [
-    "python2.7"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "package": "six",
-   "install": "approval",
-   "category": "Legacy",
-   "instMB": 101,
-   "docs": "https://six.readthedocs.io/",
-   "licence": "MIT",
-   "check": "python-import",
-   "checkArg": "six",
-   "labels": [
-    "legacy (Python 2.7)"
-   ],
-   "python": "2.7",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "1.16.0",
-     "size": {
-      "linux-64": 98.5,
-      "linux-aarch64": 100.5
-     },
-     "before": {
-      "linux-64": 98.5,
-      "linux-aarch64": 100.5
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 98.5,
-     "linux-aarch64": 100.5
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "py27-requests",
-   "name": "requests (Python 2.7)",
-   "summary": "HTTP client (version 2.25).",
-   "kind": "lib27",
-   "repls": [
-    "python2.7"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "package": "requests",
-   "install": "approval",
-   "category": "Legacy",
-   "instMB": 109,
-   "docs": "https://requests.readthedocs.io/en/v2.25.1/",
-   "licence": "Apache-2.0",
-   "check": "python-import",
-   "checkArg": "requests",
-   "labels": [
-    "legacy (Python 2.7)"
-   ],
-   "python": "2.7",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "2.25.1",
-     "size": {
-      "linux-64": 106.3,
-      "linux-aarch64": 108.2
-     },
-     "before": {
-      "linux-64": 106.3,
-      "linux-aarch64": 108.2
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 106.3,
-     "linux-aarch64": 108.2
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "py27-numpy",
-   "name": "numpy (Python 2.7)",
-   "summary": "Arrays (version 1.16).",
-   "kind": "lib27",
-   "repls": [
-    "python2.7"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "package": "numpy",
-   "install": "approval",
-   "category": "Legacy",
-   "instMB": 152,
-   "docs": "https://numpy.org/doc/1.16/",
-   "licence": "BSD-3-Clause",
-   "check": "python-import",
-   "checkArg": "numpy",
-   "labels": [
-    "legacy (Python 2.7)"
-   ],
-   "python": "2.7"
   },
   {
    "id": "cmake",
@@ -1921,48 +1548,6 @@
    }
   },
   {
-   "id": "clang-tools",
-   "name": "clang-tools",
-   "summary": "clang-tidy and friends (a linter for C++).",
-   "kind": "tool",
-   "repls": [
-    "c",
-    "cpp"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "package": "clang-tools",
-   "install": "approval",
-   "category": "Analysis",
-   "instMB": 465,
-   "docs": "https://clang.llvm.org/extra/clang-tidy/",
-   "licence": "Apache-2.0 WITH LLVM-exception",
-   "check": "version-flag",
-   "checkArg": "clang-tidy",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "23.1.5",
-     "size": {
-      "linux-64": 464.8,
-      "linux-aarch64": 424.9
-     },
-     "before": {
-      "linux-64": 466.7,
-      "linux-aarch64": 426.7
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 464.8,
-     "linux-aarch64": 424.9
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "valgrind",
    "name": "valgrind",
    "summary": "Find memory errors (needs ptrace on the host).",
@@ -2020,69 +1605,6 @@
      "pixi": {
       "linux-64": 158,
       "linux-aarch64": 145.9
-     }
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "ccache",
-   "name": "ccache",
-   "summary": "Compiler cache.",
-   "kind": "tool",
-   "repls": [
-    "c",
-    "cpp"
-   ],
-   "level": "optional",
-   "manager": "apt",
-   "install": "approval",
-   "category": "Build tools",
-   "instMB": 2,
-   "docs": "https://ccache.dev/manual/latest.html",
-   "licence": "GPL-3.0",
-   "check": "version-flag",
-   "checkArg": "ccache",
-   "labels": [
-    "cache in scratch"
-   ],
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "4.14.3",
-     "size": {
-      "linux-64": 32.2,
-      "linux-aarch64": 31
-     },
-     "before": {
-      "linux-64": 32.6,
-      "linux-aarch64": 31.4
-     }
-    },
-    {
-     "manager": "apt",
-     "package": "ccache",
-     "version": "4.5.1-1",
-     "size": {
-      "linux-64": 1.1,
-      "linux-aarch64": 0.9
-     },
-     "before": {
-      "linux-64": 1.3,
-      "linux-aarch64": 1.1
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "apt",
-    "size": {
-     "linux-64": 1.1,
-     "linux-aarch64": 0.9
-    },
-    "others": {
-     "pixi": {
-      "linux-64": 32.2,
-      "linux-aarch64": 31
      }
     },
     "at": "2026-11-16"
@@ -3425,7 +2947,7 @@
    "repls": [
     "bash"
    ],
-   "level": "optional",
+   "level": "popular",
    "manager": "apt",
    "install": "anyone",
    "category": "Terminal tools",
@@ -3477,6 +2999,30 @@
    }
   },
   {
+   "id": "nano",
+   "name": "nano",
+   "summary": "A simple text editor.",
+   "kind": "tool",
+   "repls": [
+    "bash"
+   ],
+   "level": "popular",
+   "manager": "apt",
+   "install": "anyone",
+   "category": "Terminal tools",
+   "instMB": 1,
+   "docs": "https://www.nano-editor.org/",
+   "licence": "GPL-3.0-or-later",
+   "check": "version-flag",
+   "checkArg": "nano",
+   "options": [
+    {
+     "manager": "apt",
+     "package": "nano"
+    }
+   ]
+  },
+  {
    "id": "tmux",
    "name": "tmux",
    "summary": "Several terminals in one.",
@@ -3484,7 +3030,7 @@
    "repls": [
     "bash"
    ],
-   "level": "optional",
+   "level": "popular",
    "manager": "apt",
    "install": "anyone",
    "category": "Terminal tools",
@@ -3533,73 +3079,6 @@
      "pixi": {
       "linux-64": 23.9,
       "linux-aarch64": 24.6
-     }
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "vim",
-   "name": "vim",
-   "summary": "A text editor.",
-   "kind": "tool",
-   "repls": [
-    "bash"
-   ],
-   "level": "optional",
-   "manager": "apt",
-   "install": "anyone",
-   "category": "Terminal tools",
-   "instMB": 35,
-   "docs": "https://www.vim.org/docs.php",
-   "licence": "Vim",
-   "check": "version-flag",
-   "checkArg": "vim",
-   "labels": [
-    "undo files in scratch"
-   ],
-   "options": [
-    {
-     "manager": "apt",
-     "package": "vim",
-     "env": {
-      "VIMRUNTIME": "{bundle}/usr/share/vim/vim82"
-     },
-     "version": "8.2.3995-1ubuntu2.36",
-     "size": {
-      "linux-64": 34.9,
-      "linux-aarch64": 34.7
-     },
-     "before": {
-      "linux-64": 35,
-      "linux-aarch64": 34.8
-     }
-    },
-    {
-     "manager": "pixi",
-     "gui": "libxcb",
-     "version": "9.2.1252",
-     "size": {
-      "linux-64": 281,
-      "linux-aarch64": 285.7
-     },
-     "before": {
-      "linux-64": 320.8,
-      "linux-aarch64": 325.5
-     },
-     "includes": "its own Python and Perl (about 90 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "apt",
-    "size": {
-     "linux-64": 34.9,
-     "linux-aarch64": 34.7
-    },
-    "others": {
-     "pixi": {
-      "linux-64": 281,
-      "linux-aarch64": 285.7
      }
     },
     "at": "2026-11-16"
@@ -3705,170 +3184,6 @@
     "size": {
      "linux-64": 288.9,
      "linux-aarch64": 263.8
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "litecli",
-   "name": "litecli",
-   "summary": "A friendly SQLite shell.",
-   "kind": "tool",
-   "repls": [
-    "bash"
-   ],
-   "level": "optional",
-   "manager": "apt",
-   "install": "approval",
-   "category": "Terminal tools",
-   "instMB": 1,
-   "docs": "https://litecli.com/",
-   "licence": "BSD-3-Clause",
-   "check": "version-flag",
-   "checkArg": "litecli",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "1.17.1",
-     "size": {
-      "linux-64": 186.2,
-      "linux-aarch64": 186.3
-     },
-     "before": {
-      "linux-64": 189.3,
-      "linux-aarch64": 189.4
-     },
-     "includes": "its own Python (about 100 MB)"
-    },
-    {
-     "manager": "apt",
-     "package": "litecli",
-     "version": "1.7.0-1",
-     "size": {
-      "linux-64": 0.9,
-      "linux-aarch64": 0.9
-     },
-     "before": {
-      "linux-64": 1,
-      "linux-aarch64": 1
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "apt",
-    "size": {
-     "linux-64": 0.9,
-     "linux-aarch64": 0.9
-    },
-    "others": {
-     "pixi": {
-      "linux-64": 186.2,
-      "linux-aarch64": 186.3
-     }
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "sqlite-utils",
-   "name": "sqlite-utils",
-   "summary": "Work with SQLite from the shell.",
-   "kind": "tool",
-   "repls": [
-    "bash"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Terminal tools",
-   "instMB": 142,
-   "docs": "https://sqlite-utils.datasette.io/",
-   "licence": "Apache-2.0",
-   "check": "version-flag",
-   "checkArg": "sqlite-utils",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "4.2.1",
-     "size": {
-      "linux-64": 140.9,
-      "linux-aarch64": 141.3
-     },
-     "before": {
-      "linux-64": 151.4,
-      "linux-aarch64": 151.8
-     },
-     "includes": "its own Python (about 60 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 140.9,
-     "linux-aarch64": 141.3
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "gopls",
-   "name": "gopls",
-   "summary": "The Go language server.",
-   "kind": "tool",
-   "repls": [
-    "go",
-    "yaegi"
-   ],
-   "level": "optional",
-   "manager": "apt",
-   "install": "anyone",
-   "category": "Go tools",
-   "instMB": 17,
-   "docs": "https://pkg.go.dev/golang.org/x/tools/gopls",
-   "licence": "BSD-3-Clause",
-   "check": "version-flag",
-   "checkArg": "gopls",
-   "labels": [
-    "binaries are 2 to 15 MB each"
-   ],
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "0.23.0",
-     "size": {
-      "linux-64": 32.9,
-      "linux-aarch64": 30.7
-     },
-     "before": {
-      "linux-64": 32.9,
-      "linux-aarch64": 30.7
-     }
-    },
-    {
-     "manager": "apt",
-     "package": "gopls",
-     "version": "0.1.9+ds-2ubuntu2.2",
-     "size": {
-      "linux-64": 16.8,
-      "linux-aarch64": 16
-     },
-     "before": {
-      "linux-64": 16.9,
-      "linux-aarch64": 16
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "apt",
-    "size": {
-     "linux-64": 16.8,
-     "linux-aarch64": 16
-    },
-    "others": {
-     "pixi": {
-      "linux-64": 32.9,
-      "linux-aarch64": 30.7
-     }
     },
     "at": "2026-11-16"
    }
@@ -4025,283 +3340,6 @@
    }
   },
   {
-   "id": "rust-analyzer",
-   "name": "rust-analyzer",
-   "summary": "The Rust language server.",
-   "kind": "tool",
-   "repls": [
-    "evcxr"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Rust tools",
-   "instMB": 37,
-   "docs": "https://rust-analyzer.github.io/manual.html",
-   "licence": "MIT OR Apache-2.0",
-   "check": "version-flag",
-   "checkArg": "rust-analyzer",
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "2026.08.24",
-     "size": {
-      "linux-64": 36.9,
-      "linux-aarch64": 32.6
-     },
-     "before": {
-      "linux-64": 37.3,
-      "linux-aarch64": 33
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 36.9,
-     "linux-aarch64": 32.6
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "libspatialite",
-   "name": "libspatialite",
-   "summary": "Spatial functions for SQLite: load the extension.",
-   "kind": "clib",
-   "repls": [
-    "sqlite3"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "SQLite extensions",
-   "instMB": 127,
-   "docs": "https://www.gaia-gis.it/fossil/libspatialite/index",
-   "licence": "MPL-1.1 OR GPL-2.0 OR LGPL-2.1",
-   "check": "file-exists",
-   "checkArg": "lib/mod_spatialite.so",
-   "labels": [
-    "select load_extension('\u003cpath shown on the app page\u003e')"
-   ],
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "5.1.0",
-     "size": {
-      "linux-64": 121.8,
-      "linux-aarch64": 126.3
-     },
-     "before": {
-      "linux-64": 126.1,
-      "linux-aarch64": 130.6
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 121.8,
-     "linux-aarch64": 126.3
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "tcllib",
-   "name": "tcllib",
-   "summary": "Tcl standard library: json, md5, base64, many more.",
-   "kind": "clib",
-   "repls": [
-    "tclsh"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "anyone",
-   "category": "Tcl",
-   "instMB": 26,
-   "docs": "https://core.tcl-lang.org/tcllib/doc/trunk/embedded/index.md",
-   "licence": "TCL",
-   "check": "file-exists",
-   "checkArg": "lib"
-  },
-  {
-   "id": "perl-text-csv",
-   "name": "perl-text-csv",
-   "summary": "Read and write CSV.",
-   "kind": "clib",
-   "repls": [
-    "perli"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Perl modules",
-   "instMB": 64,
-   "docs": "https://metacpan.org/pod/Text::CSV",
-   "licence": "Artistic-1.0-Perl OR GPL-1.0-or-later",
-   "check": "file-exists",
-   "checkArg": "lib/perl5",
-   "labels": [
-    "brings its own Perl 5.32 (information only)"
-   ],
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "2.02",
-     "size": {
-      "linux-64": 62.3,
-      "linux-aarch64": 63.2
-     },
-     "before": {
-      "linux-64": 62.9,
-      "linux-aarch64": 63.8
-     },
-     "includes": "its own Perl (about 60 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 62.3,
-     "linux-aarch64": 63.2
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "perl-mojolicious",
-   "name": "perl-mojolicious",
-   "summary": "A web framework.",
-   "kind": "clib",
-   "repls": [
-    "perli"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Perl modules",
-   "instMB": 65,
-   "docs": "https://docs.mojolicious.org/",
-   "licence": "Artistic-1.0-Perl OR GPL-1.0-or-later",
-   "check": "file-exists",
-   "checkArg": "lib/perl5",
-   "labels": [
-    "brings its own Perl 5.32 (information only)"
-   ],
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "9.51",
-     "size": {
-      "linux-64": 64.1,
-      "linux-aarch64": 65
-     },
-     "before": {
-      "linux-64": 64.5,
-      "linux-aarch64": 65.4
-     },
-     "includes": "its own Perl (about 60 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 64.1,
-     "linux-aarch64": 65
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "perl-try-tiny",
-   "name": "perl-try-tiny",
-   "summary": "try and catch for Perl.",
-   "kind": "clib",
-   "repls": [
-    "perli"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Perl modules",
-   "instMB": 59,
-   "docs": "https://metacpan.org/pod/Try::Tiny",
-   "licence": "Artistic-1.0-Perl OR GPL-1.0-or-later",
-   "check": "file-exists",
-   "checkArg": "lib/perl5",
-   "labels": [
-    "brings its own Perl 5.32 (information only)"
-   ],
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "0.32",
-     "size": {
-      "linux-64": 57.5,
-      "linux-aarch64": 58.3
-     },
-     "before": {
-      "linux-64": 76.4,
-      "linux-aarch64": 77.2
-     },
-     "includes": "its own Perl (about 50 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 57.5,
-     "linux-aarch64": 58.3
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "perl-path-tiny",
-   "name": "perl-path-tiny",
-   "summary": "Files and paths.",
-   "kind": "clib",
-   "repls": [
-    "perli"
-   ],
-   "level": "optional",
-   "manager": "pixi",
-   "install": "approval",
-   "category": "Perl modules",
-   "instMB": 63,
-   "docs": "https://metacpan.org/pod/Path::Tiny",
-   "licence": "Artistic-1.0-Perl OR GPL-1.0-or-later",
-   "check": "file-exists",
-   "checkArg": "lib/perl5",
-   "labels": [
-    "brings its own Perl 5.32 (information only)"
-   ],
-   "options": [
-    {
-     "manager": "pixi",
-     "version": "0.150",
-     "size": {
-      "linux-64": 61.8,
-      "linux-aarch64": 62.7
-     },
-     "before": {
-      "linux-64": 62.3,
-      "linux-aarch64": 63.2
-     },
-     "includes": "its own Perl (about 60 MB)"
-    }
-   ],
-   "minimal": {
-    "manager": "pixi",
-    "size": {
-     "linux-64": 61.8,
-     "linux-aarch64": 62.7
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "perl-json-maybexs",
    "name": "perl-json-maybexs",
    "summary": "JSON with the fastest module available.",
@@ -4407,27 +3445,6 @@
    "licence": "MIT",
    "check": "node-require",
    "checkArg": "node-fetch"
-  },
-  {
-   "id": "npm:got",
-   "name": "got",
-   "summary": "HTTP client (version 11).",
-   "kind": "node",
-   "repls": [
-    "node",
-    "ts-node"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "got",
-   "version": "11",
-   "install": "anyone",
-   "category": "JavaScript libraries",
-   "instMB": 4,
-   "docs": "https://github.com/sindresorhus/got/tree/v11#readme",
-   "licence": "MIT",
-   "check": "node-require",
-   "checkArg": "got"
   },
   {
    "id": "npm:ws",
@@ -4556,48 +3573,6 @@
    }
   },
   {
-   "id": "npm:ramda",
-   "name": "ramda",
-   "summary": "Functional programming helpers.",
-   "kind": "node",
-   "repls": [
-    "node",
-    "ts-node"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "ramda",
-   "install": "anyone",
-   "category": "JavaScript libraries",
-   "instMB": 2,
-   "docs": "https://ramdajs.com/docs/",
-   "licence": "MIT",
-   "check": "node-require",
-   "checkArg": "ramda",
-   "options": [
-    {
-     "manager": "npm",
-     "version": "0.32.0",
-     "size": {
-      "linux-64": 1.1,
-      "linux-aarch64": 1.1
-     },
-     "before": {
-      "linux-64": 1.1,
-      "linux-aarch64": 1.1
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 1.1,
-     "linux-aarch64": 1.1
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "npm:rxjs",
    "name": "rxjs",
    "summary": "Reactive programming.",
@@ -4635,48 +3610,6 @@
     "size": {
      "linux-64": 2.5,
      "linux-aarch64": 2.5
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "npm:immutable",
-   "name": "immutable",
-   "summary": "Immutable data.",
-   "kind": "node",
-   "repls": [
-    "node",
-    "ts-node"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "immutable",
-   "install": "anyone",
-   "category": "JavaScript libraries",
-   "instMB": 1,
-   "docs": "https://immutable-js.com/",
-   "licence": "MIT",
-   "check": "node-require",
-   "checkArg": "immutable",
-   "options": [
-    {
-     "manager": "npm",
-     "version": "5.2.1",
-     "size": {
-      "linux-64": 0.7,
-      "linux-aarch64": 0.7
-     },
-     "before": {
-      "linux-64": 0.7,
-      "linux-aarch64": 0.7
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 0.7,
-     "linux-aarch64": 0.7
     },
     "at": "2026-11-16"
    }
@@ -4722,69 +3655,6 @@
     },
     "at": "2026-11-16"
    }
-  },
-  {
-   "id": "npm:moment",
-   "name": "moment",
-   "summary": "Dates and times (older).",
-   "kind": "node",
-   "repls": [
-    "node",
-    "ts-node"
-   ],
-   "level": "popular",
-   "manager": "npm",
-   "package": "moment",
-   "install": "anyone",
-   "category": "JavaScript libraries",
-   "instMB": 4,
-   "docs": "https://momentjs.com/docs/",
-   "licence": "MIT",
-   "check": "node-require",
-   "checkArg": "moment",
-   "options": [
-    {
-     "manager": "npm",
-     "version": "2.31.0",
-     "size": {
-      "linux-64": 3.7,
-      "linux-aarch64": 3.7
-     },
-     "before": {
-      "linux-64": 4.3,
-      "linux-aarch64": 4.3
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 3.7,
-     "linux-aarch64": 3.7
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "npm:date-fns",
-   "name": "date-fns",
-   "summary": "Dates and times (version 2).",
-   "kind": "node",
-   "repls": [
-    "node",
-    "ts-node"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "date-fns",
-   "version": "2",
-   "install": "anyone",
-   "category": "JavaScript libraries",
-   "instMB": 35,
-   "docs": "https://date-fns.org/v2.30.0/docs/Getting-Started",
-   "licence": "MIT",
-   "check": "node-require",
-   "checkArg": "date-fns"
   },
   {
    "id": "npm:express",
@@ -5000,48 +3870,6 @@
    }
   },
   {
-   "id": "npm:papaparse",
-   "name": "papaparse",
-   "summary": "Read CSV.",
-   "kind": "node",
-   "repls": [
-    "node",
-    "ts-node"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "papaparse",
-   "install": "anyone",
-   "category": "JavaScript libraries",
-   "instMB": 1,
-   "docs": "https://www.papaparse.com/docs",
-   "licence": "MIT",
-   "check": "node-require",
-   "checkArg": "papaparse",
-   "options": [
-    {
-     "manager": "npm",
-     "version": "5.7.1",
-     "size": {
-      "linux-64": 0.1,
-      "linux-aarch64": 0.1
-     },
-     "before": {
-      "linux-64": 0.3,
-      "linux-aarch64": 0.3
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 0.1,
-     "linux-aarch64": 0.1
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "npm:marked",
    "name": "marked",
    "summary": "Markdown to HTML (version 4).",
@@ -5104,27 +3932,6 @@
     },
     "at": "2026-11-16"
    }
-  },
-  {
-   "id": "npm:jsdom",
-   "name": "jsdom",
-   "summary": "A web page without a browser (version 16).",
-   "kind": "node",
-   "repls": [
-    "node",
-    "ts-node"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "jsdom",
-   "version": "16",
-   "install": "anyone",
-   "category": "JavaScript libraries",
-   "instMB": 19,
-   "docs": "https://github.com/jsdom/jsdom/tree/16.7.0#readme",
-   "licence": "MIT",
-   "check": "node-require",
-   "checkArg": "jsdom"
   },
   {
    "id": "npm:mathjs",
@@ -5236,27 +4043,6 @@
    "checkArg": "chai"
   },
   {
-   "id": "npm:sinon",
-   "name": "sinon",
-   "summary": "Spies and mocks (version 9).",
-   "kind": "node",
-   "repls": [
-    "node",
-    "ts-node"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "sinon",
-   "version": "9",
-   "install": "anyone",
-   "category": "JavaScript libraries",
-   "instMB": 8,
-   "docs": "https://sinonjs.org/",
-   "licence": "BSD-3-Clause",
-   "check": "node-require",
-   "checkArg": "sinon"
-  },
-  {
    "id": "npm:eslint",
    "name": "eslint",
    "summary": "Find problems in JavaScript (version 8).",
@@ -5363,70 +4149,6 @@
    }
   },
   {
-   "id": "npm:sharp",
-   "name": "sharp",
-   "summary": "Resize and convert images (version 0.30).",
-   "kind": "node",
-   "repls": [
-    "node",
-    "ts-node"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "sharp",
-   "version": "0.30",
-   "install": "anyone",
-   "category": "JavaScript libraries",
-   "instMB": 29,
-   "docs": "https://sharp.pixelplumbing.com/",
-   "licence": "Apache-2.0",
-   "check": "node-require",
-   "checkArg": "sharp"
-  },
-  {
-   "id": "npm:better-sqlite3",
-   "name": "better-sqlite3",
-   "summary": "SQLite for Node (version 7, prebuilt).",
-   "kind": "node",
-   "repls": [
-    "node",
-    "ts-node"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "better-sqlite3",
-   "version": "7",
-   "install": "anyone",
-   "category": "JavaScript libraries",
-   "instMB": 11,
-   "docs": "https://github.com/WiseLibs/better-sqlite3/tree/v7.6.2#readme",
-   "licence": "MIT",
-   "check": "node-require",
-   "checkArg": "better-sqlite3",
-   "options": [
-    {
-     "manager": "npm",
-     "version": "11.10.0",
-     "size": {
-      "linux-64": 10.2,
-      "linux-aarch64": 10.2
-     },
-     "before": {
-      "linux-64": 10.5,
-      "linux-aarch64": 10.5
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 10.2,
-     "linux-aarch64": 10.2
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "web:bootstrap",
    "name": "bootstrap",
    "summary": "Ready-made styles and components.",
@@ -5496,144 +4218,6 @@
    "files": [
     "css/pico.min.css"
    ]
-  },
-  {
-   "id": "web:water.css",
-   "name": "water.css",
-   "summary": "Make plain HTML look good: one line.",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "popular",
-   "manager": "npm",
-   "package": "water.css",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 1,
-   "docs": "https://watercss.kognise.dev/",
-   "licence": "MIT",
-   "check": "file-exists",
-   "checkArg": "out/water.min.css",
-   "files": [
-    "out/water.min.css"
-   ],
-   "options": [
-    {
-     "manager": "npm",
-     "version": "2.1.1",
-     "size": {
-      "linux-64": 0.1,
-      "linux-aarch64": 0.1
-     },
-     "before": {
-      "linux-64": 0.1,
-      "linux-aarch64": 0.1
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 0.1,
-     "linux-aarch64": 0.1
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "web:normalize.css",
-   "name": "normalize.css",
-   "summary": "Make browsers agree.",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "normalize.css",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 1,
-   "docs": "https://github.com/necolas/normalize.css#readme",
-   "licence": "MIT",
-   "check": "file-exists",
-   "checkArg": "normalize.css",
-   "files": [
-    "normalize.css"
-   ],
-   "options": [
-    {
-     "manager": "npm",
-     "version": "8.0.1",
-     "size": {
-      "linux-64": 0,
-      "linux-aarch64": 0
-     },
-     "before": {
-      "linux-64": 0,
-      "linux-aarch64": 0
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 0,
-     "linux-aarch64": 0
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "web:animate.css",
-   "name": "animate.css",
-   "summary": "Ready-made animations.",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "animate.css",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 1,
-   "docs": "https://animate.style/",
-   "licence": "Hippocratic-2.1",
-   "check": "file-exists",
-   "checkArg": "animate.min.css",
-   "files": [
-    "animate.min.css"
-   ],
-   "options": [
-    {
-     "manager": "npm",
-     "version": "4.1.1",
-     "size": {
-      "linux-64": 0.3,
-      "linux-aarch64": 0.3
-     },
-     "before": {
-      "linux-64": 0.3,
-      "linux-aarch64": 0.3
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 0.3,
-     "linux-aarch64": 0.3
-    },
-    "at": "2026-11-16"
-   }
   },
   {
    "id": "web:@tailwindcss/browser",
@@ -5922,52 +4506,6 @@
    }
   },
   {
-   "id": "web:lodash",
-   "name": "lodash",
-   "summary": "Utility functions.",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "lodash",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 2,
-   "docs": "https://lodash.com/docs/",
-   "licence": "MIT",
-   "check": "file-exists",
-   "checkArg": "lodash.min.js",
-   "files": [
-    "lodash.min.js"
-   ],
-   "options": [
-    {
-     "manager": "npm",
-     "version": "4.18.1",
-     "size": {
-      "linux-64": 1.3,
-      "linux-aarch64": 1.3
-     },
-     "before": {
-      "linux-64": 1.3,
-      "linux-aarch64": 1.3
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 1.3,
-     "linux-aarch64": 1.3
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "web:dayjs",
    "name": "dayjs",
    "summary": "Dates and times.",
@@ -6150,290 +4688,6 @@
     },
     "at": "2026-11-16"
    }
-  },
-  {
-   "id": "web:katex",
-   "name": "katex",
-   "summary": "Maths in the page.",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "katex",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 4,
-   "docs": "https://katex.org/docs/browser",
-   "licence": "MIT",
-   "check": "file-exists",
-   "checkArg": "dist/katex.min.js",
-   "labels": [
-    "needs its fonts folder, served with it"
-   ],
-   "files": [
-    "dist/katex.min.js",
-    "dist/katex.min.css"
-   ],
-   "options": [
-    {
-     "manager": "npm",
-     "version": "0.19.1",
-     "size": {
-      "linux-64": 4,
-      "linux-aarch64": 4
-     },
-     "before": {
-      "linux-64": 4.1,
-      "linux-aarch64": 4.1
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 4,
-     "linux-aarch64": 4
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "web:leaflet",
-   "name": "leaflet",
-   "summary": "Maps (tiles need the internet).",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "leaflet",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 2,
-   "docs": "https://leafletjs.com/reference.html",
-   "licence": "BSD-2-Clause",
-   "check": "file-exists",
-   "checkArg": "dist/leaflet.js",
-   "files": [
-    "dist/leaflet.js",
-    "dist/leaflet.css"
-   ],
-   "options": [
-    {
-     "manager": "npm",
-     "version": "1.9.4",
-     "size": {
-      "linux-64": 1.4,
-      "linux-aarch64": 1.4
-     },
-     "before": {
-      "linux-64": 3.6,
-      "linux-aarch64": 3.6
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 1.4,
-     "linux-aarch64": 1.4
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "web:matter-js",
-   "name": "matter-js",
-   "summary": "2D physics.",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "matter-js",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 1,
-   "docs": "https://brm.io/matter-js/docs/",
-   "licence": "MIT",
-   "check": "file-exists",
-   "checkArg": "build/matter.min.js",
-   "files": [
-    "build/matter.min.js"
-   ],
-   "options": [
-    {
-     "manager": "npm",
-     "version": "0.20.0",
-     "size": {
-      "linux-64": 0.8,
-      "linux-aarch64": 0.8
-     },
-     "before": {
-      "linux-64": 0.9,
-      "linux-aarch64": 0.9
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 0.8,
-     "linux-aarch64": 0.8
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "web:sortablejs",
-   "name": "sortablejs",
-   "summary": "Drag and drop lists.",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "sortablejs",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 1,
-   "docs": "https://sortablejs.github.io/Sortable/",
-   "licence": "MIT",
-   "check": "file-exists",
-   "checkArg": "Sortable.min.js",
-   "files": [
-    "Sortable.min.js"
-   ],
-   "options": [
-    {
-     "manager": "npm",
-     "version": "1.15.7",
-     "size": {
-      "linux-64": 0.6,
-      "linux-aarch64": 0.6
-     },
-     "before": {
-      "linux-64": 0.6,
-      "linux-aarch64": 0.6
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 0.6,
-     "linux-aarch64": 0.6
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "web:swiper",
-   "name": "swiper",
-   "summary": "Sliders.",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "swiper",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 3,
-   "docs": "https://swiperjs.com/swiper-api",
-   "licence": "MIT",
-   "check": "file-exists",
-   "checkArg": "swiper-bundle.min.js",
-   "files": [
-    "swiper-bundle.min.js",
-    "swiper-bundle.min.css"
-   ],
-   "options": [
-    {
-     "manager": "npm",
-     "version": "14.4.0",
-     "size": {
-      "linux-64": 2.8,
-      "linux-aarch64": 2.8
-     },
-     "before": {
-      "linux-64": 3.6,
-      "linux-aarch64": 3.6
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "npm",
-    "size": {
-     "linux-64": 2.8,
-     "linux-aarch64": 2.8
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "web:marked",
-   "name": "marked",
-   "summary": "Markdown to HTML.",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "marked",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 1,
-   "docs": "https://marked.js.org/",
-   "licence": "MIT",
-   "check": "file-exists",
-   "checkArg": "lib/marked.umd.js",
-   "files": [
-    "lib/marked.umd.js"
-   ]
-  },
-  {
-   "id": "web:mathjs",
-   "name": "mathjs",
-   "summary": "Maths and units.",
-   "kind": "weblib",
-   "repls": [
-    "html",
-    "css",
-    "javascript"
-   ],
-   "level": "optional",
-   "manager": "npm",
-   "package": "mathjs",
-   "install": "anyone",
-   "category": "Browser libraries",
-   "instMB": 10,
-   "docs": "https://mathjs.org/docs/",
-   "licence": "Apache-2.0",
-   "check": "file-exists",
-   "checkArg": "lib/browser/math.js",
-   "files": [
-    "lib/browser/math.js"
-   ]
   },
   {
    "id": "plugin:viewport",
@@ -6792,50 +5046,6 @@
    }
   },
   {
-   "id": "go:mux",
-   "name": "mux",
-   "summary": "A router for web servers. (a Go module, run with go run)",
-   "kind": "gomod",
-   "repls": [
-    "go"
-   ],
-   "level": "popular",
-   "manager": "go mirror",
-   "package": "github.com/gorilla/mux",
-   "install": "approval",
-   "category": "Go modules",
-   "instMB": 1,
-   "docs": "https://pkg.go.dev/github.com/gorilla/mux",
-   "licence": "BSD-3-Clause",
-   "check": "file-exists",
-   "checkArg": "github.com/gorilla/mux",
-   "labels": [
-    "mirror: used offline, fetched by the server"
-   ],
-   "options": [
-    {
-     "manager": "go mirror",
-     "version": "1.8.1",
-     "size": {
-      "linux-64": 0.1,
-      "linux-aarch64": 0.1
-     },
-     "before": {
-      "linux-64": 0.1,
-      "linux-aarch64": 0.1
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "go mirror",
-    "size": {
-     "linux-64": 0.1,
-     "linux-aarch64": 0.1
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "go:chi",
    "name": "chi",
    "summary": "A small router for web servers. (a Go module, run with go run)",
@@ -6924,50 +5134,6 @@
    }
   },
   {
-   "id": "go:logrus",
-   "name": "logrus",
-   "summary": "Structured logging. (a Go module, run with go run)",
-   "kind": "gomod",
-   "repls": [
-    "go"
-   ],
-   "level": "optional",
-   "manager": "go mirror",
-   "package": "github.com/sirupsen/logrus",
-   "install": "approval",
-   "category": "Go modules",
-   "instMB": 3,
-   "docs": "https://pkg.go.dev/github.com/sirupsen/logrus",
-   "licence": "MIT",
-   "check": "file-exists",
-   "checkArg": "github.com/sirupsen/logrus",
-   "labels": [
-    "mirror: used offline, fetched by the server"
-   ],
-   "options": [
-    {
-     "manager": "go mirror",
-     "version": "1.10.2",
-     "size": {
-      "linux-64": 2.3,
-      "linux-aarch64": 2.4
-     },
-     "before": {
-      "linux-64": 2.3,
-      "linux-aarch64": 2.4
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "go mirror",
-    "size": {
-     "linux-64": 2.3,
-     "linux-aarch64": 2.4
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "go:zap",
    "name": "zap",
    "summary": "Fast structured logging. (a Go module, run with go run)",
@@ -7010,28 +5176,6 @@
     },
     "at": "2026-11-16"
    }
-  },
-  {
-   "id": "go:x-text",
-   "name": "x-text",
-   "summary": "Text, languages and encodings. (a Go module, run with go run)",
-   "kind": "gomod",
-   "repls": [
-    "go"
-   ],
-   "level": "optional",
-   "manager": "go mirror",
-   "package": "golang.org/x/text",
-   "install": "approval",
-   "category": "Go modules",
-   "instMB": 10,
-   "docs": "https://pkg.go.dev/golang.org/x/text",
-   "licence": "BSD-3-Clause",
-   "check": "file-exists",
-   "checkArg": "golang.org/x/text/language",
-   "labels": [
-    "mirror: used offline, fetched by the server"
-   ]
   },
   {
    "id": "jar:gson",
@@ -7122,50 +5266,6 @@
    }
   },
   {
-   "id": "jar:commons-io",
-   "name": "commons-io",
-   "summary": "Helpers for files and streams. (jars on the class path of javac, java and jshell)",
-   "kind": "jar",
-   "repls": [
-    "java"
-   ],
-   "level": "optional",
-   "manager": "maven mirror",
-   "package": "commons-io:commons-io",
-   "install": "approval",
-   "category": "Java libraries",
-   "instMB": 1,
-   "docs": "https://commons.apache.org/proper/commons-io/",
-   "licence": "Apache-2.0",
-   "check": "file-exists",
-   "checkArg": "org.apache.commons.io.FileUtils",
-   "labels": [
-    "mirror: used offline, fetched by the server"
-   ],
-   "options": [
-    {
-     "manager": "maven mirror",
-     "version": "2.22.0",
-     "size": {
-      "linux-64": 0.6,
-      "linux-aarch64": 0.6
-     },
-     "before": {
-      "linux-64": 0.6,
-      "linux-aarch64": 0.6
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "maven mirror",
-    "size": {
-     "linux-64": 0.6,
-     "linux-aarch64": 0.6
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "jar:guava",
    "name": "guava",
    "summary": "Collections and helpers from Google. (jars on the class path of javac, java and jshell)",
@@ -7210,94 +5310,6 @@
    }
   },
   {
-   "id": "jar:jackson-databind",
-   "name": "jackson-databind",
-   "summary": "JSON with Jackson. (jars on the class path of javac, java and jshell)",
-   "kind": "jar",
-   "repls": [
-    "java"
-   ],
-   "level": "optional",
-   "manager": "maven mirror",
-   "package": "com.fasterxml.jackson.core:jackson-databind",
-   "install": "approval",
-   "category": "Java libraries",
-   "instMB": 3,
-   "docs": "https://github.com/FasterXML/jackson-docs",
-   "licence": "Apache-2.0",
-   "check": "file-exists",
-   "checkArg": "com.fasterxml.jackson.databind.ObjectMapper",
-   "labels": [
-    "mirror: used offline, fetched by the server"
-   ],
-   "options": [
-    {
-     "manager": "maven mirror",
-     "version": "2.23.0",
-     "size": {
-      "linux-64": 2.3,
-      "linux-aarch64": 2.3
-     },
-     "before": {
-      "linux-64": 2.3,
-      "linux-aarch64": 2.3
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "maven mirror",
-    "size": {
-     "linux-64": 2.3,
-     "linux-aarch64": 2.3
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "jar:joda-time",
-   "name": "joda-time",
-   "summary": "Dates and times (before java.time). (jars on the class path of javac, java and jshell)",
-   "kind": "jar",
-   "repls": [
-    "java"
-   ],
-   "level": "optional",
-   "manager": "maven mirror",
-   "package": "joda-time:joda-time",
-   "install": "approval",
-   "category": "Java libraries",
-   "instMB": 1,
-   "docs": "https://www.joda.org/joda-time/",
-   "licence": "Apache-2.0",
-   "check": "file-exists",
-   "checkArg": "org.joda.time.DateTime",
-   "labels": [
-    "mirror: used offline, fetched by the server"
-   ],
-   "options": [
-    {
-     "manager": "maven mirror",
-     "version": "2.15.1",
-     "size": {
-      "linux-64": 0.6,
-      "linux-aarch64": 0.6
-     },
-     "before": {
-      "linux-64": 0.6,
-      "linux-aarch64": 0.6
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "maven mirror",
-    "size": {
-     "linux-64": 0.6,
-     "linux-aarch64": 0.6
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
    "id": "jar:junit-jupiter",
    "name": "junit-jupiter",
    "summary": "Tests with JUnit 5. (jars on the class path of javac, java and jshell)",
@@ -7337,50 +5349,6 @@
     "size": {
      "linux-64": 1.4,
      "linux-aarch64": 1.4
-    },
-    "at": "2026-11-16"
-   }
-  },
-  {
-   "id": "jar:slf4j-simple",
-   "name": "slf4j-simple",
-   "summary": "Logging to the console. (jars on the class path of javac, java and jshell)",
-   "kind": "jar",
-   "repls": [
-    "java"
-   ],
-   "level": "optional",
-   "manager": "maven mirror",
-   "package": "org.slf4j:slf4j-simple",
-   "install": "approval",
-   "category": "Java libraries",
-   "instMB": 1,
-   "docs": "https://www.slf4j.org/manual.html",
-   "licence": "MIT",
-   "check": "file-exists",
-   "checkArg": "org.slf4j.simple.SimpleLogger",
-   "labels": [
-    "mirror: used offline, fetched by the server"
-   ],
-   "options": [
-    {
-     "manager": "maven mirror",
-     "version": "2.0.20",
-     "size": {
-      "linux-64": 0.1,
-      "linux-aarch64": 0.1
-     },
-     "before": {
-      "linux-64": 0.1,
-      "linux-aarch64": 0.1
-     }
-    }
-   ],
-   "minimal": {
-    "manager": "maven mirror",
-    "size": {
-     "linux-64": 0.1,
-     "linux-aarch64": 0.1
     },
     "at": "2026-11-16"
    }
@@ -7733,6 +5701,119 @@
     "size": {
      "linux-64": 3.2,
      "linux-aarch64": 3.2
+    },
+    "at": "2026-11-16"
+   }
+  },
+  {
+   "id": "py27-numpy",
+   "name": "numpy (Python 2.7)",
+   "summary": "Arrays (version 1.16).",
+   "kind": "lib27",
+   "repls": [
+    "python2.7"
+   ],
+   "level": "optional",
+   "manager": "pixi",
+   "package": "numpy",
+   "install": "approval",
+   "category": "Legacy",
+   "instMB": 152,
+   "docs": "https://numpy.org/doc/1.16/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "numpy",
+   "labels": [
+    "legacy (Python 2.7)"
+   ],
+   "python": "2.7"
+  },
+  {
+   "id": "py27-requests",
+   "name": "requests (Python 2.7)",
+   "summary": "HTTP client (version 2.25).",
+   "kind": "lib27",
+   "repls": [
+    "python2.7"
+   ],
+   "level": "optional",
+   "manager": "pixi",
+   "package": "requests",
+   "install": "approval",
+   "category": "Legacy",
+   "instMB": 109,
+   "docs": "https://requests.readthedocs.io/en/v2.25.1/",
+   "licence": "Apache-2.0",
+   "check": "python-import",
+   "checkArg": "requests",
+   "labels": [
+    "legacy (Python 2.7)"
+   ],
+   "python": "2.7",
+   "options": [
+    {
+     "manager": "pixi",
+     "version": "2.25.1",
+     "size": {
+      "linux-64": 106.3,
+      "linux-aarch64": 108.2
+     },
+     "before": {
+      "linux-64": 106.3,
+      "linux-aarch64": 108.2
+     }
+    }
+   ],
+   "minimal": {
+    "manager": "pixi",
+    "size": {
+     "linux-64": 106.3,
+     "linux-aarch64": 108.2
+    },
+    "at": "2026-11-16"
+   }
+  },
+  {
+   "id": "py27-six",
+   "name": "six (Python 2.7)",
+   "summary": "Python 2 and 3 compatibility helpers.",
+   "kind": "lib27",
+   "repls": [
+    "python2.7"
+   ],
+   "level": "optional",
+   "manager": "pixi",
+   "package": "six",
+   "install": "approval",
+   "category": "Legacy",
+   "instMB": 101,
+   "docs": "https://six.readthedocs.io/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "six",
+   "labels": [
+    "legacy (Python 2.7)"
+   ],
+   "python": "2.7",
+   "options": [
+    {
+     "manager": "pixi",
+     "version": "1.16.0",
+     "size": {
+      "linux-64": 98.5,
+      "linux-aarch64": 100.5
+     },
+     "before": {
+      "linux-64": 98.5,
+      "linux-aarch64": 100.5
+     }
+    }
+   ],
+   "minimal": {
+    "manager": "pixi",
+    "size": {
+     "linux-64": 98.5,
+     "linux-aarch64": 100.5
     },
     "at": "2026-11-16"
    }

@@ -127,7 +127,7 @@ func (server *Server) handleAdminCatalogue(w http.ResponseWriter, r *http.Reques
 		s := GetSiteSettings()
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"entries": svc.Catalogue(), "packs": svc.Packs(), "disk": adminDisk(), "repls": appstore.CatalogueRepls, "places": appstore.CataloguePlaces,
-			"checks": appstore.CheckTemplates, "now": time.Now().Unix(),
+			"checks": appstore.CheckTemplates, "now": time.Now().Unix(), "retired": svc.Retired(),
 			"settings": map[string]int{"limitMB": storeLimitMB(), "reserveMB": storeReserveMB(), "perDay": storeRequestsPerDay(),
 				"scratchSoftMB": scratchSoftMB(), "scratchServerMB": scratchServerMB(), "limitSet": s.StoreLimitMB},
 		})
@@ -170,6 +170,14 @@ func (server *Server) handleAdminCatalogue(w http.ResponseWriter, r *http.Reques
 		}
 	case "remove":
 		err = svc.RemoveEntry(who, c.ID)
+	case "restore-removed":
+		out["restored"] = svc.RestoreRemoved(c.Names)
+		detail = strings.Join(c.Names, ",")
+	case "purge-retired":
+		var n int
+		n, err = svc.PurgeRetired(c.Names)
+		out["removed"] = n
+		detail = strings.Join(c.Names, ",")
 	case "install":
 		e, ok := svc.Entry(c.ID)
 		if !ok {

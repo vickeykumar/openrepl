@@ -1810,3 +1810,83 @@ func TestACacheFolderPastItsLimitIsEmptied(t *testing.T) {
 		t.Fatal("a cache past its limit must be emptied")
 	}
 }
+
+func TestRetiredEntriesAreListedAndRemovedOnlyWhenPicked(t *testing.T) {
+	svc, _ := newService(t, Fake{})
+	// a record of a retired entry (it was measured once) and one of a live, admin-added entry
+	if err := svc.AddEntry("measure", Entry{ID: "polars", Name: "polars", Kind: CKLib, Package: "polars", Manager: MgrPixi, Repls: []string{"python"}, Level: "optional", Install: "anyone"}); err != nil {
+		t.Fatal(err)
+	}
+	svc.AddEntry("admin", Entry{ID: "mine", Name: "mine", Kind: CKLib, Package: "mine", Manager: MgrPixi, Repls: []string{"python"}, Level: "optional", Install: "anyone"})
+	r := svc.Retired()
+	if len(r) != 1 || r[0].ID != "polars" {
+		t.Fatalf("retired = %+v", r)
+	}
+	if n, _ := svc.PurgeRetired([]string{"mine", "numpy", "polars"}); n != 1 {
+		t.Errorf("removed %d, want 1 (only the retired and listed one)", n)
+	}
+	if _, ok := svc.Entry("polars"); ok {
+		t.Error("polars is still listed")
+	}
+	if _, ok := svc.Entry("mine"); !ok {
+		t.Error("an admin's own entry was taken off")
+	}
+	if _, ok := svc.Entry("numpy"); !ok {
+		t.Error("a live entry was taken off")
+	}
+}
+
+func TestAnAdminRemovedEntryIsListedAndCanComeBack(t *testing.T) {
+	svc, _ := newService(t, Fake{})
+	if err := svc.RemoveEntry("admin", "numpy"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := svc.Entry("numpy"); ok {
+		t.Fatal("numpy is still listed after Remove")
+	}
+	var found bool
+	for _, r := range svc.Retired() {
+		if r.ID == "numpy" && r.Removed && r.InDefault {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("a removed entry is not offered for restoring")
+	}
+	if n, _ := svc.PurgeRetired([]string{"numpy"}); n != 0 {
+		t.Error("purge must not touch an entry the default file has")
+	}
+	if svc.RestoreRemoved([]string{"numpy", "pandas"}) != 1 {
+		t.Error("only the removed one comes back")
+	}
+	if _, ok := svc.Entry("numpy"); !ok {
+		t.Error("numpy did not come back")
+	}
+}
+
+func TestAUserReadsOnlyCleanLinesOfAnInstall(t *testing.T) {
+	in := []LogLine{
+		{T: 1, Step: "env", Level: "info", Text: "openrepl-pi-1 · linux-aarch64 · 1.9 GB RAM free"},
+		{T: 2, Step: "install", Level: "info", Text: "npm: installing eslint 9.2.0"},
+		{T: 3, Step: "command", Level: "info", Text: "npm install --prefix /store/apps/eslint-9.2.0"},
+		{T: 4, Step: "output", Level: "output", Text: "npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fjs 412ms"},
+		{T: 5, Step: "output", Level: "output", Text: "npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fjs 412ms"},
+		{T: 6, Step: "output", Level: "output", Text: "go: downloading github.com/spf13/cobra v1.10.2"},
+		{T: 7, Step: "output", Level: "output", Text: "token=abc123 secret thing in /home/user/.npmrc"},
+		{T: 8, Step: "output", Level: "output", Text: "added 98 packages in 3m"},
+		{T: 9, Step: "install", Level: "error", Text: "npm: the install failed after 5s: ENOENT /store/x"},
+		{T: 10, Step: "check", Level: "warn", Text: "it does not work after the trim (/store/apps/x)"},
+		{T: 11, Step: "check", Level: "info", Text: "it works (2s)"},
+		{T: 12, Step: "install", Level: "info", Text: "fetching https://example.com/x"},
+		{T: 13, Step: "output", Level: "output", Text: "Get:1 http://archive.ubuntu.com/ubuntu jammy/main amd64 tmux amd64 3.2a-4 [100 kB]"},
+		{T: 14, Step: "output", Level: "output", Text: "   Compiling serde v1.0.200"},
+	}
+	var got []string
+	for _, l := range UserLines(in) {
+		got = append(got, l.Text)
+	}
+	want := []string{"npm: installing eslint 9.2.0", "fetched @eslint/js", "fetched github.com/spf13/cobra v1.10.2", "added 98 packages", "it works (2s)", "fetched tmux 3.2a-4", "building serde 1.0.200"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}

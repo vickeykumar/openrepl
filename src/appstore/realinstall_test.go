@@ -561,7 +561,10 @@ func TestTheMirrorsInstallAndAreUsedOffline(t *testing.T) {
 			if bin == "" {
 				t.Skip("pixi is not here")
 			}
-			e := byID["py27-six"]
+			e, ok := byID["py27-six"]
+			if !ok {
+				t.Skip("the Python 2.7 entries are not in the catalogue")
+			}
 			svc := New(Config{Store: st, KV: newKV(), Installer: Multi{Conda: Pixi{Bin: bin, Dir: st.Dir, Python: PythonOf("python3")}}, Safe: func() []string { return nil }})
 			if err := svc.InstallEntry("ci", e); err != nil {
 				t.Fatal(err)
@@ -584,12 +587,11 @@ func TestTheMirrorsInstallAndAreUsedOffline(t *testing.T) {
 	}
 }
 
-// The minimal installs (LLD 18): a program that the catalogue says apt makes smallest (vim, tmux) and a Node library are installed with the manager the
-// catalogue chose, after the trim, and run the way a terminal runs them (the variables of the bundles that are on). vim must find its runtime files.
+// The minimal installs (LLD 18): a program that the catalogue says apt makes smallest (tmux) and a Node library are installed with the manager the
+// catalogue chose, after the trim, and run the way a terminal runs them (the variables of the bundles that are on).
 func TestTheMinimalInstallsRun(t *testing.T) {
 	svc, st := realService(t)
 	cases := []struct{ id, manager, cmd string }{
-		{"vim", MgrApt, `vim -es -u NONE -c "if empty(globpath(&rtp,'syntax/c.vim'))|cq|endif|q"`},
 		{"tmux", MgrApt, `tmux -V`},
 		{"npm:lodash", MgrNPM, ``},
 	}

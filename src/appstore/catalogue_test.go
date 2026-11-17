@@ -356,7 +356,7 @@ func TestAnAppIsSolvedAgainstTheRuntimesOfTheReplsItWorksWith(t *testing.T) {
 		}
 		return nil
 	}}
-	for name, want := range map[string]string{"benchmark": `"libstdcxx-ng" = "<13"`, "perl-try-tiny": `"perl" = "5.34.*"`, "tcllib": `"tcl" = "8.6.*"`} {
+	for name, want := range map[string]string{"benchmark": `"libstdcxx-ng" = "<13"`, "perl-json-maybexs": `"perl" = "5.34.*"`} {
 		m, err := p.Manifest(name, "", KindTool)
 		if err != nil || !strings.Contains(m, want) {
 			t.Errorf("%s: %v\n%s", name, err, m)

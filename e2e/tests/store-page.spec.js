@@ -384,3 +384,15 @@ test("an admin can ask for a new lock of an installed app, and the lists say whi
   await page.locator("#store-dialog button", { hasText: "New lock" }).click();
   await expect.poll(() => st.calls.some((c) => c[0] === "admin:relock" && c[1].name === "jq")).toBe(true);
 });
+
+test("the box icon turns while installing, and the 'is installed' dialog is shown once: Later closes it for good", async ({ page }) => {
+  fake(page);
+  await page.goto("/store");
+  await page.locator('[data-app="flask"] button', { hasText: "Install" }).click();
+  await expect(page.locator("#store-dialog h3 .boxspin")).toBeVisible();
+  await expect(page.locator("#store-dialog h3")).toHaveText("flask is installed", { timeout: 15000 });
+  await page.locator("#store-dialog button", { hasText: "Later" }).click();
+  await expect(page.locator("#store-dialog")).toBeHidden();
+  await page.waitForTimeout(3500); // the old loop opened it again every second
+  await expect(page.locator("#store-dialog")).toBeHidden();
+});

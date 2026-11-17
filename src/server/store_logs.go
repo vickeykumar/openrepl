@@ -45,3 +45,54 @@ func (server *Server) handleAdminStoreLog(w http.ResponseWriter, r *http.Request
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"node": node, "chunk": raw})
 }
+
+// userServers says how far the other servers are with an app, for the line a user reads ("Copying to the other servers: 2 of 3 ready"): no name of
+// a server goes out, only the counts.
+func userServers(id string) (total, ready, failed int) {
+	appStoreMu.Lock()
+	defer appStoreMu.Unlock()
+	for _, n := range appNodes {
+		total++
+		for _, h := range n.Have {
+			if h == id {
+				ready++
+				break
+			}
+		}
+		if n.Failed[id] != "" {
+			failed++
+		}
+	}
+	return
+}
+
+// userLogResult is what a user reads of an install that runs (or has just failed): the cleaned lines of the gateway's attempt and the counts of the other
+// servers. Any other app gives nothing.
+func userLogResult(svc *appstore.Service, name string, from int64) map[string]interface{} {
+	out := map[string]interface{}{"lines": []appstore.UserLine{}, "next": from, "running": false}
+	if !appstore.ValidName(name) {
+		return out
+	}
+	var app appstore.App
+	found := false
+	for _, a := range svc.Apps() {
+		if a.Name == name && (a.State == appstore.StateInstalling || a.State == appstore.StateFailed) {
+			app, found = a, true
+		}
+	}
+	if !found {
+		return out
+	}
+	chunk := svc.ReadLog(name, 0, from)
+	lines := appstore.UserLines(chunk.Lines)
+	if len(lines) > 200 {
+		lines = lines[len(lines)-200:]
+	}
+	out["lines"], out["next"], out["running"] = lines, chunk.Next, chunk.Running
+	if app.ID != "" {
+		if total, ready, failed := userServers(app.ID); total > 0 {
+			out["servers"] = map[string]int{"total": total, "ready": ready, "failed": failed}
+		}
+	}
+	return out
+}

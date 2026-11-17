@@ -107,6 +107,7 @@
 .store-dialog__steps { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--st-faint); }
 .store-dialog__steps li.is-done { color: var(--st-muted); }
 .store-dialog__steps li.is-current { color: var(--st-accent-text); font-weight: 600; }
+.store-dialog__log { max-height: 170px; overflow: auto; margin: 0 0 12px; font-size: 12px; }
 .store-dialog__steps li small { color: var(--st-faint); margin-left: 6px; }
 .store-dialog__btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .store-dialog .store__code { color: var(--st-bad); max-height: 150px; overflow: auto; margin-bottom: 10px; }
@@ -123,3 +124,9 @@
 .store__nodehead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .store__node .store__row { background: var(--st-win, var(--st-card)); }
 .store__hits { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--st-line); padding-top: 10px; }
+.boxspin { display: inline-block; width: var(--s, 18px); height: var(--s, 18px); color: var(--st-accent-text, #3F6200); perspective: 200px; vertical-align: -0.25em; flex: none; }
+.boxspin svg { width: 100%; height: 100%; animation: boxturn 1.8s linear infinite; }
+@keyframes boxturn { to { transform: rotateY(360deg); } }
+.is-loading { display: flex; align-items: center; gap: 8px; }
+#store-dialog-title .boxspin { margin-right: 8px; }
+@media (prefers-reduced-motion: reduce) { .boxspin svg { animation: none; } }

@@ -1,5 +1,5 @@
 // The Catalogue tab of the admin's App Store view (resources/js/admin.js). The admin API is a stand-in; the real routes are covered by the
-// Go tests. It tries every button of the tab: Add app, Add plugin, Bulk add, Packs, Export, Import, Verify now, the filters, Edit, Install, Remove,
+// Go tests. It tries every button of the tab: Add app, Add plugin, Bulk add, Packs, Export, Import, Verify now, the filters, Edit, Install, Retire,
 // the disk of every server, and a request that is approved through the Add form.
 const { test, expect } = require("@playwright/test");
 const fs = require("fs");
@@ -152,8 +152,8 @@ test("Edit, Install and Remove of an entry; a plugin of ours or a browser librar
   expect(st.posts.find((p) => p.action === "install").id).toBe("polars");
   await page.locator("tr", { hasText: "bootstrap" }).getByRole("button", { name: "Install" }).click();
   await expect.poll(() => st.posts.filter((p) => p.action === "install").length).toBe(2);
-  await page.locator("tr", { hasText: "polars" }).getByRole("button", { name: "Remove" }).click();
-  await page.locator("dialog").getByRole("button", { name: "Remove" }).click();
+  await page.locator("tr", { hasText: "polars" }).getByRole("button", { name: "Retire" }).click();
+  await page.locator("dialog").getByRole("button", { name: "Retire" }).click();
   await expect.poll(() => st.posts.find((p) => p.action === "remove")).toBeTruthy();
   await page.locator("tr", { hasText: "numpy" }).getByRole("button", { name: "Edit" }).click();
   await expect(page.getByLabel("Package name")).toHaveValue("numpy");
