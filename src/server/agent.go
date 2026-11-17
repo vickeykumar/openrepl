@@ -487,7 +487,8 @@ Examples:
 - "run my code" -> {"say":"Running it.","actions":[{"type":"run"}],"done":false}, then read the output and say what happened.
 - "install requests" -> {"say":"Installing it.","actions":[{"type":"terminal_type","text":"pip install requests","wait_seconds":10}],"done":false}
 - "what does this error mean" -> no action: {"say":"<the explanation, from the terminal text>","done":true}
-- "make it print the numbers 1 to 5" -> one editor_replace or editor_write action, then run it.`
+- "make it print the numbers 1 to 5" -> step 1: one editor_replace or editor_write action. Step 2: {"say":"Saving it.","actions":[{"type":"files_save"}],"done":false}. Step 3: run it.
+SAVE AFTER EVERY EDIT (do not forget this): the editor is not the disk. After EVERY editor_write, editor_insert or editor_replace that the user accepted, your next step MUST contain {"type":"files_save"} before you run the code or finish, and when you edit again, save again. A task whose last edit was not saved is not finished: never set "done": true after an edit without a files_save after it. (If files_save says no file is open, say that in "say" and go on.)`
 
 func agentSystemPrompt() string {
 	return `You are Genie in AGENT MODE, working in the coding workspace of OpenREPL (the website this conversation runs on). The user gave you a task and you carry it out in steps. The workspace has a code editor and a terminal; the latest editor code and terminal output are in the "Openrepl IDE real-time context" message at the end of the conversation.
