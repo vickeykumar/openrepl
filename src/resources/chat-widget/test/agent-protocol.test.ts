@@ -616,3 +616,24 @@ test("each mode has its starter chips", () => {
   assert.ok(starterChips(true).includes("Run this"));
   assert.ok(starterChips(false).includes("Explain the error in my terminal"));
 });
+
+import { locateOld, nearestLines } from "../src/agent-protocol.ts";
+
+test("the old text of a replace is found exactly, or by white space, or not at all", () => {
+  const text = "<ul>\n    <li><a href=\"a\">A</a></li>\n    <li><a href=\"b\">B</a></li>\n</ul>\nlet cart = [];\nfunction add(x) {\n  cart.push(x);\n}\n";
+  // exact
+  let r = locateOld(text, "let cart = [];");
+  assert.ok(r.ok && !r.tolerant && text.slice(r.start, r.end) === "let cart = [];");
+  // other indentation and line breaks: found, and the range is the editor's own text
+  r = locateOld(text, "function add(x) {\n      cart.push(x);\n  }");
+  assert.ok(r.ok && r.tolerant);
+  assert.equal(text.slice((r as any).start, (r as any).end), "function add(x) {\n  cart.push(x);\n}");
+  // more than once: refused, not guessed
+  r = locateOld(text, "<li><a");
+  assert.ok(!r.ok && (r as any).many);
+  // not there: the nearest lines are given
+  r = locateOld(text, "function addToCart(item) {");
+  assert.ok(!r.ok && !(r as any).many);
+  assert.match((r as any).near, /6: function add\(x\) \{/);
+  assert.equal(nearestLines("one\ntwo", "zzz"), "");
+});

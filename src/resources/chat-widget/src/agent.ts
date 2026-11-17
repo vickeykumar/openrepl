@@ -45,6 +45,7 @@ import {
   scopeDetail,
   scopeOf,
   scopeQuestion,
+  locateOld,
 } from "./agent-protocol";
 import { SSEParser, addEvent, answerOf, newStreamed, partialSay } from "./sse";
 import { CHECK_BEFORE_DONE, MAX_CARRIES, MAX_FIXES, PlanState, WorkTrack, changeLine, compactHistory, contextToSend, countLines } from "./agent-task";
@@ -289,6 +290,7 @@ export class AgentRunner {
   // The run this task started, if any: the terminal that was there when Run was
   // pressed (the run's own terminal is another one), and when.
   private ran = false;
+  private replaceFails = 0; // editor_replace steps that found no old text, in a row
   private runTerm: unknown = null;
   private runAt = 0;
   private card: HTMLElement | null = null;
@@ -324,6 +326,7 @@ export class AgentRunner {
     if (this.running) return;
     this.running = true;
     this.stopped = false;
+    this.replaceFails = 0;
     this.timedOut = false;
     this.onState("running");
     this.ctl = new AbortController();
@@ -808,14 +811,18 @@ export class AgentRunner {
         const text = this.host.editorText();
         let next: string;
         if (a.old !== undefined) {
-          const first = text.indexOf(a.old);
-          if (first < 0) {
-            return { type: a.type, status: "failed", detail: "the old text was not found in the editor: it has to match exactly, spaces, indentation and line breaks included; copy it from the editor context again" };
+          const at = locateOld(text, a.old);
+          if (!at.ok) {
+            if (at.many) {
+              return { type: a.type, status: "failed", detail: "the old text is in the editor more than once; include a line or two around it so that it is there only once" };
+            }
+            this.replaceFails++;
+            const near = at.near ? " The editor has these lines that look like it (copy from them):\n" + at.near : "";
+            const again = this.replaceFails >= 2 ? " This is the " + this.replaceFails + "th failed replace in a row: send editor_write with the WHOLE new file instead of editor_replace." : "";
+            return { type: a.type, status: "failed", detail: "the old text was not found in the editor: it has to match, and it must be copied, not retyped; use one to three lines that are only there once, never '...'." + near + again };
           }
-          if (text.indexOf(a.old, first + 1) >= 0) {
-            return { type: a.type, status: "failed", detail: "the old text is in the editor more than once; include a line or two around it so that it is there only once" };
-          }
-          next = text.slice(0, first) + (a.text || "") + text.slice(first + a.old.length);
+          this.replaceFails = 0;
+          next = text.slice(0, at.start) + (a.text || "") + text.slice(at.end);
         } else {
           const lines = text.split("\n");
           const from = a.startLine || 1;

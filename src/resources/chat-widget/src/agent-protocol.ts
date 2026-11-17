@@ -1144,3 +1144,66 @@ export function starterChips(agent: boolean): string[] {
     ? ["Run this", "Fix the error in my terminal", "Fix this file", "Add comments to my code"]
     : ["Explain the error in my terminal", "Explain this code", "Review my code", "How do I run this?"];
 }
+
+// ---- finding the old text of an editor_replace ---------------------------------------------
+
+export type Located = { ok: true; start: number; end: number; tolerant: boolean } | { ok: false; many: boolean; near: string };
+
+// Where `old` is in the editor text. Exact first. A small model copies text with other indentation or spacing, so when
+// there is no exact match the search ignores differences in white space (runs of spaces, tabs and line breaks count as one
+// space); it is accepted only when that match is unique. When nothing matches, `near` is the editor's own lines that look
+// most like the first line of `old`, with their numbers, so that the model can copy them.
+export function locateOld(text: string, old: string): Located {
+  const first = text.indexOf(old);
+  if (first >= 0) {
+    return text.indexOf(old, first + 1) >= 0 ? { ok: false, many: true, near: "" } : { ok: true, start: first, end: first + old.length, tolerant: false };
+  }
+  // the text with white space collapsed, and where each of its characters came from
+  let flat = "";
+  const from: number[] = [];
+  let space = true; // a leading space is dropped
+  for (let i = 0; i < text.length; i++) {
+    if (/\s/.test(text[i])) {
+      if (!space) {
+        flat += " ";
+        from.push(i);
+        space = true;
+      }
+    } else {
+      flat += text[i];
+      from.push(i);
+      space = false;
+    }
+  }
+  const want = old.replace(/\s+/g, " ").trim();
+  if (want !== "") {
+    const at = flat.indexOf(want);
+    if (at >= 0) {
+      if (flat.indexOf(want, at + 1) >= 0) return { ok: false, many: true, near: "" };
+      return { ok: true, start: from[at], end: from[at + want.length - 1] + 1, tolerant: true };
+    }
+  }
+  return { ok: false, many: false, near: nearestLines(text, old) };
+}
+
+// Up to 3 lines of the text, numbered, that share the most words with the first lines of `old`.
+export function nearestLines(text: string, old: string): string {
+  const words = (s: string) => (s.toLowerCase().match(/[a-z0-9_$#.-]{2,}/g) || []) as string[];
+  const wanted = new Set(words(old.split("\n").filter((l) => l.trim() !== "").slice(0, 3).join(" ")));
+  if (wanted.size === 0) return "";
+  const scored: { n: number; line: string; score: number }[] = [];
+  text.split("\n").forEach((line, i) => {
+    const got = new Set(words(line));
+    let score = 0;
+    wanted.forEach((w) => {
+      if (got.has(w)) score++;
+    });
+    if (score > 0) scored.push({ n: i + 1, line, score });
+  });
+  scored.sort((a, b) => b.score - a.score || a.n - b.n);
+  return scored
+    .slice(0, 3)
+    .sort((a, b) => a.n - b.n)
+    .map((x) => x.n + ": " + (x.line.length > 160 ? x.line.slice(0, 160) + "..." : x.line))
+    .join("\n");
+}

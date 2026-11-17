@@ -1088,3 +1088,24 @@ test("built: a step answered as a call of the function is read like JSON written
   assert.equal(t.results(1).step_results[0].type, "files_list");
   assert.deepEqual(t.log.notes, []);
 });
+
+test("built: editor_replace finds an old text that differs only in white space, names the nearest lines when it is missing, and asks for the whole file after two failures", async () => {
+  const proposed = [];
+  reviewing(proposed);
+  const code = "def f():\n    return 1\n\ndef g():\n    return 2\n";
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "editor_replace", old: "def f():\n  return 1", new: "def f():\n    return 10" }], done: false },
+      { say: "", actions: [{ type: "editor_replace", old: "def h():", new: "x" }, { type: "editor_replace", old: "def k(a):", new: "y" }], done: false },
+      { say: "ok", actions: [], done: true },
+    ],
+    { editorText: () => code, answer: () => "Allow once" }
+  );
+  await t.done(t.runner.start("change it"));
+  assert.equal(proposed[0].text, "def f():\n    return 10\n\ndef g():\n    return 2\n", "the indentation of the model was not an obstacle");
+  const r = t.results(2).step_results;
+  assert.equal(r[0].status, "failed");
+  assert.match(r[0].detail, /copy from them/);
+  assert.match(r[0].detail, /1: def f\(\):|4: def g\(\):/);
+  assert.match(r[1].detail, /WHOLE new file/);
+});
