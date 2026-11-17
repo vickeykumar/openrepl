@@ -1806,7 +1806,6 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 }
 
 /* The bar that leads to a card waiting for the user, and the arrow to the last message (index.ts: renderWaiting, updateJump). */
-#chat-widget__body { position: relative; }
 .cw-wait { padding: 0 0 8px; }
 .cw-wait[hidden] { display: none; }
 .cw-wait__btn {
@@ -1820,8 +1819,9 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 .cw-wait__go { flex: 0 0 auto; font-size: 11.5px; font-weight: 600; border-radius: 6px; padding: 1px 8px; color: var(--cw-bg, #15151c); background: var(--cw-accent); }
 .cw-ring { animation: cw-ring 1.6s ease-out 1; }
 @keyframes cw-ring { 0%, 55% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--cw-accent) 55%, transparent); } 100% { box-shadow: 0 0 0 4px transparent; } }
+#chat-widget__stream { position: relative; flex-grow: 1; min-height: 0; display: flex; flex-direction: column; }
 .cw-jump {
-  position: absolute; right: 16px; bottom: 10px; z-index: 5; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; z-index: 5; display: flex; align-items: center; justify-content: center; cursor: pointer;
   min-width: 34px; height: 34px; padding: 0; border-radius: 99px; font: inherit; font-size: 16px; font-weight: 600;
   color: var(--cw-strong); background: var(--cw-field-bg, #2a2a36); border: 1px solid var(--cw-field-border); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }

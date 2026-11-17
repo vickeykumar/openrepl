@@ -488,6 +488,17 @@ function noteRef() {
 }
 
 function wireConversationScroll() {
+  // the conversation and its arrow in one box, so that the arrow floats at the bottom of the conversation, over its last lines,
+  // and not at the bottom of the whole panel (over the input and the usage line)
+  const stream = document.createElement("div");
+  stream.id = "chat-widget__stream";
+  const parent = messagesHistory.parentNode;
+  if (parent) {
+    parent.insertBefore(stream, messagesHistory);
+    stream.appendChild(messagesHistory);
+    const arrow = document.getElementById("chat-widget__jump");
+    if (arrow) stream.appendChild(arrow);
+  }
   messagesHistory.addEventListener("scroll", () => {
     noteRef();
     updateJump();

@@ -441,6 +441,16 @@ test("a down arrow leads to the last message, counts what came while reading, an
   await scrollUp(page);
   await expect(jump).toBeVisible();
   await expect(jump).toHaveText("↓");
+  // it floats at the bottom of the conversation, in the middle, and not over the input or the usage line
+  const place = await page.evaluate(() => {
+    const j = document.getElementById("chat-widget__jump").getBoundingClientRect();
+    const c = document.getElementById("chat-widget__messages_history").getBoundingClientRect();
+    const f = document.getElementById("chat-widget__form").getBoundingClientRect();
+    return { jumpBottom: j.bottom, convBottom: c.bottom, formTop: f.top, jumpMid: (j.left + j.right) / 2, convMid: (c.left + c.right) / 2 };
+  });
+  expect(place.jumpBottom).toBeLessThanOrEqual(place.convBottom);
+  expect(place.jumpBottom).toBeLessThanOrEqual(place.formTop + 1);
+  expect(Math.abs(place.jumpMid - place.convMid)).toBeLessThan(4);
   // a new message while reading further up: the arrow counts it, and what is on screen does not move
   const before = await page.evaluate(() => {
     const box = document.getElementById("chat-widget__messages_history");
