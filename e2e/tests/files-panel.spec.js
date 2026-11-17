@@ -115,7 +115,8 @@ test("a folder whose name starts with a dot is listed, but not what is inside it
   const fs = require("fs");
   const path = require("path");
   // the page script of this checkout, and a workspace tree with a hidden folder that holds a folder and a file
-  await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "js", "dist", "scribbler.js")) }));
+  // (in CI the server under test already has this script; the checkout's build is used only for a run with GENIE_LOCAL_ASSETS=1)
+  if (process.env.GENIE_LOCAL_ASSETS) await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "js", "dist", "scribbler.js")) }));
   await page.route((u) => u.pathname.endsWith("/ws_filebrowser"), async (route) => {
     const res = await route.fetch();
     const tree = await res.json();
