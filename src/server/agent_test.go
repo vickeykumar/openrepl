@@ -166,7 +166,7 @@ func TestTheBodyOfAStepIsTheServersAndNotThePages(t *testing.T) {
 	if len(got.Messages) != 2 || got.Messages[0]["role"] != "system" || !strings.Contains(got.Messages[0]["content"], "AGENT MODE") || got.Messages[1]["content"] != "do it" {
 		t.Errorf("messages: %+v", got.Messages)
 	}
-	if got.Format["type"] != "json_object" || got.Stream != nil || got.Max != agentMaxTokens || got.MaxC != 50 {
+	if got.Format["type"] != "json_object" || got.Max != agentMaxTokens || got.MaxC != 50 {
 		t.Errorf("body: %s", out)
 	}
 	// the prompt names every action the page may carry out, and the rules

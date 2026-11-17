@@ -2,6 +2,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  isSmallModel,
+  starterChips,
   ACTIONS,
   MAX_ACTIONS,
   MAX_OUTPUT,
@@ -105,6 +107,7 @@ test("the list of actions is the one in the server's prompt", () => {
   assert.deepEqual([...ACTIONS], [
     "editor_write",
     "editor_insert",
+    "editor_replace",
     "set_language",
     "run",
     "debug",
@@ -116,6 +119,8 @@ test("the list of actions is the one in the server's prompt", () => {
     "terminal_close_tab",
     "bash",
     "files_list",
+    "files_search",
+    "files_read",
     "files_open",
     "files_new",
     "files_save",
@@ -553,4 +558,92 @@ test("store_suggest names a conda-forge package and asks the user: it installs a
   assert.match(scopeQuestion("store"), /App Store/);
   assert.match(scopeDetail("store", { type: "store_suggest", name: "flask" }), /flask/);
   assert.match(describe({ type: "store_suggest", name: "flask" }), /flask/);
+});
+
+test("editor_replace needs the old text or the lines, and the new text", () => {
+  const ok = parseStep(JSON.stringify({ actions: [{ type: "editor_replace", old: "a = 1", new: "a = 2" }, { type: "editor_replace", start_line: 3, end_line: 4, new: "" }, { type: "editor_replace", start_line: 7, new: "x" }], done: false }));
+  assert.ok(ok.ok);
+  if (ok.ok) {
+    assert.deepEqual(ok.step.actions, [
+      { type: "editor_replace", old: "a = 1", text: "a = 2" },
+      { type: "editor_replace", startLine: 3, endLine: 4, text: "" },
+      { type: "editor_replace", startLine: 7, endLine: 7, text: "x" },
+    ]);
+  }
+  const bad = parseStep(JSON.stringify({ actions: [{ type: "editor_replace", old: "x" }, { type: "editor_replace", new: "y" }, { type: "editor_replace", start_line: 5, end_line: 2, new: "y" }, { type: "editor_replace", start_line: 0, new: "y" }, { type: "editor_replace", old: "x", new: 5 }] }));
+  assert.ok(bad.ok);
+  if (bad.ok) {
+    assert.equal(bad.step.actions.length, 0);
+    assert.equal(bad.step.dropped.length, 5);
+  }
+  assert.equal(scopeOf({ type: "editor_replace" }), "editor");
+});
+
+test("files_search and files_read are read-only: they need no permission, and their paths are checked", () => {
+  const ok = parseStep(JSON.stringify({ actions: [{ type: "files_search", query: " login ", path: "src" }, { type: "files_read", path: "src/a.py", start_line: 10, end_line: 20 }, { type: "files_read", path: "b.py" }], done: false }));
+  assert.ok(ok.ok);
+  if (ok.ok) {
+    assert.deepEqual(ok.step.actions, [
+      { type: "files_search", query: "login", path: "src" },
+      { type: "files_read", path: "src/a.py", startLine: 10, endLine: 20 },
+      { type: "files_read", path: "b.py", startLine: 1, endLine: 400 },
+    ]);
+  }
+  assert.equal(scopeOf({ type: "files_search" }), null);
+  assert.equal(scopeOf({ type: "files_read" }), null);
+  const bad = parseStep(JSON.stringify({ actions: [{ type: "files_search", query: "" }, { type: "files_search", query: "x", path: "../up" }, { type: "files_read", path: ".env" }, { type: "files_read", path: "/etc/passwd" }, { type: "files_read", path: "a", start_line: 5, end_line: 2 }, { type: "files_search", query: "a\nb" }] }));
+  assert.ok(bad.ok);
+  if (bad.ok) {
+    assert.equal(bad.step.actions.length, 0);
+    assert.equal(bad.step.dropped.length, 6);
+  }
+  // a read is never more than the most lines
+  const long = parseStep(JSON.stringify({ actions: [{ type: "files_read", path: "a", start_line: 1, end_line: 9000 }] }));
+  assert.ok(long.ok && long.step.actions[0].endLine === 400);
+});
+
+
+test("small models are told from their id", () => {
+  for (const id of ["@cf/qwen/qwen3-30b-a3b-fp8", "@cf/google/gemma-4-26b-a4b-it", "gpt-4o-mini", "@cf/zai-org/glm-4.7-flash", "google/gemma-4-31b-it"]) {
+    assert.equal(isSmallModel(id), true, id);
+  }
+  for (const id of ["gpt-6-luna", "anthropic/claude-sonnet", "meta/llama-3.3-70b-instruct", ""]) {
+    assert.equal(isSmallModel(id), false, id);
+  }
+});
+
+test("each mode has its starter chips", () => {
+  assert.ok(starterChips(true).includes("Run this"));
+  assert.ok(starterChips(false).includes("Explain the error in my terminal"));
+});
+
+import { locateOld, nearestLines } from "../src/agent-protocol.ts";
+
+test("the old text of a replace is found exactly, or by white space, or not at all", () => {
+  const text = "<ul>\n    <li><a href=\"a\">A</a></li>\n    <li><a href=\"b\">B</a></li>\n</ul>\nlet cart = [];\nfunction add(x) {\n  cart.push(x);\n}\n";
+  // exact
+  let r = locateOld(text, "let cart = [];");
+  assert.ok(r.ok && !r.tolerant && text.slice(r.start, r.end) === "let cart = [];");
+  // other indentation and line breaks: found, and the range is the editor's own text
+  r = locateOld(text, "function add(x) {\n      cart.push(x);\n  }");
+  assert.ok(r.ok && r.tolerant);
+  assert.equal(text.slice((r as any).start, (r as any).end), "function add(x) {\n  cart.push(x);\n}");
+  // more than once: refused, not guessed
+  r = locateOld(text, "<li><a");
+  assert.ok(!r.ok && (r as any).many);
+  // not there: the nearest lines are given
+  r = locateOld(text, "function addToCart(item) {");
+  assert.ok(!r.ok && !(r as any).many);
+  assert.match((r as any).near, /6: function add\(x\) \{/);
+  assert.equal(nearestLines("one\ntwo", "zzz"), "");
+});
+
+import { missingLines } from "../src/agent-protocol.ts";
+
+test("the lines of an old text that are not in the editor are named", () => {
+  const text = '<head>\n  <link href="a.css" rel="stylesheet">\n  <title>x</title>\n</head>\n';
+  assert.equal(missingLines(text, '<link href="a.css" rel="stylesheet">\n<meta charset="utf-8">'), '<meta charset="utf-8">');
+  assert.equal(missingLines(text, "<title>x</title>"), "");
+  const r = locateOld(text, '<link href="a.css" rel="stylesheet">\n<meta charset="utf-8">');
+  assert.ok(!r.ok && !(r as any).many && (r as any).missing === '<meta charset="utf-8">');
 });

@@ -19,7 +19,14 @@
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg>
   </button>
 </div>
+<!-- The chats of this workspace as tabs, and the question or news in the strip (index.ts: renderTabs). Hidden when chats are not saved. -->
+<div id="chat-widget__tabs-wrap" class="cw-tabs-wrap" hidden>
+  <div id="chat-widget__tabs" class="cw-tabs" role="tablist" aria-label="Chats"></div>
+  <div id="chat-widget__toast" class="cw-toast" role="status" hidden></div>
+</div>
 <div id="chat-widget__body">
+  <!-- The arrow to the last message, while the user has scrolled up (index.ts: updateJump). -->
+  <button type="button" id="chat-widget__jump" class="cw-jump" aria-label="Jump to the latest message" hidden>↓</button>
   <!-- The messages_history div is placed here. -->
   <!-- The practice coach, on the practice page only (index.ts: wireCoach). -->
   <div id="chat-widget__coach" class="cw-coach" role="group" aria-label="Practice coach" hidden>
@@ -28,8 +35,26 @@
     <button type="button" data-coach="review">Review my solution</button>
     <button type="button" data-coach="complexity">Complexity</button>
   </div>
+  <!-- One-click requests in Chat mode: about the selection in the editor, and the last error of the terminal (index.ts: refreshQuick). -->
+  <div id="chat-widget__quick" class="cw-quick" role="group" aria-label="Ask about" hidden>
+    <button type="button" data-quick="selection" hidden>Explain selection</button>
+    <button type="button" data-quick="error" hidden>Fix last error</button>
+  </div>
   <form id="chat-widget__form">
     <label for="chat-widget__input" class="chat-widget__sr-only">Ask Genie</label>
+    <!-- The task waits for the user and the card is out of view (index.ts: renderWaiting): the whole bar is the button that leads to it. -->
+    <div id="chat-widget__wait" class="cw-wait" role="status" aria-live="polite" hidden>
+      <button type="button" id="chat-widget__wait-go" class="cw-wait__btn">
+        <span class="cw-wait__dot" aria-hidden="true"></span>
+        <span id="chat-widget__wait-text" class="cw-wait__text"></span>
+        <span id="chat-widget__wait-label" class="cw-wait__go">Show</span>
+      </button>
+    </div>
+    <div id="chat-widget__starters" class="cw-starters" role="group" aria-label="Things to ask" hidden></div>
+    <div id="chat-widget__modehint" class="cw-modehint" role="note" hidden>
+      <span id="chat-widget__modehint-text"></span>
+      <button type="button" id="chat-widget__modehint-switch" class="cw-modehint__btn" hidden></button>
+    </div>
     <div id="chat-widget__field">
       <div id="chat-widget__attached" role="group" aria-label="Added to this message" hidden></div>
       <textarea

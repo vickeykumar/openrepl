@@ -135,3 +135,8 @@ The key is the signed-in user (`u:<uid>`) or `visitors`, all visitors together, 
 - The New question dialog has Model and Effort selects (`#qmodel`, `#qeffort`, filled by `initQuestionModelFields` in `common.js`) on the home page and on the practice page. They read and write the same saved choice as Genie. With Luna the Creativity field is disabled (Luna takes no temperature); with 4o mini and Gemma the Effort select is. The Model select groups its options by provider, like the panel.
 - Topics come from the `topics` array in `common.js` (for example Two Pointers, DP, Graphs and System Design).
 - Results are saved through `PracticeStore` in `localStorage.questions`, which keeps the latest 100, and for signed-in users in their account (LLD 05, 06).
+
+
+## Genie agent: efficiency, credits and plans
+
+See [19. Genie agent and chat](19-genie-agent.md): the usage record and credits (`/chat/usage?task=`, `chat/agent-outcome`, the credits part of the usage line), the read-only `/agent_files`, carrying on, streaming and native tool calls.

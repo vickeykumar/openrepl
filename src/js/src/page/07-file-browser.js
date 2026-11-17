@@ -190,6 +190,15 @@
   if (window.EditorTabs) window.EditorTabs.attachShared(thisbrowser);
 
 
+  // Whether a path is below a hidden folder of the workspace (some folder above it has a name that starts with a dot).
+  function inHiddenFolder(id) {
+    var rel = String(id || "");
+    if (homedir && rel.indexOf(homedir + "/") === 0) rel = rel.slice(homedir.length + 1);
+    var segs = rel.split("/");
+    segs.pop();
+    return segs.some(function (seg) { return seg.charAt(0) === "."; });
+  }
+
   function preprocessnodedata(node) {
     var disabled = false;
     // Check if data.type is file
@@ -204,6 +213,10 @@
           return preprocessnodedata(child);
         });
       }
+    }
+    // A hidden folder (a name that starts with a dot) shows nothing of what is inside it: not its files, not its subfolders.
+    if (node.type !== 'file' && node.text && node.text.startsWith('.') && node.id !== homedir) {
+      node.children = [];
     }
     // disable the hidden files, usually startes with . or any other binary file format that can't be loaded to the editor
     if ((node.text) && (node.text.startsWith('.') || disabled)) {
@@ -408,6 +421,7 @@
           if (window.FileMarks && eventdata.type === "file") window.FileMarks.event("create", eventdata.Name); // a new file, in the colors
           let parentnode = eventdata.Name.split('/').slice(0, -1).join('/');
           let nodename = eventdata.Name.split('/').slice(-1).join('/');
+          if (inHiddenFolder(eventdata.Name)) break; // what is made inside a hidden folder is not shown
           $('#file-browser').jstree(true).create_node(parentnode, preprocessnodedata({ "id" : eventdata.Name, "text" : nodename, "type": eventdata.type }), "last", function(){
               console.log("node created: ", eventdata.Name);
            });
@@ -1057,7 +1071,7 @@
     function idOf(rel) { return rel ? home() + "/" + rel : home(); }
     function relOf(id) { return id === home() ? "" : String(id).slice(home().length + 1); }
     function isFolder(node) { return node.type !== "file"; }
-    function isHidden(node) { return String(node.text || "").startsWith("."); }
+    function isHidden(node) { return String(node.text || "").startsWith(".") || inHiddenFolder(node.id); }
     function isProtected(node) { return !!(node.state && node.state.disabled); }
     function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
     function fail(error) { return { ok: false, error: error }; }

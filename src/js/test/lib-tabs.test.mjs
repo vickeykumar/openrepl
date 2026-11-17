@@ -2,7 +2,7 @@
 // shown, closing picks a neighbour, rename and delete follow the tree, a saved list is checked against what exists.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MAX_TABS, emptyState, openTab, closeTab, renamePath, removePath, restoreState, tabLabels, UNTITLED } from "../src/page/lib-tabs.mjs";
+import { relPath, shortRel, MAX_TABS, emptyState, openTab, closeTab, renamePath, removePath, restoreState, tabLabels, UNTITLED } from "../src/page/lib-tabs.mjs";
 
 const open = (paths) => paths.reduce((s, p) => openTab(s, p), emptyState());
 
@@ -127,4 +127,16 @@ test("the untitled tab is a tab like the others: labelled, dropped first when it
   // a saved untitled file takes its place in the strip
   const r = renamePath(open(["/a", UNTITLED, "/b"]), UNTITLED, "/h/main.c");
   assert.deepEqual(r.tabs, ["/a", "/h/main.c", "/b"]);
+});
+
+test("with the workspace folder a tab says the path of the file inside it", () => {
+  const home = "/tmp/home/u1";
+  assert.deepEqual(tabLabels([home + "/shop/index.html", home + "/notes.txt", UNTITLED], home), ["shop/index.html", "notes.txt", "untitled"]);
+  assert.deepEqual(tabLabels([home + "/index.html", home + "/shop/index.html"], home), ["index.html", "shop/index.html"]);
+  assert.deepEqual(tabLabels(["/elsewhere/a.c"], home), ["a.c"], "outside the workspace: the name");
+  assert.equal(relPath(home + "/a/b.c", home), "a/b.c");
+  assert.equal(relPath("/tmp/home/u12/a.c", home), "", "a folder whose name starts the same is not the workspace");
+  assert.equal(shortRel("shop/index.html"), "shop/index.html");
+  assert.equal(shortRel("assets/images/products/fresh/produce/index.html"), "…/fresh/produce/index.html");
+  assert.equal(shortRel("a-very-long-folder-name-that-does-not-fit/x.html"), "…/x.html");
 });

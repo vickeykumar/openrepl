@@ -15,6 +15,7 @@
 // last accepted change left.
 
 import { makeHunks, locate } from "./lib-diff.mjs";
+import { applyRegion } from "./lib-region.mjs";
 
 const CONTEXT_LINES = 2;
 
@@ -457,6 +458,24 @@ window.replacecodesnippet = function (encoded) {
   } catch (error) {
     console.error(error);
     reportResult(-1, "replace");
+  }
+};
+
+// "Apply as a diff" under a code block: the function or class the code defines is found in the editor by
+// name, and only that part is proposed as a change (lib-region.mjs). It says why when it cannot tell where it goes.
+window.applycodesnippet = function (encoded) {
+  try {
+    const ed = aceEditor();
+    if (!ed) return reportResult(-1, "apply");
+    const r = applyRegion(ed.getValue(), decodeGenieCode(encoded));
+    if (r.error) {
+      notify(r.error, { type: "info" });
+      return;
+    }
+    reportResult(propose(r.text, { title: "Genie wants to change " + r.name + " (lines " + r.from + " to " + r.to + "):" }), "apply");
+  } catch (error) {
+    console.error(error);
+    reportResult(-1, "apply");
   }
 };
 

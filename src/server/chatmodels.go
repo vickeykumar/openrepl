@@ -230,12 +230,6 @@ func sanitizeChatBody(body []byte) ([]byte, chatModel, error) {
 	}
 
 	out := map[string]interface{}{"messages": json.RawMessage(messages)}
-	if raw, ok := in["stream"]; ok {
-		var stream bool
-		if json.Unmarshal(raw, &stream) == nil && stream {
-			out["stream"] = true
-		}
-	}
 
 	model, _ := modelByID(defaultModelID())
 	if raw, ok := in["model"]; ok {
@@ -247,6 +241,14 @@ func sanitizeChatBody(body []byte) ([]byte, chatModel, error) {
 		}
 	}
 	out["model"] = model.ID
+	// A streamed answer, when an admin allows it and the model's host says what the answer used while it streams
+	// (Cloudflare Workers AI does not, so its answers come whole).
+	if raw, ok := in["stream"]; ok && GetSiteSettings().Genie.StreamAnswers && model.Provider != providerCloudflare {
+		var stream bool
+		if json.Unmarshal(raw, &stream) == nil && stream {
+			out["stream"] = true
+		}
+	}
 
 	// The count of tokens an answer used (tokens.go): a stream only carries it when
 	// asked, and OpenRouter also says what the answer cost.

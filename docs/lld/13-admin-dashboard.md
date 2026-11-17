@@ -227,3 +227,8 @@ The rules for a dot: the chat proxy and each model host are amber when more than
 - Settings are read by the gateway or standalone server. A worker started with its own port serves that port without them.
 - The user list shows accounts that signed in at least once; it has no paging, which suits thousands of accounts, not millions.
 - The log viewer shows the current file, not the rotated ones.
+
+
+## Genie credits, plans and measures
+
+`GET/POST /admin/genie-measures` (counts of the agent's tasks, and the baseline an admin records before a change), `POST /admin/genie-plan` (a plan for one person) and the settings of the usage record, credits, streaming and native tool calling are described in [19. Genie agent and chat](19-genie-agent.md).

@@ -110,3 +110,28 @@ test("Clear change marks removes the colors", async ({ page }) => {
   await expect(anchor(page, file)).not.toHaveClass(/fm-new/);
   await expect(anchor(page, file)).not.toHaveAttribute("data-fm", /.+/);
 });
+
+test("a folder whose name starts with a dot is listed, but not what is inside it", async ({ page }) => {
+  const fs = require("fs");
+  const path = require("path");
+  // the page script of this checkout, and a workspace tree with a hidden folder that holds a folder and a file
+  // (in CI the server under test already has this script; the checkout's build is used only for a run with GENIE_LOCAL_ASSETS=1)
+  if (process.env.GENIE_LOCAL_ASSETS) await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "js", "dist", "scribbler.js")) }));
+  await page.route((u) => u.pathname.endsWith("/ws_filebrowser"), async (route) => {
+    const res = await route.fetch();
+    const tree = await res.json();
+    const id = tree.id;
+    tree.children = (tree.children || []).concat([
+      { id: id + "/.hid", text: ".hid", type: "default", children: [
+        { id: id + "/.hid/chats", text: "chats", type: "default", children: [{ id: id + "/.hid/chats/a.jsonl", text: "a.jsonl", type: "file" }] },
+        { id: id + "/.hid/tabs.json", text: "tabs.json", type: "file" },
+      ] },
+    ]);
+    route.fulfill({ response: res, contentType: "application/json", body: JSON.stringify(tree) });
+  });
+  await ready(page);
+  await expect(anchor(page, ".hid")).toBeVisible();
+  await expect(page.locator("#file-browser .jstree-anchor", { hasText: "tabs.json" })).toHaveCount(0);
+  await expect(page.locator("#file-browser .jstree-anchor", { hasText: "chats" })).toHaveCount(0);
+  await expect(page.locator("#file-browser .jstree-anchor", { hasText: "a.jsonl" })).toHaveCount(0);
+});

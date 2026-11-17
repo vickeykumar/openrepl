@@ -2,9 +2,11 @@ package server
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"net/http"
 	"sort"
 	"strconv"
+	"time"
 
 	"user"
 )
@@ -167,4 +169,56 @@ func (server *Server) handleAdminGenieUsage(w http.ResponseWriter, r *http.Reque
 		line("Visitors", "", m)
 	}
 	out.Flush()
+}
+
+// GET /admin/genie-measures is how the agent is doing: counts since the server
+// began to keep them, and the baseline an admin recorded before a change.
+// POST /admin/genie-measures {"action":"baseline"} records today's values as the baseline.
+func (server *Server) handleAdminGenieMeasures(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+	case http.MethodPost:
+		var in struct {
+			Action string `json:"action"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in) != nil || in.Action != "baseline" {
+			adminError(w, http.StatusBadRequest, "The only action is baseline")
+			return
+		}
+		statsBaseline(time.Now())
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		adminError(w, http.StatusMethodNotAllowed, "GET or POST only")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	adminJSON(w, http.StatusOK, statsSnapshot())
+}
+
+// POST /admin/genie-plan {"uid":"...","name":"Team","credits":2000,"budget":100} gives one person a plan of
+// their own (it counts once credits are on); with no name, credits and budget it gives them the default plan again.
+func (server *Server) handleAdminGeniePlan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		adminError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var in struct {
+		UID     string  `json:"uid"`
+		Name    string  `json:"name"`
+		Credits float64 `json:"credits"`
+		Budget  float64 `json:"budget"`
+	}
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048)).Decode(&in) != nil || in.UID == "" || len(in.UID) > 128 || len(in.Name) > 40 ||
+		in.Credits < 0 || in.Budget < 0 || in.Credits > maxCredits || in.Budget > maxCredits {
+		adminError(w, http.StatusBadRequest, "A user, and credits and a budget between 0 and the most allowed")
+		return
+	}
+	key := tokensUserPrefix + in.UID
+	if in.Name == "" && in.Credits == 0 && in.Budget == 0 {
+		meter.setPlan(key, nil)
+	} else {
+		meter.setPlan(key, &planRecord{Name: in.Name, Credits: in.Credits, Budget: in.Budget})
+	}
+	adminJSON(w, http.StatusOK, meter.month(key))
 }

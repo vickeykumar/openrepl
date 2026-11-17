@@ -127,6 +127,7 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) {
   color: var(--cw-accent);
 }
 #chat-widget__title_text {
+  flex: 0 0 auto; /* the name stays whole: the note beside it gives way first, in a narrow panel */
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -138,6 +139,8 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 190px;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 #chat-widget__context:empty {
   display: none;
@@ -1648,11 +1651,12 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 
 /* What is allowed for the session (agent.ts: renderBadge, toggleMenu, openPermissions, confirmEverything). Designed in the
    "Genie agent: remember my answers for the session" canvas. */
-#chat-widget__auto { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
+#chat-widget__auto { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; flex-shrink: 0; }
 .cw-auto {
   font: inherit; font-size: 11.5px; font-weight: 500; padding: 2px 9px; cursor: pointer;
   color: var(--cw-accent); background: color-mix(in srgb, var(--cw-accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--cw-accent) 55%, transparent); border-radius: 99px;
+  white-space: nowrap; /* "Auto: 1 of 7 ▾" is one line, however narrow the panel is */
 }
 .cw-auto--risky { color: var(--danger-color, #F07171); background: rgba(240, 113, 113, 0.14); border-color: rgba(240, 113, 113, 0.55); }
 .cw-menu {
@@ -1689,3 +1693,139 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 .cw-perm__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; font-size: 12.5px; }
 .cw-perm__typed, .cw-perm__dur { font: inherit; font-size: 12.5px; padding: 3px 8px; color: var(--cw-text); background: var(--cw-secondary-bg); border: 1px solid var(--cw-field-border); border-radius: 6px; }
 
+
+/* The plan of a task, and what it did when it ended (agent.ts: renderPlan, drawSummary) */
+.cw-agent__plan { border-bottom: 1px solid var(--cw-border); }
+.cw-agent__label { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cw-muted); padding: 8px 12px 0; }
+.cw-agent__plan-list { padding-top: 2px; }
+.cw-agent__step--waiting .cw-agent__what { color: var(--cw-muted); }
+.cw-agent__step--done .cw-agent__what { color: var(--cw-muted); }
+.cw-agent__sum { border-top: 1px solid var(--cw-border); padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 6px; }
+.cw-agent__chip { display: flex; gap: 8px; background: var(--cw-chip-bg); color: var(--cw-chip-text); border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+.cw-agent__chip-mark { flex: 0 0 16px; text-align: center; color: var(--cw-muted); }
+.cw-agent__chip-mark.ok { color: var(--ok-color, #4CC38A); }
+.cw-agent__chip-mark.bad { color: var(--danger-color, #F07171); }
+.cw-agent__chip-text { min-width: 0; overflow-wrap: anywhere; }
+.cw-agent__chip-text b { font-weight: 500; color: var(--cw-strong); }
+.cw-agent__chip-detail { font-family: ui-monospace, Menlo, monospace; }
+.cw-agent__meta { font-size: 12px; color: var(--cw-muted); }
+
+/* One-click requests, and what can be done with the last answer (index.ts: refreshQuick, decorateLastTurn) */
+.cw-quick { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; border-top: 1px solid var(--cw-border); }
+.cw-quick[hidden] { display: none; }
+.cw-quick button, .cw-turn button {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  color: var(--cw-text);
+  background: transparent;
+  border: 1px solid var(--cw-field-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cw-quick button[hidden] { display: none; }
+.cw-quick button:hover:not(:disabled), .cw-turn button:hover:not(:disabled) { border-color: var(--cw-accent); }
+.cw-turn { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.cw-turn button:disabled { opacity: 0.5; cursor: default; }
+.cw-turn button.cw-turn__agent { border-color: var(--cw-accent); color: var(--cw-strong); }
+.cw-agent__sum-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.cw-agent__undo { font: inherit; font-size: 12px; padding: 3px 10px; color: var(--cw-strong); background: transparent; border: 1px solid var(--cw-accent); border-radius: 6px; cursor: pointer; }
+.cw-agent__undo:disabled { opacity: 0.6; cursor: default; border-color: var(--cw-field-border); }
+.cw-agent__live .cw-agent__what { font-style: italic; color: var(--cw-muted); }
+
+/* The chat tabs (index.ts: renderTabs), their menus, and the question or news in the strip */
+.cw-tabs-wrap { flex-shrink: 0; background: var(--cw-seg-bg, #121218); border-bottom: 1px solid var(--cw-border); position: relative; }
+.cw-tabs-wrap[hidden] { display: none; }
+.cw-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 6px 8px 0; overflow-x: auto; scrollbar-width: none; }
+.cw-tabs[hidden] { display: none; }
+.cw-tab {
+  display: flex; align-items: center; gap: 6px; flex: 0 1 132px; min-width: 64px; max-width: 150px;
+  padding: 5px 6px 5px 10px; border-radius: 8px 8px 0 0; font-size: 12px; color: var(--cw-icon);
+  border: 1px solid transparent; border-bottom: 0; cursor: pointer; white-space: nowrap;
+}
+.cw-tab:hover { color: var(--cw-strong); }
+.cw-tab.is-active { background: var(--cw-bg); color: var(--cw-strong); border-color: var(--cw-border); font-weight: 500; position: relative; top: 1px; }
+.cw-tab:focus-visible { outline: 2px solid var(--cw-accent); outline-offset: -2px; }
+.cw-tab__name { flex: 1; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cw-tab__rename { flex: 1; min-width: 0; width: 90px; font: inherit; font-size: 12px; color: var(--cw-strong); background: var(--cw-field-bg); border: 1px solid var(--cw-accent); border-radius: 5px; padding: 0 4px; }
+.cw-tab__x { font: inherit; font-size: 10px; line-height: 1; color: var(--cw-muted); background: transparent; border: 0; border-radius: 4px; padding: 3px 4px; cursor: pointer; opacity: 0; }
+.cw-tab:hover .cw-tab__x, .cw-tab.is-active .cw-tab__x, .cw-tab__x:focus-visible { opacity: 1; }
+.cw-tab__x:hover { color: var(--cw-strong); background: var(--cw-seg-on); }
+.cw-tab__mark { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; }
+.cw-tab__mark--dot { background: var(--cw-accent); }
+.cw-tab__mark--needs { background: #F5B547; }
+.cw-tab__mark--ring { box-sizing: border-box; width: 10px; height: 10px; flex-basis: 10px; border: 2px solid var(--ok-color, #4CC38A); border-top-color: transparent; background: transparent; animation: cw-spin 0.9s linear infinite; }
+@keyframes cw-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .cw-tab__mark--ring { animation: none; border-top-color: var(--ok-color, #4CC38A); } }
+.cw-tabs__plus, .cw-tabs__all { font: inherit; font-size: 12px; color: var(--cw-text); background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 2px 8px; margin-bottom: 3px; cursor: pointer; }
+.cw-tabs__plus { font-size: 15px; line-height: 1.1; }
+.cw-tabs__all { border-color: var(--cw-field-border); margin-bottom: 4px; }
+.cw-tabs__plus:hover, .cw-tabs__all:hover { border-color: var(--cw-accent); }
+.cw-tabs__gap { flex: 1; }
+.cw-tabs__note { font-size: 11px; color: #F5B547; margin: 0 6px 6px; white-space: nowrap; }
+.cw-toast { display: flex; align-items: center; gap: 8px; margin: 6px 8px; padding: 6px 10px; border: 1px solid #F5B547; border-radius: 10px; background: var(--cw-pop-bg); font-size: 12px; color: var(--cw-text); }
+.cw-toast[hidden] { display: none; }
+.cw-toast b { font-weight: 500; color: var(--cw-strong); }
+.cw-toast button { font: inherit; font-size: 12px; color: var(--cw-text); background: var(--cw-secondary-bg); border: 0; border-radius: 7px; padding: 3px 10px; cursor: pointer; }
+.cw-toast .cw-toast__go { margin-left: auto; background: #F5B547; color: #15151C; font-weight: 600; }
+.cw-toast--ask span { flex: 1; }
+.cw-toast--ask .cw-toast__go { margin-left: 0; }
+.cw-tabmenu { position: absolute; z-index: 30; min-width: 200px; max-width: 360px; background: var(--cw-pop-bg); border: 1px solid var(--cw-pop-border); border-radius: 10px; padding: 5px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); font-size: 12.5px; }
+.cw-tabmenu hr { border: 0; border-top: 1px solid var(--cw-border); margin: 4px 0; }
+.cw-tabmenu__item { display: flex; gap: 8px; width: 100%; text-align: left; font: inherit; color: var(--cw-text); background: transparent; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.cw-tabmenu__item:hover, .cw-tabmenu__row:hover { background: var(--cw-seg-on); }
+.cw-tabmenu__item i { margin-left: auto; font-style: normal; color: var(--cw-muted); font-size: 11px; }
+.cw-tabmenu__danger { color: var(--danger-color, #F07171); }
+.cw-tabmenu--list { left: 8px; right: 8px; max-width: none; max-height: 70%; overflow: auto; }
+.cw-tabmenu__search { width: 100%; box-sizing: border-box; font: inherit; color: var(--cw-text); background: var(--cw-field-bg); border: 1px solid var(--cw-field-border); border-radius: 9px; padding: 6px 10px; margin-bottom: 4px; }
+.cw-tabmenu__group { font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cw-muted); padding: 6px 6px 2px; }
+.cw-tabmenu__row { display: grid; grid-template-columns: auto 1fr; gap: 0 9px; align-items: center; width: 100%; text-align: left; font: inherit; color: var(--cw-text); background: transparent; border: 0; border-radius: 8px; padding: 5px 6px; cursor: pointer; }
+.cw-tabmenu__badge { grid-row: 1 / 3; font-size: 10.5px; border: 1px solid var(--cw-field-border); border-radius: 999px; padding: 0 7px; color: var(--cw-icon); }
+.cw-tabmenu__badge.is-open { color: var(--ok-color, #4CC38A); border-color: var(--ok-color, #4CC38A); }
+.cw-tabmenu__title { color: var(--cw-strong); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-tabmenu__meta { grid-column: 2; font-size: 11px; color: var(--cw-muted); }
+.cw-tabmenu__foot { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--cw-border); margin-top: 6px; padding-top: 7px; font-size: 11.5px; color: var(--cw-muted); }
+.cw-tabmenu__foot span { flex: 1; }
+.cw-tabmenu__del { font: inherit; font-size: 11.5px; color: var(--danger-color, #F07171); background: transparent; border: 1px solid var(--cw-field-border); border-radius: 6px; padding: 1px 8px; cursor: pointer; }
+.cw-tabmenu__none { padding: 8px 6px; color: var(--cw-muted); }
+.cw-stale { font-size: 12px; color: var(--cw-chip-text); border: 1px solid var(--cw-pop-border); border-radius: 10px; background: var(--cw-pop-bg); padding: 8px 12px; margin: 4px 0; }
+.cw-stale b { font-weight: 500; color: var(--cw-strong); }
+
+/* starter chips of an empty chat, and the note about a small model in Agent mode */
+.cw-starters { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 8px; }
+.cw-starters[hidden], .cw-modehint[hidden] { display: none; }
+.cw-starters button {
+  font: inherit; font-size: 12px; cursor: pointer; border-radius: 999px; padding: 4px 11px;
+  color: inherit; background: transparent; border: 1px solid rgba(128, 128, 140, 0.45);
+}
+.cw-starters button:hover, .cw-starters button:focus-visible { border-color: currentColor; }
+.cw-modehint { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; opacity: 0.85; padding: 0 0 8px; }
+.cw-modehint__btn {
+  font: inherit; font-size: 12px; cursor: pointer; border-radius: 6px; padding: 2px 9px;
+  color: inherit; background: transparent; border: 1px solid rgba(128, 128, 140, 0.55);
+}
+
+/* The bar that leads to a card waiting for the user, and the arrow to the last message (index.ts: renderWaiting, updateJump). */
+.cw-wait { padding: 0 0 8px; }
+.cw-wait[hidden] { display: none; }
+.cw-wait__btn {
+  width: 100%; display: flex; align-items: center; gap: 9px; text-align: left; cursor: pointer; font: inherit; font-size: 12.5px;
+  color: var(--cw-strong); background: color-mix(in srgb, var(--cw-accent) 11%, transparent);
+  border: 1.5px solid var(--cw-accent); border-radius: 10px; padding: 6px 9px;
+}
+.cw-wait__dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--cw-accent); animation: cw-pulse 1.6s ease-out infinite; }
+@keyframes cw-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--cw-accent) 55%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
+.cw-wait__text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cw-wait__go { flex: 0 0 auto; font-size: 11.5px; font-weight: 600; border-radius: 6px; padding: 1px 8px; color: var(--cw-bg, #15151c); background: var(--cw-accent); }
+.cw-ring { animation: cw-ring 1.6s ease-out 1; }
+@keyframes cw-ring { 0%, 55% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--cw-accent) 55%, transparent); } 100% { box-shadow: 0 0 0 4px transparent; } }
+#chat-widget__stream { position: relative; flex-grow: 1; min-height: 0; display: flex; flex-direction: column; }
+.cw-jump {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; z-index: 5; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  min-width: 34px; height: 34px; padding: 0; border-radius: 99px; font: inherit; font-size: 16px; font-weight: 600;
+  color: var(--cw-strong); background: var(--cw-field-bg, #2a2a36); border: 1px solid var(--cw-field-border); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.cw-jump[hidden] { display: none; }
+.cw-jump--pill { padding: 0 12px; font-size: 12px; }
+.cw-jump:hover, .cw-jump:focus-visible { border-color: var(--cw-accent); }
+@media (prefers-reduced-motion: reduce) { .cw-wait__dot, .cw-ring { animation: none; } }

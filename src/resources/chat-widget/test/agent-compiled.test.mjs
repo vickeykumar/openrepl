@@ -68,6 +68,13 @@ class El {
     k.parentElement = this;
     this.children.unshift(k);
   }
+  insertBefore(k, ref) {
+    k.parentElement = this;
+    const i = this.children.indexOf(ref);
+    if (i < 0) this.children.push(k);
+    else this.children.splice(i, 0, k);
+    return k;
+  }
   remove() {
     if (!this.parentElement) return;
     this.parentElement.children = this.parentElement.children.filter((c) => c !== this);
@@ -114,7 +121,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // of the server, {hang: true} for a model that never answers, {cut: "..."} for an
 // answer that was cut off at the length limit.
 function setup(script, opts = {}) {
-  const log = { requests: [], said: [], notes: [], states: [], typed: [], events: [] };
+  const log = { requests: [], said: [], notes: [], states: [], typed: [], events: [], reports: [] };
   const messages = new El("div");
   const term = { text: opts.terminal || "$ ", object: {} };
   globalThis.fetch = (url, init) => {
@@ -122,6 +129,27 @@ function setup(script, opts = {}) {
     const next = script.shift();
     if (next === undefined) return Promise.resolve({ ok: false, status: 500, headers: { get: () => null }, json: async () => ({ error: { message: "the script is over" } }) });
     if (next && next.hang) return new Promise(() => {});
+    // a streamed answer: the pieces of text the body delivers one at a time
+    if (next && next.sse) {
+      const pieces = next.sse.slice();
+      const headers = { "X-OpenREPL-Agent-Task": "token-1", "X-OpenREPL-Agent-Step": log.requests.length + "/" + (opts.max || 8), "Content-Type": "text/event-stream" };
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: { get: (k) => headers[k] || null },
+        body: { getReader: () => ({ read: async () => (pieces.length ? { done: false, value: new TextEncoder().encode(pieces.shift()) } : { done: true, value: undefined }) }) },
+      });
+    }
+    // an answer as a call of the step function (server/agent_tools.go)
+    if (next && next.toolCall) {
+      const headers = { "X-OpenREPL-Agent-Task": "token-1", "X-OpenREPL-Agent-Step": log.requests.length + "/" + (opts.max || 8) };
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: { get: (k) => headers[k] || null },
+        json: async () => ({ choices: [{ message: { content: null, tool_calls: [{ type: "function", function: { name: "step", arguments: JSON.stringify(next.toolCall) } }] }, finish_reason: "tool_calls" }] }),
+      });
+    }
     if (next && next.http) return Promise.resolve({ ok: false, status: next.http, headers: { get: () => null }, json: async () => ({ error: { message: next.error, code: next.code } }) });
     const content = typeof next === "string" ? next : next.cut !== undefined ? next.cut : JSON.stringify(next);
     const headers = { "X-OpenREPL-Agent-Task": "token-1", "X-OpenREPL-Agent-Step": log.requests.length + "/" + (opts.max || 8) };
@@ -136,7 +164,14 @@ function setup(script, opts = {}) {
     url: () => "http://test/chat/completions",
     headers: () => ({}),
     modelFields: () => ({ model: "test-model" }),
-    ideContext: () => ({ role: "system", content: "ide context" }),
+    ideContext: () => ({ role: "system", content: opts.context ? opts.context() : "ide context" }),
+    editorText: () => (opts.editorText ? opts.editorText() : ""),
+    chatBefore: () => (opts.chatBefore ? opts.chatBefore() : ""),
+    contextNote: () => (opts.contextNote ? opts.contextNote() : ""),
+    stream: () => !!opts.stream,
+    readFiles: opts.readFiles ? (req, signal) => opts.readFiles(req, signal) : undefined,
+    taskCredits: async () => (opts.credits === undefined ? null : opts.credits),
+    report: (info) => log.reports.push(info),
     terminalText: () => term.text,
     terminal: () => term.object,
     terminalType: (data) => {
@@ -253,7 +288,7 @@ test("built: a task that is done in one step", async () => {
   assert.deepEqual(t.log.said, ["user: hello", "genie: Nothing to do."]);
   assert.deepEqual(t.log.notes, []);
   assert.deepEqual(t.log.states, ["running", "idle"]);
-  assert.equal(t.header(), "Finished");
+  assert.equal(t.messages.querySelectorAll(".cw-agent").length, 0, "an answer with nothing done is not a task card");
   assert.equal(t.runner.running, false);
   // the first request starts a task, with the user's words and the page's context
   assert.equal(t.log.requests[0].context, "agent");
@@ -306,15 +341,66 @@ test("built: a refusal of the server ends the task and gives the box back", asyn
   assert.equal(t.runner.running, false);
 });
 
-test("built: the steps of a task are counted, and the last one says so", async () => {
+test("built: at the last step of a stretch the user is asked whether to carry on, and Stop here ends the task", async () => {
   // an action that is not in the protocol is dropped and reported, so the task is not done
   const again = { say: "", actions: [{ type: "shell", text: "ls" }], done: false };
-  const t = setup([again, again, again, again, again], { max: 3 });
+  const t = setup([again, again, again, again, again], { max: 3, answer: (title) => (/step limit/.test(title) ? "Stop here" : "Allow once") });
   await t.done(t.runner.start("go on for ever"));
   assert.equal(t.log.requests.length, 3, "the loop did not stop at the limit");
-  assert.deepEqual(t.log.notes, ["I used all 3 steps of this task. You can ask me to carry on."]);
+  assert.deepEqual(t.log.asked, ["Paused at the step limit [Carry on/Stop here] -> Stop here"]);
   assert.match(t.results(1).not_done[0], /"shell" is not an action/);
   assert.notEqual(t.header(), "Finished");
+  assert.match(t.header(), /paused/);
+});
+
+test("built: carrying on goes on with the same task and its token, a stretch at a time, up to three times", async () => {
+  const again = { say: "", actions: [{ type: "shell", text: "ls" }], done: false };
+  let asks = 0;
+  const t = setup([again, again, again, again, again, again, again, again, again, again, again, again, again, again], {
+    max: 2,
+    answer: (title) => (++asks <= 3 ? "Carry on" : "Stop here"),
+  });
+  await t.done(t.runner.start("go on for ever"));
+  // 2 steps, carry, 2, carry, 2, carry, 2, then the fourth question is not asked: three carries are all there is
+  assert.equal(t.log.requests.length, 8);
+  assert.equal(t.log.asked.length, 3);
+  assert.equal(t.log.requests[0].agent_carry, undefined);
+  assert.equal(t.log.requests[2].agent_carry, true, "the first step after a carry says so");
+  assert.equal(t.log.requests[3].agent_carry, undefined, "the next one does not");
+  assert.equal(t.log.requests[2].agent_task, "token-1", "the same task");
+  assert.match(t.log.notes[t.log.notes.length - 1], /carried on 3 times/);
+});
+
+test("built: a task that passes its budget is asked about, carries on when the user says so, and ends when not", async () => {
+  const go = { say: "", actions: [{ type: "shell", text: "x" }], done: false };
+  const t = setup([go, { http: 429, code: "agent_budget", error: "This task has used 42 of the 40 credits one task may use." }, { say: "Done.", actions: [], done: true }], { answer: () => "Carry on" });
+  await t.done(t.runner.start("work"));
+  assert.deepEqual(t.log.asked, ["This task has used its budget [Carry on/Stop here] -> Carry on"]);
+  assert.equal(t.log.requests.length, 3);
+  assert.equal(t.log.requests[1].agent_carry, undefined);
+  assert.equal(t.log.requests[2].agent_carry, true);
+  assert.equal(t.header(), "Finished");
+  // the user says no: the task ends, nothing is lost, no error is shown
+  const no = setup([go, { http: 429, code: "agent_budget", error: "This task has used 42 of the 40 credits one task may use." }], { answer: () => "Stop here" });
+  await no.done(no.runner.start("work"));
+  assert.equal(no.log.requests.length, 2);
+  assert.deepEqual(no.log.notes, []);
+  assert.notEqual(no.header(), "Finished");
+});
+
+test("built: the question names what is done of the plan, and Stop while it is open answers no", async () => {
+  const step = { say: "", plan: ["One", "Two", "Three"], plan_done: [1], actions: [{ type: "shell", text: "ls" }], done: false };
+  const t = setup([step, { say: "", actions: [{ type: "shell", text: "ls" }], done: false }], { max: 2 });
+  const running = t.runner.start("work");
+  for (let i = 0; i < 100 && !t.messages.querySelector(".cw-agent__ask"); i++) await sleep(10);
+  const text = t.messages.querySelector(".cw-agent__ask-text").textContent;
+  assert.match(text, /1 of 3 plan items are done/);
+  assert.match(text, /up to 2 more steps/);
+  t.runner.stop();
+  await t.done(running);
+  assert.equal(t.log.requests.length, 2);
+  assert.equal(t.messages.querySelectorAll(".cw-agent__ask").length, 0, "the question was left open");
+  assert.deepEqual(t.log.states, ["running", "stopping", "idle"]);
 });
 
 test("built: the results of the actions go back to the model, in order, and a denial is one of them", async () => {
@@ -477,7 +563,7 @@ test("built: Stop ends a task whose model is silent, and the box comes back", as
   // and a new task can start at once
   const again = setup([{ say: "ok", actions: [], done: true }]);
   await again.done(again.runner.start("again"));
-  assert.equal(again.header(), "Finished");
+  assert.equal(again.messages.querySelectorAll(".cw-agent").length, 0, "an answer with nothing done is not a task card");
 });
 
 test("built: Stop while a question is open answers it no, and nothing more is done", async () => {
@@ -590,4 +676,463 @@ test("built: every step names the REPL in use, so that the server can say how it
   const t = setup([{ say: "", actions: [{ type: "shell" }], done: false }, { say: "ok", actions: [], done: true }], { repl: "gomacro" });
   await t.done(t.runner.start("try a loop"));
   assert.deepEqual(t.log.requests.map((r) => r.repl), ["gomacro", "gomacro"]);
+});
+
+// ---- the plan, sending less, and checking the work ---------------------------------------
+
+test("built: the plan is shown, ticked off as the model says, and a changed plan keeps what is done", async () => {
+  const t = setup(
+    [
+      { say: "Plan.", plan: ["Look around", "Make the change", "Run it"], actions: [{ type: "files_list" }], done: false },
+      { say: "", plan_done: [1], actions: [{ type: "files_list" }], done: false },
+      { say: "", plan: ["Look around", "Make the change", "Run it", "Tell you"], plan_done: [1, 2], actions: [], done: true },
+    ],
+    { answer: () => "Allow for this session" }
+  );
+  await t.done(t.runner.start("do a thing"));
+  const marks = () => t.messages.querySelector(".cw-agent__plan-list").querySelectorAll(".cw-agent__step").map((s) => s.textContent);
+  assert.deepEqual(marks(), ["✓Look around", "✓Make the change", "◔Run it", "○Tell you"]);
+  assert.equal(t.messages.querySelectorAll(".cw-agent__plan").length, 1, "one plan box, drawn again");
+  // the plan sits above the steps in the card
+  const card = t.messages.querySelector(".cw-agent");
+  assert.ok(card.children.findIndex((c) => c.classList.contains("cw-agent__plan")) < card.children.findIndex((c) => c.classList.contains("cw-agent__steps")));
+});
+
+test("built: older results and answers are sent short, and the editor and terminal are in every request", async () => {
+  const code = "x".repeat(1500);
+  const step = (n) => ({ say: "step " + n, actions: [{ type: "editor_write", text: code + n }, { type: "files_list" }], done: false });
+  const t = setup([step(1), step(2), step(3), step(4), { say: "done", actions: [{ type: "run" }], done: true }], { max: 8, answer: () => "Allow for this session" });
+  globalThis.window.GenieReview = { applyDirect: () => ({ total: 1, accepted: 1, rejected: 0, undo: () => true }), proposeAsync: async () => ({ total: 1, accepted: 1 }) };
+  globalThis.window.CompileandRun = () => {};
+  t.runner.perms.grantEverything();
+  await t.done(t.runner.start("write it"));
+  assert.equal(t.log.requests.length, 5);
+  const last = t.log.requests[4].messages;
+  const text = JSON.stringify(last);
+  // every request carries the editor and the terminal, as the last message: an earlier one is not kept, so a line that says
+  // "the same as before" would leave the model with none (it asked the user to paste the code)
+  for (const r of t.log.requests) assert.ok(JSON.stringify(r.messages[r.messages.length - 1]).includes("ide context"));
+  assert.ok(!/the same as in the context of your last step/.test(text));
+  // the code of steps 1 and 2 is out of the history, the code of steps 3 and 4 is in
+  assert.ok(!text.includes(code + "1") && !text.includes(code + "2"));
+  assert.ok(text.includes(code + "3") && text.includes(code + "4"));
+  assert.match(text, /step_results_older/);
+  // the page's own record of the task is whole
+  assert.ok(t.log.requests[1].messages.length < t.log.requests[4].messages.length);
+});
+
+test("built: a changed editor or terminal is sent again", async () => {
+  let n = 0;
+  const t = setup([{ say: "", actions: [{ type: "files_list" }], done: false }, { say: "", actions: [], done: true }], { context: () => "context " + ++n, answer: () => "Allow for this session" });
+  await t.done(t.runner.start("go"));
+  assert.ok(JSON.stringify(t.log.requests[1].messages).includes("context 2"));
+});
+
+test("built: a task that changed code and says it is done is sent back once to run it", async () => {
+  const t = setup(
+    [
+      { say: "Written.", actions: [{ type: "editor_write", text: "print(1)\n" }], done: true },
+      { say: "Ran it.", actions: [{ type: "run" }], done: false },
+      { say: "It works.", actions: [], done: true },
+    ],
+    { answer: () => "Allow for this session" }
+  );
+  globalThis.window.GenieReview = { applyDirect: () => ({ total: 1, accepted: 1, rejected: 0, undo: () => true }), proposeAsync: async () => ({ total: 1, accepted: 1 }) };
+  globalThis.window.CompileandRun = () => {};
+  t.runner.perms.grantEverything();
+  await t.done(t.runner.start("write and run"));
+  assert.equal(t.log.requests.length, 3, "the model was not sent back");
+  const told = t.results(1);
+  assert.match(told.not_done.join(" "), /Run the program or the tests/);
+  assert.equal(t.header(), "Finished");
+  // the end of the task says what was checked and what changed
+  const chips = t.messages.querySelectorAll(".cw-agent__chip").map((c) => c.textContent);
+  assert.ok(chips.some((c) => /Checked/.test(c) && /Run/.test(c)), chips.join(" | "));
+  assert.ok(chips.some((c) => /Changed/.test(c)), chips.join(" | "));
+  assert.deepEqual(t.log.reports.map((r) => [r.outcome, r.changed, r.checked]), [["done", true, true]]);
+});
+
+test("built: a task is sent back to check only once, and then says it was not checked", async () => {
+  const t = setup(
+    [
+      { say: "Written.", actions: [{ type: "editor_write", text: "print(1)\n" }], done: true },
+      { say: "There is nothing here that can be run.", actions: [], done: true },
+    ],
+    { answer: () => "Allow for this session" }
+  );
+  globalThis.window.GenieReview = { applyDirect: () => ({ total: 1, accepted: 1, rejected: 0, undo: () => true }), proposeAsync: async () => ({ total: 1, accepted: 1 }) };
+  t.runner.perms.grantEverything();
+  await t.done(t.runner.start("write"));
+  assert.equal(t.log.requests.length, 2);
+  const chips = t.messages.querySelectorAll(".cw-agent__chip").map((c) => c.textContent);
+  assert.ok(chips.some((c) => /Not checked/.test(c) && /nothing here that can be run/.test(c)), chips.join(" | "));
+  assert.deepEqual(t.log.reports.map((r) => r.checked), [false]);
+});
+
+test("built: a task that changed nothing is not sent back, and a task at its last step is not either", async () => {
+  const none = setup([{ say: "It is a loop.", actions: [], done: true }]);
+  await none.done(none.runner.start("explain"));
+  assert.equal(none.log.requests.length, 1);
+  assert.equal(none.messages.querySelectorAll(".cw-agent__chip").length, 0);
+  const last = setup([{ say: "Written.", actions: [{ type: "editor_write", text: "x\n" }], done: true }], { max: 1, answer: () => "Allow for this session" });
+  globalThis.window.GenieReview = { applyDirect: () => ({ total: 1, accepted: 1, rejected: 0, undo: () => true }), proposeAsync: async () => ({ total: 1, accepted: 1 }) };
+  last.runner.perms.grantEverything();
+  await last.done(last.runner.start("write"));
+  assert.equal(last.log.requests.length, 1, "sent back with no step left");
+});
+
+test("built: after two fix attempts the code is not changed again while the check fails", async () => {
+  const edit = (n) => ({ say: "fix " + n, actions: [{ type: "editor_write", text: "v" + n + "\n" }], done: false });
+  const check = { say: "run", actions: [{ type: "bash", command: "pytest -q" }], done: false };
+  const t = setup([edit(1), check, edit(2), check, edit(3), check, edit(4), { say: "it still fails", actions: [], done: true }], {
+    max: 8,
+    answer: () => "Allow for this session",
+  });
+  globalThis.window.GenieReview = { applyDirect: () => ({ total: 1, accepted: 1, rejected: 0, undo: () => true }), proposeAsync: async () => ({ total: 1, accepted: 1 }) };
+  t.runner.runCommand = undefined;
+  t.runner.perms.grantEverything();
+  // the pretend shell says the tests fail
+  const host = t.runner.host;
+  host.runCommand = async () => ({ status: 200, exit_code: 1, output: "1 failed", duration_ms: 5 });
+  await t.done(t.runner.start("fix it"));
+  const labels = t.steps();
+  assert.ok(labels.some((s) => /Fix attempt 1 of 2/.test(s)), labels.join(" | "));
+  assert.ok(labels.some((s) => /Fix attempt 2 of 2/.test(s)), labels.join(" | "));
+  assert.ok(labels.some((s) => /2 fix attempts were made/.test(s)), labels.join(" | "));
+});
+
+test("built: how a task ended is reported with its reason, and an unreadable answer says so", async () => {
+  const t = setup(["nope", "still nope"]);
+  await t.done(t.runner.start("do a thing"));
+  assert.deepEqual(t.log.reports.map((r) => r.outcome), ["unreadable"]);
+  const long = setup([{ cut: '{"say":"x","actions":[{"type":"editor_write","text":"aaa' }, { cut: '{"say":"x","actions":[{"type":"edi' }]);
+  await long.done(long.runner.start("write a lot"));
+  assert.deepEqual(long.log.reports.map((r) => r.outcome), ["toolong"]);
+});
+
+test("built: the end of a task tells the steps, the tokens and, when a plan counts them, the credits", async () => {
+  const t = setup([{ say: "Looking.", actions: [{ type: "files_list" }], done: false }, { say: "Yes.", actions: [], done: true }], { credits: 9, answer: () => "Allow for this session" });
+  await t.done(t.runner.start("explain"));
+  const meta = t.messages.querySelector(".cw-agent__meta").textContent;
+  assert.match(meta, /2 steps/);
+  assert.match(meta, /9 credits/);
+  const plain = setup([{ say: "Looking.", actions: [{ type: "files_list" }], done: false }, { say: "Yes.", actions: [], done: true }], { answer: () => "Allow for this session" });
+  await plain.done(plain.runner.start("explain"));
+  assert.ok(!/credit/.test(plain.messages.querySelector(".cw-agent__meta").textContent));
+});
+
+// ---- editing a part, looking around ----------------------------------------------------------
+
+function reviewing(proposed) {
+  globalThis.window.GenieReview = {
+    proposeAsync: async (text, o) => {
+      proposed.push({ text, title: o.title });
+      return { total: 1, accepted: 1 };
+    },
+    applyDirect: (d) => {
+      proposed.push({ text: d.text, direct: true });
+      return { total: 1, accepted: 1, rejected: 0, undo: () => true };
+    },
+  };
+}
+
+test("built: editor_replace puts the new text where the old text was, and the review is of the whole file with one change", async () => {
+  const proposed = [];
+  reviewing(proposed);
+  const code = "def f():\n    return 1\n\nprint(f())\n";
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "editor_replace", old: "return 1", new: "return 2" }], done: false },
+      { say: "", actions: [{ type: "run" }], done: true },
+    ],
+    { editorText: () => code, answer: () => "Allow once" }
+  );
+  globalThis.window.CompileandRun = () => {};
+  await t.done(t.runner.start("change it"));
+  assert.equal(proposed[0].text, "def f():\n    return 2\n\nprint(f())\n");
+  assert.match(proposed[0].title, /this part of the file/);
+  assert.equal(t.results(1).step_results[0].type, "editor_replace");
+  assert.equal(t.results(1).step_results[0].status, "accepted");
+});
+
+test("built: editor_replace says why an old text that is not there, or is there twice, was not used", async () => {
+  const proposed = [];
+  reviewing(proposed);
+  const code = "x = 1\nx = 1\ny = 2\n";
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "editor_replace", old: "z = 3", new: "z = 4" }, { type: "editor_replace", old: "x = 1", new: "x = 5" }], done: false },
+      { say: "ok", actions: [], done: true },
+    ],
+    { editorText: () => code, answer: () => "Allow once" }
+  );
+  await t.done(t.runner.start("change it"));
+  assert.deepEqual(proposed, [], "nothing was proposed");
+  const r = t.results(1).step_results;
+  assert.equal(r[0].status, "failed");
+  assert.match(r[0].detail, /not found in the editor/);
+  assert.equal(r[1].status, "failed");
+  assert.match(r[1].detail, /more than once/);
+});
+
+test("built: editor_replace by line numbers replaces those lines, and an empty new text deletes them", async () => {
+  const proposed = [];
+  reviewing(proposed);
+  const code = "a\nb\nc\nd\n";
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "editor_replace", start_line: 2, end_line: 3, new: "B\nC\nC2" }], done: false },
+      { say: "", actions: [{ type: "editor_replace", start_line: 1, end_line: 1, new: "" }, { type: "editor_replace", start_line: 99, new: "x" }, { type: "run" }], done: true },
+    ],
+    { editorText: () => code, answer: () => "Allow once" }
+  );
+  globalThis.window.CompileandRun = () => {};
+  await t.done(t.runner.start("change it"));
+  assert.equal(proposed[0].text, "a\nB\nC\nC2\nd\n");
+  assert.equal(proposed[1].text, "b\nc\nd\n");
+  assert.equal(proposed.length, 2, "a line that is not there was proposed");
+  assert.match(t.log.requests[1].messages.map((m) => m.content).join("\n"), /editor_replace/);
+  assert.equal(t.log.requests.length, 2);
+});
+
+test("built: searching and reading ask the user nothing, show what was found and send it back", async () => {
+  const seen = [];
+  const t = setup(
+    [
+      { say: "Looking.", actions: [{ type: "files_search", query: "login" }, { type: "files_read", path: "auth.py", start_line: 3, end_line: 5 }], done: false },
+      { say: "Found it.", actions: [], done: true },
+    ],
+    {
+      readFiles: async (req) => {
+        if (req.path === "GENIE.md") return { status: 404, message: "There is no such file in the workspace." };
+        seen.push(req);
+        if (req.op === "search") return { status: 200, matches: [{ file: "auth.py", line: 3, text: "def login():" }, { file: "routes.py", line: 7, text: "app.add('/login', login)" }], files_scanned: 12 };
+        return { status: 200, path: "auth.py", start_line: 3, end_line: 5, total_lines: 20, text: "    3  def login():\n    4      pass\n    5  \n", next_line: 6 };
+      },
+    }
+  );
+  await t.done(t.runner.start("find the login"));
+  assert.deepEqual((t.log.asked || []), [], "something was asked");
+  assert.deepEqual(seen.map((r) => r.op), ["search", "read"]);
+  assert.equal(seen[1].start_line, 3);
+  const r = t.results(1).step_results;
+  assert.equal(r[0].status, "done");
+  assert.match(r[0].detail, /2 matches in 2 files/);
+  assert.match(r[0].output, /auth\.py:3: def login\(\):/);
+  assert.match(r[1].detail, /lines 3 to 5 of 20; next_line 6/);
+  assert.match(r[1].output, /    3  def login/);
+  // the lines are in the card, the few matches open
+  const outs = t.messages.querySelectorAll(".cw-agent__out");
+  assert.equal(outs.length, 2);
+  assert.equal(outs[0].open, true);
+  assert.equal(outs[1].open, undefined);
+  assert.ok(t.steps().some((s) => /Searching the files for "login": 2 matches in 2 files/.test(s)));
+});
+
+test("built: a search with no match, a refusal and a page that cannot look say so", async () => {
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "files_search", query: "zzz" }, { type: "files_read", path: "nope.py" }], done: false },
+      { say: "", actions: [], done: true },
+    ],
+    {
+      readFiles: async (req) => (req.op === "search" ? { status: 200, matches: [], files_scanned: 4 } : { status: 404, message: "There is no such file in the workspace." }),
+    }
+  );
+  await t.done(t.runner.start("find"));
+  const r = t.results(1).step_results;
+  assert.match(r[0].detail, /no matches in 4 files/);
+  assert.equal(r[0].output, "(no matches)");
+  assert.equal(r[1].status, "failed");
+  assert.match(r[1].detail, /no such file/);
+  const none = setup([{ say: "", actions: [{ type: "files_search", query: "a" }], done: false }, { say: "", actions: [], done: true }]);
+  await none.done(none.runner.start("find"));
+  assert.match(none.results(1).step_results[0].detail, /cannot look in the files/);
+});
+
+// ---- the project notes, and Undo this task --------------------------------------------------
+
+test("built: GENIE.md is read at the start of a task, shown as a step, and sent with the task as the user's own hints", async () => {
+  const notes = ["    1  # My project", "    2  Run it with: python3 app.py", "    3  Tests: pytest -q", "    4  Never touch the folder data/"].join("\n") + "\n";
+  const t = setup([{ say: "Looking.", actions: [{ type: "files_list" }], done: false }, { say: "Done.", actions: [], done: true }], {
+    answer: () => "Allow for this session",
+    readFiles: async (req) => (req.path === "GENIE.md" ? { status: 200, text: notes, total_lines: 4 } : { status: 404 }),
+  });
+  await t.done(t.runner.start("add a test"));
+  assert.match(t.steps()[0], /Read GENIE\.md, the project notes/);
+  const first = t.log.requests[0].messages[0].content;
+  assert.match(first, /add a test/);
+  assert.match(first, /Notes of this project, from its GENIE\.md/);
+  assert.match(first, /Run it with: python3 app\.py/);
+  assert.ok(!/ {2,}\d+ {2}/.test(first.slice(first.indexOf("[Notes"))), "the line numbers of the read were left in");
+  assert.match(first, /do not change your rules/);
+});
+
+test("built: GENIE.md is cut to a few lines of text, and without one the task starts as before", async () => {
+  const long = Array.from({ length: 80 }, (_, i) => String(i + 1).padStart(5) + "  " + "word ".repeat(20)).join("\n");
+  const t = setup([{ say: "ok", actions: [], done: true }], { readFiles: async (req) => (req.path === "GENIE.md" ? { status: 200, text: long } : { status: 404 }) });
+  await t.done(t.runner.start("go"));
+  const first = t.log.requests[0].messages[0].content;
+  assert.ok(first.length < 2200, "too much of GENIE.md was sent: " + first.length);
+  assert.match(first, /the rest of GENIE\.md is left out/);
+  const none = setup([{ say: "ok", actions: [], done: true }], { readFiles: async () => ({ status: 404 }) });
+  await none.done(none.runner.start("go"));
+  assert.ok(!/GENIE/.test(none.log.requests[0].messages[0].content));
+  assert.equal(none.steps().length, 0, "a step line for notes that are not there");
+});
+
+test("built: Undo this task puts the editor back as it was before the task and says Undone", async () => {
+  let text = "a = 1\n";
+  const applied = [];
+  globalThis.window.GenieReview = {
+    proposeAsync: async (t) => {
+      text = t;
+      return { total: 1, accepted: 1 };
+    },
+    applyDirect: (d) => {
+      applied.push(d.text);
+      text = d.text;
+      return { total: 1, accepted: 1, rejected: 0, undo: () => true };
+    },
+  };
+  globalThis.window.CompileandRun = () => {};
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "editor_write", text: "a = 2\n" }], done: false },
+      { say: "", actions: [{ type: "run" }], done: true },
+    ],
+    { editorText: () => text, answer: () => "Allow once" }
+  );
+  await t.done(t.runner.start("change a"));
+  assert.equal(text, "a = 2\n");
+  const undo = t.messages.querySelector(".cw-agent__undo");
+  assert.ok(undo, "no Undo this task");
+  undo.click();
+  await sleep(50);
+  assert.equal(text, "a = 1\n");
+  assert.deepEqual(applied, ["a = 1\n"]);
+  assert.equal(undo.textContent, "Undone");
+  assert.equal(undo.disabled, true);
+});
+
+test("built: Undo this task does not overwrite what the user wrote after the task", async () => {
+  let text = "a = 1\n";
+  globalThis.window.GenieReview = {
+    proposeAsync: async (t) => {
+      text = t;
+      return { total: 1, accepted: 1 };
+    },
+    applyDirect: (d) => {
+      text = d.text;
+      return { total: 1, accepted: 1, rejected: 0, undo: () => true };
+    },
+  };
+  globalThis.window.CompileandRun = () => {};
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "editor_write", text: "a = 2\n" }], done: false },
+      { say: "", actions: [{ type: "run" }], done: true },
+    ],
+    { editorText: () => text, answer: () => "Allow once" }
+  );
+  await t.done(t.runner.start("change a"));
+  text = "a = 2\nmy own line\n"; // the user typed after the task
+  t.messages.querySelector(".cw-agent__undo").click();
+  await sleep(50);
+  assert.equal(text, "a = 2\nmy own line\n", "the user's text was overwritten");
+  assert.match(t.log.notes[t.log.notes.length - 1], /changed since the task/);
+  assert.equal(t.messages.querySelector(".cw-agent__undo").textContent, "Undo this task");
+});
+
+test("built: a task that changed nothing has no Undo", async () => {
+  const t = setup([{ say: "It is a loop.", actions: [], done: true }]);
+  await t.done(t.runner.start("explain"));
+  assert.equal(t.messages.querySelector(".cw-agent__undo"), null);
+});
+
+// ---- streamed answers and native tool calls --------------------------------------------------
+
+const sseOf = (text, usage) => {
+  const json = JSON.stringify({ say: "Looking.", actions: [], done: true });
+  const half = Math.floor(text.length / 2);
+  const ev = (c) => "data: " + JSON.stringify({ choices: [{ delta: { content: c } }] }) + "\n\n";
+  return [ev(text.slice(0, half)), ev(text.slice(half)), "data: " + JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] }) + "\n\n", usage ? "data: " + JSON.stringify({ choices: [], usage }) + "\n\n" : "", "data: [DONE]\n\n"].filter(Boolean);
+};
+
+test("built: a streamed step is read as it comes, its words are shown while it is written and it is carried out as usual", async () => {
+  const text = JSON.stringify({ say: "I will check the file.", actions: [{ type: "files_list" }], done: false });
+  const t = setup([{ sse: sseOf(text, { prompt_tokens: 100, completion_tokens: 40 }) }, { say: "Done.", actions: [], done: true }], { stream: true, answer: () => "Allow for this session" });
+  await t.done(t.runner.start("look"));
+  assert.equal(t.log.requests[0].stream, true);
+  assert.ok(t.log.said.includes("genie: I will check the file."), t.log.said.join(" | "));
+  assert.equal(t.results(1).step_results[0].type, "files_list");
+  assert.equal(t.messages.querySelectorAll(".cw-agent__live").length, 0, "the live words were left in the card");
+  assert.equal(t.header(), "Finished");
+});
+
+test("built: a streamed answer that is empty, or only an error, ends the step with words and no live line is left", async () => {
+  const t = setup([{ sse: ["data: " + JSON.stringify({ error: { message: "the host is busy" } }) + "\n\n", "data: [DONE]\n\n"] }], { stream: true });
+  await t.done(t.runner.start("look"));
+  assert.deepEqual(t.log.notes, ["the host is busy"]);
+  assert.equal(t.messages.querySelectorAll(".cw-agent__live").length, 0);
+});
+
+test("built: without the switch the page does not ask for a stream", async () => {
+  const t = setup([{ say: "ok", actions: [], done: true }]);
+  await t.done(t.runner.start("look"));
+  assert.equal(t.log.requests[0].stream, undefined);
+});
+
+test("built: a step answered as a call of the function is read like JSON written as text", async () => {
+  const t = setup([{ toolCall: { say: "Via a call.", actions: [{ type: "files_list" }], done: false } }, { say: "Done.", actions: [], done: true }], { answer: () => "Allow for this session" });
+  await t.done(t.runner.start("look"));
+  assert.ok(t.log.said.includes("genie: Via a call."), t.log.said.join(" | "));
+  assert.equal(t.results(1).step_results[0].type, "files_list");
+  assert.deepEqual(t.log.notes, []);
+});
+
+test("built: editor_replace finds an old text that differs only in white space, names the nearest lines when it is missing, and asks for the whole file after two failures", async () => {
+  const proposed = [];
+  reviewing(proposed);
+  const code = "def f():\n    return 1\n\ndef g():\n    return 2\n";
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "editor_replace", old: "def f():\n  return 1", new: "def f():\n    return 10" }], done: false },
+      { say: "", actions: [{ type: "editor_replace", old: "def h():", new: "x" }, { type: "editor_replace", old: "def k(a):", new: "y" }], done: false },
+      { say: "ok", actions: [], done: true },
+    ],
+    { editorText: () => code, answer: () => "Allow once" }
+  );
+  await t.done(t.runner.start("change it"));
+  assert.equal(proposed[0].text, "def f():\n    return 10\n\ndef g():\n    return 2\n", "the indentation of the model was not an obstacle");
+  const r = t.results(2).step_results;
+  assert.equal(r[0].status, "failed");
+  assert.match(r[0].detail, /copy from them/);
+  assert.match(r[0].detail, /1: def f\(\):|4: def g\(\):/);
+  assert.match(r[1].detail, /WHOLE new file/);
+});
+
+test("built: a task is sent the chat before it, and the note that the editor is not what the chat was about", async () => {
+  const t = setup([{ say: "ok", actions: [], done: true }], {
+    chatBefore: () => "Earlier in this chat (for context only):\nUser: make a shop site\nGenie: I will create the files.",
+    contextNote: () => "Note: this chat was about index.html (JavaScript), but the editor now has main.c (C).",
+  });
+  await t.done(t.runner.start("try again"));
+  const first = t.log.requests[0].messages[0].content;
+  assert.match(first, /^\[user-[^\]]*\] try again/);
+  assert.match(first, /User: make a shop site/);
+  assert.match(first, /editor now has main\.c \(C\)/);
+  assert.ok(first.indexOf("try again") < first.indexOf("Earlier in this chat"), "the task comes first");
+});
+
+test("built: a task is sent what is true in the workspace, and a request too short to act on is told to ask first", async () => {
+  const t = setup([{ say: "What do you want?", actions: [], done: true }], { terminal: "$ node a.js\nReferenceError: cart is not defined\n$ " });
+  await t.done(t.runner.start("try again"));
+  const first = t.log.requests[0].messages[0].content;
+  assert.match(first, /Workspace now \(read just now from the page/);
+  assert.match(first, /last error in the terminal: ReferenceError: cart is not defined/);
+  assert.match(first, /ask the user ONE short question/);
+  const t2 = setup([{ say: "ok", actions: [], done: true }], {});
+  await t2.done(t2.runner.start("add a delete button to every product in the cart"));
+  assert.ok(!/ONE short question/.test(t2.log.requests[0].messages[0].content), "a clear task is not asked about");
 });
