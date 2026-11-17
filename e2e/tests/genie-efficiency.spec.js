@@ -397,3 +397,18 @@ test("in a narrow panel the Auto badge is one line and the name Genie is not cut
   expect(m.badgeH).toBeLessThan(30);
   expect(m.cut).toBe(false);
 });
+
+test("Genie is told the path of the open file in the workspace, not only its name", async ({ page }) => {
+  const seen = await openAgent(page, ["Noted."]);
+  // the Files panel says the open file is shop/index.html; the tab and the chip say index.html
+  await page.evaluate(() => {
+    const fb = window.FileBrowser;
+    window.FileBrowser = Object.assign(Object.create(fb), { current: () => "shop/index.html", ready: () => true });
+    document.getElementById("editor-filename").textContent = "index.html";
+  });
+  await ask(page, "what is this file");
+  await expect(page.locator(".chat-widget__message--system", { hasText: "Noted." })).toBeVisible({ timeout: 20000 });
+  const sent = JSON.stringify(seen.requests[0].messages);
+  expect(sent).toContain("File: shop/index.html");
+  expect(sent).not.toMatch(/File: index\.html/);
+});

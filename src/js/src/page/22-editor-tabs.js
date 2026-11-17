@@ -347,7 +347,7 @@ function render() {
   var virtual = canClose && !shown && view.tabs.indexOf(UNTITLED) < 0 && !(t0 && t0.get_selected().length) && !(window.LargeFileViewer && window.LargeFileViewer.isOpen && window.LargeFileViewer.isOpen());
   if (virtual) view = { tabs: view.tabs.concat(UNTITLED), active: UNTITLED };
   if (header) header.classList.toggle("has-tabs", view.tabs.length > 0);
-  var labels = tabLabels(view.tabs);
+  var labels = tabLabels(view.tabs, home());
   // whether each tab has unsaved text, worked out once (it reads the whole editor text for the shown tab)
   var dirty = view.tabs.map(function (path) { return canClose ? isDirty(path) : sharedDirty.indexOf(path) >= 0; });
   // the owner tells the collaborators which tabs have changes, when that set changes (not on every key)

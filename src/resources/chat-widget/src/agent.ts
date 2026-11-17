@@ -841,7 +841,10 @@ export class AgentRunner {
         } else {
           const lines = text.split("\n");
           const from = a.startLine || 1;
-          if (from > lines.length) return { type: a.type, status: "failed", detail: "the editor has only " + lines.length + " lines" };
+          if (from > lines.length) {
+            const tail = lines.slice(-3).map((l, i) => lines.length - 2 + i + ": " + (l.length > 100 ? l.slice(0, 100) + "..." : l)).join("\n");
+            return { type: a.type, status: "failed", detail: "the editor has only " + lines.length + " lines (the numbers move after every change, and the editor context does not show them); the last lines are:\n" + tail + "\nUse editor_replace with \"old\" copied from the editor instead of line numbers." };
+          }
           const to = Math.min(a.endLine || from, lines.length);
           next = lines.slice(0, from - 1).concat(a.text === "" ? [] : String(a.text).split("\n"), lines.slice(to)).join("\n");
         }

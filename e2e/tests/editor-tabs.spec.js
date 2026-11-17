@@ -412,3 +412,30 @@ test("each tab keeps its own undo history across switches", async ({ page }) => 
   await ed(() => { for (let i = 0; i < 4; i++) window.editor.env.editor.undo(); });
   expect(await value()).toBe("");
 });
+
+test("a file in a folder shows its path in the workspace on the tab and on the file chip, and the same name at the top stays short", async ({ page }) => {
+  // (in CI the server under test has this script; the checkout's build is used only for a run with GENIE_LOCAL_ASSETS=1)
+  if (process.env.GENIE_LOCAL_ASSETS) {
+    const fs = require("fs");
+    const path = require("path");
+    await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "js", "dist", "scribbler.js")) }));
+  }
+  await ready(page);
+  const dir = `shop${stamp}`;
+  const made = await page.evaluate(async (d) => {
+    window.FileBrowser.reveal();
+    const a = await window.FileBrowser.create(d, "folder");
+    if (!a.ok) return a;
+    const b = await window.FileBrowser.create(d + "/page.html", "file");
+    if (!b.ok) return b;
+    return window.FileBrowser.create("page.html", "file");
+  }, dir);
+  expect(made.ok, JSON.stringify(made)).toBe(true);
+  // open the file in the folder, then the one at the top
+  await page.evaluate((d) => window.FileBrowser.open(d + "/page.html"), dir);
+  await expect(tabs(page).filter({ hasText: `${dir}/page.html` })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#editor-filename")).toHaveText(`${dir}/page.html`);
+  await page.evaluate(() => window.FileBrowser.open("page.html"));
+  await expect(page.locator("#editor-filename")).toHaveText("page.html");
+  expect(await names(page)).toEqual(expect.arrayContaining([`${dir}/page.html`, "page.html"]));
+});

@@ -75,11 +75,34 @@ export function restoreState(saved, exists, max = MAX_TABS) {
   return { tabs, active, dropped: [] };
 }
 
-// What a tab says: the file name, and the folder too when two open files have the same name.
-export function tabLabels(tabs) {
+// The path of a file inside the workspace ("shop/index.html"), or "" when it is not inside it.
+export function relPath(path, home) {
+  const h = String(home || "").replace(/\/+$/, "");
+  return h && String(path).startsWith(h + "/") ? String(path).slice(h.length + 1) : "";
+}
+
+// A path cut to fit: the file name and as many folders in front of it as fit ("…/product/index.html"); the whole path is the title.
+export function shortRel(rel, max = 28) {
+  if (rel.length <= max) return rel;
+  const parts = rel.split("/");
+  let out = parts[parts.length - 1];
+  for (let i = parts.length - 2; i >= 0; i--) {
+    if (("…/" + parts[i] + "/" + out).length > max) break;
+    out = parts[i] + "/" + out;
+  }
+  return out === rel ? rel : "…/" + out;
+}
+
+// What a tab says. With the workspace folder (`home`): the path of the file inside it ("shop/index.html", "notes.txt" at the
+// top), so that two files of one name, or a file in a folder, are not taken for another. Without it, or for a file outside it:
+// the file name, and the folder too when two open files have the same name.
+export function tabLabels(tabs, home) {
   const names = tabs.map((p) => (p === UNTITLED ? "untitled" : p.split("/").pop()));
   return tabs.map((p, i) => {
-    if (p === UNTITLED || names.filter((n) => n === names[i]).length < 2) return names[i];
+    if (p === UNTITLED) return names[i];
+    const rel = relPath(p, home);
+    if (rel) return shortRel(rel);
+    if (names.filter((n) => n === names[i]).length < 2) return names[i];
     const parts = p.split("/");
     return parts.length > 1 ? parts[parts.length - 2] + "/" + names[i] : names[i];
   });

@@ -127,7 +127,10 @@ function updateEditorFileChip() {
     var chip = get("#editor-filename");
     if (!chip) return;
     var el = document.getElementById("editor");
-    var name = (el && el.env && el.env.filename) ? String(el.env.filename).split("/").pop() : "";
+    // the path inside the workspace ("shop/index.html"), so that it is not taken for another index.html at the top
+    var full = (el && el.env && el.env.filename) ? String(el.env.filename) : "";
+    var home = String(window.homedir || "").replace(/\/+$/, "");
+    var name = full ? (home && full.indexOf(home + "/") === 0 ? full.slice(home.length + 1) : full.split("/").pop()) : "";
     chip.textContent = name || "untitled";
     chip.title = (el && el.env && el.env.filename) ? el.env.filename : "Not saved to a file. Pick a file in Files to save with Ctrl+S.";
 }

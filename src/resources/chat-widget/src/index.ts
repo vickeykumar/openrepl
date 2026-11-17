@@ -284,11 +284,25 @@ function fetchTerminalOutput(lines: number = terminalLines()): string {
   }
 }
 
+// The file that is open, by its path in the workspace ("shop/index.html"). The tab and the chip show only the name, and two
+// files of one name (shop/index.html and index.html) are then taken for one by the model, which edits the wrong one.
+function workspaceFile(): string {
+  try {
+    const fb = (window as any).FileBrowser;
+    if (fb && fb.ready()) {
+      const p = String(fb.current() || "");
+      if (p) return p;
+    }
+  } catch (e) {}
+  const chip = document.getElementById("editor-filename");
+  const f = chip ? (chip.textContent || "").trim() : "";
+  return f && f !== "untitled" ? f : "";
+}
+
 function getcurrentIDECode(): MessageType {
   const picker = document.getElementById("optionlist") as HTMLSelectElement | null;
   const language = picker && picker.selectedIndex >= 0 ? picker.options[picker.selectedIndex].text : "";
-  const fileChip = document.getElementById("editor-filename");
-  const file = fileChip ? (fileChip.textContent || "").trim() : "";
+  const file = workspaceFile();
 
   let code = fetchEditorContent();
   if (code.length > maxEditorChars()) {
@@ -303,7 +317,7 @@ function getcurrentIDECode(): MessageType {
     "Openrepl IDE real-time context of what the user is working on. Use it whenever the user asks to debug, explain or fix their code, or an error, without pasting anything.",
     language ? `Language: ${language}` : "",
     file && file !== "untitled" ? `File: ${file}` : "",
-    "--- Editor code ---",
+    `--- Editor code (${code.split("\n").length} lines; line numbers are not shown, and they move after every change) ---`,
     readEditor ? code || "(the editor is empty)" : "(the user turned off sharing the editor with Genie; what they add to a message is all the code you have)",
     "--- Terminal output (the most recent lines of the active terminal) ---",
     output || "(nothing in the terminal yet)",
@@ -688,9 +702,7 @@ function chatsWanted(): boolean {
 }
 
 function currentFile(): string {
-  const chip = document.getElementById("editor-filename");
-  const f = chip ? (chip.textContent || "").trim() : "";
-  return f && f !== "untitled" ? f : "";
+  return workspaceFile();
 }
 
 const ctxNow = () => ({ file: currentFile(), language: pickedLanguage() });
@@ -3431,8 +3443,8 @@ function watchEditorFile() {
 // The chip that says which file Genie reads, and turns that off and on.
 function currentFileChip(): HTMLElement | null {
   if (!document.getElementById("editor")) return null;
-  const file = (document.getElementById("editor-filename")?.textContent || "").trim();
-  const label = file && file !== "untitled" ? file : "the editor";
+  const file = workspaceFile();
+  const label = file ? file : "the editor";
   const b = document.createElement("button");
   b.type = "button";
   b.className = "cw-chip cw-chip--current" + (readEditor ? "" : " cw-chip--off");
