@@ -1280,17 +1280,39 @@
           answerCaps: capsOf(models.map(function (m) { return [m.id, int(form.caps[m.id].value)]; })),
           openRouterHosts: hostsOf(form.host1.value, form.host2.value),
           modelPrices: pricesOf(), showCostToUsers: form.showCost.checked,
+          agentNativeTools: form.agentTools.checked, streamAnswers: form.streamOn.checked,
+          nativeToolModels: models.filter(function (m) { return form.toolModels[m.id] && form.toolModels[m.id].checked; }).map(function (m) { return m.id; }),
+          chatHistoryOff: !form.chatOn.checked, chatHistoryNoGuests: !form.chatGuests.checked,
+          chatHistoryChats: int(form.chatMax.value), chatHistoryTabs: int(form.chatTabs.value), chatHistoryKB: int(form.chatKB.value), chatHistoryDays: int(form.chatDays.value),
+          meterOff: !form.meterOn.checked, creditsOn: form.creditsOn.checked, planName: form.planName.value.trim(),
+          planCredits: num(form.planCredits.value), planBudget: num(form.planBudget.value), creditWeights: weightsOf(),
           agentDisabled: !form.agentOn.checked, agentOnPractice: form.agentPractice.checked,
           agentAutoOff: !form.agentAuto.checked, agentRiskyOff: !form.agentRisky.checked, agentShellOff: !form.agentShell.checked,
           agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value) }
       };
     }
     function int(v) { v = parseInt(v, 10); return isNaN(v) ? 0 : v; }
+    // the models that take the native tool: the admin's list, or, while there is none, the OpenAI models
+    function toolModelsOf(list) {
+      return models.filter(function (m) { return list ? list.indexOf(m.id) >= 0 : m.provider === 'openai'; }).map(function (m) { return m.id; });
+    }
     // the prices that are set, as {model: {in, out}} (dollars for a million tokens)
     function pricesOf() {
       var o = {};
       models.forEach(function (m) {
         var p = form.price && form.price[m.id];
+        if (!p) return;
+        var i = parseFloat(p.in.value), u = parseFloat(p.out.value);
+        i = isNaN(i) ? 0 : i; u = isNaN(u) ? 0 : u;
+        if (i > 0 || u > 0) o[m.id] = { in: i, out: u };
+      });
+      return o;
+    }
+    // the credit weights that are set, as {model: {in, out}} (credits for a thousand tokens)
+    function weightsOf() {
+      var o = {};
+      models.forEach(function (m) {
+        var p = form.weight && form.weight[m.id];
         if (!p) return;
         var i = parseFloat(p.in.value), u = parseFloat(p.out.value);
         i = isNaN(i) ? 0 : i; u = isNaN(u) ? 0 : u;
@@ -1343,6 +1365,12 @@
           answerCaps: capsOf(models.map(function (m) { return [m.id, (s.genie.answerCaps || {})[m.id] || 0]; })),
           openRouterHosts: (s.genie.openRouterHosts || []).slice(),
           modelPrices: pricesClean(s.genie.modelPrices), showCostToUsers: !!s.genie.showCostToUsers,
+          agentNativeTools: !!s.genie.agentNativeTools, streamAnswers: !!s.genie.streamAnswers,
+          nativeToolModels: toolModelsOf(s.genie.nativeToolModels),
+          chatHistoryOff: !!s.genie.chatHistoryOff, chatHistoryNoGuests: !!s.genie.chatHistoryNoGuests,
+          chatHistoryChats: s.genie.chatHistoryChats || 0, chatHistoryTabs: s.genie.chatHistoryTabs || 0, chatHistoryKB: s.genie.chatHistoryKB || 0, chatHistoryDays: s.genie.chatHistoryDays || 0,
+          meterOff: !!s.genie.meterOff, creditsOn: !!s.genie.creditsOn, planName: s.genie.planName || '',
+          planCredits: s.genie.planCredits || 0, planBudget: s.genie.planBudget || 0, creditWeights: pricesClean(s.genie.creditWeights),
           agentDisabled: !!s.genie.agentDisabled, agentOnPractice: !!s.genie.agentOnPractice,
           agentAutoOff: !!s.genie.agentAutoOff, agentRiskyOff: !!s.genie.agentRiskyOff, agentShellOff: !!s.genie.agentShellOff,
           agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0 } };
@@ -1420,6 +1448,59 @@
         }
         var inBox = box('in', 'Price per million tokens sent'), outBox = box('out', 'Price per million tokens written');
         form.price[m.id] = { in: inBox, out: outBox };
+        return { model: m, inBox: inBox, outBox: outBox };
+      });
+
+      // the usage record and credits (server/meter.go): the record is on unless switched off, credits limit nothing until switched on
+      var chatOn = toggle('f-chat-on', !settings.genie.chatHistoryOff, 'Save chat history in workspaces');
+      var chatGuests = toggle('f-chat-guests', !settings.genie.chatHistoryNoGuests, 'Also for guests');
+      form.chatOn = chatOn.input; form.chatGuests = chatGuests.input;
+      function chatBox(id, label, value, min, max, hint) {
+        var input = h('input', { type: 'number', class: 'field', id: id, min: String(min), max: String(max), step: '1', placeholder: hint, 'aria-label': label, oninput: update });
+        input.value = value || '';
+        input.style.maxWidth = '9rem';
+        return input;
+      }
+      form.chatMax = chatBox('f-chat-max', 'Most chats a workspace keeps', settings.genie.chatHistoryChats, 1, 200, '50');
+      form.chatTabs = chatBox('f-chat-tabs', 'Most open chat tabs', settings.genie.chatHistoryTabs, 1, 20, '8');
+      form.chatKB = chatBox('f-chat-kb', 'Most size of one chat in KB', settings.genie.chatHistoryKB, 20, 2000, '200');
+      form.chatDays = chatBox('f-chat-days', 'Days a chat that is not open is kept', settings.genie.chatHistoryDays, 0, 3650, 'for ever');
+      var agentTools = toggle('f-agent-tools', !!settings.genie.agentNativeTools, 'Agent: native tool calling');
+      var streamOn = toggle('f-stream-on', !!settings.genie.streamAnswers, 'Stream answers');
+      form.agentTools = agentTools.input; form.streamOn = streamOn.input;
+      form.toolModels = {};
+      var toolWanted = toolModelsOf(settings.genie.nativeToolModels);
+      var toolBoxes = h('div', { class: 'toolbar', style: 'flex-wrap:wrap;gap:6px 16px' }, models.map(function (m) {
+        var box = h('input', { type: 'checkbox', id: 'f-tool-' + m.id.replace(/[^a-z0-9]/gi, '-'), checked: toolWanted.indexOf(m.id) >= 0, 'aria-label': 'Native tool calling for ' + m.name, onchange: update });
+        form.toolModels[m.id] = box;
+        return h('label', { class: 'sub', style: 'display:flex;gap:6px;align-items:center' }, box, h('span', { text: m.name }));
+      }));
+      var meterOn = toggle('f-meter-on', !settings.genie.meterOff, 'Record every Genie answer');
+      var creditsOn = toggle('f-credits-on', !!settings.genie.creditsOn, 'Use credits for limits');
+      form.meterOn = meterOn.input; form.creditsOn = creditsOn.input;
+      form.planName = h('input', { type: 'text', class: 'field', id: 'f-plan-name', maxlength: '40', placeholder: 'Free', 'aria-label': 'Name of the default plan', oninput: update });
+      form.planName.value = settings.genie.planName || '';
+      form.planName.style.maxWidth = '12rem';
+      function creditBox(id, label, value, max) {
+        var input = h('input', { type: 'number', class: 'field', id: id, min: '0', max: String(max), step: '1', placeholder: 'none', 'aria-label': label, oninput: update });
+        input.value = value || '';
+        input.style.maxWidth = '9rem';
+        return input;
+      }
+      form.planCredits = creditBox('f-plan-credits', 'Credits of a month in the default plan', settings.genie.planCredits, 100000000);
+      form.planBudget = creditBox('f-plan-budget', 'Credits one task may use in the default plan', settings.genie.planBudget, 100000000);
+      form.weight = {};
+      var weightInputs = models.map(function (m) {
+        var cur = (settings.genie.creditWeights || {})[m.id] || {};
+        function box(which, label) {
+          var input = h('input', { type: 'number', class: 'field', id: 'f-weight-' + which + '-' + m.id.replace(/[^a-z0-9]/gi, '-'), min: '0', max: '100000000', step: '0.01',
+            placeholder: 'from the price', 'aria-label': label + ' for ' + m.name, oninput: update });
+          input.value = cur[which] || '';
+          input.style.maxWidth = '8rem';
+          return input;
+        }
+        var inBox = box('in', 'Credits per thousand tokens sent'), outBox = box('out', 'Credits per thousand tokens written');
+        form.weight[m.id] = { in: inBox, out: outBox };
         return { model: m, inBox: inBox, outBox: outBox };
       });
 
@@ -1847,8 +1928,28 @@
           row('Agent: run commands', 'On: Genie can run a command (bash -c) in a signed-in owner\'s workspace, after the user allowed it, in the same sandbox as the terminal, for at most 120 seconds, with no input and no outside network. Each command is logged (workspace, exit code), not its output. Off: the server refuses every command.', agentShell.node),
           row('Allow riskier things for a while', 'On: a user can, on purpose (typing a phrase), let Genie do risky terminal lines, delete to a Trash folder, rename and move, and close terminal tabs for 30 minutes or an hour. Hidden files, anything outside the workspace and sudo are never allowed. Off: those are asked about every time.', agentRisky.node),
           row('On the practice page', 'Off by default: the practice page is for solving questions with an interviewer.', agentPractice.node),
+          row('Stream answers', 'Off by default. On: a chat answer and the words of an agent step reach the page while the model writes them, instead of all at once. Needs a site that does not hold back a response (Cloudflare and other proxies in front must pass it on). Models of Cloudflare Workers AI always answer whole, because they do not say what a streamed answer used.', streamOn.node),
+          row('Agent: native tool calling', 'Off by default. On: a model ticked below answers each agent step by calling one function (its host checks the shape) instead of writing JSON as text. The agent works the same. The OpenAI models are ticked until you choose; tick another model only if its host takes forced tool calls. If a host refuses the call, the same step is sent again as text, nobody sees an error, the refused call is not counted, and that model is left without the tool for an hour. Refusals are counted in Genie usage.', agentTools.node),
+          row('Models that take it', 'One box for each model. Needs the switch above.', toolBoxes),
           row('Tasks per hour', 'How many tasks a signed-in user may start in an hour (admins have no limit). Counted on this server and reset when it restarts.', form.agentTasks),
           row('Steps per task', 'How many times Genie may answer in one task, at most 8.', form.agentSteps) ]),
+        card('Genie chat history', 'Each chat of the Genie panel is saved in its owner\'s own workspace, in the hidden folder .genie/chats, one JSON Lines file for each chat, and comes back as a tab after a reload. It goes when the workspace goes: a guest workspace that the server removes takes its chats with it. Nobody, an admin included, can read a chat from here; this page only sets whether and how much is kept.', [
+          row('Save chat history in workspaces', 'On by default. Off: nothing is saved or listed, as before; chats already saved stay in the workspaces.', chatOn.node),
+          row('Also for guests', 'Off: only signed-in users have their chats saved.', chatGuests.node),
+          row('Most chats a workspace keeps', 'The oldest chat that is not open goes first. Empty: 50.', form.chatMax),
+          row('Most open tabs', 'Empty: 8.', form.chatTabs),
+          row('Most size of one chat (KB)', 'The oldest messages of a chat that grows past this are left out of its file. Empty: 200.', form.chatKB),
+          row('Days a chat is kept', 'A chat that is not open and was not used for this many days is removed. Empty: for ever.', form.chatDays) ]),
+        card('Usage record and credits', 'Every answer of Genie is recorded with its credits (counts only, never what was asked or answered), so you can see what credits would have been. A credit is a tenth of a cent: a model costs the credits you set here, else its price above (a dollar for a million tokens is a credit for a thousand), else the cost its provider reports. Nothing is charged or limited until you switch credits on.', [
+          row('Record every answer', 'On by default. Off stops the record; the totals so far stay.', meterOn.node),
+          row('Use credits for limits', 'Off: nothing is charged or limited, as before. On: the default plan below counts for signed-in users (not admins): a user who has used the month\'s credits waits for the next month, and a task asks before it goes past its budget. Guests keep their fixed allowance.', creditsOn.node),
+          row('Default plan name', 'Shown to users in the usage details once credits are on. Empty: Free.', form.planName),
+          row('Credits a month', 'What a signed-in user may use in a month. Empty: no monthly cap.', form.planCredits),
+          row('Credits one task may use', 'A task asks the user before the next step would pass this, and carries on only if they say yes. Empty: no budget; the steps of a task stay at the number above.', form.planBudget),
+          weightInputs.map(function (p) {
+            return row('Credits: ' + p.model.name, 'Credits for a thousand tokens, sent then written. Empty: worked out from the price above.',
+              h('div', { class: 'toolbar' }, h('span', { class: 'sub', text: 'Sent' }), p.inBox, h('span', { class: 'sub', text: 'Written' }), p.outBox));
+          }) ]),
         keysBox,
         adminsBox,
         bar);
@@ -2340,7 +2441,65 @@
       render(box, JSON.stringify([r, range]), node);
     }
 
-    function load(fresh) { return api.get(freshPath('admin/genie-usage?range=' + range, fresh)).then(draw); }
+    // how the agent is doing: counts of its tasks, and the baseline recorded before a change
+    var measuresBox = h('div');
+    root.appendChild(measuresBox);
+    function per(a, b) { return b > 0 ? a / b : null; }
+    function f1(x) { return x === null ? '\u2013' : (Math.round(x * 10) / 10).toLocaleString('en-US'); }
+    function pct(a, b) { return b > 0 ? Math.round(a / b * 100) + '%' : '\u2013'; }
+    function kb(x) { return x === null ? '\u2013' : (Math.round(x / 100) / 10).toLocaleString('en-US') + ' KB'; }
+    // the rows for a set of counts
+    function refusedText(m) {
+      var parts = Object.keys(m || {}).map(function (id) { return id + ': ' + m[id]; });
+      return parts.length ? parts.join(', ') : '\u2013';
+    }
+    function measureRows(s) {
+      var ended = s.done + s.stopped + s.failed;
+      return [
+        f1(per(s.steps, s.tasks)),
+        kb(per(s.reqBytes, s.steps)),
+        pct(s.stepLimit, s.tasks),
+        pct(s.unreadable + s.tooLong, ended),
+        pct(s.stopped, ended),
+        pct(s.checked, s.checked + s.notChecked),
+        n(s.tasks),
+        n(s.toolTries || 0),
+        pct(s.toolFallbacks || 0, s.toolTries || 0),
+        refusedText(s.toolRefused)
+      ];
+    }
+    var MEASURES = ['Steps per task', 'Size of a step\'s request', 'Tasks that stopped at the step limit', 'Tasks stopped for an answer that was unreadable or too long', 'Tasks ended with Stop', 'Tasks that changed code and ended with a check', 'Tasks counted', 'Steps asked as a native tool call', 'Of those, refused by the host and sent again as text', 'Refused, by model'];
+    function diff(a, b) {
+      var o = {};
+      Object.keys(a).forEach(function (k) {
+        if (typeof a[k] === 'number') o[k] = a[k] - (b ? b[k] || 0 : 0);
+        else if (a[k] && typeof a[k] === 'object') { // the refusals of each model
+          o[k] = {};
+          Object.keys(a[k]).forEach(function (m) { var d = a[k][m] - (b && b[k] ? b[k][m] || 0 : 0); if (d) o[k][m] = d; });
+        }
+      });
+      return o;
+    }
+    function drawMeasures(m) {
+      var hasBase = !!m.base;
+      var since = measureRows(hasBase ? diff(m.now, m.base) : m.now), before = hasBase ? measureRows(m.base) : null;
+      var rows = MEASURES.map(function (name, i) { return { name: name, before: before ? before[i] : '\u2013', since: since[i] }; });
+      var node = h('div', { class: 'card' },
+        h('div', { class: 'toolbar' }, h('b', { text: 'How the agent is doing' }), h('span', { class: 'grow' }),
+          h('button', { class: 'btn', type: 'button', text: hasBase ? 'Record today as the new baseline' : 'Record today as the baseline', onclick: function () {
+            api.post('admin/genie-measures', { action: 'baseline' }).then(function (r) { drawMeasures(r); });
+          } })),
+        table([
+          { key: 'name', label: '', cell: function (r) { return r.name; } },
+          { key: 'before', label: hasBase ? 'Baseline (' + new Date(m.baseAt * 1000).toLocaleDateString() + ')' : 'Baseline', num: true, cell: function (r) { return r.before; } },
+          { key: 'since', label: hasBase ? 'Since the baseline' : 'Since counting began', num: true, cell: function (r) { return r.since; } }
+        ], rows, { empty: '' }),
+        h('p', { class: 'sub', text: 'Counts only: no user, no content. Record the baseline before a change to the agent, so that the change is a comparison and not a feeling.' }));
+      render(measuresBox, JSON.stringify(m), node);
+    }
+    function loadMeasures(fresh) { return api.get('admin/genie-measures').then(drawMeasures); }
+
+    function load(fresh) { return Promise.all([api.get(freshPath('admin/genie-usage?range=' + range, fresh)).then(draw), loadMeasures()]); }
     function refresh() { return load(false); }
     return { root: root, refresh: refresh, poll: false };
   }

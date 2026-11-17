@@ -94,3 +94,16 @@ func TestAgentUsageIsLeftOutWhereAgentModeIsOff(t *testing.T) {
 		t.Errorf("agent mode off: %+v", u)
 	}
 }
+
+func usageCallTask(t *testing.T, c *http.Cookie, task string) genieUsage {
+	t.Helper()
+	req := httptest.NewRequest("GET", "/chat/usage?task="+task, nil)
+	req.AddCookie(c)
+	w := httptest.NewRecorder()
+	handleChatUsage(w, req)
+	var u genieUsage
+	if err := json.Unmarshal(w.Body.Bytes(), &u); err != nil {
+		t.Fatal(err, w.Body.String())
+	}
+	return u
+}

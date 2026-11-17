@@ -194,6 +194,38 @@ type GenieSettings struct {
 	// AgentShellOff takes away the agent's "bash" action: the server refuses a command (agent_shell.go).
 	AgentShellOff bool `json:"agentShellOff"`
 	AgentMaxSteps int  `json:"agentMaxSteps"`
+	// AgentNativeTools gives an OpenAI model the agent's answer as one forced function call instead of JSON in text (agent_tools.go).
+	AgentNativeTools bool `json:"agentNativeTools"`
+	// NativeToolModels are the models that take it: nil is "never chosen" (the OpenAI models), a list is the admin's choice.
+	NativeToolModels []string `json:"nativeToolModels"`
+	// StreamAnswers sends an answer to the page as it is written (chat answers, and the words of an agent step): off until an admin turns it on.
+	StreamAnswers bool `json:"streamAnswers"`
+
+	// Chat history (genie_chats.go): each chat of the Genie panel is saved in its owner's workspace, in .genie/chats. ChatHistoryOff
+	// stops it on the site; ChatHistoryNoGuests keeps it to signed-in users. The most chats a workspace keeps (0: 50), the most open
+	// tabs (0: 8), the most size of one chat in KB (0: 200) and the days a chat that is not open is kept (0: for ever).
+	ChatHistoryOff      bool `json:"chatHistoryOff"`
+	ChatHistoryNoGuests bool `json:"chatHistoryNoGuests"`
+	ChatHistoryChats    int  `json:"chatHistoryChats"`
+	ChatHistoryTabs     int  `json:"chatHistoryTabs"`
+	ChatHistoryKB       int  `json:"chatHistoryKB"`
+	ChatHistoryDays     int  `json:"chatHistoryDays"`
+
+	// Usage record and credits (meter.go). Every step of a task and every chat
+	// answer of a signed-in user is recorded with its credits (counts only, no
+	// content) unless MeterOff. Nothing is charged or limited until CreditsOn:
+	// then the default plan counts: PlanCredits a month (0: no monthly cap) and
+	// PlanBudget for one task (0: no budget; the steps of a task stay at
+	// AgentMaxSteps either way). CreditWeights is the credits a model's
+	// thousand tokens cost, by model id; a model without one costs what its
+	// ModelPrices say (a dollar for a million tokens is a credit for a
+	// thousand: one credit is a tenth of a cent), else what the provider reported.
+	MeterOff      bool                  `json:"meterOff"`
+	CreditsOn     bool                  `json:"creditsOn"`
+	PlanName      string                `json:"planName"`
+	PlanCredits   float64               `json:"planCredits"`
+	PlanBudget    float64               `json:"planBudget"`
+	CreditWeights map[string]modelPrice `json:"creditWeights"`
 }
 
 // ModelDisabled reports whether an admin switched the model off (a model an admin
@@ -530,6 +562,12 @@ type publicSettings struct {
 	AgentRiskyOff   bool `json:"agentRiskyOff"`
 	AgentOnPractice bool `json:"agentOnPractice"`
 	AgentMaxSteps   int  `json:"agentMaxSteps"`
+	// answers are sent to the page as they are written (settings.go: StreamAnswers)
+	GenieStream bool `json:"genieStream"`
+	// chats are saved in the workspace, for everyone or for signed-in users only (genie_chats.go)
+	ChatHistory       bool `json:"chatHistory"`
+	ChatHistoryGuests bool `json:"chatHistoryGuests"`
+	ChatHistoryTabs   int  `json:"chatHistoryTabs"`
 }
 
 type genieContext struct {
@@ -600,6 +638,15 @@ func (g *GenieSettings) normalizeNumbers() error {
 		if n.v != 0 && (n.v < n.min || n.v > n.max) {
 			return fmt.Errorf("%s must be between %d and %d (or empty for the built-in value)", n.name, n.min, n.max)
 		}
+	}
+	if err := g.normalizeCredits(); err != nil {
+		return err
+	}
+	if err := g.normalizeChatHistory(); err != nil {
+		return err
+	}
+	if err := g.normalizeNativeTools(); err != nil {
+		return err
 	}
 	prices := map[string]modelPrice{}
 	known := map[string]bool{}
@@ -780,6 +827,10 @@ func (s SiteSettings) public() publicSettings {
 		AgentRiskyOff:        s.Genie.AgentRiskyOff,
 		AgentOnPractice:      s.Genie.AgentOnPractice,
 		AgentMaxSteps:        s.Genie.agentMaxSteps(),
+		GenieStream:          s.Genie.StreamAnswers,
+		ChatHistory:          !s.Genie.ChatHistoryOff && !s.Genie.Disabled,
+		ChatHistoryGuests:    !s.Genie.ChatHistoryNoGuests,
+		ChatHistoryTabs:      s.Genie.chatsTabs(),
 	}
 }
 
@@ -1022,6 +1073,15 @@ func settingsChanges(a, b SiteSettings) []string {
 	if ga, gb := a.Genie, b.Genie; ga.context() != gb.context() || ga.OpenRouterTimeoutSec != gb.OpenRouterTimeoutSec ||
 		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || fmt.Sprint(ga.ModelPrices) != fmt.Sprint(gb.ModelPrices) || ga.ShowCostToUsers != gb.ShowCostToUsers || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {
 		out = append(out, "Genie limits changed (context, history, answer sizes, OpenRouter time limit or hosts)")
+	}
+	if ga, gb := a.Genie, b.Genie; ga.ChatHistoryOff != gb.ChatHistoryOff || ga.ChatHistoryNoGuests != gb.ChatHistoryNoGuests || ga.ChatHistoryChats != gb.ChatHistoryChats || ga.ChatHistoryTabs != gb.ChatHistoryTabs || ga.ChatHistoryKB != gb.ChatHistoryKB || ga.ChatHistoryDays != gb.ChatHistoryDays {
+		out = append(out, "Genie chat history "+onoff(!gb.ChatHistoryOff)+" (guests "+onoff(!gb.ChatHistoryNoGuests)+")")
+	}
+	if a.Genie.AgentNativeTools != b.Genie.AgentNativeTools || a.Genie.StreamAnswers != b.Genie.StreamAnswers || fmt.Sprint(a.Genie.NativeToolModels) != fmt.Sprint(b.Genie.NativeToolModels) {
+		out = append(out, "Genie: native tool calling "+onoff(b.Genie.AgentNativeTools)+", streamed answers "+onoff(b.Genie.StreamAnswers))
+	}
+	if ga, gb := a.Genie, b.Genie; ga.MeterOff != gb.MeterOff || ga.CreditsOn != gb.CreditsOn || ga.PlanName != gb.PlanName || ga.PlanCredits != gb.PlanCredits || ga.PlanBudget != gb.PlanBudget || fmt.Sprint(ga.CreditWeights) != fmt.Sprint(gb.CreditWeights) {
+		out = append(out, "Genie credits and plan changed (usage record "+onoff(!gb.MeterOff)+", credits "+onoff(gb.CreditsOn)+")")
 	}
 	if a.Genie.AgentDisabled != b.Genie.AgentDisabled {
 		out = append(out, "agent mode "+onoff(!b.Genie.AgentDisabled))

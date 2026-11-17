@@ -2,8 +2,13 @@ import { createFocusTrap } from "focus-trap";
 import { marked } from "marked";
 
 import { widgetHTML } from "./widgetHtmlString";
-import { AgentRunner, AgentState } from "./agent";
-import { TokenUsage, answerTokens, tokenRows } from "./tokens";
+import { AgentMemory, AgentRunner, AgentState, TaskInfo } from "./agent";
+import { ChatStore } from "./chat-store";
+import { ChatLine, Restored, TabView, afterClose, clock, filterChats, fitText, groupChats, moveTab, newChatId, restore, sizeText, staleNote, tabMark, tabToClose, titleFrom, toHistory } from "./chat-tabs";
+import { SSEParser, addEvent, answerOf, newStreamed } from "./sse";
+import { definesSomething } from "./chat-send";
+import { answerBudget, errorBlock, errorRequest, looksLikeTask, messagesToSend, selectionRequest } from "./chat-send";
+import { CreditUsage, TokenUsage, answerTokens, creditLine, creditRows, tokenRows } from "./tokens";
 import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntry, addItem, gather, hashQuery, itemKey, metaOf, namesLine, problemsLine, rankEntries, removeItem, withAttached, withoutHash } from "./attach";
 import { CoachKind, MAX_HINTS, NO_CODE_IN_A_HINT, NO_HINTS_LEFT, askedText, carriesCode, hintsUsed, questionKey, withHint } from "./coach";
 import css from "./widget.css";
@@ -118,7 +123,12 @@ renderer.code = (code, infostring, escaped) => {
   const insertButton = `<button type="button" class="chat-widget__code-btn chat-widget__code-btn--primary" onclick="insertcodesnippet('${encodedcode}')">Insert</button>`
   const replaceButton = `<button type="button" class="chat-widget__code-btn" onclick="replacecodesnippet('${encodedcode}')">Replace file</button>`
 
-  return `<div class="chat-widget__code">${parsedcode}<div class="chat-widget__code-actions">${insertButton}${replaceButton}</div></div>`;
+  // "Apply as a diff": when the code is a function or a class, only that part of the editor is proposed as a change
+  const applyButton = typeof (window as any).applycodesnippet === "function" && definesSomething(code)
+    ? `<button type="button" class="chat-widget__code-btn" onclick="applycodesnippet('${encodedcode}')" title="Find this function or class in your editor and propose only that part as a change">Apply as diff</button>`
+    : "";
+
+  return `<div class="chat-widget__code">${parsedcode}<div class="chat-widget__code-actions">${insertButton}${applyButton}${replaceButton}</div></div>`;
 };
 
 marked.setOptions({
@@ -214,8 +224,12 @@ function captionText(): string {
 // The request fields for the chosen model: Luna takes an effort and an answer
 // budget, 4o mini and Gemma a temperature and max_tokens (model-choice.js).
 function modelFields(): Record<string, any> {
-  return MC.fields({ temperature: config.temperature, maxTokens: config.max_tokens });
+  return MC.fields({ temperature: config.temperature, maxTokens: answerBudget(lastTyped, config.max_tokens) });
 }
+
+// What the user typed in their last chat message, without the tag of the user: the answer is sized by it, it can be edited,
+// and it can be handed to Agent.
+let lastTyped = "";
 
 // What Genie is told about the page, and how many messages it keeps. An admin
 // can change the numbers (settings.js: site_settings.genieContext); these are
@@ -232,6 +246,7 @@ function genieLimit(name: "editorChars" | "terminalChars" | "terminalLines" | "h
 const maxHistorySize = () => genieLimit("history", 20);
 // older conversation history might not be usefull
 // Initialize the conversationHistory array
+// The conversation of the chat tab that is shown (the tabs are further down: a chat has its own history).
 let conversationHistory: MessageType[] = [];
 
 // What Genie is told about the page on every request: the editor's code and the
@@ -279,7 +294,7 @@ function getcurrentIDECode(): MessageType {
   }
   let output = fetchTerminalOutput().replace(/\s+$/, "");
   if (output.length > maxTerminalChars()) {
-    output = "... " + output.slice(-maxTerminalChars());
+    output = "... (earlier output left out) " + output.slice(-maxTerminalChars());
   }
 
   const parts = [
@@ -295,20 +310,20 @@ function getcurrentIDECode(): MessageType {
 }
 
 // Function to add a message to the conversation history
-function addMessageToHistory(role: string, content: string, uid: string=UID): void {
+function addMessageToHistory(role: string, content: string, uid: string=UID, history: MessageType[] = conversationHistory): void {
   if (role=="user") {
     // to handle multiple peer users
     content = `[${role}-${uid}] ` + content;
-    if (conversationHistory.length >= NUM_MANDATORY_ENTRIES) {
+    if (history.length >= NUM_MANDATORY_ENTRIES) {
       // update editors content to msg history everytime user writes/sends message
-      conversationHistory[NUM_MANDATORY_ENTRIES-1] = getcurrentIDECode();
+      history[NUM_MANDATORY_ENTRIES-1] = getcurrentIDECode();
     }
   }
 
-  conversationHistory.push({ role: role, content: content });
-  if (conversationHistory.length > maxHistorySize()) {
+  history.push({ role: role, content: content });
+  if (history.length > maxHistorySize()) {
       // Trim the oldest non-mandatory message from the beginning, preserving mandatory entries of docs
-      conversationHistory.splice(NUM_MANDATORY_ENTRIES, 1);
+      history.splice(NUM_MANDATORY_ENTRIES, 1);
   }
 }
 
@@ -485,6 +500,8 @@ async function init() {
   }
   addMessageToHistory("system", "Openrepl IDE/EditorCodeContent: "+ fetchEditorContent());
   NUM_MANDATORY_ENTRIES = conversationHistory.length; // the editor snapshot is the last of them
+  baseHistory = conversationHistory.slice(0, NUM_MANDATORY_ENTRIES);
+  void loadTabs(); // the chats of the workspace, when it keeps them
   setupFBListener();
 }
 window.addEventListener("load", init);
@@ -507,6 +524,845 @@ thinkingBubble.innerHTML = `
     <span class="circle"></span>
     <span class="chat-widget__thinking-label"></span>
   `;
+
+// ---- Chat tabs ---------------------------------------------------------------------------
+// Each chat of the panel is a tab: its own conversation, its own mode, and its own file in the workspace
+// (.genie/chats/<id>.jsonl, server/genie_chats.go; the format and the rules are docs/lld/19-genie-agent.md, section 9).
+// The messages of the tab that is shown are in messagesHistory; those of the others wait in a fragment of their own, so
+// an answer that comes for a tab that is not shown is put where it belongs. Without saved chats (a viewer, a site that
+// has them off) there is one tab, as before, and no strip.
+
+type ChatTab = {
+  id: string;
+  title: string;
+  history: MessageType[]; // what the model is sent
+  frag: DocumentFragment; // the messages on screen while the tab is not shown
+  bubble: HTMLElement; // the dots of a tab that waits for an answer
+  loaded: boolean; // its saved messages were drawn
+  saved: boolean; // its file exists
+  titled: boolean;
+  mode: "chat" | "agent";
+  ctx: { file: string; language: string }; // what the chat was about
+  unread: boolean; // an answer came while it was not shown
+  inFlight: boolean; // an answer is on its way
+  needsYou: boolean; // its task waits for the user
+  draft: string; // a half-typed message
+  lastTyped: string;
+  recap: AgentMemory | null; // what the agent remembers of the tasks of this chat
+};
+
+function makeTab(id: string, title: string = "New chat"): ChatTab {
+  return {
+    id,
+    title,
+    history: [],
+    frag: document.createDocumentFragment(),
+    bubble: thinkingBubble.cloneNode(true) as HTMLElement,
+    loaded: true,
+    saved: false,
+    titled: false,
+    mode: "chat",
+    ctx: { file: "", language: "" },
+    unread: false,
+    inFlight: false,
+    needsYou: false,
+    draft: "",
+    lastTyped: "",
+    recap: null,
+  };
+}
+
+let tabs: ChatTab[] = [];
+let activeTab: ChatTab = makeTab(newChatId());
+activeTab.history = conversationHistory; // the first tab starts with the history the page already has
+tabs.push(activeTab);
+let runTab: ChatTab | null = null; // the tab a task runs in (one task at a time)
+let tabsOn = false; // the chats are saved and the strip is shown
+let baseHistory: MessageType[] = []; // the entries every conversation starts with
+const ACTIVE_KEY = "genie-active-chat";
+const DRAFT_KEY = "genie-draft-";
+
+const bodyOf = (tab: ChatTab): ParentNode => (tab === activeTab ? messagesHistory : tab.frag);
+const maxTabs = (): number => Number((((window as any).site_settings || {}) as any).chatHistoryTabs) || 8;
+
+function tabViews(): TabView[] {
+  return tabs.map((t) => ({ id: t.id, running: runTab === t && agentRunner.running, needsYou: t.needsYou, unread: t.unread, busy: t.inFlight }));
+}
+
+const chatsUrl = (): string => {
+  const pp = (window as any).preprocessurl;
+  return typeof pp === "function" ? pp("/genie_chats") : "/genie_chats";
+};
+
+const chatStore = new ChatStore(
+  async (body) => {
+    const res = await fetch(chatsUrl(), { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    let json: any = null;
+    try {
+      json = await res.json();
+    } catch (e) {
+      json = null;
+    }
+    return { status: res.status, json };
+  },
+  () => renderTabs()
+);
+
+// Whether this page keeps chats: an admin allows it (settings.js), a guest is allowed, and the page is the owner's.
+function chatsWanted(): boolean {
+  const s = ((window as any).site_settings || {}) as any;
+  if (s.chatHistory !== true) return false;
+  if (!isMaster()) return false;
+  if (!document.body.classList.contains("is-signed-in") && s.chatHistoryGuests === false) return false;
+  return true;
+}
+
+function currentFile(): string {
+  const chip = document.getElementById("editor-filename");
+  const f = chip ? (chip.textContent || "").trim() : "";
+  return f && f !== "untitled" ? f : "";
+}
+
+const ctxNow = () => ({ file: currentFile(), language: pickedLanguage() });
+
+function tabIds(): string[] {
+  return tabs.filter((t) => t.saved).map((t) => t.id);
+}
+
+// ---- saving ----
+
+function startLines(tab: ChatTab): ChatLine[] {
+  if (tab.saved) return [];
+  tab.saved = true;
+  const q = onPracticePage() ? "practice:" + coachQuestion() : "chat";
+  return [{ t: "meta", id: tab.id, created: new Date().toISOString(), context: q }];
+}
+
+function persistUser(tab: ChatTab, text: string, ts: number) {
+  if (!tabsOn) return;
+  tab.ctx = ctxNow();
+  const lines = startLines(tab);
+  const first = lines.length > 0;
+  if (!tab.titled) {
+    tab.titled = true;
+    tab.title = titleFrom(text);
+    lines.push({ t: "title", text: tab.title });
+    lines.push({ t: "state", mode: tab.mode, model: chosenModel().id, effort: chosenEffort().id });
+  }
+  lines.push({ t: "user", at: clock(ts), ts, text: fitText(text), file: tab.ctx.file, language: tab.ctx.language });
+  chatStore.append(tab.id, lines);
+  if (first) chatStore.setTabs(tabIds());
+  renderTabs();
+}
+
+function persistAnswer(tab: ChatTab, text: string, ts: number, usage: any) {
+  if (!tabsOn || !tab.saved) return;
+  const tokens = usage ? Number(usage.prompt_tokens || 0) + Number(usage.completion_tokens || 0) : 0;
+  chatStore.append(tab.id, [{ t: "answer", at: clock(ts), ts, model: chosenModel().id, tokens: tokens || undefined, text: fitText(text) }]);
+}
+
+function persistState(tab: ChatTab) {
+  if (!tabsOn || !tab.saved) return;
+  chatStore.append(tab.id, [{ t: "state", mode: tab.mode, model: chosenModel().id, effort: chosenEffort().id }]);
+}
+
+function persistTask(tab: ChatTab, outcome: string, info?: TaskInfo) {
+  if (!tabsOn || !tab.saved || !info) return;
+  chatStore.append(tab.id, [{ t: "task", at: clock(Date.now()), ts: Date.now(), text: fitText(info.task).slice(0, 300), steps: info.steps, checked: info.checked || undefined, changed: info.changed || undefined, outcome }]);
+}
+
+// ---- loading ----
+
+function drawRestored(tab: ChatTab, r: Restored) {
+  // oldest first: each one is put in front of the last
+  return (async () => {
+    for (const m of r.messages) {
+      const into = tab === activeTab ? null : tab.frag;
+      if (m.kind === "task") {
+        const card = document.createElement("div");
+        card.className = "cw-agent cw-agent--ended";
+        const head = document.createElement("div");
+        head.className = "cw-agent__head";
+        const t = document.createElement("span");
+        t.className = "cw-agent__title";
+        t.textContent = "Agent task";
+        const c = document.createElement("span");
+        c.className = "cw-agent__count";
+        c.textContent = m.summary || "";
+        head.append(t, c);
+        const what = document.createElement("div");
+        what.className = "cw-agent__meta";
+        what.style.padding = "6px 12px 8px";
+        what.textContent = m.text;
+        card.append(head, what);
+        (into || messagesHistory).prepend(card);
+      } else {
+        const meta = m.kind === "answer" ? [m.model, m.tokens ? m.tokens + " tokens" : ""].filter(Boolean).join(" · ") : "";
+        await createNewMessageEntry(m.text, m.ts > 1000 ? m.ts : Date.now(), m.kind === "user" ? "user" : "system", true, meta, null, null, null, [], into);
+      }
+    }
+  })();
+}
+
+async function loadTab(tab: ChatTab) {
+  if (tab.loaded) return;
+  tab.loaded = true;
+  const lines = await chatStore.read(tab.id);
+  if (!lines) {
+    tab.loaded = false; // asked again when it is shown the next time
+    return;
+  }
+  const r = restore(lines);
+  tab.title = r.title;
+  tab.titled = true;
+  tab.saved = true;
+  tab.mode = r.mode === "agent" ? "agent" : "chat";
+  tab.ctx = { file: r.file, language: r.language };
+  tab.history = (baseHistory.length ? baseHistory.slice() : tab.history.slice(0, NUM_MANDATORY_ENTRIES)).concat(toHistory(r.messages, UID));
+  while (tab.history.length > maxHistorySize()) tab.history.splice(NUM_MANDATORY_ENTRIES, 1);
+  const lastUser = [...r.messages].reverse().find((m) => m.kind === "user");
+  tab.lastTyped = lastUser ? lastUser.text : "";
+  if (tab === activeTab) conversationHistory = tab.history;
+  await drawRestored(tab, r);
+  if (tab === activeTab) afterShown(tab);
+  renderTabs();
+}
+
+// The chats of the workspace: the open tabs come back as they were, in order, and the one that was shown on this device is shown.
+async function loadTabs() {
+  if (!chatsWanted()) return;
+  const st = await chatStore.state();
+  if (!st) return;
+  tabsOn = true;
+  let remembered = "";
+  try {
+    remembered = localStorage.getItem(ACTIVE_KEY) || "";
+  } catch (e) {
+    // not remembered
+  }
+  const opened: ChatTab[] = [];
+  st.open.forEach((id) => {
+    const c = st.chats.find((x) => x.id === id);
+    if (!c) return;
+    const t = makeTab(id, c.title || "New chat");
+    t.loaded = false;
+    t.saved = true;
+    t.titled = true;
+    t.history = baseHistory.slice();
+    try {
+      t.draft = localStorage.getItem(DRAFT_KEY + id) || "";
+    } catch (e) {
+      t.draft = "";
+    }
+    opened.push(t);
+  });
+  const placeholder = tabs[0];
+  const used = placeholder.history.length > NUM_MANDATORY_ENTRIES; // something was said before the chats came
+  if (opened.length === 0) {
+    renderTabs();
+    return;
+  }
+  if (used) {
+    tabs = opened.concat([placeholder]);
+    renderTabs();
+    return;
+  }
+  const show = opened.find((t) => t.id === remembered) || opened[0];
+  tabs = opened;
+  messagesHistory.textContent = ""; // the greeting of the empty first tab
+  activeTab = show;
+  conversationHistory = show.history;
+  show.loaded = false;
+  await loadTab(show);
+  switchTo(show, true);
+}
+
+// Another person is signed in, or the person signed out: the workspace is another one, so are its chats.
+function resetTabs() {
+  const keep = makeTab(newChatId());
+  keep.history = baseHistory.slice();
+  tabsOn = false;
+  chatStore.reset();
+  const old = tabs.slice();
+  tabs = [keep];
+  activeTab = keep;
+  conversationHistory = keep.history;
+  runTab = runTab && agentRunner.running ? runTab : null;
+  messagesHistory.textContent = "";
+  old.forEach((t) => (t.frag.textContent = ""));
+  agentRunner.setMemory(null);
+  greetingFor(keep);
+  messagesHistory.appendChild(keep.frag);
+  renderTabs();
+  void loadTabs();
+}
+
+// ---- the tab that is shown ----
+
+function afterShown(tab: ChatTab) {
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  messagesHistory.querySelectorAll(".cw-stale").forEach((n) => n.remove());
+  const note = staleNote(tab.ctx, ctxNow());
+  if (note && tabsOn) {
+    const el = document.createElement("div");
+    el.className = "cw-stale";
+    el.setAttribute("role", "status");
+    const b = document.createElement("b");
+    b.textContent = "This chat was about " + [tab.ctx.file, tab.ctx.language ? "(" + tab.ctx.language + ")" : ""].filter(Boolean).join(" ") + ".";
+    el.append(b, document.createTextNode(" " + note.replace(/^This chat was about [^.]*\. ?/, "")));
+    messagesHistory.prepend(el);
+  }
+  if (input) {
+    input.value = tab.draft;
+    autoGrow(input);
+  }
+  lastTyped = tab.lastTyped;
+  decorateLastTurn();
+  refreshQuick();
+}
+
+function switchTo(tab: ChatTab, initial: boolean = false) {
+  if (!tabs.includes(tab)) return;
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  if (!initial && tab !== activeTab) {
+    // what is on screen goes to its tab, and the other tab's comes in
+    const old = activeTab;
+    if (input) old.draft = input.value;
+    messagesHistory.querySelectorAll(".cw-stale, .cw-turn").forEach((n) => n.remove());
+    while (messagesHistory.firstChild) old.frag.appendChild(messagesHistory.firstChild);
+    // what the agent remembers belongs to the chat it was said in (a running task keeps its own until it ends)
+    if (!agentRunner.running) old.recap = agentRunner.getMemory();
+    activeTab = tab;
+    conversationHistory = tab.history;
+    messagesHistory.appendChild(tab.frag);
+    if (!agentRunner.running) agentRunner.setMemory(tab.recap);
+  }
+  tab.unread = false;
+  try {
+    localStorage.setItem(ACTIVE_KEY, tab.id);
+  } catch (e) {
+    // not remembered
+  }
+  // the mode of the chat, unless a task elsewhere takes the agent
+  const elsewhere = !!runTab && runTab !== tab && agentRunner.running;
+  setMode(tab.mode === "agent" && agentAvailability() === "ready" && !elsewhere);
+  const submit = document.getElementById("chat-widget__submit");
+  if (submit) {
+    if (tab.inFlight) submit.setAttribute("disabled", "");
+    else submit.removeAttribute("disabled");
+  }
+  if (tab.loaded) afterShown(tab);
+  else void loadTab(tab);
+  showAgentState(lastAgentState);
+  hideToast(tab);
+  refreshMode(); // Agent is off here while another tab runs a task
+  renderTabs();
+  renderActivity();
+}
+
+// ---- opening, closing, renaming ----
+
+function greetingFor(tab: ChatTab) {
+  if (config.greetingMessage) void createNewMessageEntry(config.greetingMessage, Date.now(), "system", true, "", null, null, null, [], tab.frag);
+}
+
+function newTab(): ChatTab | null {
+  if (!tabsOn) return null;
+  if (tabs.length >= maxTabs()) {
+    const victim = tabToClose(tabViews(), activeTab.id);
+    const t = tabs.find((x) => x.id === victim);
+    if (!t) {
+      notifyTabs("Every tab is busy: close one first.");
+      return null;
+    }
+    notifyTabs("“" + t.title + "” was closed to make room. It is kept in the list.");
+    closeTab(t, true);
+  }
+  const t = makeTab(newChatId());
+  t.history = baseHistory.slice();
+  t.loaded = true;
+  greetingFor(t);
+  tabs.push(t);
+  switchTo(t);
+  (document.getElementById("chat-widget__input") as HTMLTextAreaElement | null)?.focus();
+  return t;
+}
+
+function notifyTabs(text: string) {
+  const n = (window as any).notify;
+  if (typeof n === "function") n(text, { type: "info" });
+}
+
+function closeTab(tab: ChatTab, force: boolean = false) {
+  if (!tabs.includes(tab)) return;
+  if (!force && tab === runTab && agentRunner.running) {
+    confirmBar("A task is running in “" + tab.title + "”.", "Stop it and close the tab", () => {
+      agentRunner.stop();
+      closeTab(tab, true);
+    }, "Keep the tab");
+    return;
+  }
+  const ids = tabs.map((t) => t.id);
+  const next = afterClose(ids, tab.id);
+  const wasActive = tab === activeTab;
+  if (tabs.length === 1) {
+    // the last tab is replaced by an empty one
+    const t = makeTab(newChatId());
+    t.history = baseHistory.slice();
+    greetingFor(t);
+    tabs.push(t);
+  }
+  const target = wasActive ? tabs.find((t) => t.id === next) || tabs.find((t) => t !== tab)! : activeTab;
+  if (wasActive) switchTo(target);
+  tabs = tabs.filter((t) => t !== tab);
+  if (tab.saved) chatStore.setTabs(tabIds());
+  renderTabs();
+}
+
+function renameTab(tab: ChatTab, title: string) {
+  const t = title.replace(/\s+/g, " ").trim().slice(0, 100);
+  if (!t || t === tab.title) return;
+  tab.title = t;
+  tab.titled = true;
+  if (tab.saved && tabsOn) chatStore.append(tab.id, [{ t: "title", text: t }]);
+  renderTabs();
+}
+
+async function openChat(id: string) {
+  const have = tabs.find((t) => t.id === id);
+  if (have) {
+    switchTo(have);
+    return;
+  }
+  const st = await chatStore.state();
+  const c = st && st.chats.find((x) => x.id === id);
+  if (!c) return;
+  if (tabs.length >= maxTabs()) {
+    const victim = tabs.find((t) => t.id === tabToClose(tabViews(), activeTab.id));
+    if (!victim) {
+      notifyTabs("Every tab is busy: close one first.");
+      return;
+    }
+    closeTab(victim, true);
+  }
+  const t = makeTab(id, c.title || "New chat");
+  t.loaded = false;
+  t.saved = true;
+  t.titled = true;
+  t.history = baseHistory.slice();
+  tabs.push(t);
+  chatStore.setTabs(tabIds());
+  switchTo(t);
+}
+
+async function duplicateTab(tab: ChatTab) {
+  const lines = await chatStore.read(tab.id);
+  if (!lines) return;
+  const id = newChatId();
+  const copy = lines.map((l) => (l.t === "meta" ? { ...l, id, created: new Date().toISOString() } : l)).filter((l) => l.t !== "title");
+  copy.push({ t: "title", text: tab.title + " (copy)" });
+  chatStore.append(id, copy.slice(0, 20));
+  for (let i = 20; i < copy.length; i += 20) chatStore.append(id, copy.slice(i, i + 20));
+  await chatStore.whenIdle();
+  await openChat(id);
+}
+
+async function exportChat(tab: ChatTab | null) {
+  const md = await chatStore.exportMarkdown(tab ? tab.id : null);
+  if (md === null) return notifyTabs("The chat could not be exported right now.");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([md], { type: "text/markdown" }));
+  a.download = tab ? "genie-chat-" + tab.id + ".md" : "genie-chats.md";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function deleteChat(id: string) {
+  const t = tabs.find((x) => x.id === id);
+  if (t) closeTab(t, true);
+  chatStore.remove(id);
+}
+
+// ---- the strip and its menus ----
+
+let tabsPopup: HTMLElement | null = null;
+
+function closePopup() {
+  if (tabsPopup) tabsPopup.remove();
+  tabsPopup = null;
+}
+
+// A question in the strip, with two answers.
+function confirmBar(text: string, yes: string, onYes: () => void, no: string = "Cancel") {
+  closePopup();
+  const host = document.getElementById("chat-widget__toast");
+  if (!host) return;
+  host.hidden = false;
+  host.textContent = "";
+  host.className = "cw-toast cw-toast--ask";
+  const msg = document.createElement("span");
+  msg.textContent = text;
+  const y = document.createElement("button");
+  y.type = "button";
+  y.className = "cw-toast__go";
+  y.textContent = yes;
+  const n = document.createElement("button");
+  n.type = "button";
+  n.textContent = no;
+  const done = () => {
+    host.hidden = true;
+    host.textContent = "";
+  };
+  y.addEventListener("click", () => {
+    done();
+    onYes();
+  });
+  n.addEventListener("click", done);
+  host.append(msg, y, n);
+}
+
+function showToast(tab: ChatTab, text: string) {
+  const host = document.getElementById("chat-widget__toast");
+  if (!host || tab === activeTab) return;
+  host.hidden = false;
+  host.textContent = "";
+  host.className = "cw-toast";
+  const dot = document.createElement("span");
+  dot.className = "cw-tab__mark cw-tab__mark--needs";
+  const msg = document.createElement("span");
+  const b = document.createElement("b");
+  b.textContent = tab.title;
+  msg.append(b, document.createTextNode(" " + text));
+  const go = document.createElement("button");
+  go.type = "button";
+  go.className = "cw-toast__go";
+  go.textContent = "Go to tab";
+  go.addEventListener("click", () => switchTo(tab));
+  host.append(dot, msg, go);
+}
+
+function hideToast(tab: ChatTab) {
+  const host = document.getElementById("chat-widget__toast");
+  if (host && tab === activeTab && !host.classList.contains("cw-toast--ask")) {
+    host.hidden = true;
+    host.textContent = "";
+  }
+}
+
+function popup(x: number, y: number): HTMLElement {
+  closePopup();
+  const p = document.createElement("div");
+  p.className = "cw-tabmenu";
+  p.setAttribute("role", "menu");
+  const panel = document.getElementById("chat-widget__container") || containerElement;
+  panel.appendChild(p);
+  const box = panel.getBoundingClientRect();
+  p.style.left = Math.max(4, Math.min(x - box.left, box.width - 220)) + "px";
+  p.style.top = Math.max(4, y - box.top) + "px";
+  tabsPopup = p;
+  const away = (ev: Event) => {
+    if (!p.contains(ev.target as Node)) {
+      closePopup();
+      document.removeEventListener("mousedown", away, true);
+    }
+  };
+  document.addEventListener("mousedown", away, true);
+  return p;
+}
+
+function tabMenu(tab: ChatTab, x: number, y: number) {
+  const p = popup(x, y);
+  const item = (label: string, run: () => void, cls: string = "", hint: string = "") => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "menuitem");
+    b.className = "cw-tabmenu__item " + cls;
+    b.textContent = label;
+    if (hint) {
+      const i = document.createElement("i");
+      i.textContent = hint;
+      b.appendChild(i);
+    }
+    b.addEventListener("click", () => {
+      closePopup();
+      run();
+    });
+    p.appendChild(b);
+  };
+  const sep = () => p.appendChild(document.createElement("hr"));
+  item("Rename", () => startRename(tab), "", "double-click");
+  item("Duplicate chat", () => void duplicateTab(tab));
+  item("Export as Markdown", () => void exportChat(tab));
+  sep();
+  item("Close", () => closeTab(tab), "", "Alt+W");
+  item("Close the others", () => tabs.filter((t) => t !== tab).forEach((t) => closeTab(t)));
+  item("Close to the right", () => tabs.slice(tabs.indexOf(tab) + 1).forEach((t) => closeTab(t)));
+  sep();
+  item("Delete chat…", () => confirmBar("Delete “" + tab.title + "” for good?", "Delete", () => deleteChat(tab.id), "Keep it"), "cw-tabmenu__danger");
+}
+
+function startRename(tab: ChatTab) {
+  const el = document.querySelector('#chat-widget__tabs [data-tab="' + tab.id + '"] .cw-tab__name') as HTMLElement | null;
+  if (!el) return;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "cw-tab__rename";
+  input.value = tab.title;
+  input.maxLength = 100;
+  input.setAttribute("aria-label", "Name of the chat");
+  let done = false;
+  const finish = (save: boolean) => {
+    if (done) return;
+    done = true;
+    if (save) renameTab(tab, input.value);
+    else renderTabs();
+  };
+  input.addEventListener("keydown", (ev) => {
+    ev.stopPropagation();
+    if (ev.key === "Enter") finish(true);
+    if (ev.key === "Escape") finish(false);
+  });
+  input.addEventListener("blur", () => finish(true));
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+// All the chats of the workspace, open or closed.
+async function allChats() {
+  const host = document.getElementById("chat-widget__tabs");
+  if (!host) return;
+  const r = host.getBoundingClientRect();
+  const p = popup(r.left + 8, r.bottom + 4);
+  p.classList.add("cw-tabmenu--list");
+  const st = await chatStore.state();
+  if (!st) {
+    p.textContent = "The chats cannot be listed right now.";
+    return;
+  }
+  let query = "";
+  const search = document.createElement("input");
+  search.type = "search";
+  search.placeholder = "Search all chats";
+  search.className = "cw-tabmenu__search";
+  search.setAttribute("aria-label", "Search all chats");
+  const list = document.createElement("div");
+  const foot = document.createElement("div");
+  foot.className = "cw-tabmenu__foot";
+  const draw = () => {
+    list.textContent = "";
+    const open = tabs.map((t) => t.id);
+    const groups = groupChats(filterChats(st.chats, query), open, new Date());
+    if (groups.length === 0) {
+      const none = document.createElement("div");
+      none.className = "cw-tabmenu__none";
+      none.textContent = query ? "No chat matches." : "No chats yet.";
+      list.appendChild(none);
+    }
+    groups.forEach((g) => {
+      const h = document.createElement("div");
+      h.className = "cw-tabmenu__group";
+      h.textContent = g.label;
+      list.appendChild(h);
+      g.chats.forEach((c) => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "cw-tabmenu__row";
+        const name = document.createElement("span");
+        name.className = "cw-tabmenu__title";
+        name.textContent = c.title || "New chat";
+        const meta = document.createElement("span");
+        meta.className = "cw-tabmenu__meta";
+        const t = tabs.find((x) => x.id === c.id);
+        meta.textContent = (t && t.inFlight ? "answering · " : t && runTab === t && agentRunner.running ? "agent task running · " : "") + c.messages + " messages" + (c.language ? " · " + c.language : "");
+        const badge = document.createElement("span");
+        badge.className = "cw-tabmenu__badge" + (g.label === "Open" ? " is-open" : "");
+        badge.textContent = g.label === "Open" ? "open" : "Reopen";
+        row.append(badge, name, meta);
+        row.addEventListener("click", () => {
+          closePopup();
+          void openChat(c.id);
+        });
+        list.appendChild(row);
+      });
+    });
+    foot.textContent = "";
+    const stats = document.createElement("span");
+    stats.textContent = st.chats.length + " chats · " + sizeText(st.bytes) + " · most " + st.limits.chats;
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "cw-tabmenu__del";
+    del.textContent = "Delete all…";
+    del.addEventListener("click", () => {
+      closePopup();
+      confirmBar("Delete all " + st.chats.length + " chats for good?", "Delete all", () => void deleteAllChats(), "Keep them");
+    });
+    foot.append(stats, del);
+  };
+  search.addEventListener("input", () => {
+    query = search.value;
+    draw();
+  });
+  search.addEventListener("keydown", (ev) => {
+    ev.stopPropagation();
+    if (ev.key === "Escape") closePopup();
+  });
+  p.append(search, list, foot);
+  draw();
+  search.focus();
+}
+
+async function deleteAllChats() {
+  await chatStore.removeAll();
+  const keep = makeTab(newChatId());
+  keep.history = baseHistory.slice();
+  greetingFor(keep);
+  const old = tabs.slice();
+  tabs = [keep];
+  messagesHistory.textContent = "";
+  activeTab = keep;
+  conversationHistory = keep.history;
+  messagesHistory.appendChild(keep.frag);
+  old.forEach((t) => t.frag.textContent = "");
+  switchTo(keep, true);
+  afterShown(keep);
+}
+
+function renderTabs() {
+  const bar = document.getElementById("chat-widget__tabs");
+  if (!bar) return;
+  bar.hidden = !tabsOn;
+  const wrap = document.getElementById("chat-widget__tabs-wrap");
+  if (wrap) wrap.hidden = !tabsOn;
+  if (!tabsOn) return;
+  const views = tabViews();
+  bar.textContent = "";
+  tabs.forEach((t, i) => {
+    const active = t === activeTab;
+    const mark = tabMark(views[i], active);
+    const el = document.createElement("div");
+    el.className = "cw-tab" + (active ? " is-active" : "");
+    el.setAttribute("role", "tab");
+    el.setAttribute("aria-selected", String(active));
+    el.setAttribute("data-tab", t.id);
+    el.tabIndex = 0;
+    el.draggable = true;
+    el.title = t.title;
+    if (mark !== "none") {
+      const m = document.createElement("span");
+      m.className = "cw-tab__mark cw-tab__mark--" + mark;
+      m.setAttribute("aria-label", mark === "ring" ? "working" : mark === "needs" ? "needs you" : "an answer is ready");
+      el.appendChild(m);
+    }
+    const name = document.createElement("span");
+    name.className = "cw-tab__name";
+    name.textContent = t.title;
+    el.appendChild(name);
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "cw-tab__x";
+    x.setAttribute("aria-label", "Close " + t.title);
+    x.textContent = "✕";
+    x.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      closeTab(t);
+    });
+    el.appendChild(x);
+    el.addEventListener("click", () => switchTo(t));
+    el.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        switchTo(t);
+      }
+    });
+    el.addEventListener("dblclick", () => startRename(t));
+    el.addEventListener("auxclick", (ev) => {
+      if (ev.button === 1) closeTab(t);
+    });
+    el.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      tabMenu(t, ev.clientX, ev.clientY);
+    });
+    el.addEventListener("dragstart", (ev) => ev.dataTransfer && ev.dataTransfer.setData("text/plain", t.id));
+    el.addEventListener("dragover", (ev) => ev.preventDefault());
+    el.addEventListener("drop", (ev) => {
+      ev.preventDefault();
+      const from = ev.dataTransfer ? ev.dataTransfer.getData("text/plain") : "";
+      if (!from || from === t.id) return;
+      const order = moveTab(tabs.map((x2) => x2.id), from, i);
+      tabs = order.map((id) => tabs.find((x2) => x2.id === id)!);
+      chatStore.setTabs(tabIds());
+      renderTabs();
+    });
+    bar.appendChild(el);
+  });
+  const plus = document.createElement("button");
+  plus.type = "button";
+  plus.id = "chat-widget__newtab";
+  plus.className = "cw-tabs__plus";
+  plus.setAttribute("aria-label", "New chat (Alt+T)");
+  plus.title = "New chat (Alt+T)";
+  plus.textContent = "+";
+  plus.addEventListener("click", () => newTab());
+  bar.appendChild(plus);
+  const gap = document.createElement("span");
+  gap.className = "cw-tabs__gap";
+  bar.appendChild(gap);
+  if (chatStore.status === "failing") {
+    const n = document.createElement("span");
+    n.className = "cw-tabs__note";
+    n.textContent = "not saved right now";
+    n.title = "The workspace cannot be reached. What you write is kept here and saved when it is back.";
+    bar.appendChild(n);
+  }
+  const all = document.createElement("button");
+  all.type = "button";
+  all.id = "chat-widget__allchats";
+  all.className = "cw-tabs__all";
+  all.title = "All chats (Alt+H)";
+  all.setAttribute("aria-label", "All chats (Alt+H)");
+  all.textContent = "⌄ " + Math.max(tabs.length, 0);
+  all.addEventListener("click", () => void allChats());
+  bar.appendChild(all);
+}
+
+// Alt+T, Alt+W, Alt+arrows, Alt+1 to 8, Alt+H: while the panel has the focus.
+function tabKey(ev: KeyboardEvent): boolean {
+  if (!tabsOn || !ev.altKey || ev.ctrlKey || ev.metaKey) return false;
+  const k = ev.key.toLowerCase();
+  const code = ev.code || "";
+  if (k === "t" || code === "KeyT") newTab();
+  else if (k === "w" || code === "KeyW") closeTab(activeTab);
+  else if (k === "h" || code === "KeyH") void allChats();
+  else if (k === "arrowright" || k === "arrowleft") {
+    const i = tabs.indexOf(activeTab);
+    const next = tabs[(i + (k === "arrowright" ? 1 : tabs.length - 1)) % tabs.length];
+    if (next) switchTo(next);
+  } else if (/^Digit[1-8]$/.test(code) || /^[1-8]$/.test(k)) {
+    const n = Number(/^Digit/.test(code) ? code.slice(5) : k);
+    if (tabs[n - 1]) switchTo(tabs[n - 1]);
+  } else return false;
+  ev.preventDefault();
+  ev.stopPropagation();
+  return true;
+}
+
+// The draft of a tab is kept in this browser a moment after the typing stops.
+let draftTimer: any = null;
+function rememberDraft(value: string) {
+  activeTab.draft = value;
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    try {
+      if (value) localStorage.setItem(DRAFT_KEY + activeTab.id, value);
+      else localStorage.removeItem(DRAFT_KEY + activeTab.id);
+    } catch (e) {
+      // not remembered
+    }
+  }, 400);
+}
 
 const trap = createFocusTrap(containerElement, {
   initialFocus: "#chat-widget__input",
@@ -709,6 +1565,124 @@ function wireCoach() {
   refreshCoach();
 }
 
+// ---- One click: the selection and the last error -----------------------------------
+// In Chat mode two buttons appear above the composer when they apply: Explain
+// selection (something is selected in the editor) and Fix last error (the
+// terminal's output has an error in it). They send an ordinary chat message.
+
+function editorSelection(): string {
+  const ed: any = (window as any)["editor"];
+  const e = ed && ed.env && ed.env.editor;
+  try {
+    return e && typeof e.getSelectedText === "function" ? String(e.getSelectedText() || "") : "";
+  } catch (err) {
+    return "";
+  }
+}
+
+function pickedLanguage(): string {
+  const picker = document.getElementById("optionlist") as HTMLSelectElement | null;
+  return picker && picker.selectedIndex >= 0 ? picker.options[picker.selectedIndex].text : "";
+}
+
+function refreshQuick() {
+  const bar = document.getElementById("chat-widget__quick");
+  if (!bar) return;
+  const sel = bar.querySelector('[data-quick="selection"]') as HTMLButtonElement | null;
+  const err = bar.querySelector('[data-quick="error"]') as HTMLButtonElement | null;
+  const here = !peerchatmode && !agentMode && !onPracticePage() && !agentRunner.running;
+  const hasSel = here && editorSelection().trim() !== "";
+  const hasErr = here && errorBlock(fetchTerminalOutput()) !== "";
+  if (sel) sel.hidden = !hasSel;
+  if (err) err.hidden = !hasErr;
+  bar.hidden = !(hasSel || hasErr);
+}
+
+function wireQuick() {
+  const bar = document.getElementById("chat-widget__quick");
+  if (!bar) return;
+  bar.querySelectorAll("button").forEach((b) =>
+    b.addEventListener("click", () => {
+      const kind = b.getAttribute("data-quick");
+      const text = kind === "selection" ? (editorSelection().trim() ? selectionRequest(editorSelection(), pickedLanguage()) : "") : errorBlock(fetchTerminalOutput()) ? errorRequest(errorBlock(fetchTerminalOutput())) : "";
+      if (text) void ask(text);
+    })
+  );
+  refreshQuick();
+}
+
+// ---- What can be done with the last answer ---------------------------------------------
+// Under the newest answer of Chat: Regenerate (ask again), Edit my message (put it back in
+// the box) and, when the message asked for a job, Do this with Agent.
+
+function lastMessageElements(): HTMLElement[] {
+  return Array.from(messagesHistory.children).filter((c) => c.classList.contains("chat-widget__message")) as HTMLElement[];
+}
+
+function dropLastTurn(withQuestion: boolean) {
+  // the answer, and when asked the message before it
+  // (the entries before the conversation are the system's, so a last entry that is the assistant's or the user's is the conversation's)
+  if (conversationHistory.length > 0 && conversationHistory[conversationHistory.length - 1].role === "assistant") conversationHistory.pop();
+  const els = lastMessageElements();
+  if (els[0]) els[0].remove();
+  if (withQuestion) {
+    if (conversationHistory.length > 0 && conversationHistory[conversationHistory.length - 1].role === "user") conversationHistory.pop();
+    const q = lastMessageElements()[0];
+    if (q && q.classList.contains("chat-widget__message--user")) q.remove();
+  }
+}
+
+function decorateLastTurn() {
+  messagesHistory.querySelectorAll(".cw-turn").forEach((n) => n.remove());
+  const answer = lastMessageElements()[0];
+  if (!answer || !answer.classList.contains("chat-widget__message--system")) return;
+  const row = document.createElement("div");
+  row.className = "cw-turn";
+  const add = (label: string, cls: string, run: () => void) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    if (cls) b.className = cls;
+    b.addEventListener("click", () => {
+      if (genieBusy() || agentRunner.running) return;
+      run();
+    });
+    row.appendChild(b);
+  };
+  add("Regenerate", "", () => {
+    if (noneLeft()) return flashUsage();
+    dropLastTurn(false);
+    void runRequest();
+  });
+  if (lastTyped) {
+    add("Edit my message", "", () => {
+      const text = lastTyped;
+      dropLastTurn(true);
+      const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+      if (input) {
+        input.value = text;
+        autoGrow(input);
+        input.focus();
+      }
+    });
+  }
+  const code = answer.querySelector("pre");
+  if (code && lastTyped && agentAvailability() === "ready" && looksLikeTask(lastTyped)) {
+    add("Do this with Agent", "cw-turn__agent", () => {
+      if (noneLeft()) return flashUsage();
+      const text = lastTyped;
+      setMode(true);
+      void (async () => {
+        const task = await takeContext(true);
+        sentContext = task.items.length > 0 ? { items: task.items, notes: task.notes } : null;
+        await agentRunner.start(text, task.block);
+        fetchUsage();
+      })();
+    });
+  }
+  answer.appendChild(row);
+}
+
 // ---- Agent mode ----------------------------------------------------------
 // Genie works on a task in steps and carries them out in the editor, after the
 // user allowed each kind of action (agent.ts). Only the owner of a session has
@@ -761,6 +1735,23 @@ const agentRunner = new AgentRunner(
     // a whole file may be in an answer: more room than a chat answer needs
     modelFields: () => MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }),
     ideContext: () => getcurrentIDECode(),
+    editorText: () => fetchEditorContent(),
+    stream: () => streamOn(),
+    // the credits the task used, once it ended, when an admin turned credits on; the answer also refreshes the usage line
+    taskCredits: async (token: string) => {
+      await fetchUsage(token);
+      return usage && usage.credits && usage.task ? usage.task.credits : null;
+    },
+    // how the task ended, counts only
+    report: (info: { token: string; outcome: string; changed: boolean; checked: boolean }) => {
+      if (!config.url) return;
+      fetch(config.url.replace(/completions\/?$/, "agent-outcome"), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task: info.token, outcome: info.outcome, changed: info.changed, checked: info.changed ? info.checked : null }),
+      }).catch(() => {});
+    },
     terminalText: () => fetchTerminalOutput(120),
     runCommand: async (command: string, seconds: number, signal: AbortSignal) => {
       const pp = (window as any).preprocessurl;
@@ -774,6 +1765,19 @@ const agentRunner = new AgentRunner(
       if (!res.ok) return { status: res.status, message: (await res.text()).trim().slice(0, 200) };
       const j = await res.json();
       return { status: 200, ...j };
+    },
+    // read-only: looks in the workspace for text, or reads some lines of a file (server/agent_files.go)
+    readFiles: async (req: Record<string, any>, signal: AbortSignal) => {
+      const pp = (window as any).preprocessurl;
+      const res = await fetch(typeof pp === "function" ? pp("/agent_files") : "/agent_files", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req),
+        signal,
+      });
+      if (!res.ok) return { status: res.status, message: (await res.text()).trim().slice(0, 200) };
+      return { status: 200, ...(await res.json()) };
     },
     terminal: () => activeTerminal(),
     terminalType: (data: string) => {
@@ -839,33 +1843,38 @@ const agentRunner = new AgentRunner(
       return true;
     },
     thinking: (on: boolean) => {
+      const t = runTab || activeTab;
       if (!on) {
-        thinkingBubble.remove();
+        t.bubble.remove();
         return;
       }
       // the dots of the chat, while Genie works on a step
-      const label = thinkingBubble.querySelector(".chat-widget__thinking-label");
+      const label = t.bubble.querySelector(".chat-widget__thinking-label");
       if (label) label.textContent = chosenModel().reasoning && chosenEffort().id !== "none" ? `${chosenModel().short} is thinking…` : "";
-      messagesHistory.prepend(thinkingBubble);
+      bodyOf(t).prepend(t.bubble);
     },
     userSaid: async (text: string) => {
-      addMessageToHistory("user", text);
+      const t = runTab || activeTab;
+      addMessageToHistory("user", text, UID, t.history);
       const chips = sentContext;
       sentContext = null;
-      await createNewMessageEntry(text, Date.now(), "user", false, "", null, null, chips ? chips.items : null, chips ? chips.notes : []);
+      await createNewMessageEntry(text, Date.now(), "user", false, "", null, null, chips ? chips.items : null, chips ? chips.notes : [], t === activeTab ? null : t.frag);
     },
     genieSaid: async (text: string, context?: string | null) => {
-      addMessageToHistory("assistant", text);
+      const t = runTab || activeTab;
+      addMessageToHistory("assistant", text, UID, t.history);
       // the notes of the site that the step was answered from, as in the chat; a
       // step that used none says nothing (most steps of a task are about code)
       const used = parseContextHeader(context || null);
-      await createNewMessageEntry(text, Date.now(), "system", false, "Agent · " + captionText(), used && used.length ? used : null);
+      await createNewMessageEntry(text, Date.now(), "system", false, "Agent · " + captionText(), used && used.length ? used : null, null, null, [], t === activeTab ? null : t.frag);
     },
     note: async (text: string) => {
       // shown, not remembered: the model must not read an error as its own words
-      await createNewMessageEntry(text, Date.now(), "system", false, "Agent");
+      const t = runTab || activeTab;
+      await createNewMessageEntry(text, Date.now(), "system", false, "Agent", null, null, null, [], t === activeTab ? null : t.frag);
     },
-    messages: () => messagesHistory,
+    // where the task's card goes: the page that is shown, or the fragment of the tab the task runs in
+    messages: () => (runTab && runTab !== activeTab ? (runTab.frag as unknown as HTMLElement) : messagesHistory),
     maxSteps: () => Number((((window as any).site_settings || {}) as any).agentMaxSteps) || 8,
     uid: () => UID,
     repl: () => {
@@ -880,6 +1889,12 @@ const agentRunner = new AgentRunner(
     },
     attention: (on: boolean) => {
       needsYou = Math.max(0, needsYou + (on ? 1 : -1));
+      if (runTab) {
+        runTab.needsYou = on;
+        if (on && runTab !== activeTab) showToast(runTab, "needs you");
+        else if (!on) hideToast(runTab);
+      }
+      renderTabs();
       renderActivity();
     },
     progress: (n: number, max: number) => {
@@ -887,8 +1902,18 @@ const agentRunner = new AgentRunner(
       stepMax = max;
       renderActivity();
     },
-    ended: (outcome: "done" | "failed" | "stopped") => {
+    ended: (outcome: "done" | "failed" | "stopped", info?: TaskInfo) => {
       stepNow = stepMax = needsYou = 0;
+      const was = runTab;
+      if (was) {
+        was.needsYou = false;
+        persistTask(was, outcome, info);
+        if (was !== activeTab && outcome !== "stopped") was.unread = true;
+        // what the agent now remembers is the chat's; the chat that is shown has its own
+        was.recap = agentRunner.getMemory();
+        if (was !== activeTab) agentRunner.setMemory(activeTab.recap);
+      }
+      renderTabs();
       // somebody has to be told only when the panel is not there to show it
       if (outcome !== "stopped" && !isOpen()) {
         unread = outcome === "done" ? { kind: "done", label: "Task done" } : { kind: "failed", label: "Task stopped" };
@@ -901,6 +1926,7 @@ const agentRunner = new AgentRunner(
   (state: AgentState) => {
     lastAgentState = state;
     showAgentState(state);
+    renderTabs(); // the ring of the tab that runs the task
     renderActivity();
   }
 );
@@ -1201,11 +2227,14 @@ type Usage = {
   signedIn?: boolean;
   agent?: { used: number; perHour: number; nextFreeSeconds: number; maxSteps: number };
   tokens?: TokenUsage;
+  credits?: CreditUsage; // only when an admin turned credits on
+  task?: { credits: number; steps: number }; // the task asked for with ?task=
 };
 let usage: Usage | null = null;
 let usageAt = 0; // when it was told
 let usageTimer: any = null;
 let usageDetails = false;
+let lastTask: { credits: number; tokens?: number } | undefined; // the task that ended last, for the details (credits only)
 
 function takeUsage(raw: string | null) {
   if (!raw) return;
@@ -1213,6 +2242,7 @@ function takeUsage(raw: string | null) {
     const u = JSON.parse(raw);
     if (!u || typeof u.left !== "number" || typeof u.cap !== "number" || typeof u.perMinute !== "number") return;
     usage = u as Usage;
+    if (usage.task && typeof usage.task.credits === "number") lastTask = { credits: usage.task.credits };
     usageAt = Date.now();
     renderUsage();
   } catch (e) {
@@ -1220,10 +2250,10 @@ function takeUsage(raw: string | null) {
   }
 }
 
-async function fetchUsage() {
+async function fetchUsage(task?: string) {
   if (!config.url) return;
   try {
-    const res = await fetch(config.url.replace(/completions\/?$/, "usage"), { credentials: "same-origin" });
+    const res = await fetch(config.url.replace(/completions\/?$/, "usage") + (task ? "?task=" + encodeURIComponent(task) : ""), { credentials: "same-origin" });
     if (res.ok) takeUsage(await res.text());
   } catch (e) {
     // the line stays as it was
@@ -1255,6 +2285,8 @@ function span(seconds: number): string {
 // Nothing can be sent now: a request would be refused.
 function noneLeft(): boolean {
   if (!usage || usage.unlimited || peerchatmode) return false;
+  const cl = creditLine(usage.credits);
+  if (cl && cl.state === "empty") return true;
   const n = usageNow();
   return n.left <= 0 || (agentMode && n.tasksLeft === 0);
 }
@@ -1275,9 +2307,15 @@ function renderUsage() {
   let label = "";
   let part = 1;
   let state = "ok";
+  const credit = u.unlimited ? null : creditLine(u.credits);
   if (u.unlimited) {
     label = "No limit (admin)";
     state = "free";
+  } else if (credit && (credit.state === "empty" || n.left > 0)) {
+    // with a plan that has credits, the line leads with them
+    label = credit.label;
+    part = credit.part;
+    state = credit.state;
   } else if (n.left <= 0) {
     label = `No requests left · next in ${span(n.wait)}`;
     part = 0;
@@ -1301,7 +2339,7 @@ function renderUsage() {
   ["ok", "low", "empty", "free"].forEach((s) => box.classList.toggle("cw-usage--" + s, s === state));
 
   // the details
-  const rows: [string, string][] = [];
+  const rows: [string, string][] = [...(u.unlimited ? [] : creditRows(u.credits, lastTask))];
   if (u.unlimited) {
     rows.push(["Requests", "Not limited for admins"]);
     if (u.agent) rows.push(["Agent tasks", "Not limited for admins"], ["Steps in a task", "up to " + u.agent.maxSteps]);
@@ -1313,7 +2351,7 @@ function renderUsage() {
     if (u.agent && n.tasksLeft >= 0) {
       rows.push(["Agent tasks this hour", `${u.agent.perHour - n.tasksLeft} of ${u.agent.perHour} used`]);
       if (n.tasksLeft === 0) rows.push(["Next task in", span(n.taskWait)]);
-      rows.push(["Steps in a task", "up to " + u.agent.maxSteps + " (a task uses 1 request)"]);
+      rows.push(["Steps in a task", "up to " + u.agent.maxSteps + ", then Carry on (a task uses 1 request)"]);
     }
   }
   // the tokens used, as the models reported them
@@ -1358,7 +2396,7 @@ function renderUsage() {
   if (submitBtn) submitBtn.classList.toggle("is-empty", empty);
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
   if (input && !agentRunner.running) {
-    input.placeholder = empty ? `You can send again in ${span(n.left <= 0 ? n.wait : n.taskWait)}` : modePlaceholder();
+    input.placeholder = credit && credit.state === "empty" ? "No credits left this month" : empty ? `You can send again in ${span(n.left <= 0 ? n.wait : n.taskWait)}` : modePlaceholder();
   }
 }
 
@@ -1375,6 +2413,8 @@ function flashUsage() {
 // in widget.html; .is-stop shows the square). While the task winds down after
 // Stop it waits, and then it is the send button again.
 function showAgentState(state: AgentState) {
+  // a task in another tab is not this tab's: its box is the ordinary one
+  if (runTab && runTab !== activeTab) state = "idle";
   const submitBtn = document.getElementById("chat-widget__submit");
   if (submitBtn) {
     submitBtn.classList.toggle("is-stop", state !== "idle");
@@ -1414,7 +2454,9 @@ function refreshMode() {
   // signing in or out changes what is left: ask again (the page marks it on the body)
   const signed = document.body.classList.contains("is-signed-in");
   if (signedSeen !== null && signed !== signedSeen) fetchUsage();
+  const flipped = signedSeen !== null && signed !== signedSeen;
   signedSeen = signed;
+  if (flipped && !agentRunner.running) resetTabs(); // the other workspace's chats
   const box = document.getElementById("chat-widget__mode");
   if (!box) return;
   const a = agentAvailability();
@@ -1427,11 +2469,18 @@ function refreshMode() {
     agentBtn.classList.toggle("is-locked", a === "signin");
     agentBtn.setAttribute("aria-disabled", a === "signin" ? "true" : "false");
     agentBtn.title = a === "signin" ? "Sign in to access agent mode" : "Genie carries out a task in your editor, step by step, with your permission";
+    // one task at a time in a workspace: while another tab runs one, Agent is off here (Chat is not)
+    const busyElsewhere = !!runTab && runTab !== activeTab && agentRunner.running;
+    if (busyElsewhere && a === "ready") {
+      agentBtn.classList.add("is-locked");
+      agentBtn.setAttribute("aria-disabled", "true");
+      agentBtn.title = "Agent is off: “" + runTab!.title + "” is running a task. Stop it, or wait.";
+    }
   }
   if (a !== "ready") {
     // not available now (peer chat, signed out): chat, but the choice is kept
     if (agentMode) setMode(false);
-  } else if (!agentMode && !agentRunner.running && rememberedMode() === "agent") {
+  } else if (!tabsOn && !agentMode && !agentRunner.running && rememberedMode() === "agent") {
     setMode(true);
   }
 }
@@ -1456,8 +2505,12 @@ function wireMode(): () => void {
   if (!box) return () => {};
   box.querySelectorAll("button").forEach((b) =>
     b.addEventListener("click", () => {
-      if (agentRunner.running) return;
+      if (agentRunner.running && runTab === activeTab) return;
       const wantsAgent = b.getAttribute("data-mode") === "agent";
+      if (wantsAgent && agentRunner.running) {
+        notifyTabs("A task is running in “" + (runTab ? runTab.title : "another tab") + "”. Stop it, or wait.");
+        return;
+      }
       if (wantsAgent && agentAvailability() === "signin") {
         askToSignIn(); // a guest: say why, and leave the mode and what is remembered as they are
         return;
@@ -1465,6 +2518,8 @@ function wireMode(): () => void {
       const agent = wantsAgent && agentAvailability() === "ready";
       setMode(agent);
       rememberMode(agent ? "agent" : "chat");
+      activeTab.mode = agent ? "agent" : "chat";
+      persistState(activeTab);
     })
   );
   setMode(false);
@@ -1819,9 +2874,10 @@ function open(e?: Event, opts?: { pin?: boolean }) {
 
   const chatbotBody = document.getElementById("chat-widget__body")!;
   chatbotBody.prepend(messagesHistory);
-  if (config.greetingMessage && messagesHistory.children.length === 0) {
+  if (config.greetingMessage && messagesHistory.children.length === 0 && !(tabsOn && activeTab.saved)) {
     createNewMessageEntry(config.greetingMessage, Date.now(), "system", true);
   }
+  renderTabs();
 
   const context = document.getElementById("chat-widget__context");
   if (context) context.textContent = editorContextLabel();
@@ -1834,15 +2890,26 @@ function open(e?: Event, opts?: { pin?: boolean }) {
 
   document.getElementById("chat-widget__close")!.addEventListener("click", close);
   const onKeydown = (ev: KeyboardEvent) => {
+    if (tabKey(ev)) return;
     if (ev.key === "Escape") {
       ev.stopPropagation();
-      close();
+      if (tabsPopup) closePopup();
+      else close();
     }
   };
   containerElement.addEventListener("keydown", onKeydown);
   const detachSettings = setupSettings();
   const detachMode = wireMode();
   wireCoach();
+  wireQuick();
+  const draftBox = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  if (draftBox) {
+    if (tabsOn) {
+      draftBox.value = activeTab.draft;
+      autoGrow(draftBox);
+    }
+    draftBox.addEventListener("input", () => rememberDraft(draftBox.value));
+  }
   detachPanel = () => {
     containerElement.removeEventListener("keydown", onKeydown);
     detachSettings();
@@ -1885,7 +2952,7 @@ function open(e?: Event, opts?: { pin?: boolean }) {
   // form's submit: the box is empty then, and it is a required field, so the
   // browser would not submit the form at all.
   document.getElementById("chat-widget__submit")!.addEventListener("click", (e: Event) => {
-    if (!agentRunner.running) return;
+    if (!(agentRunner.running && runTab === activeTab)) return; // a task of another tab is not stopped from here
     e.preventDefault();
     agentRunner.stop();
   });
@@ -1896,8 +2963,8 @@ function open(e?: Event, opts?: { pin?: boolean }) {
       .addEventListener("keydown", (e: KeyboardEvent)=> {
         if (e.which === 13 && !e.shiftKey) {
           e.preventDefault();
-          // while a task runs the button is Stop: Enter must not stop it
-          if (agentRunner.running) return;
+          // while a task runs in this tab the button is Stop: Enter must not stop it
+          if (agentRunner.running && runTab === activeTab) return;
           const submitBtn = document.getElementById("chat-widget__submit") as HTMLButtonElement;;
           submitBtn.click();
         }
@@ -1919,11 +2986,14 @@ function open(e?: Event, opts?: { pin?: boolean }) {
   renderUsage();
   fetchUsage();
   clearInterval(usageTimer);
-  usageTimer = setInterval(renderUsage, 1000); // the recharge, and the wait when nothing is left
+  usageTimer = setInterval(() => {
+    renderUsage(); // the recharge, and the wait when nothing is left
+    refreshQuick();
+  }, 1000);
   // The panel is built again each time it opens, but a task or an answer may be
   // under way from before it was closed: its buttons must say so.
   showAgentState(lastAgentState);
-  if (chatInFlight) document.getElementById("chat-widget__submit")?.setAttribute("disabled", "");
+  if (activeTab.inFlight) document.getElementById("chat-widget__submit")?.setAttribute("disabled", "");
   renderActivity();
 }
 
@@ -2429,7 +3499,8 @@ async function createNewMessageEntry(
   used: ContextNote[] | null = null,
   peer: PeerSpeaker | null = null,
   chips: ContextItem[] | null = null,
-  notes: Note[] = []
+  notes: Note[] = [],
+  into: ParentNode | null = null // the tab it belongs to when that is not the one shown (a fragment holds the tab's messages then)
 ) {
   message = message.trim();
   //console.log("message: ", message)
@@ -2499,7 +3570,7 @@ async function createNewMessageEntry(
     ("0" + new Date(timestamp).getMinutes()).slice(-2); // Minutes (padded with 0 if needed)
   messageElement.appendChild(messageTimestamp);
 
-  messagesHistory.prepend(messageElement);
+  (into || messagesHistory).prepend(messageElement);
 }
 
 // A small line in the conversation that is not a message: someone joined or left
@@ -2513,10 +3584,11 @@ function peerNote(text: string, timestamp: number = Date.now()) {
   messagesHistory.prepend(note);
 }
 
-const handleErrorResponse = async (errData: any) => {
+const handleErrorResponse = async (errData: any, tab: ChatTab | null = null) => {
     chatFailed = true;
     console.error("Chat Widget: Server error: ", errData);
-    if (errData && errData.error && errData.error.type === "model_unavailable") {
+    const into = tab && tab !== activeTab ? tab.frag : null;
+    if (!into && errData && errData.error && errData.error.type === "model_unavailable") {
       await showModelUnavailable(
         String(errData.error.message || "This model isn't available right now"),
         errData.error.code === "model_disabled"
@@ -2530,7 +3602,7 @@ const handleErrorResponse = async (errData: any) => {
     } else if (typeof errData == "string") {
       error_reason += "Reason: "+errData;
     }
-    await createNewMessageEntry("Unable to process your request Now."+error_reason, Date.now(), "system");
+    await createNewMessageEntry("Unable to process your request Now."+error_reason, Date.now(), "system", false, "", null, null, null, [], into);
 }
 
 // A model that cannot be reached right now (the proxy answers type
@@ -2583,25 +3655,28 @@ async function showModelUnavailable(title: string, switchedOff: boolean = false)
   messagesHistory.prepend(card);
 }
 
-const handleStandardResponse = async (res: Response, meta: string = "") => {
+const handleStandardResponse = async (res: Response, meta: string = "", tab: ChatTab = activeTab) => {
+  const into = tab === activeTab ? null : tab.frag;
   if (res.ok) {
     const used = parseContextHeader(res.headers.get(CONTEXT_HEADER));
     const responseData : any = await res.json();
     if (responseData.choices && responseData.choices.length > 0) {
         const responseMessage : MessageType = responseData.choices[0].message;
-        addMessageToHistory(responseMessage.role, responseMessage.content);
+        addMessageToHistory(responseMessage.role, responseMessage.content, UID, tab.history);
         // what this answer used, when the model says
         const spent = answerTokens(responseData.usage);
-        await createNewMessageEntry(responseMessage.content, Date.now(), "system", false, spent ? (meta ? meta + " · " : "") + spent : meta, used);
+        const ts = Date.now();
+        await createNewMessageEntry(responseMessage.content, ts, "system", false, spent ? (meta ? meta + " · " : "") + spent : meta, used, null, null, [], into);
+        persistAnswer(tab, responseMessage.content, ts, responseData.usage);
     } else {
-        handleErrorResponse(responseData);
+        handleErrorResponse(responseData, tab);
     }
   } else {
     try {
       const responseData : any = await res.json();
-      handleErrorResponse(responseData);
+      handleErrorResponse(responseData, tab);
     } catch (error) {
-        handleErrorResponse(res);
+        handleErrorResponse(res, tab);
     }
   }
 };
@@ -2625,39 +3700,73 @@ async function streamResponseToMessageEntry(
   }
 }
 
-const handleStreamedResponse = async (res: Response) => {
+// Whether answers are streamed: an admin allows it (settings.js: site_settings.genieStream) and the server then sends
+// them as they are written. Otherwise the answer comes whole.
+function streamOn(): boolean {
+  const s = (window as any).site_settings;
+  return !!(s && s.genieStream === true);
+}
+
+// A streamed answer: the text grows in one message while it is written, then it goes into the conversation, to the
+// others of a shared session, and gets its line of what it used. Rendering is kept to a few times a second.
+const handleStreamedResponse = async (res: Response, meta: string = "", tab: ChatTab = activeTab) => {
+  // the messages of the tab that asked: the page that is shown, or the fragment that holds another tab's
+  const body = (): ParentNode => (tab === activeTab ? messagesHistory : tab.frag);
   if (!res.body) {
-    console.error("Chat Widget: Streamed response has no body", res);
-    await createNewMessageEntry("Unable to process your request now.", Date.now(), "system");
+    await createNewMessageEntry("Unable to process your request now.", Date.now(), "system", false, "", null, null, null, [], tab === activeTab ? null : tab.frag);
     return;
   }
-
   const reader = res.body.getReader();
   const decoder = new TextDecoder("utf-8");
-  let responseMessage = "";
-  let ts = Date.now();
-
-  // no `break` in a loop that awaits (see agent.ts: the build tool gets it wrong)
+  const parser = new SSEParser();
+  const st = newStreamed();
+  const ts = Date.now();
+  const used = parseContextHeader(res.headers.get(CONTEXT_HEADER));
+  let drawn = 0;
+  let last = 0;
+  const draw = async (force: boolean) => {
+    const text = answerOf(st).trim();
+    if (!text || (!force && Date.now() - last < 90)) return;
+    last = Date.now();
+    drawn = text.length;
+    const shown = body().querySelector(`#chat-widget__message--system--${ts} .chat-widget__message-text`);
+    if (shown) shown.innerHTML = await marked(text, { renderer });
+    else await createNewMessageEntry(text, ts, "system", true, "", null, null, null, [], tab === activeTab ? null : tab.frag); // not yet told to the others: it is not whole
+  };
+  // no `break` or `continue` in a loop that awaits (see agent.ts: the build tool gets it wrong)
   let more = true;
   while (more) {
     const { value, done } = await reader.read();
-    more = !(done || !value);
-    if (more && value) {
-      const chunk = decoder.decode(value, { stream: true });
-      try {
-        const json = JSON.parse(chunk);
-        const deltaContent = json.choices[0]?.delta?.content || "";
-        responseMessage += deltaContent;
-        await streamResponseToMessageEntry(deltaContent, ts, "system");
-      } catch (error) {
-        console.error("Error parsing chunk: ", chunk, error);
-      }
-    }
+    more = !done;
+    const events = value ? parser.feed(decoder.decode(value, { stream: true })) : parser.rest();
+    let grew = false;
+    events.forEach((ev) => {
+      if (addEvent(st, ev)) grew = true;
+    });
+    if (grew) await draw(false);
   }
-  const used = parseContextHeader(res.headers.get(CONTEXT_HEADER));
-  const shown = messagesHistory.querySelector(`#chat-widget__message--system--${ts}`);
-  if (used !== null && shown) {
-    appendContextLine(shown as HTMLElement, used);
+  parser.rest().forEach((ev) => addEvent(st, ev));
+  const text = answerOf(st).trim();
+  if (!text) {
+    handleErrorResponse(st.error ? { error: { message: st.error } } : { error: { message: "Genie sent no answer." } }, tab);
+    return;
+  }
+  if (drawn !== text.length || !body().querySelector(`#chat-widget__message--system--${ts}`)) await draw(true);
+  addMessageToHistory("assistant", text, UID, tab.history);
+  persistAnswer(tab, text, ts, st.usage);
+  // the others of a shared session get the whole answer
+  if (chatfirebasedbref) chatfirebasedbref.push({ tab: TAB, message: text, timestamp: ts, from: "system", uid: UID });
+  const shown = body().querySelector(`#chat-widget__message--system--${ts}`) as HTMLElement | null;
+  if (shown) {
+    const spent = answerTokens(st.usage);
+    const caption = spent ? (meta ? meta + " · " : "") + spent : meta;
+    if (caption) {
+      const line = document.createElement("p");
+      line.classList.add("chat-widget__message-meta");
+      line.textContent = caption;
+      shown.appendChild(line);
+    }
+    if (used !== null) appendContextLine(shown, used);
   }
 };
 
@@ -2671,8 +3780,8 @@ async function submit(e: Event) {
     return;
   }
 
-  // the button is Stop while a task runs
-  if (agentRunner.running) {
+  // the button is Stop while a task runs in this tab; another tab's task is not this tab's to stop
+  if (agentRunner.running && runTab === activeTab) {
     agentRunner.stop();
     return;
   }
@@ -2701,17 +3810,41 @@ async function submit(e: Event) {
     autoGrow((target.elements as any).message as HTMLTextAreaElement);
     const task = await takeContext(true);
     sentContext = task.items.length > 0 ? { items: task.items, notes: task.notes } : null;
-    await agentRunner.start(msg, task.block);
+    if (agentRunner.running) {
+      notifyTabs("A task is running in “" + (runTab ? runTab.title : "another tab") + "”. Stop it or wait for it.");
+      return false;
+    }
+    runTab = activeTab;
+    persistUser(runTab, msg, Date.now());
+    activeTab.lastTyped = String(msg || "");
+    renderTabs();
+    refreshMode();
+    try {
+      await agentRunner.start(msg, task.block);
+    } finally {
+      runTab = null;
+      renderTabs();
+      refreshMode();
+    }
     fetchUsage(); // the tokens of the task's steps
     return false;
   }
   // what was added from the file browser and the editor: read now, and told as text
   // to the model; a peer chat is shown the names only
+  if (!peerchatmode) {
+    lastTyped = String(msg || "");
+    activeTab.lastTyped = lastTyped;
+  }
   const taken = await takeContext(!peerchatmode);
   const names = peerchatmode ? namesLine(taken.items) : "";
   addMessageToHistory(myrole, withAttached(msg, taken.block));
+  const sentAt = Date.now();
+  if (!peerchatmode) {
+    messagesHistory.querySelectorAll(".cw-stale").forEach((n) => n.remove());
+    persistUser(activeTab, msg, sentAt);
+  }
 
-  await createNewMessageEntry(names ? msg + "\n\n" + names : msg, Date.now(), myrole, false, "", null, peerchatmode ? { name: peerName(UID), mine: true } : null, peerchatmode ? null : taken.items, taken.notes);
+  await createNewMessageEntry(names ? msg + "\n\n" + names : msg, sentAt, myrole, false, "", null, peerchatmode ? { name: peerName(UID), mine: true } : null, peerchatmode ? null : taken.items, taken.notes);
   target.reset();
   autoGrow((target.elements as any).message as HTMLTextAreaElement);
   if (peerchatmode) {
@@ -2727,12 +3860,16 @@ async function submit(e: Event) {
 // by submit, and by "Try again" and "Switch to ..." on the unavailable card,
 // which send the same conversation again with whatever model is chosen then.
 async function runRequest() {
+  // the tab that asked: an answer goes to it, whichever tab is shown when it comes
+  const tab = activeTab;
   // the button is looked up again at the end: the panel may have been closed and
   // opened meanwhile, and then it is another button
   document.getElementById("chat-widget__submit")?.setAttribute("disabled", "");
   chatInFlight = true;
+  tab.inFlight = true;
   chatFailed = false;
   renderActivity();
+  renderTabs();
 
   const requestHeaders = new Headers();
   requestHeaders.append("Content-Type", "application/json");
@@ -2742,17 +3879,19 @@ async function runRequest() {
   const data = {
     ...config.user,
     ...modelFields(),
-    messages: [...conversationHistory, getcurrentIDECode()],
-    stream: config.responseIsAStream,
+    // less than the page keeps: older answers have no long code in them, and the editor and terminal
+    // are not sent twice
+    messages: messagesToSend(tab.history, NUM_MANDATORY_ENTRIES, getcurrentIDECode()),
+    stream: streamOn(),
     // ask the server for what the site knows about itself; the practice page
     // has its own interviewer prompt and does not
     ...(onPracticePage() ? {} : { context: "chat" }),
   };
   const usedCaption = captionText();
   const thinking = chosenModel().reasoning && chosenEffort().id !== "none";
-  const thinkingLabel = thinkingBubble.querySelector(".chat-widget__thinking-label");
+  const thinkingLabel = tab.bubble.querySelector(".chat-widget__thinking-label");
   if (thinkingLabel) thinkingLabel.textContent = thinking ? `${chosenModel().short} is thinking…` : "";
-  messagesHistory.prepend(thinkingBubble);
+  bodyOf(tab).prepend(tab.bubble);
 
   try {
     let response = await fetch(config.url, {
@@ -2760,30 +3899,36 @@ async function runRequest() {
       headers: requestHeaders,
       body: JSON.stringify(data),
     });
-    thinkingBubble.remove();
+    tab.bubble.remove();
     const told = response.headers.get("X-OpenREPL-Usage");
     if (told) takeUsage(told);
     else fetchUsage(); // a refusal carries none
 
-    if (config.responseIsAStream) {
-      await handleStreamedResponse(response);
+    if ((response.headers.get("Content-Type") || "").startsWith("text/event-stream")) {
+      await handleStreamedResponse(response, usedCaption, tab);
     } else {
-      await handleStandardResponse(response, usedCaption);
+      await handleStandardResponse(response, usedCaption, tab);
     }
     // the answer is counted once it is complete: the header went out before it
     fetchUsage();
+    if (!peerchatmode && response.ok) {
+      if (tab === activeTab) decorateLastTurn();
+      else tab.unread = true; // a dot on its tab says an answer is ready
+    }
   } catch (e: any) {
-    thinkingBubble.remove();
+    tab.bubble.remove();
     chatFailed = true;
     console.error("Chat Widget:", e);
-    await createNewMessageEntry("Unable to process your request Now.", Date.now(), "system");
+    await createNewMessageEntry("Unable to process your request Now.", Date.now(), "system", false, "", null, null, null, [], tab === activeTab ? null : tab.frag);
   }
 
-  chatInFlight = false;
-  document.getElementById("chat-widget__submit")?.removeAttribute("disabled");
+  tab.inFlight = false;
+  chatInFlight = tabs.some((t) => t.inFlight);
+  if (tab === activeTab) document.getElementById("chat-widget__submit")?.removeAttribute("disabled");
   if (!isOpen()) unread = chatFailed ? { kind: "failed", label: "Genie couldn't answer" } : { kind: "done", label: "Answer ready" };
-  else if (!chatFailed) flashDone();
+  else if (!chatFailed && tab === activeTab) flashDone();
   renderActivity();
+  renderTabs();
 }
 
 // placeholder for a page that does not define its own (index.html does: the page
@@ -2801,7 +3946,7 @@ if (typeof (window as any).insertcodesnippet !== "function") {
 // coach is: a second request would cross with the first.
 function genieBusy(): boolean {
   const b = document.getElementById("chat-widget__submit");
-  return coachBusy || chatInFlight || (!!b && b.hasAttribute("disabled"));
+  return coachBusy || activeTab.inFlight || (!!b && b.hasAttribute("disabled"));
 }
 
 async function ask(text: string): Promise<boolean> {
@@ -2838,7 +3983,10 @@ function busy(): boolean {
   return agentRunner.running || genieBusy();
 }
 
-const ChatWidget = { open, close, toggle, openModels, config, init, ask, busy, addContext };
+// Writes what is waiting to be saved, now (the page does it too when the network is back).
+const retrySave = () => chatStore.retry();
+window.addEventListener("online", retrySave);
+const ChatWidget = { open, close, toggle, openModels, config, init, ask, busy, addContext, retrySave };
 (window as any).ChatWidget = ChatWidget;
 declare global {
   interface Window {

@@ -105,6 +105,7 @@ test("the list of actions is the one in the server's prompt", () => {
   assert.deepEqual([...ACTIONS], [
     "editor_write",
     "editor_insert",
+    "editor_replace",
     "set_language",
     "run",
     "debug",
@@ -116,6 +117,8 @@ test("the list of actions is the one in the server's prompt", () => {
     "terminal_close_tab",
     "bash",
     "files_list",
+    "files_search",
+    "files_read",
     "files_open",
     "files_new",
     "files_save",
@@ -553,4 +556,46 @@ test("store_suggest names a conda-forge package and asks the user: it installs a
   assert.match(scopeQuestion("store"), /App Store/);
   assert.match(scopeDetail("store", { type: "store_suggest", name: "flask" }), /flask/);
   assert.match(describe({ type: "store_suggest", name: "flask" }), /flask/);
+});
+
+test("editor_replace needs the old text or the lines, and the new text", () => {
+  const ok = parseStep(JSON.stringify({ actions: [{ type: "editor_replace", old: "a = 1", new: "a = 2" }, { type: "editor_replace", start_line: 3, end_line: 4, new: "" }, { type: "editor_replace", start_line: 7, new: "x" }], done: false }));
+  assert.ok(ok.ok);
+  if (ok.ok) {
+    assert.deepEqual(ok.step.actions, [
+      { type: "editor_replace", old: "a = 1", text: "a = 2" },
+      { type: "editor_replace", startLine: 3, endLine: 4, text: "" },
+      { type: "editor_replace", startLine: 7, endLine: 7, text: "x" },
+    ]);
+  }
+  const bad = parseStep(JSON.stringify({ actions: [{ type: "editor_replace", old: "x" }, { type: "editor_replace", new: "y" }, { type: "editor_replace", start_line: 5, end_line: 2, new: "y" }, { type: "editor_replace", start_line: 0, new: "y" }, { type: "editor_replace", old: "x", new: 5 }] }));
+  assert.ok(bad.ok);
+  if (bad.ok) {
+    assert.equal(bad.step.actions.length, 0);
+    assert.equal(bad.step.dropped.length, 5);
+  }
+  assert.equal(scopeOf({ type: "editor_replace" }), "editor");
+});
+
+test("files_search and files_read are read-only: they need no permission, and their paths are checked", () => {
+  const ok = parseStep(JSON.stringify({ actions: [{ type: "files_search", query: " login ", path: "src" }, { type: "files_read", path: "src/a.py", start_line: 10, end_line: 20 }, { type: "files_read", path: "b.py" }], done: false }));
+  assert.ok(ok.ok);
+  if (ok.ok) {
+    assert.deepEqual(ok.step.actions, [
+      { type: "files_search", query: "login", path: "src" },
+      { type: "files_read", path: "src/a.py", startLine: 10, endLine: 20 },
+      { type: "files_read", path: "b.py", startLine: 1, endLine: 400 },
+    ]);
+  }
+  assert.equal(scopeOf({ type: "files_search" }), null);
+  assert.equal(scopeOf({ type: "files_read" }), null);
+  const bad = parseStep(JSON.stringify({ actions: [{ type: "files_search", query: "" }, { type: "files_search", query: "x", path: "../up" }, { type: "files_read", path: ".env" }, { type: "files_read", path: "/etc/passwd" }, { type: "files_read", path: "a", start_line: 5, end_line: 2 }, { type: "files_search", query: "a\nb" }] }));
+  assert.ok(bad.ok);
+  if (bad.ok) {
+    assert.equal(bad.step.actions.length, 0);
+    assert.equal(bad.step.dropped.length, 6);
+  }
+  // a read is never more than the most lines
+  const long = parseStep(JSON.stringify({ actions: [{ type: "files_read", path: "a", start_line: 1, end_line: 9000 }] }));
+  assert.ok(long.ok && long.step.actions[0].endLine === 400);
 });

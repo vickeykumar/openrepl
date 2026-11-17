@@ -67,3 +67,52 @@ export function answerTokens(usage: unknown): string {
   if (!(sent >= 0) || !(written >= 0) || sent + written === 0) return "";
   return fmtTokens(sent + written) + " tokens (" + fmtTokens(sent) + " sent, " + fmtTokens(written) + " written)";
 }
+
+// ---- credits ------------------------------------------------------------------------
+// The credits part of the usage line. The server sends it only when an admin
+// turned credits on (server/meter.go); until then none of this shows.
+
+export interface CreditUsage {
+  plan: string;
+  of: number; // the credits of a month; 0: no monthly cap
+  used: number;
+  left: number;
+  resets: string; // "2026-12-01"
+  taskBudget?: number; // the credits one task may use; 0 or missing: none
+}
+
+export function fmtCredits(n: number): string {
+  const r = Math.round(Math.max(0, n) * 10) / 10;
+  return r.toLocaleString("en-US");
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "2026-12-01" as "1 Dec"
+export function fmtDay(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+  if (!m) return "";
+  return Number(m[3]) + " " + (MONTHS[Number(m[2]) - 1] || "");
+}
+
+// The line of the usage box when a plan has a monthly cap; null when it has none.
+export function creditLine(c: CreditUsage | undefined): { label: string; part: number; state: "ok" | "low" | "empty" } | null {
+  if (!c || !(c.of > 0)) return null;
+  if (c.left <= 0) return { label: "No credits left · back on " + fmtDay(c.resets), part: 0, state: "empty" };
+  return { label: fmtCredits(c.left) + " of " + fmtCredits(c.of) + " credits left", part: Math.min(1, c.left / c.of), state: c.left <= c.of * 0.1 ? "low" : "ok" };
+}
+
+// The rows to put first in the details; the task is the one that ended last, when there is one.
+export function creditRows(c: CreditUsage | undefined, task?: { credits: number; tokens?: number }): [string, string][] {
+  if (!c) return [];
+  const rows: [string, string][] = [["Plan", c.plan || "Free"]];
+  if (c.of > 0) {
+    rows.push(["Credits left this month", fmtCredits(c.left) + " of " + fmtCredits(c.of)], ["Resets", fmtDay(c.resets)]);
+  } else {
+    rows.push(["Credits used this month", fmtCredits(c.used)]);
+  }
+  if (c.taskBudget && c.taskBudget > 0) rows.push(["Most one task may use", "about " + fmtCredits(c.taskBudget) + " credits"]);
+  if (task) rows.push(["Last task", fmtCredits(task.credits) + " credits" + (task.tokens ? " (" + fmtTokens(task.tokens) + " tokens)" : "")]);
+  rows.push(["", ""]);
+  return rows;
+}

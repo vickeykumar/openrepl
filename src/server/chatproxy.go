@@ -324,7 +324,15 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
     // A request in agent mode (agent.go): signed-in users, within a task's steps
     // and the hourly count. The first step of a task is the one that is charged.
     isAdmin := IsUserAdmin(rw, req)
+    // credits (meter.go): a signed-in user who has used the month's credits waits for the next month
+    if uid, ok := agentUser(req); ok && !creditsLeft(GetSiteSettings().Genie, uid, isAdmin) {
+    	handleChatProxyError(rw, req, errNoCredits.Status, errNoCredits.response())
+    	return
+    }
     run, agentReq, aerr := agentStart(req, rawBody, isAdmin)
+    if aerr == errAgentSteps && !GetSiteSettings().Genie.MeterOff {
+    	statsAdd(func(s *agentStats) { s.StepLimit++ })
+    }
     if aerr != nil {
     	handleChatProxyError(rw, req, aerr.Status, aerr.response())
     	return
@@ -376,6 +384,17 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         	),
         )
     	return
+    }
+
+    // an agent step may be answered as a call of one function instead of JSON in text (agent_tools.go)
+    plainBody := chatBody // the same request as text JSON, if the host will not take the tool
+    toolSent := false
+    if run != nil && nativeToolFor(GetSiteSettings().Genie, model) {
+    	chatBody = withStepTool(chatBody)
+    	toolSent = true
+    	if !GetSiteSettings().Genie.MeterOff {
+    		statsAdd(func(s *agentStats) { s.ToolTries++ })
+    	}
     }
 
     // A model an admin switched off is refused before anything is charged or
@@ -466,6 +485,28 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 	// Send the proxy request using the custom transport
 	asked := time.Now()
 	resp, err := customTransport.RoundTrip(proxyReq)
+	// A host that refuses the call with the tool gets the same request once more as text JSON, and is not asked with the tool
+	// for an hour. The refused call is not an answer: it is not a step, it is not charged and it leaves no usage event.
+	if err == nil && toolSent && resp.StatusCode >= 400 {
+		peek, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if toolWasRefused(resp.StatusCode, peek) {
+			resp.Body.Close()
+			log.Println("native tool calling refused by", providerName(model.Provider), "for", model.ID, "with", resp.StatusCode, ":", string(clipBytes(peek, 300)))
+			toolMemory.remember(model.ID, time.Now())
+			if !GetSiteSettings().Genie.MeterOff {
+				statsToolRefused(model.ID)
+			}
+			again, rerr := http.NewRequestWithContext(ctx, req.Method, upstreamURL, bytes.NewReader(plainBody))
+			if rerr == nil {
+				again.Header = proxyReq.Header.Clone()
+				resp, err = customTransport.RoundTrip(again)
+			} else {
+				err = rerr
+			}
+		} else {
+			resp.Body = io.NopCloser(io.MultiReader(bytes.NewReader(peek), resp.Body))
+		}
+	}
 	if err != nil {
 		noteChat(model.Provider, false, asked)
 		log.Println("Error: making request: ", err)
@@ -556,12 +597,28 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
     // Copy the response body to the response writer, and look at it on the way for
     // the count of tokens the answer used (tokens.go)
     tap := &bodyTap{r: resp.Body, limit: maxUpstreamAnswerBytes}
-    _, err = io.Copy(rw, tap)
+    if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+        // a streamed answer reaches the page as it is written: each piece is sent on at once
+        err = copyFlushing(rw, tap)
+    } else {
+        _, err = io.Copy(rw, tap)
+    }
     noteChat(model.Provider, err == nil && resp.StatusCode < 400, asked)
     if err == nil && !tap.over && resp.StatusCode < 300 {
         if used, ok := extractUsage(tap.buf.Bytes()); ok {
             key, visit := whoPays(req)
             tokenTotals.add(key, visit, model.ID, used)
+            noteMeter(GetSiteSettings().Genie, key, run, model.ID, used)
+            if run != nil && !GetSiteSettings().Genie.MeterOff {
+                size, first := int64(len(chatBody)), run.first
+                statsAdd(func(s *agentStats) {
+                    s.Steps++
+                    s.ReqBytes += size
+                    if first {
+                        s.Tasks++
+                    }
+                })
+            }
             siteUsage.noteGenie(whoOf(req))
             meters.Add(meters.ChatTokens, used.In+used.Out)
         }
@@ -578,4 +635,24 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         )
         return
     }
+}
+// copyFlushing copies a streamed answer and sends each piece on as it arrives, so that the page can show it while it is written.
+func copyFlushing(dst http.ResponseWriter, src io.Reader) error {
+	rc := http.NewResponseController(dst)
+	buf := make([]byte, 4096)
+	for {
+		n, err := src.Read(buf)
+		if n > 0 {
+			if _, werr := dst.Write(buf[:n]); werr != nil {
+				return werr
+			}
+			rc.Flush() // a writer that cannot flush just keeps its buffer
+		}
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
 }

@@ -164,6 +164,9 @@ func TestTotalsSurviveARestartAndAreListed(t *testing.T) {
 
 func TestAStreamAsksForUsageAndOpenRouterForTheCost(t *testing.T) {
 	adminTestServer(t)
+	if err := SaveSiteSettings(SiteSettings{Genie: GenieSettings{StreamAnswers: true}}); err != nil {
+		t.Fatal(err)
+	}
 	ask := func(body string) map[string]interface{} {
 		out, _, err := sanitizeChatBody([]byte(body))
 		if err != nil {

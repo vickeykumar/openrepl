@@ -12,6 +12,7 @@
 export const ACTIONS = [
   "editor_write",
   "editor_insert",
+  "editor_replace",
   "set_language",
   "run",
   "debug",
@@ -23,6 +24,8 @@ export const ACTIONS = [
   "terminal_close_tab",
   "bash",
   "files_list",
+  "files_search",
+  "files_read",
   "files_open",
   "files_new",
   "files_save",
@@ -66,6 +69,41 @@ export interface Action {
   timeoutSeconds?: number; // bash: 1 to MAX_COMMAND_SECONDS; the command itself is in "text"
   waitSeconds?: number; // read_output and terminal_type, 1 to 20
   port?: number; // preview_open: a port of the workspace, 1024 to 65535
+  old?: string; // editor_replace: the exact text to replace (it has to be in the editor once); "text" is the new text
+  startLine?: number; // editor_replace without "old": the first line to replace (1 based); files_read: the first line to read
+  endLine?: number; // the last line (editor_replace: replaced; files_read: read)
+  query?: string; // files_search: the text to look for (not a pattern)
+  region?: boolean; // editor_write made by the page for editor_replace: the review says it is a part of the file
+}
+
+export const MAX_QUERY = 200; // characters of a files_search query
+export const MAX_READ_LINES = 400; // lines one files_read returns
+export const MAX_MATCHES = 40; // lines one files_search returns
+
+// ---- the plan of a task ----
+export const MAX_PLAN = 8;
+export const MAX_PLAN_ITEM = 100;
+
+// The plan of an answer: a list of short lines; null when it has none that can be used.
+export function parsePlan(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  const items = v
+    .filter((x) => typeof x === "string")
+    .map((x) => (x as string).replace(/\s+/g, " ").trim().slice(0, MAX_PLAN_ITEM))
+    .filter((x) => x !== "")
+    .slice(0, MAX_PLAN);
+  return items.length ? items : null;
+}
+
+// The numbers (1 based) of the plan items that are done, within the plan.
+export function parsePlanDone(v: unknown, size: number): number[] {
+  if (!Array.isArray(v)) return [];
+  const out: number[] = [];
+  for (const x of v) {
+    const n = typeof x === "number" ? Math.floor(x) : NaN;
+    if (n >= 1 && n <= size && out.indexOf(n) < 0) out.push(n);
+  }
+  return out.sort((a, b) => a - b);
 }
 
 export interface Step {
@@ -73,6 +111,8 @@ export interface Step {
   actions: Action[];
   done: boolean;
   dropped: string[]; // what was left out, and why
+  plan?: string[]; // the plan the model gave (usually in the first step, and again when it changes)
+  planDone?: number[]; // the numbers (1 based) of the plan items it says are done
 }
 
 export type Status = "done" | "accepted" | "partly_accepted" | "rejected" | "denied" | "failed" | "skipped";
@@ -100,6 +140,7 @@ export function scopeOf(a: Action): Scope | null {
       return a.language ? "language" : "terminal";
     case "editor_write":
     case "editor_insert":
+    case "editor_replace":
       return "editor";
     case "set_language":
       return "language";
@@ -448,15 +489,37 @@ export function extractJSON(text: string): unknown | null {
       }
     }
   }
-  for (const a of attempts) {
+  // The slips a model makes most: a comma before a closing bracket, a comment, and
+  // curly quotes round a name. Mended only when the text as it is cannot be read.
+  const mend = (a: string) =>
+    a
+      .replace(/^\uFEFF/, "")
+      .replace(/(^|[^:"\\])\/\/[^\n"]*$/gm, "$1")
+      .replace(/,\s*([}\]])/g, "$1");
+  const tryParse = (a: string): unknown | null => {
     try {
       const v = JSON.parse(a);
-      if (v && typeof v === "object" && !Array.isArray(v)) return v;
+      return v && typeof v === "object" && !Array.isArray(v) ? v : null;
     } catch (e) {
-      // try the next form
+      return null;
+    }
+  };
+  for (const a of attempts) {
+    const v = tryParse(a);
+    if (v) return v;
+  }
+  for (const a of attempts) {
+    const m = mend(a);
+    if (m !== a) {
+      const v = tryParse(m);
+      if (v) return v;
     }
   }
   return null;
+}
+
+function positiveInt(v: unknown): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 10000000 ? v : null;
 }
 
 function clampSeconds(v: unknown, fallback: number = 5): number {
@@ -511,6 +574,50 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
           actions.push({ type, text: a.text });
         }
         break;
+      case "editor_replace": {
+        // the exact old text and the new, or the lines to replace and the new text
+        const next = typeof a.new === "string" ? a.new : typeof a.text === "string" ? a.text : null;
+        const old = typeof a.old === "string" ? a.old : null;
+        const from = positiveInt(a.start_line);
+        const to = positiveInt(a.end_line === undefined ? a.start_line : a.end_line);
+        if (next === null) {
+          dropped.push(`editor_replace left out: it needs "new", the text that goes in`);
+        } else if (next.length > MAX_TEXT || (old !== null && old.length > MAX_TEXT)) {
+          dropped.push(`editor_replace left out: the text is longer than ${MAX_TEXT} characters`);
+        } else if (old !== null && old !== "") {
+          actions.push({ type, old, text: next });
+        } else if (from !== null && to !== null && to >= from) {
+          actions.push({ type, startLine: from, endLine: to, text: next });
+        } else {
+          dropped.push(`editor_replace left out: it needs "old" (the exact text to replace) or "start_line" and "end_line"`);
+        }
+        break;
+      }
+      case "files_search": {
+        const q = typeof a.query === "string" ? a.query.trim() : "";
+        const where = cleanPath(a.path === undefined ? "" : a.path, true);
+        if (q === "" || q.length > MAX_QUERY || /[\u0000-\u001f]/.test(q)) {
+          dropped.push(`files_search left out: "query" has to be the text to look for, one line of at most ${MAX_QUERY} characters`);
+        } else if (where === null) {
+          dropped.push(`files_search left out: "path" has to be a folder relative to the home directory, or left out for all of it`);
+        } else {
+          actions.push({ type, query: q, path: where });
+        }
+        break;
+      }
+      case "files_read": {
+        const p = cleanPath(a.path, false);
+        const from = a.start_line === undefined ? 1 : positiveInt(a.start_line);
+        const to = a.end_line === undefined ? null : positiveInt(a.end_line);
+        if (p === null) {
+          dropped.push(`files_read left out: "path" has to be a file relative to the home directory (like "src/main.py")`);
+        } else if (from === null || (a.end_line !== undefined && (to === null || to < from))) {
+          dropped.push(`files_read left out: "start_line" and "end_line" have to be line numbers, the last not before the first`);
+        } else {
+          actions.push({ type, path: p, startLine: from, endLine: to === null ? from + MAX_READ_LINES - 1 : Math.min(to, from + MAX_READ_LINES - 1) });
+        }
+        break;
+      }
       case "set_language":
         if (typeof a.language !== "string" || !a.language.trim() || a.language.length > 40) {
           dropped.push("set_language left out: it needs a language name");
@@ -645,7 +752,12 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
   // (Genie said what it had to say, or asked the user something). Going on
   // would only use up steps on more words.
   if (actions.length === 0 && dropped.length === 0) done = true;
-  return { ok: true, step: { say, actions, done, dropped } };
+  const plan = parsePlan(v.plan);
+  const step: Step = { say, actions, done, dropped };
+  if (plan) step.plan = plan;
+  const planDone = parsePlanDone(v.plan_done, plan ? plan.length : MAX_PLAN);
+  if (planDone.length) step.planDone = planDone;
+  return { ok: true, step };
 }
 
 // a short line for the step list, for an action
@@ -655,6 +767,12 @@ export function describe(a: Action): string {
       return "Writing in the editor";
     case "editor_insert":
       return "Inserting code in the editor";
+    case "editor_replace":
+      return a.startLine ? "Replacing lines " + a.startLine + (a.endLine && a.endLine !== a.startLine ? " to " + a.endLine : "") + " in the editor" : "Replacing text in the editor";
+    case "files_search":
+      return "Searching " + (a.path ? a.path : "the files") + ' for "' + (a.query || "").slice(0, 60) + '"';
+    case "files_read":
+      return "Reading " + a.path + ", lines " + a.startLine + " to " + a.endLine;
     case "set_language":
       return `Switching the language to ${a.language}`;
     case "run":

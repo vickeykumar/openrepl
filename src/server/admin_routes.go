@@ -40,6 +40,8 @@ func (server *Server) registerAdmin(mux *http.ServeMux, prefix string) {
 	api("admin/snippets", server.handleAdminSnippets)
 	api("admin/snippets/", server.handleAdminSnippets)
 	api("admin/genie-usage", server.handleAdminGenieUsage)
+	api("admin/genie-measures", server.handleAdminGenieMeasures)
+	api("admin/genie-plan", server.handleAdminGeniePlan)
 	api("admin/store", server.handleAdminStore)
 	api("admin/store/catalogue", server.handleAdminCatalogue)
 	api("admin/store/log", server.handleAdminStoreLog)

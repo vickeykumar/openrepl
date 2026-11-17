@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -136,8 +137,8 @@ func TestChatBodyPassesOnlyJSONObjectFormat(t *testing.T) {
 }
 
 func TestChatBodyDropsFieldsTheServiceDoesNotUse(t *testing.T) {
-	got := sanitized(t, `{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}],
-		"n":50,"tools":[{"type":"function"}],"user":"x","top_p":0.1,"stream":true}`)
+	got := sanitizedStream(t, `{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}],
+		"n":50,"tools":[{"type":"function"}],"user":"x","top_p":0.1,"stream":true}`, true)
 	for _, field := range []string{"n", "tools", "user", "top_p"} {
 		if _, has := got[field]; has {
 			t.Errorf("%s reached OpenAI: %v", field, got)
@@ -239,5 +240,35 @@ func TestChatBodyReturnsTheModelItIsFor(t *testing.T) {
 		if err != nil || model.ID != want {
 			t.Errorf("model %q: got %q (%v), want %q", asked, model.ID, err, want)
 		}
+	}
+}
+
+// sanitizedStream is sanitized with an admin's choice about streamed answers.
+func sanitizedStream(t *testing.T, body string, on bool) map[string]interface{} {
+	t.Helper()
+	isolateSettings(t)
+	if err := SaveSiteSettings(SiteSettings{Genie: GenieSettings{StreamAnswers: on}}); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := sanitizeChatBody([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]interface{}
+	json.Unmarshal(out, &got)
+	return got
+}
+
+func TestAStreamIsOnlyKeptWhenAnAdminAllowsItAndTheHostTellsWhatItUsed(t *testing.T) {
+	body := `{"model":"%s","stream":true,"messages":[{"role":"user","content":"hi"}]}`
+	if got := sanitizedStream(t, strings.Replace(body, "%s", "gpt-4o-mini", 1), false); got["stream"] != nil {
+		t.Errorf("a stream that is not allowed was kept: %v", got)
+	}
+	if got := sanitizedStream(t, strings.Replace(body, "%s", "gpt-4o-mini", 1), true); got["stream"] != true {
+		t.Errorf("an allowed stream was dropped: %v", got)
+	}
+	// Cloudflare Workers AI does not say what a stream used, so its answers come whole
+	if got := sanitizedStream(t, strings.Replace(body, "%s", modelCFGemma, 1), true); got["stream"] != nil {
+		t.Errorf("a Cloudflare stream was kept: %v", got)
 	}
 }

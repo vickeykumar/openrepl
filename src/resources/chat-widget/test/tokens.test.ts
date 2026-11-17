@@ -52,3 +52,37 @@ test("the line under an answer says what that answer used", () => {
   assert.equal(answerTokens({ total_tokens: 9 }), "");
   assert.equal(answerTokens("x"), "");
 });
+
+import { creditLine, creditRows, fmtCredits, fmtDay } from "../src/tokens.ts";
+
+test("credits are told with one decimal at most, and a day as day and month", () => {
+  assert.equal(fmtCredits(412), "412");
+  assert.equal(fmtCredits(0.04), "0");
+  assert.equal(fmtCredits(12.34), "12.3");
+  assert.equal(fmtCredits(-3), "0");
+  assert.equal(fmtDay("2026-12-01"), "1 Dec");
+  assert.equal(fmtDay("2026-01-15"), "15 Jan");
+  assert.equal(fmtDay("garbage"), "");
+});
+
+test("the credits line leads only for a plan with a monthly cap", () => {
+  assert.equal(creditLine(undefined), null);
+  assert.equal(creditLine({ plan: "Free", of: 0, used: 5, left: 0, resets: "2026-12-01" }), null);
+  assert.deepEqual(creditLine({ plan: "Free", of: 500, used: 88, left: 412, resets: "2026-12-01" }), { label: "412 of 500 credits left", part: 0.824, state: "ok" });
+  assert.equal(creditLine({ plan: "Free", of: 500, used: 460, left: 40, resets: "2026-12-01" })!.state, "low");
+  assert.deepEqual(creditLine({ plan: "Free", of: 500, used: 500, left: 0, resets: "2026-12-01" }), { label: "No credits left · back on 1 Dec", part: 0, state: "empty" });
+});
+
+test("the details start with the plan, the credits left and the budget of a task", () => {
+  const c = { plan: "Free", of: 500, used: 88, left: 412, resets: "2026-12-01", taskBudget: 40 };
+  assert.deepEqual(creditRows(c, { credits: 9, tokens: 7200 }), [
+    ["Plan", "Free"],
+    ["Credits left this month", "412 of 500"],
+    ["Resets", "1 Dec"],
+    ["Most one task may use", "about 40 credits"],
+    ["Last task", "9 credits (7,200 tokens)"],
+    ["", ""],
+  ]);
+  assert.deepEqual(creditRows({ plan: "Team", of: 0, used: 12.5, left: 0, resets: "2026-12-01" }), [["Plan", "Team"], ["Credits used this month", "12.5"], ["", ""]]);
+  assert.deepEqual(creditRows(undefined), []);
+});

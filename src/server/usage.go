@@ -53,6 +53,15 @@ type genieUsage struct {
 	// Agent is there for a signed-in user where agent mode is on.
 	Agent  *agentUsage `json:"agent,omitempty"`
 	Tokens *tokenUsage `json:"tokens,omitempty"`
+	// Credits is there only when an admin turned credits on (meter.go).
+	Credits *creditUsage `json:"credits,omitempty"`
+	// Task is what the user's own task named by ?task= has used so far (agent.go).
+	Task *taskUsage `json:"task,omitempty"`
+}
+
+type taskUsage struct {
+	Credits float64 `json:"credits"`
+	Steps   int     `json:"steps"`
 }
 
 // usageOf works out the usage of the visitor behind a request. left is the
@@ -80,6 +89,7 @@ func usageOf(req *http.Request, isAdmin bool, left *float64) genieUsage {
 			a, partialA := rec.cost(false, g.ModelPrices)
 			u.Tokens.Cost = &tokenCost{Month: m, All: a, Partial: partialM || partialA}
 		}
+		u.Credits = creditsOf(g, uid, isAdmin)
 		if !g.AgentDisabled {
 			used, next := agents.started(uid)
 			perHour := g.agentTasksPerHour()
@@ -109,5 +119,13 @@ func handleChatUsage(rw http.ResponseWriter, req *http.Request) {
 	}
 	rw.Header().Set("Content-Type", "application/json")
 	rw.Header().Set("Cache-Control", "no-store")
-	rw.Write([]byte(usageOf(req, IsUserAdmin(rw, req), nil).header()))
+	u := usageOf(req, IsUserAdmin(rw, req), nil)
+	if token := req.URL.Query().Get("task"); token != "" {
+		if uid, ok := agentUser(req); ok {
+			if c, steps, found := agents.credits(token, uid); found {
+				u.Task = &taskUsage{Credits: c, Steps: steps}
+			}
+		}
+	}
+	rw.Write([]byte(u.header()))
 }

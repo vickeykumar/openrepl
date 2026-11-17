@@ -64,6 +64,18 @@
         <p class="profile-snap__status" data-snap-status role="status" aria-live="polite" hidden></p>
         <div data-snap-body></div>
       </section>
+      <section class="profile-card profile-snap" id="profile-chats" aria-label="Genie chats" hidden>
+        <div class="profile-snap__head"><h2>Genie chats</h2><span class="profile-snap__meta" data-chats-meta></span></div>
+        <p class="profile-card__note">Each chat of the Genie panel is saved in your own workspace, in the hidden folder <code>.genie/chats</code>, and comes back as a tab after a reload. Nobody else can read them, an admin included. They go when your workspace goes.</p>
+        <p class="profile-snap__status" data-chats-status role="status" aria-live="polite" hidden></p>
+        <label class="profile-chats__row"><input type="checkbox" data-chats-save> Save my chats</label>
+        <p class="profile-card__note" data-chats-saveNote>Off: nothing new is written. Chats that are already saved stay until you delete them.</p>
+        <div class="profile-card__actions">
+          <button type="button" class="profile-btn" data-chats-download>Download all as Markdown</button>
+          <button type="button" class="profile-btn profile-btn--out" data-chats-delete>Delete all chats</button>
+        </div>
+      </section>
+      <script src="./js/profile-chats.js"></script>
       <script src="./js/profile-snapshots.js"></script>
     </main>
 

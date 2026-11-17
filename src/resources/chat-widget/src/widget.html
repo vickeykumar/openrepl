@@ -19,6 +19,11 @@
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg>
   </button>
 </div>
+<!-- The chats of this workspace as tabs, and the question or news in the strip (index.ts: renderTabs). Hidden when chats are not saved. -->
+<div id="chat-widget__tabs-wrap" class="cw-tabs-wrap" hidden>
+  <div id="chat-widget__tabs" class="cw-tabs" role="tablist" aria-label="Chats"></div>
+  <div id="chat-widget__toast" class="cw-toast" role="status" hidden></div>
+</div>
 <div id="chat-widget__body">
   <!-- The messages_history div is placed here. -->
   <!-- The practice coach, on the practice page only (index.ts: wireCoach). -->
@@ -27,6 +32,11 @@
     <button type="button" data-coach="hint">Hint</button>
     <button type="button" data-coach="review">Review my solution</button>
     <button type="button" data-coach="complexity">Complexity</button>
+  </div>
+  <!-- One-click requests in Chat mode: about the selection in the editor, and the last error of the terminal (index.ts: refreshQuick). -->
+  <div id="chat-widget__quick" class="cw-quick" role="group" aria-label="Ask about" hidden>
+    <button type="button" data-quick="selection" hidden>Explain selection</button>
+    <button type="button" data-quick="error" hidden>Fix last error</button>
   </div>
   <form id="chat-widget__form">
     <label for="chat-widget__input" class="chat-widget__sr-only">Ask Genie</label>
