@@ -215,9 +215,10 @@ type GenieSettings struct {
 	ChatHistoryDays     int  `json:"chatHistoryDays"`
 
 	// A long chat is summarized by the model in use (one more request, counted like any other) once the older turns pass
-	// SummaryChars characters (0: 6000); SummaryOff stops it. The summary is kept in the chat file and sent with the last turns.
-	SummaryOff   bool `json:"summaryOff"`
-	SummaryChars int  `json:"summaryChars"`
+	// SummaryTokens tokens (0: 6000); SummaryOff stops it. The editor and terminal text is not counted: it is sent as it is.
+	// The summary is kept in the chat file and sent with the last turns.
+	SummaryOff    bool `json:"summaryOff"`
+	SummaryTokens int  `json:"summaryTokens"`
 
 	// Usage record and credits (meter.go). Every step of a task and every chat
 	// answer of a signed-in user is recorded with its credits (counts only, no
@@ -583,8 +584,8 @@ type publicSettings struct {
 	AgentMaxSteps   int  `json:"agentMaxSteps"`
 	// answers are sent to the page as they are written (settings.go: StreamAnswers)
 	GenieStream bool `json:"genieStream"`
-	// the characters of older turns after which the page summarizes a chat (0: it does not)
-	GenieSummaryChars int `json:"genieSummaryChars"`
+	// the tokens of older turns after which the page summarizes a chat (0: it does not)
+	GenieSummaryTokens int `json:"genieSummaryTokens"`
 	// chats are saved in the workspace, for everyone or for signed-in users only (genie_chats.go)
 	ChatHistory       bool `json:"chatHistory"`
 	ChatHistoryGuests bool `json:"chatHistoryGuests"`
@@ -655,7 +656,7 @@ func (g *GenieSettings) normalizeNumbers() error {
 		{"The OpenRouter time limit", g.OpenRouterTimeoutSec, minORTimeout, maxORTimeout},
 		{"The agent tasks per hour", g.AgentTasksPerHour, minAgentTasks, maxAgentTasks},
 		{"The agent steps per task", g.AgentMaxSteps, minAgentSteps, maxAgentStepsSet},
-		{"The characters before a chat is summarized", g.SummaryChars, minSummaryChars, maxSummaryChars},
+		{"The tokens before a chat is summarized", g.SummaryTokens, minSummaryTokens, maxSummaryTokens},
 	} {
 		if n.v != 0 && (n.v < n.min || n.v > n.max) {
 			return fmt.Errorf("%s must be between %d and %d (or empty for the built-in value)", n.name, n.min, n.max)
@@ -851,7 +852,7 @@ func (s SiteSettings) public() publicSettings {
 		AgentOnPractice:      s.Genie.AgentOnPractice,
 		AgentMaxSteps:        s.Genie.agentMaxSteps(),
 		GenieStream:          s.Genie.StreamAnswers,
-		GenieSummaryChars:    s.Genie.summaryChars(),
+		GenieSummaryTokens:   s.Genie.summaryTokens(),
 		ChatHistory:          !s.Genie.ChatHistoryOff && !s.Genie.Disabled,
 		ChatHistoryGuests:    !s.Genie.ChatHistoryNoGuests,
 		ChatHistoryTabs:      s.Genie.chatsTabs(),
@@ -1067,7 +1068,7 @@ func settingsChanges(a, b SiteSettings) []string {
 	if a.Genie.AgentModel != b.Genie.AgentModel {
 		out = append(out, "Agent model: "+orStr(b.Genie.AgentModel, "none"))
 	}
-	if a.Genie.SummaryOff != b.Genie.SummaryOff || a.Genie.SummaryChars != b.Genie.SummaryChars {
+	if a.Genie.SummaryOff != b.Genie.SummaryOff || a.Genie.SummaryTokens != b.Genie.SummaryTokens {
 		out = append(out, "Genie: chat summary "+onoff(!b.Genie.SummaryOff))
 	}
 	if a.DBCapacityMB != b.DBCapacityMB {
@@ -1223,15 +1224,15 @@ func orStr(s, def string) string {
 }
 
 const (
-	defaultSummaryChars = 6000
-	minSummaryChars     = 2000
-	maxSummaryChars     = 30000
+	defaultSummaryTokens = 6000
+	minSummaryTokens     = 1000
+	maxSummaryTokens     = 40000
 )
 
-// summaryChars is what the page uses: 0 when the summary is off.
-func (g GenieSettings) summaryChars() int {
+// summaryTokens is what the page uses: 0 when the summary is off.
+func (g GenieSettings) summaryTokens() int {
 	if g.SummaryOff {
 		return 0
 	}
-	return orDefault(g.SummaryChars, defaultSummaryChars)
+	return orDefault(g.SummaryTokens, defaultSummaryTokens)
 }

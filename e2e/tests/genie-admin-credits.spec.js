@@ -70,12 +70,12 @@ test("Site settings has the usage record and credits: today's behaviour, and the
   await w.fill("0.2");
   // the chat summary: on by default, 6000 when empty
   await expect(page.locator("#f-sum-on")).toBeChecked();
-  await expect(page.locator("#f-sum-chars")).toHaveAttribute("placeholder", "6000");
-  await page.locator("#f-sum-chars").fill("9000");
+  await expect(page.locator("#f-sum-tokens")).toHaveAttribute("placeholder", "6000");
+  await page.locator("#f-sum-tokens").fill("9000");
   await page.getByRole("button", { name: /^Save/ }).click();
   await expect.poll(() => st.saved.length).toBe(1);
   const g = st.saved[0].genie;
-  expect(g).toMatchObject({ creditsOn: true, meterOff: false, planName: "Team", planCredits: 500, planBudget: 40, streamAnswers: true, agentNativeTools: true, summaryOff: false, summaryChars: 9000 });
+  expect(g).toMatchObject({ creditsOn: true, meterOff: false, planName: "Team", planCredits: 500, planBudget: 40, streamAnswers: true, agentNativeTools: true, summaryOff: false, summaryTokens: 9000 });
   expect(Object.values(g.creditWeights)[0].in).toBe(0.2);
   expect(g.nativeToolModels).toEqual(["gpt-4o-mini", "google/gemma-4-31b-it"]);
 });

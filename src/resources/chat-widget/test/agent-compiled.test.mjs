@@ -698,7 +698,7 @@ test("built: the plan is shown, ticked off as the model says, and a changed plan
   assert.ok(card.children.findIndex((c) => c.classList.contains("cw-agent__plan")) < card.children.findIndex((c) => c.classList.contains("cw-agent__steps")));
 });
 
-test("built: older results and answers are sent short, and an unchanged editor and terminal are not sent again", async () => {
+test("built: older results and answers are sent short, and the editor and terminal are in every request", async () => {
   const code = "x".repeat(1500);
   const step = (n) => ({ say: "step " + n, actions: [{ type: "editor_write", text: code + n }, { type: "files_list" }], done: false });
   const t = setup([step(1), step(2), step(3), step(4), { say: "done", actions: [{ type: "run" }], done: true }], { max: 8, answer: () => "Allow for this session" });
@@ -709,10 +709,10 @@ test("built: older results and answers are sent short, and an unchanged editor a
   assert.equal(t.log.requests.length, 5);
   const last = t.log.requests[4].messages;
   const text = JSON.stringify(last);
-  // the first request carries the context, the later ones only say it is the same
-  assert.ok(JSON.stringify(t.log.requests[0].messages).includes("ide context"));
-  assert.ok(!text.includes("ide context"), "an unchanged context was sent again");
-  assert.match(last[last.length - 1].content, /the same as in the context of your last step/);
+  // every request carries the editor and the terminal, as the last message: an earlier one is not kept, so a line that says
+  // "the same as before" would leave the model with none (it asked the user to paste the code)
+  for (const r of t.log.requests) assert.ok(JSON.stringify(r.messages[r.messages.length - 1]).includes("ide context"));
+  assert.ok(!/the same as in the context of your last step/.test(text));
   // the code of steps 1 and 2 is out of the history, the code of steps 3 and 4 is in
   assert.ok(!text.includes(code + "1") && !text.includes(code + "2"));
   assert.ok(text.includes(code + "3") && text.includes(code + "4"));

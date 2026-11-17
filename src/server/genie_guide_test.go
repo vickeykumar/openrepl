@@ -34,18 +34,18 @@ func TestTheAgentPromptHasTheIDEGuide(t *testing.T) {
 }
 
 func TestTheSummaryLimitIsCheckedAndPublished(t *testing.T) {
-	for _, n := range []int{1999, 30001, -5} {
-		if _, err := (SiteSettings{Genie: GenieSettings{SummaryChars: n}}).normalize(); err == nil {
-			t.Fatalf("%d characters were accepted", n)
+	for _, n := range []int{999, 40001, -5} {
+		if _, err := (SiteSettings{Genie: GenieSettings{SummaryTokens: n}}).normalize(); err == nil {
+			t.Fatalf("%d tokens were accepted", n)
 		}
 	}
-	if (GenieSettings{}).summaryChars() != defaultSummaryChars {
+	if (GenieSettings{}).summaryTokens() != defaultSummaryTokens {
 		t.Fatal("the built-in limit")
 	}
-	if (GenieSettings{SummaryChars: 9000}).summaryChars() != 9000 {
+	if (GenieSettings{SummaryTokens: 9000}).summaryTokens() != 9000 {
 		t.Fatal("the admin's limit")
 	}
-	if (GenieSettings{SummaryChars: 9000, SummaryOff: true}).summaryChars() != 0 {
+	if (GenieSettings{SummaryTokens: 9000, SummaryOff: true}).summaryTokens() != 0 {
 		t.Fatal("off is 0 for the page")
 	}
 }

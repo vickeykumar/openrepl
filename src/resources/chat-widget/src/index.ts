@@ -330,13 +330,13 @@ function addMessageToHistory(role: string, content: string, uid: string=UID, his
   }
 }
 
-// A long chat: when the older turns pass the admin's limit (site_settings.genieSummaryChars, 0 is off), the model in use writes a
+// A long chat: when the older turns pass the admin's limit in tokens (site_settings.genieSummaryTokens, 0 is off; the editor and the terminal are not counted), the model in use writes a
 // summary of them. It is one more request of that model, counted like any other (guests too). The summary takes the place of
 // the turns in the history, and is kept as a line of the chat file. A failure leaves the history as it was.
 const summarizing = new Set<string>();
 const summaryFailedAt = new Map<string, number>(); // chat id -> the length of the history when it failed: not again until it has grown
 async function maybeSummarize(tab: ChatTab): Promise<void> {
-  const limit = Number(((window as any).site_settings || {}).genieSummaryChars) || 0;
+  const limit = Number(((window as any).site_settings || {}).genieSummaryTokens) || 0;
   if (limit <= 0 || onPracticePage() || summarizing.has(tab.id)) return;
   const plan = summaryPlan(tab.history, NUM_MANDATORY_ENTRIES, limit);
   if (!plan) return;

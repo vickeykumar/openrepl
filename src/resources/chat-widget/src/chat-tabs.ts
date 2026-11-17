@@ -175,7 +175,13 @@ export interface SummaryPlan {
   drop: number; // how many entries of the history they are
 }
 
-// Whether the older turns (all but the last SUMMARY_KEEP) are longer than `threshold` characters, and what to summarize.
+// About how many tokens a text is: four characters to a token, as the usage line does.
+export function estimateTokens(text: string): number {
+  return Math.ceil(String(text || "").length / 4);
+}
+
+// Whether the older turns (all but the last SUMMARY_KEEP) are longer than `threshold` tokens, and what to summarize. Only the
+// turns count: the editor and the terminal text is not in them (it is sent as it is, in every request).
 // `skip` is the entries at the start of the history that are not turns (the prompts and the editor snapshot); a summary
 // that was made before is the first entry after them.
 export function summaryPlan(history: { role: string; content: string }[], skip: number, threshold: number): SummaryPlan | null {
@@ -185,8 +191,8 @@ export function summaryPlan(history: { role: string; content: string }[], skip: 
   const turns = hasPrior ? rest.slice(1) : rest;
   if (turns.length <= SUMMARY_KEEP) return null;
   const older = turns.slice(0, turns.length - SUMMARY_KEEP);
-  const chars = older.reduce((n, m) => n + String(m.content || "").length, 0);
-  if (chars <= threshold) return null;
+  const tokens = older.reduce((n, m) => n + estimateTokens(m.content), 0);
+  if (tokens <= threshold) return null;
   return { prior: hasPrior ? rest[0].content.slice(SUMMARY_PREFIX.length) : "", older, drop: older.length + (hasPrior ? 1 : 0) };
 }
 

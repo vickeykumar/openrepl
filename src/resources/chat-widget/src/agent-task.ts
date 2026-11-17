@@ -72,14 +72,6 @@ export function compactHistory(messages: Msg[], keepFull: number = KEEP_FULL): M
   });
 }
 
-// The editor and terminal text of a step: the text itself the first time and when it
-// changed, else one line saying it did not.
-export const SAME_CONTEXT = "The editor and the terminal are the same as in the context of your last step.";
-export function contextToSend(current: Msg, previous: string | null): Msg {
-  if (previous !== null && current.content === previous) return { role: current.role, content: SAME_CONTEXT };
-  return current;
-}
-
 // ---- the plan -------------------------------------------------------------------------
 
 // The plan of a task as it stands: the items, which are done, and which is next.

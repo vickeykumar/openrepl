@@ -1,7 +1,7 @@
 // node --test test/   (from src/resources/chat-widget)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CHECK_BEFORE_DONE, PlanState, SAME_CONTEXT, WorkTrack, changeLine, compactHistory, contextToSend, countLines, shrinkAnswer, shrinkResults } from "../src/agent-task.ts";
+import { CHECK_BEFORE_DONE, PlanState, WorkTrack, changeLine, compactHistory, countLines, shrinkAnswer, shrinkResults } from "../src/agent-task.ts";
 import { extractJSON, parsePlan, parsePlanDone, parseStep } from "../src/agent-protocol.ts";
 
 const big = "x".repeat(2000);
@@ -49,13 +49,6 @@ test("an older result keeps what each action did and why one was left out", () =
   assert.match(s, /run: done/);
   assert.match(s, /files_delete: denied \(the user did not allow/);
   assert.match(s, /not done: action 3 left out/);
-});
-
-test("the editor and the terminal are sent again only when they changed", () => {
-  const ctx = { role: "system", content: "Openrepl IDE real-time context\nprint(1)" };
-  assert.deepEqual(contextToSend(ctx, null), ctx);
-  assert.deepEqual(contextToSend(ctx, "something else"), ctx);
-  assert.deepEqual(contextToSend(ctx, ctx.content), { role: "system", content: SAME_CONTEXT });
 });
 
 test("a plan is a short list of lines, and what is done is within it", () => {

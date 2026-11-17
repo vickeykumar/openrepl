@@ -48,7 +48,7 @@ import {
   locateOld,
 } from "./agent-protocol";
 import { SSEParser, addEvent, answerOf, newStreamed, partialSay } from "./sse";
-import { ASK_FIRST, CHECK_BEFORE_DONE, MAX_CARRIES, MAX_FIXES, PlanState, WorkTrack, changeLine, compactHistory, contextToSend, countLines, factsText, isVagueTask, lastErrorLines } from "./agent-task";
+import { ASK_FIRST, CHECK_BEFORE_DONE, MAX_CARRIES, MAX_FIXES, PlanState, WorkTrack, changeLine, compactHistory, countLines, factsText, isVagueTask, lastErrorLines } from "./agent-task";
 
 type Msg = { role: string; content: string };
 type AskResult =
@@ -86,7 +86,6 @@ type TaskState = {
   says: string[];
   plan: PlanState; // the plan the model gave, and what is done of it
   work: WorkTrack; // what was changed, and whether it was checked
-  lastContext: string | null; // the editor and terminal text of the last step, so that an unchanged one is not sent again
   tokens: number; // tokens the steps used, as the models reported them
   steps: number; // answers taken
   startedAt: number;
@@ -358,7 +357,6 @@ export class AgentRunner {
         says: [],
         plan: new PlanState(),
         work: new WorkTrack(),
-        lastContext: null,
         tokens: 0,
         steps: 0,
         startedAt: Date.now(),
@@ -561,7 +559,9 @@ export class AgentRunner {
       ...(t.carry ? { agent_carry: true } : {}),
       // the REPL in use, by name: the server adds what it knows about it
       repl: this.host.repl ? this.host.repl() : "",
-      messages: [...compactHistory(t.messages), contextToSend(here, t.lastContext)],
+      // the editor and the terminal go in every request: an earlier one is not kept in the messages, so a line saying "the same as
+      // before" left the model with no editor text at all (it then asked the user to paste the code)
+      messages: [...compactHistory(t.messages), here],
     };
     // a model that never answers must not keep the task, and the box, for ever
     const timer = setTimeout(() => {
@@ -574,7 +574,6 @@ export class AgentRunner {
       // request itself does not give way
       const got = await Promise.race([this.exchange(body), this.aborted()]);
       if (got.ok) {
-        t.lastContext = here.content;
         t.carry = false; // the server let it through; the next step needs no carrying on
       }
       return got;

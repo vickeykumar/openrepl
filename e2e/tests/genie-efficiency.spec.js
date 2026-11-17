@@ -355,10 +355,10 @@ test("an empty chat offers starter questions; Agent mode with a small model says
 });
 
 test("a long chat is summarized by the model in use, and the next question is sent the summary and the last turns", async ({ page }) => {
-  const filler = (n) => "Answer " + n + ". " + "word ".repeat(260);
+  const filler = (n) => "Answer " + n + ". " + "word ".repeat(520);
   const summary = "The user is learning lists in Python; they asked four questions about slicing and reversing.";
   const seen = await openAgent(page, [filler(1), filler(2), filler(3), filler(4), summary, "Fifth answer."]);
-  await page.evaluate(() => { window.site_settings.genieSummaryChars = 2500; });
+  await page.evaluate(() => { window.site_settings.genieSummaryTokens = 1000; });
   for (const q of ["one", "two", "three", "four"]) {
     await ask(page, q);
     await expect(page.locator("#chat-widget__submit")).toBeEnabled({ timeout: 15000 });

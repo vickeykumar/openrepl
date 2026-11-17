@@ -134,7 +134,7 @@ test("the stale note keeps a dot in a file name, and an unnamed file is said so"
   assert.equal(staleForAgent({ file: "", language: "" }, { file: "main.c", language: "C" }), "");
 });
 
-import { SUMMARY_KEEP, SUMMARY_PREFIX, applySummary, cleanSummary, summaryInput, summaryPlan } from "../src/chat-tabs.ts";
+import { estimateTokens, SUMMARY_KEEP, SUMMARY_PREFIX, applySummary, cleanSummary, summaryInput, summaryPlan } from "../src/chat-tabs.ts";
 
 test("a long chat is summarized once its older turns pass the limit, and the summary stands in their place", () => {
   const base = [{ role: "system", content: "prompt" }, { role: "system", content: "editor" }];
@@ -142,9 +142,10 @@ test("a long chat is summarized once its older turns pass the limit, and the sum
   const turns = Array.from({ length: 10 }, (_, i) => turn(i, 1000));
   const h = base.concat(turns);
   assert.equal(summaryPlan(h, 2, 0), null, "off");
+  assert.equal(summaryPlan(h, 2, 2000), null, "6 older turns of about 250 tokens are 1500, under 2000");
   assert.equal(summaryPlan(h.slice(0, 2 + SUMMARY_KEEP), 2, 100), null, "nothing older than the last turns");
-  assert.equal(summaryPlan(base.concat(Array.from({ length: 10 }, (_, i) => turn(i, 10))), 2, 6000), null, "short");
-  const plan = summaryPlan(h, 2, 6000)!;
+  assert.equal(summaryPlan(base.concat(Array.from({ length: 10 }, (_, i) => turn(i, 10))), 2, 1000), null, "short");
+  const plan = summaryPlan(h, 2, 1000)!; // 6 older turns of about 250 tokens
   assert.equal(plan.older.length, 6);
   assert.equal(plan.drop, 6);
   const next = applySummary(h, 2, plan, "The user builds a shop site.");
@@ -153,7 +154,7 @@ test("a long chat is summarized once its older turns pass the limit, and the sum
   assert.equal(next[3].content, h[8].content);
   // a second time: the old summary goes in, and is replaced
   const more = next.concat(Array.from({ length: 8 }, (_, i) => turn(i + 10, 1000)));
-  const plan2 = summaryPlan(more, 2, 6000)!;
+  const plan2 = summaryPlan(more, 2, 1000)!;
   assert.equal(plan2.prior, "The user builds a shop site.");
   assert.equal(plan2.drop, 1 + 8);
   assert.match(summaryInput(plan2), /^Summary so far: The user builds a shop site\.\n\nTurns to add:\nUser: t6 /);
@@ -180,4 +181,10 @@ test("a saved summary comes back: the chat restores to it, and the turns after i
   assert.equal(h[0].content, SUMMARY_PREFIX + "Summary text of the first two.");
   assert.deepEqual(h.slice(1).map((m) => m.content.replace("[user-u1] ", "")), ["m2", "m3", "m4", "m5", "m6"]);
   assert.equal(toHistory(r.messages, "u1").length, 7, "without a summary it is the whole chat");
+});
+
+test("tokens are four characters each", () => {
+  assert.equal(estimateTokens(""), 0);
+  assert.equal(estimateTokens("abcd"), 1);
+  assert.equal(estimateTokens("abcde"), 2);
 });
