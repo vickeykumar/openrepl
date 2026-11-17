@@ -194,7 +194,7 @@ test("the Apps button is on the terminal's header; the floating Genie button is 
   await page.evaluate(() => window.ToggleFunction());
   await expect(page.locator("body")).toHaveClass(/ide-maximized/);
   await expect(page.locator(".genie-fab")).toBeHidden();
-  await page.keyboard.press("Escape");
+  await page.evaluate(() => window.ToggleFunction()); // restore (the Escape key needs the focus in the page)
   await expect(page.locator("body")).not.toHaveClass(/ide-maximized/);
   await expect(page.locator(".genie-fab")).toBeVisible();
 });
