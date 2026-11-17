@@ -52,7 +52,7 @@ func TestDefaultCatalogueIsSound(t *testing.T) {
 			seen[r] = true
 		}
 	}
-	for _, r := range []string{"python", "ipython3", "python2.7", "c", "cpp", "bash", "go", "node", "html"} {
+	for _, r := range []string{"python", "ipython3", "c", "cpp", "bash", "go", "node", "html"} {
 		if !seen[r] {
 			t.Errorf("no entry for the REPL %s", r)
 		}
@@ -356,7 +356,7 @@ func TestAnAppIsSolvedAgainstTheRuntimesOfTheReplsItWorksWith(t *testing.T) {
 		}
 		return nil
 	}}
-	for name, want := range map[string]string{"benchmark": `"libstdcxx-ng" = "<13"`, "perl-try-tiny": `"perl" = "5.34.*"`, "tcllib": `"tcl" = "8.6.*"`} {
+	for name, want := range map[string]string{"benchmark": `"libstdcxx-ng" = "<13"`, "perl-json-maybexs": `"perl" = "5.34.*"`} {
 		m, err := p.Manifest(name, "", KindTool)
 		if err != nil || !strings.Contains(m, want) {
 			t.Errorf("%s: %v\n%s", name, err, m)
@@ -481,7 +481,6 @@ func TestUseLinesAndModulesOfTheCatalogue(t *testing.T) {
 		"go:cobra":         {"go get github.com/spf13/cobra", "github.com/spf13/cobra"},
 		"jar:gson":         {"import com.google.gson.Gson;", "com.google.gson"},
 		"crate:serde_json": {":dep serde_json = \"*\"", "serde_json"},
-		"py27-six":         {"python2.7 -c \"import six\"", "six"},
 	} {
 		e, ok := byID[id]
 		if !ok {

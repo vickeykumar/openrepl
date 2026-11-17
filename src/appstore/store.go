@@ -367,7 +367,7 @@ func (s Store) Homes() []string {
 // "npm:x" a Node library, the rest are Python libraries. The CI installs every
 // one of them for real (realinstall_test.go), so a name that conda-forge cannot solve with the image's Python is found there.
 var DefaultSafeList = []string{"flask", "requests", "numpy", "pandas", "scipy", "matplotlib", "pillow", "beautifulsoup4", "lxml",
-	"pyyaml", "jinja2", "click", "sqlalchemy", "pytest", "tool:jq", "npm:express", "npm:lodash", "npm:axios", "npm:moment"}
+	"pyyaml", "jinja2", "click", "sqlalchemy", "pytest", "tool:jq", "npm:express", "npm:lodash", "npm:axios", "npm:dayjs"}
 
 // BundleSize is the size a finished bundle said it had when it was made (its marker), 0 for one that is not there. It is cheap: the
 // files are not walked.

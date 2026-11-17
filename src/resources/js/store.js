@@ -107,7 +107,7 @@
     if (S.builtins.length) { var mine = side.lastChild; mine.appendChild(el("small", "store__builtincount", "+ " + S.builtins.length + " built in")); }
     link("My requests", "#requests", counts.req, r.name === "requests");
     side.appendChild(el("h2", "", "Kinds"));
-    [["lib", "Python libraries"], ["py27", "Python 2.7 libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["gomod", "Go modules"], ["jar", "Java libraries"], ["crate", "Rust crates"], ["browser", "Browser libraries and plugins"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
+    [["lib", "Python libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["gomod", "Go modules"], ["jar", "Java libraries"], ["crate", "Rust crates"], ["browser", "Browser libraries and plugins"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
       link(k[1], "#kind/" + k[0], 0, r.name === "kind" && r.arg === k[0]);
     });
     if (S.admin) {
@@ -235,7 +235,6 @@
   }
 
   var INTRO = {
-    py27: "Libraries for the Python 2.7 REPL, from conda-forge, in an environment of their own. Only a Python 2.7 terminal sees them: in bash, run PYTHONPATH=$OPENREPL_PY27PATH python2.7.",
     gomod: "Go modules, fetched by the server from the Go module proxy with their checksums checked, and used with no internet. The version is the newest that builds with this server's Go. Use go run; a Go REPL cannot import them.",
     jar: "Java libraries (jars and what they need) from Maven Central, checksums checked, on the class path of javac, java and jshell. The version is the newest this server's Java can load.",
     crate: "Rust crates, fetched by the server from crates.io with their checksums checked. In evcxr use :dep name = \"version\". The version is the newest that builds with this server's Rust.",
@@ -277,7 +276,7 @@
     if (kind !== "plugin" && kind !== "lang") wrap.appendChild(filters(kind));
     var nb = noteBox(); if (nb) wrap.appendChild(nb);
     var q = S.q.trim().toLowerCase();
-    var list = S.views.filter(function (v) { return matches(v, q) && chipOk(v) && filterOk(v) && (!kind || (v.kind || "lib") === kind); });
+    var list = S.views.filter(function (v) { return matches(v, q) && chipOk(v) && filterOk(v) && (!kind || (v.kind || "lib") === kind || (kind === "lib" && v.kind === "py27")); });
     if (kind === "browser") return viewBrowser(wrap, q);
     var grid = el("div", "store__grid");
     list.forEach(function (v) { grid.appendChild(card(v)); });

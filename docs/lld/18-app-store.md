@@ -267,3 +267,8 @@ Worker nodes install the exact version the gateway chose. Proven with real downl
 - **Scoped names**: `@scope/name` is valid; the app name in the store is `EncodeNpmName` (`@scope__name`), the npm call and the `node_modules` path use `NpmName`/`Source()`.
 - **Optional dependencies** are installed (no `--omit=optional`): native binaries of esbuild, sharp and the like are optional dependencies. Sizes measured earlier with the flag may be a little low.
 - **Go and Cargo checks** keep their build cache in the store (`<store>/gocache`, `<store>/cargo-target`), emptied past 1200 MB / 1500 MB (`capCache`); Go builds with `-p 1 -ldflags "-s -w"` and `GOMAXPROCS=2`, Cargo with `CARGO_BUILD_JOBS=1`. The first check compiles the standard library (or the shared crates) once; the next ones reuse it, and the memory use is lower.
+
+## 15. The catalogue was cut (2026-11-17)
+
+183 entries became 134 (nano added). Removed: the huge ones (pytorch-cpu, clang-tools, seaborn-base, statsmodels, numba, pyarrow, polars), the SQLite CLIs (litecli, sqlite-utils, libspatialite), the Python 2.7 libraries (the Python 2.7 REPL has no catalogue entry now), the language servers, vim (neovim stays), four of the Perl modules, tcllib, ccache, and duplicate or niche libraries (date libraries, logging and router twins, sharp, better-sqlite3, jsdom, and small browser libraries). duckdb, valgrind and delve stay. nano is new; tmux and htop are `popular`. The default safe list uses `npm:dayjs` instead of `npm:moment`.
+The store has no separate Python 2.7 page any more: an installed Python 2.7 library is listed under Python libraries (tagged python 2.7), and an old `#kind/py27` link opens that page.

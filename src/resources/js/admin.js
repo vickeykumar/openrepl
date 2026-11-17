@@ -2994,6 +2994,24 @@
             h('button', { class: 'btn danger', type: 'button', text: 'Remove', title: 'Take it off the list (an installed app stays installed)', onclick: function () { ask({ title: 'Remove ' + e.name + ' from the catalogue?', body: 'It is no longer listed. An installed copy stays installed until you remove it under Installed.', confirm: 'Remove', danger: true }).then(function (ok) { if (ok) catPost({ action: 'remove', id: e.id }, e.name + ' was taken off the list.'); }); } }));
         } }
       ], list, { empty: 'No entry matches.' }));
+      // retired entries: cut from the default catalogue, but a record in the database still lists them (LLD 18, section 15)
+      if ((cat.retired || []).length) {
+        out.appendChild(h('h3', { text: 'Retired apps (' + cat.retired.length + ')' }));
+        out.appendChild(h('p', { class: 'sub', text: 'These were cut from the catalogue, but this server still has a record of each, so they are still listed. Pick the ones to remove from the list. An installed copy stays installed (remove it under Installed).' }));
+        var picks = {}, rbox = h('div', { class: 'card', 'data-retired': '1' });
+        cat.retired.forEach(function (r) {
+          var cb = h('input', { type: 'checkbox', 'aria-label': 'Pick ' + r.name, onchange: function (ev) { picks[r.id] = ev.target.checked; } });
+          rbox.appendChild(h('label', { style: 'display:block;margin:2px 0' }, cb, ' ' + r.name + ' ', h('span', { class: 'sub', text: (NAMES[r.kind] || r.kind) + (r.installed ? ' \u00b7 installed' : '') })));
+        });
+        out.appendChild(rbox);
+        out.appendChild(h('div', { class: 'toolbar' },
+          h('button', { class: 'btn', type: 'button', text: 'Select all', onclick: function () { rbox.querySelectorAll('input').forEach(function (c, i) { c.checked = true; picks[cat.retired[i].id] = true; }); } }),
+          h('button', { class: 'btn danger', type: 'button', text: 'Remove selected', onclick: function () {
+            var ids = Object.keys(picks).filter(function (k) { return picks[k]; });
+            if (!ids.length) { toast('Pick at least one app.'); return; }
+            ask({ title: 'Remove ' + ids.length + ' retired app' + (ids.length === 1 ? '' : 's') + ' from the list?', body: 'Their records are deleted from the database. Installed copies stay installed.', confirm: 'Remove', danger: true }).then(function (ok) { if (ok) catPost({ action: 'purge-retired', names: ids }, ids.length + ' removed from the list.'); });
+          } })));
+      }
       // the disk of every server
       out.appendChild(h('h3', { text: 'Disk of the store, on every server' }));
       out.appendChild(h('p', { class: 'sub', text: 'Physical size (shared files count once). An install is refused when it would leave less than the reserve.' }));

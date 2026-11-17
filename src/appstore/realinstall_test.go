@@ -561,7 +561,10 @@ func TestTheMirrorsInstallAndAreUsedOffline(t *testing.T) {
 			if bin == "" {
 				t.Skip("pixi is not here")
 			}
-			e := byID["py27-six"]
+			e, ok := byID["py27-six"]
+			if !ok {
+				t.Skip("the Python 2.7 entries are not in the catalogue")
+			}
 			svc := New(Config{Store: st, KV: newKV(), Installer: Multi{Conda: Pixi{Bin: bin, Dir: st.Dir, Python: PythonOf("python3")}}, Safe: func() []string { return nil }})
 			if err := svc.InstallEntry("ci", e); err != nil {
 				t.Fatal(err)
