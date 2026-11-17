@@ -1863,3 +1863,30 @@ func TestAnAdminRemovedEntryIsListedAndCanComeBack(t *testing.T) {
 		t.Error("numpy did not come back")
 	}
 }
+
+func TestAUserReadsOnlyCleanLinesOfAnInstall(t *testing.T) {
+	in := []LogLine{
+		{T: 1, Step: "env", Level: "info", Text: "openrepl-pi-1 · linux-aarch64 · 1.9 GB RAM free"},
+		{T: 2, Step: "install", Level: "info", Text: "npm: installing eslint 9.2.0"},
+		{T: 3, Step: "command", Level: "info", Text: "npm install --prefix /store/apps/eslint-9.2.0"},
+		{T: 4, Step: "output", Level: "output", Text: "npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fjs 412ms"},
+		{T: 5, Step: "output", Level: "output", Text: "npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fjs 412ms"},
+		{T: 6, Step: "output", Level: "output", Text: "go: downloading github.com/spf13/cobra v1.10.2"},
+		{T: 7, Step: "output", Level: "output", Text: "token=abc123 secret thing in /home/user/.npmrc"},
+		{T: 8, Step: "output", Level: "output", Text: "added 98 packages in 3m"},
+		{T: 9, Step: "install", Level: "error", Text: "npm: the install failed after 5s: ENOENT /store/x"},
+		{T: 10, Step: "check", Level: "warn", Text: "it does not work after the trim (/store/apps/x)"},
+		{T: 11, Step: "check", Level: "info", Text: "it works (2s)"},
+		{T: 12, Step: "install", Level: "info", Text: "fetching https://example.com/x"},
+		{T: 13, Step: "output", Level: "output", Text: "Get:1 http://archive.ubuntu.com/ubuntu jammy/main amd64 tmux amd64 3.2a-4 [100 kB]"},
+		{T: 14, Step: "output", Level: "output", Text: "   Compiling serde v1.0.200"},
+	}
+	var got []string
+	for _, l := range UserLines(in) {
+		got = append(got, l.Text)
+	}
+	want := []string{"npm: installing eslint 9.2.0", "fetched @eslint/js", "fetched github.com/spf13/cobra v1.10.2", "added 98 packages", "it works (2s)", "fetched tmux 3.2a-4", "building serde 1.0.200"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}

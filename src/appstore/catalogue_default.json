@@ -5704,6 +5704,119 @@
     },
     "at": "2026-11-16"
    }
+  },
+  {
+   "id": "py27-numpy",
+   "name": "numpy (Python 2.7)",
+   "summary": "Arrays (version 1.16).",
+   "kind": "lib27",
+   "repls": [
+    "python2.7"
+   ],
+   "level": "optional",
+   "manager": "pixi",
+   "package": "numpy",
+   "install": "approval",
+   "category": "Legacy",
+   "instMB": 152,
+   "docs": "https://numpy.org/doc/1.16/",
+   "licence": "BSD-3-Clause",
+   "check": "python-import",
+   "checkArg": "numpy",
+   "labels": [
+    "legacy (Python 2.7)"
+   ],
+   "python": "2.7"
+  },
+  {
+   "id": "py27-requests",
+   "name": "requests (Python 2.7)",
+   "summary": "HTTP client (version 2.25).",
+   "kind": "lib27",
+   "repls": [
+    "python2.7"
+   ],
+   "level": "optional",
+   "manager": "pixi",
+   "package": "requests",
+   "install": "approval",
+   "category": "Legacy",
+   "instMB": 109,
+   "docs": "https://requests.readthedocs.io/en/v2.25.1/",
+   "licence": "Apache-2.0",
+   "check": "python-import",
+   "checkArg": "requests",
+   "labels": [
+    "legacy (Python 2.7)"
+   ],
+   "python": "2.7",
+   "options": [
+    {
+     "manager": "pixi",
+     "version": "2.25.1",
+     "size": {
+      "linux-64": 106.3,
+      "linux-aarch64": 108.2
+     },
+     "before": {
+      "linux-64": 106.3,
+      "linux-aarch64": 108.2
+     }
+    }
+   ],
+   "minimal": {
+    "manager": "pixi",
+    "size": {
+     "linux-64": 106.3,
+     "linux-aarch64": 108.2
+    },
+    "at": "2026-11-16"
+   }
+  },
+  {
+   "id": "py27-six",
+   "name": "six (Python 2.7)",
+   "summary": "Python 2 and 3 compatibility helpers.",
+   "kind": "lib27",
+   "repls": [
+    "python2.7"
+   ],
+   "level": "optional",
+   "manager": "pixi",
+   "package": "six",
+   "install": "approval",
+   "category": "Legacy",
+   "instMB": 101,
+   "docs": "https://six.readthedocs.io/",
+   "licence": "MIT",
+   "check": "python-import",
+   "checkArg": "six",
+   "labels": [
+    "legacy (Python 2.7)"
+   ],
+   "python": "2.7",
+   "options": [
+    {
+     "manager": "pixi",
+     "version": "1.16.0",
+     "size": {
+      "linux-64": 98.5,
+      "linux-aarch64": 100.5
+     },
+     "before": {
+      "linux-64": 98.5,
+      "linux-aarch64": 100.5
+     }
+    }
+   ],
+   "minimal": {
+    "manager": "pixi",
+    "size": {
+     "linux-64": 98.5,
+     "linux-aarch64": 100.5
+    },
+    "at": "2026-11-16"
+   }
   }
  ],
  "packs": [

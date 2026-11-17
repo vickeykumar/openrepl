@@ -1787,12 +1787,13 @@ function isOpen(): boolean {
   return containerElement.isConnected;
 }
 
-function open(e?: Event) {
+function open(e?: Event, opts?: { pin?: boolean }) {
   if (isOpen()) {
     // already open: just put the cursor in the box
     (document.getElementById("chat-widget__input") as HTMLTextAreaElement | null)?.focus();
     return;
   }
+  if (opts && opts.pin && canDock() && !pinnedPref) setPinned(true);
   if (config.closeOnOutsideClick) {
     document.body.appendChild(optionalBackdrop);
   }

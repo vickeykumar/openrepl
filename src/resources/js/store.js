@@ -107,7 +107,7 @@
     if (S.builtins.length) { var mine = side.lastChild; mine.appendChild(el("small", "store__builtincount", "+ " + S.builtins.length + " built in")); }
     link("My requests", "#requests", counts.req, r.name === "requests");
     side.appendChild(el("h2", "", "Kinds"));
-    [["lib", "Python libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["gomod", "Go modules"], ["jar", "Java libraries"], ["crate", "Rust crates"], ["browser", "Browser libraries and plugins"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
+    [["lib", "Python libraries"], ["py27", "Python 2.7 libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["gomod", "Go modules"], ["jar", "Java libraries"], ["crate", "Rust crates"], ["browser", "Browser libraries and plugins"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
       link(k[1], "#kind/" + k[0], 0, r.name === "kind" && r.arg === k[0]);
     });
     if (S.admin) {
@@ -160,7 +160,8 @@
     } else if (v.state === "installing") btn("Details", function () { progress(v.name); });
     else if (v.state === "installed") {
       var checking = S.checking === v.id;
-      var sw = el("button", "sswitch" + (v.on ? " is-on" : ""), checking ? "Checking…" : v.on ? "On" : "Off");
+      var sw = el("button", "sswitch" + (v.on ? " is-on" : ""), checking ? "" : v.on ? "On" : "Off");
+      if (checking) { sw.appendChild(spin(14)); sw.appendChild(document.createTextNode(" Checking…")); }
       sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", v.on ? "true" : "false");
       if (checking) { sw.disabled = true; sw.title = "Checking that it works in your terminal environment"; }
       sw.setAttribute("aria-label", "Use " + v.name + " in my terminals");
@@ -213,7 +214,7 @@
     c.appendChild(a);
     var info = S.info[name];
     if (!info) loadInfo(name);
-    c.appendChild(el("p", "sapp__sum", !info || info.loading ? "Looking it up on conda-forge…" : info.error ? info.error : (info.summary || "No description.")));
+    c.appendChild(!info || info.loading ? loadingLine("sapp__sum", "Looking it up on conda-forge…") : el("p", "sapp__sum", info.error ? info.error : (info.summary || "No description.")));
     var row = el("div", "sapp__row");
     row.appendChild(el("span", "stag", "conda-forge"));
     if (info && info.version) row.appendChild(el("span", "sapp__ver", info.version));
@@ -235,6 +236,7 @@
   }
 
   var INTRO = {
+    py27: "Libraries for the Python 2.7 REPL, from conda-forge, in an environment of their own. Only a Python 2.7 terminal sees them: in bash, run PYTHONPATH=$OPENREPL_PY27PATH python2.7.",
     gomod: "Go modules, fetched by the server from the Go module proxy with their checksums checked, and used with no internet. The version is the newest that builds with this server's Go. Use go run; a Go REPL cannot import them.",
     jar: "Java libraries (jars and what they need) from Maven Central, checksums checked, on the class path of javac, java and jshell. The version is the newest this server's Java can load.",
     crate: "Rust crates, fetched by the server from crates.io with their checksums checked. In evcxr use :dep name = \"version\". The version is the newest that builds with this server's Rust.",
@@ -276,7 +278,7 @@
     if (kind !== "plugin" && kind !== "lang") wrap.appendChild(filters(kind));
     var nb = noteBox(); if (nb) wrap.appendChild(nb);
     var q = S.q.trim().toLowerCase();
-    var list = S.views.filter(function (v) { return matches(v, q) && chipOk(v) && filterOk(v) && (!kind || (v.kind || "lib") === kind || (kind === "lib" && v.kind === "py27")); });
+    var list = S.views.filter(function (v) { return matches(v, q) && chipOk(v) && filterOk(v) && (!kind || (v.kind || "lib") === kind); });
     if (kind === "browser") return viewBrowser(wrap, q);
     var grid = el("div", "store__grid");
     list.forEach(function (v) { grid.appendChild(card(v)); });
@@ -289,8 +291,8 @@
       list.forEach(function (v) { have[v.name + "/" + (v.kind || "lib")] = true; });
       var box = el("div", "store__hits");
       box.appendChild(el("h3", "store__h3", "Found for \u201c" + q + "\u201d" + (kind === "node" ? " on npm" : kind === "plugin" ? "" : kind ? " on conda-forge" : " on conda-forge and npm")));
-      if (!h) { box.appendChild(el("p", "store__legend", "Searching\u2026")); searchTimer = 0; }
-      else if (h.loading) box.appendChild(el("p", "store__legend", "Searching\u2026 (the first search of conda-forge can take a minute)"));
+      if (!h) { box.appendChild(loadingLine("store__legend", "Searching\u2026")); searchTimer = 0; }
+      else if (h.loading) box.appendChild(loadingLine("store__legend", "Searching\u2026 (the first search of conda-forge can take a minute)"));
       else {
         if (h.error) box.appendChild(el("p", "store__legend", h.error));
         var g2 = el("div", "store__grid"), n = 0;
@@ -356,7 +358,7 @@
     loadCat(); loadPP();
     var grid = el("div", "store__grid");
     var entries = (S.cat && S.cat.entries) || [];
-    if (S.cat && S.cat.loading) wrap.appendChild(el("p", "store__legend", "Loading…"));
+    if (S.cat && S.cat.loading) wrap.appendChild(loadingLine("store__legend", "Loading…"));
     entries.filter(function (e) { return !q || e.name.toLowerCase().indexOf(q) >= 0 || (e.summary || "").toLowerCase().indexOf(q) >= 0; })
       .filter(function (e) { return (!S.level || e.level === S.level) && (!S.repl || (e.repls || []).indexOf(S.repl) >= 0 || e.kind === "plugin"); })
       .forEach(function (e) {
@@ -486,7 +488,7 @@
     w.appendChild(el("h2", "", "apt packages"));
     w.appendChild(el("p", "store__legend", "Debian packages an admin approved. They are installed on every server for every user, with no switch."));
     var box = el("div", "store__rows");
-    box.appendChild(el("p", "store__legend", "Loading…"));
+    box.appendChild(loadingLine("store__legend", "Loading…"));
     w.appendChild(box);
     api("/admin/store", null, true).then(function (d) {
       box.textContent = "";
@@ -527,7 +529,7 @@
     var w = el("div", "store__rows");
     var nb = noteBox(); if (nb) w.appendChild(nb);
     var d = S.adm;
-    if (!d) { w.appendChild(el("p", "store__legend", "Loading…")); return w; }
+    if (!d) { w.appendChild(loadingLine("store__legend", "Loading…")); return w; }
     var dash = el("a", "sbtn", "Open the full admin dashboard"); dash.href = "./admin#store";
     if (arg === "requests") {
       w.appendChild(el("h2", "", "Requests"));
@@ -695,7 +697,8 @@
     var nb = noteBox(); if (nb) w.appendChild(nb);
     var info = S.info[name];
     if (!info && !v.summary && (v.kind === "lib" || v.kind === "tool" || !v.kind)) loadInfo(name);
-    w.appendChild(el("p", "store__legend", v.summary ? v.summary : !info || info.loading ? (v.kind === "node" || v.kind === "lang" ? "" : "Looking it up…") : info.error ? info.error : (info.summary || "No description.")));
+    var legendText = v.summary ? v.summary : !info || info.loading ? (v.kind === "node" || v.kind === "lang" ? "" : "Looking it up…") : info.error ? info.error : (info.summary || "No description.");
+    w.appendChild(legendText === "Looking it up…" ? loadingLine("store__legend", legendText) : el("p", "store__legend", legendText));
     loadSize(v);
     var sz = S.sizes[(v.kind || "lib") + ":" + name];
     var kv = el("div", "store__kv");
@@ -732,7 +735,7 @@
     if (v.state === "installing") { var d = el("button", "sbtn", "See the progress"); d.type = "button"; d.addEventListener("click", function () { progress(name); }); actions.appendChild(d); }
     if (v.state === "failed") {
       var t2 = el("button", "sbtn is-primary", "Try again"); t2.type = "button"; t2.addEventListener("click", function () { if (v.safe) install(v); else if (S.admin) adminInstall(v); else requestDialog(v); }); actions.appendChild(t2);
-      var d2 = el("button", "sbtn", "See why it failed"); d2.type = "button"; d2.addEventListener("click", function () { failure(name); }); actions.appendChild(d2);
+      var d2 = el("button", "sbtn", "See why it failed"); d2.type = "button"; d2.addEventListener("click", function () { pollDetails(name, true).then(function () { failure(name); }); }); actions.appendChild(d2);
     }
     w.appendChild(actions);
     if (v.state === "installed") {
@@ -818,6 +821,56 @@
     act("install", { name: v.name, kind: v.kind || "lib" }).then(function () { progress(v.name); }, function () {});
   }
 
+  // The Apps box icon, turning: the loading mark of the store (CSS only, still for reduced motion). The words stay beside it.
+  function spin(px) {
+    var b = el("span", "boxspin");
+    b.style.setProperty("--s", px + "px");
+    b.setAttribute("aria-hidden", "true");
+    b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z M3 8l9 5 9-5 M12 13v8"/></svg>';
+    return b;
+  }
+  function loadingLine(cls, text, px) {
+    var p = el("p", cls + " is-loading");
+    p.setAttribute("role", "status");
+    p.appendChild(spin(px || 18));
+    p.appendChild(el("span", "", text));
+    return p;
+  }
+
+  // Details: the clean lines of an install that runs (GET /store/api/log). Closed unless the user opens them; nothing is fetched while closed.
+  var det = { open: false, app: "", next: 0, lines: [], servers: null };
+  function clock(ms) { var d = new Date(ms); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2); }
+  function pollDetails(name, all) {
+    if (det.app !== name) { det.app = name; det.next = 0; det.lines = []; det.servers = null; }
+    if (!det.open && !all) return Promise.resolve();
+    return store("log?name=" + encodeURIComponent(name) + "&from=" + det.next).then(function (r) {
+      det.lines = det.lines.concat(r.lines || []).slice(-200);
+      det.next = r.next || det.next;
+      det.servers = r.servers || null;
+    }, function () {});
+  }
+  function serversLine() {
+    var sv = det.servers;
+    if (!sv || !sv.total) return "";
+    return sv.failed ? "Other servers: " + sv.ready + " of " + sv.total + " ready, " + sv.failed + (sv.failed === 1 ? " server" : " servers") + " could not copy it" : "Copying to the other servers: " + sv.ready + " of " + sv.total + " ready";
+  }
+  function detailsText(last) {
+    var rows = det.lines.slice(last ? -last : 0).map(function (l) { return clock(l.t) + " " + l.x; });
+    var sl = serversLine();
+    if (sl) rows.push(sl);
+    return rows.join("\n");
+  }
+  function detailsBox(d, name, last) {
+    var dtext = detailsText(last);
+    var pre = el("pre", "store__code store-dialog__log", dtext);
+    if (!dtext) { pre.appendChild(spin(14)); pre.appendChild(document.createTextNode(" Waiting for the first lines…")); }
+    d.appendChild(pre);
+    pre.scrollTop = pre.scrollHeight;
+    var cp = el("button", "sbtn", "Copy"); cp.type = "button";
+    cp.addEventListener("click", function () { var t = detailsText(0); if (navigator.clipboard) navigator.clipboard.writeText(name + "\n" + t).then(function () { cp.textContent = "Copied"; }, function () {}); });
+    return cp;
+  }
+
   // board 4: installing, with its steps; a failure and a success end it
   function progress(name) {
     var timer = 0;
@@ -826,9 +879,11 @@
     function draw() {
       var v = find(name);
       if (!v) { closeModal(); return; }
-      if (v.state === "failed") { stop(); onClose = null; failure(name); return; }
+      if (v.state === "failed") { stop(); onClose = null; pollDetails(name, true).then(function () { failure(name); }); return; }
+      var finished = false;
       modal(function (d) {
         if (v.state === "installed") {
+          finished = true;
           d.appendChild(heading(name + " is installed"));
           d.appendChild(el("p", "", "It is installed for everyone. Turn it on to use it in your terminals."));
           d.appendChild(dialogButtons([
@@ -837,7 +892,9 @@
           ]));
           return;
         }
-        d.appendChild(heading("Installing " + name + (v.version ? " " + v.version : "")));
+        var ih = heading("Installing " + name + (v.version ? " " + v.version : ""));
+        ih.insertBefore(spin(24), ih.firstChild);
+        d.appendChild(ih);
         var bar = el("div", "store-dialog__bar"); var i = el("i"); i.style.width = (v.pct || 5) + "%"; bar.appendChild(i); d.appendChild(bar);
         var ul = el("ul", "store-dialog__steps");
         (v.steps && v.steps.length ? v.steps : [{ text: v.step || "Starting", state: "current" }]).forEach(function (s) {
@@ -846,10 +903,16 @@
           ul.appendChild(li);
         });
         d.appendChild(ul);
-        d.appendChild(dialogButtons([{ label: "Hide, keep going", run: function () { stop(); onClose = null; closeModal(); } }]));
+        var cp = null;
+        if (det.open && det.app === name) cp = detailsBox(d, name, 0);
+        var btns = dialogButtons([{ label: "Hide, keep going", run: function () { stop(); onClose = null; closeModal(); } },
+          { label: det.open ? "Hide details" : "Show details", run: function () { det.open = !det.open; pollDetails(name).then(draw); } }]);
+        if (cp) btns.appendChild(cp);
+        d.appendChild(btns);
       });
+      if (finished) { onClose = null; return; } // "is installed" is shown once: the dialog is not drawn again, whatever the user chose
       onClose = stop;
-      timer = setTimeout(function () { load().then(function () { render(); draw(); }); }, 1200);
+      timer = setTimeout(function () { Promise.all([load(), pollDetails(name)]).then(function () { render(); draw(); }); }, 1200);
     }
     draw();
   }
@@ -861,12 +924,15 @@
       d.appendChild(heading(name + " could not be installed"));
       d.appendChild(el("p", "", (v.err ? v.err + ". " : "") + "Nothing was changed for anyone."));
       if (v.log) d.appendChild(el("pre", "store__code", v.log));
+      var cpf = det.app === name && det.lines.length ? detailsBox(d, name, 12) : null;
       var items = [];
       if (v.reported) items.push({ label: v.mine ? "You told the admin" : "Reported, I have this too", run: function () { if (!v.mine) { closeModal(); act("report", { name: name, note: "" }, "Added: the admin will see that more than one person is waiting."); } } });
       else items.push({ label: "Report to admin", primary: true, run: function () { reportDialog(v); } });
       items.push({ label: "Try again", run: function () { closeModal(); install(v); } });
       items.push({ label: "Close", run: closeModal });
-      d.appendChild(dialogButtons(items));
+      var fb = dialogButtons(items);
+      if (cpf) fb.appendChild(cpf);
+      d.appendChild(fb);
     });
   }
 
@@ -965,7 +1031,7 @@
     main.textContent = "";
     if (S.error && S.error.code === "signin") { main.appendChild(guestCard()); return; }
     if (S.error) { main.appendChild(el("p", "store__loading", S.error.message)); return; }
-    if (!S.loaded) { main.appendChild(el("p", "store__loading", "Loading…")); return; }
+    if (!S.loaded) { main.appendChild(loadingLine("store__loading", "Loading the store…", 40)); return; }
     var node;
     switch (r.name) {
       case "mine": node = viewMine(); break;

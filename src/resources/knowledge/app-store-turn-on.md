@@ -4,7 +4,7 @@ keywords: turn on app, switch on app, enable app, activate app, my apps, install
 link: /store
 ---
 Steps for a signed-in user (guests are asked to sign in first):
-1. Open the Apps button above the editor, or the full page at /store. Search for the app or pick it from your language's list.
+1. Open the Apps button on the terminal's header, or the full page at /store. Search for the app or pick it from your language's list.
 2. Press Install. Apps marked safe install at once. For the rest press Request; an admin decides and you are told. An install takes a minute or two, and the app's page shows its size.
 3. When it says Installed, turn its switch On under My apps. It is checked first; if the check fails you can Report to admin.
 4. Open a NEW terminal tab: it has the app. A terminal that was open before keeps what it had; run the line shown under My apps there to add it.

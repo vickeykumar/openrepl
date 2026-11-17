@@ -186,3 +186,39 @@ test("the quick dialog lists the built-in apps in My apps, tagged, always on, wi
   await expect(page.locator('[data-builtin="Perl"]')).toBeVisible();
   await expect(page.locator('[data-app="numpy"]')).toBeVisible();
 });
+
+test("the Apps button is on the terminal's header; the floating Genie button is not drawn while maximized", async ({ page }) => {
+  await ready(page);
+  await expect(page.locator("#terminal-tabs #appstore-button")).toBeVisible();
+  await expect(page.locator(".genie-fab")).toBeVisible();
+  await page.evaluate(() => window.ToggleFunction());
+  await expect(page.locator("body")).toHaveClass(/ide-maximized/);
+  await expect(page.locator(".genie-fab")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("body")).not.toHaveClass(/ide-maximized/);
+  await expect(page.locator(".genie-fab")).toBeVisible();
+});
+
+test("Details of an install that runs show the clean lines and how far the other servers are", async ({ page }) => {
+  await ready(page);
+  let asked = 0;
+  await page.route("**/store/api/**", async (route) => {
+    const what = new URL(route.request().url()).pathname.split("/store/api/")[1];
+    let body = { ok: true, views: [{ name: "cobra", kind: "gomod", state: "installing", step: "Downloading and linking", safe: true }], on: [], installer: "fake" };
+    if (what === "log") {
+      asked++;
+      body = { lines: [{ t: 1700000000000, x: "go: fetched github.com/spf13/pflag v1.0.5" }], next: 10, running: true, servers: { total: 3, ready: 2, failed: 0 } };
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+  });
+  await page.evaluate(() => document.body.classList.add("is-signed-in"));
+  await page.locator("#appstore-button").click();
+  const card = page.locator('[data-app="cobra"]');
+  await expect(card).toContainText("Downloading and linking");
+  expect(asked).toBe(0); // closed: nothing is fetched
+  await card.getByRole("button", { name: "Show details" }).click();
+  await expect(card.locator(".appstore__details")).toContainText("fetched github.com/spf13/pflag v1.0.5");
+  await expect(card.locator(".appstore__details")).toContainText("Copying to the other servers: 2 of 3 ready");
+  await card.getByRole("button", { name: "Hide details" }).click();
+  await expect(card.locator(".appstore__details")).toHaveCount(0);
+});

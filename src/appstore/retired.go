@@ -11,8 +11,7 @@ import (
 var RetiredIDs = map[string]bool{}
 
 func init() {
-	for _, id := range []string{"polars", "seaborn-base", "statsmodels", "pyarrow", "numba", "pytorch-cpu", "py27-six", "py27-requests", "py27-numpy",
-		"clang-tools", "ccache", "vim", "litecli", "sqlite-utils", "gopls", "rust-analyzer", "libspatialite", "tcllib", "perl-text-csv",
+	for _, id := range []string{"polars", "seaborn-base", "statsmodels", "pyarrow", "numba", "pytorch-cpu", "clang-tools", "ccache", "vim", "litecli", "sqlite-utils", "gopls", "rust-analyzer", "libspatialite", "tcllib", "perl-text-csv",
 		"perl-mojolicious", "perl-try-tiny", "perl-path-tiny", "npm:got", "npm:ramda", "npm:immutable", "npm:moment", "npm:date-fns",
 		"npm:papaparse", "npm:jsdom", "npm:sinon", "npm:sharp", "npm:better-sqlite3", "web:water.css", "web:normalize.css", "web:animate.css",
 		"web:lodash", "web:katex", "web:leaflet", "web:matter-js", "web:sortablejs", "web:swiper", "web:marked", "web:mathjs", "go:mux",

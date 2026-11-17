@@ -88,7 +88,8 @@ function showGenieNudge(errorLine) {
     hide();
     var btn = genieAnchor();
     if (window.ChatWidget && btn) {
-      window.ChatWidget.open({ target: btn });
+      // maximized: the floating button is not drawn, and Genie opens pinned beside the IDE, as the app bar button does
+      window.ChatWidget.open({ target: btn }, { pin: document.body.classList.contains("ide-maximized") });
       setTimeout(function () {
         var input = document.getElementById("chat-widget__input");
         if (input) {

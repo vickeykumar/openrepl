@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -358,6 +359,13 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 				n = []appstore.Notice{}
 			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{"notices": n})
+		case "log":
+			from, _ := strconv.ParseInt(r.URL.Query().Get("from"), 10, 64)
+			if from < 0 {
+				from = 0
+			}
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, http.StatusOK, userLogResult(svc, strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name"))), from))
 		case "job":
 			j, ok := svc.Job(r.URL.Query().Get("name"))
 			writeJSON(w, http.StatusOK, map[string]interface{}{"running": ok, "step": j.Step})
