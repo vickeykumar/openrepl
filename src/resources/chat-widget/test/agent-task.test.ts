@@ -179,3 +179,22 @@ test("the chat before a task is the last turns, cut, newest last", () => {
   const many = Array.from({ length: 20 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: "m" + i }));
   assert.equal(chatTurnsText(many, 0).split("\n").length, 1 + 6);
 });
+
+import { ASK_FIRST, factsText, isVagueTask, lastErrorLines } from "../src/agent-task.ts";
+import { SUMMARY_PREFIX as CHAT_SUMMARY_PREFIX } from "../src/chat-tabs.ts";
+
+test("the summary mark is the same in both files, and a task sent after a summary has it first", () => {
+  const h = [{ role: "system", content: "p" }, { role: "system", content: CHAT_SUMMARY_PREFIX + "S." }, { role: "user", content: "[user-a] hello" }];
+  assert.match(chatTurnsText(h, 1), /\nSummary of the earlier chat: S\.\nUser: hello/);
+});
+
+test("the facts of the workspace, the last error and a vague task", () => {
+  assert.equal(lastErrorLines("$ node a.js\nok\nReferenceError: x is not defined\n$ "), "ReferenceError: x is not defined");
+  assert.equal(lastErrorLines("all fine"), "");
+  const t = factsText({ language: "JavaScript", file: "script.js", files: ["index.html", "script.js"], error: "" });
+  assert.match(t, /language JavaScript; open file script\.js; files: index\.html, script\.js\./);
+  assert.match(factsText({ language: "C", file: "", files: null, error: "boom error" }), /open file none \(an unnamed file\); last error in the terminal: boom error/);
+  for (const v of ["try again", "Continue.", "fix it", "ok", ""]) assert.equal(isVagueTask(v), true, v);
+  for (const v of ["make a html css js website for a shop", "add a delete button to the cart"]) assert.equal(isVagueTask(v), false, v);
+  assert.match(ASK_FIRST, /ONE short question/);
+});

@@ -227,10 +227,15 @@ export function changeLine(file: string, d: { added: number; removed: number }):
 
 // ---- the chat before a task ---------------------------------------------------------------
 
+// the start of the summary entry of a long chat (the same text as SUMMARY_PREFIX in chat-tabs.ts: a test checks it; node cannot
+// import one of these files from the other without an extension)
+const SUMMARY_PREFIX = "Summary of the earlier chat: ";
+
 // The last turns of the chat as text for the first message of a task, so that "try again" or "do that" means something:
 // the user's words and Genie's answers, each cut, the newest last. `skip` is the entries at the start of the history that
 // are not turns (the prompts and the editor snapshot). "" when nothing was said before.
 export function chatTurnsText(history: { role: string; content: string }[], skip: number, turns: number = 6, each: number = 700, total: number = 3500): string {
+  const summary = history.slice(skip).find((m) => m.role === "system" && String(m.content).startsWith(SUMMARY_PREFIX));
   const said = history.slice(skip).filter((m) => (m.role === "user" || m.role === "assistant") && String(m.content || "").trim() !== "");
   const lines = said.slice(-turns).map((m) => {
     const text = String(m.content).replace(/^\[user-[^\]]*\]\s*/, "").trim();
@@ -242,5 +247,42 @@ export function chatTurnsText(history: { role: string; content: string }[], skip
     lines.shift();
     out = lines.join("\n");
   }
+  if (summary) out = String(summary.content).trim() + (out ? "\n" + out : "");
   return out === "" ? "" : "Earlier in this chat (for context only; the task is the message above, and the editor and the terminal below are what is open now):\n" + out;
 }
+
+// ---- what is true now, read from the page, and a task that is too vague to act on -----------------------------
+
+// The last lines of the terminal that look like an error (at most 3, each cut), or "".
+export function lastErrorLines(terminal: string): string {
+  const lines = String(terminal || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const hit = lines.filter((l) => /(error|exception|traceback|failed|cannot|undefined|not found|fatal)/i.test(l));
+  return hit.slice(-3).map((l) => (l.length > 160 ? l.slice(0, 160) + "..." : l)).join(" | ");
+}
+
+export interface Facts {
+  language: string;
+  file: string;
+  files: string[] | null; // null: the user has not allowed the agent to use the files
+  error: string;
+}
+
+// "Workspace now: ..." for the first message of a task: what the model would otherwise guess.
+export function factsText(f: Facts): string {
+  const bits = ["language " + (f.language || "unknown"), "open file " + (f.file || "none (an unnamed file)")];
+  if (f.files) bits.push("files: " + (f.files.length ? f.files.slice(0, 40).join(", ") + (f.files.length > 40 ? ", ..." : "") : "none yet"));
+  if (f.error) bits.push("last error in the terminal: " + f.error);
+  return "Workspace now (read just now from the page, so it is true; trust it over your memory): " + bits.join("; ") + ".";
+}
+
+// A request that says too little to act on without the chat before it ("try again", "continue", "fix it").
+export function isVagueTask(task: string): boolean {
+  const t = String(task || "").trim().toLowerCase().replace(/[.!?]+$/, "");
+  if (t === "") return true;
+  if (/^(try again|again|retry|continue|go on|carry on|keep going|do it|do that|fix it|fix that|same|redo|yes|ok|okay|go ahead|finish it)$/.test(t)) return true;
+  return t.split(/\s+/).length <= 2;
+}
+
+export const ASK_FIRST =
+  "Note: this request is too short to act on, and the chat before it does not make it clear what is meant. Do not guess and do not start a new project: " +
+  "ask the user ONE short question in \"say\" about what they want, and set \"done\": true.";

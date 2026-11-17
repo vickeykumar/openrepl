@@ -1124,3 +1124,15 @@ test("built: a task is sent the chat before it, and the note that the editor is 
   assert.match(first, /editor now has main\.c \(C\)/);
   assert.ok(first.indexOf("try again") < first.indexOf("Earlier in this chat"), "the task comes first");
 });
+
+test("built: a task is sent what is true in the workspace, and a request too short to act on is told to ask first", async () => {
+  const t = setup([{ say: "What do you want?", actions: [], done: true }], { terminal: "$ node a.js\nReferenceError: cart is not defined\n$ " });
+  await t.done(t.runner.start("try again"));
+  const first = t.log.requests[0].messages[0].content;
+  assert.match(first, /Workspace now \(read just now from the page/);
+  assert.match(first, /last error in the terminal: ReferenceError: cart is not defined/);
+  assert.match(first, /ask the user ONE short question/);
+  const t2 = setup([{ say: "ok", actions: [], done: true }], {});
+  await t2.done(t2.runner.start("add a delete button to every product in the cart"));
+  assert.ok(!/ONE short question/.test(t2.log.requests[0].messages[0].content), "a clear task is not asked about");
+});

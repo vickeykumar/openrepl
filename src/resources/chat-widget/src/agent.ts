@@ -48,7 +48,7 @@ import {
   locateOld,
 } from "./agent-protocol";
 import { SSEParser, addEvent, answerOf, newStreamed, partialSay } from "./sse";
-import { CHECK_BEFORE_DONE, MAX_CARRIES, MAX_FIXES, PlanState, WorkTrack, changeLine, compactHistory, contextToSend, countLines } from "./agent-task";
+import { ASK_FIRST, CHECK_BEFORE_DONE, MAX_CARRIES, MAX_FIXES, PlanState, WorkTrack, changeLine, compactHistory, contextToSend, countLines, factsText, isVagueTask, lastErrorLines } from "./agent-task";
 
 type Msg = { role: string; content: string };
 type AskResult =
@@ -146,7 +146,7 @@ export interface AgentHost {
   report?(info: { token: string; outcome: string; changed: boolean; checked: boolean }): void;
   // The last turns of the chat before this task, and a note when the editor is not what the chat was about (both "" when
   // there is nothing to say). Asked before userSaid, so the task itself is not in the turns.
-  chatBefore?(): string;
+  chatBefore?(): string | Promise<string>;
   contextNote?(): string;
   userSaid(text: string): Promise<void>;
   // context: the X-OpenREPL-Context header of the step, which lists the site notes it was answered from
@@ -342,12 +342,16 @@ export class AgentRunner {
     // gives the box back. A task that dies before it starts must not leave the
     // send button disabled.
     try {
-      const before = this.host.chatBefore ? this.host.chatBefore() : "";
+      // the chat before the task (a long one is summarized first), the note that the editor is not what it was about, what is
+      // true in the workspace now, and, for a request too short to act on, the instruction to ask first
+      const before = this.host.chatBefore ? await this.host.chatBefore() : "";
       const ctxNote = this.host.contextNote ? this.host.contextNote() : "";
+      const facts = this.factsLine();
+      const ask = isVagueTask(task) && (before === "" || ctxNote !== "") ? ASK_FIRST : "";
       await this.host.userSaid(task);
       this.drawCard(); // after the message it belongs to: the newest is shown last
       const task_: TaskState = {
-        messages: [{ role: "user", content: `[user-${this.host.uid()}] ${task}${attached ? "\n\n" + attached : ""}${before ? "\n\n" + before : ""}${ctxNote ? "\n\n" + ctxNote : ""}${this.recap ? "\n\n" + this.recap : ""}` }],
+        messages: [{ role: "user", content: `[user-${this.host.uid()}] ${task}${attached ? "\n\n" + attached : ""}${before ? "\n\n" + before : ""}${ctxNote ? "\n\n" + ctxNote : ""}${facts ? "\n\n" + facts : ""}${ask ? "\n\n" + ask : ""}${this.recap ? "\n\n" + this.recap : ""}` }],
         token: "",
         badAnswers: 0,
         max: this.host.maxSteps(),
@@ -820,11 +824,16 @@ export class AgentRunner {
           const at = locateOld(text, a.old);
           if (!at.ok) {
             if (at.many) {
-              return { type: a.type, status: "failed", detail: "the old text is in the editor more than once; include a line or two around it so that it is there only once" };
+              const where = at.where ? " It is at these lines:\n" + at.where + "\nUse more lines around the one you mean, or use start_line and end_line." : "";
+              return { type: a.type, status: "failed", detail: "the old text is in the editor more than once; include a line or two around it so that it is there only once." + where };
             }
             this.replaceFails++;
+            const small = text.split("\n").length <= 80;
             const near = at.near ? " The editor has these lines that look like it (copy from them):\n" + at.near : "";
-            const again = this.replaceFails >= 2 ? " This is the " + this.replaceFails + "th failed replace in a row: send editor_write with the WHOLE new file instead of editor_replace." : "";
+            const again =
+              small || this.replaceFails >= 2
+                ? " " + (small ? "The file is short" : "Two replaces in a row failed") + ": send editor_write with the WHOLE new file now, not editor_replace."
+                : "";
             return { type: a.type, status: "failed", detail: "the old text was not found in the editor: it has to match, and it must be copied, not retyped; use one to three lines that are only there once, never '...'." + near + again };
           }
           this.replaceFails = 0;
@@ -1254,6 +1263,22 @@ export class AgentRunner {
     return open
       ? "the terminal started again in the language; the editor still holds the file that is open (" + open + ")"
       : "the editor now holds the starter code of the language, and the terminal started again";
+  }
+
+  // "Workspace now: ..." from the page; the file names only when the user has allowed the agent the files
+  private factsLine(): string {
+    try {
+      const f = this.host.files;
+      const ready = !!f && f.ready();
+      let files: string[] | null = null;
+      if (ready && this.perms.has("files")) {
+        const r: any = f.list("");
+        if (r && r.ok && Array.isArray(r.entries)) files = r.entries;
+      }
+      return factsText({ language: this.pickerLanguage(), file: ready ? f.current() : "", files, error: lastErrorLines(this.host.terminalText()) });
+    } catch (e) {
+      return "";
+    }
   }
 
   private pickerLanguage(): string {

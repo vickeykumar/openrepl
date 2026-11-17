@@ -353,3 +353,27 @@ test("an empty chat offers starter questions; Agent mode with a small model says
   await expect(hint).toBeHidden();
   expect(await page.evaluate(() => window.ModelChoice.get().model)).toBe("gpt-6-luna");
 });
+
+test("a long chat is summarized by the model in use, and the next question is sent the summary and the last turns", async ({ page }) => {
+  const filler = (n) => "Answer " + n + ". " + "word ".repeat(260);
+  const summary = "The user is learning lists in Python; they asked four questions about slicing and reversing.";
+  const seen = await openAgent(page, [filler(1), filler(2), filler(3), filler(4), summary, "Fifth answer."]);
+  await page.evaluate(() => { window.site_settings.genieSummaryChars = 2500; });
+  for (const q of ["one", "two", "three", "four"]) {
+    await ask(page, q);
+    await expect(page.locator("#chat-widget__submit")).toBeEnabled({ timeout: 15000 });
+  }
+  expect(seen.requests.length).toBe(4);
+  await ask(page, "five");
+  await expect(page.locator(".chat-widget__message--system", { hasText: "Fifth answer." })).toBeVisible({ timeout: 20000 });
+  // one more request: the summary, made with the model in use and no site context
+  expect(seen.requests.length).toBe(6);
+  const s = seen.requests[4];
+  expect(JSON.stringify(s.messages)).toContain("Write a summary of the chat so far");
+  expect(s.context).toBeUndefined();
+  // the question after it carries the summary, the last turns, and not the answers that went into it
+  const q5 = JSON.stringify(seen.requests[5].messages);
+  expect(q5).toContain("Summary of the earlier chat: " + summary);
+  expect(q5).toContain("five");
+  expect(q5).not.toContain("Answer 1.");
+});

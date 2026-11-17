@@ -4,7 +4,7 @@
 // server (server/genie_chats.go). The format is docs/lld/19-genie-agent.md, section 9.
 
 export interface ChatLine {
-  t: "meta" | "title" | "state" | "user" | "answer" | "task";
+  t: "meta" | "title" | "state" | "user" | "answer" | "task" | "summary";
   id?: string;
   created?: string;
   context?: string;
@@ -92,6 +92,7 @@ export interface Restored {
   model: string;
   effort: string;
   messages: RestoredMessage[];
+  summary: { text: string; covered: number } | null; // the last summary line: it stands for the messages before index `covered`
 }
 
 // What the task line says, in words: "Finished, 6 steps, checked with pytest -q, changed auth.py +9 −2".
@@ -105,7 +106,7 @@ export function taskSummary(l: ChatLine): string {
 
 // The lines of a chat file as a conversation: the last title and state win, the messages are in order.
 export function restore(lines: ChatLine[]): Restored {
-  const r: Restored = { title: "", context: "chat", language: "", file: "", mode: "chat", model: "", effort: "", messages: [] };
+  const r: Restored = { title: "", context: "chat", language: "", file: "", mode: "chat", model: "", effort: "", messages: [], summary: null };
   lines.forEach((l, i) => {
     if (!l || typeof l !== "object") return;
     const ts = typeof l.ts === "number" ? l.ts : i;
@@ -132,6 +133,17 @@ export function restore(lines: ChatLine[]): Restored {
       case "task":
         r.messages.push({ kind: "task", text: String(l.text || ""), ts, summary: taskSummary(l) });
         break;
+      case "summary": {
+        // the last `steps` questions and answers before this line were kept as they were; the ones before them are in the text
+        let keep = typeof l.steps === "number" ? Math.max(0, l.steps) : 4;
+        let at = r.messages.length;
+        while (at > 0 && keep > 0) {
+          at--;
+          if (r.messages[at].kind !== "task") keep--;
+        }
+        if (l.text) r.summary = { text: String(l.text), covered: at };
+        break;
+      }
     }
   });
   if (!r.title) {
@@ -142,10 +154,62 @@ export function restore(lines: ChatLine[]): Restored {
 }
 
 // The conversation the model is sent: the user's words and the answers; a task is not in it (the recap of tasks is the runner's).
-export function toHistory(messages: RestoredMessage[], uid: string): { role: string; content: string }[] {
-  return messages
+export function toHistory(messages: RestoredMessage[], uid: string, summary: { text: string; covered: number } | null = null): { role: string; content: string }[] {
+  const lead = summary && summary.text ? [{ role: "system", content: SUMMARY_PREFIX + summary.text }] : [];
+  return lead.concat(messages
+    .slice(summary ? summary.covered : 0)
     .filter((m) => m.kind === "user" || m.kind === "answer")
-    .map((m) => (m.kind === "user" ? { role: "user", content: "[user-" + uid + "] " + m.text } : { role: "assistant", content: m.text }));
+    .map((m) => (m.kind === "user" ? { role: "user", content: "[user-" + uid + "] " + m.text } : { role: "assistant", content: m.text }))
+  );
+}
+
+// ---- a long chat, summarized ------------------------------------------------------------
+
+export const SUMMARY_PREFIX = "Summary of the earlier chat: ";
+export const SUMMARY_KEEP = 4; // the last turns that are sent as they were
+export const MAX_SUMMARY = 1500; // characters of a summary
+
+export interface SummaryPlan {
+  prior: string; // the summary there is already, or ""
+  older: { role: string; content: string }[]; // the turns that go into the new one
+  drop: number; // how many entries of the history they are
+}
+
+// Whether the older turns (all but the last SUMMARY_KEEP) are longer than `threshold` characters, and what to summarize.
+// `skip` is the entries at the start of the history that are not turns (the prompts and the editor snapshot); a summary
+// that was made before is the first entry after them.
+export function summaryPlan(history: { role: string; content: string }[], skip: number, threshold: number): SummaryPlan | null {
+  if (!(threshold > 0)) return null;
+  const rest = history.slice(skip);
+  const hasPrior = rest.length > 0 && rest[0].role === "system" && rest[0].content.startsWith(SUMMARY_PREFIX);
+  const turns = hasPrior ? rest.slice(1) : rest;
+  if (turns.length <= SUMMARY_KEEP) return null;
+  const older = turns.slice(0, turns.length - SUMMARY_KEEP);
+  const chars = older.reduce((n, m) => n + String(m.content || "").length, 0);
+  if (chars <= threshold) return null;
+  return { prior: hasPrior ? rest[0].content.slice(SUMMARY_PREFIX.length) : "", older, drop: older.length + (hasPrior ? 1 : 0) };
+}
+
+// The history with the summary in place of the older turns.
+export function applySummary(history: { role: string; content: string }[], skip: number, plan: SummaryPlan, text: string): { role: string; content: string }[] {
+  return history.slice(0, skip).concat([{ role: "system", content: SUMMARY_PREFIX + text }], history.slice(skip + plan.drop));
+}
+
+export const SUMMARY_PROMPT =
+  "Write a summary of the chat so far, in at most 1200 characters, for yourself to continue it: what the user wants, what was decided, " +
+  "the names of files, the language, what is done and what is still open. Facts only, no greeting, no advice. Plain text.";
+
+// What is sent to the model to summarize: the old summary and the turns that go into the new one.
+export function summaryInput(plan: SummaryPlan): string {
+  const lines = plan.older.map((m) => (m.role === "user" ? "User: " : "Genie: ") + String(m.content).replace(/^\[user-[^\]]*\]\s*/, "").slice(0, 1500));
+  return (plan.prior ? "Summary so far: " + plan.prior + "\n\n" : "") + "Turns to add:\n" + lines.join("\n");
+}
+
+// The summary the model wrote, or "" when it is not usable (empty, a few words, or a refusal that is JSON).
+export function cleanSummary(raw: unknown): string {
+  const t = String(raw || "").trim();
+  if (t.length < 30 || t.startsWith("{") || t.startsWith("[")) return "";
+  return t.length > MAX_SUMMARY ? t.slice(0, MAX_SUMMARY) + "..." : t;
 }
 
 // ---- the strip -------------------------------------------------------------------------

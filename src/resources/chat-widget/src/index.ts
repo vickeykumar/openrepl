@@ -4,7 +4,7 @@ import { marked } from "marked";
 import { widgetHTML } from "./widgetHtmlString";
 import { AgentMemory, AgentRunner, AgentState, TaskInfo } from "./agent";
 import { ChatStore } from "./chat-store";
-import { ChatLine, Restored, TabView, afterClose, clock, filterChats, fitText, groupChats, moveTab, newChatId, restore, sizeText, staleForAgent, staleNote, staleParts, tabMark, tabToClose, titleFrom, toHistory } from "./chat-tabs";
+import { ChatLine, Restored, TabView, afterClose, clock, filterChats, fitText, groupChats, moveTab, newChatId, restore, SUMMARY_KEEP, SUMMARY_PREFIX, SUMMARY_PROMPT, applySummary, cleanSummary, sizeText, staleForAgent, staleNote, staleParts, summaryInput, summaryPlan, tabMark, tabToClose, titleFrom, toHistory } from "./chat-tabs";
 import { SSEParser, addEvent, answerOf, newStreamed } from "./sse";
 import { definesSomething } from "./chat-send";
 import { isSmallModel, starterChips } from "./agent-protocol";
@@ -326,8 +326,66 @@ function addMessageToHistory(role: string, content: string, uid: string=UID, his
   history.push({ role: role, content: content });
   if (history.length > maxHistorySize()) {
       // Trim the oldest non-mandatory message from the beginning, preserving mandatory entries of docs
-      history.splice(NUM_MANDATORY_ENTRIES, 1);
+      history.splice(NUM_MANDATORY_ENTRIES + (hasSummary(history) ? 1 : 0), 1); // the summary stays
   }
+}
+
+// A long chat: when the older turns pass the admin's limit (site_settings.genieSummaryChars, 0 is off), the model in use writes a
+// summary of them. It is one more request of that model, counted like any other (guests too). The summary takes the place of
+// the turns in the history, and is kept as a line of the chat file. A failure leaves the history as it was.
+const summarizing = new Set<string>();
+const summaryFailedAt = new Map<string, number>(); // chat id -> the length of the history when it failed: not again until it has grown
+async function maybeSummarize(tab: ChatTab): Promise<void> {
+  const limit = Number(((window as any).site_settings || {}).genieSummaryChars) || 0;
+  if (limit <= 0 || onPracticePage() || summarizing.has(tab.id)) return;
+  const plan = summaryPlan(tab.history, NUM_MANDATORY_ENTRIES, limit);
+  if (!plan) return;
+  if ((summaryFailedAt.get(tab.id) || -1) >= tab.history.length - 1) return;
+  summarizing.add(tab.id);
+  const label = tab.bubble.querySelector(".chat-widget__thinking-label");
+  if (label) label.textContent = "Summarizing the chat…";
+  try {
+    const headers = new Headers();
+    headers.append("Content-Type", "application/json");
+    if (config.api_key) headers.append("Authorization", "Bearer " + config.api_key);
+    const res = await fetch(config.url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        ...config.user,
+        ...MC.fields({ temperature: 0.2, maxTokens: 700 }),
+        messages: [
+          { role: "system", content: SUMMARY_PROMPT },
+          { role: "user", content: summaryInput(plan) },
+        ],
+        stream: false,
+      }),
+    });
+    const told = res.headers.get("X-OpenREPL-Usage");
+    if (told) takeUsage(told);
+    else fetchUsage();
+    const body: any = res.ok ? await res.json() : null;
+    const text = cleanSummary(body && body.choices && body.choices[0] && body.choices[0].message && body.choices[0].message.content);
+    // the chat moved on while the model wrote (the history is another one now): the old plan no longer fits
+    const still = summaryPlan(tab.history, NUM_MANDATORY_ENTRIES, limit);
+    if (!text || !still || still.drop !== plan.drop) {
+      summaryFailedAt.set(tab.id, tab.history.length);
+      return;
+    }
+    tab.history = applySummary(tab.history, NUM_MANDATORY_ENTRIES, plan, text);
+    if (tab === activeTab) conversationHistory = tab.history;
+    if (tabsOn && tab.saved) chatStore.append(tab.id, [{ t: "summary", text, steps: SUMMARY_KEEP }]);
+  } catch (e) {
+    summaryFailedAt.set(tab.id, tab.history.length);
+  } finally {
+    summarizing.delete(tab.id);
+    if (label) label.textContent = "";
+  }
+}
+
+function hasSummary(history: MessageType[]): boolean {
+  const e = history[NUM_MANDATORY_ENTRIES];
+  return !!e && e.role === "system" && e.content.startsWith(SUMMARY_PREFIX);
 }
 
 // A page is a viewer only when it was opened with a share link, /#<Firebase push key>.
@@ -730,8 +788,8 @@ async function loadTab(tab: ChatTab) {
   tab.saved = true;
   tab.mode = r.mode === "agent" ? "agent" : "chat";
   tab.ctx = { file: r.file, language: r.language };
-  tab.history = (baseHistory.length ? baseHistory.slice() : tab.history.slice(0, NUM_MANDATORY_ENTRIES)).concat(toHistory(r.messages, UID));
-  while (tab.history.length > maxHistorySize()) tab.history.splice(NUM_MANDATORY_ENTRIES, 1);
+  tab.history = (baseHistory.length ? baseHistory.slice() : tab.history.slice(0, NUM_MANDATORY_ENTRIES)).concat(toHistory(r.messages, UID, r.summary));
+  while (tab.history.length > maxHistorySize()) tab.history.splice(NUM_MANDATORY_ENTRIES + (hasSummary(tab.history) ? 1 : 0), 1);
   const lastUser = [...r.messages].reverse().find((m) => m.kind === "user");
   tab.lastTyped = lastUser ? lastUser.text : "";
   if (tab === activeTab) conversationHistory = tab.history;
@@ -1867,7 +1925,11 @@ const agentRunner = new AgentRunner(
       if (label) label.textContent = chosenModel().reasoning && chosenEffort().id !== "none" ? `${chosenModel().short} is thinking…` : "";
       bodyOf(t).prepend(t.bubble);
     },
-    chatBefore: () => chatTurnsText((runTab || activeTab).history, NUM_MANDATORY_ENTRIES),
+    chatBefore: async () => {
+      const t = runTab || activeTab;
+      await maybeSummarize(t);
+      return chatTurnsText(t.history, NUM_MANDATORY_ENTRIES);
+    },
     contextNote: () => staleForAgent((runTab || activeTab).ctx, ctxNow()),
     userSaid: async (text: string) => {
       const t = runTab || activeTab;
@@ -3938,6 +4000,8 @@ async function runRequest() {
   chatFailed = false;
   renderActivity();
   renderTabs();
+
+  await maybeSummarize(tab);
 
   const requestHeaders = new Headers();
   requestHeaders.append("Content-Type", "application/json");

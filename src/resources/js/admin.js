@@ -1283,6 +1283,7 @@
           agentNativeTools: form.agentTools.checked, streamAnswers: form.streamOn.checked,
           nativeToolModels: models.filter(function (m) { return form.toolModels[m.id] && form.toolModels[m.id].checked; }).map(function (m) { return m.id; }),
           chatHistoryOff: !form.chatOn.checked, chatHistoryNoGuests: !form.chatGuests.checked,
+          summaryOff: !form.sumOn.checked, summaryChars: int(form.sumChars.value),
           chatHistoryChats: int(form.chatMax.value), chatHistoryTabs: int(form.chatTabs.value), chatHistoryKB: int(form.chatKB.value), chatHistoryDays: int(form.chatDays.value),
           meterOff: !form.meterOn.checked, creditsOn: form.creditsOn.checked, planName: form.planName.value.trim(),
           planCredits: num(form.planCredits.value), planBudget: num(form.planBudget.value), creditWeights: weightsOf(),
@@ -1368,6 +1369,7 @@
           agentNativeTools: !!s.genie.agentNativeTools, streamAnswers: !!s.genie.streamAnswers,
           nativeToolModels: toolModelsOf(s.genie.nativeToolModels),
           chatHistoryOff: !!s.genie.chatHistoryOff, chatHistoryNoGuests: !!s.genie.chatHistoryNoGuests,
+          summaryOff: !!s.genie.summaryOff, summaryChars: s.genie.summaryChars || 0,
           chatHistoryChats: s.genie.chatHistoryChats || 0, chatHistoryTabs: s.genie.chatHistoryTabs || 0, chatHistoryKB: s.genie.chatHistoryKB || 0, chatHistoryDays: s.genie.chatHistoryDays || 0,
           meterOff: !!s.genie.meterOff, creditsOn: !!s.genie.creditsOn, planName: s.genie.planName || '',
           planCredits: s.genie.planCredits || 0, planBudget: s.genie.planBudget || 0, creditWeights: pricesClean(s.genie.creditWeights),
@@ -1464,6 +1466,9 @@
       form.chatMax = chatBox('f-chat-max', 'Most chats a workspace keeps', settings.genie.chatHistoryChats, 1, 200, '50');
       form.chatTabs = chatBox('f-chat-tabs', 'Most open chat tabs', settings.genie.chatHistoryTabs, 1, 20, '8');
       form.chatKB = chatBox('f-chat-kb', 'Most size of one chat in KB', settings.genie.chatHistoryKB, 20, 2000, '200');
+      var sumOn = toggle('f-sum-on', !settings.genie.summaryOff, 'Summarize long chats');
+      form.sumOn = sumOn.input;
+      form.sumChars = chatBox('f-sum-chars', 'Characters of older turns before a chat is summarized', settings.genie.summaryChars, 2000, 30000, '6000');
       form.chatDays = chatBox('f-chat-days', 'Days a chat that is not open is kept', settings.genie.chatHistoryDays, 0, 3650, 'for ever');
       var agentTools = toggle('f-agent-tools', !!settings.genie.agentNativeTools, 'Agent: native tool calling');
       var streamOn = toggle('f-stream-on', !!settings.genie.streamAnswers, 'Stream answers');
@@ -1945,6 +1950,8 @@
           row('Most chats a workspace keeps', 'The oldest chat that is not open goes first. Empty: 50.', form.chatMax),
           row('Most open tabs', 'Empty: 8.', form.chatTabs),
           row('Most size of one chat (KB)', 'The oldest messages of a chat that grows past this are left out of its file. Empty: 200.', form.chatKB),
+          row('Summarize long chats', 'When the older turns of a chat pass the number below, the model in use writes a short summary that is kept in the chat and sent with the last turns. It is one more request of that model, counted like any other (guests too).', sumOn.node),
+          row('Characters before a chat is summarized', 'Empty: 6000. Between 2000 and 30000.', form.sumChars),
           row('Days a chat is kept', 'A chat that is not open and was not used for this many days is removed. Empty: for ever.', form.chatDays) ]),
         card('Usage record and credits', 'Every answer of Genie is recorded with its credits (counts only, never what was asked or answered), so you can see what credits would have been. A credit is a tenth of a cent: a model costs the credits you set here, else its price above (a dollar for a million tokens is a credit for a thousand), else the cost its provider reports. Nothing is charged or limited until you switch credits on.', [
           row('Record every answer', 'On by default. Off stops the record; the totals so far stay.', meterOn.node),

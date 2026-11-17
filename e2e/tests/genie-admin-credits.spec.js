@@ -68,10 +68,14 @@ test("Site settings has the usage record and credits: today's behaviour, and the
   await page.locator("#f-tool-gpt-6-luna").evaluate((e) => e.click());
   const w = card.locator('input[id^="f-weight-in-"]').first();
   await w.fill("0.2");
+  // the chat summary: on by default, 6000 when empty
+  await expect(page.locator("#f-sum-on")).toBeChecked();
+  await expect(page.locator("#f-sum-chars")).toHaveAttribute("placeholder", "6000");
+  await page.locator("#f-sum-chars").fill("9000");
   await page.getByRole("button", { name: /^Save/ }).click();
   await expect.poll(() => st.saved.length).toBe(1);
   const g = st.saved[0].genie;
-  expect(g).toMatchObject({ creditsOn: true, meterOff: false, planName: "Team", planCredits: 500, planBudget: 40, streamAnswers: true, agentNativeTools: true });
+  expect(g).toMatchObject({ creditsOn: true, meterOff: false, planName: "Team", planCredits: 500, planBudget: 40, streamAnswers: true, agentNativeTools: true, summaryOff: false, summaryChars: 9000 });
   expect(Object.values(g.creditWeights)[0].in).toBe(0.2);
   expect(g.nativeToolModels).toEqual(["gpt-4o-mini", "google/gemma-4-31b-it"]);
 });

@@ -1147,7 +1147,18 @@ export function starterChips(agent: boolean): string[] {
 
 // ---- finding the old text of an editor_replace ---------------------------------------------
 
-export type Located = { ok: true; start: number; end: number; tolerant: boolean } | { ok: false; many: boolean; near: string };
+export type Located = { ok: true; start: number; end: number; tolerant: boolean } | { ok: false; many: boolean; near: string; where?: string };
+
+// The line numbers, with the line, of each place where `old` is in the text (at most 4): for an old text that is there more than once.
+export function whereIs(text: string, old: string): string {
+  const flat = old.replace(/\s+/g, " ").trim();
+  const first = flat.split(" ")[0] ? old.split("\n").map((l) => l.trim()).filter(Boolean)[0] || flat : flat;
+  const out: string[] = [];
+  text.split("\n").forEach((line, i) => {
+    if (out.length < 4 && first !== "" && line.includes(first)) out.push((i + 1) + ": " + (line.length > 120 ? line.slice(0, 120) + "..." : line));
+  });
+  return out.join("\n");
+}
 
 // Where `old` is in the editor text. Exact first. A small model copies text with other indentation or spacing, so when
 // there is no exact match the search ignores differences in white space (runs of spaces, tabs and line breaks count as one
@@ -1156,7 +1167,7 @@ export type Located = { ok: true; start: number; end: number; tolerant: boolean 
 export function locateOld(text: string, old: string): Located {
   const first = text.indexOf(old);
   if (first >= 0) {
-    return text.indexOf(old, first + 1) >= 0 ? { ok: false, many: true, near: "" } : { ok: true, start: first, end: first + old.length, tolerant: false };
+    return text.indexOf(old, first + 1) >= 0 ? { ok: false, many: true, near: "", where: whereIs(text, old) } : { ok: true, start: first, end: first + old.length, tolerant: false };
   }
   // the text with white space collapsed, and where each of its characters came from
   let flat = "";
@@ -1179,7 +1190,7 @@ export function locateOld(text: string, old: string): Located {
   if (want !== "") {
     const at = flat.indexOf(want);
     if (at >= 0) {
-      if (flat.indexOf(want, at + 1) >= 0) return { ok: false, many: true, near: "" };
+      if (flat.indexOf(want, at + 1) >= 0) return { ok: false, many: true, near: "", where: whereIs(text, old) };
       return { ok: true, start: from[at], end: from[at + want.length - 1] + 1, tolerant: true };
     }
   }

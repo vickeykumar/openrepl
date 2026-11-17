@@ -52,7 +52,7 @@ const (
 var chatIDPattern = regexp.MustCompile(`^[a-z0-9]{4,16}$`)
 
 // the kinds of line, and the keys a line may have (anything else is left out when it is stored)
-var chatLineKinds = map[string]bool{"meta": true, "title": true, "state": true, "user": true, "answer": true, "task": true}
+var chatLineKinds = map[string]bool{"meta": true, "title": true, "state": true, "user": true, "answer": true, "task": true, "summary": true}
 var chatLineKeys = map[string]bool{"t": true, "id": true, "created": true, "context": true, "language": true, "file": true, "text": true, "at": true, "ts": true,
 	"model": true, "effort": true, "mode": true, "tokens": true, "steps": true, "checked": true, "changed": true, "outcome": true}
 
