@@ -167,6 +167,7 @@ func handleLoginSession(rw http.ResponseWriter, req *http.Request) {
 	    err = user.UpdateAndStoreSessionData(session.Uid, session.SessionID, &session, false)
 		if err == nil {
 			log.Println("Session data Successfully written to the SESSION_DB.")
+			log.Printf("login: POST stored the session of %s on node %s", shortUID(session.Uid), nodeName())
 			// now can write/update session cookie here.
 		} else {
 			log.Println("ERROR: Failed to store the session data in SESSION_DB, error: ", err.Error())
@@ -192,12 +193,32 @@ func handleLoginSession(rw http.ResponseWriter, req *http.Request) {
 
 		var session user.UserSession
 		session = cookie.Get_SessionCookie(req)
+		cookieSaysLoggedIn := session.LoggedIn
 		// verify the session in local db
+		state := user.SessionState(session.Uid, session.SessionID)
 		if (user.IsSessionExpired(session.Uid, session.SessionID)==true) {
 			session.LogOut()
 		}
+		// Why the answer is "not logged in", when a session came with the cookie: the page uses it to put things right (a session
+		// this server does not know of is posted again), and the log shows it (the node says which server answered).
+		reason := ""
+		if session.Uid != "" && (state != "ok" || !cookieSaysLoggedIn) {
+			reason = state
+			if state == "ok" {
+				reason = "cookie_logged_out"
+			}
+			log.Printf("login: GET for %s on node %s: %s (the cookie says logged in: %v)", shortUID(session.Uid), nodeName(), reason, cookieSaysLoggedIn)
+		}
 		log.Println("session returned: ",session)
-		rw.Write(utils.JsonMarshal(session))
+		out := map[string]interface{}{}
+		if err := json.Unmarshal(utils.JsonMarshal(session), &out); err != nil {
+			rw.Write(utils.JsonMarshal(session))
+			return
+		}
+		if reason != "" {
+			out["reason"] = reason
+		}
+		rw.Write(utils.JsonMarshal(out))
 	}
 }
 
@@ -376,3 +397,22 @@ func handlePracticeQuestions(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
+
+
+// shortUID is enough of a user id to tell accounts apart in a log line.
+func shortUID(uid string) string {
+	if len(uid) <= 6 {
+		return uid
+	}
+	return uid[:6] + "..."
+}
+
+// nodeName is the host that answers, for the log: with several servers behind one address a login stored on one and asked on
+// another is the thing to see.
+func nodeName() string {
+	h, err := os.Hostname()
+	if err != nil || h == "" {
+		return "unknown"
+	}
+	return h
+}

@@ -317,21 +317,34 @@ func GetUserSessionData(Uid, SessionID string) (session UserSession, err error) 
 
 }
 
-func IsSessionExpired(Uid, SessionID string) bool {
+// SessionState says what the server thinks of a session: "ok", "none" (no user or no session id), "blocked", "not_found" (this
+// server has no record of that session id for the user: the sign-in was never stored here, or the record is gone) or
+// "expired".
+func SessionState(Uid, SessionID string) string {
+    if Uid == "" || SessionID == "" {
+        return "none"
+    }
     if IsBlocked(Uid) {
-        return true
+        return "blocked"
     }
     session, err := GetUserSessionData(Uid, SessionID)
     if err != nil {
         // session not found, as good as expired session
-        return true
+        return "not_found"
     }
     if session.ExpirationTime < utils.GetUnixMilli() {
+        return "expired"
+    }
+    return "ok"
+}
+
+func IsSessionExpired(Uid, SessionID string) bool {
+    state := SessionState(Uid, SessionID)
+    if state == "expired" {
         log.Println("session expired for user: "+Uid+",  SessionID: ",SessionID)
         go PurgeExpiredSessionData(Uid) // start the garbage collecter in background
-        return true
     }
-    return false
+    return state != "ok"
 }
 
 // purges expired sessions for this user
