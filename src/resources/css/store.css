@@ -44,6 +44,12 @@
 .store__note { border: 1px solid var(--st-line2); background: var(--st-hover); border-radius: 9px; padding: 9px 12px; color: var(--st-muted); line-height: 1.45; }
 .store__note.is-bad { border-color: var(--st-bad-line); color: var(--st-bad); }
 .store__note.is-info { border-color: var(--st-info-line); background: var(--st-info-bg); color: var(--st-info); }
+.store__pager { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--st-line2); }
+.store__pager-sp { flex: 1; }
+.store__pager-count { color: var(--st-muted, inherit); font-size: 13px; margin: 0 6px; }
+.store__pager select { background: var(--st-card); border: 1px solid var(--st-line2); border-radius: 8px; padding: 6px 8px; color: var(--st-text); font: inherit; }
+.store__pager .sbtn[disabled] { opacity: .45; cursor: default; }
+.store__top { display: block; height: 0; }
 .store__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .sapp { background: var(--st-card); border: 1px solid var(--st-line); border-radius: 11px; padding: 11px 13px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .sapp__name { font-size: 15px; font-weight: 600; color: var(--st-text); text-decoration: none; }

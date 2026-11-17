@@ -23,6 +23,7 @@ function fake(page, opts = {}) {
     polls: 0,
     notices: opts.notices || [],
   };
+  for (let i = 0; i < (opts.many || 0); i++) st.apps["lib" + String(i).padStart(3, "0")] = { name: "lib" + String(i).padStart(3, "0"), kind: "lib", state: "available", safe: true };
   const views = () => Object.values(st.apps).map((v) => ({ ...v, on: st.on.includes(v.id) }));
   page.route("**/store/api/**", async (route) => {
     const req = route.request();
@@ -395,4 +396,25 @@ test("the box icon turns while installing, and the 'is installed' dialog is show
   await expect(page.locator("#store-dialog")).toBeHidden();
   await page.waitForTimeout(3500); // the old loop opened it again every second
   await expect(page.locator("#store-dialog")).toBeHidden();
+});
+
+test("a long list shows one page of cards with a pager at the foot; a new search starts at page 1", async ({ page }) => {
+  fake(page, { many: 60 });
+  await page.goto("/store");
+  await expect(page.locator(".store__grid .sapp")).toHaveCount(24);
+  await expect(page.locator(".store__pager")).toContainText("Showing 1 to 24 of 69");
+  await expect(page.locator(".store__pager")).toContainText("Page 1 of 3");
+  await expect(page.locator(".store__pager button", { hasText: "Previous" })).toBeDisabled();
+  await page.locator(".store__pager button", { hasText: "Next" }).click();
+  await expect(page.locator(".store__pager")).toContainText("Showing 25 to 48 of 69");
+  await page.locator('.store__pager button[aria-label="Page 3"]').click();
+  await expect(page.locator(".store__grid .sapp")).toHaveCount(21);
+  await expect(page.locator(".store__pager button", { hasText: "Next" })).toBeDisabled();
+  await page.locator(".store__pager select").selectOption("48");
+  await expect(page.locator(".store__grid .sapp")).toHaveCount(48);
+  await expect(page.locator(".store__pager")).toContainText("Page 1 of 2");
+  // a search that finds a few needs no pager
+  await page.locator("#store-search").fill("lib00");
+  await expect(page.locator(".store__list > .store__grid .sapp")).toHaveCount(10);
+  await expect(page.locator(".store__pager")).toHaveCount(0);
 });

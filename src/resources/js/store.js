@@ -258,6 +258,57 @@
       function (e) { S.hits[key] = { list: [], error: e.message }; renderSoon(); });
   }
 
+  // ---- paging: a long list shows one page at a time, with a pager at its foot ------------------------------------------------
+  var PAGE_SIZES = [12, 24, 48];
+  var pg = {};
+  function pgState(key, sig) {
+    var st = pg[key];
+    if (!st) {
+      var size = 24;
+      try { var v = parseInt(localStorage.getItem("openrepl.store.pagesize"), 10); if (PAGE_SIZES.indexOf(v) >= 0) size = v; } catch (e) { /* storage may be blocked */ }
+      st = pg[key] = { page: 1, size: size, sig: sig };
+    }
+    if (st.sig !== sig) { st.sig = sig; st.page = 1; }   // a new search or filter starts at page 1
+    return st;
+  }
+  // pagedList adds the items of the current page (each built by draw) to box and the pager after it. key names the list; sig is what
+  // narrows it (search words, filters): a change of sig goes back to page 1.
+  function pagedList(box, items, key, sig, draw) {
+    var st = pgState(key, sig), n = items.length, pages = Math.max(1, Math.ceil(n / st.size));
+    if (st.page > pages) st.page = pages;
+    items.slice((st.page - 1) * st.size, st.page * st.size).forEach(function (x) { box.appendChild(draw(x)); });
+    if (n <= PAGE_SIZES[0]) return null;
+    return pager(n, st, function () { render(); var t = document.getElementById("store-top"); if (t && t.scrollIntoView) t.scrollIntoView({ block: "start" }); });
+  }
+  function pager(n, st, change) {
+    var pages = Math.max(1, Math.ceil(n / st.size));
+    var bar = el("nav", "store__pager"); bar.setAttribute("aria-label", "Pages");
+    var a = n ? (st.page - 1) * st.size + 1 : 0, b = Math.min(n, st.page * st.size);
+    bar.appendChild(el("span", "store__pager-count", "Showing " + a + " to " + b + " of " + n));
+    var sel = el("select"); sel.setAttribute("aria-label", "Per page");
+    PAGE_SIZES.forEach(function (z) { var o = el("option", "", z + " per page"); o.value = String(z); if (z === st.size) o.selected = true; sel.appendChild(o); });
+    sel.addEventListener("change", function () {
+      st.size = parseInt(sel.value, 10); st.page = 1;
+      try { localStorage.setItem("openrepl.store.pagesize", String(st.size)); } catch (e) { /* ignore */ }
+      change();
+    });
+    bar.appendChild(sel);
+    bar.appendChild(el("span", "store__pager-sp"));
+    function btn(text, p, on, off, label) {
+      var x = el("button", "sbtn" + (on ? " is-primary" : ""), text); x.type = "button"; x.disabled = !!off;
+      if (label) x.setAttribute("aria-label", label);
+      if (on) x.setAttribute("aria-current", "page");
+      x.addEventListener("click", function () { st.page = p; change(); });
+      bar.appendChild(x);
+    }
+    btn("\u2190 Previous", st.page - 1, false, st.page <= 1);
+    var lo = Math.max(1, Math.min(st.page - 3, pages - 6)), hi = Math.min(pages, lo + 6);
+    for (var i = lo; i <= hi; i++) btn(String(i), i, i === st.page, false, "Page " + i);
+    btn("Next \u2192", st.page + 1, false, st.page >= pages);
+    bar.appendChild(el("span", "store__pager-count", "Page " + st.page + " of " + pages));
+    return bar;
+  }
+
   function viewBrowse(kind) {
     var wrap = el("div", "store__list");
     wrap.style.cssText = "display:flex;flex-direction:column;gap:12px";
@@ -281,8 +332,10 @@
     var list = S.views.filter(function (v) { return matches(v, q) && chipOk(v) && filterOk(v) && (!kind || (v.kind || "lib") === kind); });
     if (kind === "browser") return viewBrowser(wrap, q);
     var grid = el("div", "store__grid");
-    list.forEach(function (v) { grid.appendChild(card(v)); });
+    wrap.appendChild(el("span", "store__top")).id = "store-top";
+    var pgr = pagedList(grid, list, "browse:" + (kind || ""), [kind, q, S.chip, S.repl, S.category, S.level].join("|"), card);
     wrap.appendChild(grid);
+    if (pgr) wrap.appendChild(pgr);
     if (!list.length && !q) wrap.appendChild(el("p", "store__legend", "Nothing matches here."));
     // what the whole of conda-forge and npm have under that name (the plugins and languages of the store are searched in the store)
     if (q.length >= 2 && /^[a-z0-9][a-z0-9._-]{0,40}$/.test(q) && S.chip === "all") {
@@ -359,9 +412,9 @@
     var grid = el("div", "store__grid");
     var entries = (S.cat && S.cat.entries) || [];
     if (S.cat && S.cat.loading) wrap.appendChild(loadingLine("store__legend", "Loading…"));
-    entries.filter(function (e) { return !q || e.name.toLowerCase().indexOf(q) >= 0 || (e.summary || "").toLowerCase().indexOf(q) >= 0; })
-      .filter(function (e) { return (!S.level || e.level === S.level) && (!S.repl || (e.repls || []).indexOf(S.repl) >= 0 || e.kind === "plugin"); })
-      .forEach(function (e) {
+    var shown = entries.filter(function (e) { return !q || e.name.toLowerCase().indexOf(q) >= 0 || (e.summary || "").toLowerCase().indexOf(q) >= 0; })
+      .filter(function (e) { return (!S.level || e.level === S.level) && (!S.repl || (e.repls || []).indexOf(S.repl) >= 0 || e.kind === "plugin"); });
+    var pgr = pagedList(grid, shown, "browser", [q, S.level, S.repl].join("|"), function (e) {
         var c = el("article", "sapp is-" + e.state);
         c.setAttribute("data-app", e.id);
         var a = el("a", "sapp__name", e.name); a.href = "#app/" + encodeURIComponent(e.id); c.appendChild(a);
@@ -385,9 +438,10 @@
         }
         if (e.docs) { var d = el("a", "sbtn", "Documentation"); d.href = e.docs; if (e.docs.indexOf("https://") === 0) { d.target = "_blank"; d.rel = "noopener noreferrer"; } row.appendChild(d); }
         c.appendChild(row);
-        grid.appendChild(c);
+        return c;
       });
     wrap.appendChild(grid);
+    if (pgr) wrap.appendChild(pgr);
     if (S.cat && !S.cat.loading && !entries.length) wrap.appendChild(el("p", "store__legend", "Nothing matches here."));
     wrap.appendChild(el("p", "store__legend", "Browser libraries are served from this site to your preview at /preview/lib/<name>/<file>: nothing is loaded from another site. A plugin of the preview shows in the preview toolbar once it is on for you."));
     return wrap;
@@ -405,7 +459,7 @@
     var wrap = el("div", "store__rows");
     var nb = noteBox(); if (nb) wrap.appendChild(nb);
     var mineList = S.views.filter(function (v) { return v.on || (v.mine && v.state !== "available"); });
-    mineList.forEach(function (v) {
+    var minePager = pagedList(wrap, mineList, "mine", "", function (v) {
       var r = el("div", "store__row");
       r.setAttribute("data-app", v.name);
       var d = el("div");
@@ -415,8 +469,9 @@
       r.appendChild(d);
       var tag = stateTag(v); if (tag && v.state !== "installed") r.appendChild(tag);
       control(v, r);
-      wrap.appendChild(r);
+      return r;
     });
+    if (minePager) wrap.appendChild(minePager);
     if (!mineList.length) wrap.appendChild(el("p", "store__legend", "Nothing is on for you yet. Browse the store and switch an app on."));
     // what the image has built in: listed with the apps, always on, nothing to install or remove
     if (S.builtins.length) wrap.appendChild(el("h3", "store__h3", "Built in"));
@@ -492,7 +547,8 @@
     w.appendChild(box);
     api("/admin/store", null, true).then(function (d) {
       box.textContent = "";
-      (d.apt || []).forEach(function (p) { var r = el("div", "store__row"); var dd = el("div"); dd.appendChild(el("b", "", p)); r.appendChild(dd); box.appendChild(r); });
+      var aptPager = pagedList(box, d.apt || [], "apt", "", function (p) { var r = el("div", "store__row"); var dd = el("div"); dd.appendChild(el("b", "", p)); r.appendChild(dd); return r; });
+      if (aptPager) box.appendChild(aptPager);
       if (!(d.apt || []).length) box.appendChild(el("p", "store__legend", "No apt package has been approved."));
       var a = el("a", "sbtn", "Edit in the admin dashboard"); a.href = "./admin#store"; box.appendChild(a);
     }, function (e) { box.textContent = ""; box.appendChild(el("p", "store__legend", e.message)); });
@@ -535,28 +591,32 @@
       w.appendChild(el("h2", "", "Requests"));
       w.appendChild(el("p", "store__legend", "Apps that users asked for and that are not on the safe list. Approve installs it for everyone and tells the people who asked."));
       var waiting = d.requests.filter(function (r) { return r.status === "waiting"; });
-      waiting.forEach(function (rq) {
+      var rqPager = pagedList(w, waiting, "adm-requests", "", function (rq) {
         var row = admRow(rq.name, kindLabel(rq.kind) + " · " + rq.askers.length + (rq.askers.length === 1 ? " user" : " users") + " · asked " + day(rq.at) + (rq.reason ? " · “" + rq.reason + "”" : ""), "Waiting", "stag--requested");
         row.setAttribute("data-request", rq.name);
         rbtn(row, "Approve and install", "is-primary", function () { adminPost({ action: "approve", name: rq.name }, rq.name + " is being installed."); });
         rbtn(row, "Reject", "is-danger", function () { reasonModal("Reject " + rq.name + "?", "Reject", function (why) { adminPost({ action: "reject", name: rq.name, answer: why }, rq.name + " was rejected."); }); });
-        w.appendChild(row);
+        return row;
       });
+      if (rqPager) w.appendChild(rqPager);
       if (!waiting.length) w.appendChild(el("p", "store__legend", "Nobody is waiting for an answer."));
     } else if (arg === "failures") {
       w.appendChild(el("h2", "", "Failures reported"));
       w.appendChild(el("p", "store__legend", "Installs that stopped, and that a user told you about. Every answer is sent to everyone who reported it."));
       var open = d.reports.filter(function (r) { return r.status === "open"; });
-      open.forEach(function (rp) {
+      var fPager = pagedList(w, open, "adm-failures", "", function (rp) {
+        var item = el("div");
         var row = admRow(rp.name + (rp.version ? " " + rp.version : ""), rp.reporters.length + (rp.reporters.length === 1 ? " user" : " users") + (rp.node ? " · on " + rp.node : "") + " · stopped at: " + (rp.step || "").split(":")[0] + (rp.note ? " · “" + rp.note + "”" : ""), "Failed", "stag--failed");
         row.setAttribute("data-report", rp.name);
         rbtn(row, "Try again", "is-primary", function () { adminPost({ action: "retry", name: rp.name }, "Trying " + rp.name + " again."); });
         rbtn(row, "Pick another version", "", function () { go("#app/" + encodeURIComponent(rp.name)); });
         rbtn(row, "Mark installed", "", function () { adminPost({ action: "installed", name: rp.name }, rp.name + " is marked installed."); });
         rbtn(row, "Reject", "is-danger", function () { reasonModal("Reject the report about " + rp.name + "?", "Reject", function (why) { adminPost({ action: "rejectreport", name: rp.name, answer: why }, "Rejected."); }); });
-        w.appendChild(row);
-        if (rp.log) w.appendChild(el("pre", "store__code", rp.log));
+        item.appendChild(row);
+        if (rp.log) item.appendChild(el("pre", "store__code", rp.log));
+        return item;
       });
+      if (fPager) w.appendChild(fPager);
       if (!open.length) w.appendChild(el("p", "store__legend", "No failures are waiting for you."));
     } else {
       w.appendChild(el("h2", "", "Servers and installs"));

@@ -489,7 +489,7 @@
       }
       return th;
     }));
-    var body = rows.map(function (row) {
+    function rowEl(row) {
       var tr = h('tr', { class: o.onRow ? 'click' : '' }, cols.map(function (c) {
         return h('td', { class: c.num ? 'num' : '' }, c.cell(row));
       }));
@@ -499,11 +499,60 @@
         tr.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target === tr) o.onRow(row); });
       }
       return tr;
-    });
-    if (!rows.length) {
-      body = [h('tr', null, h('td', { colspan: cols.length }, emptyState(o.empty || 'Nothing here yet.')))];
     }
-    return h('div', { class: 'table-wrap' }, h('table', null, h('thead', null, head), h('tbody', null, body)));
+    var holder = h('div', { class: 'paged' });
+    var pkey = o.pageKey || cols.map(function (c) { return c.label; }).join('|');
+    function draw() {
+      var st = pageState(pkey), n = rows.length, size = st.size;
+      var pages = Math.max(1, Math.ceil(n / size));
+      if (st.page > pages) st.page = pages;
+      var from = (st.page - 1) * size;
+      var body = rows.slice(from, from + size).map(rowEl);
+      if (!rows.length) body = [h('tr', null, h('td', { colspan: cols.length }, emptyState(o.empty || 'Nothing here yet.')))];
+      holder.innerHTML = '';
+      holder.appendChild(h('div', { class: 'table-wrap' }, h('table', null, h('thead', null, head), h('tbody', null, body))));
+      if (n > PAGE_SIZES[0]) {
+        holder.appendChild(pager(n, st, function () { draw(); var w = holder.getBoundingClientRect(); if (w.top < 0) holder.scrollIntoView({ block: 'start' }); }));
+      }
+    }
+    draw();
+    return holder;
+  }
+
+  // ---- paging: a long list shows one page at a time, with a pager at its foot -------------------------------------------------
+  var PAGE_SIZES = [25, 50, 100];
+  var pageStates = {};
+  function pageState(key) {
+    if (!pageStates[key]) {
+      var size = 25;
+      try { var v = parseInt(localStorage.getItem('openrepl.admin.pagesize'), 10); if (PAGE_SIZES.indexOf(v) >= 0) size = v; } catch (e) { /* storage may be blocked */ }
+      pageStates[key] = { page: 1, size: size };
+    }
+    return pageStates[key];
+  }
+  // pager draws "Showing a to b of n", the page size, Previous, numbers and Next. st is {page, size}; change() is called after it moves.
+  function pager(n, st, change, sizes) {
+    sizes = sizes || PAGE_SIZES;
+    var count = Math.max(1, Math.ceil(n / st.size));
+    var bar = h('nav', { class: 'toolbar pager', 'aria-label': 'Pages' });
+    var a = n ? (st.page - 1) * st.size + 1 : 0, b = Math.min(n, st.page * st.size);
+    bar.appendChild(h('span', { class: 'sub', text: 'Showing ' + a + ' to ' + b + ' of ' + n }));
+    var sel = h('select', { 'aria-label': 'Rows per page', onchange: function (ev) {
+      st.size = parseInt(ev.target.value, 10); st.page = 1;
+      try { localStorage.setItem('openrepl.admin.pagesize', String(st.size)); } catch (e) { /* ignore */ }
+      change();
+    } }, sizes.map(function (z) { var o = h('option', { value: String(z), text: z + ' per page' }); if (z === st.size) o.selected = true; return o; }));
+    bar.appendChild(sel);
+    bar.appendChild(h('span', { class: 'grow' }));
+    function go(p) { return function () { st.page = p; change(); }; }
+    bar.appendChild(h('button', { class: 'btn', type: 'button', text: '\u2190 Previous', disabled: st.page <= 1, onclick: go(st.page - 1) }));
+    var lo = Math.max(1, Math.min(st.page - 3, count - 6)), hi = Math.min(count, lo + 6);
+    for (var i = lo; i <= hi; i++) {
+      bar.appendChild(h('button', { class: 'btn' + (i === st.page ? ' primary' : ''), type: 'button', text: String(i), 'aria-label': 'Page ' + i, 'aria-current': i === st.page ? 'page' : null, onclick: go(i) }));
+    }
+    bar.appendChild(h('button', { class: 'btn', type: 'button', text: 'Next \u2192', disabled: st.page >= count, onclick: go(st.page + 1) }));
+    bar.appendChild(h('span', { class: 'sub', text: 'Page ' + st.page + ' of ' + count }));
+    return bar;
   }
 
   function usageBar(used, max) {
@@ -2939,7 +2988,7 @@
         return load();
       }, fail);
     }
-    var d0 = null, filterRepl = '', filterLevel = '';
+    var d0 = null, filterRepl = '', filterLevel = '', filterText = '';
     function catalogueTab(out, d) {
       d0 = d;
       var cat = d.cat;
@@ -2954,10 +3003,11 @@
         h('button', { class: 'btn', type: 'button', text: 'Import', onclick: function () { importDialog(); } }),
         h('button', { class: 'btn', type: 'button', text: 'Verify now', onclick: verifyNow }),
         h('span', { class: 'grow' }),
+        h('input', { type: 'search', class: 'input', placeholder: 'Search the catalogue', 'aria-label': 'Search the catalogue', value: filterText, onchange: function (ev) { filterText = ev.target.value.trim().toLowerCase(); pageState('App|REPL|Kind|Level|Manager, size|Who may install|State on the servers|').page = 1; box.__key = null; load(); } }),
         h('label', null, 'REPL ', h('select', { 'aria-label': 'Filter by REPL', onchange: function (ev) { filterRepl = ev.target.value; box.__key = null; load(); } }, opts([['', 'all']].concat(cat.repls.map(function (r) { return [r, r]; })), filterRepl))),
         h('label', null, 'Level ', h('select', { 'aria-label': 'Filter by level', onchange: function (ev) { filterLevel = ev.target.value; box.__key = null; load(); } }, opts([['', 'all'], ['core', 'core'], ['popular', 'popular'], ['optional', 'optional']], filterLevel))));
       out.appendChild(bar);
-      var list = cat.entries.filter(function (e) { return (!filterRepl || (e.repls || []).indexOf(filterRepl) >= 0 || e.kind === 'plugin') && (!filterLevel || e.level === filterLevel); });
+      var list = cat.entries.filter(function (e) { return (!filterRepl || (e.repls || []).indexOf(filterRepl) >= 0 || e.kind === 'plugin') && (!filterLevel || e.level === filterLevel) && (!filterText || (e.name + ' ' + (e.summary || '') + ' ' + (e.package || '')).toLowerCase().indexOf(filterText) >= 0); });
       var NAMES = { lib: 'library', lib27: 'library (2.7)', tool: 'tool', clib: 'C library', node: 'library', weblib: 'browser lib', plugin: 'plugin', gomod: 'library', jar: 'library', crate: 'crate' };
       function stateOf(e) {
         var k = e.kind === 'lib' ? 'lib' : (e.kind === 'node' || e.kind === 'weblib' || (e.kind === 'plugin' && !e.internal)) ? 'node' : e.kind === 'tool' || e.kind === 'clib' ? 'tool' : '';
@@ -2998,19 +3048,30 @@
       if ((cat.retired || []).length) {
         out.appendChild(h('h3', { text: 'Retired apps (' + cat.retired.length + ')' }));
         out.appendChild(h('p', { class: 'sub', text: 'Apps that were cut from the catalogue or that an admin retired. Restore brings back what the default catalogue still has; Delete record removes the database record of the rest. An installed copy stays installed. An installed copy stays installed (remove it under Installed).' }));
-        var picks = {}, rbox = h('div', { class: 'card', 'data-retired': '1' });
-        cat.retired.forEach(function (r) {
-          var cb = h('input', { type: 'checkbox', 'aria-label': 'Pick ' + r.name, onchange: function (ev) { picks[r.id] = ev.target.checked; } });
-          rbox.appendChild(h('label', { style: 'display:block;margin:2px 0' }, cb, ' ' + r.name + ' ', h('span', { class: 'sub', text: (NAMES[r.kind] || r.kind) + (r.removed ? ' \u00b7 retired by an admin' : '') + (r.installed ? ' \u00b7 installed' : '') })));
-        });
+        var picks = {}, rbox = h('div', { class: 'card', 'data-retired': '1' }), rpager = h('div'), rst = { page: 1, size: 10 }, picked = h('span', { class: 'sub' });
+        function countPicks() { var n = Object.keys(picks).filter(function (k) { return picks[k]; }).length; picked.textContent = n ? n + ' picked in all (the ticks stay when you change page)' : ''; }
+        function drawRetired() {
+          var pagesN = Math.max(1, Math.ceil(cat.retired.length / rst.size));
+          if (rst.page > pagesN) rst.page = pagesN;
+          rbox.innerHTML = '';
+          cat.retired.slice((rst.page - 1) * rst.size, rst.page * rst.size).forEach(function (r) {
+            var cb = h('input', { type: 'checkbox', 'aria-label': 'Pick ' + r.name, checked: !!picks[r.id], onchange: function (ev) { picks[r.id] = ev.target.checked; countPicks(); } });
+            rbox.appendChild(h('label', { style: 'display:block;margin:2px 0' }, cb, ' ' + r.name + ' ', h('span', { class: 'sub', text: (NAMES[r.kind] || r.kind) + (r.removed ? ' \u00b7 retired by an admin' : '') + (r.installed ? ' \u00b7 installed' : '') })));
+          });
+          rpager.innerHTML = '';
+          if (cat.retired.length > 10) rpager.appendChild(pager(cat.retired.length, rst, drawRetired, [10, 25, 50]));
+        }
+        drawRetired();
         out.appendChild(rbox);
+        out.appendChild(rpager);
+        out.appendChild(picked);
         out.appendChild(h('div', { class: 'toolbar' },
           h('button', { class: 'btn', type: 'button', text: 'Restore selected', title: 'Bring back entries that are in the default catalogue', onclick: function () {
             var ids = Object.keys(picks).filter(function (k) { return picks[k]; });
             if (!ids.length) { toast('Pick at least one app.'); return; }
             catPost({ action: 'restore-removed', names: ids }, 'Restored what the default catalogue still has.');
           } }),
-          h('button', { class: 'btn', type: 'button', text: 'Select all', onclick: function () { rbox.querySelectorAll('input').forEach(function (c, i) { c.checked = true; picks[cat.retired[i].id] = true; }); } }),
+          h('button', { class: 'btn', type: 'button', text: 'Select all', onclick: function () { cat.retired.forEach(function (r) { picks[r.id] = true; }); drawRetired(); countPicks(); } }),
           h('button', { class: 'btn danger', type: 'button', text: 'Delete record', title: 'Delete the database record of the picked apps that are not in the default catalogue', onclick: function () {
             var ids = Object.keys(picks).filter(function (k) { return picks[k]; });
             if (!ids.length) { toast('Pick at least one app.'); return; }
@@ -3030,7 +3091,7 @@
     function load() {
       return Promise.all([api.get('admin/store'), api.get('admin/store/catalogue').catch(function () { return null; })]).then(function (r) {
         var d = r[0]; d.cat = r[1];
-        render(box, JSON.stringify([d, tab, filterRepl, filterLevel]), draw(d));
+        render(box, JSON.stringify([d, tab, filterRepl, filterLevel, filterText]), draw(d));
       });
     }
     return { root: root, refresh: load, poll: true };
