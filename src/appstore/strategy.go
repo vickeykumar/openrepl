@@ -67,21 +67,38 @@ func IsPermanent(err error) bool {
 	return false
 }
 
-// workLog is where an install writes its output; it also remembers when it last wrote (a sign of life for the watchdog).
+// workLog is where an install writes its output; it also remembers when it last wrote (a sign of life for the watchdog), and tees what it gets
+// into the log of the attempt (lg, nil when there is none).
 type workLog struct {
 	mu   sync.Mutex
 	buf  bytes.Buffer
 	last time.Time
+	lg   *AttemptLog
 }
 
 func (w *workLog) Write(p []byte) (int, error) {
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	w.last = time.Now()
 	if w.buf.Len() > 256<<10 {
 		w.buf.Next(w.buf.Len() - 128<<10) // keep the end
 	}
-	return w.buf.Write(p)
+	n, err := w.buf.Write(p)
+	lg := w.lg
+	w.mu.Unlock()
+	lg.Output(p)
+	return n, err
+}
+
+// Step writes one line of the steps of the install (a line of the log of the attempt, and, as text, of what the admin sees of a failure).
+func (w *workLog) Step(step, level, format string, args ...interface{}) {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	lg := w.lg
+	w.last = time.Now()
+	w.mu.Unlock()
+	lg.Line(step, level, format, args...)
 }
 
 func (w *workLog) Reset() { w.mu.Lock(); w.buf.Reset(); w.last = time.Now(); w.mu.Unlock() }

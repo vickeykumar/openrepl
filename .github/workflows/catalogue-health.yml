@@ -1,0 +1,81 @@
+# The health of the App Store catalogue, every week (LLD 18, section 13). Every entry that the catalogue says has a chosen way to install is installed with that
+# manager inside the image, trimmed and checked, on both CPU types (two jobs, in parallel). An entry that worked when it was measured and does not now has broken
+# (a new release, a package that left an archive, a Node or a Go too old for it): the job fails and the summary of the run lists the entries.
+# It is its own workflow, so it never slows the checks of a pull request. Run it by hand from the Actions tab ("Run workflow") to look at the catalogue after a change.
+name: Catalogue health
+
+on:
+  schedule:
+    - cron: "30 2 * * 1" # Monday 02:30 UTC, 08:00 in India
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Only these entry ids (a comma list, for example vim,tmux,npm:lodash). Empty: every entry that has a measured way to install."
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: catalogue-health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    name: Catalogue health (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+            file: linux-64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            file: linux-aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    env:
+      GO111MODULE: "off"
+      GOPATH: ${{ github.workspace }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
+      with:
+        go-version: "1.23.12"
+        cache: false
+    - uses: docker/setup-buildx-action@v3
+    - name: Build the Docker image (from the cache of the builds of master)
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: Dockerfile
+        platforms: linux/${{ matrix.arch }}
+        load: true
+        tags: openrepl:${{ matrix.arch }}
+        cache-from: type=gha,scope=linux-${{ matrix.arch }}
+    # a static program (no cgo), so that it runs in the image whatever the runner's libc is
+    - name: The test program
+      working-directory: src
+      env:
+        CGO_ENABLED: "0"
+      run: go test -tags realinstall -c -o "$RUNNER_TEMP/appstore.test" appstore
+    - name: Install every entry of the catalogue with its chosen manager
+      run: |
+        mkdir -p "$RUNNER_TEMP/out"
+        docker run --rm --entrypoint /appstore.test \
+          -v "$RUNNER_TEMP/appstore.test:/appstore.test:ro" -v "$RUNNER_TEMP/out:/out" \
+          -e OPENREPL_REAL_STORE=/store -e OPENREPL_HEALTH_OUT=/out/health-${{ matrix.file }}.json -e OPENREPL_HEALTH_ONLY="${{ inputs.only }}" \
+          -e GITHUB_STEP_SUMMARY=/out/summary.md \
+          openrepl:${{ matrix.arch }} \
+          -test.v -test.timeout=345m -test.run='TestCatalogueHealth'
+    - name: The summary of the run
+      if: always()
+      run: |
+        [ -f "$RUNNER_TEMP/out/summary.md" ] && cat "$RUNNER_TEMP/out/summary.md" >> "$GITHUB_STEP_SUMMARY" || echo "No summary: the run did not get as far as the test." >> "$GITHUB_STEP_SUMMARY"
+    - name: What was tried (one line for each entry)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: catalogue-health-${{ matrix.arch }}
+        path: ${{ runner.temp }}/out/*.json
+        if-no-files-found: ignore

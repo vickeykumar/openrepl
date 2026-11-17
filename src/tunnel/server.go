@@ -57,6 +57,8 @@ type ServerConfig struct {
 	StoreLock func(w *Worker, id string) (json.RawMessage, bool)
 	// OnStoreState takes what a worker answers of a catalog (a JSON object the tunnel does not look at).
 	OnStoreState func(w *Worker, state json.RawMessage)
+	// OnStoreLog takes a chunk of an install log that a worker answers to a StoreLogRequest (a JSON object the tunnel does not look at).
+	OnStoreLog func(w *Worker, chunk json.RawMessage)
 	// HeartbeatInterval is how often workers report; Timeout is how long a
 	// silent worker stays ONLINE. Defaults: 10s and 30s.
 	HeartbeatInterval time.Duration
@@ -472,6 +474,15 @@ func (s *Server) ServeConn(c net.Conn) {
 			}
 			if s.cfg.OnStoreState != nil {
 				s.cfg.OnStoreState(worker, json.RawMessage(req.Payload))
+			}
+			reply(req, true, "")
+		case ReqStoreLog:
+			if worker == nil {
+				reply(req, false, "not registered")
+				continue
+			}
+			if s.cfg.OnStoreLog != nil && len(req.Payload) <= 1<<20 {
+				s.cfg.OnStoreLog(worker, json.RawMessage(req.Payload))
 			}
 			reply(req, true, "")
 		case ReqSyncReady:

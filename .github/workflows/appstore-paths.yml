@@ -1,0 +1,75 @@
+# The paths of the App Store that the install job of the image does not walk (LLD 18, section 13), as a workflow of its own so that it runs at the same time as the
+# other checks of a pull request and does not make them longer. It starts only when the App Store, the tunnel or the Dockerfile changed.
+#   - a worker replays a bundle that the gateway made with apt, for real, from the gateway's lock (the Raspberry Pi workers asked pixi for an apt version once);
+#   - installs run in a container that has 512 MB of memory, as on Render: vim, tmux and a Node library, and three installs asked at once (one at a time, all end).
+# Each case runs on both CPU types, and every job builds the image from the cache by itself, so they all start together.
+name: App Store paths
+
+on:
+  pull_request:
+    paths:
+      - "src/appstore/**"
+      - "src/server/appstore*.go"
+      - "src/server/store*.go"
+      - "src/tunnel/**"
+      - "Dockerfile"
+      - ".github/workflows/appstore-paths.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: appstore-paths-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paths:
+    name: ${{ matrix.case }} (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        case: [worker-apt-replay, low-memory]
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          - case: worker-apt-replay
+            memory: ""
+            tests: "TestAWorkerReplaysARealAptBundle"
+          - case: low-memory
+            memory: "512m"
+            tests: "TestTheMinimalInstallsRun|TestInstallsAskedAtOnceGoOneAtATime"
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      GO111MODULE: "off"
+      GOPATH: ${{ github.workspace }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
+      with:
+        go-version: "1.23.12"
+        cache: false
+    - uses: docker/setup-buildx-action@v3
+    - name: Build the Docker image (from the cache of the builds of master)
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: Dockerfile
+        platforms: linux/${{ matrix.arch }}
+        load: true
+        tags: openrepl:${{ matrix.arch }}
+        cache-from: type=gha,scope=linux-${{ matrix.arch }}
+    - name: The test program
+      working-directory: src
+      env:
+        CGO_ENABLED: "0"
+      run: go test -tags realinstall -c -o "$RUNNER_TEMP/appstore.test" appstore
+    - name: Run ${{ matrix.case }}
+      run: |
+        LIMIT=""
+        if [ -n "${{ matrix.memory }}" ]; then LIMIT="--memory ${{ matrix.memory }} --memory-swap ${{ matrix.memory }}"; fi
+        docker run --rm $LIMIT --entrypoint /appstore.test \
+          -v "$RUNNER_TEMP/appstore.test:/appstore.test:ro" -e OPENREPL_REAL_STORE=/store \
+          openrepl:${{ matrix.arch }} \
+          -test.v -test.timeout=50m -test.run='${{ matrix.tests }}'

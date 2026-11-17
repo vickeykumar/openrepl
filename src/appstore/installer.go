@@ -148,6 +148,7 @@ func (n Npm) Resolve(ctx context.Context, name, version, kind string) (Resolved,
 		if err != nil {
 			// this version could not be looked up (the registry does not know it yet, a hiccup): the next older one is tried, not the whole install given up
 			lastErr = err
+			logf(ctx, "look up", "warn", "npm: %s@%s could not be looked up (%s): trying the next older one", name, v, tail(err.Error(), 160))
 			continue
 		}
 		rng, mb := npmEngines(raw)
@@ -234,7 +235,10 @@ func (n Npm) Install(ctx context.Context, name, version, kind, dest string, log 
 	}
 	c := n.cmd(ctx, "install", "--prefix", dest, "--ignore-scripts", "--omit=dev", "--omit=optional", "--no-audit", "--no-fund", "--no-package-lock", "--loglevel=error", name+"@"+version)
 	c.Stdout, c.Stderr = log, log
-	return c.Run()
+	t0 := time.Now()
+	err := c.Run()
+	logCommand(log, "npm", []string{"install", "--prefix", "<bundle>", name + "@" + version}, err, time.Since(t0))
+	return err
 }
 
 func (n Npm) Search(ctx context.Context, q, kind string) ([]Found, error) {

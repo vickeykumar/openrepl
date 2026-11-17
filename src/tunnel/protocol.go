@@ -35,6 +35,8 @@ const (
 	ReqStoreState = "store-state@openrepl"
 	// ReqStoreLock asks the gateway for the lock of one App Store bundle (the exact packages of its install), which the answer carries.
 	ReqStoreLock = "store-lock@openrepl"
+	// ReqStoreLog is the worker's answer to a request of the admin for a chunk of the log of an install (StoreUpdate.Logs).
+	ReqStoreLog = "store-log@openrepl"
 )
 
 // Route kinds: keys that must reach the worker that owns them even when the
@@ -100,9 +102,18 @@ type WorkerConfig struct {
 // the content: a worker that reports the Rev the gateway has is up to date, and nothing is sent. Reinstall are the bundles an admin
 // asked this worker to make again; they are given once.
 type StoreUpdate struct {
-	Rev       int64           `json:"rev"`
-	Catalog   json.RawMessage `json:"catalog,omitempty"`
-	Reinstall []string        `json:"reinstall,omitempty"`
+	Rev       int64             `json:"rev"`
+	Catalog   json.RawMessage   `json:"catalog,omitempty"`
+	Reinstall []string          `json:"reinstall,omitempty"`
+	Logs      []StoreLogRequest `json:"logs,omitempty"` // chunks of install logs an admin is reading; the worker answers each with ReqStoreLog
+}
+
+// StoreLogRequest asks a worker for a chunk of the log of an install of an app: the attempt (0: the newest) from a byte offset.
+type StoreLogRequest struct {
+	ID      string `json:"id"` // what the answer carries back
+	App     string `json:"app"`
+	Attempt int    `json:"attempt"`
+	From    int64  `json:"from"`
 }
 
 // HeartbeatReply is the payload of the answer to a heartbeat. Config is set

@@ -347,8 +347,10 @@ func (p Pixi) Install(ctx context.Context, name, version, kind, dest string, log
 		var lout bytes.Buffer
 		lc := p.cmd(lctx, dest, "lock", "--manifest-path", mf)
 		lc.Stdout, lc.Stderr = &lout, &lout
+		lt := time.Now()
 		err := lc.Run()
 		lcancel()
+		logCommand(log, "pixi", []string{"lock", "--manifest-path", "pixi.toml"}, err, time.Since(lt))
 		if err != nil {
 			if lctx.Err() != nil {
 				return fmt.Errorf("conda-forge did not answer in %s while solving %s (timed out)", SolveLimit, name)
@@ -361,6 +363,7 @@ func (p Pixi) Install(ctx context.Context, name, version, kind, dest string, log
 		args = append(args, "--locked")
 	}
 	c := p.cmd(ctx, dest, args...)
+	cmdStart := time.Now()
 	if kind == KindTool {
 		// a program gets a cache of its own, removed afterwards: the files of its prefix are hard links into the cache, and with a shared cache
 		// the trim of the bundle would free nothing (the cache keeps its copy). The download is not shared with other apps, which a tool accepts.
@@ -370,7 +373,9 @@ func (p Pixi) Install(ctx context.Context, name, version, kind, dest string, log
 		c.Env = append(c.Env, "PIXI_CACHE_DIR="+pc, "RATTLER_CACHE_DIR="+pc)
 	}
 	c.Stdout, c.Stderr = log, log
-	if err := c.Run(); err != nil {
+	err := c.Run()
+	logCommand(log, "pixi", args, err, time.Since(cmdStart))
+	if err != nil {
 		return err
 	}
 	if vars, err := p.activation(ctx, dest); err != nil {

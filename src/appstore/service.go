@@ -148,7 +148,11 @@ type Service struct {
 	remote   []Entry   // the gateway's admin entries, on a node that has no catalog (guarded by remoteMu)
 	remoteMu sync.Mutex
 
-	actMu     sync.Mutex // what a replay is doing (Activity)
+	logs      *InstallLogs // the install logs of this node (Logs)
+	logOnce   sync.Once
+	curMu     sync.Mutex
+	curLog    map[string]*AttemptLog // the log of the attempt that is going on for an app
+	actMu     sync.Mutex             // what a replay is doing (Activity)
 	actDoing  string
 	actSince  time.Time
 	actQueued []string
@@ -198,7 +202,7 @@ func New(cfg Config) *Service {
 		cfg.PerDay = func() int { return 0 }
 	}
 	cfg.KV = &lockedKV{inner: cfg.KV}
-	return &Service{cfg: cfg, jobs: map[string]*Job{}, retry: map[string]retryEntry{}, gwFails: map[string]int{}, retryOf: map[string]bool{}}
+	return &Service{cfg: cfg, jobs: map[string]*Job{}, retry: map[string]retryEntry{}, gwFails: map[string]int{}, retryOf: map[string]bool{}, curLog: map[string]*AttemptLog{}}
 }
 
 // lockedKV makes every call of the store one at a time (a callback of Each must not call the store again).
@@ -646,6 +650,8 @@ func (s *Service) fail(a App, step string, err error, log string) {
 	s.gwFails[a.Name] = n
 	s.put("app:"+a.Name, a)
 	s.mu.Unlock()
+	s.endLog(a.Name, resultOf(err), a.Version, a.Manager, a.Err)
+	serverLogf("appstore: %s %s failed (%s, %s): %s", a.Name, a.Version, a.Manager, resultOf(err), tail(strings.ReplaceAll(a.Err, "\n", " "), 300)) // a failure is in the log of the server too
 	s.finishJob(a.Name)
 	if wait > 0 {
 		name, kind, want, who := a.Name, a.Kind, a.Want, a.By
@@ -685,6 +691,11 @@ func (s *Service) runInstall(a App) {
 	}
 	stopWatch := watch(cancel, &logb, watchDirs(s.cfg.Store.Dir)...)
 	defer stopWatch()
+	lg := s.beginLog(a.Name, "install")
+	logb.lg = lg
+	ctx = WithAttemptLog(ctx, &logb)
+	lg.Line("start", "info", "install %s on %s, asked by %s", a.Name, hostName(), a.By)
+	lg.Line("env", "info", "%s", EnvLine(hostName(), s.cfg.Store.Dir))
 	// an install that was stopped for no progress says so, not "signal: killed"
 	cause := func(err error) error {
 		if c := context.Cause(ctx); errors.Is(c, errNoProgress) {
@@ -708,6 +719,7 @@ func (s *Service) runInstall(a App) {
 	var dest, detail string
 	var failures []string
 	var trimRep TrimReport
+	lg.Line("order", "info", "managers: %s", strings.Join(order, ", "))
 	for i, mgr := range order {
 		a.Manager = mgr
 		mctx := WithManager(ctx, mgr)
@@ -717,24 +729,29 @@ func (s *Service) runInstall(a App) {
 		done := false
 		// the version ladder: the newest version is tried; when it does not install or does not work, the newest one below it, up to MaxLadder times
 		for steps := 0; ; steps++ {
+			t0 := time.Now()
+			lg.Line("look up", "info", "%s: solving %s (want %q)", mgr, a.Name, want)
 			res, err := s.cfg.Installer.Resolve(mctx, a.Name, want, a.Kind)
 			partial := false
 			if err != nil && (mgr == "" || mgr == MgrPixi) && condaKind(a.Kind) && (IsPermanent(err) || solveTimedOut(err)) {
 				// it cannot be solved for every CPU type (a build that exists for one only): the best version for this CPU type is installed, and every
 				// other node does the same for its own
 				firstErr := err
+				lg.Line("look up", "warn", "%s: not solved for every CPU type (%s): solving for this CPU type only", mgr, tail(firstErr.Error(), 160))
 				if r2, e2 := s.cfg.Installer.Resolve(WithSingleCPU(mctx), a.Name, want, a.Kind); e2 == nil {
 					res, err, partial = r2, nil, true
 					failures = append(failures, mgr+": not solved for every CPU type ("+tail(firstErr.Error(), 120)+"): installed the best version for this CPU type")
 				}
 			}
 			if err != nil {
+				lg.Line("look up", "error", "%s: %s (%s)", mgr, tail(err.Error(), 300), time.Since(t0).Round(100*time.Millisecond))
 				failures = append(failures, mgr+": "+tail(err.Error(), 200))
 				if steps == 0 {
 					lastErr, lastStage, lastLog = cause(err), "Resolving the dependencies", err.Error()
 				} // no older version to try: the error of the version that failed stays
 				break
 			}
+			lg.Line("look up", "info", "%s: %s, %d packages, %.0f MB to fetch (%s)%s", mgr, res.Version, res.Packages, res.DownloadMB, time.Since(t0).Round(100*time.Millisecond), map[bool]string{true: ", for this CPU type only", false: ""}[partial])
 			a.Version, a.ID, a.Packages, a.Download, a.Partial = res.Version, BundleID(a.Name, res.Version), res.Packages, res.DownloadMB, partial
 			dest = s.cfg.Store.BundlePath(a.ID)
 			if dest == "" {
@@ -763,7 +780,9 @@ func (s *Service) runInstall(a App) {
 			os.RemoveAll(dest)
 			failures = append(failures, mgr+" "+res.Version+": "+tail(err.Error(), 200))
 			lastErr, lastStage, lastLog = err, "Downloading and linking", logb.String()+"\n"+strings.Join(failures, "\n")
+			lg.Line("error", "error", "%s %s: %s", mgr, res.Version, tail(err.Error(), 300))
 			if ladderOK(mgr, a.Kind) && steps < MaxLadder && ctx.Err() == nil && !errors.Is(err, errNoProgress) {
+				lg.Line("ladder", "warn", "%s %s did not work: trying the newest version below it (step %d of %d)", a.Name, res.Version, steps+1, MaxLadder)
 				want = "<" + res.Version // the newest version below the one that failed
 				continue
 			}
@@ -788,6 +807,8 @@ func (s *Service) runInstall(a App) {
 		return
 	}
 	a.State, a.Size, a.Err, a.Log, a.Node = StateInstalled, m.Size, "", "", hostName()
+	lg.Line("result", "info", "installed %s %s (%.1f MB) with %s", a.Name, a.Version, float64(m.Size)/(1<<20), a.Manager)
+	s.endLog(a.Name, "installed", a.Version, a.Manager, "")
 	a.Locked = !a.Partial && s.captureLock(a.ID, dest) // a lock of one CPU type is no use to the others: they solve for themselves
 	s.mu.Lock()
 	delete(s.gwFails, a.Name)
@@ -1580,8 +1601,13 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 		dest := s.cfg.Store.BundlePath(a.ID)
 		os.RemoveAll(dest)
 		var logb workLog
+		wlg := s.beginLog(a.Name, "replay")
+		logb.lg = wlg
+		wlg.Line("start", "info", "replay: make %s %s (the gateway used %s) on %s", a.Name, a.Version, map[bool]string{true: a.Manager, false: "the default manager"}[a.Manager != ""], hostName())
+		wlg.Line("env", "info", "%s", EnvLine(hostName(), s.cfg.Store.Dir))
 		ictx0, icancel0 := context.WithTimeout(ctx, 30*time.Minute)
 		ictx, icancel := context.WithCancelCause(ictx0)
+		ictx = WithAttemptLog(ictx, &logb)
 		stopWatch := watch(icancel, &logb, watchDirs(s.cfg.Store.Dir)...)
 		// a node always installs a bundle itself (conda-forge / npm over its own internet): a bundle holds programs for one CPU and the
 		// gateway's egress is not given away. It installs exactly what the lock of the bundle says, or nothing: a bundle that is not
@@ -1655,7 +1681,12 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 			}
 			_, err = s.cfg.Store.Finish(a.ID, a.Name, actual)
 		}
+		if err == nil {
+			wlg.Line("result", "info", "installed %s %s", a.Name, actual)
+			s.endLogOf(wlg, "installed", actual, a.Manager, "")
+		}
 		if err != nil {
+			s.endLogOf(wlg, resultOf(err), a.Version, a.Manager, err.Error())
 			os.RemoveAll(dest)
 			msg := tail(err.Error()+" "+logb.String(), 300)
 			perm := IsPermanent(err)

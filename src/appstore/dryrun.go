@@ -43,9 +43,22 @@ func (s *Service) Compare(ctx context.Context, e Entry) (Entry, []Compared) {
 	}
 	e.Options = env.Candidates(e)
 	kind := e.InstallKind()
+	var rows []Compared
+	clg := s.Logs().Begin(e.PackageName(), "compare", hostName())
+	clg.Line("start", "info", "compare the managers of %s on %s (dry runs, nothing is installed)", e.PackageName(), hostName())
+	clg.Line("env", "info", "%s", EnvLine(hostName(), s.cfg.Store.Dir))
+	defer func() {
+		res := "installed"
+		chosen := e.Manager
+		for _, r := range rows {
+			if r.Chosen {
+				chosen = r.Manager
+			}
+		}
+		s.endLogOf(clg, res, "", chosen, "")
+	}()
 	// the apt candidates are known to the installer through the catalogue it looks the entry up in
 	s.AddEntry("system", e)
-	var rows []Compared
 	for i := range e.Options {
 		o := &e.Options[i]
 		row := Compared{Manager: o.Manager}
@@ -55,8 +68,14 @@ func (s *Service) Compare(ctx context.Context, e Entry) (Entry, []Compared) {
 			continue
 		}
 		rctx, cancel := context.WithTimeout(WithManager(ctx, o.Manager), 3*time.Minute)
+		t0 := time.Now()
 		res, err := s.cfg.Installer.Resolve(rctx, e.PackageName(), "", kind)
 		cancel()
+		if err != nil {
+			clg.Line("look up", "warn", "%s: %s (%s)", o.Manager, tail(err.Error(), 300), time.Since(t0).Round(100*time.Millisecond))
+		} else {
+			clg.Line("look up", "info", "%s: %s, about %.1f MB (an estimate), %s", o.Manager, res.Version, res.DiskMB, time.Since(t0).Round(100*time.Millisecond))
+		}
 		if o.Size == nil {
 			o.Size = map[string]float64{}
 		}

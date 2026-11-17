@@ -641,3 +641,41 @@ dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top
 .weight-row.me .weight-name { font-weight: 600; }
 .weight-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .weight-pct { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- the install log of an app (LLD 18, section 13) ------------------------------------------------ */
+
+.loglink { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.loglink:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+dialog.logs { width: min(1180px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; }
+.logpanel { display: flex; flex-direction: column; gap: 12px; }
+.loghead { display: flex; flex-direction: column; gap: 8px; }
+.loghead-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.loghead-row .grow { flex: 1; }
+.logmain { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 16px; }
+@media (max-width: 760px) { .logmain { grid-template-columns: minmax(0, 1fr); } }
+.logside h3 { margin: 4px 0 8px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.logside p { margin: 0 0 10px; }
+.logattempt { display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 8px 10px; font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.logattempt.on { border-color: var(--accent-text); }
+.logattempt .ok { color: var(--ok); }
+.logattempt .warn { color: var(--warn); }
+.logattempt .bad { color: var(--danger); }
+.logstep { display: flex; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-size: 13px; }
+.logstep .ok { color: var(--ok); }
+.logstep .warn { color: var(--warn); }
+.logstep .bad { color: var(--danger); }
+.logright { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.logbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.logbar .grow { flex: 1; }
+.logsearch { width: 180px; max-width: 100%; }
+.logview { height: min(52vh, 480px); overflow: auto; padding: 10px 12px; background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); border-radius: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.6; }
+.logline { white-space: pre-wrap; overflow-wrap: anywhere; }
+.logline .lt { color: var(--faint); }
+.logline .ls { color: var(--accent-text); }
+.logline.lv-output .ls, .logline.lv-output .lx { color: var(--muted); }
+.logline.lv-warn .lx { color: var(--warn); }
+.logline.lv-error .lx { color: var(--danger); }
+.logmsg { color: var(--muted); padding: 4px 0; }
+.logmsg.bad { color: var(--danger); }
+.logfoot { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
+.logfollow { display: inline-flex; align-items: center; gap: 6px; }

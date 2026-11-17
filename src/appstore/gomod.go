@@ -125,6 +125,7 @@ func (g GoMod) pick(ctx context.Context, tmp, cache, mod, pin string) (string, e
 		os.RemoveAll(cache)
 		if err := g.try(ctx, tmp, cache, mod, v); err != nil {
 			last = err
+			logf(ctx, "look up", "warn", "go: %s@%s did not work with this Go: %s", mod, v, tail(err.Error(), 200))
 			continue
 		}
 		return v, nil
