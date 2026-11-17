@@ -1103,7 +1103,13 @@ func (s *Service) Switch(home, id string, on bool) error {
 		}
 		return s.setList(home, nextOwn)
 	}
-	cur := s.ownList(home)
+	var cur []string
+	for _, x := range s.ownList(home) {
+		// an id whose files are gone (an app uninstalled, or reinstalled as another version) must not block every later switch
+		if x == id || s.cfg.Store.HasBundle(x) {
+			cur = append(cur, x)
+		}
+	}
 	var next []string
 	present := false
 	for _, x := range cur {

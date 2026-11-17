@@ -265,6 +265,22 @@ func TestSwitchAndRemove(t *testing.T) {
 	}
 }
 
+func TestAStaleIdInTheOwnListDoesNotBlockASwitch(t *testing.T) {
+	svc, st := newService(t, Fake{}, "flask")
+	svc.Install("ann", "flask", "lib", false)
+	svc.Wait()
+	// the list holds an app whose files are gone (it was reinstalled as another version)
+	if err := svc.setList("ann", []string{"tmux-3.2a-4ubuntu0.3"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Switch("ann", "flask-1.0.0", true); err != nil {
+		t.Fatalf("switch on: %v", err)
+	}
+	if got, _ := st.Manifest("ann"); !reflect.DeepEqual(got, []string{"flask-1.0.0"}) {
+		t.Fatalf("ann: %v", got)
+	}
+}
+
 func TestStoreFull(t *testing.T) {
 	svc, _ := newService(t, Fake{}, "flask", "numpy")
 	svc.cfg.LimitMB = func() int { return 1 }
