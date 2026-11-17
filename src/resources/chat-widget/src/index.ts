@@ -2207,12 +2207,18 @@ function dockEl(): HTMLElement | null {
   return document.getElementById("genie-dock");
 }
 
+// A phone: the panel is the third pane of the page (Editor | Terminal | Genie), always in the dock; the page shows the dock
+// only while its tab is the one shown (js/src/page/13-mobile.js, ui-refresh.css). Nothing of this is on a desktop.
+function onPhone(): boolean {
+  return document.body.classList.contains("is-mobile");
+}
+
 function canDock(): boolean {
-  return !!dockEl() && window.innerWidth >= DOCK_MIN_VIEWPORT && !document.body.classList.contains("is-mobile");
+  return !!dockEl() && (onPhone() || window.innerWidth >= DOCK_MIN_VIEWPORT);
 }
 
 function wantDock(): boolean {
-  return pinnedPref && canDock();
+  return canDock() && (onPhone() || pinnedPref);
 }
 
 // the editor, the terminal and the terminal tabs fit themselves to a resize
@@ -2227,7 +2233,7 @@ function requestResize() {
 
 function announcePin() {
   // the page stacks the IDE only while the pinned panel is shown: a pin that is kept but closed leaves the layout as the user chose it
-  const now = wantDock() && isOpen();
+  const now = wantDock() && isOpen() && !onPhone(); // (the page stacks the IDE beside a pinned panel: not on a phone)
   if (now === pinTold) return;
   pinTold = now;
   window.dispatchEvent(new CustomEvent("genie-pin", { detail: { pinned: now } }));
@@ -2257,7 +2263,7 @@ function placePanel() {
 function refreshPin() {
   const b = document.getElementById("chat-widget__pin");
   if (!b) return;
-  b.hidden = !canDock();
+  b.hidden = !canDock() || onPhone(); // a phone has no floating panel to pin
   b.setAttribute("aria-pressed", String(pinnedPref));
   const words = pinnedPref ? "Unpin Genie (back to floating)" : "Pin Genie beside the IDE";
   b.setAttribute("aria-label", words);
@@ -3141,7 +3147,7 @@ function open(e?: Event, opts?: { pin?: boolean }) {
     (document.getElementById("chat-widget__input") as HTMLTextAreaElement | null)?.focus();
     return;
   }
-  if (opts && opts.pin && canDock() && !pinnedPref) setPinned(true);
+  if (opts && opts.pin && canDock() && !onPhone() && !pinnedPref) setPinned(true);
   if (config.closeOnOutsideClick) {
     document.body.appendChild(optionalBackdrop);
   }

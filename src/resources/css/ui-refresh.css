@@ -2614,7 +2614,9 @@ body.files-collapsed .files-panel { display: none; }
 /* Phone layout (T10)                                                  */
 /* ------------------------------------------------------------------ */
 .mobile-views,
-.extra-keys { display: none; }
+.extra-keys,
+.mobile-more,
+.mobile-more-menu { display: none; }
 
 @media screen and (max-width: 800px) {
   .hero { padding-top: 28px; padding-bottom: 24px; }
@@ -2628,9 +2630,10 @@ body.files-collapsed .files-panel { display: none; }
   .app-bar .share-btn,
   .app-bar .forkbtn { height: 44px; min-width: 44px; }
   .app-bar .ide-btn--icon { width: 44px; }
-  /* row 1 has room for files, language and run only; Maximize stays in the
-     command palette on a phone */
-  .app-bar #togglescreen-button { display: none; }
+  /* row 1: files, language, Run and Maximize (the same button as on a desktop) */
+  .app-bar #togglescreen-button { order: 4; }
+  .app-bar #files-toggle { order: 1; }
+  .app-bar .select-wrap--lang { order: 2; }
   .select-wrap--lang { flex: 1; }
   .select-wrap--lang select { width: 100%; min-width: 0; height: 44px; font-size: 16px; }
   .run-split { order: 3; margin-left: 0; }
@@ -2638,8 +2641,9 @@ body.files-collapsed .files-panel { display: none; }
   .run-btn--menu { width: 40px; }
   .run-btn__kbd { display: none; }
   .mobile-views {
-    order: 4;
-    flex: 1 1 100%;
+    order: 5;
+    flex: 1 1 220px;
+    min-width: 220px; /* too wide to share row 1: it starts row 2, with the "more" button after it */
     display: flex;
     gap: 4px;
     height: 44px;
@@ -2665,12 +2669,34 @@ body.files-collapsed .files-panel { display: none; }
   .mobile-view[aria-selected="true"] { font-weight: 600; color: var(--on-accent-color); background: var(--paper); }
   .mobile-view .tab-dot[data-state="connected"] { background: #1F7A4D; }
   .app-bar__spacer { display: none; }
+  /* row 2: Editor | Terminal | Genie and "more". Genie is a tab here, and Fork, Share, Apps and the commands are in the menu
+     (the buttons stay in the page: the menu clicks them) */
   .app-bar #genie-button,
   .app-bar #fork-widget,
-  .app-bar .share-wrap { order: 5; }
-  .app-bar #genie-button span,
-  .app-bar .forkbtn span,
-  .app-bar .share-btn span { display: none; }
+  .app-bar .share-btn,
+  .app-bar #palette-button,
+  .app-bar #appstore-button { display: none; }
+  .app-bar .share-wrap { position: absolute; width: 0; height: 0; margin: 0; padding: 0; } /* only its dropdown is used */
+  .app-bar .mobile-more { display: inline-flex; order: 6; }
+  .mobile-more-menu {
+    position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 2000;
+    padding: 6px; flex-direction: column; gap: 2px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  }
+  .mobile-more-menu:not([hidden]) { display: flex; }
+  .mobile-more-menu__item {
+    min-height: 48px; padding: 0 14px; text-align: left; font: 500 15px var(--font-ui); color: var(--paper);
+    background: transparent; border: 0; border-radius: 8px; cursor: pointer;
+  }
+  .mobile-more-menu__item:active, .mobile-more-menu__item:focus-visible { background: var(--ink-700); outline: none; }
+  /* a dot on the Genie tab: working, or needs you (the same states as the lamp of the Ask Genie button) */
+  .mobile-view .genie-dot { display: none; width: 8px; height: 8px; border-radius: 50%; background: #B7E34B; }
+  #mobile-view-genie[data-genie-state="working"] .genie-dot,
+  #mobile-view-genie[data-genie-state="needs"] .genie-dot,
+  #mobile-view-genie[data-genie-state="done"] .genie-dot { display: inline-block; }
+  #mobile-view-genie[data-genie-state="needs"] .genie-dot { background: #F5B547; box-shadow: 0 0 0 3px rgba(245, 181, 71, 0.3); }
+  #mobile-view-genie[data-genie-state="working"] .genie-dot { animation: genie-dot-pulse 1.4s ease-out infinite; }
+  @keyframes genie-dot-pulse { 0% { box-shadow: 0 0 0 0 rgba(183, 227, 75, 0.55); } 100% { box-shadow: 0 0 0 7px transparent; } }
+  .mobile-view { padding: 0 4px; font-size: 14px; }
   .app-bar .dropdown-content { position: fixed; top: auto; bottom: 16px; left: 16px; right: 16px; width: auto; }
   .run-menu { position: fixed; top: auto; bottom: 16px; left: 16px; right: 16px; width: auto; }
   .practice-actions { order: 6; flex: 1 1 100%; flex-wrap: wrap; }
@@ -2686,6 +2712,23 @@ body.files-collapsed .files-panel { display: none; }
   .ide-split[data-mobile-view="terminal"] #ide,
   .ide-split[data-mobile-view="preview"] #ide { display: none !important; }
   .ide-split[data-mobile-view="editor"] #terminal-div { display: none !important; }
+  /* Genie is the third pane: the panel is moved into the dock (chat-widget/src/index.ts) and the dock fills the row */
+  body.is-mobile.mobile-genie #ide-split { display: none !important; }
+  body.is-mobile .genie-dock { display: none; }
+  body.is-mobile.mobile-genie .genie-dock:not([hidden]) { display: flex; width: 100%; flex: 1 1 auto; border-left: 0; }
+  body.is-mobile .genie-dock__grip { display: none; }
+  /* Maximized: the page behind has blocks wider than the screen (the demo of the landing page is 655 px), which a phone sees as
+     the width of the page as soon as the page stops scrolling, and it widens its layout viewport: the workspace would then be
+     700 px wide and cut off at the right. The page itself is clipped to the screen. */
+  html.ide-maximized { overflow: hidden; max-width: 100vw; }
+  /* Maximized: the IDE is the screen; the height follows the visible part of the page (the keyboard takes some) */
+  .ide-shell.is-maximized {
+    bottom: auto;
+    height: var(--vvh, 100dvh);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+  }
   .ide-split[data-mobile-view] #ide,
   .ide-split[data-mobile-view] #terminal-div { width: 100% !important; height: 100% !important; flex: 1; }
   #rotate-button,

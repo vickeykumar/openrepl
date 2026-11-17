@@ -18,7 +18,15 @@ window.mobileActive = false;
 function setMobileView(view) {
   var split = document.getElementById("ide-split");
   if (!split) return;
-  split.setAttribute("data-mobile-view", view);
+  // Genie is the third pane (the panel lives in the dock, which the css shows in place of the split); the split keeps the
+  // pane that was shown before, so that leaving Genie goes back to it
+  var genie = view === "genie";
+  document.body.classList.toggle("mobile-genie", genie);
+  if (genie) {
+    if (window.ChatWidget && window.ChatWidget.open) window.ChatWidget.open({});
+  } else {
+    split.setAttribute("data-mobile-view", view);
+  }
   $(".mobile-view").each(function () {
     this.setAttribute("aria-selected", this.getAttribute("data-view") === view ? "true" : "false");
   });
@@ -39,6 +47,7 @@ function applyMobileLayout() {
     setMobileView("terminal");
     setFilesPanel(false);
   } else {
+    document.body.classList.remove("mobile-genie");
     var split = document.getElementById("ide-split");
     if (split) split.removeAttribute("data-mobile-view");
     if (einst === null) {
@@ -64,7 +73,82 @@ window.EXTRA_KEYS = {
   "up": "\x1b[A", "down": "\x1b[B", "right": "\x1b[C", "left": "\x1b[D"
 };
 
+// ---------------------------------------------------------------------------
+// Phone extras: the menu behind "more" (Fork, Share, Apps, commands), the Genie tab following the panel, the visible height
+// (the keyboard takes some of it) and the back button leaving the maximized workspace. All of it acts only while mobileActive.
+// ---------------------------------------------------------------------------
+function closeMobileMore() {
+  var menu = document.getElementById("mobile-more-menu");
+  var btn = document.getElementById("mobile-more");
+  if (menu) menu.hidden = true;
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+function wireMobileExtras() {
+  var btn = document.getElementById("mobile-more");
+  var menu = document.getElementById("mobile-more-menu");
+  if (btn && menu) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var open = menu.hidden;
+      menu.hidden = !open;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) { var first = menu.querySelector("button"); if (first) first.focus(); }
+    });
+    menu.addEventListener("click", function (e) {
+      var item = e.target.closest && e.target.closest("[data-more]");
+      if (!item) return;
+      var what = item.getAttribute("data-more");
+      closeMobileMore();
+      // the buttons are in the page (hidden on a phone): the menu presses them
+      var target = what === "fork" ? document.querySelector("#fork-widget .forkbtn")
+        : what === "share" ? document.getElementById("share-btn-1")
+        : what === "apps" ? document.getElementById("appstore-button")
+        : document.getElementById("palette-button");
+      // after this click has gone through the page: the share popover closes on any click that is not on it, and this one is not
+      if (target) setTimeout(function () { target.click(); }, 0);
+    });
+    document.addEventListener("click", function (e) {
+      if (!menu.hidden && !(e.target.closest && e.target.closest("#mobile-more-menu"))) closeMobileMore();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !menu.hidden) { closeMobileMore(); btn.focus(); }
+    });
+  }
+  // the Genie tab shows what the lamp of the Ask Genie button shows, and follows the panel: closed, the tab goes back to the editor
+  var tab = document.getElementById("mobile-view-genie");
+  var bar = document.getElementById("genie-button");
+  if (window.MutationObserver) {
+    if (tab && bar) {
+      new MutationObserver(function () {
+        var st = bar.getAttribute("data-genie-state");
+        if (st) tab.setAttribute("data-genie-state", st); else tab.removeAttribute("data-genie-state");
+      }).observe(bar, { attributes: true, attributeFilter: ["data-genie-state"] });
+    }
+    new MutationObserver(function () {
+      if (mobileActive && document.body.classList.contains("mobile-genie") && !document.body.classList.contains("genie-open")) setMobileView("editor");
+    }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  }
+  // the visible height of the page: what is left when the on-screen keyboard is up (css: --vvh)
+  var vv = window.visualViewport;
+  if (vv) {
+    var setH = function () {
+      if (mobileActive) document.documentElement.style.setProperty("--vvh", Math.round(vv.height) + "px");
+      else document.documentElement.style.removeProperty("--vvh");
+    };
+    vv.addEventListener("resize", setH);
+    vv.addEventListener("scroll", setH);
+    window.addEventListener("resize", setH);
+    setH();
+  }
+  // the back button of the phone leaves the maximized workspace (ToggleFunction adds one history entry when it maximizes)
+  window.addEventListener("popstate", function () {
+    if (mobileActive && document.body.classList.contains("ide-maximized")) ToggleFunction();
+  });
+}
+
 $(function () {
+  wireMobileExtras();
   $(".mobile-view").on("click", function () { setMobileView(this.getAttribute("data-view")); });
   $("#extra-keys").on("click", "button[data-key]", function (e) {
     e.preventDefault();
