@@ -829,7 +829,8 @@ export class AgentRunner {
             }
             this.replaceFails++;
             const small = text.split("\n").length <= 80;
-            const near = at.near ? " The editor has these lines that look like it (copy from them):\n" + at.near : "";
+            const missing = at.missing ? " These lines of your old text are not in the editor (check every character):\n" + at.missing + "\n" : "";
+            const near = (at.near ? " The editor has these lines that look like it (copy from them):\n" + at.near : "") + missing;
             const again =
               small || this.replaceFails >= 2
                 ? " " + (small ? "The file is short" : "Two replaces in a row failed") + ": send editor_write with the WHOLE new file now, not editor_replace."

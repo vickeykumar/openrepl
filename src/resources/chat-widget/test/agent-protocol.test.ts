@@ -637,3 +637,13 @@ test("the old text of a replace is found exactly, or by white space, or not at a
   assert.match((r as any).near, /6: function add\(x\) \{/);
   assert.equal(nearestLines("one\ntwo", "zzz"), "");
 });
+
+import { missingLines } from "../src/agent-protocol.ts";
+
+test("the lines of an old text that are not in the editor are named", () => {
+  const text = '<head>\n  <link href="a.css" rel="stylesheet">\n  <title>x</title>\n</head>\n';
+  assert.equal(missingLines(text, '<link href="a.css" rel="stylesheet">\n<meta charset="utf-8">'), '<meta charset="utf-8">');
+  assert.equal(missingLines(text, "<title>x</title>"), "");
+  const r = locateOld(text, '<link href="a.css" rel="stylesheet">\n<meta charset="utf-8">');
+  assert.ok(!r.ok && !(r as any).many && (r as any).missing === '<meta charset="utf-8">');
+});

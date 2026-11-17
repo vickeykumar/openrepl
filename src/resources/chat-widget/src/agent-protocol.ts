@@ -1147,7 +1147,19 @@ export function starterChips(agent: boolean): string[] {
 
 // ---- finding the old text of an editor_replace ---------------------------------------------
 
-export type Located = { ok: true; start: number; end: number; tolerant: boolean } | { ok: false; many: boolean; near: string; where?: string };
+export type Located = { ok: true; start: number; end: number; tolerant: boolean } | { ok: false; many: boolean; near: string; where?: string; missing?: string };
+
+// The lines of `old` that are not anywhere in the text (white space ignored), at most 3, each cut: they are what made the match
+// fail, and the model can see which line it got wrong.
+export function missingLines(text: string, old: string): string {
+  const flat = text.replace(/\s+/g, " ");
+  const out: string[] = [];
+  old.split("\n").forEach((l) => {
+    const t = l.replace(/\s+/g, " ").trim();
+    if (t !== "" && out.length < 3 && !flat.includes(t)) out.push(t.length > 140 ? t.slice(0, 140) + "..." : t);
+  });
+  return out.join("\n");
+}
 
 // The line numbers, with the line, of each place where `old` is in the text (at most 4): for an old text that is there more than once.
 export function whereIs(text: string, old: string): string {
@@ -1194,7 +1206,7 @@ export function locateOld(text: string, old: string): Located {
       return { ok: true, start: from[at], end: from[at + want.length - 1] + 1, tolerant: true };
     }
   }
-  return { ok: false, many: false, near: nearestLines(text, old) };
+  return { ok: false, many: false, near: nearestLines(text, old), missing: missingLines(text, old) };
 }
 
 // Up to 3 lines of the text, numbered, that share the most words with the first lines of `old`.
