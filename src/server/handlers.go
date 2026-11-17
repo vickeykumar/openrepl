@@ -382,6 +382,7 @@ func (server *Server) errorHandler(w http.ResponseWriter, r *http.Request, statu
 }
 
 func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-cache") // the page is made for the visitor (their cookie, their settings): it is asked for again each time
 	if _, isLangPage := langPageFor(r.URL.Path); r.URL.Path != "/" && r.URL.Path != "/practice" && !isLangPage {
 		server.errorHandler(w, r, http.StatusNotFound)
 		return
@@ -441,12 +442,14 @@ func (server *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server *Server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
+	noStore(w)
 	w.Header().Set("Content-Type", "application/javascript")
 	// @TODO hashing?
 	w.Write([]byte("var gotty_auth_token = '" + server.options.Credential + "';"))
 }
 
 func (server *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	noStore(w) // it carries the visitor's own secret and sets their cookie
 	w.Header().Set("Content-Type", "application/javascript")
 	w.Write([]byte("var gotty_term = '" + server.options.Term + "';"))
 	

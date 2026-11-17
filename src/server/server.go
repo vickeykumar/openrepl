@@ -298,6 +298,10 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 		&assetfs.AssetFS{Asset: Asset, AssetDir: AssetDir, Prefix: "static"},
 	)
 
+	// the files of the site (scripts, styles, images, docs) change only with a deploy: browsers and the CDN may keep them for a few minutes
+	// and ask again with the ETag of the build (a 304 has no body); the pages and scripts that are made for one visitor are never kept
+	cachedStatic := cacheStatic(staticFileHandler)
+
 	var siteMux = http.NewServeMux()
 	siteMux.HandleFunc(pathPrefix, server.handleIndex)
 	siteMux.HandleFunc(pathPrefix+"healthz", handleHealthz)
@@ -332,14 +336,14 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.HandleFunc(pathPrefix+"store.html", server.handleStorePage)
 	server.startAppStore(ctx)
 
-	siteMux.Handle(pathPrefix+"js/", http.StripPrefix(pathPrefix, staticFileHandler))
-	siteMux.Handle(pathPrefix+"images/", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"js/", http.StripPrefix(pathPrefix, cachedStatic))
+	siteMux.Handle(pathPrefix+"images/", http.StripPrefix(pathPrefix, cachedStatic))
 	siteMux.HandleFunc(pathPrefix+"favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path = "/images/favicon.ico"
-		staticFileHandler.ServeHTTP(w, r)
+		cachedStatic.ServeHTTP(w, r)
 	})
-	siteMux.Handle(pathPrefix+"media/", http.StripPrefix(pathPrefix, staticFileHandler))
-	siteMux.Handle(pathPrefix+"docs/", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"media/", http.StripPrefix(pathPrefix, cachedStatic))
+	siteMux.Handle(pathPrefix+"docs/", http.StripPrefix(pathPrefix, cachedStatic))
 	siteMux.Handle(pathPrefix+"doc.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"editblog.html", server.wrapAdmin(http.StripPrefix(pathPrefix, staticFileHandler)))
 	siteMux.Handle(pathPrefix+"about.html", http.StripPrefix(pathPrefix, staticFileHandler))
@@ -348,7 +352,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.Handle(pathPrefix+"terms.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"robots.txt", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"jsconsole.html", http.StripPrefix(pathPrefix, staticFileHandler))
-	siteMux.Handle(pathPrefix+"css/", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.Handle(pathPrefix+"css/", http.StripPrefix(pathPrefix, cachedStatic))
 
 	siteMux.HandleFunc(pathPrefix+"auth_token.js", server.handleAuthToken)
 	siteMux.HandleFunc(pathPrefix+"settings.js", handleSettingsJS)
