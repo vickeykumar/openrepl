@@ -259,3 +259,11 @@ Worker nodes install the exact version the gateway chose. Proven with real downl
 - **`appstore-paths.yml`, on the pull requests that touch the App Store, the tunnel or the Dockerfile:** a worker replays a bundle that the gateway made with apt, for real, from the gateway's lock (`TestAWorkerReplaysARealAptBundle`), and installs run in a container with 512 MB of memory as on Render (`TestTheMinimalInstallsRun`, `TestInstallsAskedAtOnceGoOneAtATime`). It is a workflow of its own, on both CPU types, so it runs beside the other checks and does not make them longer.
 
 **Not built.** The log of the check that runs when a user switches an app on (a later step, in the user's sandbox). Logs of the Go, Maven and Cargo mirrors are the lines `look up` and `install` only; their programs' own output is not captured. The logs of a node that is not connected cannot be read until it is.
+
+## 14. Fixes for npm and Go installs (2026-11-17)
+
+- **npm version scan**: `Npm.Resolve` groups the candidate versions by major and looks at the newest of each major (at most 30 lookups), instead of the newest 40 of one major. A library whose newest major needs a newer Node than the node has now finds the older major.
+- **Ladder**: after a failed version the ladder (`ladderBound`) jumps to the next lower major, not one patch down.
+- **Scoped names**: `@scope/name` is valid; the app name in the store is `EncodeNpmName` (`@scope__name`), the npm call and the `node_modules` path use `NpmName`/`Source()`.
+- **Optional dependencies** are installed (no `--omit=optional`): native binaries of esbuild, sharp and the like are optional dependencies. Sizes measured earlier with the flag may be a little low.
+- **Go and Cargo checks** keep their build cache in the store (`<store>/gocache`, `<store>/cargo-target`), emptied past 1200 MB / 1500 MB (`capCache`); Go builds with `-p 1 -ldflags "-s -w"` and `GOMAXPROCS=2`, Cargo with `CARGO_BUILD_JOBS=1`. The first check compiles the standard library (or the shared crates) once; the next ones reuse it, and the memory use is lower.

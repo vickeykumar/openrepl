@@ -207,7 +207,29 @@ func (e Entry) PackageName() string {
 		}
 		return px + n
 	}
+	if e.Kind == CKNode || e.Kind == CKWeb || e.Kind == CKPlugin {
+		return EncodeNpmName(e.Source()) // a scoped package (@scope/name) is "scope__name" in the store: a folder name has no @ or /
+	}
 	return e.Source()
+}
+
+// EncodeNpmName is the name an npm package has in the store: "@picocss/pico" is "picocss__pico" (the name of an app is the name of its bundle folder).
+func EncodeNpmName(pkg string) string {
+	pkg = strings.ToLower(strings.TrimSpace(pkg))
+	if strings.HasPrefix(pkg, "@") {
+		if i := strings.IndexByte(pkg, '/'); i > 1 && i < len(pkg)-1 {
+			return pkg[1:i] + "__" + pkg[i+1:]
+		}
+	}
+	return pkg
+}
+
+// NpmName is the name npm knows an app of the store by: "picocss__pico" is "@picocss/pico".
+func NpmName(app string) string {
+	if i := strings.Index(app, "__"); i > 0 && i < len(app)-2 && !strings.HasPrefix(app, "@") {
+		return "@" + app[:i] + "/" + app[i+2:]
+	}
+	return app
 }
 
 // IsMirrorKind says whether an app kind is kept in a mirror folder of the store (Go modules, jars, crates).
@@ -448,7 +470,7 @@ func fileExists(base, rel string) error {
 
 // checkFiles looks for the files a browser library or a plugin from npm serves: all of them must be in the package.
 func checkFiles(dest string, e Entry) error {
-	base := filepath.Join(dest, "node_modules", filepath.FromSlash(e.PackageName()))
+	base := filepath.Join(dest, "node_modules", filepath.FromSlash(e.Source()))
 	files := e.Files
 	if len(files) == 0 && e.CheckArg != "" {
 		files = []string{e.CheckArg}

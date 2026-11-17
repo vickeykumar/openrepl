@@ -783,7 +783,7 @@ func (s *Service) runInstall(a App) {
 			lg.Line("error", "error", "%s %s: %s", mgr, res.Version, tail(err.Error(), 300))
 			if ladderOK(mgr, a.Kind) && steps < MaxLadder && ctx.Err() == nil && !errors.Is(err, errNoProgress) {
 				lg.Line("ladder", "warn", "%s %s did not work: trying the newest version below it (step %d of %d)", a.Name, res.Version, steps+1, MaxLadder)
-				want = "<" + res.Version // the newest version below the one that failed
+				want = ladderBound(res.Version, steps) // below the one that failed; after a second failure, the next lower major
 				continue
 			}
 			break
@@ -1655,7 +1655,7 @@ func (s *Service) Apply(ctx context.Context, snap Snapshot) NodeState {
 					rctx = WithSingleCPU(rctx)
 					runCtx = WithSingleCPU(ictx)
 				}
-				res, rerr := s.cfg.Installer.Resolve(rctx, a.Name, "<"+failedVer, a.Kind)
+				res, rerr := s.cfg.Installer.Resolve(rctx, a.Name, ladderBound(failedVer, steps), a.Kind)
 				if rerr != nil {
 					break // nothing older: the error of the version that failed stays
 				}

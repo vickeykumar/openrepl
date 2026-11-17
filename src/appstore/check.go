@@ -73,7 +73,7 @@ func checkNode(ctx context.Context, dest, name string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	c := exec.CommandContext(ctx, node, "-e", "require('"+name+"')")
+	c := exec.CommandContext(ctx, node, "-e", "require('"+NpmName(name)+"')")
 	c.Env = append(os.Environ(), "NODE_PATH="+filepath.Join(dest, "node_modules"))
 	c.Dir = os.TempDir()
 	if out, err := c.CombinedOutput(); err != nil {

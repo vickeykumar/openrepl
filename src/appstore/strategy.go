@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,7 +147,7 @@ func watch(cancel context.CancelCauseFunc, wl *workLog, dirs ...string) (stop fu
 
 // watchDirs are the folders whose growth shows that an install is alive.
 func watchDirs(storeDir string) []string {
-	return []string{filepath.Join(storeDir, "apps"), filepath.Join(storeDir, "pkgs"), filepath.Join(storeDir, "tmp"), filepath.Join(storeDir, "npm-cache"), filepath.Join(storeDir, "apt")}
+	return []string{filepath.Join(storeDir, "apps"), filepath.Join(storeDir, "pkgs"), filepath.Join(storeDir, "tmp"), filepath.Join(storeDir, "npm-cache"), filepath.Join(storeDir, "apt"), filepath.Join(storeDir, "gocache"), filepath.Join(storeDir, "cargo-target")}
 }
 
 // condaKind says whether pixi makes an app of this kind: only those have a lock for every CPU type.
@@ -231,7 +232,36 @@ func olderThan(vs []string, bound string) []string {
 	return out
 }
 
+// ladderBound is the version asked for after step steps of the ladder have failed (0 on the first failure): the newest below the one that failed, and, when
+// that fails too, the newest of the next lower MAJOR (a library that is broken in 19.2 is rarely fixed in 19.1: the steps are not spent inside one major).
+func ladderBound(failed string, step int) string {
+	if step >= 1 {
+		if x, ok := parseVersion(failed); ok {
+			switch {
+			case x[0] > 0:
+				return fmt.Sprintf("<%d.0.0", x[0])
+			case x[1] > 0:
+				return fmt.Sprintf("<0.%d.0", x[1])
+			}
+		}
+	}
+	return "<" + failed
+}
+
 // ladderOK says whether an install of this manager and kind may be tried again with an older version (apt has one version in an archive; a plugin one).
 func ladderOK(manager, kind string) bool {
 	return manager != MgrApt && cleanKind(kind) != KindPlugin
+}
+
+// The folders that keep what a check compiled (the standard library, the dependencies of a crate) between the checks, and how big each may grow (MB).
+const (
+	goCacheMaxMB    = 1200
+	cargoCacheMaxMB = 1500
+)
+
+// capCache empties a cache folder that has grown past max MB (it is made again, slowly, by the next check): a cache must not eat the store.
+func capCache(dir string, maxMB float64) {
+	if dirMB(dir) > maxMB {
+		os.RemoveAll(dir)
+	}
 }

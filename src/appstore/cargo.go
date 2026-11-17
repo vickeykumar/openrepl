@@ -174,7 +174,12 @@ func (c Cargo) check(ctx context.Context, dest string, e Entry, version string) 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	if out, err := orRun(c.Run)(ctx, tmp, c.env(home), cargo, "check", "--offline"); err != nil {
+	// the compiled dependencies are kept between checks (proc-macro2, syn, serde are built once, not for every crate), one job at a time, and the folder is emptied
+	// when it grows past a limit
+	target := filepath.Join(c.Dir, "cargo-target")
+	capCache(target, cargoCacheMaxMB)
+	env := append(c.env(home), "CARGO_TARGET_DIR="+target, "CARGO_BUILD_JOBS=1")
+	if out, err := orRun(c.Run)(ctx, tmp, env, cargo, "check", "--offline"); err != nil {
 		return fmt.Errorf("a project that depends on %s does not build with the mirror: %s", e.Source(), tail(strings.TrimSpace(string(out)), 500))
 	}
 	return nil
