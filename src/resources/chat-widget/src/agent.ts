@@ -164,7 +164,9 @@ export interface AgentHost {
   // The three below let the panel show on its button how a task goes while the
   // panel is closed (a task goes on behind a closed panel). All are optional.
   // The task waits for the user (a question, a change to accept), or no longer does.
-  attention?(on: boolean): void;
+  // The task waits for the user (on) or goes on (off); `info` says what it waits for and where the card is, so that the panel can
+  // show a bar above the input that leads to it (index.ts: renderWaiting). No card: the question is in the editor (a change to review).
+  attention?(on: boolean, info?: { brief: string; card: HTMLElement | null }): void;
   // Step n of max has begun.
   progress?(n: number, max: number): void;
   // How the task ended; "stopped" is the user's own Stop.
@@ -1511,7 +1513,7 @@ export class AgentRunner {
       if (risk) box.appendChild(el("p", "cw-agent__ask-warn", "Asked every time because it " + risk + "."));
       const buttons = el("div", "cw-agent__ask-buttons");
       let answered = false;
-      if (this.host.attention) this.host.attention(true);
+      if (this.host.attention) this.host.attention(true, { brief: title.replace(/^Genie wants to /, "allow Genie to ") + "?", card: box });
       const done = (answer: "once" | "session" | "deny") => {
         if (answered) return;
         answered = true;
@@ -1972,7 +1974,7 @@ export class AgentRunner {
       box.appendChild(el("p", "cw-agent__ask-text", text));
       const buttons = el("div", "cw-agent__ask-buttons");
       let answered = false;
-      if (this.host.attention) this.host.attention(true);
+      if (this.host.attention) this.host.attention(true, { brief: title.charAt(0).toLowerCase() + title.slice(1), card: box });
       const done = (go: boolean) => {
         if (answered) return;
         answered = true;
@@ -2159,7 +2161,7 @@ export class AgentRunner {
   // Runs something the user has to answer (a diff, a question) and tells the
   // panel meanwhile, so that its button can say Genie is waiting.
   private async needsYou<T>(work: Promise<T>): Promise<T> {
-    if (this.host.attention) this.host.attention(true);
+    if (this.host.attention) this.host.attention(true, { brief: "review a change in the editor", card: null });
     try {
       return await work;
     } finally {

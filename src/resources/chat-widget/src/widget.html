@@ -25,6 +25,8 @@
   <div id="chat-widget__toast" class="cw-toast" role="status" hidden></div>
 </div>
 <div id="chat-widget__body">
+  <!-- The arrow to the last message, while the user has scrolled up (index.ts: updateJump). -->
+  <button type="button" id="chat-widget__jump" class="cw-jump" aria-label="Jump to the latest message" hidden>↓</button>
   <!-- The messages_history div is placed here. -->
   <!-- The practice coach, on the practice page only (index.ts: wireCoach). -->
   <div id="chat-widget__coach" class="cw-coach" role="group" aria-label="Practice coach" hidden>
@@ -40,6 +42,14 @@
   </div>
   <form id="chat-widget__form">
     <label for="chat-widget__input" class="chat-widget__sr-only">Ask Genie</label>
+    <!-- The task waits for the user and the card is out of view (index.ts: renderWaiting): the whole bar is the button that leads to it. -->
+    <div id="chat-widget__wait" class="cw-wait" role="status" aria-live="polite" hidden>
+      <button type="button" id="chat-widget__wait-go" class="cw-wait__btn">
+        <span class="cw-wait__dot" aria-hidden="true"></span>
+        <span id="chat-widget__wait-text" class="cw-wait__text"></span>
+        <span id="chat-widget__wait-label" class="cw-wait__go">Show</span>
+      </button>
+    </div>
     <div id="chat-widget__starters" class="cw-starters" role="group" aria-label="Things to ask" hidden></div>
     <div id="chat-widget__modehint" class="cw-modehint" role="note" hidden>
       <span id="chat-widget__modehint-text"></span>

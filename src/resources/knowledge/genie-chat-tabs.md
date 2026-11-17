@@ -8,3 +8,5 @@ Each chat in the Genie panel is a tab above the conversation. Press + for a new 
 A ring on a tab means an agent task is running there; a dot means an answer is ready or it needs you. One task runs at a time, so Agent is off in the other tabs while it runs, but Chat works in all of them.
 
 Chats are saved in your own workspace, so a guest's chats go when the guest workspace goes. On your profile page you can stop saving, download all as Markdown, or delete every chat.
+
+When a task waits for you and its card is out of view, a bar above the input says what is asked, and a click leads to the card. A down arrow in the corner of a conversation you have scrolled up jumps to the last message.

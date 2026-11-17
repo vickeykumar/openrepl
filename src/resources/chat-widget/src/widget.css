@@ -1804,3 +1804,28 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
   font: inherit; font-size: 12px; cursor: pointer; border-radius: 6px; padding: 2px 9px;
   color: inherit; background: transparent; border: 1px solid rgba(128, 128, 140, 0.55);
 }
+
+/* The bar that leads to a card waiting for the user, and the arrow to the last message (index.ts: renderWaiting, updateJump). */
+#chat-widget__body { position: relative; }
+.cw-wait { padding: 0 0 8px; }
+.cw-wait[hidden] { display: none; }
+.cw-wait__btn {
+  width: 100%; display: flex; align-items: center; gap: 9px; text-align: left; cursor: pointer; font: inherit; font-size: 12.5px;
+  color: var(--cw-strong); background: color-mix(in srgb, var(--cw-accent) 11%, transparent);
+  border: 1.5px solid var(--cw-accent); border-radius: 10px; padding: 6px 9px;
+}
+.cw-wait__dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--cw-accent); animation: cw-pulse 1.6s ease-out infinite; }
+@keyframes cw-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--cw-accent) 55%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
+.cw-wait__text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cw-wait__go { flex: 0 0 auto; font-size: 11.5px; font-weight: 600; border-radius: 6px; padding: 1px 8px; color: var(--cw-bg, #15151c); background: var(--cw-accent); }
+.cw-ring { animation: cw-ring 1.6s ease-out 1; }
+@keyframes cw-ring { 0%, 55% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--cw-accent) 55%, transparent); } 100% { box-shadow: 0 0 0 4px transparent; } }
+.cw-jump {
+  position: absolute; right: 16px; bottom: 10px; z-index: 5; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  min-width: 34px; height: 34px; padding: 0; border-radius: 99px; font: inherit; font-size: 16px; font-weight: 600;
+  color: var(--cw-strong); background: var(--cw-field-bg, #2a2a36); border: 1px solid var(--cw-field-border); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.cw-jump[hidden] { display: none; }
+.cw-jump--pill { padding: 0 12px; font-size: 12px; }
+.cw-jump:hover, .cw-jump:focus-visible { border-color: var(--cw-accent); }
+@media (prefers-reduced-motion: reduce) { .cw-wait__dot, .cw-ring { animation: none; } }

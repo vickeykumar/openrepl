@@ -9,6 +9,7 @@ import { SSEParser, addEvent, answerOf, newStreamed } from "./sse";
 import { definesSomething } from "./chat-send";
 import { isSmallModel, starterChips } from "./agent-protocol";
 import { chatTurnsText } from "./agent-task";
+import { cardView, jumpLabel, jumpVisible, showLabel, waitingText } from "./wait-bar";
 import { answerBudget, errorBlock, errorRequest, looksLikeTask, messagesToSend, selectionRequest } from "./chat-send";
 import { CreditUsage, TokenUsage, answerTokens, creditLine, creditRows, tokenRows } from "./tokens";
 import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntry, addItem, gather, hashQuery, itemKey, metaOf, namesLine, problemsLine, rankEntries, removeItem, withAttached, withoutHash } from "./attach";
@@ -395,6 +396,136 @@ async function maybeSummarize(tab: ChatTab): Promise<void> {
     summarizing.delete(tab.id);
     if (label) label.textContent = "";
   }
+}
+
+// ---- the bar that waits, and the arrow to the last message ------------------------------------------------------------
+
+// What the task waits for: the card (null for a change that is reviewed in the editor) and a few words for the bar.
+let waiting: { brief: string; card: HTMLElement | null } | null = null;
+let waitPoll = 0;
+let jumpNew = 0; // messages that came while the user was reading further up
+let holdRef: { el: Element; top: number } | null = null;
+
+function smooth(): ScrollBehavior {
+  return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
+function cardSide(): "in" | "above" | "below" | null {
+  if (!waiting || !waiting.card || !messagesHistory.contains(waiting.card)) return null;
+  const c = waiting.card.getBoundingClientRect();
+  const b = messagesHistory.getBoundingClientRect();
+  return cardView({ top: c.top, bottom: c.bottom }, { top: b.top, bottom: b.bottom });
+}
+
+function renderWaiting() {
+  const bar = document.getElementById("chat-widget__wait");
+  const text = document.getElementById("chat-widget__wait-text");
+  const label = document.getElementById("chat-widget__wait-label");
+  if (!bar || !text || !label) return;
+  const side = cardSide();
+  // shown for the chat that runs the task, while its card is not in view (a change to review is in the editor: always)
+  const mine = !!waiting && (runTab || activeTab) === activeTab;
+  const show = mine && (waiting!.card ? side === "above" || side === "below" : true);
+  if (show && waiting) {
+    const t = waitingText(waiting.brief);
+    if (text.textContent !== t) text.textContent = t;
+    label.textContent = showLabel(waiting.card ? side : null);
+  }
+  bar.hidden = !show;
+  // the position of a card is only known by looking: while a task waits, look a few times a second
+  if (waiting && !waitPoll) waitPoll = window.setInterval(renderWaiting, 400);
+  if (!waiting && waitPoll) {
+    window.clearInterval(waitPoll);
+    waitPoll = 0;
+  }
+}
+
+function goToWaiting() {
+  if (!waiting) return;
+  const card = waiting.card;
+  if (card && messagesHistory.contains(card)) {
+    card.scrollIntoView({ block: "center", behavior: smooth() });
+    card.classList.remove("cw-ring");
+    void card.offsetWidth; // so that the ring starts again
+    card.classList.add("cw-ring");
+    window.setTimeout(() => card.classList.remove("cw-ring"), 1700);
+    const first = card.querySelector("button") as HTMLElement | null;
+    if (first) first.focus({ preventScroll: true });
+  } else {
+    const ed = (window as any).editor;
+    if (ed && ed.env && ed.env.editor && ed.env.editor.focus) ed.env.editor.focus();
+  }
+}
+
+function updateJump() {
+  const btn = document.getElementById("chat-widget__jump");
+  if (!btn) return;
+  const scrollable = messagesHistory.scrollHeight > messagesHistory.clientHeight + 1;
+  const show = jumpVisible(messagesHistory.scrollTop, scrollable);
+  if (!show) jumpNew = 0;
+  const label = jumpLabel(jumpNew);
+  btn.hidden = !show;
+  btn.classList.toggle("cw-jump--pill", label !== "");
+  btn.textContent = label ? "↓ " + label : "↓";
+  btn.setAttribute("aria-label", label ? "Jump to the latest message, " + jumpNew + " new" : "Jump to the latest message");
+}
+
+// The first message that is shown, and where it is: while the user reads further up, a new line must not move it.
+function noteRef() {
+  if (!jumpVisible(messagesHistory.scrollTop, messagesHistory.scrollHeight > messagesHistory.clientHeight + 1)) {
+    holdRef = null;
+    return;
+  }
+  const b = messagesHistory.getBoundingClientRect();
+  holdRef = null;
+  for (const ch of Array.from(messagesHistory.children)) {
+    const r = ch.getBoundingClientRect();
+    if (r.bottom > b.top && r.top < b.bottom) {
+      holdRef = { el: ch, top: r.top };
+      break;
+    }
+  }
+}
+
+function wireConversationScroll() {
+  messagesHistory.addEventListener("scroll", () => {
+    noteRef();
+    updateJump();
+    renderWaiting();
+  });
+  messagesHistory.addEventListener("keydown", (e) => {
+    if (e.key === "End" && !e.ctrlKey && !e.metaKey && !e.altKey && e.target === messagesHistory) {
+      e.preventDefault();
+      messagesHistory.scrollTo({ top: 0, behavior: smooth() });
+    }
+  });
+  new MutationObserver((records) => {
+    const up = !!holdRef;
+    if (holdRef && messagesHistory.contains(holdRef.el)) {
+      const delta = holdRef.el.getBoundingClientRect().top - holdRef.top;
+      if (Math.abs(delta) > 1) messagesHistory.scrollTop += delta;
+    }
+    if (up) {
+      records.forEach((r) =>
+        r.addedNodes.forEach((n) => {
+          if (n.parentNode === messagesHistory && n instanceof HTMLElement && /chat-widget__message|cw-agent/.test(n.className)) jumpNew++;
+        })
+      );
+    }
+    noteRef();
+    updateJump();
+    renderWaiting();
+  }).observe(messagesHistory, { childList: true, subtree: true, characterData: true });
+  const btn = document.getElementById("chat-widget__jump");
+  if (btn) {
+    btn.addEventListener("click", () => {
+      messagesHistory.scrollTo({ top: 0, behavior: smooth() });
+      jumpNew = 0;
+      updateJump();
+    });
+  }
+  const go = document.getElementById("chat-widget__wait-go");
+  if (go) go.addEventListener("click", goToWaiting);
 }
 
 function hasSummary(history: MessageType[]): boolean {
@@ -902,6 +1033,8 @@ function afterShown(tab: ChatTab) {
   lastTyped = tab.lastTyped;
   decorateLastTurn();
   refreshQuick();
+  renderWaiting();
+  updateJump();
 }
 
 function switchTo(tab: ChatTab, initial: boolean = false) {
@@ -1979,8 +2112,11 @@ const agentRunner = new AgentRunner(
       if (raw) takeUsage(raw);
       else fetchUsage();
     },
-    attention: (on: boolean) => {
+    attention: (on: boolean, info?: { brief: string; card: HTMLElement | null }) => {
       needsYou = Math.max(0, needsYou + (on ? 1 : -1));
+      if (on) waiting = info || { brief: "answer Genie's question", card: null };
+      else if (needsYou === 0) waiting = null;
+      renderWaiting();
       if (runTab) {
         runTab.needsYou = on;
         if (on && runTab !== activeTab) showToast(runTab, "needs you");
@@ -1996,6 +2132,8 @@ const agentRunner = new AgentRunner(
     },
     ended: (outcome: "done" | "failed" | "stopped", info?: TaskInfo) => {
       stepNow = stepMax = needsYou = 0;
+      waiting = null;
+      renderWaiting();
       const was = runTab;
       if (was) {
         was.needsYou = false;
@@ -3016,6 +3154,7 @@ function open(e?: Event, opts?: { pin?: boolean }) {
 
   const chatbotBody = document.getElementById("chat-widget__body")!;
   chatbotBody.prepend(messagesHistory);
+  wireConversationScroll();
   if (config.greetingMessage && messagesHistory.children.length === 0 && !(tabsOn && activeTab.saved)) {
     createNewMessageEntry(config.greetingMessage, Date.now(), "system", true);
   }

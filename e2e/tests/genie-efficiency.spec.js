@@ -412,3 +412,84 @@ test("Genie is told the path of the open file in the workspace, not only its nam
   expect(sent).toContain("File: shop/index.html");
   expect(sent).not.toMatch(/File: index\.html/);
 });
+
+// A tall block at the top of the conversation (the oldest end), so that it scrolls and the newest lines can be out of view.
+const makeScrollable = (page) =>
+  page.evaluate(() => {
+    const box = document.getElementById("chat-widget__messages_history");
+    const tall = document.createElement("div");
+    tall.className = "chat-widget__message";
+    tall.style.minHeight = "1500px";
+    tall.textContent = "older messages";
+    box.appendChild(tall);
+  });
+const scrollUp = (page) =>
+  page.evaluate(() => {
+    const box = document.getElementById("chat-widget__messages_history");
+    box.scrollTop = box.scrollTop < 0 || box.scrollHeight ? -(box.scrollHeight - box.clientHeight) : 0;
+    box.dispatchEvent(new Event("scroll"));
+  });
+
+test("a down arrow leads to the last message, counts what came while reading, and does not move what is read", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openAgent(page, ["First answer."]);
+  await ask(page, "hello");
+  await expect(page.locator(".chat-widget__message--system", { hasText: "First answer." })).toBeVisible({ timeout: 20000 });
+  const jump = page.locator("#chat-widget__jump");
+  await expect(jump).toBeHidden();
+  await makeScrollable(page);
+  await scrollUp(page);
+  await expect(jump).toBeVisible();
+  await expect(jump).toHaveText("↓");
+  // a new message while reading further up: the arrow counts it, and what is on screen does not move
+  const before = await page.evaluate(() => {
+    const box = document.getElementById("chat-widget__messages_history");
+    const first = Array.from(box.children).find((c) => c.getBoundingClientRect().bottom > box.getBoundingClientRect().top);
+    window.__ref = first;
+    return first.getBoundingClientRect().top;
+  });
+  await page.evaluate(() => {
+    const box = document.getElementById("chat-widget__messages_history");
+    const m = document.createElement("div");
+    m.className = "chat-widget__message";
+    m.style.minHeight = "120px";
+    m.textContent = "a new one";
+    box.prepend(m);
+  });
+  await expect(jump).toHaveText("↓ Latest · 1 new");
+  const after = await page.evaluate(() => window.__ref.getBoundingClientRect().top);
+  expect(Math.abs(after - before)).toBeLessThan(3);
+  // one click: the last message, and the arrow goes
+  await jump.click();
+  await expect(jump).toBeHidden();
+  expect(await page.evaluate(() => Math.abs(document.getElementById("chat-widget__messages_history").scrollTop))).toBeLessThan(2);
+});
+
+test("a task that waits shows a bar above the input while its card is out of view; the bar leads to the card and goes when it is answered", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const seen = await openAgent(page, [{ say: "Looking.", actions: [{ type: "files_list" }], done: false }, { say: "Done.", actions: [], done: true }]);
+  await agentMode(page);
+  await ask(page, "what files are there");
+  const card = page.locator(".cw-agent__ask");
+  await expect(card).toBeVisible({ timeout: 30000 });
+  const bar = page.locator("#chat-widget__wait");
+  // the card is in view: no bar
+  await expect(bar).toBeHidden();
+  // scroll it out of view: the bar says what is asked, and which way the card is
+  await makeScrollable(page);
+  await scrollUp(page);
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText("Waiting for you: allow Genie to use your files?");
+  await expect(page.locator("#chat-widget__wait-label")).toHaveText("Show ↓");
+  // a click brings the card into view, rings it and puts the focus on its first button
+  await page.locator("#chat-widget__wait-go").click();
+  await expect(card).toBeInViewport();
+  await expect(card).toHaveClass(/cw-ring/);
+  await expect(bar).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.textContent)).toMatch(/Allow once/);
+  // answered: nothing is waiting
+  await card.getByRole("button", { name: "Allow once" }).click();
+  await expect(card).toHaveCount(0);
+  await expect(bar).toBeHidden();
+  expect(seen.requests.length).toBeGreaterThan(0);
+});
