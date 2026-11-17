@@ -100,7 +100,8 @@ func TestAWorkerReplaysARealAptBundle(t *testing.T) {
 	if _, err := exec.LookPath("apt-get"); err != nil {
 		t.Skip("no apt-get here")
 	}
-	gw, _ := realMeasureService(t)
+	// two machines: each has a store folder of its own (the CI sets OPENREPL_REAL_STORE for the other tests, and one folder would make the worker find the bundle already there)
+	gw, _ := realMeasureServiceAt(t, t.TempDir())
 	e, ok := gw.Entry("tmux")
 	if !ok || e.Manager != MgrApt {
 		t.Skipf("the catalogue does not make tmux with apt: %+v", e.Manager)
@@ -118,7 +119,7 @@ func TestAWorkerReplaysARealAptBundle(t *testing.T) {
 	if app.State != StateInstalled || app.Manager != MgrApt {
 		t.Fatalf("the gateway did not make it with apt: %+v", app)
 	}
-	w, wdir := realMeasureService(t)
+	w, wdir := realMeasureServiceAt(t, t.TempDir())
 	w.SetLock(func(ctx context.Context, id string) (Lock, error) {
 		if l, ok := gw.LockOf(id); ok {
 			return l, nil

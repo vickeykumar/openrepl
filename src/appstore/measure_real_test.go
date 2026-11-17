@@ -86,7 +86,12 @@ func floatText(f float64) string { b, _ := json.Marshal(f); return string(b) }
 // realMeasureService is a service with every installer the image has (pixi, npm, apt, the mirrors), on a store of its own, for the tests that install for real.
 func realMeasureService(t *testing.T) (*Service, string) {
 	t.Helper()
-	dir := os.Getenv("OPENREPL_REAL_STORE")
+	return realMeasureServiceAt(t, os.Getenv("OPENREPL_REAL_STORE"))
+}
+
+// realMeasureServiceAt is realMeasureService on a store folder of its own ("" : a temporary one).
+func realMeasureServiceAt(t *testing.T, dir string) (*Service, string) {
+	t.Helper()
 	if dir == "" {
 		dir = t.TempDir()
 	}
