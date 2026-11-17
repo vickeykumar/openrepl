@@ -139,18 +139,24 @@ func (n Npm) Resolve(ctx context.Context, name, version, kind string) (Resolved,
 		return Resolved{}, fmt.Errorf("npm lists no version of %s", name)
 	}
 	node := n.nodeVersion(ctx)
+	var lastErr error
 	for i, v := range cands {
-		if i >= 40 {
+		if i >= 40 || ctx.Err() != nil {
 			break
 		}
 		raw, err := view(name+"@"+v, "engines.node", "dist.unpackedSize")
 		if err != nil {
-			return Resolved{}, err
+			// this version could not be looked up (the registry does not know it yet, a hiccup): the next older one is tried, not the whole install given up
+			lastErr = err
+			continue
 		}
 		rng, mb := npmEngines(raw)
 		if node == "" || NodeSatisfies(rng, node) {
 			return Resolved{Version: v, Packages: 1, DownloadMB: mb / 3, DiskMB: mb}, nil
 		}
+	}
+	if lastErr != nil {
+		return Resolved{}, fmt.Errorf("no recent version of %s could be looked up that this server's Node %s can run (the last: %v)", name, node, lastErr)
 	}
 	return Resolved{}, fmt.Errorf("no recent version of %s works with this server's Node %s", name, node)
 }

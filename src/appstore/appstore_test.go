@@ -1657,3 +1657,31 @@ func TestANodeSaysWhatItIsInstallingAndWhatWaits(t *testing.T) {
 		t.Fatalf("a node that is done is doing nothing: %q %v", doing, queued)
 	}
 }
+
+// A version of an npm package that cannot be looked up does not stop the install: the next older one is tried (the newest eslint could not be found
+// and the whole install failed with "npm could not find eslint@10.0.3").
+func TestAnNpmVersionThatCannotBeLookedUpIsSkipped(t *testing.T) {
+	dir := t.TempDir()
+	npm := filepath.Join(dir, "npm")
+	os.WriteFile(npm, []byte(`#!/bin/sh
+# npm view <spec> [fields] --json
+spec="$2"
+case "$spec" in
+  eslint) echo '["9.0.0","10.0.3"]' ;;
+  eslint@10.0.3) exit 1 ;;
+  eslint@9.0.0) echo '{"engines.node":">=18","dist.unpackedSize":3000000}' ;;
+  *) exit 1 ;;
+esac
+`), 0755)
+	node := filepath.Join(dir, "node")
+	os.WriteFile(node, []byte("#!/bin/sh\necho v20.1.0\n"), 0755)
+	res, err := Npm{Bin: npm, Node: node, Dir: dir}.Resolve(context.Background(), "eslint", "", KindNode)
+	if err != nil || res.Version != "9.0.0" {
+		t.Fatalf("the older version was not taken: %+v %v", res, err)
+	}
+	// every version unknown: the error says so
+	os.WriteFile(npm, []byte("#!/bin/sh\ncase \"$2\" in eslint) echo '[\"10.0.3\"]' ;; *) exit 1 ;; esac\n"), 0755)
+	if _, err := (Npm{Bin: npm, Node: node, Dir: dir}).Resolve(context.Background(), "eslint", "", KindNode); err == nil || !strings.Contains(err.Error(), "could be looked up") {
+		t.Fatalf("all versions failed: %v", err)
+	}
+}
