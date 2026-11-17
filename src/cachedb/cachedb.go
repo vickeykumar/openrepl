@@ -71,6 +71,12 @@ func (db *Database) Store(key, value []byte) (err error) {
 		return err 
 	}
 	err = db.cachehandle.Set(key, value, db.expireSec)
+	if err != nil {
+		// A value that does not fit (more than a 1024th of the cache) is not cached, and the OLD value of the key would stay in the
+		// cache and be read for ever (a profile with many sessions never showed its newest one): take the key out, so that a read
+		// goes to the database, which has the value.
+		db.cachehandle.Del(key)
+	}
 	if IGNORE_CACHE_ERRORS && err != nil {
 		log.Println("ignoring cache write error: ",err.Error())
 		err = nil
@@ -93,6 +99,9 @@ func (db *Database) StoreWithExpire(key, value []byte, expireSec int) (err error
 		return err 
 	}
 	err = db.cachehandle.Set(key, value, expireSec)
+	if err != nil {
+		db.cachehandle.Del(key) // as in Store: never leave the old value of the key in the cache
+	}
 	if IGNORE_CACHE_ERRORS && err != nil {
 		log.Println("ignoring cache write error: ",err.Error())
 		err = nil

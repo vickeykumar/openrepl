@@ -50,3 +50,15 @@ func TestTheLoginAnswerSaysWhyAWholeSessionIsNotLoggedIn(t *testing.T) {
 		t.Fatalf("a visitor: %v", got)
 	}
 }
+
+// Who is signed in is for one visitor: the answer says no browser, proxy or CDN may keep it.
+func TestTheLoginAnswerIsNeverKept(t *testing.T) {
+	adminTestServer(t)
+	for _, method := range []string{"GET"} {
+		w := httptest.NewRecorder()
+		handleLoginSession(w, httptest.NewRequest(method, "/login", nil))
+		if w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("%s /login: Cache-Control %q", method, w.Header().Get("Cache-Control"))
+		}
+	}
+}
