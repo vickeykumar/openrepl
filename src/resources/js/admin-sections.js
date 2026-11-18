@@ -20,7 +20,7 @@
     { id: 'general', group: 'site', title: 'General', blurb: 'What every visitor sees: the colour, a banner, and maintenance mode.',
       cards: ['Look', 'Announcement', 'Maintenance mode'] },
     { id: 'workspaces', group: 'site', title: 'Workspaces', blurb: 'Files, snapshots, the Preview pane, the languages, and the database.',
-      cards: ['Files', 'Workspace snapshots', 'Preview', 'Languages', 'Database capacity'] },
+      cards: ['Files', 'Workspace snapshots', 'Practice', 'Preview', 'Languages', 'Database capacity'] },
     { id: 'genie-models', group: 'genie', title: 'Models and prices', blurb: 'The models visitors can pick, the ones you add, and what they cost.',
       tabs: [
         { id: 'models', title: 'Models', cards: ['Default models', 'Genie'] },

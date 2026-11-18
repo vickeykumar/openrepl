@@ -339,6 +339,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.HandleFunc(pathPrefix+"agent_bash", server.handleAgentBash)
 	siteMux.HandleFunc(pathPrefix+"agent_files", server.handleAgentFiles)
 	siteMux.HandleFunc(pathPrefix+"genie_chats", server.handleGenieChats)
+	siteMux.HandleFunc(pathPrefix+"practice_ws", server.handlePracticeWS)
 	siteMux.HandleFunc(pathPrefix+"preview/", server.handlePreview)
 	siteMux.HandleFunc(pathPrefix+"upload_file", server.handleFileUpload)
 	siteMux.HandleFunc(pathPrefix+"store/api/", server.handleStoreAPI)

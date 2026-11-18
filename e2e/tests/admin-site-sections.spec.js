@@ -265,3 +265,13 @@ test("every built-in model has the ticks too: Agent mode and available for guest
   expect(st.saved[0].genie.guestBlockedModels).toEqual(["gpt-6-luna"]);
   void luna;
 });
+
+test("Practice saved in the workspace is a switch on the Workspaces section, and off is saved", async ({ page }) => {
+  const st = await stub(page);
+  await page.goto("/admin#site/workspaces");
+  await expect(page.locator(".card", { hasText: "Practice is saved in the workspace" })).toBeVisible();
+  await page.locator("#f-practice-ws").evaluate((e) => e.click());
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect.poll(() => st.saved.length).toBe(1);
+  expect(st.saved[0].practiceWorkspaceOff).toBe(true);
+});

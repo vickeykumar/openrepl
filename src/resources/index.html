@@ -1029,6 +1029,9 @@ Breakpoint 1, main () at main.c:5
             function showQuestionInEditor(question, selectedLanguage, language_template) {
               const header = question.name+"\n\nDifficulty Level: "+ question.difficulty+ "\n\nProblem Description:\n"+
                 (question.description ? PracticeStore.wrapDescription(question.description, 100) : "(The description is not loaded yet. Pick the language again, or reload the page, to try again.)");
+              // The code written for this question in this language (this browser's, or the workspace's when that is newer) is what
+              // the editor opens with, instead of the starter (js/practice-store.js, loadCode)
+              const saved = window.PracticeStore && PracticeStore.loadCode ? PracticeStore.loadCode(question.id) : Promise.resolve({});
               const write = () => {
                 if (language_template) {
                   updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+header+"\n"+language_template.multiline_comment_end+"\n"+
@@ -1040,12 +1043,18 @@ Breakpoint 1, main () at main.c:5
               // The question goes only into an untitled editor (page/22-editor-tabs.js): with a file chosen or shown nothing is
               // written. Text typed from scratch in the untitled editor is asked about first; cancelled, it is not written.
               if (window.EditorTabs && EditorTabs.prepareGenerated) {
-                EditorTabs.prepareGenerated().then((ok) => {
+                Promise.all([EditorTabs.prepareGenerated(), saved.catch(() => ({}))]).then(([ok, codes]) => {
+                  const mine = codes && codes[selectedLanguage];
+                  if (mine && typeof mine.code === "string" && language_template) language_template = Object.assign({}, language_template, { template: mine.code });
                   if (ok === true) write();
                   else if (ok === false) notify("Your text is kept and the question was not loaded. Pick the language again to load it.", { type: "info" });
                 });
               } else {
-                write();
+                saved.catch(() => ({})).then((codes) => {
+                  const mine = codes && codes[selectedLanguage];
+                  if (mine && typeof mine.code === "string" && language_template) language_template = Object.assign({}, language_template, { template: mine.code });
+                  write();
+                });
               }
             }
 
@@ -1176,6 +1185,34 @@ Breakpoint 1, main () at main.c:5
                     localStorage.setItem("topic", topic);
                     localStorage.setItem("difficultyLevel", difficultyLevel);
                 }
+
+                // The code is also kept while it is typed (a moment after the typing stops), for each question and language, so that a
+                // closed tab, a crash or another browser still has it (js/practice-store.js, saveCode)
+                function keepTypedCode() {
+                    if (window.EditorTabs && EditorTabs.fileChosen && EditorTabs.fileChosen()) return; // a file of the workspace, not the question
+                    const question = PracticeStore.find(nameHyphenatedlatest);
+                    const language = $("#optionlist option:selected").text();
+                    const ed = window.editor && editor.env && editor.env.editor;
+                    const template = question && question.code_templates && question.code_templates[language];
+                    if (!ed || !template) return;
+                    const parts = ed.getValue().split(template.multiline_comment_start + "\n" + question.delimeter + "\n" + template.multiline_comment_end);
+                    if (parts.length < 2) return; // the question is not in the editor (yet)
+                    const code = parts.slice(1).join("\n").trim();
+                    // the starter just written is not code that was typed: nothing is kept until it has been changed
+                    if (code === String(template.template || "").trim() && !PracticeStore.hasCode(question.id, language)) return;
+                    PracticeStore.saveCode(question.id, language, code);
+                }
+                let typedTimer = null;
+                const watch = setInterval(function () {
+                    const ed = window.editor && editor.env && editor.env.editor;
+                    if (!ed) return;
+                    clearInterval(watch);
+                    ed.on("change", function () {
+                        clearTimeout(typedTimer);
+                        typedTimer = setTimeout(keepTypedCode, 700);
+                    });
+                }, 500);
+                setTimeout(function () { clearInterval(watch); }, 60000);
 
                 $(window).on("unload", SaveLastLanguageProgress);
                 $(window).on('savecode', function(event) {

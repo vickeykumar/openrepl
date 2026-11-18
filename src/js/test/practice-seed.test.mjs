@@ -15,7 +15,7 @@ const resources = path.join(here, "..", "..", "resources", "js");
 const source = fs.readFileSync(path.join(resources, "practice-store.js"), "utf8");
 const catalog = JSON.parse(fs.readFileSync(path.join(resources, "dsa.json"), "utf8"));
 
-// a page with its own storage; `network` is what /js/dsa.json and /practice/progress answer
+// a page with its own storage; `network` is what /js/dsa.json and /practice_ws answer
 function page({ items = catalog, storage = {}, account = null } = {}) {
   const puts = [];
   const store = Object.assign({}, storage);
@@ -25,6 +25,15 @@ function page({ items = catalog, storage = {}, account = null } = {}) {
   };
   window.fetch = (url, opts = {}) => {
     if (String(url).includes("dsa.json")) return Promise.resolve({ ok: items !== null, status: items === null ? 404 : 200, json: async () => items });
+    if (String(url).includes("/practice_ws")) {
+      // the workspace copy: {op: "doc"} reads the list, {op: "merge", doc} sends it
+      const body = JSON.parse(opts.body);
+      if (body.op === "merge") {
+        puts.push(body.doc);
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ signedIn: true, questions: body.doc.questions, state: body.doc.state }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => (account ? Object.assign({ signedIn: true }, account) : { signedIn: false }) });
+    }
     if (opts.method === "PUT") {
       const body = JSON.parse(opts.body);
       puts.push(body);

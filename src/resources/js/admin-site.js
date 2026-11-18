@@ -79,7 +79,7 @@
         shareLinkUserMinutes: int(form.shareLifeUser.value),
         sessionCleanupHours: int(form.sessionCleanup.value),
         snippetMaxDays: int(form.snippetMax.value),
-        previewOff: !form.previewOn.checked,
+        previewOff: !form.previewOn.checked, practiceWorkspaceOff: !form.practiceWs.checked,
         previewGuestsOff: !form.previewGuests.checked,
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
@@ -166,7 +166,7 @@
         shareLinkUserMinutes: s.shareLinkUserMinutes || 0,
         sessionCleanupHours: s.sessionCleanupHours || 0,
         snippetMaxDays: s.snippetMaxDays || 0,
-        previewOff: !!s.previewOff,
+        previewOff: !!s.previewOff, practiceWorkspaceOff: !!s.practiceWorkspaceOff,
         previewGuestsOff: !!s.previewGuestsOff,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
           disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
@@ -525,6 +525,8 @@
       form.colour = colour.input; form.maint = maint.input; form.genie = genie.input;
       // the Preview pane (pages written by visitors, shown on this site's domain): off for all, or for guests only
       var previewOn = toggle('f-preview', !settings.previewOff, 'Preview available');
+      var practiceWs = toggle('f-practice-ws', !settings.practiceWorkspaceOff, 'Practice saved in the workspace');
+      form.practiceWs = practiceWs.input;
       var previewGuests = toggle('f-preview-guests', !settings.previewGuestsOff, 'Preview for guests');
       form.previewOn = previewOn.input; form.previewGuests = previewGuests.input;
       // agent mode: on for signed-in users unless switched off here, and off on the practice page unless allowed
@@ -1056,6 +1058,8 @@
           row('Largest file the editor opens, in MB', 'From 1 to 16. 16 is the most: the editor is shared through Firebase, which refuses a write over 16 MB. Leave it empty for 16. Visitors get the new limit when they reload the page.', form.maxFile) ]),
         card('Workspace snapshots', 'Signed-in users\' workspaces that changed are copied to the object store (S3, R2, B2) this often, once nothing in them has changed for 30 seconds. Only the newest 3 snapshots of each workspace are kept, so a shorter time means older snapshots go sooner. Without an object store set up, nothing is copied.', [
           row('Minutes between snapshots', 'From 1 to 60. Leave it empty for 5. The change is used at once by the running job.', form.snapEvery) ]),
+        card('Practice', 'A signed-in user\'s practice list and the code they write for each question are kept in the hidden .practice folder of their workspace, so they follow the workspace (snapshots, other browsers). Off keeps them in the server\'s practice database, as before. A user who has no .practice folder yet starts from what the database holds.', [
+          row('Practice is saved in the workspace', null, practiceWs.node) ]),
         card('Preview', 'The Preview pane shows a web page or program that a visitor wrote, in a sandbox on this site. Switch it off here if it is abused: the button disappears and the server refuses new previews.', [
           row('Preview is available', null, previewOn.node),
           row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node),

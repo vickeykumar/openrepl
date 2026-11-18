@@ -103,6 +103,9 @@ type SiteSettings struct {
 	// PreviewOff switches the Preview pane off for everyone, and PreviewGuestsOff for visitors who are not signed in:
 	// the pane shows pages written by visitors on this site's domain, so abuse can be stopped here without a deploy.
 	PreviewOff       bool `json:"previewOff"`
+	// PracticeWorkspaceOff keeps a signed-in user's practice list and solutions in the server's practice database (the way it was) and not in
+	// the .practice folder of their workspace (practice_ws.go).
+	PracticeWorkspaceOff bool `json:"practiceWorkspaceOff"`
 	PreviewGuestsOff bool `json:"previewGuestsOff"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
@@ -1110,6 +1113,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.DBCapacityMB != b.DBCapacityMB {
 		out = append(out, "database capacity changed")
+	}
+	if a.PracticeWorkspaceOff != b.PracticeWorkspaceOff {
+		out = append(out, "practice saved in the workspace "+onoff(!b.PracticeWorkspaceOff))
 	}
 	if a.PreviewOff != b.PreviewOff {
 		out = append(out, "preview "+onoff(!b.PreviewOff))
