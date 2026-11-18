@@ -1345,6 +1345,12 @@ body.files-collapsed .files-panel { display: none; }
   font-size: 13px;
   color: #B9B7C4;
 }
+/* Reconnect is an icon, and Hide is the X in the corner, set off by a thin line; a terminal whose connection is lost lights the icon */
+.terminal-tabs__actions .ide-btn--icon { width: 32px; padding: 0; justify-content: center; }
+.terminal-tabs__actions #hide-terminal-button { position: relative; margin-left: 6px; }
+.terminal-tabs__actions #hide-terminal-button::before { content: ""; position: absolute; left: -4px; top: 7px; bottom: 7px; width: 1px; background: var(--ink-600); }
+.terminal-tabs__actions #hide-terminal-button:hover { color: var(--paper); background: var(--ink-750); }
+.terminal-div:has(.tab.active[data-state="closed"]) #redo-button:not(:disabled) { color: var(--warn-color); box-shadow: inset 0 0 0 1.5px var(--warn-color); }
 .ide-split .terminal-div .terminal {
   box-sizing: border-box;
   padding: 0;
