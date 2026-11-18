@@ -1,0 +1,84 @@
+name: CI image cleanup
+
+# The CI build job keeps the image it builds in the package registry for the test jobs (docker-image.yml, "Keep the image for the
+# test jobs"): ghcr.io/<owner>/openrepl-ci, one version per commit and architecture. They are needed for the length of a run, so this
+# removes the ones older than KEEP_DAYS. It touches that package only, never the release images.
+#
+# It starts as a dry run: it prints what it would delete. Run it by hand ("Run workflow", dry run on), look at the list, and when it is
+# right set the repository variable CI_IMAGE_CLEANUP_LIVE to true: the weekly run then deletes. A manual run can also delete, by
+# switching "dry run" off.
+
+on:
+  schedule:
+    - cron: "17 3 * * 0"   # Sundays, 03:17 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only print what would be deleted"
+        type: boolean
+        default: true
+      keep_days:
+        description: "Keep the versions made in the last N days"
+        type: string
+        default: "7"
+
+permissions:
+  packages: write
+
+concurrency:
+  group: ci-image-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OWNER: ${{ github.repository_owner }}
+      PACKAGE: openrepl-ci
+      EVENT: ${{ github.event_name }}
+      INPUT_DRY: ${{ inputs.dry_run }}
+      INPUT_DAYS: ${{ inputs.keep_days }}
+      LIVE: ${{ vars.CI_IMAGE_CLEANUP_LIVE }}
+    steps:
+    - name: Delete the old versions of the CI image
+      run: |
+        keep_days="${INPUT_DAYS:-7}"
+        if [ "$EVENT" = "workflow_dispatch" ]; then
+          dry="$INPUT_DRY"
+        elif [ "$LIVE" = "true" ]; then
+          dry=false
+        else
+          dry=true
+        fi
+        echo "package: ghcr.io/$OWNER/$PACKAGE, keeping the last $keep_days days, dry run: $dry"
+        # the package of a user and of an organization have different paths; the owner of this repository is one of them
+        kind=$(gh api "/users/$OWNER" --jq '.type')
+        case "$kind" in Organization) base="/orgs/$OWNER" ;; *) base="/users/$OWNER" ;; esac
+        if ! gh api "$base/packages/container/$PACKAGE" --jq '.name' >/dev/null 2>&1; then
+          echo "There is no package $PACKAGE yet (or this token cannot see it): nothing to clean."; exit 0
+        fi
+        cutoff=$(date -u -d "$keep_days days ago" +%s)
+        gh api --paginate "$base/packages/container/$PACKAGE/versions?per_page=100" \
+          --jq ".[] | [.id, .created_at, (.metadata.container.tags | join(\",\"))] | @tsv" > versions.tsv
+        total=$(wc -l < versions.tsv)
+        old=0; deleted=0
+        while IFS=$'\t' read -r id created tags; do
+          [ -z "$id" ] && continue
+          ts=$(date -u -d "$created" +%s)
+          if [ "$ts" -lt "$cutoff" ]; then
+            old=$((old + 1))
+            if [ "$dry" = "true" ]; then
+              echo "would delete $id ($created) $tags"
+            else
+              gh api -X DELETE "$base/packages/container/$PACKAGE/versions/$id" && deleted=$((deleted + 1)) && echo "deleted $id ($created) $tags"
+            fi
+          fi
+        done < versions.tsv
+        {
+          echo "### CI image cleanup"
+          echo "- versions in the package: $total"
+          echo "- older than $keep_days days: $old"
+          if [ "$dry" = "true" ]; then echo "- dry run: nothing was deleted"; else echo "- deleted: $deleted"; fi
+        } | tee -a "$GITHUB_STEP_SUMMARY"
