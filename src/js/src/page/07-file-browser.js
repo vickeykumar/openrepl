@@ -138,33 +138,22 @@
     return otherdocs.includes(ext);
   }
 
+  // The icon of a file is a small coloured badge (css: ".fi", ui-refresh.css) chosen by its extension: a class "fi fi--<kind>". The panel,
+  // the tabs and Go to file use this one function. A kind that is not in the table is the plain grey page.
+  var ext2kind = {
+    c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', go: 'go', py: 'py', js: 'js', mjs: 'js', cjs: 'js', ts: 'ts', rs: 'rs',
+    java: 'java', rb: 'rb', sh: 'sh', bash: 'sh', ksh: 'sh', sql: 'sql', asm: 'asm', s: 'asm', html: 'web', htm: 'web', css: 'css',
+    json: 'json', md: 'md', markdown: 'md', txt: 'md', text: 'md', svg: 'img', pdf: 'pdf', doc: 'doc', docx: 'doc', ppt: 'doc', pptx: 'doc'
+  };
   function filename2IconClass(filename) {
-    if (isCodeFile(filename)) { 
-      return "fa fa-file-code"; 
-    }
-    if (isObjFile(filename)) { 
-      return "fa fa-gear"; 
-    }
-    if (isImageFile(filename)) { 
-      return "fa fa-file-image"; 
-    }
-    if (isArchiveFile(filename)) { 
-      return "fa fa-file-archive"; 
-    }
-    if (isVideoFile(filename)) { 
-      return "fa fa-file-video"; 
-    }
-    if (isAudioFile(filename)) { 
-      return "fa fa-file-audio"; 
-    }
-
-    var ext = filename.split('.').pop().toLowerCase();
-    if (ext2icon.hasOwnProperty(ext)) {
-        return ext2icon[ext];
-    } else {
-        return "fa fa-file";
-    }
-    return "fa fa-file";
+    var ext = String(filename).split('.').pop().toLowerCase();
+    if (String(filename).indexOf('.') < 0) return "fi fi--file";
+    if (isObjFile(filename)) return "fi fi--bin";
+    if (isImageFile(filename)) return "fi fi--img";
+    if (isArchiveFile(filename)) return "fi fi--zip";
+    if (isVideoFile(filename) || isAudioFile(filename)) return "fi fi--media";
+    if (Object.prototype.hasOwnProperty.call(ext2kind, ext)) return "fi fi--" + ext2kind[ext];
+    return "fi fi--file";
   }
   // the editor tabs draw the same icon as the Files panel for a file (22-editor-tabs.js)
   window.FileIconClass = filename2IconClass;
@@ -540,7 +529,7 @@
             "valid_children": FOLDER_TYPES.concat(["file"])
           },
           "file": {
-            "icon" : "fa fa-file",
+            "icon" : "fi fi--file",
             "valid_children": []
           },
           'f-open' : {

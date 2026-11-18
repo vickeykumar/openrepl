@@ -4551,3 +4551,99 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 @keyframes boxturn { to { transform: rotateY(360deg); } }
 .appstore .is-loading { display: flex; align-items: center; gap: 8px; }
 @media (prefers-reduced-motion: reduce) { .appstore .boxspin svg { animation: none; } }
+
+/* ---- File and folder icons (the Files panel, the editor tabs, Go to file): a coloured badge for each kind of file ---- */
+.fi {
+  --fi-bg: #A9B4C4;
+  --fi-fg: #101014;
+  --fi-label: "";
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: flex-end;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 13px;
+  height: 16px;
+  padding-bottom: 1px;
+  border-radius: 2px 5px 2px 2px;
+  background: var(--fi-bg);
+  color: var(--fi-fg);
+  font: 700 6px/1 "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-style: normal;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+.fi::before { content: var(--fi-label); }
+.fi::after { content: ""; position: absolute; right: 0; top: 0; width: 5px; height: 5px; background: rgba(0, 0, 0, 0.28); border-bottom-left-radius: 2px; }
+.fi--c { --fi-bg: #5AA9E6; --fi-label: "C"; }
+.fi--cpp { --fi-bg: #7C9CFF; --fi-label: "C+"; }
+.fi--go { --fi-bg: #4DD0E1; --fi-label: "Go"; }
+.fi--py { --fi-bg: #F5D04C; --fi-label: "Py"; }
+.fi--js { --fi-bg: #F7DF1E; --fi-label: "JS"; }
+.fi--ts { --fi-bg: #4A90D9; --fi-label: "TS"; }
+.fi--rs { --fi-bg: #F58B5C; --fi-label: "Rs"; }
+.fi--java { --fi-bg: #E8836B; --fi-label: "Jv"; }
+.fi--rb { --fi-bg: #E5645F; --fi-label: "Rb"; }
+.fi--sh { --fi-bg: #9AD36A; --fi-label: "$"; }
+.fi--sql { --fi-bg: #8FB8D8; --fi-label: "SQL"; }
+.fi--asm { --fi-bg: #C9A2F5; --fi-label: "Asm"; }
+.fi--web { --fi-bg: #F2994A; --fi-label: "<>"; }
+.fi--css { --fi-bg: #6EA8FE; --fi-label: "#"; }
+.fi--json { --fi-bg: #E9C46A; --fi-label: "{}"; }
+.fi--md { --fi-bg: #A9B4C4; --fi-label: "M"; }
+.fi--img { --fi-bg: #E88CC8; --fi-label: ""; }
+.fi--zip, .fi--media { --fi-bg: #8E96A3; }
+.fi--pdf { --fi-bg: #E5645F; --fi-label: "PDF"; font-size: 4.6px; }
+.fi--doc { --fi-bg: #7C9CFF; --fi-label: "Doc"; }
+.fi--bin { --fi-bg: #7A7885; --fi-fg: #E6E4EC; }
+.fi--file { --fi-bg: #8C8A98; }
+[data-theme="light"] .fi--c { --fi-bg: #3B82C4; --fi-fg: #fff; }
+[data-theme="light"] .fi--cpp { --fi-bg: #4F6FE0; --fi-fg: #fff; }
+[data-theme="light"] .fi--go { --fi-bg: #0D93A6; --fi-fg: #fff; }
+[data-theme="light"] .fi--py { --fi-bg: #D9A400; }
+[data-theme="light"] .fi--js { --fi-bg: #D9BF00; }
+[data-theme="light"] .fi--ts { --fi-bg: #2F6DB5; --fi-fg: #fff; }
+[data-theme="light"] .fi--rs { --fi-bg: #D96A2E; --fi-fg: #fff; }
+[data-theme="light"] .fi--java { --fi-bg: #C9573D; --fi-fg: #fff; }
+[data-theme="light"] .fi--rb { --fi-bg: #C4403A; --fi-fg: #fff; }
+[data-theme="light"] .fi--sh { --fi-bg: #5C9A2E; --fi-fg: #fff; }
+[data-theme="light"] .fi--sql { --fi-bg: #5B8FB8; --fi-fg: #fff; }
+[data-theme="light"] .fi--asm { --fi-bg: #8A5BD0; --fi-fg: #fff; }
+[data-theme="light"] .fi--web { --fi-bg: #E0732F; }
+[data-theme="light"] .fi--css { --fi-bg: #3F7FE0; --fi-fg: #fff; }
+[data-theme="light"] .fi--json { --fi-bg: #C99B1E; }
+[data-theme="light"] .fi--md { --fi-bg: #7B8796; --fi-fg: #fff; }
+[data-theme="light"] .fi--img { --fi-bg: #C45AA2; --fi-fg: #fff; }
+[data-theme="light"] .fi--zip, [data-theme="light"] .fi--media { --fi-bg: #6B7380; --fi-fg: #fff; }
+[data-theme="light"] .fi--bin { --fi-bg: #6E6C78; }
+[data-theme="light"] .fi--pdf { --fi-bg: #C4403A; --fi-fg: #fff; }
+[data-theme="light"] .fi--doc { --fi-bg: #4F6FE0; --fi-fg: #fff; }
+[data-theme="light"] .fi--file { --fi-bg: #6E6C78; --fi-fg: #fff; }
+/* in the Files panel the tree's own icon box is 24px wide: the badge sits in it */
+.files-panel .jstree-default .jstree-icon.fi { display: inline-flex; align-items: flex-end; justify-content: center; width: 13px; height: 16px; line-height: 1; margin: 4px 6px 0 5px; background-image: none; background-color: var(--fi-bg); color: var(--fi-fg); }
+html[data-ide-theme] .ide-shell .files-panel .jstree-default .jstree-icon.fi { display: inline-flex; align-items: flex-end; justify-content: center; width: 13px; height: 16px; line-height: 1; margin: 4px 6px 0 5px; background-image: none; background-color: var(--fi-bg); color: var(--fi-fg); }
+.etab__icon.fi { width: 11px; height: 14px; font-size: 5.5px; opacity: 1; }
+/* a changed or new file keeps its badge: the state is on the name */
+.etab--modified .etab__icon.fi, .etab--new .etab__icon.fi { color: var(--fi-fg); }
+/* folders: a tint for a closed and an open one, a dimmer one for a hidden one, and a mark on the ones the site knows by name */
+.files-panel .jstree-default .jstree-icon.fa-folder { color: #D4C186; }
+html[data-ide-theme] .ide-shell .files-panel .jstree-default .jstree-icon.fa-folder { color: #D4C186; }
+.files-panel .jstree-default .jstree-icon.fa-folder-open { color: #E3D296; }
+html[data-ide-theme] .ide-shell .files-panel .jstree-default .jstree-icon.fa-folder-open { color: #E3D296; }
+[data-theme="light"] .files-panel .jstree-default .jstree-icon.fa-folder { color: #B59A45; }
+html[data-theme="light"][data-ide-theme] .ide-shell .files-panel .jstree-default .jstree-icon.fa-folder { color: #B59A45; }
+[data-theme="light"] .files-panel .jstree-default .jstree-icon.fa-folder-open { color: #A38A3A; }
+html[data-theme="light"][data-ide-theme] .ide-shell .files-panel .jstree-default .jstree-icon.fa-folder-open { color: #A38A3A; }
+.files-panel .jstree-anchor[id*="/."] > .jstree-icon { opacity: 0.6; }
+html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id*="/."] > .jstree-icon { opacity: 0.6; }
+.files-panel .jstree-anchor[id$="/src_anchor"] > .jstree-icon.fa-folder, .files-panel .jstree-anchor[id$="/lib_anchor"] > .jstree-icon.fa-folder { color: #8BBDEB; }
+html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/src_anchor"] > .jstree-icon.fa-folder, html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/lib_anchor"] > .jstree-icon.fa-folder { color: #8BBDEB; }
+.files-panel .jstree-anchor[id$="/web_anchor"] > .jstree-icon.fa-folder, .files-panel .jstree-anchor[id$="/public_anchor"] > .jstree-icon.fa-folder { color: #F2A765; }
+html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/web_anchor"] > .jstree-icon.fa-folder, html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/public_anchor"] > .jstree-icon.fa-folder { color: #F2A765; }
+.files-panel .jstree-anchor[id$="/test_anchor"] > .jstree-icon.fa-folder, .files-panel .jstree-anchor[id$="/tests_anchor"] > .jstree-icon.fa-folder { color: #8CD0A5; }
+html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/test_anchor"] > .jstree-icon.fa-folder, html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/tests_anchor"] > .jstree-icon.fa-folder { color: #8CD0A5; }
+.files-panel .jstree-anchor[id$="/images_anchor"] > .jstree-icon.fa-folder, .files-panel .jstree-anchor[id$="/media_anchor"] > .jstree-icon.fa-folder { color: #BDA6EA; }
+html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/images_anchor"] > .jstree-icon.fa-folder, html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/media_anchor"] > .jstree-icon.fa-folder { color: #BDA6EA; }
+.files-panel .jstree-anchor[id$="/docs_anchor"] > .jstree-icon.fa-folder { color: #A9B1BD; }
+html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/docs_anchor"] > .jstree-icon.fa-folder { color: #A9B1BD; }

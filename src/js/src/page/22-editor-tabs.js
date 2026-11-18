@@ -374,7 +374,7 @@ function render() {
     tab.title = isUntitled(path) ? "Untitled: not saved in the workspace yet" : path;
     // the icon of the file, as in the Files panel (a Font Awesome class chosen by the extension)
     var icon = document.createElement("i");
-    icon.className = "etab__icon " + (isUntitled(path) || !window.FileIconClass ? "fa fa-file" : window.FileIconClass(path.split("/").pop()));
+    icon.className = "etab__icon " + (isUntitled(path) || !window.FileIconClass ? "fi fi--file" : window.FileIconClass(path.split("/").pop()));
     icon.setAttribute("aria-hidden", "true");
     tab.appendChild(icon);
     var name = document.createElement("span");
