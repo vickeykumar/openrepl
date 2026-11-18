@@ -247,6 +247,7 @@ now gives it working ones (`livepreview/storage.go`):
 - The script replaces `window.localStorage`, `window.sessionStorage` (a Proxy: `getItem`, `setItem`, `removeItem`, `clear`, `key`,
   `length`, `store.name = v`, `Object.keys`) and `document.cookie` (name and value; `max-age` and `expires` are kept, path and domain are
   ignored). A write goes back after 40 ms with `POST /preview/<token>/s` (text body, so no preflight; `keepalive`).
+- A write goes after 40 ms, but one made while the page is going away is sent at once (2026-11-18): the script listens to `pagehide`, `beforeunload` and a hidden `visibilitychange` first (its listeners run before the page's own), sends what is waiting, and from then on does not wait. A timer does not run in a page that is being torn down, so a page that takes its entry out of a cookie when it closes (OpenREPL previewed in itself counts its open terminals in a cookie and removes its entry on `pagehide`) lost the removal, and three reloads within two minutes showed "Maximum no of connections reached". Test: `src/js/test/preview-storage.test.mjs` (runs the script from `storage.go`).
 - The pane's own storage and the site's cookies are not touched. Pages of one folder share their storage, as pages of one site do.
 - Not provided: IndexedDB, Cache storage, service workers, the `storage` event between frames, cookie `Secure`/`HttpOnly`/path rules.
 - Tests: `storage_test.go`, `TestAProgramsHTMLGetsStorageForItsPort`, and the browser test "localStorage, sessionStorage and cookies work".
