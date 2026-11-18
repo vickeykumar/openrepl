@@ -85,6 +85,9 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write   # the image is kept for the test jobs (below)
 
     steps:
     - uses: actions/checkout@v4
@@ -110,6 +113,19 @@ jobs:
         tags: openrepl:${{ matrix.arch }}
         cache-from: type=gha,scope=linux-${{ matrix.arch }}
         cache-to: type=gha,mode=max,scope=linux-${{ matrix.arch }}
+    # The jobs below run on machines of their own, which have no image: building it there from the layer cache took about five
+    # minutes (it downloads the cached layers and unpacks them). The image is kept in GitHub's package registry, tagged with this
+    # commit, and the test jobs pull it (layers come in parallel). Without the right to push (a pull request from a fork) they
+    # build from the cache as before.
+    - name: Keep the image for the test jobs
+      continue-on-error: true
+      run: |
+        start=$(date +%s)
+        echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        IMG=ghcr.io/${{ github.repository }}-ci:${{ github.sha }}-${{ matrix.arch }}
+        docker tag openrepl:${{ matrix.arch }} "$IMG"
+        docker push "$IMG"
+        echo "Pushed the ${{ matrix.arch }} image for the test jobs in $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Describe the Docker image
       run: |
         docker history openrepl:${{ matrix.arch }}
@@ -192,6 +208,9 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
+    permissions:
+      contents: read
+      packages: read
     env:
       GO111MODULE: "off"
       GOPATH: ${{ github.workspace }}
@@ -202,7 +221,20 @@ jobs:
         go-version: "1.23.12"
         cache: false
     - uses: docker/setup-buildx-action@v3
+    # The image of the build job, pulled from the package registry (see "Keep the image for the test jobs" there); built from the
+    # layer cache when it is not there.
+    - name: Pull the image of the build job
+      id: pull
+      continue-on-error: true
+      run: |
+        start=$(date +%s)
+        echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        IMG=ghcr.io/${{ github.repository }}-ci:${{ github.sha }}-${{ matrix.arch }}
+        docker pull "$IMG"
+        docker tag "$IMG" openrepl:${{ matrix.arch }}
+        echo "Pulled the ${{ matrix.arch }} image in $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Build the Docker image (from the cache of the job above)
+      if: steps.pull.outcome != 'success'
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -262,11 +294,27 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
 
     steps:
     - uses: actions/checkout@v4
     - uses: docker/setup-buildx-action@v3
+    # The image of the build job, pulled from the package registry (see "Keep the image for the test jobs" there); built from the
+    # layer cache when it is not there.
+    - name: Pull the image of the build job
+      id: pull
+      continue-on-error: true
+      run: |
+        start=$(date +%s)
+        echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        IMG=ghcr.io/${{ github.repository }}-ci:${{ github.sha }}-${{ matrix.arch }}
+        docker pull "$IMG"
+        docker tag "$IMG" openrepl:${{ matrix.arch }}
+        echo "Pulled the ${{ matrix.arch }} image in $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Build the Docker image (from the cache of the job above)
+      if: steps.pull.outcome != 'success'
       uses: docker/build-push-action@v6
       with:
         context: .
