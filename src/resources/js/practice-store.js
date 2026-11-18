@@ -1,6 +1,6 @@
 /*
  * Practice questions and progress (T17), shared by the practice list
- * (/practice/dsa-questions) and the editor (/practice?name=...).
+ * (/practice/coding-practice) and the editor (/practice?name=...).
  *
  * localStorage keeps, as before:
  *   questions       the generated questions (array)
@@ -348,6 +348,11 @@
     isDone: function (id) {
       var s = rawState()[id];
       return !!(s && s.done && !s.del);
+    },
+    // when the question was ticked (ms), 0 if it is not done: the list puts the one ticked last first in Done
+    doneAt: function (id) {
+      var s = rawState()[id];
+      return s && s.done && !s.del ? +s.t || 0 : 0;
     },
     setDone: function (id, done) {
       var st = rawState();

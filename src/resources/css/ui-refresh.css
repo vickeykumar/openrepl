@@ -3486,6 +3486,32 @@ body.palette-open { overflow: hidden; }
 }
 .q-link:hover { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
 .q-row.is-done .q-link { color: var(--text-2); }
+/* the Done group: a heading row; a question made in this visit: a badge, and a light that fades */
+.q-table .q-divider th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  background: var(--row-hover);
+}
+.q-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--accent-text);
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-text);
+  vertical-align: 1px;
+}
+.q-row.is-lit td { animation: q-lit 4s ease-out 1; }
+@keyframes q-lit { from { background: var(--row-hover); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .q-row.is-lit td { animation: none; background: var(--row-hover); } }
+
 .practice-page .q-topic,
 .practice-page .q-added { font-size: 14px; color: var(--text-2); }
 .q-actions { width: 96px; text-align: right; }
