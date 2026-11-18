@@ -181,6 +181,8 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) {
   cursor: pointer;
 }
 #chat-widget__pin:hover { color: var(--cw-strong); background: var(--cw-secondary-bg); }
+#chat-widget__help { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; color: var(--cw-icon); text-decoration: none; }
+#chat-widget__help:hover, #chat-widget__help:focus-visible { color: var(--cw-strong); background: var(--cw-secondary-bg); }
 #chat-widget__pin[aria-pressed="true"] { color: var(--cw-accent); }
 #chat-widget__pin[aria-pressed="true"] svg { fill: currentColor; fill-opacity: 0.25; }
 #chat-widget__pin[hidden] { display: none; }

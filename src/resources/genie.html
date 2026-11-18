@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-T8XFRGR');</script>
+    <!-- End Google Tag Manager -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>How to use Genie, the AI helper in OpenREPL | OpenREPL</title>
+    <meta name="description" content="A five minute guide to Genie, OpenREPL's AI helper: ask about your code and terminal, give it a file or a selection, let Agent mode do a task, and the keys and settings that help.">
+    <link rel="canonical" href="https://openrepl.com/genie">
+    <meta name="google-site-verification" content="iejQHkSDbrldGCn37ZJ79J1zoQQcW7-MAlqsHSHwnOI" />
+    <meta name="msvalidate.01" content="75003493DFA09CBFBBDC3F0E2AE85DFD" />
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg">
+    <link rel="icon" type="image/x-icon" sizes="48x48" href="/images/favicon.ico">
+    <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+    <link rel="manifest" href="/images/manifest.json">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/scribbler-global.css">
+    <link rel="stylesheet" href="/css/ui-refresh.css">
+    <script src="/js/theme.js"></script>
+    <script src="/js/usage-beat.js" defer></script>
+    <script src="/js/notices.js"></script>
+    <script src="/config.js"></script>
+    <script src="/settings.js"></script>
+    <script src="/js/preprocessing.js"></script>
+    <link rel="author" href="humans.txt">
+  </head>
+  <body class="guide-page">
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-T8XFRGR" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <a class="skip-link" href="#guide">Skip to the guide</a>
+    <nav id="header-nav" class="site-nav" aria-label="Primary">
+      <a class="brand" href="/" aria-label="OpenREPL home"><span class="brand__open">open</span><span class="brand__repl">repl</span></a>
+      <ul class="menu">
+        <li class="menu__item toggle"><button type="button" class="toggle__button" aria-label="Menu" aria-expanded="false"><span></span></button></li>
+        <li class="menu__item"><a href="/#languages" class="link link--dark">Languages</a></li>
+        <li class="menu__item"><a href="/practice/coding-practice" class="link link--dark">Practice DSA</a></li>
+        <li class="menu__item"><a href="/genie" class="link link--dark" aria-current="page">Genie</a></li>
+        <li class="menu__item"><a href="/doc.html" class="link link--dark">Docs</a></li>
+        <li class="menu__item"><a href="/blog" class="link link--dark">Blog</a></li>
+        <li class="menu__item"><a href="/#request" class="link link--dark">Contact</a></li>
+        <li class="menu__item menu__item--push"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button></li>
+        <li class="menu__item"><a href="https://github.com/vickeykumar/openrepl" class="link link--dark nav-star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"></path></svg>Star on GitHub</a></li>
+      </ul>
+    </nav>
+    <style>
+      .guide-hero { padding: 56px 24px 28px; max-width: 1040px; margin: 0 auto; }
+      .guide-hero h1 { margin: 6px 0 10px; font-size: clamp(30px, 5vw, 46px); line-height: 1.1; }
+      .guide-hero p { max-width: 680px; font-size: 18px; color: var(--text-2, #5B5963); }
+      .guide-hero .hero__actions { margin-top: 18px; }
+      .guide-layout { display: flex; gap: 40px; max-width: 1040px; margin: 0 auto; padding: 8px 24px 64px; align-items: flex-start; }
+      .guide-toc { flex: 0 0 200px; position: sticky; top: 84px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+      .guide-toc strong { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2, #5B5963); margin-bottom: 6px; }
+      .guide-toc a { padding: 4px 12px; border-left: 2px solid var(--line, #E7E4DE); color: inherit; text-decoration: none; }
+      .guide-toc a:hover, .guide-toc a:focus-visible { border-left-color: var(--accent-text, #3F6B00); color: var(--accent-text, #3F6B00); }
+      .guide { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 44px; }
+      .guide section { scroll-margin-top: 84px; }
+      .guide h2 { margin: 0 0 10px; font-size: 26px; }
+      .guide h3 { margin: 18px 0 6px; font-size: 17px; }
+      .guide p, .guide li { font-size: 16px; line-height: 1.6; }
+      .guide ul, .guide ol { padding-left: 22px; display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+      .guide kbd { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; border: 1px solid var(--line, #D8D4CC); border-bottom-width: 2px; border-radius: 6px; padding: 0 6px; }
+      .guide figure { margin: 16px 0 0; }
+      .guide figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line, #E7E4DE); border-radius: 12px; }
+      .guide figcaption { font-size: 13.5px; color: var(--text-2, #5B5963); margin-top: 6px; }
+      .guide .tip { border: 1px solid var(--accent-text, #3F6B00); border-radius: 12px; padding: 12px 16px; background: rgba(120, 170, 20, .08); }
+      .guide-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; list-style: none; padding: 0; counter-reset: s; }
+      .guide-steps li { border: 1px solid var(--line, #E7E4DE); border-radius: 12px; padding: 12px 14px; counter-increment: s; }
+      .guide-steps li::before { content: counter(s); display: inline-flex; width: 24px; height: 24px; border-radius: 50%; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; background: var(--accent-text, #3F6B00); color: #fff; margin-bottom: 6px; }
+      @media (max-width: 800px) { .guide-layout { flex-direction: column; } .guide-toc { position: static; flex: none; flex-direction: row; flex-wrap: wrap; gap: 6px; } .guide-toc a { border: 1px solid var(--line, #E7E4DE); border-radius: 99px; } .guide-toc strong { display: none; } .guide-steps { grid-template-columns: 1fr; } }
+    </style>
+    <header class="guide-hero">
+      <p class="hero__eyebrow"><span class="hero__dot" aria-hidden="true"></span>Genie</p>
+      <h1>How to use Genie</h1>
+      <p>Genie is the AI helper in the editor. It reads your code and your terminal, answers questions about them, and, in Agent mode, does a task for you in your workspace. This guide takes five minutes.</p>
+      <div class="hero__actions">
+        <a class="hero__cta" href="/">Open the editor</a>
+        <a class="hero__secondary" href="#questions">Jump to the questions</a>
+      </div>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-label="On this page"><strong>On this page</strong>
+        <a href="#start">Start in a minute</a><a href="#code">Give it your code</a><a href="#modes">Chat or Agent</a><a href="#agent">Agent mode, safely</a><a href="#chats">Chats and tabs</a><a href="#models">Models and requests</a><a href="#phone">On a phone</a><a href="#coach">Practice coach</a><a href="#keys">Keys</a><a href="#questions">Questions</a>
+      </nav>
+      <main class="guide" id="guide">
+        <!-- Written from the Genie knowledge notes (src/resources/knowledge/genie*.md): when one changes, change it here too. -->
+        <section id="start">
+          <h2>Start in a minute</h2>
+          <ol class="guide-steps">
+            <li><strong>Open Genie.</strong> Press Ask Genie in the top bar. The pin in its header keeps it beside your code.</li>
+            <li><strong>Ask.</strong> Type a question and press <kbd>Enter</kbd> (<kbd>Shift</kbd> <kbd>Enter</kbd> for a new line). Genie sees your editor code and the latest terminal output, so you can ask why something fails without pasting anything.</li>
+            <li><strong>Use the answer.</strong> Code in an answer has Insert and Replace buttons. A change to your code is shown as a diff and applied only when you accept it.</li>
+          </ol>
+          <figure><img src="/images/genie/panel.png" alt="The Genie panel open beside the editor, with a question typed in the message box" loading="lazy" width="1440" height="900"><figcaption>The Genie panel beside the editor, with the Ask Genie button in the top bar.</figcaption></figure>
+        </section>
+        <section id="code">
+          <h2>Give it your code</h2>
+          <p>Point Genie at exactly what it should look at.</p>
+          <ul>
+            <li><strong>Select code and right-click:</strong> Explain answers in the panel. Fix problems, Add comments and Write tests show their change as a diff with Accept and Reject for each part.</li>
+            <li><strong>Add to Genie chat:</strong> right-click a file or folder in the Files panel, or select code or terminal text and press <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>L</kbd> (<kbd>Cmd</kbd> <kbd>Shift</kbd> <kbd>L</kbd> on a Mac). Each addition is a chip above the message box.</li>
+            <li><strong>Type # and a few letters</strong> of a name in the message box to pick a file from the list.</li>
+          </ul>
+          <figure><img src="/images/genie/right-click.png" alt="The right-click menu on selected code in the editor, with Explain, Fix problems, Add comments and Write tests" loading="lazy" width="1440" height="900"><figcaption>Select code, then right-click.</figcaption></figure>
+        </section>
+        <section id="modes">
+          <h2>Chat or Agent</h2>
+          <ul>
+            <li><strong>Chat</strong> answers questions. Everyone can use it.</li>
+            <li><strong>Agent</strong> carries out a task in steps: it writes in the editor, switches the language, presses Run and reads the output. It is for signed-in users: switch from Chat to Agent beside the Send button.</li>
+          </ul>
+          <p>Each mode remembers its own model, so choosing a model in Agent does not change your Chat model.</p>
+        </section>
+        <section id="agent">
+          <h2>Agent mode, safely</h2>
+          <p>Describe a task, for example "write a program that prints ten squares and run it". The card starts with a plan that the agent ticks off as it goes.</p>
+          <ul>
+            <li><strong>It asks first</strong> before it changes your editor, switches the language, runs your program or uses the terminal: Allow once, Allow for this session, or Deny.</li>
+            <li><strong>You see every change</strong> as a diff, applied only when you accept it.</li>
+            <li><strong>Undo this task</strong> at the end of the card puts everything back as it was, unless you changed it since.</li>
+            <li><strong>Riskier things</strong> (risky terminal commands, deleting, renaming and moving, closing a terminal tab) are asked every time. A delete moves to a Trash folder of your workspace.</li>
+            <li><strong>When a task uses its steps</strong> it pauses and asks. Carry on continues the same task.</li>
+            <li><strong>Notes about your project:</strong> a file named <kbd>GENIE.md</kbd> in your workspace tells it how to run the project, the style and what not to touch. Put the important lines first: only the first part is read.</li>
+          </ul>
+          <figure><img src="/images/genie/agent-preview.webp" alt="Agent mode has built a web page in a new web folder: its plan and messages in the Genie panel, the files it made in the Files panel, and the page running in the Preview pane" loading="lazy" width="2000" height="1074"><figcaption>An Agent task that built a small web site: the steps in the Genie panel, the new files in the Files panel, and the result in the Preview pane.</figcaption></figure>
+        </section>
+        <section id="chats">
+          <h2>Chats and tabs</h2>
+          <p>Each chat is a tab above the conversation, saved in your own workspace, so it comes back after a reload and follows your workspace. The list button shows every chat; you can rename, close and reopen them, and export a chat as Markdown.</p>
+          <p>While the panel has the focus: <kbd>Alt</kbd> <kbd>T</kbd> a new chat, <kbd>Alt</kbd> <kbd>W</kbd> close, <kbd>Alt</kbd> <kbd>←</kbd> <kbd>→</kbd> move between chats, <kbd>Alt</kbd> <kbd>1</kbd> to <kbd>8</kbd> go to a chat, <kbd>Alt</kbd> <kbd>H</kbd> all chats.</p>
+        </section>
+        <section id="models">
+          <h2>Models and requests</h2>
+          <ul>
+            <li>Choose the model with the chip beside Send. Star a model to keep it in your list, open Other models for the rest, or search (press <kbd>/</kbd>).</li>
+            <li>Some models think first and have an effort setting; some are free and share a daily allowance. A small model gets a note in Agent mode, because Agent works best with a stronger one.</li>
+            <li>Each message, and each Agent task, uses one request. The line under the message box shows how many you have left and when they refill; click it for the details. Signed-in users get more.</li>
+          </ul>
+        </section>
+        <section id="phone">
+          <h2>On a phone</h2>
+          <p>Genie is the third tab of the switch above the workspace, beside Editor and Terminal, and fills the screen there. A dot on the tab shows when it is working or needs you; leaving the tab does not stop it.</p>
+        </section>
+        <section id="coach">
+          <h2>Practice coach</h2>
+          <p>On the practice page Genie works as a coach: it gives hints without handing you the answer, reviews your solution and explains its complexity. Only Explain is offered in the right-click menu there.</p>
+        </section>
+        <section id="keys">
+          <h2>Keys</h2>
+          <p>Press <kbd>?</kbd> outside a text field for the list of all the keys. The ones for Genie: <kbd>Enter</kbd> sends, <kbd>Shift</kbd> <kbd>Enter</kbd> starts a new line, <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>L</kbd> adds the selection to the chat, and the <kbd>Alt</kbd> keys above move between chats.</p>
+        </section>
+        <section id="questions">
+          <h2>Questions</h2>
+          <h3>Are my chats kept?</h3>
+          <p>Yes, in your own workspace. You can delete them from your profile page.</p>
+          <h3>Does Genie keep working if I close its panel?</h3>
+          <p>Yes. An answer or an Agent task carries on while the panel is closed.</p>
+          <h3>What does Genie see?</h3>
+          <p>Your editor code and the latest terminal output, and the files you add to the chat. You can click the dashed chip to stop it looking at the editor.</p>
+          <p class="tip">Still stuck? Ask Genie "how do I…", it knows this guide.</p>
+        </section>
+      </main>
+    </div>
+    <footer class="site-footer site-footer--simple">
+      <div class="site-footer__inner site-footer__bottom">
+        <span>&copy; <span id="copyright_year"></span> OpenREPL</span>
+        <div class="site-footer__social">
+          <a href="/genie">Genie guide</a>
+          <a href="/about.html">About</a>
+          <a href="/references.html">References</a>
+          <a href="/privacy.html">Privacy policy</a>
+          <a href="/terms.html">Terms of use</a>
+        </div>
+      </div>
+      <script>document.getElementById('copyright_year').textContent = new Date().getFullYear();</script>
+    </footer>
+    <script>document.getElementById('copyright_year').textContent = new Date().getFullYear();</script>
+  </body>
+</html>

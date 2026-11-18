@@ -177,6 +177,7 @@
       });
     }
 
+    add("Help", "Genie guide: how to use Genie", goTo("/genie"), { words: "help how tutorial guide ai assistant" });
     add("Help", "Keyboard shortcuts", function () { open("shortcuts"); }, { keys: ["?"], words: "keys hotkeys keybindings" });
     if (ws && typeof window.StartTour === "function") add("Help", "Take the tour", call("StartTour"), { words: "intro getting started guide" });
     add("Help", "Practice DSA questions", goTo("/practice/coding-practice"), { words: "problems interview" });

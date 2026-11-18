@@ -92,11 +92,12 @@ bindata/static/editblog.html: bindata/static resources/editblog.html
 bindata/static/admin.html: bindata/static resources/admin.html
 	cp resources/admin.html bindata/static/admin.html
 
-bindata/static/about.html: bindata/static resources/about.html resources/references.html resources/privacy.html resources/terms.html
+bindata/static/about.html: bindata/static resources/about.html resources/references.html resources/privacy.html resources/terms.html resources/genie.html
 	cp resources/about.html bindata/static/about.html
 	cp resources/references.html bindata/static/references.html
 	cp resources/privacy.html bindata/static/privacy.html
 	cp resources/terms.html bindata/static/terms.html
+	cp resources/genie.html bindata/static/genie.html
 
 bindata/static/NewFile.html: bindata/static resources/NewFile.html
 	cp resources/NewFile.html bindata/static/NewFile.html

@@ -359,6 +359,15 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.Handle(pathPrefix+"doc.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"editblog.html", server.wrapAdmin(http.StripPrefix(pathPrefix, staticFileHandler)))
 	siteMux.Handle(pathPrefix+"about.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	// the guide to Genie: /genie is the address, genie.html the file
+	siteMux.Handle(pathPrefix+"genie.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.HandleFunc(pathPrefix+"genie", func(w http.ResponseWriter, r *http.Request) {
+		r2 := *r
+		u := *r.URL
+		u.Path = pathPrefix + "genie.html"
+		r2.URL = &u
+		http.StripPrefix(pathPrefix, staticFileHandler).ServeHTTP(w, &r2)
+	})
 	siteMux.Handle(pathPrefix+"references.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"privacy.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"terms.html", http.StripPrefix(pathPrefix, staticFileHandler))

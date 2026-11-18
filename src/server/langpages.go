@@ -126,7 +126,7 @@ func indexPageFor(r *http.Request) indexPage {
 // and the other public pages.
 func handleSitemap(w http.ResponseWriter, r *http.Request) {
 	base := siteURL(r)
-	paths := []string{"/", "/practice/coding-practice", "/doc.html", "/about.html", "/privacy.html", "/terms.html"}
+	paths := []string{"/", "/practice/coding-practice", "/genie", "/doc.html", "/about.html", "/privacy.html", "/terms.html"}
 	for _, p := range langPages {
 		paths = append(paths, "/"+p.Slug)
 	}
