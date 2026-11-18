@@ -3182,6 +3182,8 @@ body .palette__search input:focus-visible { outline: none !important; }
 }
 .palette__table td:last-child { text-align: right; white-space: nowrap; padding-left: 16px; }
 .palette__table tr:last-child td { border-bottom: 0; }
+.palette .palette__table .palette__group th { padding: 16px 0 6px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-3); border-bottom: 1px solid var(--ink-700, rgba(255,255,255,.08)); }
+.palette .palette__table .palette__group:first-child th { padding-top: 4px; }
 .palette__link {
   margin-top: 12px;
   padding: 0;
