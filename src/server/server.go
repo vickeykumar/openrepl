@@ -361,6 +361,15 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.Handle(pathPrefix+"about.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	// the guide to Genie: /genie is the address, genie.html the file
 	siteMux.Handle(pathPrefix+"genie.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	// the questions and answers: /faq is the address, faq.html the file
+	siteMux.Handle(pathPrefix+"faq.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.HandleFunc(pathPrefix+"faq", func(w http.ResponseWriter, r *http.Request) {
+		r2 := *r
+		u := *r.URL
+		u.Path = pathPrefix + "faq.html"
+		r2.URL = &u
+		http.StripPrefix(pathPrefix, staticFileHandler).ServeHTTP(w, &r2)
+	})
 	siteMux.HandleFunc(pathPrefix+"genie", func(w http.ResponseWriter, r *http.Request) {
 		r2 := *r
 		u := *r.URL
