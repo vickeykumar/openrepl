@@ -679,3 +679,46 @@ dialog.logs { width: min(1180px, calc(100vw - 32px)); max-height: calc(100vh - 3
 .logmsg.bad { color: var(--danger); }
 .logfoot { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
 .logfollow { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Site settings in sections: a list on the left, the open section on the right (js/admin.js: viewSite, js/admin-sections.js) */
+.site-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
+.site-nav { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 2px; }
+.site-find { position: relative; margin-bottom: 8px; }
+.site-search { width: 100%; box-sizing: border-box; padding-right: 26px; }
+.site-key { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; pointer-events: none; }
+.site-search:focus + .site-key { display: none; }
+.site-results { position: absolute; z-index: 20; left: 0; top: calc(100% + 4px); width: 340px; max-width: calc(100vw - 40px); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow); padding: 4px; display: flex; flex-direction: column; }
+.site-results[hidden] { display: none; }
+.site-hit { text-align: left; background: transparent; border: 0; border-radius: 6px; padding: 6px 9px; cursor: pointer; color: var(--text); font: inherit; display: flex; flex-direction: column; gap: 1px; }
+.site-hit:hover, .site-hit.on { background: var(--raised); }
+.site-path { font-size: 11px; color: var(--muted); }
+.site-none { padding: 8px 10px; color: var(--muted); }
+.site-group { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 10px 10px 3px; }
+.site-link { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 7px; color: var(--text); text-decoration: none; }
+.site-link:hover { background: var(--raised); }
+.site-link[aria-current="page"] { background: var(--raised); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent, #FE6A6B); }
+.site-name { flex: 1; min-width: 0; }
+.site-set { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 0 6px; }
+.site-set[hidden], .site-dot[hidden] { display: none; }
+.site-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: 0 0 8px; }
+.site-body { min-width: 0; }
+.site-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; margin-bottom: 12px; }
+.site-title { font-size: 17px; font-weight: 600; margin: 0; }
+.site-head .sub { margin: 3px 0 0; color: var(--muted); }
+.site-only { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.site-section > .card + .card, .site-tabpanel > .card + .card { margin-top: 14px; }
+.site-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; flex-wrap: wrap; }
+.site-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 7px 12px; cursor: pointer; color: var(--muted); font: inherit; }
+.site-tab.on { color: var(--text); font-weight: 600; border-bottom-color: var(--accent, #FE6A6B); }
+.site-tabpanel[hidden] { display: none; }
+.site-ring { animation: site-ring 1.7s ease-out 1; }
+@keyframes site-ring { 0%, 55% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #FE6A6B) 60%, transparent); } 100% { box-shadow: 0 0 0 3px transparent; } }
+.only-set .form-row:not(.is-set) { display: none; }
+.only-set .card:not(.has-set) { display: none; }
+@media (prefers-reduced-motion: reduce) { .site-ring { animation: none; } }
+@media (max-width: 900px) {
+  .site-layout { grid-template-columns: minmax(0, 1fr); }
+  .site-nav { position: static; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .site-find { flex: 1 0 100%; }
+  .site-group { display: none; }
+}

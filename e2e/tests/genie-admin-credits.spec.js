@@ -12,6 +12,10 @@ async function stub(page, measures) {
   await page.route(/\/admin\/?(\?.*)?(#.*)?$/, (r) => (r.request().resourceType() === "document" ? r.fulfill({ contentType: "text/html", body: ADMIN_HTML }) : r.continue()));
   if (process.env.GENIE_LOCAL_ASSETS) {
     await page.route((u) => u.pathname.endsWith("/js/admin.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "resources", "js", "admin.js")) }));
+
+    await page.route((u) => u.pathname.endsWith("/js/admin-sections.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "resources", "js", "admin-sections.js")) }));
+    await page.route((u) => u.pathname.endsWith("/js/admin-site.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "resources", "js", "admin-site.js")) }));
+    await page.route((u) => u.pathname.endsWith("/css/admin.css"), (r) => r.fulfill({ contentType: "text/css", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "resources", "css", "admin.css")) }));
   }
   const json = (r, o) => r.fulfill({ contentType: "application/json", body: JSON.stringify(o) });
   let settings = fixture("admin-settings.json");
@@ -40,9 +44,16 @@ async function stub(page, measures) {
 
 const zero = { tasks: 0, steps: 0, reqBytes: 0, stepLimit: 0, budgetStop: 0, unreadable: 0, tooLong: 0, stopped: 0, done: 0, failed: 0, checked: 0, notChecked: 0, carried: 0 };
 
+// One section of Site settings is in the page at a time: go to another by its address, and wait for it.
+async function toSection(page, id, cardTitle) {
+  await page.evaluate((h) => { location.hash = h; }, "#site/" + id);
+  await expect(page.locator(`.site-section[data-section="${id}"]`)).toBeVisible();
+  if (cardTitle) await expect(page.locator(".card", { hasText: cardTitle }).first()).toBeVisible();
+}
+
 test("Site settings has the usage record and credits: today's behaviour, and the numbers are saved", async ({ page }) => {
   const st = await stub(page, { now: zero });
-  await page.goto("/admin#site");
+  await page.goto("/admin#site/genie-chats");
   const card = page.locator(".card", { hasText: "Usage record and credits" });
   await expect(card).toBeVisible();
   // as it was: the record on, credits off, the plan empty
@@ -51,27 +62,31 @@ test("Site settings has the usage record and credits: today's behaviour, and the
   await expect(card.locator("#f-plan-credits")).toHaveValue("");
   await expect(card).toContainText("Credits: ");
   await expect(card).toContainText("a dollar for a million tokens is a credit for a thousand");
+  await toSection(page, "genie-agent", "Agent mode");
   await expect(page.locator("#f-stream-on")).not.toBeChecked();
   await expect(page.locator("#f-agent-tools")).not.toBeChecked();
   // the models that take the tool: the OpenAI ones until the admin chooses
   await expect(page.locator("#f-tool-gpt-6-luna")).toBeChecked();
   await expect(page.locator("#f-tool-gpt-4o-mini")).toBeChecked();
   await expect(page.locator("#f-tool-google-gemma-4-31b-it")).not.toBeChecked();
-  // set a plan and save
-  await card.locator("#f-credits-on").evaluate((e) => e.click());
-  await card.locator("#f-plan-name").fill("Team");
-  await card.locator("#f-plan-credits").fill("500");
-  await card.locator("#f-plan-budget").fill("40");
+  // change things in two sections, and save them together with the one Save button
   await page.locator("#f-stream-on").evaluate((e) => e.click());
   await page.locator("#f-agent-tools").evaluate((e) => e.click());
   await page.locator("#f-tool-google-gemma-4-31b-it").evaluate((e) => e.click());
   await page.locator("#f-tool-gpt-6-luna").evaluate((e) => e.click());
+  await expect(page.locator('.site-dot[data-dot="genie-agent"]')).toBeVisible();
+  await toSection(page, "genie-chats", "Usage record and credits");
+  await card.locator("#f-credits-on").evaluate((e) => e.click());
+  await card.locator("#f-plan-name").fill("Team");
+  await card.locator("#f-plan-credits").fill("500");
+  await card.locator("#f-plan-budget").fill("40");
   const w = card.locator('input[id^="f-weight-in-"]').first();
   await w.fill("0.2");
   // the chat summary: on by default, 6000 when empty
   await expect(page.locator("#f-sum-on")).toBeChecked();
   await expect(page.locator("#f-sum-tokens")).toHaveAttribute("placeholder", "6000");
   await page.locator("#f-sum-tokens").fill("9000");
+  await expect(page.locator(".save-bar")).toContainText(/changes: .* in Agent, .* in Chats and credits|changes: .* in Chats and credits/);
   await page.getByRole("button", { name: /^Save/ }).click();
   await expect.poll(() => st.saved.length).toBe(1);
   const g = st.saved[0].genie;
@@ -102,7 +117,7 @@ test("Genie usage shows how the agent is doing, and records a baseline", async (
 
 test("Site settings has the chat history card: on by default, and its numbers are saved", async ({ page }) => {
   const st = await stub(page, { now: zero });
-  await page.goto("/admin#site");
+  await page.goto("/admin#site/genie-chats");
   const card = page.locator(".card", { hasText: "Genie chat history" });
   await expect(card).toBeVisible();
   await expect(card.locator("#f-chat-on")).toBeChecked();
