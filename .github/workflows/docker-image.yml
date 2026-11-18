@@ -72,7 +72,9 @@ jobs:
         fi
         echo "image=$image" >> "$GITHUB_OUTPUT"
 
-  build:
+  # The image: built from the layer cache and kept in the package registry (below). The checks of the image (the "build" job) and the
+  # test jobs all start from here, so none waits for the others.
+  image:
     needs: changes
     if: needs.changes.outputs.image == 'true'
     strategy:
@@ -92,13 +94,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: docker/setup-buildx-action@v3
-    # Which Landlock the runner's kernel has (LLD 14): 4 is files and TCP, 5 adds device ioctls, 6 (kernel 6.12)
-    # adds the signal and abstract-socket scopes. It only prints; the compatibility step below skips itself
-    # when there is none.
-    - name: Landlock on this runner
-      run: |
-        uname -rm
-        python3 -c "import ctypes;c=ctypes.CDLL(None,use_errno=True);r=c.syscall(444,None,0,1);print('Landlock ABI:',r if r>=0 else 'none (errno %d)'%ctypes.get_errno())"
     # The toolchain layer (install_prerequisite.sh: nvm, Rust, Cling) is the same on every run and
     # takes minutes to build, so its layers are kept in the GitHub Actions cache, one scope per
     # architecture. The scope names are those of the Docker Push CI, which fills the cache from
@@ -126,6 +121,56 @@ jobs:
         docker tag openrepl:${{ matrix.arch }} "$IMG"
         docker push "$IMG"
         echo "Pushed the ${{ matrix.arch }} image for the test jobs in $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
+  # The checks of the image: it is pulled (or built from the layer cache when it is not in the registry), and looked at, started and
+  # smoke tested. It runs beside the test jobs, which need only the image.
+  build:
+    needs: [changes, image]
+    if: needs.changes.outputs.image == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: docker/setup-buildx-action@v3
+    # Which Landlock the runner's kernel has (LLD 14): 4 is files and TCP, 5 adds device ioctls, 6 (kernel 6.12)
+    # adds the signal and abstract-socket scopes. It only prints; the compatibility step below skips itself
+    # when there is none.
+    - name: Landlock on this runner
+      run: |
+        uname -rm
+        python3 -c "import ctypes;c=ctypes.CDLL(None,use_errno=True);r=c.syscall(444,None,0,1);print('Landlock ABI:',r if r>=0 else 'none (errno %d)'%ctypes.get_errno())"
+    # The image of the "image" job, pulled from the package registry; built from the layer cache when it is not there.
+    - name: Pull the image of the image job
+      id: pull
+      continue-on-error: true
+      run: |
+        start=$(date +%s)
+        echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        IMG=ghcr.io/${{ github.repository }}-ci:${{ github.sha }}-${{ matrix.arch }}
+        docker pull "$IMG"
+        docker tag "$IMG" openrepl:${{ matrix.arch }}
+        echo "Pulled the ${{ matrix.arch }} image in $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
+    - name: Build the Docker image (from the cache of the job above)
+      if: steps.pull.outcome != 'success'
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: Dockerfile
+        platforms: linux/${{ matrix.arch }}
+        load: true
+        tags: openrepl:${{ matrix.arch }}
+        cache-from: type=gha,scope=linux-${{ matrix.arch }}
     - name: Describe the Docker image
       run: |
         docker history openrepl:${{ matrix.arch }}
@@ -196,8 +241,8 @@ jobs:
   # internet and no signed-in user). It starts when the build is done, like the browser tests, and is a job of its own.
   appstore:
     name: App Store installs
-    needs: [changes, build]
-    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    needs: [changes, image]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.image.result == 'success' || needs.image.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
@@ -221,9 +266,9 @@ jobs:
         go-version: "1.23.12"
         cache: false
     - uses: docker/setup-buildx-action@v3
-    # The image of the build job, pulled from the package registry (see "Keep the image for the test jobs" there); built from the
+    # The image of the build job, pulled from the package registry (see "Keep the image for the test jobs" in the image job); built from the
     # layer cache when it is not there.
-    - name: Pull the image of the build job
+    - name: Pull the image of the image job
       id: pull
       continue-on-error: true
       run: |
@@ -281,17 +326,22 @@ jobs:
         path: ${{ runner.temp }}/measure/*.json
 
   browser:
-    needs: [changes, build]
-    # the build job may have been skipped on purpose (see "changes"); a failed or cancelled one stops this one
-    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    # Three jobs for each architecture: Playwright runs a third of the tests in each (--shard), every one with its own server and
+    # emulator. The name says which third.
+    name: browser (${{ matrix.arch }}, ${{ matrix.runner }}, ${{ matrix.shard }}/3)
+    needs: [changes, image]
+    # the image job may have been skipped on purpose (see "changes"); a failed or cancelled one stops this one
+    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.image.result == 'success' || needs.image.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: amd64
-            runner: ubuntu-22.04
-          - arch: arm64
-            runner: ubuntu-24.04-arm
+          - { arch: amd64, runner: ubuntu-22.04, shard: 1 }
+          - { arch: amd64, runner: ubuntu-22.04, shard: 2 }
+          - { arch: amd64, runner: ubuntu-22.04, shard: 3 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, shard: 1 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, shard: 2 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, shard: 3 }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
@@ -301,9 +351,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: docker/setup-buildx-action@v3
-    # The image of the build job, pulled from the package registry (see "Keep the image for the test jobs" there); built from the
+    # The image of the build job, pulled from the package registry (see "Keep the image for the test jobs" in the image job); built from the
     # layer cache when it is not there.
-    - name: Pull the image of the build job
+    - name: Pull the image of the image job
       id: pull
       continue-on-error: true
       run: |
@@ -373,12 +423,13 @@ jobs:
         done
         args=()
         if [ -n "$TESTS_GREP" ]; then args+=(-g "$TESTS_GREP"); echo "only the tests that match: $TESTS_GREP"; fi
-        npx playwright test "${args[@]}"
+        npx playwright test --shard=${{ matrix.shard }}/3 "${args[@]}"
     - name: Measure the rappel REPL test (20 runs, no retries)
       # A measurement, to tell a test that fails now and then from one that fails often: the Assembly (rappel) REPL
       # test failed on amd64 in most runs of 2026-11-11 and 12. Its result does not fail the job; it is written to the
       # job summary. Remove this step when the question is answered.
-      if: always() && steps.e2e.outcome != 'skipped' && github.event.inputs.tests_grep == ''
+      # one measurement for each architecture, not one for each third
+      if: always() && matrix.shard == 1 && steps.e2e.outcome != 'skipped' && github.event.inputs.tests_grep == ''
       continue-on-error: true
       working-directory: e2e
       env:
@@ -395,7 +446,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: playwright-report
+        name: playwright-report-${{ matrix.arch }}-${{ matrix.shard }}
         path: |
           e2e/playwright-report
           e2e/test-results
