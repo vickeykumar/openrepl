@@ -186,9 +186,16 @@ type FieldOptions = { extraTokens?: number; maxTokens?: number; temperature?: nu
 type SharedChoice = {
   models: ModelOption[];
   efforts: EffortOption[];
-  get(): { model: string; effort: string };
-  set(model?: string, effort?: string): void;
-  fields(opts?: FieldOptions): Record<string, any>;
+  get(mode?: string): { model: string; effort: string };
+  set(model?: string, effort?: string, mode?: string): void;
+  // a choice for each mode: Chat and Agent (js/model-choice.js); the answer says what to tell the visitor
+  setMode(mode: string): { changed: boolean; note: string };
+  mode(): string;
+  agentOk(id: string): boolean;
+  guestOk(id: string): boolean;
+  agentModels: ModelOption[];
+  agentDefault(): { model: string; effort: string };
+  fields(opts?: FieldOptions, mode?: string): Record<string, any>;
   fallback(exceptId: string): ModelOption | null;
   onChange(fn: () => void): void;
   // the short list, the rest by provider, search and pins (js/model-choice.js)
@@ -205,12 +212,13 @@ if (!MC) {
 const MODELS = MC.models;
 const EFFORTS = MC.efforts;
 
-function chosenModel(): ModelOption {
-  const id = MC.get().model;
+// The model and the effort of the mode that is on, or of the mode asked for (a task goes on with the Agent model while another tab shows Chat).
+function chosenModel(mode?: string): ModelOption {
+  const id = MC.get(mode).model;
   return MODELS.filter((m) => m.id === id)[0] || MODELS[0];
 }
-function chosenEffort(): EffortOption {
-  const id = MC.get().effort;
+function chosenEffort(mode?: string): EffortOption {
+  const id = MC.get(mode).effort;
   return EFFORTS.filter((e) => e.id === id)[0] || EFFORTS[1];
 }
 function chipText(): string {
@@ -218,9 +226,9 @@ function chipText(): string {
   return m.reasoning ? `${m.short} · ${chosenEffort().label}` : m.short;
 }
 // "GPT-6 Luna · Low" or "Gemma 4 31B · OpenRouter", under a reply
-function captionText(): string {
-  const m = chosenModel();
-  if (m.reasoning) return `${m.name} · ${chosenEffort().label}`;
+function captionText(mode?: string): string {
+  const m = chosenModel(mode);
+  if (m.reasoning) return `${m.name} · ${chosenEffort(mode).label}`;
   return m.group === "OpenAI" ? m.name : `${m.name} · ${m.group}`;
 }
 
@@ -1971,7 +1979,7 @@ const agentRunner = new AgentRunner(
     url: () => config.url,
     headers: requestHeaders,
     // a whole file may be in an answer: more room than a chat answer needs
-    modelFields: () => MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }),
+    modelFields: () => MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }, "agent"), // the Agent model, whichever tab is shown
     ideContext: () => getcurrentIDECode(),
     editorText: () => fetchEditorContent(),
     stream: () => streamOn(),
@@ -2111,7 +2119,7 @@ const agentRunner = new AgentRunner(
       // step that used none says nothing (most steps of a task are about code)
       const used = parseContextHeader(context || null);
       const sayTs = Date.now();
-      await createNewMessageEntry(text, sayTs, "system", false, "Agent · " + captionText(), used && used.length ? used : null, null, null, [], t === activeTab ? null : t.frag);
+      await createNewMessageEntry(text, sayTs, "system", false, "Agent · " + captionText("agent"), used && used.length ? used : null, null, null, [], t === activeTab ? null : t.frag);
       persistAnswer(t, text, sayTs, null); // what the agent said is part of the chat that comes back after a reload
     },
     note: async (text: string) => {
@@ -2132,6 +2140,12 @@ const agentRunner = new AgentRunner(
     usage: (raw: string | null) => {
       if (raw) takeUsage(raw);
       else fetchUsage();
+    },
+    modelNotForAgent: () => {
+      const d = MC.agentDefault();
+      const was = chosenModel("agent").name;
+      MC.set(d.model, d.effort, "agent");
+      showModelNote(`${was} is not supported for Agent mode any more. Using ${chosenModel("agent").name}.`);
     },
     attention: (on: boolean, info?: { brief: string; card: HTMLElement | null }) => {
       needsYou = Math.max(0, needsYou + (on ? 1 : -1));
@@ -2742,8 +2756,21 @@ function renderGuidance() {
   }
 }
 
+// A line that goes by itself: why the model chip changed (js/model-choice.js: setMode).
+let modelNoteTimer = 0;
+function showModelNote(text: string) {
+  const el = document.getElementById("chat-widget__modelnote");
+  if (!el) return;
+  el.textContent = text;
+  el.hidden = text === "";
+  window.clearTimeout(modelNoteTimer);
+  if (text) modelNoteTimer = window.setTimeout(() => (el.hidden = true), 7000);
+}
+
 function setMode(agent: boolean) {
   agentMode = agent;
+  const swapped = MC.setMode(agent ? "agent" : "chat"); // the model chip is the choice of this mode
+  showModelNote(swapped.changed ? swapped.note : "");
   const box = document.getElementById("chat-widget__mode");
   if (box) {
     box.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String((b.getAttribute("data-mode") === "agent") === agent)));
@@ -2874,12 +2901,22 @@ function markedName(name: string, query: string): Node {
   return frag;
 }
 
+const AGENT_NOT_SUPPORTED = "Model not supported for Agent mode";
+const SIGN_IN_FOR_MODEL = "Sign in to use the complete features of Genie, including this model.";
+
 // One model: the radio button that chooses it, and the star that pins it.
 function modelRow(m: ModelOption, compact: boolean, query: string = "", sub: string = ""): HTMLElement {
   const wrap = el("div", "cw-modelrow");
-  const btn = el("button", compact ? "cw-model is-compact" : "cw-model");
+  // In Agent mode a model the admin did not allow there is listed, greyed, and cannot be chosen
+  const unsupported = MC.mode() === "agent" && !MC.agentOk(m.id);
+  const needsSignIn = !MC.guestOk(m.id); // kept for signed-in users: listed, greyed
+  const btn = el("button", (compact ? "cw-model is-compact" : "cw-model") + (unsupported || needsSignIn ? " is-unsupported" : ""));
   btn.type = "button";
   btn.setAttribute("role", "radio");
+  if (unsupported || needsSignIn) {
+    btn.setAttribute("aria-disabled", "true");
+    btn.title = needsSignIn ? SIGN_IN_FOR_MODEL : AGENT_NOT_SUPPORTED;
+  }
   btn.setAttribute("aria-checked", m.id === chosenModel().id ? "true" : "false");
   btn.dataset.id = m.id;
   const dot = el("span", "cw-model__dot");
@@ -2889,7 +2926,11 @@ function modelRow(m: ModelOption, compact: boolean, query: string = "", sub: str
   const title = el("span");
   title.appendChild(markedName(m.name, query));
   name.appendChild(title);
-  if (m.tag) {
+  if (needsSignIn) {
+    name.appendChild(el("span", "cw-model__tag", "Sign in"));
+  } else if (unsupported) {
+    name.appendChild(el("span", "cw-model__tag", "Chat only"));
+  } else if (m.tag) {
     const tag = el("span", m.free ? "cw-model__tag is-free" : "cw-model__tag", m.tag);
     name.appendChild(tag);
   }
@@ -2897,7 +2938,11 @@ function modelRow(m: ModelOption, compact: boolean, query: string = "", sub: str
   if (!compact) text.appendChild(el("span", "cw-model__desc", m.desc));
   else if (sub) text.appendChild(el("span", "cw-model__sub", sub));
   btn.append(dot, text);
-  btn.addEventListener("click", () => MC.set(m.id));
+  btn.addEventListener("click", () => {
+    if (needsSignIn) showModelNote(SIGN_IN_FOR_MODEL);
+    else if (unsupported) showModelNote(AGENT_NOT_SUPPORTED + ". " + m.name + " works in Chat.");
+    else MC.set(m.id);
+  });
   btn.addEventListener("mouseenter", () => showDetails(m, btn));
   btn.addEventListener("focus", () => showDetails(m, btn));
   btn.addEventListener("mouseleave", hideDetails);

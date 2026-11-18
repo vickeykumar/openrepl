@@ -52,7 +52,9 @@ test("the Preview button shows for an .html file, opens the pane in the terminal
   // a link inside the page works, relative to its folder
   await frame.locator("#more").click();
   await expect(frame.locator("#p2")).toHaveText("second page");
-  // closing brings the terminal back
+  // the X is the one way back: there is no separate Terminal button, and the X brings the terminal back
+  await expect(page.locator("#preview-terminal")).toHaveCount(0);
+  await expect(page.locator("#preview-close")).toHaveAttribute("title", /terminal comes back/);
   await page.locator("#preview-close").click();
   await expect(page.locator("#preview-pane")).toBeHidden();
   await expect(page.locator("#terminal")).toBeVisible();

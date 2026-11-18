@@ -202,7 +202,7 @@ The rules for a dot: the chat proxy and each model host are amber when more than
 
 ## 7. Front end
 
-`admin.js` is one file without libraries. A view is `{root, refresh, poll}`; the router shows the view of the URL hash (`#workers`, `#site`, ...) and hides the fleet views when the server is not a gateway.
+`admin.js` is one file without libraries (Site settings, a third of the code, is in `admin-site.js`, loaded the first time that page is opened: see "Site settings in sections" below). A view is `{root, refresh, poll, dirty, destroy}`; the router shows the view of the URL hash (`#workers`, `#site`, ...) and hides the fleet views when the server is not a gateway.
 
 - The page refreshes the open view every 5 seconds. The overview fetches the slower data (settings, usage, audit, feedback) every 30 seconds. Nothing is fetched while the tab is hidden, and the header button pauses it. A view redraws only when its data changed, and times ("3m ago") are kept current by a one-second ticker.
 - The settings form is never redrawn by a refresh. It tracks unsaved changes, asks before leaving them, and asks before turning maintenance mode on.
@@ -232,3 +232,17 @@ The rules for a dot: the chat proxy and each model host are amber when more than
 ## Genie credits, plans and measures
 
 `GET/POST /admin/genie-measures` (counts of the agent's tasks, and the baseline an admin records before a change), `POST /admin/genie-plan` (a plan for one person) and the settings of the usage record, credits, streaming and native tool calling are described in [19. Genie agent and chat](19-genie-agent.md).
+
+
+## Site settings in sections
+
+Site settings was one page of 17 cards (about 10,000 px, two thirds of it Genie). It is now a list of sections on the left and one section on the right (canvas "Admin: sections in Site settings", 2026-11-18).
+
+- **Which card is where** is `src/resources/js/admin-sections.js` (`SECTIONS`, `GROUPS`; plain code, tested in `src/js/test/admin-sections.test.mjs`, which also checks that every card `viewSite` draws is in exactly one section). General (Look, Announcement, Maintenance mode); Workspaces (Files, Workspace snapshots, Preview, Languages, Database capacity); Genie: Models and prices (tabs Models, Added models, Prices and cost), Limits and context, Agent, Chats and credits; Access (API keys, Admin accounts).
+- **The form is still built whole** (`admin-site.js`: `build`, `snapshot`, `doSave`): `snapshot()` and Save read every control. `sectioned()` only puts the cards into section nodes and puts the open one in the page; the others are in memory, not in the page. One Save bar (sticky) saves all sections in one call, as before.
+- **Addresses.** `#site/<section>` and `#site/<section>/<setting>` (`parseHash`, `hashFor`); the back button moves between sections; a change of section does not ask about unsaved changes (leaving Site settings does). The last section used opens when the address has none (`localStorage` `admin-site-section`). A setting's address is its control's id without `f-` (`#site/genie-chats/sum-tokens`), else a slug of its name.
+- **Search.** `/` (when nothing is being typed in) or the box above the list; every word has to be in the name, the help or the card (`search`); arrows, Enter, Escape. Enter opens the section (and the tab), scrolls to the setting, rings it and focuses its control.
+- **Marks.** A yellow dot on a section with an unsaved change (`changeCount`: controls whose value differs from what they had when the form was drawn, rows added or removed count), and under Save "2 changes: 1 in General, 1 in Limits and context" (`changeSummary`). A small number on a section is how many settings have a value of their own; "Only settings with a value" hides the others (number and text fields and lists with nothing in them use the built-in value; switches are always shown).
+- **Speed.** The settings are drawn when they arrive; the keys and the admins (only in Access) are requested at the same time and drawn in when they come (`late.keys`, `late.admins`). `admin-sections.js` and `admin-site.js` (about 90 KB of the 270 KB) are loaded by `lazyView` the first time Site settings is opened, so the other pages do not carry them; `admin.js` went from 248 KB to 183 KB. Only the open section is in the page (about a fifth of the 1,000 elements).
+- **Tests.** `e2e/tests/admin-site-sections.spec.js` (the list, one section at a time, addresses and the back button, tabs, search, dots and the line under Save, saving from two sections, the filter, the keys that come late, the dialog on leaving, the script loaded on first use), `genie-admin-credits.spec.js` (moves between sections). With `GENIE_LOCAL_ASSETS=1` the specs serve `admin.js`, `admin-site.js`, `admin-sections.js` and `css/admin.css` from the checkout.
+- **Not done:** a measure of the real page before and after on the live site (only the sizes above are measured).

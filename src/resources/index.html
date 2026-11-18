@@ -176,7 +176,9 @@
       <ul class="menu" id="home_menu">
         <li class="menu__item toggle"><button type="button" class="toggle__button" aria-label="Menu" aria-expanded="false"><span></span></button></li>
         <li class="menu__item"><a href="#languages" target="_self" class="link link--dark">Languages</a></li>
-        <li class="menu__item" id="practice_dsa"><a href="/practice/dsa-questions" class="link link--dark">Practice DSA</a></li>
+        <li class="menu__item" id="practice_dsa"><a href="/practice/coding-practice" class="link link--dark">Coding Practice</a></li>
+        <li class="menu__item" id="genie_guide"><a href="/genie" class="link link--dark">Genie</a></li>
+        <li class="menu__item" id="faq_link"><a href="/faq" class="link link--dark">FAQ</a></li>
         <li class="menu__item"><a href="/doc.html" class="link link--dark">Docs</a></li>
         <li class="menu__item"><a href="/blog" class="link link--dark">Blog</a></li>
         <li class="menu__item"><a href="#request" target="_self" class="link link--dark" data-contact>Contact</a></li>
@@ -531,8 +533,8 @@
             <button class="add-tab" id="add-tab" data-tip-name="New tab" onclick="gotty.addTab()" aria-label="New terminal tab" title="New terminal tab (up to 5)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14 M5 12h14"></path></svg></button>
             <div class="terminal-tabs__actions">
               <button type="button" class="ide-btn" id="show-editor-button" data-tip-name="Show editor" data-tip-desc="Bring the editor back beside the terminal." onclick="ToggleEditor();" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg><span>Show editor</span></button>
-              <button type="button" class="ide-btn" id="hide-terminal-button" data-tip-name="Hide terminal" data-tip-desc="Give the editor the whole window. Run brings the terminal back." onclick="ToggleTerminal();" title="Hide the terminal (Ctrl+`)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg><span>Hide</span></button>
-              <button type="button" class="ide-btn" id="redo-button" data-tip-name="Reconnect" onclick="ToggleReconnect();" title="Start a fresh REPL in this tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7"></path></svg><span>Reconnect</span></button>
+              <button type="button" class="ide-btn ide-btn--icon" id="redo-button" data-tip-name="Reconnect" data-tip-desc="Start a fresh REPL in this tab." onclick="ToggleReconnect();" title="Reconnect: start a fresh REPL in this tab" aria-label="Reconnect: start a fresh REPL in this tab"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7"></path></svg></button>
+              <button type="button" class="ide-btn ide-btn--icon" id="hide-terminal-button" data-tip-name="Hide terminal" data-tip-desc="Give the editor the whole window. The terminal keeps running; Run brings it back." onclick="ToggleTerminal();" title="Hide the terminal (keeps running) (Ctrl+`)" aria-label="Hide the terminal"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
             </div>
         </div>
         <div class="terminal active" id="terminal"></div>
@@ -572,8 +574,7 @@
             <button type="button" class="ide-btn" id="preview-console-button" aria-expanded="false" aria-controls="preview-console" title="What the page writes to the console, and the calls it makes">Console<span class="preview-badge" id="preview-console-count" hidden></span></button>
             <button type="button" class="ide-btn ide-btn--icon" id="preview-menu-button" aria-haspopup="true" aria-expanded="false" aria-controls="preview-menu" title="More" aria-label="More"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
             <button type="button" class="ide-btn ide-btn--icon" id="preview-newtab" title="Open in a new tab" aria-label="Open the preview in a new tab"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
-            <button type="button" class="ide-btn" id="preview-terminal" title="Close the preview and show the terminal">Terminal</button>
-            <button type="button" class="ide-btn ide-btn--icon" id="preview-close" title="Close the preview" aria-label="Close the preview"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
+            <button type="button" class="ide-btn ide-btn--icon" id="preview-close" title="Close the preview (the terminal comes back)" aria-label="Close the preview"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
           </div>
           <div class="preview-loading" id="preview-loading" hidden></div>
           <div class="preview-menu" id="preview-menu" role="menu" hidden>
@@ -745,11 +746,12 @@ Breakpoint 1, main () at main.c:5
                 <span class="bubble bubble--me">Why does line 4 raise a TypeError?</span>
                 <span class="bubble">You're adding a number to a string. Convert it first with str(count).</span>
               </div>
+              <a class="section-link" href="/genie">Read the Genie guide</a>
             </div>
             <div class="bento-card bento-card--half">
               <h3>Prepare for coding interviews</h3>
               <p>300+ DSA problems to start with, or generate your own by topic and level. A Genie coach gives hints, reviews your solution and states its complexity, and never just hands you the answer.</p>
-              <a class="section-link" href="/practice/dsa-questions">Start practising</a>
+              <a class="section-link" href="/practice/coding-practice">Start practising</a>
             </div>
             <div class="bento-card bento-card--half">
               <h3>Files that stay with you</h3>
@@ -797,31 +799,17 @@ Breakpoint 1, main () at main.c:5
           <div class="faq__head">
             <span class="eyebrow">FAQ</span>
             <h2 class="section-title">Questions, answered</h2>
+            <p><a class="section-link" href="/faq">All 22 questions</a></p>
           </div>
           <div class="faq__grid">
           <div class="faq-item"><h3>Do I need an account?</h3><p>No. Start as a guest right away. Guest files are removed an hour after your last visit; sign up free to keep them.</p></div>
           <div class="faq-item"><h3>Is it really free?</h3><p>Yes, you can run code in the browser for free. The source code is open on GitHub. Some extra services may be paid in the future. You can support the project through GitHub Sponsors.</p></div>
           <div class="faq-item"><h3>How long does a session last?</h3><p>Up to 60 minutes per connection. The terminal shows the time left, and one click starts a new session.</p></div>
           <div class="faq-item"><h3>Can someone code with me?</h3><p>Yes. Press Share and send the link. They see your terminal and editor live and can type along. The link works for the time you choose (a guest up to 1 hour, a signed-in user up to 7 days) and is the same after a reload; End session ends it at once and deletes its data. If you close your editor, they are told you have left and can copy the code to their own editor.</p></div>
-          <div class="faq-item"><h3>Does a code link last for ever?</h3><p>No. When you make a code link you choose the last day it works in a calendar: from tomorrow up to a month by default, and a month is picked for you. After that day it says it has expired and the code is removed.</p></div>
-          <div class="faq-item"><h3>Can I use my own files?</h3><p>Yes. Upload files up to 20 MB, keep up to 50 MB in your workspace, and download it all as a zip.</p></div>
-          <div class="faq-item"><h3>What can Genie do?</h3><p>Genie is the AI helper. It reads your editor and terminal, so you can ask why something fails. Its code suggestions show as a diff you accept or reject, with Undo. Open it with Ask Genie or Ctrl+K.</p></div>
+          <div class="faq-item"><h3>What can Genie do?</h3><p>Genie is the AI helper. It reads your editor and terminal, so you can ask why something fails. Its code suggestions show as a diff you accept or reject, with Undo. Open it with Ask Genie or Ctrl+K. <a href="/genie">Read the Genie guide</a> for the full tour.</p></div>
           <div class="faq-item"><h3>Can Genie do a task for me?</h3><p>Yes, in Agent mode, for signed-in users. Genie writes code, runs it and reads the output step by step. It asks before it changes your editor, runs your program or types in your terminal, and you can press Stop at any time. A task starts with a plan it ticks off, edits one part of a file instead of rewriting it, runs your program after a change and says what it checked. When it uses its steps it pauses and you can Carry on, and Undo this task puts the changed files back. A GENIE.md file in your workspace gives it notes about your project. Genie is told how the editor and the terminal work, so it sees both and can run your code. A small model does Agent mode less well: when you pick one, the panel says so and can switch to the model the site suggests. An empty chat offers a few starter questions. On a phone Genie is the third tab, beside Editor and Terminal.</p></div>
-          <div class="faq-item"><h3>Are my Genie chats kept?</h3><p>Yes. Each chat is a tab above the conversation, saved in your own workspace, and a reload brings the same tabs back. Press + for a new chat, switch with a click or Alt+1 to 8, and find closed chats in the list at the end of the strip. Your profile page can stop saving, download all chats as Markdown or delete them. A guest's chats go when the guest workspace is removed.</p></div>
-          <div class="faq-item"><h3>How many Genie requests do I have?</h3><p>The line under Genie's message box shows how many requests you have left; click it for the refill rate and your Agent tasks this hour. Requests refill by themselves over time, and signed-in users get more.</p></div>
-          <div class="faq-item"><h3>Can I keep Genie open beside my code?</h3><p>Yes. Press the pin in Genie's header and it docks at the right of the workspace, like a side bar, with the editor stacked over the terminal. Drag its left edge to resize it. Press the pin again to let it float. It needs a window at least 1100 pixels wide.</p></div>
-          <div class="faq-item"><h3>Does Genie keep working if I close its panel?</h3><p>Yes. An answer or an Agent task carries on while the panel is closed. The Ask Genie button shows that Genie is working, a green dot when the result is ready, and an amber dot when Genie needs your answer. Open the panel to see it, or to press Stop.</p></div>
-          <div class="faq-item"><h3>Can Genie explain or fix just part of my code?</h3><p>Yes. Select the code in the editor and right-click it: Explain, Fix problems, Add comments or Write tests. Changes show as a diff you accept or reject.</p></div>
-          <div class="faq-item"><h3>Can I see how much of Genie I have used?</h3><p>Yes. Click the requests line at the bottom of the Genie panel: it shows the requests you have left and the tokens used, for your visit as a visitor, or this month and all time when you are signed in.</p></div>
-          <div class="faq-item"><h3>Can I give Genie a file, a folder or some code to read?</h3><p>Yes. Right-click a file or folder in the Files panel and choose Add to Genie chat, or select code in the editor and use Add to chat (Ctrl+Shift+L). Each one is a chip above the message box that goes with your next message. Type # in the box to pick a file by name.</p></div>
-          <div class="faq-item"><h3>Does OpenREPL have DSA practice questions?</h3><p>Yes. Practice DSA opens with 300+ problems by topic and level. Tick them off as you go, delete the ones you don't want, or press New question to generate more by topic and difficulty. Your progress is saved in your browser, and in your account when you are signed in.</p></div>
-          <div class="faq-item"><h3>Can Genie help me practise without giving the answer?</h3><p>Yes. On the Practice page the coach gives up to three hints per question, reviews your solution and states its complexity, and never writes the code for you.</p></div>
-          <div class="faq-item"><h3>Can Genie manage my files?</h3><p>Yes, in Agent mode. It can open a file in the editor, create, copy, move, rename and delete files and folders in your Files panel. Renaming, moving and deleting are asked about every time.</p></div>
-          <div class="faq-item"><h3>Why does Debug start paused?</h3><p>On some servers programs cannot be traced the usual way, so Debug runs yours under QEMU and gdb connects to it. It waits at the first instruction: set your breakpoints, then type c or run. Ctrl+C stops it again.</p></div>
-          <div class="faq-item"><h3>How big is an app from the App Store?</h3><p>Each app page shows its size once installed. The store picks the smallest way to make an app (the server's own Ubuntu packages, conda-forge or npm) and removes what a program does not need, such as man pages and test files. A few programs bring their own Python and Perl; their page says so, with the size (about 120 MB for some).</p></div>
-          <div class="faq-item"><h3>What if an App Store install fails?</h3><p>The app shows why, and a Try again button. Some failures pass by themselves, so the server tries again a few times. An app that does not exist for a server's CPU type is shown as not available there; an admin can look at it.</p></div>
-          <div class="faq-item"><h3>Can I run it myself?</h3><p>Yes. Pull the Docker image and run it on your own machine or server. The README on GitHub has the steps.</p></div>
           </div>
+          <p class="faq__more"><a class="section-link" href="/faq">Not here? See all the questions</a>, or ask Genie.</p>
         </div>
       </section>
 
@@ -830,7 +818,7 @@ Breakpoint 1, main () at main.c:5
         <div class="band__inner final-cta__inner">
           <div>
             <h2 class="section-title">Your next idea is one click away.</h2>
-            <p>Pick a language and start typing. No install, no account.</p>
+            <p>Pick a language and start typing. No install.</p>
           </div>
           <div class="final-cta__actions">
             <a href="#workspace" target="_self" class="hero__cta" id="final-start"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5l12 7-12 7z"></path></svg>Start coding free</a>
@@ -872,7 +860,9 @@ Breakpoint 1, main () at main.c:5
             <div>
               <p class="site-footer__heading">Product</p>
               <a href="#languages" target="_self">Languages</a>
-              <a href="/practice/dsa-questions">Practice DSA</a>
+              <a href="/practice/coding-practice">Coding Practice</a>
+              <a href="/faq">FAQ</a>
+              <a href="/genie">Genie guide</a>
               <a href="/doc.html">Docs</a>
               <a href="/blog">Blog</a>
             </div>
@@ -1029,6 +1019,9 @@ Breakpoint 1, main () at main.c:5
             function showQuestionInEditor(question, selectedLanguage, language_template) {
               const header = question.name+"\n\nDifficulty Level: "+ question.difficulty+ "\n\nProblem Description:\n"+
                 (question.description ? PracticeStore.wrapDescription(question.description, 100) : "(The description is not loaded yet. Pick the language again, or reload the page, to try again.)");
+              // The code written for this question in this language (this browser's, or the workspace's when that is newer) is what
+              // the editor opens with, instead of the starter (js/practice-store.js, loadCode)
+              const saved = window.PracticeStore && PracticeStore.loadCode ? PracticeStore.loadCode(question.id) : Promise.resolve({});
               const write = () => {
                 if (language_template) {
                   updateEditorContent(selectedLanguage, language_template.multiline_comment_start+"\n"+header+"\n"+language_template.multiline_comment_end+"\n"+
@@ -1040,12 +1033,18 @@ Breakpoint 1, main () at main.c:5
               // The question goes only into an untitled editor (page/22-editor-tabs.js): with a file chosen or shown nothing is
               // written. Text typed from scratch in the untitled editor is asked about first; cancelled, it is not written.
               if (window.EditorTabs && EditorTabs.prepareGenerated) {
-                EditorTabs.prepareGenerated().then((ok) => {
+                Promise.all([EditorTabs.prepareGenerated(), saved.catch(() => ({}))]).then(([ok, codes]) => {
+                  const mine = codes && codes[selectedLanguage];
+                  if (mine && typeof mine.code === "string" && language_template) language_template = Object.assign({}, language_template, { template: mine.code });
                   if (ok === true) write();
                   else if (ok === false) notify("Your text is kept and the question was not loaded. Pick the language again to load it.", { type: "info" });
                 });
               } else {
-                write();
+                saved.catch(() => ({})).then((codes) => {
+                  const mine = codes && codes[selectedLanguage];
+                  if (mine && typeof mine.code === "string" && language_template) language_template = Object.assign({}, language_template, { template: mine.code });
+                  write();
+                });
               }
             }
 
@@ -1176,6 +1175,34 @@ Breakpoint 1, main () at main.c:5
                     localStorage.setItem("topic", topic);
                     localStorage.setItem("difficultyLevel", difficultyLevel);
                 }
+
+                // The code is also kept while it is typed (a moment after the typing stops), for each question and language, so that a
+                // closed tab, a crash or another browser still has it (js/practice-store.js, saveCode)
+                function keepTypedCode() {
+                    if (window.EditorTabs && EditorTabs.fileChosen && EditorTabs.fileChosen()) return; // a file of the workspace, not the question
+                    const question = PracticeStore.find(nameHyphenatedlatest);
+                    const language = $("#optionlist option:selected").text();
+                    const ed = window.editor && editor.env && editor.env.editor;
+                    const template = question && question.code_templates && question.code_templates[language];
+                    if (!ed || !template) return;
+                    const parts = ed.getValue().split(template.multiline_comment_start + "\n" + question.delimeter + "\n" + template.multiline_comment_end);
+                    if (parts.length < 2) return; // the question is not in the editor (yet)
+                    const code = parts.slice(1).join("\n").trim();
+                    // the starter just written is not code that was typed: nothing is kept until it has been changed
+                    if (code === String(template.template || "").trim() && !PracticeStore.hasCode(question.id, language)) return;
+                    PracticeStore.saveCode(question.id, language, code);
+                }
+                let typedTimer = null;
+                const watch = setInterval(function () {
+                    const ed = window.editor && editor.env && editor.env.editor;
+                    if (!ed) return;
+                    clearInterval(watch);
+                    ed.on("change", function () {
+                        clearTimeout(typedTimer);
+                        typedTimer = setTimeout(keepTypedCode, 700);
+                    });
+                }, 500);
+                setTimeout(function () { clearInterval(watch); }, 60000);
 
                 $(window).on("unload", SaveLastLanguageProgress);
                 $(window).on('savecode', function(event) {

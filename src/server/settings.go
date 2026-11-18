@@ -103,6 +103,9 @@ type SiteSettings struct {
 	// PreviewOff switches the Preview pane off for everyone, and PreviewGuestsOff for visitors who are not signed in:
 	// the pane shows pages written by visitors on this site's domain, so abuse can be stopped here without a deploy.
 	PreviewOff       bool `json:"previewOff"`
+	// PracticeWorkspaceOff keeps a signed-in user's practice list and solutions in the server's practice database (the way it was) and not in
+	// the .practice folder of their workspace (practice_ws.go).
+	PracticeWorkspaceOff bool `json:"practiceWorkspaceOff"`
 	PreviewGuestsOff bool `json:"previewGuestsOff"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
@@ -172,7 +175,14 @@ type GenieSettings struct {
 	// DefaultModel is the model that answers a request naming none, and the one
 	// a visitor starts with. Empty means the built-in choice. It must be on.
 	DefaultModel string `json:"defaultModel"`
-	// AgentModel is the model Genie suggests for Agent mode when the one in use is small ("" is none): the panel offers
+	// AgentModels are the models that may be used in Agent mode (nil: never chosen, every model that is on may be). A model that
+	// is not in the list is refused in Agent mode (agent_models.go). AgentEffort is the effort of the Agent model ("": low).
+	AgentModels []string `json:"agentModels"`
+	// GuestBlockedModels are the built-in models kept for signed-in users (an added model has its own tick, NoGuests).
+	GuestBlockedModels []string `json:"guestBlockedModels"`
+	AgentEffort string   `json:"agentEffort"`
+	// AgentModel is the model Agent mode starts on, and the model that writes the practice questions ("" is the built-in choice, see
+	// agentDefaultModelID); when the model in use is small the panel offers it too: the panel offers
 	// to switch to it. It changes nothing by itself.
 	AgentModel string `json:"agentModel"`
 	// FeaturedModels are the models the picker lists first ("Your models") for a visitor who has
@@ -400,6 +410,21 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	}
 	sort.Strings(off)
 	s.Genie.DisabledModels = off
+	blocked := []string{}
+	seenBlocked := map[string]bool{}
+	for _, id := range s.Genie.GuestBlockedModels {
+		id = strings.TrimSpace(id)
+		if id == "" || seenBlocked[id] {
+			continue
+		}
+		if _, known := chatModels[id]; !known {
+			return s, fmt.Errorf("%q is not a model", id)
+		}
+		seenBlocked[id] = true
+		blocked = append(blocked, id)
+	}
+	sort.Strings(blocked)
+	s.Genie.GuestBlockedModels = blocked
 	custom, err := normalizeCustomModels(s.Genie.CustomModels)
 	if err != nil {
 		return s, err
@@ -440,6 +465,9 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 		if s.Genie.ModelDisabled(d) {
 			return s, fmt.Errorf("the default model %s is switched off", m.Name)
 		}
+	}
+	if err := s.Genie.normalizeAgentModels(); err != nil {
+		return s, err
 	}
 	s.Genie.AgentModel = strings.TrimSpace(s.Genie.AgentModel)
 	if d := s.Genie.AgentModel; d != "" {
@@ -570,7 +598,10 @@ type publicSettings struct {
 	// the models an admin added that are on, for the picker
 	CustomModels []publicCustomModel `json:"customModels"`
 	DefaultModel string              `json:"defaultModel"`
-	AgentModel   string              `json:"genieAgentModel"` // the model suggested for Agent mode (Genie.AgentModel)
+	AgentModel   string              `json:"genieAgentModel"` // the model Agent mode starts on (agentDefaultModelID)
+	AgentModels  []string            `json:"genieAgentModels"` // the models that may be used in Agent mode; null: every model that is on
+	AgentEffort  string              `json:"genieAgentEffort"` // the effort of the Agent model
+	GuestBlocked []string            `json:"genieGuestBlocked"` // built-in models kept for signed-in users
 	// the models the picker starts a new visitor with (empty: its own choice)
 	FeaturedModels []string `json:"featuredModels"`
 	// what Genie reads from the page and keeps (the effective numbers)
@@ -843,7 +874,10 @@ func (s SiteSettings) public() publicSettings {
 		DisabledModels:       models,
 		CustomModels:         s.Genie.publicCustomModels(),
 		DefaultModel:         s.Genie.DefaultModel,
-		AgentModel:           s.Genie.AgentModel,
+		AgentModel:           s.Genie.agentDefaultModelID(),
+		AgentModels:          s.Genie.AgentModels,
+		AgentEffort:          s.Genie.agentEffortID(),
+		GuestBlocked:         append([]string{}, s.Genie.GuestBlockedModels...),
 		FeaturedModels:       append([]string{}, s.Genie.FeaturedModels...),
 		GenieContext:         s.Genie.context(),
 		AgentEnabled:         !s.Genie.AgentDisabled && !s.Genie.Disabled,
@@ -1065,14 +1099,23 @@ func settingsChanges(a, b SiteSettings) []string {
 		}
 		out = append(out, "default model: "+name)
 	}
-	if a.Genie.AgentModel != b.Genie.AgentModel {
-		out = append(out, "Agent model: "+orStr(b.Genie.AgentModel, "none"))
+	if a.Genie.AgentModel != b.Genie.AgentModel || a.Genie.AgentEffort != b.Genie.AgentEffort {
+		out = append(out, "Agent model: "+orStr(b.Genie.AgentModel, "built-in")+", effort "+orStr(b.Genie.AgentEffort, "low"))
+	}
+	if fmt.Sprint(a.Genie.GuestBlockedModels) != fmt.Sprint(b.Genie.GuestBlockedModels) {
+		out = append(out, "models kept for signed-in users: "+strings.Join(b.Genie.GuestBlockedModels, ", "))
+	}
+	if fmt.Sprint(a.Genie.AgentModels) != fmt.Sprint(b.Genie.AgentModels) {
+		out = append(out, "models for Agent mode: "+map[bool]string{true: "every model that is on", false: strings.Join(b.Genie.AgentModels, ", ")}[b.Genie.AgentModels == nil])
 	}
 	if a.Genie.SummaryOff != b.Genie.SummaryOff || a.Genie.SummaryTokens != b.Genie.SummaryTokens {
 		out = append(out, "Genie: chat summary "+onoff(!b.Genie.SummaryOff))
 	}
 	if a.DBCapacityMB != b.DBCapacityMB {
 		out = append(out, "database capacity changed")
+	}
+	if a.PracticeWorkspaceOff != b.PracticeWorkspaceOff {
+		out = append(out, "practice saved in the workspace "+onoff(!b.PracticeWorkspaceOff))
 	}
 	if a.PreviewOff != b.PreviewOff {
 		out = append(out, "preview "+onoff(!b.PreviewOff))

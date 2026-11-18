@@ -75,6 +75,10 @@ type CustomModel struct {
 	// Hosts are the OpenRouter providers (slugs) that may answer, and no others.
 	// Empty: OpenRouter chooses, which the privacy page cannot name. Only for OpenRouter.
 	Hosts []string `json:"hosts"`
+	// Small marks a model as small (nil: decided by its id, agent_models.go): the Agent mode warning says so, and a small model is not
+	// ticked for Agent mode until the admin ticks it. NoGuests keeps the model for signed-in users: a guest who asks for it is told to sign in.
+	Small    *bool `json:"small,omitempty"`
+	NoGuests bool  `json:"noGuests,omitempty"`
 	// Reasoning is for an OpenAI model that thinks first (like GPT-6 Luna): it takes an
 	// effort and max_completion_tokens, not a temperature and max_tokens.
 	Reasoning bool `json:"reasoning,omitempty"`
@@ -247,6 +251,9 @@ type publicCustomModel struct {
 	Name     string `json:"name"`
 	Free     bool   `json:"free"`
 	Provider string `json:"provider"`
+	// Small and Guests are what the page needs to say a model is small and to grey it for a guest (the server decides all the same)
+	Small  bool `json:"small"`
+	Guests bool `json:"guests"`
 	// Reasoning: the model thinks first and takes an effort (OpenAI only)
 	Reasoning bool `json:"reasoning,omitempty"`
 }
@@ -257,7 +264,7 @@ func (g GenieSettings) publicCustomModels() []publicCustomModel {
 	for _, c := range g.customList() {
 		if c.Enabled {
 			m := c.model()
-			out = append(out, publicCustomModel{ID: c.ID, Name: c.Name, Free: m.Free, Provider: m.Provider, Reasoning: m.Reasoning})
+			out = append(out, publicCustomModel{ID: c.ID, Name: c.Name, Free: m.Free, Provider: m.Provider, Reasoning: m.Reasoning, Small: g.modelIsSmall(c.ID), Guests: !c.NoGuests})
 		}
 	}
 	return out
@@ -283,7 +290,7 @@ func customModelChanges(a, b GenieSettings) []string {
 			out = append(out, providerName(c.provider())+" model "+c.ID+" added ("+state+")")
 		case old.Enabled != c.Enabled:
 			out = append(out, providerName(c.provider())+" model "+c.ID+" "+map[bool]string{true: "switched on", false: "switched off"}[c.Enabled])
-		case fmt.Sprint(old) != fmt.Sprint(c):
+		case customSig(old) != customSig(c):
 			out = append(out, providerName(c.provider())+" model "+c.ID+" changed (name, limits or providers)")
 		}
 	}
@@ -293,4 +300,14 @@ func customModelChanges(a, b GenieSettings) []string {
 		}
 	}
 	return out
+}
+
+// customSig is a model as text, so that two can be compared (Small is a pointer: its value counts, not its address).
+func customSig(c CustomModel) string {
+	small := "id"
+	if c.Small != nil {
+		small = fmt.Sprint(*c.Small)
+	}
+	c.Small = nil
+	return fmt.Sprint(c) + "|small=" + small
 }

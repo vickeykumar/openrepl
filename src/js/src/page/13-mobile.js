@@ -135,6 +135,7 @@ function wireMobileExtras() {
   var vv = window.visualViewport;
   if (vv) {
     var fullH = Math.max(window.innerHeight, Math.round(vv.height));
+    var fitting = false;
     var setH = function () {
       var root = document.documentElement;
       if (!mobileActive) {
@@ -149,7 +150,13 @@ function wireMobileExtras() {
       root.style.setProperty("--vvh", h + "px");
       root.style.setProperty("--vvt", Math.round(vv.offsetTop) + "px");
       root.classList.toggle("keyboard-open", kb);
-      if (kb) window.dispatchEvent(new Event("resize")); // the terminal and the editor fit what is left
+      // the terminal and the editor fit what is left. This handler listens to "resize" itself, so the event it sends must not
+      // start it again while it is running: that was an endless loop ("Maximum call stack size exceeded") whenever the keyboard
+      // was up, or a small frame (a page previewed in the Preview pane) had a text field focused.
+      if (kb && !fitting) {
+        fitting = true;
+        try { window.dispatchEvent(new Event("resize")); } finally { fitting = false; }
+      }
     };
     vv.addEventListener("resize", setH);
     vv.addEventListener("scroll", setH);

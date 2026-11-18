@@ -17,6 +17,7 @@ async function localAssets(page) {
   const serve = (file) => (route) => route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(root, file)) });
   await page.route((u) => u.pathname.endsWith("/js/chat-widget.js"), serve("resources/chat-widget/dist/index.umd.js"));
   await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), serve("js/dist/scribbler.js"));
+  await page.route((u) => u.pathname.endsWith("/js/model-choice.js"), serve("resources/js/model-choice.js"));
 }
 
 const step = (o) => JSON.stringify(o);

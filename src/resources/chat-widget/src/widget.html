@@ -12,6 +12,9 @@
     <span class="chat-widget__peer-label">Peer chat</span>
     <span class="chat-widget__peer-track" aria-hidden="true"></span>
   </label>
+  <a id="chat-widget__help" href="/genie" target="_blank" rel="noopener" data-tip-name="How to use Genie" data-tip-desc="Open the guide in a new tab." aria-label="How to use Genie (opens in a new tab)" title="How to use Genie">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"></path><path d="M12 17h.01"></path></svg>
+  </a>
   <button type="button" id="chat-widget__pin" aria-pressed="false" aria-label="Pin Genie beside the IDE" title="Pin Genie beside the IDE" hidden>
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"></path><path d="M9 15l-4.5 4.5"></path><path d="M14.5 4l5.5 5.5"></path></svg>
   </button>
@@ -51,6 +54,7 @@
       </button>
     </div>
     <div id="chat-widget__starters" class="cw-starters" role="group" aria-label="Things to ask" hidden></div>
+    <div id="chat-widget__modelnote" class="cw-modehint" role="status" aria-live="polite" hidden></div>
     <div id="chat-widget__modehint" class="cw-modehint" role="note" hidden>
       <span id="chat-widget__modehint-text"></span>
       <button type="button" id="chat-widget__modehint-switch" class="cw-modehint__btn" hidden></button>

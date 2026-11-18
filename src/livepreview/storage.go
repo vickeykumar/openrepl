@@ -179,7 +179,10 @@ func HandleStorage(rw http.ResponseWriter, req *http.Request, st *Store, home, v
 // storageJS is the rest of the script: the three stores and document.cookie, over S (the snapshot).
 const storageJS = `,N=window.fetch;
 function own(o,k){return Object.prototype.hasOwnProperty.call(o,k)}
-var T={};function save(a,d){clearTimeout(T[a]);T[a]=setTimeout(function(){try{N.call(window,U,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({scope:SC,area:a,data:d}),keepalive:true})}catch(e){}},40)}
+var T={},P={},H=false;function send(a,d){try{N.call(window,U,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({scope:SC,area:a,data:d}),keepalive:true})}catch(e){}}
+function save(a,d){clearTimeout(T[a]);if(H){delete P[a];send(a,d);return}P[a]=d;T[a]=setTimeout(function(){delete P[a];send(a,d)},40)}
+function hide(){H=true;for(var a in P){clearTimeout(T[a]);send(a,P[a])}P={}}
+window.addEventListener("pagehide",hide,true);window.addEventListener("beforeunload",hide,true);document.addEventListener("visibilitychange",function(){if(document.visibilityState==="hidden")hide();else H=false},true);window.addEventListener("pageshow",function(){H=false},true)
 function mk(a){var d=S[a]||(S[a]={});var m={getItem:function(k){k=String(k);return own(d,k)?d[k]:null},setItem:function(k,v){d[String(k)]=String(v);save(a,d)},removeItem:function(k){delete d[String(k)];save(a,d)},clear:function(){for(var k in d)delete d[k];save(a,d)},key:function(i){var ks=Object.keys(d);return i>=0&&i<ks.length?ks[i]:null}};
 return new Proxy(m,{get:function(t,p){if(p==="length")return Object.keys(d).length;if(p in t)return t[p];if(typeof p==="string"&&own(d,p))return d[p];return undefined},set:function(t,p,v){if(typeof p==="string"){d[p]=String(v);save(a,d)}return true},deleteProperty:function(t,p){if(typeof p==="string"&&own(d,p)){delete d[p];save(a,d)}return true},has:function(t,p){return p in t||own(d,p)},ownKeys:function(){return Object.keys(d)},getOwnPropertyDescriptor:function(t,p){return own(d,p)?{value:d[p],writable:true,enumerable:true,configurable:true}:undefined}})}
 var L=mk("local"),SS=mk("session");

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(join(here, "../../resources/js/admin.js"), "utf8");
+const source = readFileSync(join(here, "../../resources/js/admin-site.js"), "utf8");
 
 test("the fields of the settings form that are assigned to form.<name> all call update when they change", () => {
   const lines = source.split(/\r?\n/);

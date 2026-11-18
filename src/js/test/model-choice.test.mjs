@@ -12,7 +12,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.join(here, "..", "..", "resources", "js", "model-choice.js"), "utf8");
 
 // load the script as a page does: with what config.js and settings.js define, and a localStorage
-function load({ openrouter = false, cloudflare = false, site = {}, store = {} } = {}) {
+function load({ openrouter = false, cloudflare = false, site = {}, store = {}, signedIn = false } = {}) {
   const window = {
     openrouter_enabled: openrouter,
     cloudflare_enabled: cloudflare,
@@ -23,7 +23,8 @@ function load({ openrouter = false, cloudflare = false, site = {}, store = {} } 
     getItem: (k) => (k in store ? store[k] : null),
     setItem: (k, v) => { store[k] = String(v); },
   };
-  const ctx = { window, localStorage, console, JSON, Array, Object };
+  const document = { body: { classList: { contains: (c) => signedIn && c === "is-signed-in" } } };
+  const ctx = { window, localStorage, document, console, JSON, Array, Object };
   vm.createContext(ctx);
   vm.runInContext(source, ctx);
   return { MC: window.ModelChoice, store };
@@ -133,4 +134,122 @@ test("a model that is switched off is not offered or remembered", () => {
   const { MC } = load({ cloudflare: true, site: { disabledModels: ["@cf/qwen/qwen3-30b-a3b-fp8"] }, store: { "genie-model-pins": '["@cf/qwen/qwen3-30b-a3b-fp8"]' } });
   assert.ok(!ids(MC.models).includes("@cf/qwen/qwen3-30b-a3b-fp8"));
   assert.ok(!ids(MC.your()).includes("@cf/qwen/qwen3-30b-a3b-fp8"));
+});
+
+// ---- a choice for each mode: Chat and Agent --------------------------------------------------
+
+const BOTH = { openrouter: true, cloudflare: true };
+
+test("each mode starts on the admin's default for it, and the first visit takes nothing from the other mode", () => {
+  const { MC } = load({ ...BOTH, site: { defaultModel: "gpt-4o-mini", genieAgentModel: "gpt-6-luna", genieAgentEffort: "medium" } });
+  assert.equal(MC.get().model, "gpt-4o-mini");
+  assert.equal(MC.get("agent").model, "gpt-6-luna");
+  assert.equal(MC.get("agent").effort, "medium");
+  assert.equal(MC.mode(), "chat");
+  const r = MC.setMode("agent");
+  assert.equal(r.changed, true);
+  assert.equal(MC.mode(), "agent");
+  assert.equal(MC.get().model, "gpt-6-luna", "the chip of Agent mode");
+  assert.equal(MC.get("chat").model, "gpt-4o-mini", "the Chat model is still there");
+  assert.equal(MC.setMode("agent").changed, false);
+});
+
+test("a pick is kept for its mode only, and comes back after a reload", () => {
+  const first = load({ ...BOTH, site: { defaultModel: "gpt-4o-mini", genieAgentModel: "gpt-6-luna" } });
+  first.MC.set("google/gemma-4-31b-it"); // Chat
+  first.MC.setMode("agent");
+  first.MC.set("gpt-4o-mini"); // Agent
+  assert.equal(first.MC.get("chat").model, "google/gemma-4-31b-it");
+  assert.equal(first.MC.get("agent").model, "gpt-4o-mini");
+  const again = load({ ...BOTH, site: { defaultModel: "gpt-4o-mini", genieAgentModel: "gpt-6-luna" }, store: first.store });
+  assert.equal(again.MC.get("chat").model, "google/gemma-4-31b-it");
+  assert.equal(again.MC.get("agent").model, "gpt-4o-mini");
+  assert.equal(again.MC.get().model, "google/gemma-4-31b-it", "it opens in Chat");
+});
+
+test("a model that is not allowed for Agent mode cannot be chosen there, and the Chat model is not changed by trying", () => {
+  const site = { defaultModel: "gpt-4o-mini", genieAgentModel: "gpt-6-luna", genieAgentModels: ["gpt-6-luna"] };
+  const { MC } = load({ ...BOTH, site });
+  assert.equal(MC.agentOk("gpt-6-luna"), true);
+  assert.equal(MC.agentOk("gpt-4o-mini"), false);
+  assert.equal(MC.agentOk("not-a-model"), false);
+  assert.deepEqual(ids(MC.agentModels), ["gpt-6-luna"]);
+  assert.ok(MC.models.length > 1, "Chat still lists every model");
+  MC.setMode("agent");
+  MC.set("gpt-4o-mini");
+  assert.equal(MC.get().model, "gpt-6-luna", "ignored in Agent mode");
+  const f = MC.fields({}, "agent");
+  assert.equal(f.model, "gpt-6-luna");
+  MC.setMode("chat");
+  MC.set("gpt-4o-mini");
+  assert.equal(MC.get().model, "gpt-4o-mini", "allowed in Chat");
+  assert.equal(MC.fields({}, "agent").model, "gpt-6-luna", "the fields of Agent mode, while Chat is on (a task goes on in another tab)");
+});
+
+test("with no list every model may be used in Agent mode, and a saved pick that was taken off falls back with a note", () => {
+  assert.equal(load({ ...BOTH, site: {} }).MC.agentOk("gpt-4o-mini"), true);
+  // the visitor had picked Qwen for Agent; the admin has since allowed only Luna
+  const site = { genieAgentModel: "gpt-6-luna", genieAgentModels: ["gpt-6-luna"] };
+  const store = { "genie-model-agent": JSON.stringify({ model: "@cf/qwen/qwen3-30b-a3b-fp8", effort: "low" }) };
+  const { MC } = load({ ...BOTH, site, store });
+  const r = MC.setMode("agent");
+  assert.match(r.note, /Qwen3 30B is no longer supported for Agent mode\. Using GPT-6 Luna\./);
+  assert.equal(MC.get().model, "gpt-6-luna");
+});
+
+test("pressing Agent while the Chat model is not supported there says so, and says the Chat model is unchanged", () => {
+  const site = { defaultModel: "@cf/qwen/qwen3-30b-a3b-fp8", genieAgentModel: "gpt-6-luna", genieAgentModels: ["gpt-6-luna"] };
+  const { MC } = load({ ...BOTH, site });
+  const r = MC.setMode("agent");
+  assert.equal(r.note, "Qwen3 30B is not supported for Agent mode. Using GPT-6 Luna. Your Chat model is unchanged.");
+  assert.equal(MC.setMode("chat").note, "");
+});
+
+test("the fallback of a model that is not answering stays inside the models of the mode", () => {
+  const site = { genieAgentModel: "gpt-6-luna", genieAgentModels: ["gpt-6-luna", "gpt-4o-mini"] };
+  const { MC } = load({ ...BOTH, site });
+  MC.setMode("agent");
+  assert.equal(MC.fallback("gpt-6-luna").id, "gpt-4o-mini");
+  assert.equal(MC.fallback("gpt-4o-mini").id, "gpt-6-luna");
+});
+
+// ---- practice questions ----------------------------------------------------------------------
+
+test("a practice question is made with the Agent model, not with the visitor's Chat or Agent pick, and a change in the dialog is for the page only", () => {
+  const site = { defaultModel: "gpt-4o-mini", genieAgentModel: "gpt-6-luna", genieAgentModels: ["gpt-6-luna", "google/gemma-4-31b-it"], genieAgentEffort: "medium" };
+  const { MC, store } = load({ ...BOTH, site });
+  MC.set("gpt-4o-mini"); // the Chat pick
+  assert.equal(MC.questionFields({ extraTokens: 3000 }).model, "gpt-6-luna");
+  assert.equal(MC.questionFields({ extraTokens: 3000 }).reasoning_effort, "medium");
+  assert.deepEqual(ids(MC.questionModels), ["gpt-6-luna", "google/gemma-4-31b-it"], "only the models allowed for Agent mode are offered");
+  // another model for this page's questions: allowed ones only; the picks of the panel are not touched
+  MC.setQuestion("gpt-4o-mini");
+  assert.equal(MC.getQuestion().model, "gpt-6-luna", "a model that is not allowed is ignored");
+  MC.setQuestion("google/gemma-4-31b-it");
+  assert.equal(MC.questionFields({}).model, "google/gemma-4-31b-it");
+  assert.equal(MC.get("chat").model, "gpt-4o-mini");
+  assert.equal(MC.get("agent").model, "gpt-6-luna");
+  assert.ok(!("genie-model-question" in store) && !Object.keys(store).some((k) => /question/.test(k)), "nothing is saved for the dialog");
+  // the next page starts on the Agent model again
+  assert.equal(load({ ...BOTH, site, store }).MC.getQuestion().model, "gpt-6-luna");
+});
+
+test("a model kept for signed-in users is listed, and a guest may not choose it", () => {
+  const site = { customModels: [{ id: "gpt-7-sol", name: "Sol", provider: "openai", guests: false }, { id: "gpt-4.1", name: "4.1", provider: "openai", guests: true }] };
+  const guest = load({ site }).MC;
+  assert.ok(guest.models.some((m) => m.id === "gpt-7-sol"), "it is still listed");
+  assert.equal(guest.guestOk("gpt-7-sol"), false);
+  assert.equal(guest.guestOk("gpt-4.1"), true);
+  assert.equal(guest.guestOk("gpt-4o-mini"), true);
+  assert.equal(load({ site, signedIn: true }).MC.guestOk("gpt-7-sol"), true);
+});
+
+test("a built-in model kept for signed-in users is closed to a guest, and a guest starts on one they may use", () => {
+  const site = { defaultModel: "gpt-6-luna", genieGuestBlocked: ["gpt-6-luna"] };
+  const guest = load({ site }).MC;
+  assert.equal(guest.guestOk("gpt-6-luna"), false);
+  assert.notEqual(guest.get("chat").model, "gpt-6-luna");
+  const user = load({ site, signedIn: true }).MC;
+  assert.equal(user.guestOk("gpt-6-luna"), true);
+  assert.equal(user.get("chat").model, "gpt-6-luna");
 });

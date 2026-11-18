@@ -163,11 +163,14 @@ func Proxy(rw http.ResponseWriter, req *http.Request, rest string, o Options) {
 			} else if rest, ok := ownAddress(loc, o.Port); ok {
 				res.Header.Set("Location", o.Prefix+rest)
 			}
-			// the headers of the sandbox win over anything the program says about them
+			// the headers of the sandbox win over anything the program says about them: the program's are taken away, and the
+			// ones set on rw above stay. (They used to be set here too, and the reverse proxy adds a header to those already
+			// on rw, so every sandbox header went out twice, and a browser refuses a cross-origin answer whose
+			// Access-Control-Allow-Origin is "*, *": every fetch of the page to its own program failed.)
 			h := http.Header{}
 			SandboxHeaders(h)
 			for k := range h {
-				res.Header.Set(k, h.Get(k))
+				res.Header.Del(k)
 			}
 			if o.Hook != nil {
 				return o.Hook(res)

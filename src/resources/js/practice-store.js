@@ -1,6 +1,6 @@
 /*
  * Practice questions and progress (T17), shared by the practice list
- * (/practice/dsa-questions) and the editor (/practice?name=...).
+ * (/practice/coding-practice) and the editor (/practice?name=...).
  *
  * localStorage keeps, as before:
  *   questions       the generated questions (array)
@@ -34,6 +34,11 @@
   var STARTER_FIRST = 1735689600000; // 1 Jan 2025: starters sort after anything generated, in the order of the file
   var MAX_STATES = 1000;     // done and deleted marks
   var URL = "/practice/progress";
+  var WS = "/practice_ws";
+  // Where a signed-in visitor's list and code are kept: "ws" is the .practice folder of their workspace (server/practice_ws.go), "db" is the
+  // server's practice database (/practice/progress), used when the admin switched the workspace copy off or the server does not have it.
+  var mode = "ws";
+  var CKEY = "practiceCode"; // {questionId: {language: {code, t}}}: the code written for each question in each language
 
   var listeners = [];
   var status = "local";      // local | syncing | synced | signed-out | offline
@@ -221,7 +226,28 @@
     emit("status");
   }
 
+  function wsCall(payload, keepalive) {
+    return fetch(WS, { method: "POST", credentials: "same-origin", keepalive: !!keepalive, headers: { "Accept": "application/json", "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+      .then(function (res) {
+        return res.json().catch(function () { return null; }).then(function (doc) { return { status: res.status, doc: doc }; });
+      });
+  }
+  function wsCode(r) { return r.doc && r.doc.error && r.doc.error.code; }
+
   function request(method, body) {
+    if (mode === "ws") {
+      return wsCall(method === "GET" ? { op: "doc" } : { op: "merge", doc: JSON.parse(body) }).then(function (r) {
+        var code = wsCode(r);
+        if (r.status === 401 || code === "signed_out") { setStatus("signed-out"); return null; }
+        // switched off by the admin, a viewer of a shared session, or a server without it: the account's database, as before
+        if (code === "off" || code === "not_owner" || ((r.status === 404 || r.status === 405) && !code)) { mode = "db"; return request(method, body); }
+        if (r.status < 200 || r.status >= 300) throw new Error("HTTP " + r.status);
+        return r.doc;
+      }).then(function (doc) {
+        if (doc && doc.signedIn === false) { setStatus("signed-out"); return null; }
+        return doc;
+      });
+    }
     var opts = { method: method, credentials: "same-origin", headers: { "Accept": "application/json" } };
     if (body) {
       opts.headers["Content-Type"] = "application/json";
@@ -287,8 +313,77 @@
     var body = JSON.stringify(localDoc());
     if (body.length > 60000 || !window.fetch) return;
     try {
-      fetch(URL, { method: "PUT", credentials: "same-origin", keepalive: true, headers: { "Content-Type": "application/json" }, body: body });
+      if (mode === "ws") wsCall({ op: "merge", doc: JSON.parse(body) }, true);
+      else fetch(URL, { method: "PUT", credentials: "same-origin", keepalive: true, headers: { "Content-Type": "application/json" }, body: body });
     } catch (e) {}
+  });
+
+  // ---- the code written for a question, for each language -------------------------------
+  // Kept in this browser at once; for a signed-in visitor also in the .practice folder of their workspace, a moment after the typing
+  // stops (one small call, not the whole list), so another browser opens the question with the code that was written.
+
+  function readCode() {
+    var c = read(CKEY, {});
+    return c && typeof c === "object" && !Array.isArray(c) ? c : {};
+  }
+  var codeTimers = {}; // "<id>|<language>" -> timer
+  var CODE_WAIT = 2000;
+
+  function sendCode(id, language, again) {
+    var mine = (readCode()[id] || {})[language];
+    if (!mine || mode !== "ws" || status === "signed-out" || !window.fetch) return Promise.resolve();
+    return wsCall({ op: "code_put", id: id, language: language, code: mine.code, t: mine.t }).then(function (r) {
+      var code = wsCode(r);
+      if (code === "off" || code === "not_owner") { mode = "db"; return; }
+      if (code === "signed_out" || r.status === 401) { setStatus("signed-out"); return; }
+      // the question is not in the saved list yet: send the list, then the code
+      if (code === "no_question" && !again) return push().then(function () { return sendCode(id, language, true); });
+    }).catch(function () { /* the next change sends it again; the browser has it */ });
+  }
+
+  function saveCode(id, language, code) {
+    if (!id || !language) return;
+    var all = readCode();
+    var mine = all[id] || (all[id] = {});
+    if (mine[language] && mine[language].code === code) return;
+    mine[language] = { code: String(code), t: now() };
+    write(CKEY, all);
+    var key = id + "|" + language;
+    clearTimeout(codeTimers[key]);
+    codeTimers[key] = setTimeout(function () { delete codeTimers[key]; sendCode(id, language); }, CODE_WAIT);
+  }
+
+  // the code of every language of a question: this browser's, then what the workspace holds if that is newer (each language by its time)
+  function loadCode(id) {
+    var local = readCode()[id] || {};
+    var ready = started ? (inflight || Promise.resolve()) : Promise.resolve();
+    return ready.then(function () {
+      if (mode !== "ws" || status === "signed-out" || !window.fetch) return local;
+      var timeout = new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 2500); });
+      return Promise.race([wsCall({ op: "code_get", id: id }), timeout]).then(function (r) {
+        if (!r || r.status !== 200 || !r.doc || !r.doc.code) return local;
+        var all = readCode(), mine = all[id] || (all[id] = {}), changedAny = false;
+        Object.keys(r.doc.code).forEach(function (lang) {
+          var theirs = r.doc.code[lang];
+          if (theirs && typeof theirs.code === "string" && (!mine[lang] || theirs.t > mine[lang].t)) { mine[lang] = theirs; changedAny = true; }
+        });
+        if (changedAny) write(CKEY, all);
+        return mine;
+      }).catch(function () { return local; });
+    });
+  }
+
+  // typing waiting for its call when the page closes is sent with it (the code of one language is small)
+  window.addEventListener("pagehide", function () {
+    Object.keys(codeTimers).forEach(function (key) {
+      clearTimeout(codeTimers[key]);
+      delete codeTimers[key];
+      var at = key.indexOf("|"), id = key.slice(0, at), language = key.slice(at + 1);
+      var mine = (readCode()[id] || {})[language];
+      if (mine && mode === "ws" && status !== "signed-out" && window.fetch) {
+        try { wsCall({ op: "code_put", id: id, language: language, code: mine.code, t: mine.t }, true); } catch (e) {}
+      }
+    });
   });
 
   // another tab changed the list
@@ -349,6 +444,11 @@
       var s = rawState()[id];
       return !!(s && s.done && !s.del);
     },
+    // when the question was ticked (ms), 0 if it is not done: the list puts the one ticked last first in Done
+    doneAt: function (id) {
+      var s = rawState()[id];
+      return s && s.done && !s.del ? +s.t || 0 : 0;
+    },
     setDone: function (id, done) {
       var st = rawState();
       st[id] = { done: !!done, t: now() };
@@ -382,7 +482,12 @@
         }
       }
     },
+    saveCode: saveCode,
+    hasCode: function (id, language) { return !!((readCode()[id] || {})[language]); },
+    loadCode: loadCode,
     remove: function (id) {
+      var codes = readCode();
+      if (codes[id]) { delete codes[id]; write(CKEY, codes); }
       var st = rawState();
       st[id] = { del: true, t: now() };
       save(rawQuestions().filter(function (q) { return q.id !== id; }), st);

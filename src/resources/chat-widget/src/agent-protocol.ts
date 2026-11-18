@@ -1128,14 +1128,15 @@ export function recapOf(task: string, t: { says: string[]; max: number; messages
 
 // ---- small models and starter chips ------------------------------------------------------
 
-// Whether a model is a small one, from its id: a size of 40B or less ("qwen3-30b", "gemma-4-26b-a4b"), or a "mini",
-// "flash", "lite" or "nano" model. A small model follows the strict action format of Agent mode less well, so the panel
-// says so and offers the model the admin suggests.
+// Whether a model is a small one, from its id. A size in the id decides ("qwen3-30b", "gemma-4-26b-a4b": 40B or less is small, "nemotron-3-super-120b-a12b:free"
+// is not, though it is free). With no size: a "mini", "flash", "lite", "nano", "tiny" or "small" model is small, and so is a free or auto
+// model ("openrouter/free", "auto"): a router that picks a model for each request mostly picks a small one, and the id cannot say which.
+// A small model follows the strict action format of Agent mode less well, so the panel says so and offers the model the admin suggests.
 export function isSmallModel(id: string): boolean {
   const s = String(id || "").toLowerCase();
-  if (/(^|[^a-z0-9])(mini|flash|lite|nano|tiny|small)([^a-z0-9]|$)/.test(s)) return true;
-  const m = s.match(/(^|[^a-z0-9.])(\d{1,3})b([^a-z0-9]|$)/);
-  return !!m && Number(m[2]) <= 40;
+  const size = s.match(/(^|[^a-z0-9.])(\d{1,3})b([^a-z0-9]|$)/);
+  if (size) return Number(size[2]) <= 40;
+  return /(^|[^a-z0-9])(mini|flash|lite|nano|tiny|small|free|auto|router)([^a-z0-9]|$)/.test(s);
 }
 
 // The first-message suggestions under the box of an empty chat: what to ask in that mode.

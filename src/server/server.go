@@ -305,7 +305,15 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	var siteMux = http.NewServeMux()
 	siteMux.HandleFunc(pathPrefix, server.handleIndex)
 	siteMux.HandleFunc(pathPrefix+"healthz", handleHealthz)
-	siteMux.HandleFunc(pathPrefix+"practice/dsa-questions", handlePracticeQuestions)
+	siteMux.HandleFunc(pathPrefix+"practice/coding-practice", handlePracticeQuestions)
+	// the old address of the page: links, bookmarks and search results that still use it go to the new one
+	siteMux.HandleFunc(pathPrefix+"practice/dsa-questions", func(rw http.ResponseWriter, req *http.Request) {
+		target := pathPrefix + "practice/coding-practice"
+		if req.URL.RawQuery != "" {
+			target += "?" + req.URL.RawQuery
+		}
+		http.Redirect(rw, req, target, http.StatusMovedPermanently)
+	})
 	siteMux.HandleFunc(pathPrefix+"practice/progress", handlePracticeProgress)
 	siteMux.HandleFunc(pathPrefix+"practice", server.handleIndex)
 	siteMux.HandleFunc(pathPrefix+"sitemap.xml", handleSitemap)
@@ -331,6 +339,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.HandleFunc(pathPrefix+"agent_bash", server.handleAgentBash)
 	siteMux.HandleFunc(pathPrefix+"agent_files", server.handleAgentFiles)
 	siteMux.HandleFunc(pathPrefix+"genie_chats", server.handleGenieChats)
+	siteMux.HandleFunc(pathPrefix+"practice_ws", server.handlePracticeWS)
 	siteMux.HandleFunc(pathPrefix+"preview/", server.handlePreview)
 	siteMux.HandleFunc(pathPrefix+"upload_file", server.handleFileUpload)
 	siteMux.HandleFunc(pathPrefix+"store/api/", server.handleStoreAPI)
@@ -350,6 +359,24 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.Handle(pathPrefix+"doc.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"editblog.html", server.wrapAdmin(http.StripPrefix(pathPrefix, staticFileHandler)))
 	siteMux.Handle(pathPrefix+"about.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	// the guide to Genie: /genie is the address, genie.html the file
+	siteMux.Handle(pathPrefix+"genie.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	// the questions and answers: /faq is the address, faq.html the file
+	siteMux.Handle(pathPrefix+"faq.html", http.StripPrefix(pathPrefix, staticFileHandler))
+	siteMux.HandleFunc(pathPrefix+"faq", func(w http.ResponseWriter, r *http.Request) {
+		r2 := *r
+		u := *r.URL
+		u.Path = pathPrefix + "faq.html"
+		r2.URL = &u
+		http.StripPrefix(pathPrefix, staticFileHandler).ServeHTTP(w, &r2)
+	})
+	siteMux.HandleFunc(pathPrefix+"genie", func(w http.ResponseWriter, r *http.Request) {
+		r2 := *r
+		u := *r.URL
+		u.Path = pathPrefix + "genie.html"
+		r2.URL = &u
+		http.StripPrefix(pathPrefix, staticFileHandler).ServeHTTP(w, &r2)
+	})
 	siteMux.Handle(pathPrefix+"references.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"privacy.html", http.StripPrefix(pathPrefix, staticFileHandler))
 	siteMux.Handle(pathPrefix+"terms.html", http.StripPrefix(pathPrefix, staticFileHandler))

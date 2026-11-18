@@ -177,9 +177,11 @@
       });
     }
 
+    add("Help", "FAQ: questions and answers", goTo("/faq"), { words: "help questions answers faq" });
+    add("Help", "Genie guide: how to use Genie", goTo("/genie"), { words: "help how tutorial guide ai assistant" });
     add("Help", "Keyboard shortcuts", function () { open("shortcuts"); }, { keys: ["?"], words: "keys hotkeys keybindings" });
     if (ws && typeof window.StartTour === "function") add("Help", "Take the tour", call("StartTour"), { words: "intro getting started guide" });
-    add("Help", "Practice DSA questions", goTo("/practice/dsa-questions"), { words: "problems interview" });
+    add("Help", "Practice DSA questions", goTo("/practice/coding-practice"), { words: "problems interview" });
     add("Help", "Read the docs", goTo("/doc.html"), { words: "documentation help" });
     if (byId("feedback-name") || byId("message")) add("Help", "Send feedback or request a language", sendFeedback, { words: "contact message" });
     return list;
@@ -281,21 +283,42 @@
   }
 
   // ---- shortcuts list -------------------------------------------------------
+  // A one-item entry is a heading; the others are [what it does, [keys]]. Written from the key handlers of the page (10-workspace-controls.js,
+  // 28-unsaved.js, 19-genie-actions.js, 27-preview.js, this file) and of the Genie panel (chat-widget index.ts): when a key is added or
+  // changed there, change it here.
   var SHORTCUTS = [
+    ["Editor and terminal"],
     ["Run the editor code", [MOD, "↵"]],
     ["Debug the editor code", [SHIFT, MOD, "↵"]],
-    ["Open commands, from anywhere", [MOD, SHIFT, "P"]],
-    ["Go to a file by name, from anywhere", [MOD, SHIFT, "O"]],
-    ["Open commands, outside the editor and terminal", [MOD, "K"]],
-    ["Move between the editor and the terminal", ["Ctrl", "`"]],
     ["Save the open file, in the editor", [MOD, "S"]],
     ["Save all changed files", [MOD, "Alt", "S"]],
+    ["Show or hide the terminal", ["Ctrl", "`"]],
     ["Leave the editor or terminal", ["Esc", "then", "Tab"]],
     ["Restore a maximized workspace", ["Esc"]],
-    ["Show this list, outside text fields", ["?"]]
+    ["Commands and files"],
+    ["Open commands, from anywhere", [MOD, SHIFT, "P"]],
+    ["Open commands, outside the editor and terminal", [MOD, "K"]],
+    ["Go to a file by name, from anywhere", [MOD, SHIFT, "O"]],
+    ["Show this list, outside text fields", ["?"]],
+    ["Genie"],
+    ["Send the message", ["↵"]],
+    ["A new line in the message", [SHIFT, "↵"]],
+    ["Add the selected code, or the terminal text, to the chat", [MOD, SHIFT, "L"]],
+    ["Search the models, while the model list is open", ["/"]],
+    ["New chat, while the panel has the focus", ["Alt", "T"]],
+    ["Close the chat that is shown", ["Alt", "W"]],
+    ["The next or the previous chat", ["Alt", "← →"]],
+    ["Go to chat 1 to 8", ["Alt", "1–8"]],
+    ["All chats of the workspace", ["Alt", "H"]],
+    ["Preview"],
+    ["Open or close the Preview pane", ["Ctrl", "Alt", "V"]],
+    ["Move between the editor, the pane's bar and the page", ["F6"]],
+    ["Go to the address bar, while the pane has the focus", ["Ctrl", "L"]],
+    ["Back to the editor, from inside the previewed page", ["Esc", "Esc"]]
   ];
   function renderShortcuts() {
     var rows = SHORTCUTS.map(function (s) {
+      if (s.length === 1) return '<tr class="palette__group"><th scope="colgroup" colspan="2">' + esc(s[0]) + "</th></tr>";
       var keys = s[1].map(function (k) { return k === "then" ? '<span class="palette__then">then</span>' : "<kbd>" + esc(k) + "</kbd>"; }).join("");
       return "<tr><td>" + esc(s[0]) + '</td><td><span class="palette__keys">' + keys + "</span></td></tr>";
     }).join("");

@@ -66,3 +66,45 @@ test.describe("terminal hide and show", () => {
     await expect(bar(page)).toBeHidden();
   });
 });
+
+// The right corner of the terminal bar (docs: the canvas "Terminal bar: Hide, Reconnect and close"): Reconnect is an icon, Hide is the X
+// in the corner, and a terminal whose connection is lost lights the icon. GENIE_LOCAL_ASSETS=1 takes the bar's markup and the style from
+// this checkout, for a run before an image is built.
+test.describe("terminal bar corner", () => {
+  test.beforeEach(async ({ page }) => {
+    let mineBlock = null;
+    if (process.env.GENIE_LOCAL_ASSETS) {
+      const fs = require("fs");
+      const path = require("path");
+      const root = path.join(__dirname, "..", "..", "src", "resources");
+      mineBlock = fs.readFileSync(path.join(root, "index.html"), "utf8").match(/<div class="terminal-tabs__actions">([\s\S]*?<\/button>)\s*<\/div>/)[1];
+      await page.route((u) => u.pathname.endsWith("/css/ui-refresh.css"), (r) => r.fulfill({ contentType: "text/css", body: fs.readFileSync(path.join(root, "css/ui-refresh.css")) }));
+    }
+    await page.goto("/");
+    await waitForTerminalReady(page);
+    // the bar's buttons from this checkout, put in place of the ones of the server under test
+    if (mineBlock) await page.evaluate((html) => { document.querySelector(".terminal-tabs__actions").innerHTML = html; }, mineBlock);
+  });
+
+  test("Reconnect is an icon with a name, and Hide is the X at the right end", async ({ page }) => {
+    const redo = page.locator("#redo-button");
+    const hide = page.locator("#hide-terminal-button");
+    await expect(redo).toHaveAttribute("aria-label", /Reconnect/);
+    await expect(hide).toHaveAttribute("aria-label", "Hide the terminal");
+    await expect(redo).toHaveText("");
+    await expect(hide).toHaveText("");
+    const [r, h] = [await redo.boundingBox(), await hide.boundingBox()];
+    expect(h.x).toBeGreaterThan(r.x); // the X is last, in the corner
+    const tabs = await page.locator("#terminal-tabs").boundingBox();
+    expect(tabs.x + tabs.width - (h.x + h.width)).toBeLessThan(16);
+    await hide.click();
+    await expect(page.locator("#term-collapsed")).toBeVisible();
+  });
+
+  test("the Reconnect icon lights up when the connection is lost", async ({ page }) => {
+    const redo = page.locator("#redo-button");
+    await expect.poll(() => redo.evaluate((e) => getComputedStyle(e).boxShadow)).toBe("none");
+    await page.evaluate(() => document.querySelector("#terminal-tabs .tab.active").setAttribute("data-state", "closed"));
+    await expect.poll(() => redo.evaluate((e) => getComputedStyle(e).boxShadow)).not.toBe("none");
+  });
+});

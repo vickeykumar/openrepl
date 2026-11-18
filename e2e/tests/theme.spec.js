@@ -90,7 +90,7 @@ test.describe("the whole page follows the theme", () => {
   });
 
   test("practice page: a light hero in the light theme", async ({ page }) => {
-    await page.goto("/practice/dsa-questions");
+    await page.goto("/practice/coding-practice");
     await setTheme(page, "light");
     expect(await backgroundLuminance(page, ".practice-hero")).toBeGreaterThan(0.75);
     expect(await backgroundLuminance(page, "#header-nav, .site-nav")).toBeGreaterThan(0.75);

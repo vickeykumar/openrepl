@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-T8XFRGR');</script>
+    <!-- End Google Tag Manager -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Questions, answered: the OpenREPL FAQ | OpenREPL</title>
+    <meta name="description" content="Answers to the questions people ask about OpenREPL: accounts, sessions, sharing, the Genie AI helper, practice questions, the App Store and running it yourself.">
+    <link rel="canonical" href="https://openrepl.com/faq">
+    <meta name="google-site-verification" content="iejQHkSDbrldGCn37ZJ79J1zoQQcW7-MAlqsHSHwnOI" />
+    <meta name="msvalidate.01" content="75003493DFA09CBFBBDC3F0E2AE85DFD" />
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg">
+    <link rel="icon" type="image/x-icon" sizes="48x48" href="/images/favicon.ico">
+    <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+    <link rel="manifest" href="/images/manifest.json">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/scribbler-global.css">
+    <link rel="stylesheet" href="/css/ui-refresh.css">
+    <script src="/js/theme.js"></script>
+    <script src="/js/usage-beat.js" defer></script>
+    <script src="/js/notices.js"></script>
+    <script src="/config.js"></script>
+    <script src="/settings.js"></script>
+    <script src="/js/preprocessing.js"></script>
+    <link rel="author" href="humans.txt">
+      <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "FAQPage",
+ "mainEntity": [
+  {
+   "@type": "Question",
+   "name": "Do I need an account?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "No. Start as a guest right away. Guest files are removed an hour after your last visit; sign up free to keep them."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Is it really free?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes, you can run code in the browser for free. The source code is open on GitHub. Some extra services may be paid in the future. You can support the project through GitHub Sponsors."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "How long does a session last?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Up to 60 minutes per connection. The terminal shows the time left, and one click starts a new session."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can I use my own files?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Upload files up to 20 MB, keep up to 50 MB in your workspace, and download it all as a zip."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can I run it myself?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Pull the Docker image and run it on your own machine or server. The README on GitHub has the steps."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can someone code with me?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Press Share and send the link. They see your terminal and editor live and can type along. The link works for the time you choose (a guest up to 1 hour, a signed-in user up to 7 days) and is the same after a reload; End session ends it at once and deletes its data. If you close your editor, they are told you have left and can copy the code to their own editor."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Does a code link last for ever?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "No. When you make a code link you choose the last day it works in a calendar: from tomorrow up to a month by default, and a month is picked for you. After that day it says it has expired and the code is removed."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "What can Genie do?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Genie is the AI helper. It reads your editor and terminal, so you can ask why something fails. Its code suggestions show as a diff you accept or reject, with Undo. Open it with Ask Genie or Ctrl+K. Read the Genie guide for the full tour."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can Genie do a task for me?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes, in Agent mode, for signed-in users. Genie writes code, runs it and reads the output step by step. It asks before it changes your editor, runs your program or types in your terminal, and you can press Stop at any time. A task starts with a plan it ticks off, edits one part of a file instead of rewriting it, runs your program after a change and says what it checked. When it uses its steps it pauses and you can Carry on, and Undo this task puts the changed files back. A GENIE.md file in your workspace gives it notes about your project. Genie is told how the editor and the terminal work, so it sees both and can run your code. A small model does Agent mode less well: when you pick one, the panel says so and can switch to the model the site suggests. An empty chat offers a few starter questions. On a phone Genie is the third tab, beside Editor and Terminal."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Are my Genie chats kept?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Each chat is a tab above the conversation, saved in your own workspace, and a reload brings the same tabs back. Press + for a new chat, switch with a click or Alt+1 to 8, and find closed chats in the list at the end of the strip. Your profile page can stop saving, download all chats as Markdown or delete them. A guest's chats go when the guest workspace is removed."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "How many Genie requests do I have?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "The line under Genie's message box shows how many requests you have left; click it for the refill rate and your Agent tasks this hour. Requests refill by themselves over time, and signed-in users get more."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can I keep Genie open beside my code?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Press the pin in Genie's header and it docks at the right of the workspace, like a side bar, with the editor stacked over the terminal. Drag its left edge to resize it. Press the pin again to let it float. It needs a window at least 1100 pixels wide."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Does Genie keep working if I close its panel?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. An answer or an Agent task carries on while the panel is closed. The Ask Genie button shows that Genie is working, a green dot when the result is ready, and an amber dot when Genie needs your answer. Open the panel to see it, or to press Stop."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can Genie explain or fix just part of my code?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Select the code in the editor and right-click it: Explain, Fix problems, Add comments or Write tests. Changes show as a diff you accept or reject."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can I see how much of Genie I have used?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Click the requests line at the bottom of the Genie panel: it shows the requests you have left and the tokens used, for your visit as a visitor, or this month and all time when you are signed in."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can I give Genie a file, a folder or some code to read?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Right-click a file or folder in the Files panel and choose Add to Genie chat, or select code in the editor and use Add to chat (Ctrl+Shift+L). Each one is a chip above the message box that goes with your next message. Type # in the box to pick a file by name."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can Genie manage my files?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes, in Agent mode. It can open a file in the editor, create, copy, move, rename and delete files and folders in your Files panel. Renaming, moving and deleting are asked about every time."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Does OpenREPL have DSA practice questions?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Coding Practice opens with 300+ problems by topic and level. Tick them off as you go, delete the ones you don't want, or press New question to generate more by topic and difficulty. Your progress is saved in your browser, and in your account when you are signed in."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can Genie help me practise without giving the answer?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. On the Practice page the coach gives up to three hints per question, reviews your solution and states its complexity, and never writes the code for you."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Why does Debug start paused?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "On some servers programs cannot be traced the usual way, so Debug runs yours under QEMU and gdb connects to it. It waits at the first instruction: set your breakpoints, then type c or run. Ctrl+C stops it again."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "How big is an app from the App Store?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Each app page shows its size once installed. The store picks the smallest way to make an app (the server's own Ubuntu packages, conda-forge or npm) and removes what a program does not need, such as man pages and test files. A few programs bring their own Python and Perl; their page says so, with the size (about 120 MB for some)."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "What if an App Store install fails?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "The app shows why, and a Try again button. Some failures pass by themselves, so the server tries again a few times. An app that does not exist for a server's CPU type is shown as not available there; an admin can look at it."
+   }
+  }
+ ]
+}
+    </script>
+  </head>
+  <body class="faq-page">
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-T8XFRGR" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <a class="skip-link" href="#faq">Skip to the questions</a>
+    <nav id="header-nav" class="site-nav" aria-label="Primary">
+      <a class="brand" href="/" aria-label="OpenREPL home"><span class="brand__open">open</span><span class="brand__repl">repl</span></a>
+      <ul class="menu">
+        <li class="menu__item toggle"><button type="button" class="toggle__button" aria-label="Menu" aria-expanded="false"><span></span></button></li>
+        <li class="menu__item"><a href="/#languages" class="link link--dark">Languages</a></li>
+        <li class="menu__item"><a href="/practice/coding-practice" class="link link--dark">Coding Practice</a></li>
+        <li class="menu__item"><a href="/genie" class="link link--dark">Genie</a></li>
+        <li class="menu__item"><a href="/faq" class="link link--dark" aria-current="page">FAQ</a></li>
+        <li class="menu__item"><a href="/doc.html" class="link link--dark">Docs</a></li>
+        <li class="menu__item"><a href="/blog" class="link link--dark">Blog</a></li>
+        <li class="menu__item"><a href="/#request" class="link link--dark">Contact</a></li>
+        <li class="menu__item menu__item--push"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button></li>
+        <li class="menu__item"><a href="https://github.com/vickeykumar/openrepl" class="link link--dark nav-star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"></path></svg>Star on GitHub</a></li>
+      </ul>
+    </nav>
+    <style>
+      .faq-hero { padding: 56px 24px 20px; max-width: 1040px; margin: 0 auto; }
+      .faq-hero h1 { margin: 6px 0 8px; font-size: clamp(30px, 5vw, 46px); line-height: 1.1; }
+      .faq-hero p { max-width: 640px; font-size: 18px; color: var(--text-2, #5B5963); margin: 0 0 16px; }
+      .faq-search { display: block; width: 100%; max-width: 560px; box-sizing: border-box; padding: 12px 16px; font: inherit; font-size: 16px; border: 1px solid var(--line, #D8D4CC); border-radius: 10px; background: var(--surface, #fff); color: inherit; }
+      .faq-layout { display: flex; gap: 40px; max-width: 1040px; margin: 0 auto; padding: 8px 24px 64px; align-items: flex-start; }
+      .faq-topics { flex: 0 0 200px; position: sticky; top: 84px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+      .faq-topics strong { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2, #5B5963); margin-bottom: 6px; }
+      .faq-topics a { display: flex; justify-content: space-between; padding: 4px 12px; border-left: 2px solid var(--line, #E7E4DE); color: inherit; text-decoration: none; }
+      .faq-topics a:hover, .faq-topics a:focus-visible { border-left-color: var(--accent-text, #3F6B00); color: var(--accent-text, #3F6B00); }
+      .faq-list { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+      .faq-list h2 { margin: 26px 0 4px; font-size: 22px; scroll-margin-top: 84px; }
+      .faq-list h2:first-child { margin-top: 0; }
+      .faq-list details { border: 1px solid var(--line, #E7E4DE); border-radius: 12px; padding: 0 16px; scroll-margin-top: 84px; background: var(--surface, transparent); }
+      .faq-list summary { cursor: pointer; padding: 12px 0; font-weight: 600; font-size: 16px; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+      .faq-list summary::-webkit-details-marker { display: none; }
+      .faq-list summary::after { content: "+"; color: var(--text-2, #5B5963); font-weight: 400; }
+      .faq-list details[open] summary::after { content: "\2013"; }
+      .faq-list details p { margin: 0 0 14px; font-size: 16px; line-height: 1.6; }
+      .faq-list details:target { border-color: var(--accent-text, #3F6B00); }
+      .faq-none { padding: 14px 0; font-size: 16px; }
+      @media (max-width: 800px) { .faq-layout { flex-direction: column; } .faq-topics { position: static; flex: none; flex-direction: row; flex-wrap: wrap; gap: 6px; } .faq-topics a { border: 1px solid var(--line, #E7E4DE); border-radius: 99px; gap: 6px; } .faq-topics strong { display: none; } }
+    </style>
+    <header class="faq-hero">
+      <p class="hero__eyebrow"><span class="hero__dot" aria-hidden="true"></span>FAQ</p>
+      <h1>Questions, answered</h1>
+      <p>22 questions about OpenREPL. Search, or pick a topic.</p>
+      <label class="visually-hidden" for="faq-search">Search the questions</label>
+      <input class="faq-search" id="faq-search" type="search" placeholder="Search the questions: share, genie, free" autocomplete="off">
+    </header>
+    <div class="faq-layout">
+      <nav class="faq-topics" aria-label="Topics"><strong>Topics</strong><a href="#getting-started"><span>Getting started</span><span>5</span></a><a href="#sharing"><span>Sharing</span><span>2</span></a><a href="#genie"><span>Genie</span><span>10</span></a><a href="#practice"><span>Practice</span><span>2</span></a><a href="#editor-and-apps"><span>Editor and apps</span><span>3</span></a></nav>
+      <main class="faq-list" id="faq">
+        <!-- The same words are on the main page for the six questions it keeps (index.html, #faq); e2e/tests/faq.spec.js checks that they match. -->
+        <h2 id="getting-started">Getting started</h2>
+        <details id="do-i-need-an-account" class="faq-q"><summary>Do I need an account?</summary><p>No. Start as a guest right away. Guest files are removed an hour after your last visit; sign up free to keep them.</p></details>
+        <details id="is-it-really-free" class="faq-q"><summary>Is it really free?</summary><p>Yes, you can run code in the browser for free. The source code is open on GitHub. Some extra services may be paid in the future. You can support the project through GitHub Sponsors.</p></details>
+        <details id="how-long-does-a-session-last" class="faq-q"><summary>How long does a session last?</summary><p>Up to 60 minutes per connection. The terminal shows the time left, and one click starts a new session.</p></details>
+        <details id="can-i-use-my-own-files" class="faq-q"><summary>Can I use my own files?</summary><p>Yes. Upload files up to 20 MB, keep up to 50 MB in your workspace, and download it all as a zip.</p></details>
+        <details id="can-i-run-it-myself" class="faq-q"><summary>Can I run it myself?</summary><p>Yes. Pull the Docker image and run it on your own machine or server. The README on GitHub has the steps.</p></details>
+        <h2 id="sharing">Sharing</h2>
+        <details id="can-someone-code-with-me" class="faq-q"><summary>Can someone code with me?</summary><p>Yes. Press Share and send the link. They see your terminal and editor live and can type along. The link works for the time you choose (a guest up to 1 hour, a signed-in user up to 7 days) and is the same after a reload; End session ends it at once and deletes its data. If you close your editor, they are told you have left and can copy the code to their own editor.</p></details>
+        <details id="does-a-code-link-last-for-ever" class="faq-q"><summary>Does a code link last for ever?</summary><p>No. When you make a code link you choose the last day it works in a calendar: from tomorrow up to a month by default, and a month is picked for you. After that day it says it has expired and the code is removed.</p></details>
+        <h2 id="genie">Genie</h2>
+        <details id="what-can-genie-do" class="faq-q"><summary>What can Genie do?</summary><p>Genie is the AI helper. It reads your editor and terminal, so you can ask why something fails. Its code suggestions show as a diff you accept or reject, with Undo. Open it with Ask Genie or Ctrl+K. <a href="/genie">Read the Genie guide</a> for the full tour.</p></details>
+        <details id="can-genie-do-a-task-for-me" class="faq-q"><summary>Can Genie do a task for me?</summary><p>Yes, in Agent mode, for signed-in users. Genie writes code, runs it and reads the output step by step. It asks before it changes your editor, runs your program or types in your terminal, and you can press Stop at any time. A task starts with a plan it ticks off, edits one part of a file instead of rewriting it, runs your program after a change and says what it checked. When it uses its steps it pauses and you can Carry on, and Undo this task puts the changed files back. A GENIE.md file in your workspace gives it notes about your project. Genie is told how the editor and the terminal work, so it sees both and can run your code. A small model does Agent mode less well: when you pick one, the panel says so and can switch to the model the site suggests. An empty chat offers a few starter questions. On a phone Genie is the third tab, beside Editor and Terminal.</p></details>
+        <details id="are-my-genie-chats-kept" class="faq-q"><summary>Are my Genie chats kept?</summary><p>Yes. Each chat is a tab above the conversation, saved in your own workspace, and a reload brings the same tabs back. Press + for a new chat, switch with a click or Alt+1 to 8, and find closed chats in the list at the end of the strip. Your profile page can stop saving, download all chats as Markdown or delete them. A guest's chats go when the guest workspace is removed.</p></details>
+        <details id="how-many-genie-requests-do-i-have" class="faq-q"><summary>How many Genie requests do I have?</summary><p>The line under Genie's message box shows how many requests you have left; click it for the refill rate and your Agent tasks this hour. Requests refill by themselves over time, and signed-in users get more.</p></details>
+        <details id="can-i-keep-genie-open-beside-my-code" class="faq-q"><summary>Can I keep Genie open beside my code?</summary><p>Yes. Press the pin in Genie's header and it docks at the right of the workspace, like a side bar, with the editor stacked over the terminal. Drag its left edge to resize it. Press the pin again to let it float. It needs a window at least 1100 pixels wide.</p></details>
+        <details id="does-genie-keep-working-if-i-close-its-panel" class="faq-q"><summary>Does Genie keep working if I close its panel?</summary><p>Yes. An answer or an Agent task carries on while the panel is closed. The Ask Genie button shows that Genie is working, a green dot when the result is ready, and an amber dot when Genie needs your answer. Open the panel to see it, or to press Stop.</p></details>
+        <details id="can-genie-explain-or-fix-just-part-of-my-code" class="faq-q"><summary>Can Genie explain or fix just part of my code?</summary><p>Yes. Select the code in the editor and right-click it: Explain, Fix problems, Add comments or Write tests. Changes show as a diff you accept or reject.</p></details>
+        <details id="can-i-see-how-much-of-genie-i-have-used" class="faq-q"><summary>Can I see how much of Genie I have used?</summary><p>Yes. Click the requests line at the bottom of the Genie panel: it shows the requests you have left and the tokens used, for your visit as a visitor, or this month and all time when you are signed in.</p></details>
+        <details id="can-i-give-genie-a-file-a-folder-or-some-code-to-read" class="faq-q"><summary>Can I give Genie a file, a folder or some code to read?</summary><p>Yes. Right-click a file or folder in the Files panel and choose Add to Genie chat, or select code in the editor and use Add to chat (Ctrl+Shift+L). Each one is a chip above the message box that goes with your next message. Type # in the box to pick a file by name.</p></details>
+        <details id="can-genie-manage-my-files" class="faq-q"><summary>Can Genie manage my files?</summary><p>Yes, in Agent mode. It can open a file in the editor, create, copy, move, rename and delete files and folders in your Files panel. Renaming, moving and deleting are asked about every time.</p></details>
+        <h2 id="practice">Practice</h2>
+        <details id="does-openrepl-have-dsa-practice-questions" class="faq-q"><summary>Does OpenREPL have DSA practice questions?</summary><p>Yes. Coding Practice opens with 300+ problems by topic and level. Tick them off as you go, delete the ones you don't want, or press New question to generate more by topic and difficulty. Your progress is saved in your browser, and in your account when you are signed in.</p></details>
+        <details id="can-genie-help-me-practise-without-giving-the-answer" class="faq-q"><summary>Can Genie help me practise without giving the answer?</summary><p>Yes. On the Practice page the coach gives up to three hints per question, reviews your solution and states its complexity, and never writes the code for you.</p></details>
+        <h2 id="editor-and-apps">Editor and apps</h2>
+        <details id="why-does-debug-start-paused" class="faq-q"><summary>Why does Debug start paused?</summary><p>On some servers programs cannot be traced the usual way, so Debug runs yours under QEMU and gdb connects to it. It waits at the first instruction: set your breakpoints, then type c or run. Ctrl+C stops it again.</p></details>
+        <details id="how-big-is-an-app-from-the-app-store" class="faq-q"><summary>How big is an app from the App Store?</summary><p>Each app page shows its size once installed. The store picks the smallest way to make an app (the server's own Ubuntu packages, conda-forge or npm) and removes what a program does not need, such as man pages and test files. A few programs bring their own Python and Perl; their page says so, with the size (about 120 MB for some).</p></details>
+        <details id="what-if-an-app-store-install-fails" class="faq-q"><summary>What if an App Store install fails?</summary><p>The app shows why, and a Try again button. Some failures pass by themselves, so the server tries again a few times. An app that does not exist for a server's CPU type is shown as not available there; an admin can look at it.</p></details>
+        <p class="faq-none" id="faq-none" hidden>No question matches. Ask Genie in the editor, or <a href="/#request">contact us</a>.</p>
+      </main>
+    </div>
+    <footer class="site-footer site-footer--simple">
+      <div class="site-footer__inner site-footer__bottom">
+        <span>&copy; <span id="copyright_year"></span> OpenREPL</span>
+        <div class="site-footer__social">
+          <a href="/faq">FAQ</a>
+          <a href="/genie">Genie guide</a>
+          <a href="/about.html">About</a>
+          <a href="/references.html">References</a>
+          <a href="/privacy.html">Privacy policy</a>
+          <a href="/terms.html">Terms of use</a>
+        </div>
+      </div>
+      <script>document.getElementById('copyright_year').textContent = new Date().getFullYear();</script>
+    </footer>
+    <script>document.getElementById('copyright_year').textContent = new Date().getFullYear();</script>
+    <script>
+      (function () {
+        var input = document.getElementById("faq-search"), items = [].slice.call(document.querySelectorAll(".faq-q")), none = document.getElementById("faq-none");
+        var heads = [].slice.call(document.querySelectorAll(".faq-list h2"));
+        function run() {
+          var words = input.value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+          items.forEach(function (d) {
+            var hay = d.textContent.toLowerCase(), ok = words.every(function (w) { return hay.indexOf(w) >= 0; });
+            d.hidden = !ok;
+            if (ok) shown++;
+          });
+          heads.forEach(function (h) {
+            var el = h.nextElementSibling, any = false;
+            while (el && el.tagName !== "H2") { if (el.classList.contains("faq-q") && !el.hidden) any = true; el = el.nextElementSibling; }
+            h.hidden = !any;
+          });
+          none.hidden = shown > 0;
+        }
+        input.addEventListener("input", run);
+        // a question that is linked to (/faq#genie-chats) opens
+        function openHash() { var d = document.getElementById(location.hash.slice(1)); if (d && d.tagName === "DETAILS") d.open = true; }
+        window.addEventListener("hashchange", openHash);
+        openHash();
+      })();
+    </script>
+  </body>
+</html>

@@ -1,5 +1,5 @@
 /*
- * Practice list page, /practice/dsa-questions (T17).
+ * Practice list page, /practice/coding-practice (T17).
  * Search, filters, sorting and progress for the questions in PracticeStore
  * (js/practice-store.js). Plain JavaScript; DataTables and select2 are gone.
  * A question opens in the editor at /practice?name=<nameHyphenated>.
@@ -11,6 +11,12 @@
   var PREFS_KEY = "practiceFilters";
   var TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3"></path></svg>';
   var armed = null, armTimer = null;
+  // The questions made in this visit stay on top (newest first) whatever the page, the filters and the sort, until the next change of
+  // the list, a tick or a reload. litId is the one that was just made: its row is lit for a few seconds.
+  var justMade = [], litId = "";
+  // A row that was just ticked or unticked keeps its place for a second before it moves, so a wrong tick is not lost under the finger.
+  var held = null, holdTimer = null;
+  function orderDone(id) { return held && held.id === id ? held.done : PracticeStore.isDone(id); }
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -92,8 +98,11 @@
         var la = LEVEL_ORDER[a.difficulty], lb = LEVEL_ORDER[b.difficulty];
         return (la == null ? 9 : la) - (lb == null ? 9 : lb) || newest(a, b);
       };
-      default: return function (a, b) { // to do first, newest first within each
-        return (PracticeStore.isDone(a.id) ? 1 : 0) - (PracticeStore.isDone(b.id) ? 1 : 0) || newest(a, b);
+      default: return function (a, b) { // to do first, newest first; then Done, the one ticked last first
+        var da = orderDone(a.id), db = orderDone(b.id);
+        if (da !== db) return da ? 1 : -1;
+        if (da) return (PracticeStore.doneAt(b.id) - PracticeStore.doneAt(a.id)) || newest(a, b);
+        return newest(a, b);
       };
     }
   }
@@ -104,11 +113,12 @@
     var done = PracticeStore.isDone(q.id);
     var added = +q.added || 0;
     var iso = added ? new Date(added).toISOString() : "";
-    return '<tr class="q-row' + (done ? " is-done" : "") + '" data-id="' + esc(q.id) + '">' +
+    var fresh = justMade.indexOf(q.id) >= 0;
+    return '<tr class="q-row' + (done ? " is-done" : "") + (fresh ? " is-new" : "") + (litId === q.id ? " is-lit" : "") + '" data-id="' + esc(q.id) + '">' +
       '<td class="q-done"><input type="checkbox" class="q-check" id="done-' + esc(q.id) + '"' + (done ? " checked" : "") +
         ' aria-label="Done: ' + esc(q.name) + '"></td>' +
       '<td class="q-name"><a class="q-link" href="' + esc(questionUrl(q)) + '" target="_blank" rel="noopener">' + esc(q.name) +
-        '<span class="visually-hidden"> (opens in a new tab)</span></a></td>' +
+        '<span class="visually-hidden"> (opens in a new tab)</span></a>' + (fresh ? ' <span class="q-badge">New</span>' : "") + "</td>" +
       '<td class="q-topic" data-label="Topic">' + esc(q.topic || "") + "</td>" +
       '<td class="q-level" data-label="Level"><span class="' + levelClass(q.difficulty) + '">' + esc(q.difficulty || "") + "</span></td>" +
       '<td class="q-added" data-label="Added">' + (q.starter ? "Starter" : added ? '<time datetime="' + iso + '" title="' + esc(new Date(added).toLocaleString()) + '">' + esc(relativeTime(added)) + "</time>" : "") + "</td>" +
@@ -200,11 +210,25 @@
     syncTopicOptions(all);
     var f = prefs();
     f.term = $("q-search").value.trim().toLowerCase();
-    var rows = all.filter(function (q) { return matches(q, f); }).sort(sorter(f.sort));
+    // what was made in this visit and is still to do: always shown, first
+    var byId = {};
+    all.forEach(function (q) { byId[q.id] = q; });
+    justMade = justMade.filter(function (id) { return byId[id] && !PracticeStore.isDone(id); });
+    var rows = all.filter(function (q) { return justMade.indexOf(q.id) < 0 && matches(q, f); }).sort(sorter(f.sort));
+    rows = justMade.map(function (id) { return byId[id]; }).concat(rows);
     var size = parseInt(f.size, 10) || 20;
     var last = Math.max(1, Math.ceil(rows.length / size));
     if (page > last) page = last; // a delete or a filter left fewer pages
-    $("q-body").innerHTML = rows.slice((page - 1) * size, page * size).map(rowHtml).join("");
+    var shown = rows.slice((page - 1) * size, page * size);
+    var doneTotal = f.sort === "todo" || !f.sort ? rows.filter(function (q) { return justMade.indexOf(q.id) < 0 && orderDone(q.id); }).length : 0;
+    var html = "", inDone = false;
+    shown.forEach(function (q) {
+      var isDoneRow = doneTotal > 0 && justMade.indexOf(q.id) < 0 && orderDone(q.id);
+      if (isDoneRow && !inDone) html += '<tr class="q-divider"><th scope="rowgroup" colspan="6">Done · ' + doneTotal + "</th></tr>";
+      inDone = isDoneRow;
+      html += rowHtml(q);
+    });
+    $("q-body").innerHTML = html;
     var none = all.length === 0;
     $("questionsTable").hidden = none || rows.length === 0;
     $("q-empty").hidden = !none;
@@ -253,6 +277,21 @@
     window.open(questionUrl(q), "_blank", "noopener");
   }
 
+  // clears the filters and the search that would hide a new question; returns what it cleared, for the line of the toast
+  function clearHiders(q) {
+    var out = [];
+    var f = prefs();
+    if (f.status === "done") { $("f-status").value = ""; out.push("Status"); }
+    if (f.topic && f.topic !== q.topic) { $("f-topic").value = ""; out.push("Topic"); }
+    if (f.level && f.level !== q.difficulty) { $("f-level").value = ""; out.push("Level"); }
+    var term = $("q-search").value.trim().toLowerCase();
+    if (term) {
+      var hay = (q.name + " " + q.topic + " " + q.difficulty).toLowerCase();
+      if (term.split(/\s+/).some(function (w) { return hay.indexOf(w) < 0; })) { $("q-search").value = ""; out.push("Search"); }
+    }
+    return out;
+  }
+
   function submitQuestion(e) {
     e.preventDefault();
     var btn = $("qsubmit-btn");
@@ -284,8 +323,21 @@
           return;
         }
         closeDialog();
+        // it is the first thing to see: page 1, and nothing that would hide it
+        var cleared = clearHiders(q);
+        justMade.unshift(q.id);
+        litId = q.id;
+        resetPage();
+        if (cleared.length) savePrefs();
         render();
-        notify(q.name, { type: "success", title: "New question added" });
+        setTimeout(function () {
+          litId = "";
+          var lit = document.querySelector(".q-row.is-lit");
+          if (lit) lit.classList.remove("is-lit");
+        }, 4000);
+        notify(q.name + (cleared.length ? " (cleared: " + cleared.join(", ") + ")" : ""), { type: "success", title: "New question added" });
+        var first = document.querySelector('.q-row[data-id="' + q.id + '"]');
+        if (first && first.scrollIntoView) first.scrollIntoView({ block: "center", behavior: "smooth" });
         var row = document.querySelector('.q-row[data-id="' + q.id + '"] .q-link');
         if (row) row.focus();
       })
@@ -305,9 +357,9 @@
     } catch (e) {}
     $("temperature").value = globaltemperature;
 
-    $("q-search").addEventListener("input", function () { resetPage(); render(); });
+    $("q-search").addEventListener("input", function () { justMade = []; resetPage(); render(); });
     ["f-status", "f-topic", "f-level", "f-sort", "f-size"].forEach(function (id) {
-      $(id).addEventListener("change", function () { resetPage(); savePrefs(); render(); });
+      $(id).addEventListener("change", function () { justMade = []; resetPage(); savePrefs(); render(); });
     });
     $("q-pages").addEventListener("click", function (e) {
       var b = e.target.closest && e.target.closest(".q-page");
@@ -337,9 +389,26 @@
     body.addEventListener("change", function (e) {
       if (!e.target.classList.contains("q-check")) return;
       var id = e.target.closest("tr").getAttribute("data-id");
-      PracticeStore.setDone(id, e.target.checked);
-      var again = $("done-" + id);  // the row may have moved
-      if (again) again.focus();
+      var nowDone = e.target.checked;
+      justMade = justMade.filter(function (x) { return x !== id; });
+      // the row keeps its place for a second, then moves (to Done, or back among the ones to do)
+      held = { id: id, done: !nowDone };
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(function () {
+        held = null;
+        var hadFocus = document.activeElement && document.activeElement.id === "done-" + id;
+        render();
+        var moved = $("done-" + id);
+        if (hadFocus && moved) moved.focus({ preventScroll: true });
+      }, 1000);
+      PracticeStore.setDone(id, nowDone);
+      var again = $("done-" + id);
+      if (again) again.focus({ preventScroll: true });
+      if (nowDone) {
+        var q = PracticeStore.find(id);
+        notify(q ? q.name : "", { type: "info", title: "Moved to Done", timeout: 4000,
+          action: { label: "Undo", onClick: function () { held = { id: id, done: true }; PracticeStore.setDone(id, false); clearTimeout(holdTimer); holdTimer = setTimeout(function () { held = null; render(); }, 1000); } } });
+      }
     });
     body.addEventListener("click", function (e) {
       var btn = e.target.closest && e.target.closest(".q-delete");
