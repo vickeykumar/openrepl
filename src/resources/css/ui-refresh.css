@@ -4459,6 +4459,10 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .preview-status__dot { width: 7px; height: 7px; border-radius: 50%; background: #4CC38A; flex-shrink: 0; }
 .preview-status.is-loading .preview-status__dot { background: #F5C37A; }
 .preview-status.is-bad .preview-status__dot { background: #F07171; }
+.preview-status.is-genie { color: var(--accent-1, #B7E34B); font-weight: 600; }
+.preview-status.is-genie .preview-status__dot { background: #B7E34B; animation: preview-genie-pulse 1.4s ease-out infinite; }
+@keyframes preview-genie-pulse { 0% { box-shadow: 0 0 0 0 rgba(183, 227, 75, .55); } 100% { box-shadow: 0 0 0 7px rgba(183, 227, 75, 0); } }
+@media (prefers-reduced-motion: reduce) { .preview-status.is-genie .preview-status__dot { animation: none; } }
 .preview-error { flex-shrink: 0; padding: 9px 12px; color: var(--paper); background: rgba(240, 113, 113, 0.12); border-bottom: 1px solid rgba(240, 113, 113, 0.4); font-size: 13px; }
 .preview-error[hidden] { display: none; }
 .preview-error__head { color: #F07171; font-weight: 600; }

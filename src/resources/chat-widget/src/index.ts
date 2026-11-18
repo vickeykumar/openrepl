@@ -10,6 +10,7 @@ import { definesSomething } from "./chat-send";
 import { isSmallModel, starterChips } from "./agent-protocol";
 import { chatTurnsText } from "./agent-task";
 import { cardView, jumpLabel, jumpVisible, showLabel, waitingText } from "./wait-bar";
+import { previewContext } from "./preview-context";
 import { answerBudget, errorBlock, errorRequest, looksLikeTask, messagesToSend, selectionRequest } from "./chat-send";
 import { CreditUsage, TokenUsage, answerTokens, creditLine, creditRows, tokenRows } from "./tokens";
 import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntry, addItem, gather, hashQuery, itemKey, metaOf, namesLine, problemsLine, rankEntries, removeItem, withAttached, withoutHash } from "./attach";
@@ -330,6 +331,7 @@ function getcurrentIDECode(): MessageType {
     readEditor ? code || "(the editor is empty)" : "(the user turned off sharing the editor with Genie; what they add to a message is all the code you have)",
     "--- Terminal output (the most recent lines of the active terminal) ---",
     output || "(nothing in the terminal yet)",
+    readPreview ? previewContext(previewState()) : "",
   ].filter(Boolean);
   return { role: "system", content: parts.join("\n") };
 }
@@ -722,7 +724,8 @@ async function init() {
     "use them, and never say you cannot see the terminal or the code (if the terminal text is empty, say nothing has been printed yet). " +
     "In Chat you answer and explain; you do not type in the terminal or change the editor yourself. When the user wants you to run, install, " +
     "write into the editor or fix something, tell them in one line to switch to Agent mode (the Chat / Agent switch above the box), where you can " +
-    "do it, and give the code they can use. To run code, the user presses Run. Keep answers short and specific to their code.";
+    "do it, and give the code they can use. To run code, the user presses Run. When the Preview pane is open, the title, headings and errors of its page are in the context too (after '--- Preview'); " +
+    "in Agent mode you can read the whole page and use it like a visitor. Keep answers short and specific to their code.";
   let welcomeprompt = "welcome to openrepl.com!! you are Genie. An OpenRepl AI";
   // the permanent prompts: who Genie is, (practice: the interviewer prompt), and the editor snapshot
   if (window.location.pathname.includes("practice")) {
@@ -1658,8 +1661,9 @@ function editorContextLabel(): string {
   const chip = document.getElementById("editor-filename");
   const name = chip ? (chip.textContent || "").trim() : "";
   if (!document.getElementById("editor")) return "";
-  if (!readEditor) return "Reads the terminal only";
-  return name && name !== "untitled" ? `Reads ${name} + terminal` : "Reads editor + terminal";
+  const pv = readPreview && previewState() ? " + preview" : "";
+  if (!readEditor) return "Reads the terminal" + pv + (pv ? "" : " only");
+  return (name && name !== "untitled" ? `Reads ${name} + terminal` : "Reads editor + terminal") + pv;
 }
 
 function autoGrow(input: HTMLTextAreaElement) {
@@ -2715,8 +2719,9 @@ function renderGuidance() {
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
   if (chips && input) {
     const show = !activeTab.history.some((m) => m.role === "user") && !activeTab.inFlight && !agentRunner.running;
-    const want = starterChips(agentMode);
-    const key = (agentMode ? "a:" : "c:") + want.length;
+    const pv = !!previewState();
+    const want = starterChips(agentMode, pv);
+    const key = (agentMode ? "a:" : "c:") + (pv ? "p:" : "") + want.length;
     if (chips.dataset.key !== key) {
       chips.textContent = "";
       want.forEach((text) => {
@@ -3615,6 +3620,59 @@ function chipElement(it: ContextItem, removable: boolean, note?: Note): HTMLElem
   return chip;
 }
 
+// The Preview pane's state, for what Genie is told about it (null when the pane is not there or is switched off).
+function previewState(): any {
+  try {
+    const P = (window as any).Preview;
+    return P && typeof P.available === "function" && P.available() && P.isOpen() ? P.state() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Whether Genie reads the page of the Preview pane with every message, while the pane is open (the chip "the preview" is the switch).
+// Kept in the browser; on when there is nothing kept.
+const READ_PREVIEW_KEY = "genie-read-preview";
+let readPreview: boolean = (() => {
+  try {
+    return localStorage.getItem(READ_PREVIEW_KEY) !== "0";
+  } catch (e) {
+    return true;
+  }
+})();
+
+function setReadPreview(on: boolean) {
+  readPreview = on;
+  try {
+    localStorage.setItem(READ_PREVIEW_KEY, on ? "1" : "0");
+  } catch (e) {
+    // the choice then lasts until the page is closed
+  }
+  renderTray();
+  const context = document.getElementById("chat-widget__context");
+  if (context) context.textContent = editorContextLabel();
+}
+
+function previewChip(): HTMLElement | null {
+  const s = previewState();
+  if (!s || !s.address) return null;
+  const b = document.createElement("button");
+  b.type = "button";
+  b.id = "chat-widget__preview-chip";
+  b.className = "cw-chip cw-chip--current" + (readPreview ? "" : " cw-chip--off");
+  b.setAttribute("aria-pressed", readPreview ? "true" : "false");
+  b.title = readPreview ? "Genie reads the page of the Preview (its headings, its errors) with every message. Click to stop." : "Genie is not reading the Preview. Click to turn it on.";
+  const name = document.createElement("span");
+  name.className = "cw-chip__name";
+  name.textContent = "the preview";
+  const meta = document.createElement("span");
+  meta.className = "cw-chip__meta";
+  meta.textContent = readPreview ? "page" : "not read";
+  b.append(name, meta);
+  b.addEventListener("click", () => setReadPreview(!readPreview));
+  return b;
+}
+
 // Whether Genie reads the editor with every message (the "current file" chip is the switch).
 // Kept in the browser; on when there is nothing kept.
 const READ_EDITOR_KEY = "genie-read-editor";
@@ -3675,13 +3733,22 @@ function currentFileChip(): HTMLElement | null {
   return b;
 }
 
+// The pane opened, closed or changed its page: its chip comes and goes (27-preview.js, tellPane).
+window.addEventListener("openrepl-preview", () => {
+  renderTray();
+  const context = document.getElementById("chat-widget__context");
+  if (context) context.textContent = editorContextLabel();
+});
+
 function renderTray() {
   const tray = document.getElementById("chat-widget__attached");
   if (!tray) return;
   tray.textContent = "";
   const current = currentFileChip();
   if (current) tray.appendChild(current);
-  tray.hidden = pendingContext.length === 0 && !current;
+  const pv = previewChip();
+  if (pv) tray.appendChild(pv);
+  tray.hidden = pendingContext.length === 0 && !current && !pv;
   pendingContext.forEach((it) => tray.appendChild(chipElement(it, true)));
 }
 

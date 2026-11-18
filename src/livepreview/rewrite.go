@@ -205,9 +205,9 @@ addEventListener("load",nav);addEventListener("popstate",nav);addEventListener("
 ["log","info","warn","error","debug"].forEach(function(k){var o=console[k];console[k]=function(){try{post({t:"console",level:k,text:[].map.call(arguments,str).join(" ").slice(0,2000)})}catch(e){}return o.apply(this,arguments)}});
 addEventListener("error",function(e){post({t:"console",level:"error",text:(e.message||"Error")+(e.filename?" ("+e.filename.split("/").pop()+":"+e.lineno+")":"")})});
 addEventListener("unhandledrejection",function(e){post({t:"console",level:"error",text:"Unhandled promise rejection: "+str(e.reason)})});
-var F=window.fetch;if(F){window.fetch=function(i,o){var t0=Date.now(),m=(o&&o.method)||(i&&i.method)||"GET",u=typeof i==="string"?i:(i&&i.url)||"";return F.apply(this,arguments).then(function(r){post({t:"request",method:m,url:u,status:r.status,ms:Date.now()-t0});return r},function(e){post({t:"request",method:m,url:u,status:0,ms:Date.now()-t0});throw e})}}
+var F=window.fetch;if(F){window.fetch=function(i,o){var t0=Date.now(),m=(o&&o.method)||(i&&i.method)||"GET",u=typeof i==="string"?i:(i&&i.url)||"";return F.apply(this,arguments).then(function(r){post({t:"request",method:m,url:u,status:r.status,ms:Date.now()-t0});return r},function(e){post({t:"request",method:m,url:u,status:0,ms:Date.now()-t0,err:String(e&&e.message||e).slice(0,200)});throw e})}}
 var XO=XMLHttpRequest.prototype.open,XS=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.open=function(m,u){this._or=[m,u];return XO.apply(this,arguments)};
-XMLHttpRequest.prototype.send=function(){var x=this,t0=Date.now();x.addEventListener("loadend",function(){var r=x._or||["GET",""];post({t:"request",method:r[0],url:String(r[1]),status:x.status,ms:Date.now()-t0})});return XS.apply(this,arguments)};
+XMLHttpRequest.prototype.send=function(){var x=this,t0=Date.now(),er="";["error","timeout","abort"].forEach(function(k){x.addEventListener(k,function(){er=k==="error"?"network error (blocked, refused or CORS)":k})});x.addEventListener("loadend",function(){var r=x._or||["GET",""];var m={t:"request",method:r[0],url:String(r[1]),status:x.status,ms:Date.now()-t0};if(er&&!x.status)m.err=er;post(m)});return XS.apply(this,arguments)};
 var ot=0;function outline(){clearTimeout(ot);ot=setTimeout(function(){try{var it=[],q=document.querySelectorAll("h1,h2,h3,h4,h5,h6,nav,main,header,footer,aside,[role=banner],[role=navigation],[role=main],[role=contentinfo],[role=complementary]");
 for(var i=0;i<q.length&&it.length<200;i++){var e=q[i],n=e.tagName.toLowerCase(),h=/^h[1-6]$/.test(n);it.push({i:i,l:h?+n.charAt(1):0,tag:n,text:(h?(e.textContent||""):(e.getAttribute("aria-label")||n)).replace(/\s+/g," ").trim().slice(0,120)})}
 post({t:"outline",items:it})}catch(e){}},300)}
@@ -221,7 +221,7 @@ if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&!e.metaKey&&(k==="l"||k==="L")){e.preventD
 if(k==="F6"){e.preventDefault();post({t:"key",key:"focus"});return}
 if(k==="Escape"){var n=Date.now();if(n-esc<700){post({t:"key",key:"escape"});esc=0}else{esc=n}}
 },true);
-})();</script>`
+})();</script>` + bridgeCmds
 
 func jsString(s string) string {
 	var b strings.Builder

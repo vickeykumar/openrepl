@@ -23,7 +23,7 @@ func TestTheAgentModelIsCheckedAndPublished(t *testing.T) {
 
 func TestTheAgentPromptHasTheIDEGuide(t *testing.T) {
 	p := agentSystemPrompt()
-	for _, want := range []string{"HOW OPENREPL WORKS", "you CAN read both", "\"type\":\"run\"", "terminal_type", "SAVE AFTER EVERY EDIT", "EDITING WITH editor_replace", "Workspace now", "WHEN UNSURE", "files_save"} {
+	for _, want := range []string{"HOW OPENREPL WORKS", "you CAN read both", "\"type\":\"run\"", "terminal_type", "SAVE AFTER EVERY EDIT", "EDITING WITH editor_replace", "THE PREVIEW is the page", "preview_read", "WEB PAGES:", "Workspace now", "WHEN UNSURE", "files_save"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("the agent prompt does not have %q", want)
 		}
