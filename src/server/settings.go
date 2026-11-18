@@ -107,6 +107,9 @@ type SiteSettings struct {
 	// the .practice folder of their workspace (practice_ws.go).
 	PracticeWorkspaceOff bool `json:"practiceWorkspaceOff"`
 	PreviewGuestsOff bool `json:"previewGuestsOff"`
+	// PreviewAgentOff stops Genie's agent from acting in the Preview page (click, type, press, scroll, select, hover, go, resize, run
+	// an expression, change its storage). It can still look at the page (read, console, calls). The Preview itself stays as it is.
+	PreviewAgentOff bool `json:"previewAgentOff"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
 	// Admins are the accounts added in the dashboard, lower case, besides the
@@ -582,9 +585,10 @@ type publicSettings struct {
 	Maintenance       Maintenance  `json:"maintenance"`
 	DisabledLanguages []string     `json:"disabledLanguages"`
 	GenieDisabled     bool         `json:"genieDisabled"`
-	// the Preview pane: off for all, or for guests (the page hides its button)
+	// the Preview pane: off for all, or for guests (the page hides its button); Genie acting in it off
 	PreviewOff       bool `json:"previewOff"`
 	PreviewGuestsOff bool `json:"previewGuestsOff"`
+	PreviewAgentOff  bool `json:"previewAgentOff"`
 	// the largest file the editor opens, in MB (the effective number: 16 when none is set)
 	MaxEditorFileMB int `json:"maxEditorFileMB"`
 	// ShareMaxGuestMinutes and ShareMaxUserMinutes are the longest a share link works (SiteSettings.ShareLinkGuestMinutes)
@@ -867,6 +871,7 @@ func (s SiteSettings) public() publicSettings {
 		GenieDisabled:        s.Genie.Disabled,
 		PreviewOff:           s.PreviewOff,
 		PreviewGuestsOff:     s.PreviewGuestsOff,
+		PreviewAgentOff:      s.PreviewAgentOff,
 		MaxEditorFileMB:      s.maxEditorFileMB(),
 		ShareMaxGuestMinutes: s.shareLinkMax(true),
 		ShareMaxUserMinutes:  s.shareLinkMax(false),
@@ -1119,6 +1124,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.PreviewOff != b.PreviewOff {
 		out = append(out, "preview "+onoff(!b.PreviewOff))
+	}
+	if a.PreviewAgentOff != b.PreviewAgentOff {
+		out = append(out, "Genie acting in the preview "+onoff(!b.PreviewAgentOff))
 	}
 	if a.PreviewGuestsOff != b.PreviewGuestsOff {
 		out = append(out, "preview for guests "+onoff(!b.PreviewGuestsOff))

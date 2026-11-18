@@ -1136,3 +1136,168 @@ test("built: a task is sent what is true in the workspace, and a request too sho
   await t2.done(t2.runner.start("add a delete button to every product in the cart"));
   assert.ok(!/ONE short question/.test(t2.log.requests[0].messages[0].content), "a clear task is not asked about");
 });
+
+// ---- the agent in the Preview -----------------------------------------------------------------------------------------------
+
+// A pane that answers like the real one (27-preview.js window.Preview), and keeps what it was asked.
+function fakePreview(extra = {}) {
+  const calls = [];
+  const P = {
+    calls,
+    available: () => true,
+    isOpen: () => true,
+    state: () => ({ open: true, address: "shop/index.html", title: "Corner shop", plugins: { console: true, outline: true, viewport: true }, console: [{ level: "error", text: "boom" }], requests: [], events: [] }),
+    logs: () => [{ level: "error", text: "boom (app.js:3)" }],
+    requests: () => [{ method: "GET", url: "/missing.json", status: 404, ms: 12, err: "" }],
+    call: async (cmd, args) => {
+      calls.push([cmd, args]);
+      if (cmd === "target") return { ok: true, name: args.ref === "e9" ? "Send" : args.ref === "e4" ? "Password" : args.ref === "e7" ? "Outside" : "Add to cart", submits: args.ref === "e9", leaves: args.ref === "e7", href: "https://example.com/x", sensitive: args.ref === "e4", form: args.ref === "e9", disabled: false };
+      if (cmd === "read") return { ok: true, title: "Corner shop", url: "/preview/t/f/shop/index.html", text: "h1 Corner shop\ne1 button \"Add to cart\"", parts: 1, more: false, scroll: { y: 0, max: 0, h: 600 } };
+      if (cmd === "click") return { ok: true, url: "/p", title: "Corner shop", added: ["1 in the cart"], scroll: { y: 0, max: 0, h: 600 } };
+      if (cmd === "eval") return { ok: true, value: "42" };
+      return { ok: true };
+    },
+    busy: () => {},
+    cancel: () => {},
+    go: async () => ({ ok: true, address: "a.html", title: "A", loaded: true }),
+    resize: (n) => ({ ok: true, size: n, width: 390, height: 844 }),
+    ...extra,
+  };
+  globalThis.window.Preview = P;
+  return P;
+}
+
+test("built: preview_read gives the page as text and asks nothing; preview_console gives the errors", async () => {
+  const P = fakePreview();
+  const t = setup([{ say: "", actions: [{ type: "preview_read" }, { type: "preview_console" }, { type: "preview_network" }], done: false }, { say: "ok", actions: [], done: true }], {});
+  await t.done(t.runner.start("look at my page"));
+  assert.equal(t.log.asked, undefined, "nothing was asked");
+  const r = t.results(1).step_results;
+  assert.match(r[0].output, /title: Corner shop\naddress: \/preview\/t\/f\/shop\/index\.html\nh1 Corner shop\ne1 button "Add to cart"/);
+  assert.match(r[1].output, /error boom \(app\.js:3\)/);
+  assert.match(r[2].output, /404 GET \/missing\.json/);
+  assert.deepEqual(P.calls.map((c) => c[0]), ["read"]);
+});
+
+test("built: a click in the page is asked first, names the part, and says what changed", async () => {
+  const P = fakePreview();
+  const t = setup([{ say: "", actions: [{ type: "preview_click", ref: "e1" }], done: false }, { say: "ok", actions: [], done: true }], { answer: () => "Allow once" });
+  await t.done(t.runner.start("add one to the cart"));
+  assert.match(t.log.asked[0], /Genie wants to act in your Preview .*Allow once/);
+  const r = t.results(1).step_results[0];
+  assert.equal(r.status, "done");
+  assert.match(r.output, /now at \/p "Corner shop"\nnew text: 1 in the cart/);
+  assert.deepEqual(P.calls.map((c) => c[0]), ["target", "click"]);
+  assert.equal(P.calls[1][1].ref, "e1");
+});
+
+test("built: a password field is refused before any card, and nothing is typed", async () => {
+  const P = fakePreview();
+  const t = setup([{ say: "", actions: [{ type: "preview_type", ref: "e4", text: "secret" }], done: false }, { say: "ok", actions: [], done: true }], { answer: () => "Allow once" });
+  await t.done(t.runner.start("log in"));
+  assert.equal(t.log.asked, undefined, "no card for a field that is refused");
+  const r = t.results(1).step_results[0];
+  assert.equal(r.status, "failed");
+  assert.match(r.detail, /password or card field/);
+  assert.ok(!P.calls.some((c) => c[0] === "type"));
+});
+
+test("built: sending a form is asked every time, even when acting in the Preview was allowed for the session", async () => {
+  const P = fakePreview();
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "preview_click", ref: "e1" }, { type: "preview_click", ref: "e9" }], done: false },
+      { say: "", actions: [{ type: "preview_click", ref: "e9" }], done: false },
+      { say: "ok", actions: [], done: true },
+    ],
+    { answer: (title, labels) => (labels.includes("Allow for this session") ? "Allow for this session" : "Send it") }
+  );
+  await t.done(t.runner.start("send the form twice"));
+  const asked = t.log.asked.join("\n");
+  assert.equal((asked.match(/act in your Preview/g) || []).length, 1, "the kind was asked once");
+  assert.equal((asked.match(/send a form in your Preview/g) || []).length, 2, "the form was asked each time");
+  assert.equal(P.calls.filter((c) => c[0] === "click").length, 3);
+});
+
+test("built: a form that is not allowed to be sent is not sent", async () => {
+  const P = fakePreview();
+  const t = setup([{ say: "", actions: [{ type: "preview_click", ref: "e9" }], done: false }, { say: "ok", actions: [], done: true }], { answer: (title, labels) => (labels.includes("Allow once") ? "Allow once" : "Do not send") });
+  await t.done(t.runner.start("send it"));
+  const r = t.results(1).step_results[0];
+  assert.equal(r.status, "denied");
+  assert.ok(!P.calls.some((c) => c[0] === "click"));
+});
+
+test("built: a link that leaves the workspace is asked about, and followed only when the user says so", async () => {
+  const P = fakePreview();
+  const t = setup([{ say: "", actions: [{ type: "preview_click", ref: "e7" }], done: false }, { say: "ok", actions: [], done: true }], { answer: (title, labels) => (labels.includes("Allow once") ? "Allow once" : "Follow it") });
+  await t.done(t.runner.start("click the outside link"));
+  assert.match(t.log.asked.join("\n"), /follow a link out of your workspace/);
+  const click = P.calls.find((c) => c[0] === "click");
+  assert.equal(click[1].allowLeave, true);
+});
+
+test("built: an admin can switch off acting in the Preview; reading stays", async () => {
+  const P = fakePreview();
+  globalThis.window.site_settings = { previewAgentOff: true };
+  const t = setup([{ say: "", actions: [{ type: "preview_click", ref: "e1" }, { type: "preview_read" }], done: false }, { say: "ok", actions: [], done: true }], { answer: () => "Allow once" });
+  await t.done(t.runner.start("click it"));
+  delete globalThis.window.site_settings;
+  assert.equal(t.log.asked, undefined);
+  const r = t.results(1).step_results;
+  assert.equal(r[0].status, "failed");
+  assert.match(r[0].detail, /admin switched off Genie acting in the Preview/);
+  assert.equal(r[1].status, "done");
+  assert.ok(!P.calls.some((c) => c[0] === "click"));
+});
+
+test("built: what the user switched off in the Preview is not read", async () => {
+  fakePreview({ state: () => ({ open: true, address: "a.html", plugins: { console: false, outline: true } }) });
+  const t = setup([{ say: "", actions: [{ type: "preview_console" }, { type: "preview_network" }], done: false }, { say: "ok", actions: [], done: true }], {});
+  await t.done(t.runner.start("what is in the console"));
+  const r = t.results(1).step_results;
+  assert.equal(r[0].status, "failed");
+  assert.match(r[0].detail, /turned the Console of the Preview off/);
+  assert.equal(r[1].status, "failed");
+});
+
+test("built: a task may use the Preview page 30 times; the 31st is left out and says so", async () => {
+  fakePreview();
+  const steps = [];
+  for (let i = 0; i < 11; i++) steps.push({ say: "", actions: [{ type: "preview_read" }, { type: "preview_read" }, { type: "preview_read" }], done: false });
+  steps.push({ say: "ok", actions: [], done: true });
+  const t = setup(steps, { max: 14 });
+  await t.done(t.runner.start("read it a lot"));
+  const last = t.results(11).step_results; // the 11th step: reads 31, 32, 33
+  assert.ok(last.every((r) => r.status === "failed" && /30 times/.test(r.detail)), JSON.stringify(last));
+  const before = t.results(10).step_results; // the 10th step: reads 28, 29, 30
+  assert.ok(before.every((r) => r.status === "done"));
+});
+
+test("built: reading the console after a change of a web page is its check", async () => {
+  fakePreview();
+  const proposed = [];
+  globalThis.window.GenieReview = { applyDirect: () => ({ total: 1, accepted: 1, rejected: 0, undo: () => true }), proposeAsync: async (text) => { proposed.push(text); return { total: 1, accepted: 1 }; } };
+  const t = setup(
+    [
+      { say: "", actions: [{ type: "editor_write", text: "<h1>x</h1>" }], done: false },
+      { say: "", actions: [{ type: "preview_console" }], done: false },
+      { say: "done", actions: [], done: true },
+    ],
+    { answer: () => "Allow once", editorText: () => "" }
+  );
+  await t.done(t.runner.start("make a page"));
+  // the step that said done was not sent back: the console had been read after the change
+  assert.equal(t.log.requests.length, 3);
+});
+
+test("built: a part that is not on the page now says why on the step line and tells the model to read again", async () => {
+  fakePreview({ call: async (cmd) => (cmd === "target" ? { ok: false, error: "e1 is not on the page now: read the page again" } : { ok: true }) });
+  const t = setup([{ say: "", actions: [{ type: "preview_click", ref: "e1" }], done: false }, { say: "ok", actions: [], done: true }], { answer: () => "Allow once" });
+  await t.done(t.runner.start("click it"));
+  assert.equal(t.log.asked, undefined, "no card for a part that is not there");
+  const r = t.results(1).step_results[0];
+  assert.equal(r.status, "failed");
+  assert.match(r.detail, /belong to your last preview_read/);
+  assert.match(t.steps().join("\n"), /Clicking e1 in the Preview page: e1 is not on the page now/);
+});

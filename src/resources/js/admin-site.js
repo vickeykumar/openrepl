@@ -80,7 +80,7 @@
         sessionCleanupHours: int(form.sessionCleanup.value),
         snippetMaxDays: int(form.snippetMax.value),
         previewOff: !form.previewOn.checked, practiceWorkspaceOff: !form.practiceWs.checked,
-        previewGuestsOff: !form.previewGuests.checked,
+        previewGuestsOff: !form.previewGuests.checked, previewAgentOff: !form.previewAgent.checked,
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
           customModels: (form.custom || []).map(readCustom),
@@ -167,7 +167,7 @@
         sessionCleanupHours: s.sessionCleanupHours || 0,
         snippetMaxDays: s.snippetMaxDays || 0,
         previewOff: !!s.previewOff, practiceWorkspaceOff: !!s.practiceWorkspaceOff,
-        previewGuestsOff: !!s.previewGuestsOff,
+        previewGuestsOff: !!s.previewGuestsOff, previewAgentOff: !!s.previewAgentOff,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
           disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
           featuredModels: (s.genie.featuredModels || []).slice(),
@@ -528,7 +528,8 @@
       var practiceWs = toggle('f-practice-ws', !settings.practiceWorkspaceOff, 'Practice saved in the workspace');
       form.practiceWs = practiceWs.input;
       var previewGuests = toggle('f-preview-guests', !settings.previewGuestsOff, 'Preview for guests');
-      form.previewOn = previewOn.input; form.previewGuests = previewGuests.input;
+      var previewAgent = toggle('f-preview-agent', !settings.previewAgentOff, 'Genie may act in the Preview');
+      form.previewOn = previewOn.input; form.previewGuests = previewGuests.input; form.previewAgent = previewAgent.input;
       // agent mode: on for signed-in users unless switched off here, and off on the practice page unless allowed
       var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
       var agentPractice = toggle('f-agent-practice', !!settings.genie.agentOnPractice, 'Agent mode on the practice page');
@@ -1063,6 +1064,7 @@
         card('Preview', 'The Preview pane shows a web page or program that a visitor wrote, in a sandbox on this site. Switch it off here if it is abused: the button disappears and the server refuses new previews.', [
           row('Preview is available', null, previewOn.node),
           row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node),
+          row('Genie may act in the Preview', 'Genie\'s agent can click, type, press keys, scroll, choose, go to other pages, run an expression and change the storage of the page the Preview shows. Off: it can still read the page, its console and its calls. It asks the user first in any case.', previewAgent.node),
           row('Minutes a preview link works for guests', 'From 10 to 1440 (a day). Leave it empty for 60 (1 hour). A pane gets a new link by itself before the old one ends; a link opened in a tab of its own, or copied, stops at its end. A change applies to links made after it.', form.previewLifeGuest),
           row('Minutes a preview link works for signed-in users', 'From 10 to 1440. Leave it empty for 180 (3 hours).', form.previewLifeUser),
           row('Longest a share link works for guests (minutes)', 'From 10 to 10080 (7 days). Leave it empty for 60 (1 hour). The owner chooses the time in the Share popover and may add time up to this: guests 30 minutes or 1 hour; signed-in users also 4 hours, 24 hours and 7 days, as far as this allows.', form.shareLifeGuest),

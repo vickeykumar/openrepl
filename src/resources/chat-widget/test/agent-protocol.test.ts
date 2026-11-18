@@ -135,6 +135,21 @@ test("the list of actions is the one in the server's prompt", () => {
     "preview_close",
     "preview_reload",
     "preview_state",
+    "preview_read",
+    "preview_console",
+    "preview_network",
+    "preview_inspect",
+    "preview_wait",
+    "preview_click",
+    "preview_type",
+    "preview_press",
+    "preview_scroll",
+    "preview_select",
+    "preview_hover",
+    "preview_go",
+    "preview_resize",
+    "preview_eval",
+    "preview_storage",
     "store_suggest",
     "finish",
   ]);
@@ -618,6 +633,8 @@ test("small models are told from their id", () => {
 test("each mode has its starter chips", () => {
   assert.ok(starterChips(true).includes("Run this"));
   assert.ok(starterChips(false).includes("Explain the error in my terminal"));
+  assert.ok(starterChips(true, true).includes("Test my page") && starterChips(true, true).includes("Make it fit a phone"));
+  assert.ok(starterChips(false, true).includes("What does my page show?"));
 });
 
 import { locateOld, nearestLines } from "../src/agent-protocol.ts";

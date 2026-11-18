@@ -295,3 +295,30 @@ Design on the canvas "Preview pane: move it and pop it out", approved the same d
   On a phone there is no grip (the pane is its own tab). Moving the pane in the DOM reloads the frame, so the page starts again; its history stays.
 - **Tests:** `lib-address.test.mjs`; `e2e/tests/preview.spec.js`: no bar, typed address in the same tab with Back, the + tab with suggestions, docking by the menu and by dragging.
   Not tested headless: the pop-out by dragging out of the window (the pop-out itself is the same call as the menu's).
+
+
+## 13. The agent in the preview (2026-11-18)
+
+Design on the canvas "Genie: browsing the preview pane" (8 boards), approved the same day: phases 0 to 2 built, screenshots and saved test flows (phases 3 and 4) not.
+
+- **The bridge answers commands.** `BridgeScript` (`rewrite.go`) already told the pane what the page does (address, console, calls, outline, keys). `bridgeCmds` (`bridge_cmd.go`, a second script added right after it)
+  takes commands `{openreplCmd, id, ...}` and answers `{openrepl:"reply", id, result}`. A command is taken only when `e.source === parent` (the page's own code cannot pose as the editor
+  page; no secret is needed); the pane takes messages only from its own frame. Commands: `read` (the page as text and numbered parts `e1 button "Add to cart"`, up to 6,000 characters, `more`,
+  `viewport`; a password's value is never given; what is not shown is left out), `target` (what a part is: submits a form, leaves the workspace, a password or card field), `click` (scrolled into view,
+  refused when something covers it, real pointer and mouse events then `click()`), `type` (the native value setter plus `input` and `change`; a password or card field is refused; Enter sends the form),
+  `press`, `scroll`, `select`, `hover`, `wait` (a text, a part, or a page that is quiet), `inspect` (place, styles, what covers it), `eval` (one expression, 5 seconds, the value as JSON text up to
+  4,000 characters) and `storage` (local, session, cookie of the page: they work, section 10). An action ends when the page has been quiet for 300 ms and answers what changed (the address, new text). A ring
+  and a label ("e2 - click") are drawn on the part for 1.5 seconds. Also reported to the pane: popups (`window.open`), downloads (an `a[download]`, and the text of a small blob) and the reason a call failed.
+- **The pane** (`27-preview.js`, `window.Preview`): `call(cmd, args, ms)` (a promise that never rejects; a page with no bridge (Markdown, picture, PDF) or a pane that is closed answers at once; a page that is left ends the
+  command with `navigated: true`), `go('back' | 'forward' | {path} | {port})`, `resize(size)` (the "Fit" list), `state()` (now with the title, the outline, the size, popups and downloads), `logs(n)`, `requests(n)`,
+  `busy(on)` ("Genie is using this page" in the status line), `cancel()` (Stop). What the user switched off in the App Store plugins (Console, Outline) is left out of what Genie gets.
+- **Actions** (`agent-protocol.ts`, `agent.ts`, `agent.go`): `preview_read`, `_console`, `_network`, `_inspect`, `_wait` look only and ask nothing. `preview_click`, `_type`, `_press`, `_scroll`, `_select`, `_hover`, `_go`,
+  `_resize`, `_eval` and `_storage` (set, remove, clear) need the new permission "Preview (click, type, run code in the page)" (`previewact`, one of the everyday kinds, so "Auto" counts 8); the card names the part
+  (found before it is shown, `previewFind`) or shows the code of `preview_eval`. Sending a form and following a link out of the workspace are asked every time. A task may use these 30 times. An admin switch
+  (Site settings, Preview: "Genie may act in the Preview", `PreviewAgentOff`, sent to the page as `previewAgentOff`) stops the acting ones and leaves the reading ones.
+- **Chat.** A chip "the preview" beside the editor's, while the pane is open (`readPreview`, kept in the browser, on by default): `previewContext` (`preview-context.ts`) adds the address, title, 6 headings, the errors of the console and
+  the calls that failed (1,600 characters at most) to what Genie is told with every message.
+- **Checked in the browser** (`e2e/tests/genie-preview-agent.spec.js`, on a real page in the real frame): read, click, type, press, scroll, select, hover, wait, a click to another page, a password field and a link out refused, a
+  covered part, `eval`, storage, `inspect`, resize, popups and downloads, Markdown with no bridge, a plugin off. `src/js/test/preview-bridge.test.mjs` parses the Go strings of the bridge.
+- **Not built:** screenshots, layout problems as a list, saved flows (phases 3 and 4 of the canvas).
+

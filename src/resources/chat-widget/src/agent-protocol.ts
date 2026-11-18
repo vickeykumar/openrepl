@@ -40,6 +40,21 @@ export const ACTIONS = [
   "preview_close",
   "preview_reload",
   "preview_state",
+  "preview_read",
+  "preview_console",
+  "preview_network",
+  "preview_inspect",
+  "preview_wait",
+  "preview_click",
+  "preview_type",
+  "preview_press",
+  "preview_scroll",
+  "preview_select",
+  "preview_hover",
+  "preview_go",
+  "preview_resize",
+  "preview_eval",
+  "preview_storage",
   "store_suggest",
   "finish",
 ] as const;
@@ -74,7 +89,24 @@ export interface Action {
   endLine?: number; // the last line (editor_replace: replaced; files_read: read)
   query?: string; // files_search: the text to look for (not a pattern)
   region?: boolean; // editor_write made by the page for editor_replace: the review says it is a part of the file
+  // the preview_* actions that look at the page or act in it (the page is written as numbered parts: e1, e2, ...)
+  ref?: string; // the part: "e12"
+  key?: string; // preview_press: "Enter", "Escape", "Tab", "ArrowDown", "a", "ctrl+a"
+  value?: string; // preview_select, preview_storage: the option, the value
+  checked?: boolean; // preview_select: tick (true) or untick (false) a box
+  more?: boolean; // preview_read: the next part of the page
+  viewport?: boolean; // preview_read: only what is on screen
+  enter?: boolean; // preview_type: press Enter after the text
+  append?: boolean; // preview_type: add to what the field holds
+  gone?: boolean; // preview_wait: until the text or the part is gone
+  area?: string; // preview_storage: "local", "session" or "cookie"
+  op?: string; // preview_storage: "get", "set", "remove" or "clear"
+  size?: string; // preview_resize: "fit", "phone", "tablet" or "laptop"
 }
+
+export const MAX_PREVIEW_ACTIONS = 30; // the preview_* actions that look at or act in the page, in one task
+export const MAX_EVAL = 2000; // characters of an expression run in the page
+export const PREVIEW_SIZES = ["fit", "phone", "tablet", "laptop"];
 
 export const MAX_QUERY = 200; // characters of a files_search query
 export const MAX_READ_LINES = 400; // lines one files_read returns
@@ -106,6 +138,13 @@ export function parsePlanDone(v: unknown, size: number): number[] {
   return out.sort((a, b) => a - b);
 }
 
+const MAX_FIELD_TEXT = 2000; // characters of text typed into a field of the page
+
+// "e12" is a part of the page as preview_read numbers them.
+export function cleanRef(v: unknown): string | null {
+  return typeof v === "string" && /^e[0-9]{1,5}$/.test(v.trim()) ? v.trim() : null;
+}
+
 export interface Step {
   say: string;
   actions: Action[];
@@ -131,7 +170,7 @@ export interface StepResult {
 // Switching the language is a kind of its own: it is not a change the user
 // reviews, the page puts the language's starter code in the editor and starts
 // the terminal again.
-export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview" | "shell" | "store";
+export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview" | "previewact" | "shell" | "store";
 
 export function scopeOf(a: Action): Scope | null {
   switch (a.type) {
@@ -172,6 +211,19 @@ export function scopeOf(a: Action): Scope | null {
     case "preview_close":
     case "preview_reload":
       return "preview";
+    // looking at the page (preview_state, _read, _console, _network, _inspect, _wait) asks nothing: it changes nothing. Acting in it does.
+    case "preview_click":
+    case "preview_type":
+    case "preview_press":
+    case "preview_scroll":
+    case "preview_select":
+    case "preview_hover":
+    case "preview_go":
+    case "preview_resize":
+    case "preview_eval":
+      return "previewact";
+    case "preview_storage":
+      return a.op === "get" || a.op === undefined ? null : "previewact";
     // an app of the App Store is installed (when it is on the safe list) and switched on: the user is asked each time
     case "store_suggest":
       return "store";
@@ -250,6 +302,7 @@ export function scopeQuestion(scope: Scope): string {
   if (scope === "terminal") return "Genie wants to use your terminal";
   if (scope === "files") return "Genie wants to use your files";
   if (scope === "preview") return "Genie wants to use the Preview";
+  if (scope === "previewact") return "Genie wants to act in your Preview";
   if (scope === "store") return "Genie wants to install an app from the App Store";
   if (scope === "shell") return "Genie wants to run a command in your workspace";
   return "Genie wants to run your code";
@@ -297,6 +350,32 @@ export function scopeDetail(scope: Scope, a: Action, openFile: string = ""): str
   }
   if (scope === "shell") {
     return "It runs once, in its own shell in your workspace folder, with no input and a limit of " + (a.timeoutSeconds || DEFAULT_COMMAND_SECONDS) + " seconds. Your terminal is not touched.";
+  }
+  if (scope === "previewact") {
+    const what = a.name ? '"' + a.name + '" (' + (a.ref || "") + ")" : a.ref || "a part";
+    const cut = (t: string | undefined, n: number) => (t && t.length > n ? t.slice(0, n) + "..." : t || "");
+    switch (a.type) {
+      case "preview_click":
+        return "It will click " + what + " in the page your Preview shows, as if you had clicked it. The page may react: a button can send a form or change what your program keeps.";
+      case "preview_type":
+        return "It will type \"" + cut(a.text, 80) + "\" into " + what + (a.enter ? " and press Enter" : "") + " in your Preview page.";
+      case "preview_press":
+        return "It will press " + (a.key || "a key") + " in your Preview page.";
+      case "preview_scroll":
+        return "It will scroll your Preview page" + (a.ref ? " to " + what : a.to ? " " + a.to : "") + ".";
+      case "preview_select":
+        return a.checked !== undefined ? "It will " + (a.checked ? "tick " : "untick ") + what + " in your Preview page." : "It will choose \"" + cut(a.value, 60) + "\" in " + what + " in your Preview page.";
+      case "preview_hover":
+        return "It will move the pointer over " + what + " in your Preview page.";
+      case "preview_go":
+        return a.to === "back" ? "It will go back one page in the Preview." : a.to === "forward" ? "It will go forward one page in the Preview." : a.port ? "It will show the program on port " + a.port + " in the Preview." : "It will show " + (a.path || "another page") + " in the Preview.";
+      case "preview_resize":
+        return "It will make the Preview page " + (a.size || "another size") + " wide. Your own choice of size is kept as it is set.";
+      case "preview_eval":
+        return "It will run this in your Preview page only, not in your editor page or on the site. It can read and change what the page holds.";
+      default:
+        return "It will " + (a.op === "remove" ? "remove " + (a.key || "a key") + " from" : a.op === "clear" ? "clear" : "change") + " the " + (a.area || "local") + " storage of your Preview page.";
+    }
   }
   if (scope === "preview") {
     if (a.type === "preview_close") return "It will close the Preview pane. Nothing is stopped: a program that runs keeps running.";
@@ -698,8 +777,95 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
       case "preview_close":
       case "preview_reload":
       case "preview_state":
+      case "preview_console":
+      case "preview_network":
         actions.push({ type });
         break;
+      case "preview_read":
+        actions.push({ type, more: a.more === true, viewport: a.viewport === true });
+        break;
+      case "preview_click":
+      case "preview_hover":
+      case "preview_inspect": {
+        const ref = cleanRef(a.ref);
+        if (ref === null) dropped.push(`${type} left out: "ref" has to be a part of the page as preview_read shows it, like "e12"`);
+        else actions.push({ type, ref });
+        break;
+      }
+      case "preview_type": {
+        const ref = cleanRef(a.ref);
+        const text = typeof a.text === "string" ? a.text : null;
+        if (ref === null) dropped.push('preview_type left out: "ref" has to be a field of the page as preview_read shows it, like "e3"');
+        else if (text === null || text.length > MAX_FIELD_TEXT) dropped.push('preview_type left out: it needs "text" (a short text)');
+        else actions.push({ type, ref, text, enter: a.enter === true, append: a.append === true });
+        break;
+      }
+      case "preview_press": {
+        const key = typeof a.key === "string" ? a.key.trim() : "";
+        const ref = a.ref === undefined ? undefined : cleanRef(a.ref);
+        if (!/^((ctrl|control|shift|alt|meta|cmd)\+)*[A-Za-z0-9 ]{1,12}$/.test(key) && !/^((ctrl|shift|alt|meta|cmd)\+)*[^\s]$/.test(key)) dropped.push('preview_press left out: "key" is a key name like Enter, Escape, Tab, ArrowDown, a letter, or ctrl+a');
+        else if (ref === null) dropped.push('preview_press left out: "ref" has to be a part like "e5", or left out');
+        else actions.push(ref === undefined ? { type, key } : { type, key, ref });
+        break;
+      }
+      case "preview_scroll": {
+        const ref = a.ref === undefined ? undefined : cleanRef(a.ref);
+        const to = typeof a.to === "string" ? a.to.trim().toLowerCase() : undefined;
+        if (ref === null) dropped.push('preview_scroll left out: "ref" has to be a part like "e5", or leave it out and give "to"');
+        else if (ref === undefined && to !== undefined && ["up", "down", "top", "bottom"].indexOf(to) < 0) dropped.push('preview_scroll left out: "to" is up, down, top or bottom');
+        else actions.push(ref !== undefined ? { type, ref } : { type, to: to || "down" });
+        break;
+      }
+      case "preview_select": {
+        const ref = cleanRef(a.ref);
+        const value = typeof a.value === "string" ? a.value : undefined;
+        const checked = typeof a.checked === "boolean" ? a.checked : undefined;
+        if (ref === null) dropped.push('preview_select left out: "ref" has to be a list or a box of the page, like "e4"');
+        else if (value === undefined && checked === undefined) dropped.push('preview_select left out: give "value" (the option) for a list, or "checked": true or false for a box');
+        else actions.push({ type, ref, ...(value !== undefined ? { value } : {}), ...(checked !== undefined ? { checked } : {}) });
+        break;
+      }
+      case "preview_go": {
+        const to = typeof a.to === "string" ? a.to.trim().toLowerCase() : undefined;
+        const port = a.port === undefined ? undefined : typeof a.port === "number" && Number.isInteger(a.port) && a.port >= 1024 && a.port <= 65535 ? a.port : null;
+        const p = a.path === undefined ? undefined : cleanPath(a.path, false);
+        if (to !== undefined && to !== "back" && to !== "forward") dropped.push('preview_go left out: "to" is back or forward');
+        else if (port === null || p === null) dropped.push('preview_go left out: "path" has to be a file relative to the home directory and "port" a whole number from 1024 to 65535');
+        else if (to === undefined && port === undefined && p === undefined) dropped.push('preview_go left out: give "to" (back or forward), a "path" or a "port"');
+        else actions.push(to !== undefined ? { type, to } : port !== undefined ? { type, port } : { type, path: p as string });
+        break;
+      }
+      case "preview_wait": {
+        const text = typeof a.text === "string" && a.text !== "" ? a.text.slice(0, 200) : undefined;
+        const ref = a.ref === undefined ? undefined : cleanRef(a.ref);
+        if (ref === null) dropped.push('preview_wait left out: "ref" has to be a part like "e5"');
+        else actions.push({ type, ...(text !== undefined ? { text } : {}), ...(ref !== undefined ? { ref } : {}), gone: a.gone === true, waitSeconds: clampSeconds(a.wait_seconds, 5) });
+        break;
+      }
+      case "preview_resize": {
+        const size = typeof a.size === "string" ? a.size.trim().toLowerCase() : "";
+        if (PREVIEW_SIZES.indexOf(size) < 0) dropped.push('preview_resize left out: "size" is fit, phone, tablet or laptop');
+        else actions.push({ type, size });
+        break;
+      }
+      case "preview_eval": {
+        const code = typeof a.text === "string" ? a.text.trim() : "";
+        if (code === "") dropped.push('preview_eval left out: it needs "text", the expression to run in the page');
+        else if (code.length > MAX_EVAL) dropped.push(`preview_eval left out: the expression is longer than ${MAX_EVAL} characters`);
+        else actions.push({ type, text: code });
+        break;
+      }
+      case "preview_storage": {
+        const op = typeof a.op === "string" ? a.op.trim().toLowerCase() : "get";
+        const area = typeof a.area === "string" ? a.area.trim().toLowerCase() : "local";
+        const key = typeof a.key === "string" ? a.key.slice(0, 200) : undefined;
+        const value = typeof a.value === "string" ? a.value.slice(0, 4000) : undefined;
+        if (["get", "set", "remove", "clear"].indexOf(op) < 0 || ["local", "session", "cookie"].indexOf(area) < 0) dropped.push('preview_storage left out: "op" is get, set, remove or clear, and "area" is local, session or cookie');
+        else if ((op === "set" || op === "remove") && !key) dropped.push(`preview_storage left out: "${op}" needs "key"`);
+        else if (area === "cookie" && op === "clear") dropped.push("preview_storage left out: cookies are removed one by one with op remove and a key");
+        else actions.push({ type, op, area, ...(key ? { name: key } : {}), ...(value !== undefined ? { value } : {}) });
+        break;
+      }
       case "store_suggest": {
         const n = typeof a.name === "string" ? a.name.trim().toLowerCase() : "";
         if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(n)) dropped.push('store_suggest left out: "name" has to be a conda-forge package name, for example flask');
@@ -823,6 +989,36 @@ export function describe(a: Action): string {
       return "Reloading the Preview";
     case "preview_state":
       return "Looking at the Preview";
+    case "preview_read":
+      return a.more ? "Reading more of the Preview page" : "Reading the Preview page";
+    case "preview_console":
+      return "Reading the console of the Preview page";
+    case "preview_network":
+      return "Reading the calls of the Preview page";
+    case "preview_inspect":
+      return "Inspecting " + a.ref + " in the Preview page";
+    case "preview_wait":
+      return "Waiting in the Preview page" + (a.text ? " for " + JSON.stringify(a.text.slice(0, 40)) : "");
+    case "preview_click":
+      return "Clicking " + a.ref + " in the Preview page";
+    case "preview_type":
+      return "Typing in " + a.ref + " in the Preview page";
+    case "preview_press":
+      return "Pressing " + a.key + " in the Preview page";
+    case "preview_scroll":
+      return a.ref ? "Scrolling the Preview page to " + a.ref : "Scrolling the Preview page " + (a.to || "down");
+    case "preview_select":
+      return "Choosing in " + a.ref + " in the Preview page";
+    case "preview_hover":
+      return "Moving over " + a.ref + " in the Preview page";
+    case "preview_go":
+      return a.to ? "Going " + a.to + " in the Preview" : a.port ? "Showing port " + a.port + " in the Preview" : "Showing " + a.path + " in the Preview";
+    case "preview_resize":
+      return "Making the Preview page " + a.size;
+    case "preview_eval":
+      return "Running an expression in the Preview page";
+    case "preview_storage":
+      return (a.op === "get" ? "Reading" : "Changing") + " the " + a.area + " storage of the Preview page";
     case "read_output":
       return "Reading the output";
     default:
@@ -877,7 +1073,7 @@ export function findLanguage(options: { value: string; text: string }[], name: s
 //     themselves. Those are still asked about.
 // Everything is kept in the page only: not saved, not sent, not shared with a collaborator; a reload starts again.
 
-export const EVERYDAY_SCOPES: Scope[] = ["editor", "language", "run", "terminal", "files", "preview", "shell"];
+export const EVERYDAY_SCOPES: Scope[] = ["editor", "language", "run", "terminal", "files", "preview", "previewact", "shell"];
 
 export const SCOPE_LABELS: Record<Scope, string> = {
   editor: "Editor changes",
@@ -886,6 +1082,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   terminal: "Terminal (safe lines)",
   files: "Files (open, create, save)",
   preview: "Preview (open, reload, close)",
+  previewact: "Preview (click, type, run code in the page)",
   shell: "Run commands (safe ones)",
   store: "App Store (install an app)",
 };
@@ -1139,8 +1336,13 @@ export function isSmallModel(id: string): boolean {
   return /(^|[^a-z0-9])(mini|flash|lite|nano|tiny|small|free|auto|router)([^a-z0-9]|$)/.test(s);
 }
 
-// The first-message suggestions under the box of an empty chat: what to ask in that mode.
-export function starterChips(agent: boolean): string[] {
+// The first-message suggestions under the box of an empty chat: what to ask in that mode. With the Preview pane open they are about its page.
+export function starterChips(agent: boolean, previewOpen: boolean = false): string[] {
+  if (previewOpen) {
+    return agent
+      ? ["Test my page", "Check the console", "Make it fit a phone", "Fix what looks wrong"]
+      : ["What does my page show?", "Explain the console errors", "Review my page", "How do I run this?"];
+  }
   return agent
     ? ["Run this", "Fix the error in my terminal", "Fix this file", "Add comments to my code"]
     : ["Explain the error in my terminal", "Explain this code", "Review my code", "How do I run this?"];
