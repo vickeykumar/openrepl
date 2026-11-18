@@ -69,12 +69,17 @@ func (g GenieSettings) modelIsSmall(id string) bool {
 	return isSmallModelID(id)
 }
 
-// guestsMayUse says whether a visitor who is not signed in may use a model: every built-in one, and an added one unless it is kept for
-// signed-in users.
+// guestsMayUse says whether a visitor who is not signed in may use a model: every model unless it is kept for signed-in users (the
+// ticks of its row in Site settings: GuestBlockedModels for a built-in one, NoGuests for an added one).
 func (g GenieSettings) guestsMayUse(id string) bool {
 	for _, c := range g.customList() {
 		if c.ID == id {
 			return !c.NoGuests
+		}
+	}
+	for _, b := range g.GuestBlockedModels {
+		if b == id {
+			return false
 		}
 	}
 	return true

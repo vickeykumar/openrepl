@@ -23,7 +23,7 @@
       cards: ['Files', 'Workspace snapshots', 'Preview', 'Languages', 'Database capacity'] },
     { id: 'genie-models', group: 'genie', title: 'Models and prices', blurb: 'The models visitors can pick, the ones you add, and what they cost.',
       tabs: [
-        { id: 'models', title: 'Models', cards: ['Default models', 'Models for Agent mode', 'Genie'] },
+        { id: 'models', title: 'Models', cards: ['Default models', 'Genie'] },
         { id: 'added', title: 'Added models', cards: ['Added models'] },
         { id: 'prices', title: 'Prices and cost', cards: ['Genie prices and cost'] }
       ] },

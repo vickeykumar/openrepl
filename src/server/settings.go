@@ -175,6 +175,8 @@ type GenieSettings struct {
 	// AgentModels are the models that may be used in Agent mode (nil: never chosen, every model that is on may be). A model that
 	// is not in the list is refused in Agent mode (agent_models.go). AgentEffort is the effort of the Agent model ("": low).
 	AgentModels []string `json:"agentModels"`
+	// GuestBlockedModels are the built-in models kept for signed-in users (an added model has its own tick, NoGuests).
+	GuestBlockedModels []string `json:"guestBlockedModels"`
 	AgentEffort string   `json:"agentEffort"`
 	// AgentModel is the model Agent mode starts on, and the model that writes the practice questions ("" is the built-in choice, see
 	// agentDefaultModelID); when the model in use is small the panel offers it too: the panel offers
@@ -405,6 +407,21 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	}
 	sort.Strings(off)
 	s.Genie.DisabledModels = off
+	blocked := []string{}
+	seenBlocked := map[string]bool{}
+	for _, id := range s.Genie.GuestBlockedModels {
+		id = strings.TrimSpace(id)
+		if id == "" || seenBlocked[id] {
+			continue
+		}
+		if _, known := chatModels[id]; !known {
+			return s, fmt.Errorf("%q is not a model", id)
+		}
+		seenBlocked[id] = true
+		blocked = append(blocked, id)
+	}
+	sort.Strings(blocked)
+	s.Genie.GuestBlockedModels = blocked
 	custom, err := normalizeCustomModels(s.Genie.CustomModels)
 	if err != nil {
 		return s, err
@@ -581,6 +598,7 @@ type publicSettings struct {
 	AgentModel   string              `json:"genieAgentModel"` // the model Agent mode starts on (agentDefaultModelID)
 	AgentModels  []string            `json:"genieAgentModels"` // the models that may be used in Agent mode; null: every model that is on
 	AgentEffort  string              `json:"genieAgentEffort"` // the effort of the Agent model
+	GuestBlocked []string            `json:"genieGuestBlocked"` // built-in models kept for signed-in users
 	// the models the picker starts a new visitor with (empty: its own choice)
 	FeaturedModels []string `json:"featuredModels"`
 	// what Genie reads from the page and keeps (the effective numbers)
@@ -856,6 +874,7 @@ func (s SiteSettings) public() publicSettings {
 		AgentModel:           s.Genie.agentDefaultModelID(),
 		AgentModels:          s.Genie.AgentModels,
 		AgentEffort:          s.Genie.agentEffortID(),
+		GuestBlocked:         append([]string{}, s.Genie.GuestBlockedModels...),
 		FeaturedModels:       append([]string{}, s.Genie.FeaturedModels...),
 		GenieContext:         s.Genie.context(),
 		AgentEnabled:         !s.Genie.AgentDisabled && !s.Genie.Disabled,
@@ -1079,6 +1098,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.Genie.AgentModel != b.Genie.AgentModel || a.Genie.AgentEffort != b.Genie.AgentEffort {
 		out = append(out, "Agent model: "+orStr(b.Genie.AgentModel, "built-in")+", effort "+orStr(b.Genie.AgentEffort, "low"))
+	}
+	if fmt.Sprint(a.Genie.GuestBlockedModels) != fmt.Sprint(b.Genie.GuestBlockedModels) {
+		out = append(out, "models kept for signed-in users: "+strings.Join(b.Genie.GuestBlockedModels, ", "))
 	}
 	if fmt.Sprint(a.Genie.AgentModels) != fmt.Sprint(b.Genie.AgentModels) {
 		out = append(out, "models for Agent mode: "+map[bool]string{true: "every model that is on", false: strings.Join(b.Genie.AgentModels, ", ")}[b.Genie.AgentModels == nil])

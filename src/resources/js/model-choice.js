@@ -171,7 +171,8 @@
   // A model an admin kept for signed-in users is listed for a guest, greyed; a click says to sign in.
   function guestOk(id) {
     var m = find(MODELS, id);
-    if (!m || m.guests !== false) return true;
+    var blocked = site.genieGuestBlocked;
+    if (!m || (m.guests !== false && !(Array.isArray(blocked) && blocked.indexOf(id) >= 0))) return true;
     return typeof document !== "undefined" && !!document.body && document.body.classList.contains("is-signed-in");
   }
   var AGENT_MODELS = MODELS.filter(function (m) {
@@ -187,7 +188,7 @@
     return mode === "agent" ? AGENT_DEFAULT : DEFAULT;
   }
   function allowedIn(mode, id) {
-    return mode === "agent" ? agentOk(id) : !!find(MODELS, id);
+    return guestOk(id) && (mode === "agent" ? agentOk(id) : !!find(MODELS, id));
   }
 
   // A model to offer instead of one that is not answering: the first other
@@ -369,6 +370,13 @@
     var saved = readSaved(mode);
     if (saved && find(MODELS, saved.model) && allowedIn(mode, saved.model)) choice.model = saved.model;
     if (saved && find(EFFORTS, saved.effort)) choice.effort = saved.effort;
+    if (!guestOk(choice.model)) {
+      // a model kept for signed-in users: a guest starts on the first one they may use
+      var open = MODELS.filter(function (m) {
+        return guestOk(m.id) && (mode !== "agent" || agentOk(m.id));
+      })[0];
+      if (open) choice.model = open.id;
+    }
     return choice;
   }
 

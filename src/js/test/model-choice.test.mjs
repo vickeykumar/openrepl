@@ -243,3 +243,13 @@ test("a model kept for signed-in users is listed, and a guest may not choose it"
   assert.equal(guest.guestOk("gpt-4o-mini"), true);
   assert.equal(load({ site, signedIn: true }).MC.guestOk("gpt-7-sol"), true);
 });
+
+test("a built-in model kept for signed-in users is closed to a guest, and a guest starts on one they may use", () => {
+  const site = { defaultModel: "gpt-6-luna", genieGuestBlocked: ["gpt-6-luna"] };
+  const guest = load({ site }).MC;
+  assert.equal(guest.guestOk("gpt-6-luna"), false);
+  assert.notEqual(guest.get("chat").model, "gpt-6-luna");
+  const user = load({ site, signedIn: true }).MC;
+  assert.equal(user.guestOk("gpt-6-luna"), true);
+  assert.equal(user.get("chat").model, "gpt-6-luna");
+});

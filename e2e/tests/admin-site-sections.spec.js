@@ -188,13 +188,12 @@ test("the models for Agent mode: the ones that are not small start ticked, an un
   const st = await stub(page);
   await page.goto("/admin#site/genie-models");
   const tick = (name) => page.getByLabel("Agent mode: " + name, { exact: true });
-  await expect(page.locator(".card", { hasText: "Models for Agent mode" })).toBeVisible();
+  await expect(page.locator(".card", { hasText: "Models for Agent mode" })).toHaveCount(0);
   await expect(page.locator(".card", { hasText: "Default models" })).toBeVisible();
   // not small: ticked; small: not
   await expect(tick("GPT-6 Luna")).toBeChecked();
   await expect(tick("GPT-4o mini")).not.toBeChecked();
   await expect(tick("Gemma 4 31B")).not.toBeChecked();
-  await expect(page.locator(".card", { hasText: "Models for Agent mode" })).toContainText("(small)");
   // the Agent model can be a ticked one only
   const agentModel = page.locator("#f-agentmodel");
   await expect(agentModel.locator("option")).toHaveText(["Built in (the first model that is not small)", "GPT-6 Luna"]);
@@ -228,14 +227,12 @@ test("unticking every model says so, and a model that is taken off the list is n
   await tick("GPT-4o mini").uncheck();
   await expect(page.locator("#f-agentmodel")).toHaveValue("");
   for (const name of ["GPT-6 Luna"]) await tick(name).uncheck();
-  await expect(page.getByText("Tick at least one model: Agent mode needs one.")).toBeVisible();
+  await expect(page.getByText("Tick Agent mode on at least one model", { exact: false })).toBeVisible();
 });
 
 test("an added model has its own ticks: small, Agent mode and available for guest users, and they are saved", async ({ page }) => {
   const st = await stub(page);
   await page.goto("/admin#site/genie-models");
-  // the Agent card does not list it a second time
-  await expect(page.locator(".agent-models").getByText("Nemotron 3 Super (free)")).toHaveCount(0);
   await page.getByRole("tab", { name: "Added models" }).click();
   const nemo = page.locator(".custom-model", { hasText: "nvidia/nemotron-3-super-120b-a12b:free" });
   // 120B: not small; guests may use it; ticked for Agent mode (it is not small)
@@ -253,4 +250,18 @@ test("an added model has its own ticks: small, Agent mode and available for gues
   const other = st.saved[0].genie.customModels.find((m) => m.id === "cohere/north-mini-code:free");
   expect(other.small).toBeNull();
   expect(other.noGuests).toBe(false);
+});
+
+test("every built-in model has the ticks too: Agent mode and available for guest users, saved as the list of models kept for signed-in users", async ({ page }) => {
+  const st = await stub(page);
+  await page.goto("/admin#site/genie-models");
+  const luna = page.locator(".row, .setting, div", { has: page.getByLabel("Agent mode: GPT-6 Luna", { exact: true }) }).last();
+  await expect(page.getByLabel("GPT-6 Luna is available for guest users")).toBeChecked();
+  await expect(page.getByLabel("GPT-4o mini is available for guest users")).toBeChecked();
+  await page.getByLabel("GPT-6 Luna is available for guest users").uncheck();
+  await expect(page.locator('.site-dot[data-dot="genie-models"]')).toBeVisible();
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect.poll(() => st.saved.length).toBe(1);
+  expect(st.saved[0].genie.guestBlockedModels).toEqual(["gpt-6-luna"]);
+  void luna;
 });

@@ -173,3 +173,19 @@ func yesCopy(c CustomModel, noGuests bool) CustomModel {
 	c.NoGuests = noGuests
 	return c
 }
+
+func TestABuiltInModelCanBeKeptForSignedInUsers(t *testing.T) {
+	adminTestServer(t)
+	g := GenieSettings{GuestBlockedModels: []string{modelLuna}}
+	if g.guestsMayUse(modelLuna) || !g.guestsMayUse("gpt-4o-mini") {
+		t.Fatal("only the ticked-off built-in model is closed to a guest")
+	}
+	if p := (SiteSettings{Genie: g}).public(); len(p.GuestBlocked) != 1 || p.GuestBlocked[0] != modelLuna {
+		t.Fatalf("the page is told: %v", p.GuestBlocked)
+	}
+	s, err := (SiteSettings{Genie: GenieSettings{GuestBlockedModels: []string{"nope"}}}).normalize()
+	_ = s
+	if err == nil {
+		t.Fatal("an unknown model is refused")
+	}
+}
