@@ -347,3 +347,14 @@ func TestPreflightAndOwnAddresses(t *testing.T) {
 		t.Error("another port was taken for the program's")
 	}
 }
+
+func TestEachSandboxHeaderIsSentOnceThroughTheProxy(t *testing.T) {
+	port, dial := app(t)
+	o := Options{Home: "/h/a", Port: port, Prefix: "/preview/tok/p/1", Dial: dial, Jar: NewJar()}
+	rec := run(o, "GET", "some/page", "")
+	for _, k := range []string{"Access-Control-Allow-Origin", "Content-Security-Policy", "Cross-Origin-Resource-Policy", "Access-Control-Expose-Headers"} {
+		if n := len(rec.Header().Values(k)); n != 1 {
+			t.Errorf("%s is sent %d times: %v (a browser refuses a cross-origin answer whose Access-Control-Allow-Origin is \"*, *\")", k, n, rec.Header().Values(k))
+		}
+	}
+}
