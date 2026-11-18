@@ -125,6 +125,74 @@ test.describe("a phone", () => {
   });
 });
 
+test.describe("a phone, keyboard and chat menu", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("a tap on the chat that is shown opens its menu, with All chats first", async ({ page }) => {
+    await ready(page);
+    await page.locator("#mobile-view-genie").tap();
+    const tab = page.locator("#genie-dock .cw-tab.is-active");
+    await expect(tab).toBeVisible();
+    await tab.tap();
+    const menu = page.locator(".cw-tabmenu");
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitem").first()).toHaveText("All chats…");
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    const row = await menu.getByRole("menuitem", { name: "Rename" }).boundingBox();
+    expect(row.height).toBeGreaterThanOrEqual(40); // a row for a thumb
+    // All chats opens the list
+    await menu.getByRole("menuitem", { name: "All chats…" }).tap();
+    await expect(page.locator(".cw-tabmenu--list")).toBeVisible();
+    await expect(page.getByRole("searchbox", { name: "Search all chats" })).toBeVisible();
+  });
+
+  // The keyboard is simulated by making the screen shorter while a text box has the focus (the browser of a phone shrinks the
+  // visible part the same way).
+  test("with the keyboard up the workspace is the visible screen: the keys row and the cursor line are above it, and nothing scrolls", async ({ page }) => {
+    await ready(page);
+    await page.waitForTimeout(3000); // (the terminal has connected: a late connect would take the focus back)
+    await page.locator("#mobile-view-terminal").tap();
+    await page.locator("#terminal textarea").first().focus();
+    await page.setViewportSize({ width: 390, height: 480 });
+    await expect(page.locator("html")).toHaveClass(/keyboard-open/);
+    const shell = await page.locator("#ide-shell").boundingBox();
+    expect(Math.round(shell.y)).toBe(0);
+    expect(Math.round(shell.height)).toBe(480);
+    const keys = await page.locator("#extra-keys").boundingBox();
+    expect(keys.y + keys.height).toBeLessThanOrEqual(480);
+    // the page behind does not move when the user drags or scrolls
+    const y0 = await page.evaluate(() => window.scrollY);
+    await page.mouse.move(195, 300);
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.scrollY)).toBe(y0);
+    // the keyboard goes away: the page is as it was
+    await page.locator("#terminal textarea").first().blur();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator("html")).not.toHaveClass(/keyboard-open/);
+  });
+
+  test("maximized, with the keyboard up: the workspace is held at the top and the page does not scroll or pan", async ({ page }) => {
+    await ready(page);
+    await page.waitForTimeout(3000); // (the terminal has connected: a late connect would take the focus back)
+    await page.locator("#togglescreen-button").tap();
+    await expect(page.locator("#ide-shell")).toHaveClass(/is-maximized/);
+    await page.locator("#mobile-view-terminal").tap();
+    await page.locator("#terminal textarea").first().focus();
+    await page.setViewportSize({ width: 390, height: 480 });
+    await expect(page.locator("html")).toHaveClass(/keyboard-open/);
+    const shell = await page.locator("#ide-shell").boundingBox();
+    expect(Math.round(shell.y)).toBe(0);
+    expect(Math.round(shell.height)).toBe(480);
+    const y0 = await page.evaluate(() => window.scrollY);
+    await page.mouse.move(195, 300);
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.scrollY)).toBe(y0);
+    expect(await page.evaluate(() => visualViewport.offsetTop)).toBe(0);
+  });
+});
+
 test.describe("a desktop", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
