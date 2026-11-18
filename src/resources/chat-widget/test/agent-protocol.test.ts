@@ -607,6 +607,9 @@ test("small models are told from their id", () => {
   for (const id of ["@cf/qwen/qwen3-30b-a3b-fp8", "@cf/google/gemma-4-26b-a4b-it", "gpt-4o-mini", "@cf/zai-org/glm-4.7-flash", "google/gemma-4-31b-it"]) {
     assert.equal(isSmallModel(id), true, id);
   }
+  // a free or auto model is small unless its id says it is big; a size in the id decides
+  for (const id of ["openrouter/free", "openrouter/auto", "some/free-router", "cohere/north-mini-code:free"]) assert.equal(isSmallModel(id), true, id);
+  for (const id of ["nvidia/nemotron-3-super-120b-a12b:free", "meta/llama-3.3-70b-instruct:free"]) assert.equal(isSmallModel(id), false, id);
   for (const id of ["gpt-6-luna", "anthropic/claude-sonnet", "meta/llama-3.3-70b-instruct", ""]) {
     assert.equal(isSmallModel(id), false, id);
   }
