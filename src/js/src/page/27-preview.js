@@ -970,7 +970,6 @@ function init() {
   });
   el("preview-reload").addEventListener("click", function () { reload(); });
   el("preview-close").addEventListener("click", closePane);
-  el("preview-terminal").addEventListener("click", closePane);
   el("preview-newtab").addEventListener("click", function () {
     if (!target || target.kind === "n") return;
     getToken().then(function (tok) { window.open(urlFor(target, tok), "_blank", "noopener"); });

@@ -286,7 +286,7 @@ Design on the canvas "Preview pane: move it and pop it out", approved the same d
   the workspace the pane can show (by name), ports that listen, and the last 5 addresses typed. Arrow keys and Enter pick, a click picks, Escape leaves the bar. A name typed there
   loads in that same tab. A second + while an empty tab exists selects it (never two). The status line says "New tab · sandboxed pane · nothing loaded". At the tab limit (4) a notice says so.
 - **The pane's place** (`placePane`, `setDock`): by default it is a child of the terminal's box and covers the terminal (`is-previewing`); docked over the editor it is a child of
-  `#ide` (absolute, over the whole editor box: its file tabs and toolbar, the text and its status bar; the pane's own bar has Close and Terminal), the terminal is shown beside it, and Run does not need the drawer. The grip
+  `#ide` (absolute, over the whole editor box: its file tabs and toolbar, the text and its status bar; the pane's own bar has the X, which closes it and brings the terminal back; the separate Terminal button was removed 2026-11-18), the terminal is shown beside it, and Run does not need the drawer. The grip
   (`#preview-grip`, first in the pane's bar) is dragged with the mouse or a pen: the side of the page the pointer is on decides (the rectangle of `#ide` or of `#terminal-div`,
   outlined in `.preview-drop`), Escape cancels, and a release more than 40 px outside the browser's window pops the pane out (`popOut`, as the menu's entry does). The keyboard way is
   the "..." menu: "Dock over the editor" / "Dock over the terminal". The place is remembered in this browser (`localStorage` `preview-dock`) and is never written to a shared session.
