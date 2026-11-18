@@ -305,7 +305,15 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	var siteMux = http.NewServeMux()
 	siteMux.HandleFunc(pathPrefix, server.handleIndex)
 	siteMux.HandleFunc(pathPrefix+"healthz", handleHealthz)
-	siteMux.HandleFunc(pathPrefix+"practice/dsa-questions", handlePracticeQuestions)
+	siteMux.HandleFunc(pathPrefix+"practice/coding-practice", handlePracticeQuestions)
+	// the old address of the page: links, bookmarks and search results that still use it go to the new one
+	siteMux.HandleFunc(pathPrefix+"practice/dsa-questions", func(rw http.ResponseWriter, req *http.Request) {
+		target := pathPrefix + "practice/coding-practice"
+		if req.URL.RawQuery != "" {
+			target += "?" + req.URL.RawQuery
+		}
+		http.Redirect(rw, req, target, http.StatusMovedPermanently)
+	})
 	siteMux.HandleFunc(pathPrefix+"practice/progress", handlePracticeProgress)
 	siteMux.HandleFunc(pathPrefix+"practice", server.handleIndex)
 	siteMux.HandleFunc(pathPrefix+"sitemap.xml", handleSitemap)

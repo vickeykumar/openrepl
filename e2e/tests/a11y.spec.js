@@ -4,7 +4,7 @@
 const { test, expect } = require("@playwright/test");
 const AxeBuilder = require("@axe-core/playwright").default || require("@axe-core/playwright");
 
-const PAGES = ["/", "/practice/dsa-questions", "/privacy.html"];
+const PAGES = ["/", "/practice/coding-practice", "/privacy.html"];
 
 for (const scheme of ["light", "dark"]) {
   for (const path of PAGES) {

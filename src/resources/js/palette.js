@@ -179,7 +179,7 @@
 
     add("Help", "Keyboard shortcuts", function () { open("shortcuts"); }, { keys: ["?"], words: "keys hotkeys keybindings" });
     if (ws && typeof window.StartTour === "function") add("Help", "Take the tour", call("StartTour"), { words: "intro getting started guide" });
-    add("Help", "Practice DSA questions", goTo("/practice/dsa-questions"), { words: "problems interview" });
+    add("Help", "Practice DSA questions", goTo("/practice/coding-practice"), { words: "problems interview" });
     add("Help", "Read the docs", goTo("/doc.html"), { words: "documentation help" });
     if (byId("feedback-name") || byId("message")) add("Help", "Send feedback or request a language", sendFeedback, { words: "contact message" });
     return list;

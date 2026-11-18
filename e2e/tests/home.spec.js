@@ -42,7 +42,7 @@ test("with no theme picked the editor is in Monokai and the IDE follows it", asy
 });
 
 test("the practice page lists the questions", async ({ page }) => {
-  await page.goto("/practice/dsa-questions");
+  await page.goto("/practice/coding-practice");
   await expect(page.locator("text=/\\d+ questions/").first()).toBeVisible();
   expect(await page.locator(".q-table tbody tr").count()).toBeGreaterThan(5);
 });
