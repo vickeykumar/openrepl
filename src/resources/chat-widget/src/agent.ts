@@ -167,6 +167,8 @@ export interface AgentHost {
   // The task waits for the user (on) or goes on (off); `info` says what it waits for and where the card is, so that the panel can
   // show a bar above the input that leads to it (index.ts: renderWaiting). No card: the question is in the editor (a change to review).
   attention?(on: boolean, info?: { brief: string; card: HTMLElement | null }): void;
+  // The server refused the model of a step: it is not allowed for Agent mode (any more); the panel goes back to the Agent model.
+  modelNotForAgent?(): void;
   // Step n of max has begun.
   progress?(n: number, max: number): void;
   // How the task ended; "stopped" is the user's own Stop.
@@ -625,6 +627,8 @@ export class AgentRunner {
         // keep the generic message
       }
       if (code === "agent_step_limit") message = "The task has used all its steps.";
+      // a model the admin took off the list since the page loaded: the panel goes back to the Agent model (index.ts)
+      if (code === "model_not_for_agent" && this.host.modelNotForAgent) this.host.modelNotForAgent();
       return { ok: false, error: message, code };
     }
     const m = (res.headers.get("X-OpenREPL-Agent-Step") || "").match(/^(\d+)\/(\d+)$/);

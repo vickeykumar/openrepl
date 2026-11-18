@@ -172,7 +172,12 @@ type GenieSettings struct {
 	// DefaultModel is the model that answers a request naming none, and the one
 	// a visitor starts with. Empty means the built-in choice. It must be on.
 	DefaultModel string `json:"defaultModel"`
-	// AgentModel is the model Genie suggests for Agent mode when the one in use is small ("" is none): the panel offers
+	// AgentModels are the models that may be used in Agent mode (nil: never chosen, every model that is on may be). A model that
+	// is not in the list is refused in Agent mode (agent_models.go). AgentEffort is the effort of the Agent model ("": low).
+	AgentModels []string `json:"agentModels"`
+	AgentEffort string   `json:"agentEffort"`
+	// AgentModel is the model Agent mode starts on, and the model that writes the practice questions ("" is the built-in choice, see
+	// agentDefaultModelID); when the model in use is small the panel offers it too: the panel offers
 	// to switch to it. It changes nothing by itself.
 	AgentModel string `json:"agentModel"`
 	// FeaturedModels are the models the picker lists first ("Your models") for a visitor who has
@@ -441,6 +446,9 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 			return s, fmt.Errorf("the default model %s is switched off", m.Name)
 		}
 	}
+	if err := s.Genie.normalizeAgentModels(); err != nil {
+		return s, err
+	}
 	s.Genie.AgentModel = strings.TrimSpace(s.Genie.AgentModel)
 	if d := s.Genie.AgentModel; d != "" {
 		m, known := s.Genie.modelByID(d)
@@ -570,7 +578,9 @@ type publicSettings struct {
 	// the models an admin added that are on, for the picker
 	CustomModels []publicCustomModel `json:"customModels"`
 	DefaultModel string              `json:"defaultModel"`
-	AgentModel   string              `json:"genieAgentModel"` // the model suggested for Agent mode (Genie.AgentModel)
+	AgentModel   string              `json:"genieAgentModel"` // the model Agent mode starts on (agentDefaultModelID)
+	AgentModels  []string            `json:"genieAgentModels"` // the models that may be used in Agent mode; null: every model that is on
+	AgentEffort  string              `json:"genieAgentEffort"` // the effort of the Agent model
 	// the models the picker starts a new visitor with (empty: its own choice)
 	FeaturedModels []string `json:"featuredModels"`
 	// what Genie reads from the page and keeps (the effective numbers)
@@ -843,7 +853,9 @@ func (s SiteSettings) public() publicSettings {
 		DisabledModels:       models,
 		CustomModels:         s.Genie.publicCustomModels(),
 		DefaultModel:         s.Genie.DefaultModel,
-		AgentModel:           s.Genie.AgentModel,
+		AgentModel:           s.Genie.agentDefaultModelID(),
+		AgentModels:          s.Genie.AgentModels,
+		AgentEffort:          s.Genie.agentEffortID(),
 		FeaturedModels:       append([]string{}, s.Genie.FeaturedModels...),
 		GenieContext:         s.Genie.context(),
 		AgentEnabled:         !s.Genie.AgentDisabled && !s.Genie.Disabled,
@@ -1065,8 +1077,11 @@ func settingsChanges(a, b SiteSettings) []string {
 		}
 		out = append(out, "default model: "+name)
 	}
-	if a.Genie.AgentModel != b.Genie.AgentModel {
-		out = append(out, "Agent model: "+orStr(b.Genie.AgentModel, "none"))
+	if a.Genie.AgentModel != b.Genie.AgentModel || a.Genie.AgentEffort != b.Genie.AgentEffort {
+		out = append(out, "Agent model: "+orStr(b.Genie.AgentModel, "built-in")+", effort "+orStr(b.Genie.AgentEffort, "low"))
+	}
+	if fmt.Sprint(a.Genie.AgentModels) != fmt.Sprint(b.Genie.AgentModels) {
+		out = append(out, "models for Agent mode: "+map[bool]string{true: "every model that is on", false: strings.Join(b.Genie.AgentModels, ", ")}[b.Genie.AgentModels == nil])
 	}
 	if a.Genie.SummaryOff != b.Genie.SummaryOff || a.Genie.SummaryTokens != b.Genie.SummaryTokens {
 		out = append(out, "Genie: chat summary "+onoff(!b.Genie.SummaryOff))

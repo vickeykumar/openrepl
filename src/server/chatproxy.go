@@ -50,6 +50,23 @@ func modelSwitchedOff(rw http.ResponseWriter, req *http.Request, model chatModel
 	)
 }
 
+// modelForSignedIn answers a guest who asks for a model an admin kept for signed-in users.
+func modelForSignedIn(rw http.ResponseWriter, req *http.Request, model chatModel) {
+	rw.Header().Set("Content-Type", "application/json")
+	handleChatProxyError(rw, req, http.StatusForbidden,
+		NewErrorResponse("Sign in to use "+model.Name+".", "invalid_request_error", "model_not_for_guests", ""),
+	)
+}
+
+// modelNotForAgent answers a request for Agent mode with a model that may not be used there (agent_models.go), before anything is
+// charged or sent on.
+func modelNotForAgent(rw http.ResponseWriter, req *http.Request) {
+	rw.Header().Set("Content-Type", "application/json")
+	handleChatProxyError(rw, req, http.StatusBadRequest,
+		NewErrorResponse(modelNotForAgentMessage, "invalid_request_error", "model_not_for_agent", ""),
+	)
+}
+
 // modelUnavailable answers a request for a model that cannot be reached, in
 // the shape of an OpenAI error. The Genie panel and the New question dialog
 // look for the type "model_unavailable" to offer another model or a retry. The
@@ -373,6 +390,9 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
     // A request from the Genie panel or the blog editor may ask for what the
     // site knows about itself (knowledge_proxy.go).
     rawBody, ctxResult := addKnowledge(rawBody, theKnowledge())
+    if run != nil {
+    	rawBody = withAgentModel(rawBody) // a step that names no model is the Agent model's
+    }
     chatBody, model, err := sanitizeChatBody(rawBody)
     if err != nil {
     	handleChatProxyError(rw, req, http.StatusBadRequest,
@@ -401,6 +421,17 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
     // sent on (admins are not an exception: the picker hides it for them too).
     if GetSiteSettings().Genie.ModelDisabled(model.ID) {
         modelSwitchedOff(rw, req, model)
+        return
+    }
+    // A model kept for signed-in users is not for a guest (the picker greys it; this is the guarantee).
+    if !cookie.Is_UserLoggedIn(req) && !GetSiteSettings().Genie.guestsMayUse(model.ID) {
+        modelForSignedIn(rw, req, model)
+        return
+    }
+
+    // Agent mode only uses the models an admin allowed for it (the model menu greys the others; this is the guarantee).
+    if run != nil && !GetSiteSettings().Genie.agentModelAllowed(model.ID) {
+        modelNotForAgent(rw, req)
         return
     }
 

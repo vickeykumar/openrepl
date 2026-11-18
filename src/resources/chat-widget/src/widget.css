@@ -1875,3 +1875,7 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
   body.is-mobile #chat-widget__container .cw-tabmenu { min-width: 240px; max-width: calc(100vw - 24px); }
   body.is-mobile #chat-widget__container .cw-tabmenu__item { min-height: 44px; align-items: center; font-size: 15px; }
 }
+
+/* In Agent mode a model the admin did not allow there is listed, greyed, and cannot be chosen (index.ts: modelRow) */
+.cw-model.is-unsupported { opacity: 0.5; cursor: not-allowed; }
+.cw-model.is-unsupported .cw-model__tag { opacity: 1; }

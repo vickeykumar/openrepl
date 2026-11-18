@@ -16,6 +16,7 @@ async function localAssets(page) {
   const js = (file) => (route) => route.fulfill({ contentType: "application/javascript", body: local(file) });
   await page.route((u) => u.pathname.endsWith("/js/chat-widget.js"), js("resources/chat-widget/dist/index.umd.js"));
   await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), js("js/dist/scribbler.js"));
+  await page.route((u) => u.pathname.endsWith("/js/model-choice.js"), js("resources/js/model-choice.js"));
   await page.route((u) => u.pathname.endsWith("/css/ui-refresh.css"), (route) => route.fulfill({ contentType: "text/css", body: local("resources/css/ui-refresh.css") }));
   // the page is a template: the server's own answer gives the values, this checkout's file gives the markup (only with
   // GENIE_LOCAL_PAGE=1, for a server whose image is older than this checkout)

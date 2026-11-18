@@ -1,6 +1,10 @@
 // The model and effort choice, shared by Genie (the chip in its panel, chat
 // widget) and the New question dialog (js/common.js). Loaded before both.
 //
+// There is a choice for each mode: Chat and Agent (setMode). Each starts on the admin's default for the mode (site_settings.defaultModel,
+// genieAgentModel, genieAgentEffort) and, once the visitor picks one, keeps their pick. Agent mode only offers the models the admin allowed
+// for it (site_settings.genieAgentModels; null: every model); the others are listed but cannot be chosen (agentOk).
+//
 // The built-in models and the ones an admin added and switched on are offered, and
 // only these: server/chatmodels.go and custom_models.go hold the same lists and
 // send nothing else on (a request for any other model is answered by the default). Two come from OpenAI; Gemma 4 31B comes through OpenRouter and
@@ -118,6 +122,8 @@
       desc: how,
       limit: c.free && provider !== "openai" ? CF_LIMIT : "",
       reasoning: provider === "openai" && !!c.reasoning,
+      guests: c.guests !== false,
+      small: c.small === true,
     });
   });
 
@@ -142,6 +148,9 @@
   ];
 
   var KEY = window.MODEL_CHOICE_KEY || "genie-model";
+  function keyOf(mode) {
+    return mode === "agent" ? KEY + "-agent" : KEY;
+  }
   function find(list, id) {
     for (var i = 0; i < list.length; i++) {
       if (list[i].id === id) return list[i];
@@ -154,10 +163,37 @@
     effort: "low",
   };
 
+  // ---- Agent mode: the models it may use, and the one it starts on
+  function agentOk(id) {
+    var list = site.genieAgentModels;
+    return !!find(MODELS, id) && (!Array.isArray(list) || list.indexOf(id) >= 0);
+  }
+  // A model an admin kept for signed-in users is listed for a guest, greyed; a click says to sign in.
+  function guestOk(id) {
+    var m = find(MODELS, id);
+    if (!m || m.guests !== false) return true;
+    return typeof document !== "undefined" && !!document.body && document.body.classList.contains("is-signed-in");
+  }
+  var AGENT_MODELS = MODELS.filter(function (m) {
+    return agentOk(m.id);
+  });
+  if (!AGENT_MODELS.length) AGENT_MODELS = MODELS.slice(); // nothing of the list can be offered here: the server decides
+  var AGENT_DEFAULT = {
+    model: (find(AGENT_MODELS, site.genieAgentModel) || find(AGENT_MODELS, DEFAULT.model) || AGENT_MODELS[0]).id,
+    effort: find(EFFORTS, site.genieAgentEffort) ? site.genieAgentEffort : "low",
+  };
+  var MODE = "chat";
+  function defaultOf(mode) {
+    return mode === "agent" ? AGENT_DEFAULT : DEFAULT;
+  }
+  function allowedIn(mode, id) {
+    return mode === "agent" ? agentOk(id) : !!find(MODELS, id);
+  }
+
   // A model to offer instead of one that is not answering: the first other
   // OpenAI model that is on, else any other.
   function fallback(exceptId) {
-    var others = MODELS.filter(function (m) {
+    var others = (MODE === "agent" ? AGENT_MODELS : MODELS).filter(function (m) {
       return m.id !== exceptId;
     });
     return (
@@ -233,7 +269,7 @@
       if (id && out.indexOf(id) < 0 && find(MODELS, id)) out.push(id);
     }
     ids.forEach(add);
-    add(DEFAULT.model);
+    add(defaultOf(MODE).model);
     MODELS.forEach(function (m) {
       add(m.id);
     });
@@ -317,31 +353,65 @@
     });
   }
 
-  function load() {
-    var choice = { model: DEFAULT.model, effort: DEFAULT.effort };
+  // the saved choice of a mode; null when the visitor has not picked one for it (or the pick may not be used any more)
+  function readSaved(mode) {
     try {
-      var saved = JSON.parse(localStorage.getItem(KEY) || "null");
-      if (saved && find(MODELS, saved.model)) choice.model = saved.model;
-      if (saved && find(EFFORTS, saved.effort)) choice.effort = saved.effort;
+      var saved = JSON.parse(localStorage.getItem(keyOf(mode)) || "null");
+      if (saved && typeof saved === "object") return saved;
     } catch (e) {
-      // storage blocked or not JSON: keep the default
+      // storage blocked or not JSON: the default
     }
+    return null;
+  }
+  function load(mode) {
+    var d = defaultOf(mode);
+    var choice = { model: d.model, effort: d.effort };
+    var saved = readSaved(mode);
+    if (saved && find(MODELS, saved.model) && allowedIn(mode, saved.model)) choice.model = saved.model;
+    if (saved && find(EFFORTS, saved.effort)) choice.effort = saved.effort;
     return choice;
   }
 
-  var choice = load();
+  var choices = { chat: load("chat"), agent: load("agent") };
+  var choice = choices.chat; // the choice of the mode that is on
   var listeners = [];
 
   function save() {
     try {
-      localStorage.setItem(KEY, JSON.stringify(choice));
+      localStorage.setItem(keyOf(MODE), JSON.stringify(choice));
     } catch (e) {
       // the choice then lasts until the page closes
     }
   }
 
-  function get() {
-    return { model: choice.model, effort: choice.effort };
+  function get(mode) {
+    var c = mode ? choices[mode === "agent" ? "agent" : "chat"] : choice;
+    return { model: c.model, effort: c.effort };
+  }
+
+  // Switch to the choice of the other mode (Chat or Agent). The answer says what the visitor should be told, "" when nothing: the Chat model
+  // cannot be used in Agent mode (the admin did not allow it), or the model the visitor had picked for Agent was taken off the list.
+  function setMode(mode) {
+    mode = mode === "agent" ? "agent" : "chat";
+    if (mode === MODE) return { changed: false, note: "" };
+    var before = choice;
+    var saved = readSaved("agent");
+    MODE = mode;
+    choice = choices[mode];
+    var note = "";
+    if (mode === "agent") {
+      var nameOf = function (id) {
+        var m = find(MODELS, id);
+        return m ? m.name : id;
+      };
+      if (saved && saved.model && !agentOk(saved.model)) {
+        note = nameOf(saved.model) + " is no longer supported for Agent mode. Using " + nameOf(choice.model) + ".";
+      } else if (!agentOk(before.model)) {
+        note = nameOf(before.model) + " is not supported for Agent mode. Using " + nameOf(choice.model) + ". Your Chat model is unchanged.";
+      }
+    }
+    changed();
+    return { changed: true, note: note };
   }
 
   function changed() {
@@ -355,13 +425,20 @@
   }
 
   // set("gpt-4o-mini") or set(undefined, "high"): a value that is not offered is ignored.
-  function set(model, effort) {
+  function set(model, effort, mode) {
+    var m = mode ? (mode === "agent" ? "agent" : "chat") : MODE;
+    var c = choices[m];
+    if (model && !allowedIn(m, model)) model = undefined; // not offered, or not supported for Agent mode: ignored
     if (model && find(MODELS, model)) {
-      choice.model = model;
+      c.model = model;
       noteUsed(model);
     }
-    if (effort && find(EFFORTS, effort)) choice.effort = effort;
-    save();
+    if (effort && find(EFFORTS, effort)) c.effort = effort;
+    try {
+      localStorage.setItem(keyOf(m), JSON.stringify(c));
+    } catch (e) {
+      // the choice then lasts until the page closes
+    }
     changed();
   }
 
@@ -369,11 +446,14 @@
   // reasons, so it takes an effort and an answer budget and no temperature;
   // 4o mini takes a temperature and max_tokens. Options: extraTokens (more room
   // than a chat answer needs), maxTokens and temperature (4o mini).
-  function fields(opts) {
+  function fields(opts, mode) {
+    return fieldsOf(mode ? choices[mode === "agent" ? "agent" : "chat"] : choice, opts, mode || MODE);
+  }
+  function fieldsOf(c, opts, mode) {
     opts = opts || {};
-    var model = find(MODELS, choice.model) || MODELS[0];
+    var model = find(MODELS, c.model) || MODELS[0];
     if (model.reasoning) {
-      var effort = find(EFFORTS, choice.effort) || find(EFFORTS, DEFAULT.effort);
+      var effort = find(EFFORTS, c.effort) || find(EFFORTS, defaultOf(mode).effort);
       return {
         model: model.id,
         reasoning_effort: effort.id,
@@ -387,10 +467,27 @@
     };
   }
 
+  // The model of a practice question (the New question dialog and the practice pages that make questions): the Agent model of the admin until
+  // the visitor chooses another for the dialog, and then only on this page. It is not the Chat or the Agent pick of the visitor, and
+  // choosing here changes neither. Only the models allowed for Agent mode are offered.
+  var qchoice = { model: AGENT_DEFAULT.model, effort: AGENT_DEFAULT.effort };
+  function getQuestion() {
+    return { model: qchoice.model, effort: qchoice.effort };
+  }
+  function setQuestion(model, effort) {
+    if (model && agentOk(model)) qchoice.model = model;
+    if (effort && find(EFFORTS, effort)) qchoice.effort = effort;
+    changed();
+  }
+  function questionFields(opts) {
+    return fieldsOf(qchoice, opts, "agent");
+  }
+
   // Another tab changed it.
   window.addEventListener("storage", function (ev) {
-    if (ev.key === KEY) {
-      choice = load();
+    if (ev.key === KEY || ev.key === KEY + "-agent") {
+      choices = { chat: load("chat"), agent: load("agent") };
+      choice = choices[MODE];
       changed();
     }
   });
@@ -400,6 +497,20 @@
     efforts: EFFORTS,
     get: get,
     set: set,
+    setMode: setMode,
+    mode: function () {
+      return MODE;
+    },
+    agentOk: agentOk,
+    guestOk: guestOk,
+    agentModels: AGENT_MODELS,
+    questionModels: AGENT_MODELS,
+    getQuestion: getQuestion,
+    setQuestion: setQuestion,
+    questionFields: questionFields,
+    agentDefault: function () {
+      return { model: AGENT_DEFAULT.model, effort: AGENT_DEFAULT.effort };
+    },
     fields: fields,
     fallback: fallback,
     your: your,

@@ -42,11 +42,16 @@
       var provider = providerOf(c);
       return { provider: provider, id: id, name: String(c.name || '').trim() || id, enabled: !!c.enabled, free: !!c.free || /:free$/.test(id),
         answerTokens: int(c.answerTokens), thinkingRoom: int(c.thinkingRoom), jsonMode: !!c.jsonMode,
-        reasoning: provider === 'openai' && !!c.reasoning, hosts: provider === '' ? (c.hosts || []).slice() : [] };
+        reasoning: provider === 'openai' && !!c.reasoning, small: c.small === true || c.small === false ? c.small : null, noGuests: !!c.noGuests, hosts: provider === '' ? (c.hosts || []).slice() : [] };
+    }
+    // the Small tick: left as the id says (null) until the admin changes it
+    function smallNow(r) {
+      var byId = window.AdminSections.isSmallModel(r.id);
+      return r.small.checked === byId ? (r.smallSet ? r.small.checked : null) : r.small.checked;
     }
     function readCustom(r) {
       return cleanCustom({ provider: r.provider, id: r.id, name: r.name.value, enabled: r.on.checked, free: r.free.checked, answerTokens: r.answer.value,
-        thinkingRoom: r.room.value, jsonMode: r.json.checked, reasoning: r.reasoning ? r.reasoning.checked : false, hosts: r.hosts ? hostsFrom(r.hosts.value) : [] });
+        thinkingRoom: r.room.value, jsonMode: r.json.checked, reasoning: r.reasoning ? r.reasoning.checked : false, small: smallNow(r), noGuests: !r.guests.checked, hosts: r.hosts ? hostsFrom(r.hosts.value) : [] });
     }
     // the models that start in the short list: the built-in ones that are ticked, then the added ones
     function featuredNow() {
@@ -76,7 +81,7 @@
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
           customModels: (form.custom || []).map(readCustom),
           featuredModels: featuredNow(),
-          defaultModel: form.defModel.value, agentModel: form.agentModel.value,
+          defaultModel: form.defModel.value, agentModel: form.agentModel.value, agentEffort: form.agentEffort.value, agentModels: form.agentList(),
           contextEditorChars: int(form.ctxEditor.value), contextTerminalChars: int(form.ctxTermChars.value),
           contextTerminalLines: int(form.ctxTermLines.value), historyMessages: int(form.history.value),
           contextAttachItems: int(form.attachItems.value), contextAttachChars: int(form.attachChars.value), contextAttachTotal: int(form.attachTotal.value),
@@ -162,7 +167,8 @@
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
           disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
           featuredModels: (s.genie.featuredModels || []).slice(),
-          defaultModel: s.genie.defaultModel || '', agentModel: s.genie.agentModel || '',
+          defaultModel: s.genie.defaultModel || '', agentModel: s.genie.agentModel || '', agentEffort: s.genie.agentEffort || '',
+          agentModels: s.genie.agentModels ? s.genie.agentModels.slice() : null,
           contextEditorChars: s.genie.contextEditorChars || 0, contextTerminalChars: s.genie.contextTerminalChars || 0,
           contextTerminalLines: s.genie.contextTerminalLines || 0, historyMessages: s.genie.historyMessages || 0,
           contextAttachItems: s.genie.contextAttachItems || 0, contextAttachChars: s.genie.contextAttachChars || 0, contextAttachTotal: s.genie.contextAttachTotal || 0,
@@ -625,17 +631,22 @@
         form.featured[m.id] = h('input', { type: 'checkbox', checked: wantedFeatured.indexOf(m.id) >= 0, onchange: update, 'aria-label': m.name + ' starts in the short list' });
         return { model: m, node: on.node };
       });
-      var defModel = h('select', { class: 'field', id: 'f-defmodel', 'aria-label': 'Default model', onchange: update },
+      var defModel = h('select', { class: 'field', id: 'f-defmodel', 'aria-label': 'Chat model', onchange: update },
         h('option', { value: '', text: 'Built in (Luna for visitors)' }));
       models.forEach(function (m) { defModel.appendChild(h('option', { value: m.id, text: m.name })); });
       defModel.value = settings.genie.defaultModel || '';
       form.defModel = defModel;
       var wantedDefault = settings.genie.defaultModel || '';
-      var agentModel = h('select', { class: 'field', id: 'f-agentmodel', 'aria-label': 'Model suggested for Agent mode', onchange: update },
-        h('option', { value: '', text: 'None' }));
-      models.forEach(function (m) { agentModel.appendChild(h('option', { value: m.id, text: m.name })); });
-      agentModel.value = settings.genie.agentModel || '';
+      // The model Agent mode starts on (and that writes the practice questions): only a model that may be used in Agent mode, which is the
+      // list of the next card. Empty is the built-in choice.
+      var agentModel = h('select', { class: 'field', id: 'f-agentmodel', 'aria-label': 'Agent model', onchange: update },
+        h('option', { value: '', text: 'Built in (the first model that is not small)' }));
       form.agentModel = agentModel;
+      var wantedAgent = settings.genie.agentModel || '';
+      form.agentEffort = h('select', { class: 'field', id: 'f-agenteffort', 'aria-label': 'Effort for the Agent model', onchange: update },
+        h('option', { value: '', text: 'Low (built in)' }), h('option', { value: 'none', text: 'Off' }), h('option', { value: 'low', text: 'Low' }),
+        h('option', { value: 'medium', text: 'Medium' }), h('option', { value: 'high', text: 'High' }));
+      form.agentEffort.value = settings.genie.agentEffort || '';
 
       // the models an admin added: one block each, with its own switch
       form.custom = [];
@@ -643,6 +654,10 @@
       var keySetFor = function (p) { return models.some(function (m) { return m.provider === p && m.keySet; }); };
       var openRouterKeySet = keySetFor('openrouter'), cloudflareKeySet = keySetFor('cloudflare');
 
+      var AS_ = window.AdminSections;
+      var agentBoxes = {}; // model id -> its tick
+      var agentInitial = {}; // model id -> ticked when the form was drawn
+      var agentSaved = settings.genie.agentModels || null; // the list that was saved; null: none, every model that is on may be used
       var customList = h('div', { class: 'custom-models' });
       function addCustomRow(c) {
         var r = { id: c.id, provider: providerOf(c) };
@@ -662,6 +677,10 @@
         }
         if (r.provider === 'openai') r.reasoning = h('input', { type: 'checkbox', checked: !!c.reasoning, onchange: update, 'aria-label': c.id + ' thinks first and takes an effort' });
         r.featured = h('input', { type: 'checkbox', checked: wantedFeatured.indexOf(c.id) >= 0, onchange: update, 'aria-label': c.id + ' starts in the short list' });
+        r.smallSet = c.small === true || c.small === false;
+        r.small = h('input', { type: 'checkbox', checked: r.smallSet ? c.small : window.AdminSections.isSmallModel(c.id), onchange: function () { r.smallSet = true; update(); }, 'aria-label': c.id + ' is a small model' });
+        r.guests = h('input', { type: 'checkbox', checked: !c.noGuests, onchange: update, 'aria-label': c.id + ' is available for guest users' });
+        r.agent = agentTick({ id: c.id, name: c.name || c.id });
         var remove = h('button', { class: 'btn small', type: 'button', text: 'Remove', 'aria-label': 'Remove ' + c.id, onclick: function () {
           form.custom = form.custom.filter(function (x) { return x !== r; });
           if (r.node.parentNode) r.node.parentNode.removeChild(r.node);
@@ -676,7 +695,8 @@
             field('Room for thinking', r.room, 'Extra tokens for a model that thinks first.'),
             r.hosts ? field('Providers', r.hosts, 'Only these may answer (OpenRouter names, comma separated).') : null),
           h('div', { class: 'cm-checks' }, check(r.free, r.provider === 'cloudflare' ? 'Free plan (visitors are told)' : 'Free tier (visitors are told)'), check(r.json, 'Its host takes JSON mode (Agent mode)'),
-            r.reasoning ? check(r.reasoning, 'Thinks first (takes an effort, like Luna)') : null, check(r.featured, 'Starts in the short list')));
+            r.reasoning ? check(r.reasoning, 'Thinks first (takes an effort, like Luna)') : null, check(r.featured, 'Starts in the short list'),
+            check(r.small, 'Small model'), check(r.agent, 'Agent mode'), check(r.guests, 'Available for guest users')));
         form.custom.push(r);
         customList.appendChild(r.node);
         return r;
@@ -738,6 +758,63 @@
         Array.prototype.forEach.call(defModel.options, function (o) { o.disabled = !!o.value && !isModelOn(o.value); });
         defModel.value = keep;
         if (defModel.value !== keep || (keep && !isModelOn(keep))) defModel.value = '';
+      }
+
+      // ---- the models that may be used in Agent mode (the card "Models for Agent mode"; agent_models.go on the server)
+      var agentBox = h('div', { class: 'agent-models' });
+      var agentNote = h('p', { class: 'callout', hidden: true, text: 'Tick at least one model: Agent mode needs one. Models you added are ticked in their own row (Added models).' });
+      var agentSig = '';
+      function agentCandidates() {
+        var out = models.map(function (m) { return { id: m.id, name: m.name, on: isModelOn(m.id) }; });
+        (form.custom || []).forEach(function (r) { if (r.id) out.push({ id: r.id, name: r.name.value.trim() || r.id, on: r.on.checked }); });
+        return out;
+      }
+      function agentTick(c) {
+        if (!agentBoxes[c.id]) {
+          // until a list is saved, the models that are not small start ticked
+          var on = agentSaved ? agentSaved.indexOf(c.id) >= 0 : !AS_.isSmallModel(c.id);
+          agentBoxes[c.id] = h('input', { type: 'checkbox', checked: on, 'aria-label': 'Agent mode: ' + c.name, onchange: update });
+          agentInitial[c.id] = on;
+        }
+        return agentBoxes[c.id];
+      }
+      function agentTicked() {
+        return agentCandidates().filter(function (c) { return c.on && agentBoxes[c.id] && agentBoxes[c.id].checked; });
+      }
+      // what is sent: the list; or null while none was saved and the ticks are as they started (an unrelated save does not start a list)
+      function agentListNow() {
+        var ids = agentTicked().map(function (c) { return c.id; });
+        if (!agentSaved) {
+          var initial = agentCandidates().filter(function (c) { return c.on && agentInitial[c.id]; }).map(function (c) { return c.id; });
+          if (JSON.stringify(ids) === JSON.stringify(initial)) return null;
+        }
+        return ids;
+      }
+      form.agentList = agentListNow;
+      function syncAgent() {
+        var cands = agentCandidates();
+        var sig = cands.map(function (c) { return c.id + '|' + c.name + '|' + (c.on ? 1 : 0); }).join(',');
+        if (sig !== agentSig) {
+          agentSig = sig;
+          agentBox.textContent = '';
+          cands.forEach(function (c) {
+            var box = agentTick(c);
+            if ((form.custom || []).some(function (r) { return r.id === c.id; })) return; // an added model is ticked in its own row
+            var small = AS_.isSmallModel(c.id);
+            var what = !c.on ? 'Switched off: it cannot be used in Agent mode.' : small ? 'A small model: it often misses exact text in an edit.' : '';
+            agentBox.appendChild(row(c.name + (small ? ' (small)' : ''), what, h('label', { class: 'switch' }, box, h('i'))));
+          });
+        }
+        cands.forEach(function (c) { agentBoxes[c.id].disabled = !c.on; });
+        // the Agent model is one of the ticked ones
+        var ticked = agentTicked();
+        var keep = agentModel.value || wantedAgent;
+        wantedAgent = '';
+        while (agentModel.options.length > 1) agentModel.remove(1);
+        ticked.forEach(function (c) { agentModel.appendChild(h('option', { value: c.id, text: c.name })); });
+        agentModel.value = keep;
+        if (agentModel.value !== keep) agentModel.value = '';
+        agentNote.hidden = ticked.length > 0;
       }
 
       // the numbers: empty means the built-in value, shown as the placeholder
@@ -808,6 +885,7 @@
         if (form.host2.value === form.host1.value) form.host2.value = '';
         // a model that is off cannot be the default
         syncDefaultModels();
+        syncAgent();
         Array.prototype.forEach.call(langGrid.children, function (lab) {
           lab.className = form.langs[lab.getAttribute('data-lang')].checked ? '' : 'off';
         });
@@ -989,6 +1067,12 @@
           row('Longest a code link works (days)', 'From 1 to 365. Leave it empty for 30 (a month). It is the latest day the calendar offers when someone makes a code link (Share, Share code), and the day it starts on when that is shorter than a month. The server removes ended links every week. A change applies to links made after it.', form.snippetMax),
           row('Hours between two cleanups of shared sessions', 'From 1 to 720. Leave it empty for 24 (daily). The server removes, from Firebase, the sessions whose link ended or ran out, and sessions that have no end and no owner online for a whole interval (the terminal, the code, the chat and the files records). It needs the service account key of the project (OPENREPL_FIREBASE_ADMIN, or OPENREPL_FIRESTORE_CREDENTIALS); the Health page says if it is missing.', form.sessionCleanup) ]),
         card('Languages', 'Untick a language that is broken. The picker greys it out and its terminals refuse to start with a message; terminals that are already open keep running. Admins can still start it, to test a fix.', langGrid),
+        card('Default models', 'What a visitor starts with. They can pick another model; their own pick is kept for each mode.', [
+          row('Chat model', 'Starts in Chat, and answers a request that names no model. Built in is Luna for visitors and GPT-4o mini for older callers.', defModel),
+          row('Agent model', 'Starts in Agent mode, is what the Switch button of the small-model note offers, and writes the practice questions (the New question dialog and the practice pages that make questions). Only a model ticked below can be chosen.', agentModel),
+          row('Effort for the Agent model', 'How long it thinks first. Empty: Low.', form.agentEffort) ]),
+        card('Models for Agent mode', 'Agent mode needs a model that follows exact instructions and writes valid JSON. A model that is not ticked cannot be used in Agent mode: the model menu greys it with "Model not supported for Agent mode", and the server refuses it. Chat is not affected. Until you save a list, every model that is on can be used.', [
+          agentNote, agentBox ]),
         card('Genie', 'The AI helper. When it is off, its buttons are hidden and the server refuses its requests, so no OpenAI calls are made for visitors.', [
           row('Genie is available', null, genie.node),
           modelToggles.map(function (t) {
@@ -996,8 +1080,6 @@
             if (!t.model.keySet) what += ' No key is set on the server, so it cannot answer yet.';
             return row(t.model.name, what, t.node, h('label', { class: 'cm-check' }, form.featured[t.model.id], h('span', { text: 'Starts in the short list' })));
           }),
-          row('Default model', 'The model visitors start with, and the one that answers a request that names none. Built in is Luna for visitors and GPT-4o mini for older callers.', defModel),
-          row('Agent model', 'The model Genie suggests when someone uses Agent mode with a small model (30B or less, mini, flash): the panel shows a Switch button. It changes nothing by itself. A model that is switched off cannot be chosen.', agentModel),
           row('Guests', 'Requests per minute (0 or empty uses the built-in rate).', guest),
           row('Signed-in users', 'Requests per minute (0 or empty uses the built-in rate).', user) ]),
         card('Added models', 'The models above are built in and stay. Add any other model of OpenRouter (find them at openrouter.ai/models), OpenAI or Cloudflare Workers AI by its id, switch it on when you want visitors to have it, and remove it when you do not. A model that is off is not offered, and the server refuses it. Save to apply.', [
@@ -1060,6 +1142,8 @@
       form.ready = true;
       late.keys = drawKeys;
       late.admins = drawAdmins;
+      syncDefaultModels(); // the lists that follow other controls, as they will be, before the starting values of the sections are taken
+      syncAgent();
       var shell = sectioned(out, bar);
       update();
       return shell;

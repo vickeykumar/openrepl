@@ -111,3 +111,33 @@ test("the / key puts the cursor in the search box", async ({ page }) => {
     await expect(page.locator("#chat-widget__model-search")).toBeFocused({ timeout: 1000 });
   }).toPass({ timeout: 10000 });
 });
+
+test("a model kept for signed-in users is listed greyed for a guest, and a click says to sign in", async ({ page }) => {
+  if (process.env.GENIE_LOCAL_ASSETS) {
+    const root = require("path").join(__dirname, "..", "..", "src");
+    const fs = require("fs");
+    await page.route((u) => u.pathname.endsWith("/js/chat-widget.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(root + "/resources/chat-widget/dist/index.umd.js") }));
+    await page.route((u) => u.pathname.endsWith("/js/model-choice.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(root + "/resources/js/model-choice.js") }));
+  }
+  await page.route((url) => url.pathname.endsWith("/settings.js"), async (route) => {
+    const res = await route.fetch();
+    const body = (await res.text()) + '\nsite_settings.customModels = (site_settings.customModels || []).concat([{ id: "gpt-7-sol", name: "Sol Pro", provider: "openai", free: false, guests: false, small: false }]);\n';
+    await route.fulfill({ response: res, body });
+  });
+  await page.route((url) => url.pathname.endsWith("/config.js"), async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, body: (await res.text()) + "\nvar cloudflare_enabled = true;\n" });
+  });
+  await page.goto("/");
+  await page.waitForFunction(() => window.ChatWidget && typeof window.ChatWidget.open === "function");
+  await page.evaluate(() => window.ChatWidget.open());
+  await page.locator("#chat-widget__model-btn").click();
+  await page.locator("#chat-widget__others-toggle").click();
+  const sol = page.locator('#chat-widget__settings .cw-model[data-id="gpt-7-sol"]');
+  await expect(sol).toBeVisible();
+  await expect(sol).toHaveClass(/is-unsupported/);
+  await expect(sol).toContainText("Sign in");
+  await sol.click({ force: true }); // aria-disabled: a real click still reaches it
+  await expect(page.locator("#chat-widget__modelnote")).toContainText("Sign in to use the complete features of Genie");
+  await expect(sol).toHaveAttribute("aria-checked", "false");
+});

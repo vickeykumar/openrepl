@@ -183,3 +183,74 @@ test("the code of Site settings is loaded when the page is opened, not with the 
   await expect(section(page, "general")).toBeVisible();
   expect(loaded.length).toBe(3);
 });
+
+test("the models for Agent mode: the ones that are not small start ticked, an unrelated save sends no list, and the Agent model is one of the ticked", async ({ page }) => {
+  const st = await stub(page);
+  await page.goto("/admin#site/genie-models");
+  const tick = (name) => page.getByLabel("Agent mode: " + name, { exact: true });
+  await expect(page.locator(".card", { hasText: "Models for Agent mode" })).toBeVisible();
+  await expect(page.locator(".card", { hasText: "Default models" })).toBeVisible();
+  // not small: ticked; small: not
+  await expect(tick("GPT-6 Luna")).toBeChecked();
+  await expect(tick("GPT-4o mini")).not.toBeChecked();
+  await expect(tick("Gemma 4 31B")).not.toBeChecked();
+  await expect(page.locator(".card", { hasText: "Models for Agent mode" })).toContainText("(small)");
+  // the Agent model can be a ticked one only
+  const agentModel = page.locator("#f-agentmodel");
+  await expect(agentModel.locator("option")).toHaveText(["Built in (the first model that is not small)", "GPT-6 Luna"]);
+  // an unrelated change: no list is sent (every model that is on keeps working)
+  await page.locator(".site-nav").getByRole("link", { name: "General" }).click();
+  await page.locator("#f-colour").evaluate((e) => e.click());
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect.poll(() => st.saved.length).toBe(1);
+  expect(st.saved[0].genie.agentModels).toBeNull();
+  // tick a small model, choose the Agent model and an effort, save: the list is sent
+  await page.locator(".site-nav").getByRole("link", { name: "Models and prices" }).click();
+  await tick("GPT-4o mini").check();
+  await expect(agentModel.locator("option")).toHaveText(["Built in (the first model that is not small)", "GPT-6 Luna", "GPT-4o mini"]);
+  await agentModel.selectOption("gpt-4o-mini");
+  await page.locator("#f-agenteffort").selectOption("high");
+  await expect(page.locator('.site-dot[data-dot="genie-models"]')).toBeVisible();
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect.poll(() => st.saved.length).toBe(2);
+  expect(st.saved[1].genie.agentModels).toEqual(expect.arrayContaining(["gpt-6-luna", "gpt-4o-mini"]));
+  expect(st.saved[1].genie.agentModels).not.toContain("google/gemma-4-31b-it");
+  expect(st.saved[1].genie.agentModel).toBe("gpt-4o-mini");
+  expect(st.saved[1].genie.agentEffort).toBe("high");
+});
+
+test("unticking every model says so, and a model that is taken off the list is not the Agent model any more", async ({ page }) => {
+  await stub(page);
+  await page.goto("/admin#site/genie-models");
+  const tick = (name) => page.getByLabel("Agent mode: " + name, { exact: true });
+  await tick("GPT-4o mini").check();
+  await page.locator("#f-agentmodel").selectOption("gpt-4o-mini");
+  await tick("GPT-4o mini").uncheck();
+  await expect(page.locator("#f-agentmodel")).toHaveValue("");
+  for (const name of ["GPT-6 Luna"]) await tick(name).uncheck();
+  await expect(page.getByText("Tick at least one model: Agent mode needs one.")).toBeVisible();
+});
+
+test("an added model has its own ticks: small, Agent mode and available for guest users, and they are saved", async ({ page }) => {
+  const st = await stub(page);
+  await page.goto("/admin#site/genie-models");
+  // the Agent card does not list it a second time
+  await expect(page.locator(".agent-models").getByText("Nemotron 3 Super (free)")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Added models" }).click();
+  const nemo = page.locator(".custom-model", { hasText: "nvidia/nemotron-3-super-120b-a12b:free" });
+  // 120B: not small; guests may use it; ticked for Agent mode (it is not small)
+  await expect(nemo.getByLabel("nvidia/nemotron-3-super-120b-a12b:free is a small model")).not.toBeChecked();
+  await expect(nemo.getByLabel("nvidia/nemotron-3-super-120b-a12b:free is available for guest users")).toBeChecked();
+  await expect(nemo.getByLabel("Agent mode: Nemotron 3 Super (free)")).toBeChecked();
+  await nemo.getByLabel("nvidia/nemotron-3-super-120b-a12b:free is available for guest users").uncheck();
+  await nemo.getByLabel("nvidia/nemotron-3-super-120b-a12b:free is a small model").check();
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect.poll(() => st.saved.length).toBe(1);
+  const saved = st.saved[0].genie.customModels.find((m) => m.id === "nvidia/nemotron-3-super-120b-a12b:free");
+  expect(saved.noGuests).toBe(true);
+  expect(saved.small).toBe(true);
+  // the other added model was not touched: its small tick stays as its id says (null)
+  const other = st.saved[0].genie.customModels.find((m) => m.id === "cohere/north-mini-code:free");
+  expect(other.small).toBeNull();
+  expect(other.noGuests).toBe(false);
+});

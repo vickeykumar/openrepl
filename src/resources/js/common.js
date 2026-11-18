@@ -186,14 +186,13 @@ async function getResponseFromOpenAI(api_key, prompt, options = {}) {
     });
 }
 
-// The model and effort a generated question is made with: the same choice as
-// Genie's (the chip in its panel), kept by js/model-choice.js. A question is
-// long (a description and a template per language), so it gets more room than a
-// chat answer.
+// The model and effort a generated question is made with: the Agent model of the admin (a model that follows exact instructions and writes
+// valid JSON), or the one the visitor chose in the New question dialog for this page; not the Chat or the Agent pick of the Genie panel
+// (js/model-choice.js: questionFields). A question is long (a description and a template per language), so it gets more room than a chat answer.
 function questionRequestFields() {
     const choice = window.ModelChoice;
     if (choice) {
-        return choice.fields({ extraTokens: 3000, maxTokens: 3000, temperature: globaltemperature });
+        return choice.questionFields({ extraTokens: 3000, maxTokens: 3000, temperature: globaltemperature });
     }
     return { model: 'gpt-4o-mini', temperature: globaltemperature, max_tokens: 3000 };
 }
@@ -252,8 +251,8 @@ async function apiFailure(response) {
 }
 
 // The Model and Effort fields of the New question dialog, on the home page and
-// on the practice page: filled from js/model-choice.js's models (in a group
-// for each provider) and four efforts, and kept in step with Genie's choice. Safe to call more than once.
+// on the practice page: filled from js/model-choice.js's models for Agent mode (in a group
+// for each provider) and four efforts; it starts on the Agent model and a change is for the questions of this page only. Safe to call more than once.
 function initQuestionModelFields() {
     const modelSel = document.getElementById("qmodel");
     const effortSel = document.getElementById("qeffort");
@@ -268,7 +267,7 @@ function initQuestionModelFields() {
 
     // one group for each provider: "OpenAI", "OpenRouter"
     const groups = {};
-    choice.models.forEach(m => {
+    choice.questionModels.forEach(m => {
         if (!groups[m.group]) {
             groups[m.group] = document.createElement("optgroup");
             groups[m.group].label = m.group;
@@ -279,8 +278,8 @@ function initQuestionModelFields() {
     choice.efforts.forEach(e => effortSel.add(new Option(e.label, e.id)));
 
     function show() {
-        const now = choice.get();
-        const model = choice.models.find(m => m.id === now.model) || choice.models[0];
+        const now = choice.getQuestion();
+        const model = choice.questionModels.find(m => m.id === now.model) || choice.questionModels[0];
         modelSel.value = model.id;
         effortSel.value = now.effort;
         effortSel.disabled = !model.reasoning;
@@ -298,9 +297,8 @@ function initQuestionModelFields() {
                 : model.name + " writes right away, so effort doesn't apply.";
         }
     }
-    modelSel.addEventListener("change", () => { choice.set(modelSel.value, undefined); show(); });
-    effortSel.addEventListener("change", () => { choice.set(undefined, effortSel.value); show(); });
-    // Genie's chip changed it (or another tab did)
+    modelSel.addEventListener("change", () => { choice.setQuestion(modelSel.value, undefined); show(); });
+    effortSel.addEventListener("change", () => { choice.setQuestion(undefined, effortSel.value); show(); });
     choice.onChange(show);
     show();
 }

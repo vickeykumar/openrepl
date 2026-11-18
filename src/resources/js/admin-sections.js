@@ -23,7 +23,7 @@
       cards: ['Files', 'Workspace snapshots', 'Preview', 'Languages', 'Database capacity'] },
     { id: 'genie-models', group: 'genie', title: 'Models and prices', blurb: 'The models visitors can pick, the ones you add, and what they cost.',
       tabs: [
-        { id: 'models', title: 'Models', cards: ['Genie'] },
+        { id: 'models', title: 'Models', cards: ['Default models', 'Models for Agent mode', 'Genie'] },
         { id: 'added', title: 'Added models', cards: ['Added models'] },
         { id: 'prices', title: 'Prices and cost', cards: ['Genie prices and cost'] }
       ] },
@@ -131,7 +131,17 @@
     return total + (total === 1 ? ' change' : ' changes') + ': ' + parts.join(', ');
   }
 
-  var api = { GROUPS: GROUPS, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, sectionById: sectionById, cardsOf: cardsOf, placeOfCard: placeOfCard,
+  // Whether a model is a small one, from its id; the same check as the page's (chat-widget agent-protocol.ts: isSmallModel) and the server's
+  // (agent_models.go: isSmallModelID): a size in the id decides (40B or less is small), else mini, flash, lite, nano, tiny, small, free, auto
+  // or router. The card of the models for Agent mode starts with the ones that are not small ticked.
+  function isSmallModel(id) {
+    var s = String(id || '').toLowerCase();
+    var size = s.match(/(^|[^a-z0-9.])(\d{1,3})b([^a-z0-9]|$)/);
+    if (size) return Number(size[2]) <= 40;
+    return /(^|[^a-z0-9])(mini|flash|lite|nano|tiny|small|free|auto|router)([^a-z0-9]|$)/.test(s);
+  }
+
+  var api = { isSmallModel: isSmallModel, GROUPS: GROUPS, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, sectionById: sectionById, cardsOf: cardsOf, placeOfCard: placeOfCard,
     slug: slug, parseHash: parseHash, hashFor: hashFor, search: search, changeCount: changeCount, changeSummary: changeSummary };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.AdminSections = api;
