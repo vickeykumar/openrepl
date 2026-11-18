@@ -130,15 +130,42 @@ function wireMobileExtras() {
     }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   }
   // the visible height of the page: what is left when the on-screen keyboard is up (css: --vvh)
+  // (a phone that resizes the layout for the keyboard, interactive-widget=resizes-content, shrinks innerHeight too: the full
+  // height is then the largest one seen while no keyboard was up)
   var vv = window.visualViewport;
   if (vv) {
+    var fullH = Math.max(window.innerHeight, Math.round(vv.height));
     var setH = function () {
-      if (mobileActive) document.documentElement.style.setProperty("--vvh", Math.round(vv.height) + "px");
-      else document.documentElement.style.removeProperty("--vvh");
+      var root = document.documentElement;
+      if (!mobileActive) {
+        root.style.removeProperty("--vvh");
+        root.style.removeProperty("--vvt");
+        root.classList.remove("keyboard-open");
+        return;
+      }
+      var h = Math.round(vv.height);
+      var kb = !!document.activeElement && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName) && fullH - h > 120;
+      if (!kb && !root.classList.contains("keyboard-open")) fullH = Math.max(fullH, h); // no keyboard: what is seen is the full height
+      root.style.setProperty("--vvh", h + "px");
+      root.style.setProperty("--vvt", Math.round(vv.offsetTop) + "px");
+      root.classList.toggle("keyboard-open", kb);
+      if (kb) window.dispatchEvent(new Event("resize")); // the terminal and the editor fit what is left
     };
     vv.addEventListener("resize", setH);
     vv.addEventListener("scroll", setH);
     window.addEventListener("resize", setH);
+    document.addEventListener("focusin", function () { setTimeout(setH, 50); });
+    document.addEventListener("focusout", function () { setTimeout(setH, 50); });
+    // turning the phone changes the full height; only a change of the width counts as that (a keyboard changes the height alone)
+    var lastW = window.innerWidth;
+    window.addEventListener("orientationchange", function () {
+      setTimeout(function () {
+        if (Math.abs(window.innerWidth - lastW) < 40) return;
+        lastW = window.innerWidth;
+        fullH = Math.max(window.innerHeight, Math.round(vv.height));
+        setH();
+      }, 300);
+    });
     setH();
   }
   // the back button of the phone leaves the maximized workspace (ToggleFunction adds one history entry when it maximizes)

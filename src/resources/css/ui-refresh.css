@@ -2721,14 +2721,32 @@ body.files-collapsed .files-panel { display: none; }
      the width of the page as soon as the page stops scrolling, and it widens its layout viewport: the workspace would then be
      700 px wide and cut off at the right. The page itself is clipped to the screen. */
   html.ide-maximized { overflow: hidden; max-width: 100vw; }
-  /* Maximized: the IDE is the screen; the height follows the visible part of the page (the keyboard takes some) */
-  .ide-shell.is-maximized {
+  /* Maximized, or the on-screen keyboard is up (13-mobile.js sets html.keyboard-open): the workspace is the visible screen, held
+     where it is (--vvt is how far the browser has panned the visible part) and as high as what is left above the keyboard, so
+     that the cursor and the keys row are above it and nothing scrolls or pans while typing. */
+  html.keyboard-open { overflow: hidden; max-width: 100vw; }
+  .ide-shell.is-maximized,
+  html.keyboard-open .ide-shell {
+    position: fixed;
+    top: var(--vvt, 0px);
+    left: 0;
+    right: 0;
     bottom: auto;
+    z-index: 1000;
+    border-radius: 0;
     height: var(--vvh, 100dvh);
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
     box-sizing: border-box;
   }
+  .ide-shell.is-maximized .terminal__row,
+  html.keyboard-open .ide-shell .terminal__row { height: auto; min-height: 0; flex: 1; }
+  /* the panes are as high as the row and no higher: a terminal that has more rows than fit would otherwise make its pane (and
+     the keys row under it) taller than the screen, and it would never be fitted again because its box never got smaller */
+  .terminal__row > .ide-split { height: 100%; min-height: 0; align-self: stretch; }
+  .ide-split #terminal-div,
+  .ide-split #ide { min-height: 0; }
+  .ide-split #terminal-div { overflow: hidden; }
   .ide-split[data-mobile-view] #ide,
   .ide-split[data-mobile-view] #terminal-div { width: 100% !important; height: 100% !important; flex: 1; }
   #rotate-button,

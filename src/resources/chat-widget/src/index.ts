@@ -1319,7 +1319,11 @@ function tabMenu(tab: ChatTab, x: number, y: number) {
     p.appendChild(b);
   };
   const sep = () => p.appendChild(document.createElement("hr"));
-  item("Rename", () => startRename(tab), "", "double-click");
+  if (onPhone()) {
+    item("All chats…", () => void allChats());
+    sep();
+  }
+  item("Rename", () => startRename(tab), "", onPhone() ? "" : "double-click");
   item("Duplicate chat", () => void duplicateTab(tab));
   item("Export as Markdown", () => void exportChat(tab));
   sep();
@@ -1498,7 +1502,13 @@ function renderTabs() {
       closeTab(t);
     });
     el.appendChild(x);
-    el.addEventListener("click", () => switchTo(t));
+    el.addEventListener("click", () => {
+      // a phone has no right click and no double click: a tap on the chat that is shown opens its menu
+      if (onPhone() && t === activeTab) {
+        const r = el.getBoundingClientRect();
+        tabMenu(t, r.left, r.bottom + 4);
+      } else switchTo(t);
+    });
     el.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" || ev.key === " ") {
         ev.preventDefault();

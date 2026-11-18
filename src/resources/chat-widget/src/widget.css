@@ -1868,3 +1868,10 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
   /* the home bar */
   body.is-mobile #chat-widget__container.is-docked #chat-widget__form { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* The chat that is shown opens its menu on a tap (a phone has no right click): a caret says so, and the menu has big rows */
+@media (max-width: 800px) {
+  body.is-mobile #chat-widget__container.is-docked .cw-tab.is-active .cw-tab__name::after { content: "  \25BE"; color: var(--cw-muted); }
+  body.is-mobile #chat-widget__container .cw-tabmenu { min-width: 240px; max-width: calc(100vw - 24px); }
+  body.is-mobile #chat-widget__container .cw-tabmenu__item { min-height: 44px; align-items: center; font-size: 15px; }
+}
