@@ -30,6 +30,7 @@ type healthBucket struct {
 	outcomes map[string]int
 	hist     [9]int // the time to the first byte of the calls that worked
 	totalMs  int64  // the whole time of every call
+	retries  int    // new tries made because the host failed (chat_retry.go)
 }
 
 type genieHealthStore struct {
@@ -108,6 +109,22 @@ func (g *genieHealthStore) note(model chatModel, outcome string, first, total ti
 	}
 }
 
+// healthRetried adds the new tries that the call needed (called right after healthNote, so the hour's bucket is there)
+func healthRetried(model chatModel, n int) {
+	if n <= 0 || model.ID == "" {
+		return
+	}
+	g := genieHealth
+	hour := time.Now().Unix() / 3600
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if mh := g.models[model.ID]; mh != nil {
+		if b := mh.hours[hour]; b != nil {
+			b.retries += n
+		}
+	}
+}
+
 func healthNote(model chatModel, outcome string, first, total time.Duration) {
 	genieHealth.note(model, outcome, first, total, time.Now())
 }
@@ -117,6 +134,7 @@ type healthRow struct {
 	Name    string         `json:"name"`
 	Calls   int            `json:"calls"`
 	Errors  int            `json:"errors"`
+	Retries int            `json:"retries"` // new tries made because the host failed, whether or not the call then worked
 	ErrPct  float64        `json:"errPct"`
 	Reasons map[string]int `json:"reasons"`
 	P50Ms   int64          `json:"p50Ms"`
@@ -248,6 +266,7 @@ func (g *genieHealthStore) report(hours int, errLimit, slowLimit int, now time.T
 				continue
 			}
 			row.Calls += b.calls
+			row.Retries += b.retries
 			totalMs += b.totalMs
 			for k, n := range b.outcomes {
 				if k != "ok" {

@@ -10,7 +10,7 @@ const REPLY = {
   hours: 24, errPctLimit: 20, slowMsLimit: 8000, alerting: 1, since: 1795080000,
   auto: { small: { model: "gpt-6-luna", name: "GPT-6 Luna", calls: 412, errPct: 3 }, strong: { model: "gpt-4o-mini", name: "GPT-4o mini", calls: 96, errPct: 1 }, stronger: 38, askedPct: 9.2 },
   rows: [
-    { model: "meta/llama-x", name: "Llama X", calls: 40, errors: 12, errPct: 30, reasons: { limit: 9, host_error: 3 }, p50Ms: 1000, p95Ms: 16000, avgMs: 4200, lastError: 1795086000, alerts: ["many calls fail", "slow to start answering"] },
+    { model: "meta/llama-x", name: "Llama X", calls: 40, errors: 12, retries: 7, errPct: 30, reasons: { limit: 9, host_error: 3 }, p50Ms: 1000, p95Ms: 16000, avgMs: 4200, lastError: 1795086000, alerts: ["many calls fail", "slow to start answering"] },
     { model: "gpt-4o-mini", name: "GPT-4o mini", calls: 120, errors: 0, errPct: 0, reasons: {}, p50Ms: 500, p95Ms: 2000, avgMs: 1800, lastError: 0, alerts: [] },
   ],
 };
@@ -52,6 +52,7 @@ test("the Genie health view shows a row for each model, why calls failed, the ti
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText("Llama X");
   await expect(rows.nth(0)).toContainText("30% (12)");
+  await expect(rows.nth(0)).toContainText("7"); // retried
   await expect(rows.nth(0)).toContainText("limit (429) \u00d79");
   await expect(rows.nth(0)).toContainText("host error (5xx) \u00d73");
   await expect(rows.nth(0)).toContainText("under 1 s");

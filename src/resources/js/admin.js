@@ -1766,6 +1766,7 @@
       { key: 'model', label: 'Model', cell: function (r) { return h('div', null, h('div', { text: r.name || r.model }), h('div', { class: 'sub mono', text: r.model })); } },
       { key: 'calls', label: 'Calls', num: true, cell: function (r) { return n(r.calls); } },
       { key: 'err', label: 'Failed', num: true, cell: function (r) { return r.errors ? r.errPct.toFixed(r.errPct < 10 ? 1 : 0) + '% (' + n(r.errors) + ')' : '0%'; } },
+      { key: 'retried', label: 'Retried', num: true, cell: function (r) { return r.retries ? n(r.retries) : '\u2013'; } },
       { key: 'why', label: 'Why', cell: function (r) {
         var keys = Object.keys(r.reasons || {}).sort(function (a, b) { return r.reasons[b] - r.reasons[a]; });
         return keys.length ? h('span', { class: 'wrap-text', text: keys.map(function (k) { return (REASON[k] || k) + ' \u00d7' + r.reasons[k]; }).join(' \u00b7 ') }) : h('span', { class: 'sub', text: '\u2013' });

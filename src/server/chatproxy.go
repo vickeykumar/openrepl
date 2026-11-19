@@ -517,8 +517,9 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 	asked := time.Now()
 	// the health of the model (genie_health.go): what became of this call, and how long the host took to start answering
 	hOutcome, hFirst := "network", time.Duration(0)
-	defer func() { healthNote(model, hOutcome, hFirst, time.Since(asked)) }()
-	resp, err := customTransport.RoundTrip(proxyReq)
+	hRetried := 0
+	defer func() { healthNote(model, hOutcome, hFirst, time.Since(asked)); healthRetried(model, hRetried) }()
+	resp, retried, err := roundTripRetrying(ctx, customTransport, proxyReq, model.ID)
 	// A host that refuses the call with the tool gets the same request once more as text JSON, and is not asked with the tool
 	// for an hour. The refused call is not an answer: it is not a step, it is not charged and it leaves no usage event.
 	if err == nil && toolSent && resp.StatusCode >= 400 {
@@ -533,7 +534,9 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 			again, rerr := http.NewRequestWithContext(ctx, req.Method, upstreamURL, bytes.NewReader(plainBody))
 			if rerr == nil {
 				again.Header = proxyReq.Header.Clone()
-				resp, err = customTransport.RoundTrip(again)
+				var more int
+				resp, more, err = roundTripRetrying(ctx, customTransport, again, model.ID)
+				retried += more
 			} else {
 				err = rerr
 			}
@@ -541,6 +544,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 			resp.Body = io.NopCloser(io.MultiReader(bytes.NewReader(peek), resp.Body))
 		}
 	}
+	hRetried = retried
 	if err != nil {
 		hOutcome = healthOutcomeOfError(err)
 		noteChat(model.Provider, false, asked)
