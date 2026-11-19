@@ -526,6 +526,18 @@ body.is-mobile .genie-dock { display: none; }
 .genie-dock__grip:hover::after,
 .genie-dock__grip:focus-visible::after,
 .genie-dock__grip.is-dragging::after { background: var(--accent-color); }
+/* the same three dots as the gutter between the editor and the terminal: it is something to drag */
+.genie-dock__grip::before {
+  content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 10px; height: 34px; box-sizing: border-box; border-radius: 6px; pointer-events: none; z-index: 1;
+  background-color: var(--ink-700); border: 1px solid var(--ink-600, rgba(128, 128, 140, .35));
+  --grip-dot: var(--muted-1, #a9a7b4);
+  background-image: radial-gradient(circle at 50% 50%, var(--grip-dot) 1.5px, transparent 1.9px);
+  background-size: 100% 11.34px; background-repeat: repeat-y;
+}
+.genie-dock__grip:hover::before,
+.genie-dock__grip:focus-visible::before,
+.genie-dock__grip.is-dragging::before { --grip-dot: var(--on-accent-color, #15190a); background-color: var(--accent-color); border-color: transparent; }
 .genie-dock__grip:focus-visible { outline: none; }
 body.genie-dock-dragging { cursor: col-resize; user-select: none; }
 body.genie-dock-dragging iframe { pointer-events: none; }
