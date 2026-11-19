@@ -403,3 +403,84 @@ func TestCheckpointsSentTogetherKeepOnlyTheLast(t *testing.T) {
 		t.Errorf("the file: %s", b)
 	}
 }
+
+func metaFor(id string) string {
+	return `{"t":"meta","id":"` + id + `","created":"2026-11-19T14:52:00+05:30","context":"chat"}`
+}
+
+func TestAStarKeepsAChatFirstAndOutOfDeleteAll(t *testing.T) {
+	e := chatsSetup(t, GenieSettings{ChatHistoryChats: 50})
+	for _, id := range []string{"ka11", "kb22", "kc33"} {
+		e.ok(t, `{"op":"append","id":"`+id+`","lines":[`+metaFor(id)+`,{"t":"title","text":"chat `+id+`"}]}`)
+	}
+	e.ok(t, `{"op":"append","id":"kb22","lines":[{"t":"star","on":1}]}`)
+	st := e.ok(t, `{"op":"state"}`)
+	starred := map[string]bool{}
+	for _, c := range st["chats"].([]interface{}) {
+		m := c.(map[string]interface{})
+		starred[m["id"].(string)], _ = m["starred"].(bool)
+	}
+	if !starred["kb22"] || starred["ka11"] || starred["kc33"] {
+		t.Fatalf("only kb22 is starred: %v", starred)
+	}
+	// Delete all keeps the starred one
+	out := e.ok(t, `{"op":"deleteAll"}`)
+	if out["kept"] != float64(1) {
+		t.Errorf("one chat is kept: %v", out)
+	}
+	if chats := e.ok(t, `{"op":"state"}`)["chats"].([]interface{}); len(chats) != 1 || chats[0].(map[string]interface{})["id"] != "kb22" {
+		t.Errorf("after deleteAll: %v", chats)
+	}
+	// unstarred, the last line wins
+	e.ok(t, `{"op":"append","id":"kb22","lines":[{"t":"star","on":0}]}`)
+	if chats := e.ok(t, `{"op":"state"}`)["chats"].([]interface{}); chats[0].(map[string]interface{})["starred"] == true {
+		t.Errorf("unstarred: %v", chats)
+	}
+	// starred again, and Include starred removes it too
+	e.ok(t, `{"op":"append","id":"kb22","lines":[{"t":"star","on":1}]}`)
+	e.ok(t, `{"op":"deleteAll","includeStarred":true}`)
+	if chats := e.ok(t, `{"op":"state"}`)["chats"].([]interface{}); len(chats) != 0 {
+		t.Errorf("after deleteAll with the starred: %v", chats)
+	}
+}
+
+func TestOnlyTwentyChatsCanBeStarred(t *testing.T) {
+	e := chatsSetup(t, GenieSettings{ChatHistoryChats: 50})
+	ids := []string{}
+	for i := 0; i < 21; i++ {
+		id := "kq" + string(rune('a'+i/10)) + string(rune('a'+i%10))
+		ids = append(ids, id)
+		e.ok(t, `{"op":"append","id":"`+id+`","lines":[`+metaFor(id)+`]}`)
+	}
+	for _, id := range ids[:20] {
+		e.ok(t, `{"op":"append","id":"`+id+`","lines":[{"t":"star","on":1}]}`)
+	}
+	if code, out := e.call(t, `{"op":"append","id":"`+ids[20]+`","lines":[{"t":"star","on":1}]}`, e.c, ""); code != http.StatusConflict {
+		t.Errorf("the 21st star: %d %v", code, out)
+	}
+	// starring a chat that is starred already is not a new star
+	e.ok(t, `{"op":"append","id":"`+ids[0]+`","lines":[{"t":"star","on":1}]}`)
+	// an unstarred one makes room
+	e.ok(t, `{"op":"append","id":"`+ids[1]+`","lines":[{"t":"star","on":0}]}`)
+	e.ok(t, `{"op":"append","id":"`+ids[20]+`","lines":[{"t":"star","on":1}]}`)
+}
+
+func TestAStarredChatIsNotPrunedByAgeOrCount(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, chatsSubdir), 0o755)
+	old := time.Now().Add(-90 * 24 * time.Hour)
+	write := func(id string, extra string) {
+		p := filepath.Join(dir, chatsSubdir, id+".jsonl")
+		os.WriteFile(p, []byte(metaFor(id)+"\n"+extra), 0o600)
+		os.Chtimes(p, old, old)
+	}
+	write("ka11", "")
+	write("kb22", `{"t":"star","on":1}`+"\n")
+	pruneChats(dir, GenieSettings{ChatHistoryDays: 30, ChatHistoryChats: 1}, chatTabs{}, time.Now())
+	if _, err := os.Stat(filepath.Join(dir, chatsSubdir, "ka11.jsonl")); err == nil {
+		t.Error("the old chat that is not starred is removed")
+	}
+	if _, err := os.Stat(filepath.Join(dir, chatsSubdir, "kb22.jsonl")); err != nil {
+		t.Error("the starred chat stays")
+	}
+}

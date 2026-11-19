@@ -16,6 +16,7 @@ async function localAssets(page) {
   if (!process.env.GENIE_LOCAL_ASSETS) return;
   const serve = (file) => (route) => route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(root, file)) });
   await page.route((u) => u.pathname.endsWith("/js/chat-widget.js"), serve("resources/chat-widget/dist/index.umd.js"));
+  await page.route((u) => u.pathname.endsWith("/js/chat-widget-agent.js"), serve("resources/chat-widget/dist/agent.js"));
   await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), serve("js/dist/scribbler.js"));
   await page.route((u) => u.pathname.endsWith("/css/ui-refresh.css"), (route) => route.fulfill({ contentType: "text/css", body: fs.readFileSync(path.join(root, "resources/css/ui-refresh.css")) }));
   await page.route((u) => u.pathname.endsWith("/js/model-choice.js"), serve("resources/js/model-choice.js"));
@@ -621,4 +622,57 @@ test("a task that waits shows a bar above the input while its card is out of vie
   await expect(card).toHaveCount(0);
   await expect(bar).toBeHidden();
   expect(seen.requests.length).toBeGreaterThan(0);
+});
+
+test("a card of a task that is done folds to one line when the user writes again, and opens on a click with the thinking steps in one line", async ({ page }) => {
+  await openAgent(page, [
+    { say: "Looking.", actions: [{ type: "files_list" }], done: false },
+    { say: "More.", actions: [{ type: "files_list" }], done: false },
+    { say: "Done.", actions: [], done: true },
+    { say: "Looking again.", actions: [{ type: "files_list" }], done: false },
+    { say: "Done too.", actions: [], done: true },
+  ]);
+  await allowAll(page);
+  await agentMode(page);
+  await ask(page, "what files are there");
+  await expect(page.locator(".cw-agent .cw-agent__sum")).toBeVisible({ timeout: 30000 });
+  await page.evaluate(() => document.querySelector(".cw-agent").setAttribute("data-first", "1")); // the newest card is put on top: this one is tagged
+  const first = page.locator('.cw-agent[data-first="1"]');
+  // the newest card stays open until the user writes again
+  await expect(first.locator(".cw-agent__fold")).toHaveCount(0);
+  await expect(first.locator(".cw-agent__steps")).toBeVisible();
+  await ask(page, "and once more");
+  const fold = first.locator(".cw-agent__fold");
+  await expect(fold).toBeVisible();
+  await expect(fold).toContainText("Done");
+  await expect(fold).toContainText("no file changed");
+  await expect(fold).toContainText("3 steps");
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  await expect(first.locator(".cw-agent__steps")).toBeHidden();
+  await expect(first.locator(".cw-agent__sum")).toBeHidden();
+  // a click opens it in place, with the thinking steps folded into one line
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
+  await expect(first.locator(".cw-agent__steps")).toBeVisible();
+  const think = first.locator(".cw-agent__think-btn");
+  await expect(think).toHaveText(/\d thinking steps?/);
+  await expect(first.locator('.cw-agent__steps li:not([hidden]) .cw-agent__what', { hasText: "Thought about the next step" })).toHaveCount(0);
+  await think.click();
+  await expect(first.locator('.cw-agent__steps li:not([hidden]) .cw-agent__what', { hasText: "Thought about the next step" }).first()).toBeVisible();
+  // and closes again
+  await fold.click();
+  await expect(first.locator(".cw-agent__steps")).toBeHidden();
+});
+
+test("a card of a task that failed stays open when the user writes again", async ({ page }) => {
+  await openAgent(page, ["this is not json at all", "still not json", { say: "Looking.", actions: [{ type: "files_list" }], done: false }, { say: "Done.", actions: [], done: true }]);
+  await allowAll(page);
+  await agentMode(page);
+  await ask(page, "do something");
+  await expect(page.locator(".cw-agent--ended").first()).toBeVisible({ timeout: 30000 });
+  await expect(page.locator("#chat-widget__submit")).toBeEnabled({ timeout: 30000 });
+  await ask(page, "try the next thing");
+  await expect(page.locator(".cw-agent--ended")).toHaveCount(2, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  await expect(page.locator(".cw-agent__fold")).toHaveCount(0);
 });

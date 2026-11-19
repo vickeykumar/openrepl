@@ -114,6 +114,10 @@ type SiteSettings struct {
 	// user's. GenieEventDays is how many days it is kept, 1 to 365; 0 means 30.
 	GenieEventsOff bool `json:"genieEventsOff"`
 	GenieEventDays int  `json:"genieEventDays"`
+	// The Genie health card (genie_health.go) flags a model whose calls fail at least GenieHealthErrPct percent (1 to 100; 0 means 20) or whose
+	// slowest twentieth takes GenieHealthSlowMs milliseconds or more to start answering (500 to 120000; 0 means 8000).
+	GenieHealthErrPct int `json:"genieHealthErrPct"`
+	GenieHealthSlowMs int `json:"genieHealthSlowMs"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
 	// Admins are the accounts added in the dashboard, lower case, besides the
@@ -214,6 +218,13 @@ type GenieSettings struct {
 	// EscalationModels are the models, in order, that a task that is stuck may be tried again with (the user chooses; the page offers
 	// the first the user may use, and credits count as for any answer). Empty: the stuck card offers only a hint and Stop.
 	EscalationModels []string `json:"escalationModels"`
+	// Auto model choice (the Auto entry of the model picker, chat-widget/src/model-router.ts): AutoOn offers it; AutoSmall answers plain
+	// questions in Chat, AutoStrong answers what asks for a change, a message with files attached and every Agent task. AutoDefault says who
+	// starts on Auto: "new" (people who have not picked a model; the default), "all" (everybody who has not chosen otherwise) or "none".
+	AutoOn      bool   `json:"autoOn"`
+	AutoSmall   string `json:"autoSmall"`
+	AutoStrong  string `json:"autoStrong"`
+	AutoDefault string `json:"autoDefault"`
 	// AgentShellOff takes away the agent's "bash" action: the server refuses a command (agent_shell.go).
 	AgentShellOff bool `json:"agentShellOff"`
 	AgentMaxSteps int  `json:"agentMaxSteps"`
@@ -317,6 +328,12 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	s.StoreSafeList = safe
 	if s.GenieEventDays != 0 && (s.GenieEventDays < 1 || s.GenieEventDays > 365) {
 		return s, fmt.Errorf("the days the Genie log is kept must be between 1 and 365 (or empty for 30)")
+	}
+	if s.GenieHealthErrPct != 0 && (s.GenieHealthErrPct < 1 || s.GenieHealthErrPct > 100) {
+		return s, fmt.Errorf("the share of failed calls that raises an alert must be between 1 and 100 percent (or empty for 20)")
+	}
+	if s.GenieHealthSlowMs != 0 && (s.GenieHealthSlowMs < 500 || s.GenieHealthSlowMs > 120000) {
+		return s, fmt.Errorf("the time to start answering that raises an alert must be between 500 and 120000 milliseconds (or empty for 8000)")
 	}
 	if s.SnippetMaxDays != 0 && (s.SnippetMaxDays < minSnippetMaxDays || s.SnippetMaxDays > maxSnippetMaxDays) {
 		return s, fmt.Errorf("the longest a code link works must be between %d and %d days (or empty)", minSnippetMaxDays, maxSnippetMaxDays)
@@ -603,6 +620,8 @@ type publicSettings struct {
 	GenieEventsOff bool `json:"genieEventsOff"`
 	// the models a stuck task may be tried again with, in order (GenieSettings.EscalationModels)
 	EscalationModels []string `json:"escalationModels"`
+	// Auto model choice, when an admin switched it on and named both models (nil otherwise)
+	GenieAuto *autoPublic `json:"genieAuto"`
 	// the largest file the editor opens, in MB (the effective number: 16 when none is set)
 	MaxEditorFileMB int `json:"maxEditorFileMB"`
 	// ShareMaxGuestMinutes and ShareMaxUserMinutes are the longest a share link works (SiteSettings.ShareLinkGuestMinutes)
@@ -721,6 +740,9 @@ func (g *GenieSettings) normalizeNumbers() error {
 		return err
 	}
 	if err := g.normalizeEscalation(); err != nil {
+		return err
+	}
+	if err := g.normalizeAuto(); err != nil {
 		return err
 	}
 	prices := map[string]modelPrice{}
@@ -891,6 +913,7 @@ func (s SiteSettings) public() publicSettings {
 		PreviewAgentOff:      s.PreviewAgentOff,
 		GenieEventsOff:       s.GenieEventsOff,
 		EscalationModels:     s.Genie.EscalationModels,
+		GenieAuto:            s.Genie.autoPublic(),
 		MaxEditorFileMB:      s.maxEditorFileMB(),
 		ShareMaxGuestMinutes: s.shareLinkMax(true),
 		ShareMaxUserMinutes:  s.shareLinkMax(false),
@@ -1153,6 +1176,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	if a.GenieEventDays != b.GenieEventDays {
 		out = append(out, fmt.Sprintf("the Genie log is kept %d days", b.GenieEventDays))
 	}
+	if a.GenieHealthErrPct != b.GenieHealthErrPct || a.GenieHealthSlowMs != b.GenieHealthSlowMs {
+		out = append(out, fmt.Sprintf("the Genie health alerts are at %d%% failed calls and %d ms", b.GenieHealthErrPct, b.GenieHealthSlowMs))
+	}
 	if a.PreviewGuestsOff != b.PreviewGuestsOff {
 		out = append(out, "preview for guests "+onoff(!b.PreviewGuestsOff))
 	}
@@ -1195,6 +1221,13 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.Genie.AgentAutoOff != b.Genie.AgentAutoOff {
 		out = append(out, "agent: allow everything for a session "+onoff(!b.Genie.AgentAutoOff))
+	}
+	if a.Genie.AutoOn != b.Genie.AutoOn || a.Genie.AutoSmall != b.Genie.AutoSmall || a.Genie.AutoStrong != b.Genie.AutoStrong || a.Genie.AutoDefault != b.Genie.AutoDefault {
+		if b.Genie.AutoOn {
+			out = append(out, fmt.Sprintf("Genie: Auto model choice on (small %s, strong %s, default for %s)", b.Genie.AutoSmall, b.Genie.AutoStrong, b.Genie.autoDefault()))
+		} else {
+			out = append(out, "Genie: Auto model choice off")
+		}
 	}
 	if fmt.Sprint(a.Genie.EscalationModels) != fmt.Sprint(b.Genie.EscalationModels) {
 		out = append(out, "Genie: models for a stuck task "+strings.Join(b.Genie.EscalationModels, ", "))

@@ -15,6 +15,7 @@ need js/dist/hterm.js
 need js/dist/scribbler.js
 need js/dist/preprocessing.js
 need resources/chat-widget/dist/index.umd.js
+need resources/chat-widget/dist/agent.js
 need js/node_modules/@xterm/xterm/css/xterm.css
 
 rm -rf bindata
@@ -39,6 +40,7 @@ cp js/node_modules/@xterm/xterm/css/xterm.css bindata/static/css/xterm.css
 # bundles
 cp js/dist/gotty-bundle.js js/dist/hterm.js js/dist/scribbler.js js/dist/preprocessing.js bindata/static/js/
 cp resources/chat-widget/dist/index.umd.js bindata/static/js/chat-widget.js
+cp resources/chat-widget/dist/agent.js bindata/static/js/chat-widget-agent.js
 
 # the jsconsole files: long enough for the "the binary carries it" test (100 bytes)
 STAND_IN='/* jsconsole stand-in for the Go tests: the real one is built by the Docker image (make asset). ................ */'

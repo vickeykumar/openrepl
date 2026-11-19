@@ -127,13 +127,24 @@ export class ChatStore {
     this.pump();
   }
 
-  async removeAll(): Promise<boolean> {
+  async removeAll(includeStarred: boolean = false): Promise<boolean> {
     this.queue = [];
     try {
-      const r = await this.call({ op: "deleteAll" });
+      const r = await this.call({ op: "deleteAll", includeStarred });
       return r.status === 200;
     } catch (e) {
       return false;
+    }
+  }
+
+  // Stars a chat, or lets the star go (a "star" line in the chat's own file, written now: the answer says whether it was kept).
+  async star(id: string, on: boolean): Promise<"ok" | "limit" | "failed"> {
+    try {
+      const r = await this.call({ op: "append", id, lines: [{ t: "star", on: on ? 1 : 0 }] });
+      if (r.status === 200) return "ok";
+      return r.status === 409 && r.json && r.json.error && r.json.error.code === "star_limit" ? "limit" : "failed";
+    } catch (e) {
+      return "failed";
     }
   }
 

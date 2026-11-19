@@ -117,6 +117,7 @@ test("a model kept for signed-in users is listed greyed for a guest, and a click
     const root = require("path").join(__dirname, "..", "..", "src");
     const fs = require("fs");
     await page.route((u) => u.pathname.endsWith("/js/chat-widget.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(root + "/resources/chat-widget/dist/index.umd.js") }));
+    await page.route((u) => u.pathname.endsWith("/js/chat-widget-agent.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(root + "/resources/chat-widget/dist/agent.js") }));
     await page.route((u) => u.pathname.endsWith("/js/model-choice.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(root + "/resources/js/model-choice.js") }));
   }
   await page.route((url) => url.pathname.endsWith("/settings.js"), async (route) => {

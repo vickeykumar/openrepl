@@ -2,9 +2,12 @@ import { createFocusTrap } from "focus-trap";
 import { marked } from "marked";
 
 import { widgetHTML } from "./widgetHtmlString";
-import { AgentMemory, AgentRunner, AgentState, TaskInfo } from "./agent";
+import type { AgentMemory, AgentState, TaskInfo } from "./agent";
+import { LazyAgent } from "./lazy-agent";
 import { GenieEvent, PROMPT_VERSION, eventBody, pageSessionId } from "./genie-events";
 import { ChatStore } from "./chat-store";
+import { AutoConfig, AutoPick, autoNote, autoStarts, routeModel } from "./model-router";
+import { ChatFilter, FILTERS, markWords, searchChats, wordsOf } from "./chat-search";
 import { ChatLine, Interrupted, Restored, interruptedBrief, interruptedFresh, resumeNote, TabView, afterClose, clock, filterChats, fitText, groupChats, moveTab, newChatId, restore, SUMMARY_KEEP, SUMMARY_PREFIX, SUMMARY_PROMPT, applySummary, cleanSummary, sizeText, staleForAgent, staleNote, staleParts, summaryInput, summaryPlan, tabMark, tabToClose, titleFrom, toHistory } from "./chat-tabs";
 import { SSEParser, addEvent, answerOf, newStreamed } from "./sse";
 import { definesSomething } from "./chat-send";
@@ -16,6 +19,11 @@ import { answerBudget, errorBlock, errorRequest, looksLikeTask, messagesToSend, 
 import { CreditUsage, TokenUsage, answerTokens, creditLine, creditRows, tokenRows } from "./tokens";
 import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntry, addItem, gather, hashQuery, itemKey, metaOf, namesLine, problemsLine, rankEntries, removeItem, withAttached, withoutHash } from "./attach";
 import { CoachKind, MAX_HINTS, NO_CODE_IN_A_HINT, NO_HINTS_LEFT, askedText, carriesCode, hintsUsed, questionKey, withHint } from "./coach";
+import { addNote, parseRemember } from "./remember";
+import { announcePin, canDock, configureDock, dockEl, isPinned, onPhone, placePanel, refreshPin, requestResize, setPinned, wireDock } from "./dock";
+import { ContextFacts, contextRows, drawContextView } from "./context-view";
+import { SlashCommand, matchCommands, slashQuery } from "./slash-commands";
+import { isTourCommand, markTourSeen, startTour, tourSeen } from "./tour";
 import css from "./widget.css";
 
 const WIDGET_BACKDROP_ID = "chat-widget__backdrop";
@@ -198,6 +206,10 @@ type SharedChoice = {
   agentModels: ModelOption[];
   agentDefault(): { model: string; effort: string };
   fields(opts?: FieldOptions, mode?: string): Record<string, any>;
+  // Auto model choice: whether a model was ever picked for the mode, the request fields of any model, and a nudge for the listeners
+  hasPick(mode?: string): boolean;
+  fieldsFor(id: string, opts?: FieldOptions, mode?: string): Record<string, any>;
+  notify(): void;
   fallback(exceptId: string): ModelOption | null;
   onChange(fn: () => void): void;
   // the short list, the rest by provider, search and pins (js/model-choice.js)
@@ -223,15 +235,76 @@ function chosenEffort(mode?: string): EffortOption {
   const id = MC.get(mode).effort;
   return EFFORTS.filter((e) => e.id === id)[0] || EFFORTS[1];
 }
+// ---- Auto model choice (model-router.ts): the admin names a small and a strong model; the page picks by rules, no model asked ----
+
+const AUTO_KEY = "genie-auto-"; // + "chat" or "agent": "1" Auto, "0" a model of the person's own; none: the admin's default says
+function autoCfg(): AutoConfig | null {
+  const a = (((window as any).site_settings || {}) as any).genieAuto;
+  if (!a || !a.small || !a.strong) return null;
+  const have = (id: string) => MODELS.some((m) => m.id === id);
+  if (!have(a.small) || !have(a.strong)) return null;
+  return { small: a.small, strong: a.strong, default: a.default === "all" || a.default === "none" ? a.default : "new" };
+}
+const autoMode = (mode?: string): "chat" | "agent" => ((mode || MC.mode()) === "agent" ? "agent" : "chat");
+function modelUsable(id: string, mode: string): boolean {
+  return MC.guestOk(id) && (mode !== "agent" || MC.agentOk(id));
+}
+function autoOn(mode?: string): boolean {
+  const cfg = autoCfg();
+  if (!cfg || peerchatmode) return false;
+  const m = autoMode(mode);
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(AUTO_KEY + m);
+  } catch (e) {
+    stored = null;
+  }
+  if (!autoStarts(cfg, stored, MC.hasPick(m))) return false;
+  return modelUsable(cfg.small, m) || modelUsable(cfg.strong, m); // neither model is open to this person: no Auto
+}
+function setAuto(mode: string, on: boolean) {
+  try {
+    localStorage.setItem(AUTO_KEY + autoMode(mode), on ? "1" : "0");
+  } catch (e) {
+    // not remembered
+  }
+  MC.notify();
+}
+const modelById = (id: string): ModelOption => MODELS.filter((m) => m.id === id)[0] || MODELS[0];
+
+// the model that answers this chat message, when Auto is on (null: the person's own choice answers)
+function routeAuto(message: string, attached: number): AutoPick | null {
+  const cfg = autoCfg();
+  if (!cfg || !autoOn("chat")) return null;
+  return routeModel({ mode: "chat", message, attached, cfg, usable: (id) => modelUsable(id, "chat") });
+}
+// the strong model for an Agent task, when Auto is on and the person may use it there ("" otherwise)
+function autoAgentModel(): string {
+  const cfg = autoCfg();
+  if (!cfg || !autoOn("agent")) return "";
+  const p = routeModel({ mode: "agent", message: "", attached: 0, cfg, usable: (id) => modelUsable(id, "agent") });
+  return modelUsable(p.model, "agent") ? p.model : "";
+}
+// what Auto chose for the last chat answer, so that the note can offer a stronger one
+let lastAuto: { tab: ChatTab; pick: AutoPick } | null = null;
+let forcedPick: AutoPick | null = null; // "Use a stronger one": the next request goes to this model
+
 function chipText(): string {
+  if (autoOn()) {
+    const c = autoCfg()!;
+    const reasons = MODELS.some((m) => (m.id === c.small || m.id === c.strong) && m.reasoning);
+    return reasons ? `Auto · ${chosenEffort().label}` : "Auto";
+  }
   const m = chosenModel();
   return m.reasoning ? `${m.short} · ${chosenEffort().label}` : m.short;
 }
 // "GPT-6 Luna · Low" or "Gemma 4 31B · OpenRouter", under a reply
-function captionText(mode?: string): string {
-  const m = chosenModel(mode);
+function captionOf(m: ModelOption, mode?: string): string {
   if (m.reasoning) return `${m.name} · ${chosenEffort(mode).label}`;
   return m.group === "OpenAI" ? m.name : `${m.name} · ${m.group}`;
+}
+function captionText(mode?: string): string {
+  return captionOf(chosenModel(mode), mode);
 }
 
 // The request fields for the chosen model: Luna takes an effort and an answer
@@ -243,6 +316,7 @@ function modelFields(): Record<string, any> {
 // What the user typed in their last chat message, without the tag of the user: the answer is sized by it, it can be edited,
 // and it can be handed to Agent.
 let lastTyped = "";
+let lastAttached = 0; // files and lines attached to the last chat message (Auto sends it to the strong model)
 
 // What Genie is told about the page, and how many messages it keeps. An admin
 // can change the numbers (settings.js: site_settings.genieContext); these are
@@ -478,7 +552,7 @@ function updateJump() {
   btn.hidden = !show;
   btn.classList.toggle("cw-jump--pill", label !== "");
   btn.textContent = label ? "↓ " + label : "↓";
-  btn.setAttribute("aria-label", label ? "Jump to the latest message, " + jumpNew + " new" : "Jump to the latest message");
+  btn.setAttribute("aria-label", label ? label + " \u2014 jump to the latest message" : "Jump to the latest message"); // the name holds the words that are shown
 }
 
 // The first message that is shown, and where it is: while the user reads further up, a new line must not move it.
@@ -750,10 +824,15 @@ window.addEventListener("load", init);
 window.addEventListener("pagehide", cleanup); // not "unload": browsers are phasing it out and a permissions policy may block it
 
 const containerElement = document.createElement("div");
+configureDock({ container: () => containerElement, isOpen: () => isOpen() });
 containerElement.id = WIDGET_CONTAINER_ID;
 
 const messagesHistory = document.createElement("div");
 messagesHistory.id = WIDGET_MESSAGES_HISTORY_CONTAINER_ID;
+// the conversation scrolls, so the keyboard has to be able to reach it (arrow keys, Page Up and Down)
+messagesHistory.tabIndex = 0;
+messagesHistory.setAttribute("role", "group");
+messagesHistory.setAttribute("aria-label", "Conversation");
 
 const optionalBackdrop = document.createElement("div");
 optionalBackdrop.id = WIDGET_BACKDROP_ID;
@@ -792,6 +871,7 @@ type ChatTab = {
   lastTyped: string;
   recap: AgentMemory | null; // what the agent remembers of the tasks of this chat
   interrupted: Interrupted | null; // a task that was running when the chat was last open: the Resume bar offers it
+  starred: boolean; // kept first in History and not the tab that closes to make room (a star line in the chat file)
 };
 
 function makeTab(id: string, title: string = "New chat"): ChatTab {
@@ -813,6 +893,7 @@ function makeTab(id: string, title: string = "New chat"): ChatTab {
     lastTyped: "",
     recap: null,
     interrupted: null,
+    starred: false,
   };
 }
 
@@ -830,7 +911,7 @@ const bodyOf = (tab: ChatTab): ParentNode => (tab === activeTab ? messagesHistor
 const maxTabs = (): number => Number((((window as any).site_settings || {}) as any).chatHistoryTabs) || 8;
 
 function tabViews(): TabView[] {
-  return tabs.map((t) => ({ id: t.id, running: runTab === t && agentRunner.running, needsYou: t.needsYou, unread: t.unread, busy: t.inFlight }));
+  return tabs.map((t) => ({ id: t.id, running: runTab === t && agentRunner.running, needsYou: t.needsYou, unread: t.unread, busy: t.inFlight, starred: t.starred }));
 }
 
 const chatsUrl = (): string => {
@@ -964,7 +1045,7 @@ async function resumeInterrupted() {
   renderTabs();
   refreshMode();
   try {
-    await agentRunner.start(msg, resumeNote(i) + (task.block ? "\n\n" + task.block : ""));
+    await startAgent(msg, resumeNote(i) + (task.block ? "\n\n" + task.block : ""));
   } finally {
     runTab = null;
     renderTabs();
@@ -1024,6 +1105,7 @@ async function loadTab(tab: ChatTab) {
   tab.titled = true;
   tab.saved = true;
   tab.mode = r.mode === "agent" ? "agent" : "chat";
+  tab.starred = r.starred;
   tab.ctx = { file: r.file, language: r.language };
   tab.history = (baseHistory.length ? baseHistory.slice() : tab.history.slice(0, NUM_MANDATORY_ENTRIES)).concat(toHistory(r.messages, UID, r.summary));
   while (tab.history.length > maxHistorySize()) tab.history.splice(NUM_MANDATORY_ENTRIES + (hasSummary(tab.history) ? 1 : 0), 1);
@@ -1308,7 +1390,7 @@ function closePopup() {
 }
 
 // A question in the strip, with two answers.
-function confirmBar(text: string, yes: string, onYes: () => void, no: string = "Cancel") {
+function confirmBar(text: string, yes: string, onYes: () => void, no: string = "Cancel", extra?: { label: string; run: () => void }) {
   closePopup();
   const host = document.getElementById("chat-widget__toast");
   if (!host) return;
@@ -1333,7 +1415,19 @@ function confirmBar(text: string, yes: string, onYes: () => void, no: string = "
     onYes();
   });
   n.addEventListener("click", done);
-  host.append(msg, y, n);
+  host.append(msg, y);
+  if (extra) {
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "cw-toast__go cw-toast__danger";
+    x.textContent = extra.label;
+    x.addEventListener("click", () => {
+      done();
+      extra.run();
+    });
+    host.appendChild(x);
+  }
+  host.appendChild(n);
 }
 
 function showToast(tab: ChatTab, text: string) {
@@ -1409,6 +1503,7 @@ function tabMenu(tab: ChatTab, x: number, y: number) {
     item("All chats…", () => void allChats());
     sep();
   }
+  if (tab.saved) item(tab.starred ? "Unstar this chat" : "Star this chat", () => void toggleStar(tab.id));
   item("Rename", () => startRename(tab), "", onPhone() ? "" : "double-click");
   item("Duplicate chat", () => void duplicateTab(tab));
   item("Export as Markdown", () => void exportChat(tab));
@@ -1448,42 +1543,158 @@ function startRename(tab: ChatTab) {
 }
 
 // All the chats of the workspace, open or closed.
+// Stars a chat or lets the star go. The answer of the workspace says whether it was kept (20 at most).
+async function toggleStar(id: string): Promise<boolean> {
+  const tab = tabs.find((t) => t.id === id);
+  const want = tab ? !tab.starred : true;
+  const r = await chatStore.star(id, want);
+  if (r === "limit") {
+    notifyTabs("You can star 20 chats. Unstar one first.");
+    return false;
+  }
+  if (r !== "ok") {
+    notifyTabs("The star could not be saved. Try again in a moment.");
+    return false;
+  }
+  if (tab) tab.starred = want;
+  renderTabs();
+  return true;
+}
+
+// The message of an opened chat that holds the word, brought into view and marked for a moment.
+function showFound(word: string, tries: number = 12) {
+  if (!word) return;
+  const hit = Array.from(messagesHistory.querySelectorAll(".chat-widget__message-text")).find((m) => (m.textContent || "").toLowerCase().includes(word));
+  if (!hit) {
+    // the chat is still being drawn: asked again a few times
+    if (tries > 0) setTimeout(() => showFound(word, tries - 1), 150);
+    return;
+  }
+  const box = (hit.closest(".chat-widget__message") || hit) as HTMLElement;
+  box.scrollIntoView({ block: "center" });
+  box.classList.add("cw-found");
+  setTimeout(() => box.classList.remove("cw-found"), 2500);
+}
+
 async function allChats() {
   const host = document.getElementById("chat-widget__tabs");
   if (!host) return;
   const r = host.getBoundingClientRect();
   const p = popup(r.left + 8, r.bottom + 4);
   p.classList.add("cw-tabmenu--list");
+  p.setAttribute("role", "dialog"); // a list with a search box and chips is not a menu
+  p.setAttribute("aria-label", "All chats");
   const st = await chatStore.state();
   if (!st) {
     p.textContent = "The chats cannot be listed right now.";
     return;
   }
   let query = "";
+  let filter: ChatFilter = "all";
+  // the lines of the chats, read when they are needed (a word is typed, or Chat or Agent is chosen), once each, in this page only
+  const bodies = new Map<string, ChatLine[]>();
+  let reading: Promise<void> | null = null;
+  let unread = 0; // chats that could not be read
+  const readAll = (): Promise<void> => {
+    if (reading) return reading;
+    reading = (async () => {
+      const todo = st.chats.filter((c) => !bodies.has(c.id));
+      for (let i = 0; i < todo.length; i += 4) {
+        await Promise.all(
+          todo.slice(i, i + 4).map(async (c) => {
+            const l = await chatStore.read(c.id);
+            if (l) bodies.set(c.id, l);
+            else unread++;
+          })
+        );
+      }
+    })();
+    return reading;
+  };
   const search = document.createElement("input");
   search.type = "search";
   search.placeholder = "Search all chats";
   search.className = "cw-tabmenu__search";
   search.setAttribute("aria-label", "Search all chats");
+  const chips = document.createElement("div");
+  chips.className = "cw-tabmenu__chips";
+  chips.setAttribute("role", "group");
+  chips.setAttribute("aria-label", "Show");
+  const chipLabel: Record<ChatFilter, string> = { all: "All", starred: "Starred", chat: "Chat", agent: "Agent" };
+  const chipButtons = FILTERS.map((f) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "cw-tabmenu__chip";
+    b.dataset.filter = f;
+    b.addEventListener("click", () => {
+      filter = f;
+      void refresh();
+    });
+    chips.appendChild(b);
+    return b;
+  });
+  const status = document.createElement("div");
+  status.className = "cw-tabmenu__status";
+  status.setAttribute("role", "status");
   const list = document.createElement("div");
   const foot = document.createElement("div");
   foot.className = "cw-tabmenu__foot";
   const draw = () => {
     list.textContent = "";
-    const open = tabs.map((t) => t.id);
-    const groups = groupChats(filterChats(st.chats, query), open, new Date());
-    if (groups.length === 0) {
+    const starredCount = st.chats.filter((c) => c.starred).length;
+    const words = wordsOf(query);
+    chipButtons.forEach((b, i) => {
+      const f = FILTERS[i];
+      b.textContent = chipLabel[f] + (f === "starred" ? " \u00b7 " + starredCount : "");
+      b.setAttribute("aria-pressed", String(f === filter));
+    });
+    const results = searchChats(st.chats, bodies, query, filter);
+    status.textContent = words.length || filter !== "all" ? results.length + (results.length === 1 ? " chat" : " chats") : "";
+    if (results.length === 0) {
       const none = document.createElement("div");
       none.className = "cw-tabmenu__none";
-      none.textContent = query ? "No chat matches." : "No chats yet.";
+      none.textContent = filter === "starred" && !words.length ? "Star a chat to keep it here." : words.length ? "No chat has these words. Try fewer words." : "No chats yet.";
       list.appendChild(none);
     }
+    const byId = new Map(results.map((x) => [x.chat.id, x]));
+    const open = tabs.map((t) => t.id);
+    // with words the results are one list, newest first; without them the chats are grouped as always
+    const groups = words.length ? [{ label: "", chats: results.map((x) => x.chat) }] : groupChats(results.map((x) => x.chat), open, new Date());
     groups.forEach((g) => {
-      const h = document.createElement("div");
-      h.className = "cw-tabmenu__group";
-      h.textContent = g.label;
-      list.appendChild(h);
+      if (g.label) {
+        const h = document.createElement("div");
+        h.className = "cw-tabmenu__group";
+        h.textContent = g.label;
+        list.appendChild(h);
+      }
       g.chats.forEach((c) => {
+        const hit = byId.get(c.id)!;
+        const wrap = document.createElement("div");
+        wrap.className = "cw-tabmenu__rowwrap";
+        const star = document.createElement("button");
+        star.type = "button";
+        star.className = "cw-tabmenu__star" + (c.starred ? " is-on" : "");
+        star.setAttribute("aria-label", (c.starred ? "Unstar " : "Star ") + (c.title || "this chat"));
+        star.setAttribute("aria-pressed", String(!!c.starred));
+        star.textContent = c.starred ? "\u2605" : "\u2606";
+        star.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          const want = !c.starred;
+          const res = await chatStore.star(c.id, want);
+          if (res === "limit") {
+            status.textContent = "You can star 20 chats. Unstar one first.";
+            return;
+          }
+          if (res !== "ok") {
+            status.textContent = "The star could not be saved. Try again in a moment.";
+            return;
+          }
+          c.starred = want;
+          const t = tabs.find((x) => x.id === c.id);
+          if (t) t.starred = want;
+          renderTabs();
+          draw();
+        });
         const row = document.createElement("button");
         row.type = "button";
         row.className = "cw-tabmenu__row";
@@ -1493,46 +1704,102 @@ async function allChats() {
         const meta = document.createElement("span");
         meta.className = "cw-tabmenu__meta";
         const t = tabs.find((x) => x.id === c.id);
-        meta.textContent = (t && t.inFlight ? "answering · " : t && runTab === t && agentRunner.running ? "agent task running · " : "") + c.messages + " messages" + (c.language ? " · " + c.language : "");
+        meta.textContent = (t && t.inFlight ? "answering \u00b7 " : t && runTab === t && agentRunner.running ? "agent task running \u00b7 " : "") + c.messages + " messages" + (c.language ? " \u00b7 " + c.language : "");
+        const isOpen = open.includes(c.id);
         const badge = document.createElement("span");
-        badge.className = "cw-tabmenu__badge" + (g.label === "Open" ? " is-open" : "");
-        badge.textContent = g.label === "Open" ? "open" : "Reopen";
+        badge.className = "cw-tabmenu__badge" + (isOpen ? " is-open" : "");
+        badge.textContent = isOpen ? "open" : "Reopen";
         row.append(badge, name, meta);
+        if (hit.snippet) {
+          const sn = document.createElement("span");
+          sn.className = "cw-tabmenu__snippet";
+          markWords(hit.snippet, words).forEach((part) => {
+            if (part.hit) {
+              const m = document.createElement("mark");
+              m.textContent = part.text;
+              sn.appendChild(m);
+            } else sn.appendChild(document.createTextNode(part.text));
+          });
+          row.appendChild(sn);
+        }
         row.addEventListener("click", () => {
           closePopup();
-          void openChat(c.id);
+          const word = hit.word;
+          void openChat(c.id).then(() => {
+            if (words.length) setTimeout(() => showFound(word), 120);
+          });
         });
-        list.appendChild(row);
+        wrap.append(star, row);
+        list.appendChild(wrap);
       });
     });
+    if (unread > 0) {
+      const warn = document.createElement("div");
+      warn.className = "cw-tabmenu__none";
+      warn.textContent = "Could not read " + unread + (unread === 1 ? " chat" : " chats") + ". The others are searched.";
+      list.appendChild(warn);
+    }
     foot.textContent = "";
     const stats = document.createElement("span");
-    stats.textContent = st.chats.length + " chats · " + sizeText(st.bytes) + " · most " + st.limits.chats;
+    stats.textContent = st.chats.length + " chats \u00b7 " + sizeText(st.bytes) + " \u00b7 most " + st.limits.chats;
     const del = document.createElement("button");
     del.type = "button";
     del.className = "cw-tabmenu__del";
-    del.textContent = "Delete all…";
+    del.textContent = "Delete all\u2026";
     del.addEventListener("click", () => {
       closePopup();
-      confirmBar("Delete all " + st.chats.length + " chats for good?", "Delete all", () => void deleteAllChats(), "Keep them");
+      const keep = st.chats.filter((c) => c.starred).length;
+      confirmBar(
+        "Delete " + (keep ? st.chats.length - keep + " of the " + st.chats.length : "all " + st.chats.length) + " chats for good?" + (keep ? " The " + keep + " starred " + (keep === 1 ? "chat stays." : "chats stay.") : ""),
+        "Delete",
+        () => void deleteAllChats(false),
+        "Keep them",
+        keep ? { label: "Include starred", run: () => void deleteAllChats(true) } : undefined
+      );
     });
     foot.append(stats, del);
   };
+  // a word or a chip of Chat or Agent needs the lines of the chats: they are read now, once
+  const refresh = async () => {
+    if (wordsOf(query).length || filter === "chat" || filter === "agent") {
+      status.textContent = "Searching\u2026";
+      await readAll();
+    }
+    draw();
+  };
+  let typing: any = null;
   search.addEventListener("input", () => {
     query = search.value;
-    draw();
+    clearTimeout(typing);
+    typing = setTimeout(() => void refresh(), 150);
   });
   search.addEventListener("keydown", (ev) => {
     ev.stopPropagation();
-    if (ev.key === "Escape") closePopup();
+    if (ev.key === "Escape") {
+      if (search.value) {
+        search.value = "";
+        query = "";
+        void refresh();
+      } else closePopup();
+    }
   });
-  p.append(search, list, foot);
+  p.append(search, chips, status, list, foot);
   draw();
   search.focus();
 }
 
-async function deleteAllChats() {
-  await chatStore.removeAll();
+async function deleteAllChats(includeStarred: boolean = false) {
+  await chatStore.removeAll(includeStarred);
+  // the starred chats that are open stay open
+  const starredTabs = includeStarred ? [] : tabs.filter((t) => t.starred);
+  if (starredTabs.length) {
+    tabs.filter((t) => !t.starred).forEach((t) => (t.frag.textContent = ""));
+    tabs = starredTabs;
+    const next = tabs.includes(activeTab) ? activeTab : tabs[0];
+    switchTo(next, true);
+    afterShown(next);
+    return;
+  }
   const keep = makeTab(newChatId());
   keep.history = baseHistory.slice();
   greetingFor(keep);
@@ -1557,6 +1824,12 @@ function renderTabs() {
   if (!tabsOn) return;
   const views = tabViews();
   bar.textContent = "";
+  // the tabs are the only children of the tab list: the New chat and All chats buttons sit beside it, not in it
+  const tablist = document.createElement("div");
+  tablist.className = "cw-tabs__list";
+  tablist.setAttribute("role", "tablist");
+  tablist.setAttribute("aria-label", "Chats");
+  bar.appendChild(tablist);
   tabs.forEach((t, i) => {
     const active = t === activeTab;
     const mark = tabMark(views[i], active);
@@ -1574,14 +1847,22 @@ function renderTabs() {
       m.setAttribute("aria-label", mark === "ring" ? "working" : mark === "needs" ? "needs you" : "an answer is ready");
       el.appendChild(m);
     }
+    if (t.starred) {
+      const star = document.createElement("span");
+      star.className = "cw-tab__star";
+      star.setAttribute("aria-label", "starred");
+      star.textContent = "\u2605";
+      el.appendChild(star);
+    }
     const name = document.createElement("span");
     name.className = "cw-tab__name";
     name.textContent = t.title;
     el.appendChild(name);
-    const x = document.createElement("button");
-    x.type = "button";
+    // the close mark is for the mouse: a tab is one control, so the mark is not a second one inside it (nested controls are not allowed in a
+    // tab). The keyboard closes a tab with Alt+W or Close in its menu.
+    const x = document.createElement("span");
     x.className = "cw-tab__x";
-    x.setAttribute("aria-label", "Close " + t.title);
+    x.setAttribute("aria-hidden", "true");
     x.textContent = "✕";
     x.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -1620,7 +1901,7 @@ function renderTabs() {
       chatStore.setTabs(tabIds());
       renderTabs();
     });
-    bar.appendChild(el);
+    tablist.appendChild(el);
   });
   const plus = document.createElement("button");
   plus.type = "button";
@@ -1646,7 +1927,7 @@ function renderTabs() {
   all.id = "chat-widget__allchats";
   all.className = "cw-tabs__all";
   all.title = "All chats (Alt+H)";
-  all.setAttribute("aria-label", "All chats (Alt+H)");
+  all.setAttribute("aria-label", Math.max(tabs.length, 0) + (tabs.length === 1 ? " chat open. " : " chats open. ") + "All chats (Alt+H)"); // starts with the number that the button shows
   all.textContent = "⌄ " + Math.max(tabs.length, 0);
   all.addEventListener("click", () => void allChats());
   bar.appendChild(all);
@@ -1957,6 +2238,17 @@ function dropLastTurn(withQuestion: boolean) {
   }
 }
 
+// "Use a stronger one" goes to the Genie log, so that the admin sees how often Auto sent too much to the small model (no text, only the model)
+function host_event_autoStronger(model: string) {
+  if (!config.url || ((window as any).site_settings || {}).genieEventsOff) return;
+  fetch(config.url.replace(/completions\/?$/, "genie-event"), {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(eventBody({ event: "auto_stronger", model })),
+  }).catch(() => {});
+}
+
 function decorateLastTurn() {
   messagesHistory.querySelectorAll(".cw-turn").forEach((n) => n.remove());
   const answer = lastMessageElements()[0];
@@ -1991,6 +2283,25 @@ function decorateLastTurn() {
       }
     });
   }
+  // Auto answered with the small model: one click asks again with the strong one; "Always use" leaves Auto for the model that answered
+  const cfgA = autoCfg();
+  if (lastAuto && lastAuto.tab === activeTab && cfgA) {
+    const au = lastAuto;
+    if (au.pick.size === "small" && modelUsable(cfgA.strong, "chat")) {
+      add("Use a stronger one", "cw-turn__auto", () => {
+        if (noneLeft()) return flashUsage();
+        forcedPick = { model: cfgA.strong, size: "strong", why: "you asked for a stronger one" };
+        host_event_autoStronger(au.pick.model);
+        dropLastTurn(false);
+        void runRequest();
+      });
+    }
+    add("Always use " + modelById(au.pick.model).short, "cw-turn__auto", () => {
+      setAuto("chat", false);
+      MC.set(au.pick.model, undefined, "chat");
+      showModelNote("Auto is off. Chat uses " + modelById(au.pick.model).name + ". Pick Auto in the model list to turn it on again.");
+    });
+  }
   const code = answer.querySelector("pre");
   if (code && lastTyped && agentAvailability() === "ready" && looksLikeTask(lastTyped)) {
     add("Do this with Agent", "cw-turn__agent", () => {
@@ -2000,7 +2311,7 @@ function decorateLastTurn() {
       void (async () => {
         const task = await takeContext(true);
         sentContext = task.items.length > 0 ? { items: task.items, notes: task.notes } : null;
-        await agentRunner.start(text, task.block);
+        await startAgent(text, task.block);
         fetchUsage();
       })();
     });
@@ -2065,13 +2376,14 @@ function agentFieldsFor(id: string): Record<string, any> {
 }
 
 let lastAgentState: AgentState = "idle";
-const agentRunner = new AgentRunner(
+// The agent is a file of its own, fetched when it is first needed (lazy-agent.ts): the runner is made from it then.
+const agentRunner = new LazyAgent((Runner) => new Runner(
   {
     url: () => config.url,
     headers: requestHeaders,
     // a whole file may be in an answer: more room than a chat answer needs
-    modelFields: (modelId?: string) => (modelId ? agentFieldsFor(modelId) : MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }, "agent")), // the Agent model, whichever tab is shown
-    modelId: () => MC.get("agent").model,
+    modelFields: (modelId?: string) => (modelId ? agentFieldsFor(modelId) : autoAgentModel() ? agentFieldsFor(autoAgentModel()) : MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }, "agent")), // the Agent model, whichever tab is shown
+    modelId: () => autoAgentModel() || MC.get("agent").model,
     // how many files the task has changed: the Review button above the box
     reviewContainer: () => document.getElementById("chat-widget__review"),
     changes: (n: number) => {
@@ -2358,206 +2670,12 @@ const agentRunner = new AgentRunner(
     renderResume();
     renderReviewButton();
   }
-);
+));
 // The review card of the editor's changes (js/src/page/18-genie-review.js) offers "apply later changes without asking" through this
 (window as any).GenieAgent = {
   canAutoApply: () => agentRunner.canAutoApply(),
   enableAutoApply: () => agentRunner.enableAutoApply(),
 };
-
-// ---- pinned beside the IDE -------------------------------------------------------
-// The pin button docks the panel in the workspace row (#genie-dock, index.html),
-// to the right of the editor and the terminal, like a side bar. While it is
-// pinned the page stacks the editor over the terminal to make room: this file
-// only says so, with the "genie-pin" event (js/src/page/02-layout.js listens).
-// Closing a pinned panel hides it and keeps the pin. Where there is no room (a
-// phone, a window under 1100px) the panel floats as before and the pin button is
-// hidden; the choice itself is kept for a wider window.
-
-const PIN_KEY = "genie-pinned";
-const DOCK_W_KEY = "genie-dock-width";
-const DOCK_MIN_VIEWPORT = 1100;
-const DOCK_DEFAULT_W = 380;
-const DOCK_MIN_W = 300;
-
-let pinnedPref = (() => {
-  try {
-    return localStorage.getItem(PIN_KEY) === "1";
-  } catch (e) {
-    return false; // storage can be blocked: not remembered
-  }
-})();
-let pinTold = false; // what the page was last told
-let resizePending = false;
-let dockWidthSet = 0; // the width the dock was last given
-
-function dockEl(): HTMLElement | null {
-  return document.getElementById("genie-dock");
-}
-
-// A phone: the panel is the third pane of the page (Editor | Terminal | Genie), always in the dock; the page shows the dock
-// only while its tab is the one shown (js/src/page/13-mobile.js, ui-refresh.css). Nothing of this is on a desktop.
-function onPhone(): boolean {
-  return document.body.classList.contains("is-mobile");
-}
-
-function canDock(): boolean {
-  return !!dockEl() && (onPhone() || window.innerWidth >= DOCK_MIN_VIEWPORT);
-}
-
-function wantDock(): boolean {
-  return canDock() && (onPhone() || pinnedPref);
-}
-
-// the editor, the terminal and the terminal tabs fit themselves to a resize
-function requestResize() {
-  if (resizePending) return;
-  resizePending = true;
-  requestAnimationFrame(() => {
-    resizePending = false;
-    window.dispatchEvent(new Event("resize"));
-  });
-}
-
-function announcePin() {
-  // the page stacks the IDE only while the pinned panel is shown: a pin that is kept but closed leaves the layout as the user chose it
-  const now = wantDock() && isOpen() && !onPhone(); // (the page stacks the IDE beside a pinned panel: not on a phone)
-  if (now === pinTold) return;
-  pinTold = now;
-  window.dispatchEvent(new CustomEvent("genie-pin", { detail: { pinned: now } }));
-  requestResize();
-}
-
-// Puts the panel where it belongs: in the dock when pinned, else on the page.
-function placePanel() {
-  const dock = dockEl();
-  const was = document.body.classList.contains("genie-docked");
-  if (dock && wantDock()) {
-    dock.hidden = false;
-    dock.appendChild(containerElement);
-    containerElement.classList.add("is-docked");
-    document.body.classList.add("genie-docked");
-  } else {
-    containerElement.classList.remove("is-docked");
-    document.body.classList.remove("genie-docked");
-    if (dock) dock.hidden = true;
-    document.body.appendChild(containerElement);
-  }
-  // the IDE has more or less room only when the dock came or went
-  if (was !== document.body.classList.contains("genie-docked")) requestResize();
-  announcePin();
-}
-
-function refreshPin() {
-  const b = document.getElementById("chat-widget__pin");
-  if (!b) return;
-  b.hidden = !canDock() || onPhone(); // a phone has no floating panel to pin
-  b.setAttribute("aria-pressed", String(pinnedPref));
-  const words = pinnedPref ? "Unpin Genie (back to floating)" : "Pin Genie beside the IDE";
-  b.setAttribute("aria-label", words);
-  b.setAttribute("title", words);
-}
-
-function setPinned(on: boolean) {
-  pinnedPref = on;
-  try {
-    localStorage.setItem(PIN_KEY, on ? "1" : "0");
-  } catch (e) {
-    // not remembered
-  }
-  if (isOpen()) placePanel();
-  refreshPin();
-  announcePin();
-}
-
-// the window changed size: dock or float the panel if what fits has changed
-function onViewportChange() {
-  if (isOpen() && containerElement.classList.contains("is-docked") !== wantDock()) placePanel();
-  if (isOpen()) refreshPin();
-  announcePin();
-  // keep a shown dock within what fits (a hidden one measures 0 and keeps its width)
-  const dock = dockEl();
-  if (dock && !dock.hidden && wantDock()) setDockWidth(dock.getBoundingClientRect().width, false);
-}
-
-function setDockWidth(w: number, save: boolean = true): number {
-  const dock = dockEl();
-  const row = dock && dock.parentElement;
-  const total = row ? row.getBoundingClientRect().width : window.innerWidth;
-  // (a row that has no width yet, as at start-up, limits nothing)
-  const max = total > 0 ? Math.max(DOCK_MIN_W, Math.min(680, Math.floor(total * 0.6))) : 680;
-  const width = Math.round(Math.min(max, Math.max(DOCK_MIN_W, w)));
-  // Only a width that changed is news to the page. This runs on every resize of
-  // the window (onViewportChange), and telling the page to resize from here each
-  // time would be a resize that causes the next one, for ever: the editor and the
-  // terminal would refit on every frame, and the right-click menu of the editor,
-  // which closes on a resize, could not stay open.
-  const changed = width !== dockWidthSet;
-  dockWidthSet = width;
-  document.documentElement.style.setProperty("--genie-dock-w", width + "px");
-  const grip = document.getElementById("genie-dock-grip");
-  if (grip) {
-    grip.setAttribute("aria-valuemin", String(DOCK_MIN_W));
-    grip.setAttribute("aria-valuemax", String(max));
-    grip.setAttribute("aria-valuenow", String(width));
-  }
-  if (save) {
-    try {
-      localStorage.setItem(DOCK_W_KEY, String(width));
-    } catch (e) {
-      // not remembered
-    }
-  }
-  if (changed) requestResize();
-  return width;
-}
-
-// The grip on the dock's left edge: drag it, or use the arrow keys; a double
-// click goes back to the default width.
-function wireDock() {
-  const dock = dockEl();
-  const grip = document.getElementById("genie-dock-grip");
-  if (!dock || !grip) return;
-  let stored = DOCK_DEFAULT_W;
-  try {
-    stored = parseInt(localStorage.getItem(DOCK_W_KEY) || "", 10) || DOCK_DEFAULT_W;
-  } catch (e) {
-    // the default
-  }
-  setDockWidth(stored, false);
-  const widthNow = () => dock.getBoundingClientRect().width;
-  grip.addEventListener("pointerdown", (ev: PointerEvent) => {
-    ev.preventDefault();
-    try {
-      grip.setPointerCapture(ev.pointerId);
-    } catch (e) {
-      // the drag still works while the pointer stays on the grip
-    }
-    const startX = ev.clientX;
-    const startW = widthNow();
-    grip.classList.add("is-dragging");
-    document.body.classList.add("genie-dock-dragging");
-    const move = (e: PointerEvent) => setDockWidth(startW + (startX - e.clientX), false);
-    const up = () => {
-      grip.removeEventListener("pointermove", move);
-      grip.removeEventListener("pointerup", up);
-      grip.removeEventListener("pointercancel", up);
-      grip.classList.remove("is-dragging");
-      document.body.classList.remove("genie-dock-dragging");
-      setDockWidth(widthNow());
-    };
-    grip.addEventListener("pointermove", move);
-    grip.addEventListener("pointerup", up);
-    grip.addEventListener("pointercancel", up);
-  });
-  grip.addEventListener("keydown", (ev: KeyboardEvent) => {
-    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
-    ev.preventDefault();
-    setDockWidth(widthNow() + (ev.key === "ArrowLeft" ? 16 : -16));
-  });
-  grip.addEventListener("dblclick", () => setDockWidth(DOCK_DEFAULT_W));
-  window.addEventListener("resize", onViewportChange);
-}
 
 // ---- Genie's button while the panel is closed ----------------------------------
 // Closing the panel hides it and stops nothing: a task or an answer goes on, and
@@ -2940,10 +3058,21 @@ function setMode(agent: boolean) {
   if (box) {
     box.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String((b.getAttribute("data-mode") === "agent") === agent)));
   }
+  if (agent) void agentRunner.preload(); // the agent's code is fetched now, so that it is there when a task starts
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
   if (input && !agentRunner.running) input.placeholder = modePlaceholder();
   renderUsage(); // the line counts tasks in Agent mode
   renderGuidance();
+}
+
+// Starts a task. The agent's code is fetched the first time (lazy-agent.ts); when that fails the chat says so and the task can be sent again.
+async function startAgent(msg: string, block: string) {
+  try {
+    await agentRunner.start(msg, block);
+  } catch (e) {
+    await createNewMessageEntry("The agent could not be loaded. Check your connection and send the task again.", Date.now(), "system", false, "Agent", null, null, null, []);
+    showAgentState("idle"); // the runner never started, so nothing else gives the box back
+  }
 }
 
 let signedSeen: boolean | null = null;
@@ -3083,7 +3212,7 @@ function modelRow(m: ModelOption, compact: boolean, query: string = "", sub: str
     btn.setAttribute("aria-disabled", "true");
     btn.title = needsSignIn ? SIGN_IN_FOR_MODEL : AGENT_NOT_SUPPORTED;
   }
-  btn.setAttribute("aria-checked", m.id === chosenModel().id ? "true" : "false");
+  btn.setAttribute("aria-checked", !autoOn() && m.id === chosenModel().id ? "true" : "false");
   btn.dataset.id = m.id;
   const dot = el("span", "cw-model__dot");
   dot.setAttribute("aria-hidden", "true");
@@ -3107,7 +3236,10 @@ function modelRow(m: ModelOption, compact: boolean, query: string = "", sub: str
   btn.addEventListener("click", () => {
     if (needsSignIn) showModelNote(SIGN_IN_FOR_MODEL);
     else if (unsupported) showModelNote(AGENT_NOT_SUPPORTED + ". " + m.name + " works in Chat.");
-    else MC.set(m.id);
+    else {
+      if (autoCfg()) setAuto(MC.mode(), false); // a model of the person's own turns Auto off for this mode
+      MC.set(m.id);
+    }
   });
   btn.addEventListener("mouseenter", () => showDetails(m, btn));
   btn.addEventListener("focus", () => showDetails(m, btn));
@@ -3133,6 +3265,32 @@ function modelRow(m: ModelOption, compact: boolean, query: string = "", sub: str
   return wrap;
 }
 
+// The Auto entry at the top of the list: "Small and quick for questions, a stronger model for edits and tasks" (null when an admin did not set Auto up).
+function autoRow(): HTMLElement | null {
+  const cfg = autoCfg();
+  if (!cfg) return null;
+  const mode = MC.mode();
+  const wrap = el("div", "cw-modelrow");
+  const on = autoOn();
+  const btn = el("button", "cw-model cw-model--auto");
+  btn.type = "button";
+  btn.setAttribute("role", "radio");
+  btn.setAttribute("aria-checked", on ? "true" : "false");
+  btn.dataset.id = "auto";
+  const dot = el("span", "cw-model__dot");
+  dot.setAttribute("aria-hidden", "true");
+  const text = el("span", "cw-model__text");
+  const name = el("span", "cw-model__name");
+  name.appendChild(el("span", "", "Auto"));
+  name.appendChild(el("span", "cw-model__tag", "Recommended"));
+  text.appendChild(name);
+  text.appendChild(el("span", "cw-model__desc", mode === "agent" ? "Uses the stronger model for tasks. You see which one it chose." : "Small and quick for questions, a stronger model for edits and tasks. You see which one answered."));
+  btn.append(dot, text);
+  btn.addEventListener("click", () => setAuto(mode, true));
+  wrap.appendChild(btn);
+  return wrap;
+}
+
 // Draws "Your models", the grouped "Other models" and the search results from the
 // shared list (js/model-choice.js). Called whenever the choice, a pin or the search changes.
 function renderLists() {
@@ -3154,7 +3312,8 @@ function renderLists() {
   othersBox.hidden = searching || !othersOpen;
 
   // with the other models open there is little room: the short list is names only
-  yours.replaceChildren(...MC.your().map((m) => modelRow(m, othersOpen)));
+  const autoEntry = autoRow();
+  yours.replaceChildren(...(autoEntry ? [autoEntry] : []), ...MC.your().map((m) => modelRow(m, othersOpen)));
 
   const groups = MC.others();
   const total = groups.reduce((n, g) => n + g.models.length, 0);
@@ -3240,11 +3399,12 @@ function renderChoice() {
   renderGuidance();
   const group = document.getElementById("chat-widget__efforts");
   const effortLabel = document.getElementById("cw-effort-label");
-  if (group) group.classList.toggle("is-off", !m.reasoning);
-  if (effortLabel) effortLabel.classList.toggle("is-off", !m.reasoning);
+  const effortOn = m.reasoning || autoOn();
+  if (group) group.classList.toggle("is-off", !effortOn);
+  if (effortLabel) effortLabel.classList.toggle("is-off", !effortOn);
   document.querySelectorAll<HTMLButtonElement>("#chat-widget__efforts button").forEach((btn) => {
-    btn.setAttribute("aria-pressed", m.reasoning && btn.dataset.id === e.id ? "true" : "false");
-    btn.disabled = !m.reasoning;
+    btn.setAttribute("aria-pressed", effortOn && btn.dataset.id === e.id ? "true" : "false");
+    btn.disabled = !effortOn;
   });
   const note = document.getElementById("chat-widget__effort-note");
   if (note) {
@@ -3368,7 +3528,7 @@ function open(e?: Event, opts?: { pin?: boolean }) {
     (document.getElementById("chat-widget__input") as HTMLTextAreaElement | null)?.focus();
     return;
   }
-  if (opts && opts.pin && canDock() && !onPhone() && !pinnedPref) setPinned(true);
+  if (opts && opts.pin && canDock() && !onPhone() && !isPinned()) setPinned(true);
   if (config.closeOnOutsideClick) {
     document.body.appendChild(optionalBackdrop);
   }
@@ -3421,6 +3581,7 @@ function open(e?: Event, opts?: { pin?: boolean }) {
   const detachMode = wireMode();
   wireCoach();
   wireQuick();
+  wireContext();
   const draftBox = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
   if (draftBox) {
     if (tabsOn) {
@@ -3441,7 +3602,8 @@ function open(e?: Event, opts?: { pin?: boolean }) {
     updatePicker(input);
   });
   input.addEventListener("click", () => updatePicker(input));
-  input.addEventListener("blur", () => setTimeout(closePicker, 120));
+  // the list goes when the box loses the focus, unless the focus came back meanwhile (a click away and straight back must not close the list that was opened after it)
+  input.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== input) closePicker(); }, 120));
   // before the box's own keys (Enter sends, Escape closes the panel): the open list takes them
   input.addEventListener(
     "keydown",
@@ -3467,6 +3629,12 @@ function open(e?: Event, opts?: { pin?: boolean }) {
   document
     .getElementById("chat-widget__form")!
     .addEventListener("submit", submit);
+  // the first time the panel is opened: a short tour (tour.ts). Not for a browser driven by a test, which would find it in every run.
+  if (!tourSeen() && !peerchatmode && !(navigator as any).webdriver) {
+    setTimeout(() => {
+      if (isOpen() && !startTour()) markTourSeen();
+    }, 700);
+  }
   // While a task runs the button stops it. This is on the click, not on the
   // form's submit: the box is empty then, and it is a required field, so the
   // browser would not submit the form at all.
@@ -3496,7 +3664,7 @@ function open(e?: Event, opts?: { pin?: boolean }) {
     peerchatSwitchElem.addEventListener("change", peerchatSwitchlistener);
   }
 
-  document.getElementById("chat-widget__pin")?.addEventListener("click", () => setPinned(!pinnedPref));
+  document.getElementById("chat-widget__pin")?.addEventListener("click", () => setPinned(!isPinned()));
   refreshPin();
   document.getElementById("chat-widget__usage-line")?.addEventListener("click", () => {
     usageDetails = !usageDetails;
@@ -3548,7 +3716,7 @@ function close() {
 // a page that tells the visitor to choose another model (the failure card of a question, js/question-loader.js).
 function openModels() {
   if (!isOpen()) {
-    if (canDock() && !pinnedPref) setPinned(true);
+    if (canDock() && !isPinned()) setPinned(true);
     open();
   }
   setSettingsOpen(true);
@@ -3558,7 +3726,7 @@ function toggle(e?: Event, opts?: { pin?: boolean }) {
   if (isOpen()) {
     close();
   } else {
-    if (opts && opts.pin && canDock() && !pinnedPref) setPinned(true);
+    if (opts && opts.pin && canDock() && !isPinned()) setPinned(true);
     open(e);
   }
 }
@@ -3944,6 +4112,8 @@ function putContext(item: ContextItem): boolean {
 // and takes the #word out of the message, Escape closes the list.
 
 let pickerShown: PickerEntry[] = [];
+let slashShown: SlashCommand[] = []; // the same list shows the commands when the message starts with "/" (slash-commands.ts)
+let slashMode = false;
 let pickerAt = 0;
 let pickerWord: { start: number; query: string } | null = null;
 
@@ -3962,7 +4132,10 @@ function closePicker() {
   }
   pickerWord = null;
   pickerShown = [];
-  document.getElementById("chat-widget__input")?.setAttribute("aria-expanded", "false");
+  slashShown = [];
+  slashMode = false;
+  if (el) el.setAttribute("aria-label", "Files and folders");
+  document.getElementById("chat-widget__input")?.removeAttribute("aria-activedescendant"); // nothing to point at once the list is gone
 }
 
 function pickerEntries(): PickerEntry[] {
@@ -3970,7 +4143,53 @@ function pickerEntries(): PickerEntry[] {
   return fb && typeof fb.entries === "function" ? fb.entries() : [];
 }
 
+// the commands of the "/" menu: a name and what it does
+function renderSlash() {
+  const el = pickerEl();
+  if (!el) return;
+  el.textContent = "";
+  el.setAttribute("aria-label", "Commands");
+  slashShown.forEach((c, i) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.id = "cw-picker-" + i;
+    row.className = "cw-picker__item cw-picker__item--command" + (i === pickerAt ? " is-active" : "");
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", i === pickerAt ? "true" : "false");
+    const name = document.createElement("b");
+    name.textContent = "/" + c.name;
+    const desc = document.createElement("span");
+    desc.className = "cw-picker__desc";
+    desc.textContent = c.desc;
+    row.append(name, desc);
+    row.addEventListener("mousedown", (ev) => ev.preventDefault());
+    row.addEventListener("click", () => chooseSlash(c));
+    el.appendChild(row);
+  });
+  el.hidden = false;
+  document.getElementById("chat-widget__input")?.setAttribute("aria-activedescendant", "cw-picker-" + pickerAt);
+}
+
+function chooseSlash(c: SlashCommand) {
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  closePicker();
+  if (!input) return;
+  if (c.kind === "insert" && c.insert) {
+    input.value = c.insert;
+    input.setSelectionRange(c.insert.length, c.insert.length);
+    autoGrow(input);
+    input.focus();
+    return;
+  }
+  input.value = "";
+  autoGrow(input);
+  if (c.name === "context") void openContext();
+  else if (c.name === "tour") startTour();
+  input.focus();
+}
+
 function renderPicker() {
+  if (slashMode) return renderSlash();
   const el = pickerEl();
   if (!el) return;
   el.textContent = "";
@@ -3998,12 +4217,28 @@ function renderPicker() {
   });
   el.hidden = false;
   const input = document.getElementById("chat-widget__input");
-  input?.setAttribute("aria-expanded", "true");
   if (pickerShown.length > 0) input?.setAttribute("aria-activedescendant", "cw-picker-" + pickerAt);
   else input?.removeAttribute("aria-activedescendant");
 }
 
 function updatePicker(input: HTMLTextAreaElement) {
+  // a message that starts with "/": the commands, as long as one matches (a path like /usr/bin shows nothing)
+  const sq = peerchatmode || !document.getElementById("chat-widget__picker") ? null : slashQuery(input.value, input.selectionStart || 0);
+  if (sq !== null) {
+    const found = matchCommands(sq);
+    if (found.length === 0) {
+      if (pickerOpen()) closePicker();
+      return;
+    }
+    pickerWord = null;
+    pickerShown = [];
+    slashShown = found;
+    slashMode = true;
+    pickerAt = 0;
+    renderPicker();
+    return;
+  }
+  if (slashMode) closePicker();
   const word = hashQuery(input.value, input.selectionStart || 0);
   if (!word || !document.getElementById("chat-widget__picker")) {
     if (pickerOpen()) closePicker();
@@ -4037,15 +4272,17 @@ function pickerKey(ev: KeyboardEvent): boolean {
     closePicker();
     return true;
   }
-  if (pickerShown.length === 0) return false;
+  const count = slashMode ? slashShown.length : pickerShown.length;
+  if (count === 0) return false;
   if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
-    pickerAt = (pickerAt + (ev.key === "ArrowDown" ? 1 : -1) + pickerShown.length) % pickerShown.length;
+    pickerAt = (pickerAt + (ev.key === "ArrowDown" ? 1 : -1) + count) % count;
     renderPicker();
     document.getElementById("cw-picker-" + pickerAt)?.scrollIntoView({ block: "nearest" });
     return true;
   }
   if (ev.key === "Enter" || ev.key === "Tab") {
-    choosePicked(pickerShown[pickerAt]);
+    if (slashMode) chooseSlash(slashShown[pickerAt]);
+    else choosePicked(pickerShown[pickerAt]);
     return true;
   }
   return false;
@@ -4351,6 +4588,128 @@ const handleStreamedResponse = async (res: Response, meta: string = "", tab: Cha
   }
 };
 
+// "Remember this": GENIE.md in the workspace gets the note as a line (remember.ts). The words of the answer say what happened.
+async function rememberNote(note: string): Promise<string> {
+  const w = window as any;
+  const home = String(w.homedir || "");
+  if (!home) return "I could not find your workspace, so the note was not kept.";
+  const pp = (u: string) => (typeof w.preprocessurl === "function" ? w.preprocessurl(u) : u);
+  const path = home + "/GENIE.md";
+  let existing = "";
+  let exists = false;
+  try {
+    const r = await fetch(pp("/ws_filebrowser?q=load&enc=raw&filepath=" + encodeURIComponent(path)), { credentials: "same-origin" });
+    if (r.ok) {
+      existing = await r.text();
+      exists = true;
+    }
+  } catch (e) {
+    return "I could not read GENIE.md, so the note was not kept.";
+  }
+  const next = addNote(existing, note);
+  if (next === null) return "That note is already in GENIE.md, or the file has as many lines as Genie reads at the start of a task. Nothing was added.";
+  try {
+    if (!exists && w.FileBrowser && typeof w.FileBrowser.create === "function") await w.FileBrowser.create("GENIE.md", "file");
+    const res = await fetch(pp("/ws_filebrowser?q=save&filepath=" + path), {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: typeof w.textToBase64 === "function" ? w.textToBase64(next) : btoa(unescape(encodeURIComponent(next))),
+    });
+    if (!res.ok) return "GENIE.md could not be saved: " + ((await res.text()).trim().slice(0, 120) || res.status) + ".";
+    if (w.FileMarks && typeof w.FileMarks.event === "function") w.FileMarks.event("write", path);
+  } catch (e) {
+    return "GENIE.md could not be saved, so the note was not kept.";
+  }
+  return "Remembered in GENIE.md: " + note + "\n\nEvery task in this workspace starts with the notes of that file. Edit or delete a line there any time.";
+}
+
+// ---- What Genie sees now (context-view.ts) ----------------------------------------------------------------------------
+
+// The sizes of what goes with the next message, measured now from what the widget gathers for one (getcurrentIDECode, takeContext).
+async function gatherContextFacts(): Promise<ContextFacts> {
+  const code = fetchEditorContent();
+  const term = fetchTerminalOutput().replace(/\s+$/, "");
+  const ps = readPreview ? previewState() : null;
+  const pv = ps ? previewContext(ps) : "";
+  const hist = activeTab.history.filter((m) => m.role !== "system");
+  const sent = Math.min(hist.length, maxHistorySize());
+  const lastSent = hist.slice(hist.length - sent);
+  const items = pendingContext;
+  // the notes of the project, as an Agent task reads them at its start (the same read, 80 lines)
+  let notes = { known: false, exists: false, lines: 0, chars: 0 };
+  try {
+    const pp = (window as any).preprocessurl;
+    const res = await fetch(typeof pp === "function" ? pp("/agent_files") : "/agent_files", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "read", path: "GENIE.md", start_line: 1, end_line: 80 }),
+    });
+    if (res.ok) {
+      const j: any = await res.json();
+      const text = String(j.text || "").split("\n").map((l) => l.replace(/^\s*\d+  ?/, "")).join("\n").trim();
+      notes = { known: true, exists: text.length > 0, lines: text ? text.split("\n").filter((l) => l.trim()).length : 0, chars: Math.min(text.length, 4000) };
+    } else if (res.status === 404 || res.status === 400) notes = { known: true, exists: false, lines: 0, chars: 0 };
+  } catch (e) {
+    // the line says it is read at the start of a task
+  }
+  return {
+    editor: { on: readEditor, file: workspaceFile(), chars: Math.min(code.length, maxEditorChars()), total: code.length, lines: code ? code.split("\n").length : 0, limit: maxEditorChars() },
+    terminal: { lines: term ? term.split("\n").length : 0, chars: Math.min(term.length, maxTerminalChars()), limit: maxTerminalChars() },
+    preview: { on: readPreview, open: !!ps, chars: pv.length, parts: ps && Array.isArray(ps.outline) ? ps.outline.filter((o: any) => o.l > 0).length : 0 },
+    notes,
+    chat: { sent, total: hist.length, chars: lastSent.reduce((a, m) => a + String(m.content || "").length, 0) },
+    attached: { names: items.map((i) => i.name), chars: items.reduce((a, i) => a + (i.text ? i.text.length : 0), 0) },
+    hidden: 0,
+  };
+}
+
+function ctxEl(): HTMLElement | null {
+  return document.getElementById("chat-widget__ctx");
+}
+
+function closeContext(focusBack: boolean = true) {
+  const box = ctxEl();
+  const btn = document.getElementById("chat-widget__ctx-btn");
+  if (box) box.hidden = true;
+  if (btn) {
+    btn.setAttribute("aria-expanded", "false");
+    if (focusBack) btn.focus();
+  }
+}
+
+async function openContext() {
+  const box = ctxEl();
+  const btn = document.getElementById("chat-widget__ctx-btn");
+  if (!box || !btn) return;
+  const facts = await gatherContextFacts();
+  const close = drawContextView(box, contextRows(facts), chipText(), () => closeContext());
+  box.hidden = false;
+  btn.setAttribute("aria-expanded", "true");
+  close.focus();
+}
+
+function toggleContext() {
+  const box = ctxEl();
+  if (box && !box.hidden) closeContext();
+  else void openContext();
+}
+
+function wireContext() {
+  const btn = document.getElementById("chat-widget__ctx-btn");
+  const box = ctxEl();
+  if (!btn || !box) return;
+  btn.addEventListener("click", toggleContext);
+  // Escape closes the list and not the panel
+  box.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      ev.stopPropagation();
+      closeContext();
+    }
+  });
+}
+
 async function submit(e: Event) {
   e.preventDefault();
   const target = e.target as HTMLFormElement;
@@ -4369,6 +4728,30 @@ async function submit(e: Event) {
   const msg = (target.elements as any).message.value;
   // nothing to send: an empty task would still cost a request
   if (!String(msg || "").trim()) return;
+  agentRunner.foldEnded(); // the user wrote again: the cards of finished tasks above fold to a line
+  // "/context": the list of what Genie sees
+  if (!peerchatmode && /^\s*\/context\s*$/i.test(String(msg))) {
+    target.reset();
+    autoGrow((target.elements as any).message as HTMLTextAreaElement);
+    void openContext();
+    return false;
+  }
+  // "/tour": the tour of the panel again
+  if (!peerchatmode && isTourCommand(msg)) {
+    target.reset();
+    autoGrow((target.elements as any).message as HTMLTextAreaElement);
+    startTour();
+    return false;
+  }
+  // "remember ...": a line in GENIE.md, no model asked and nothing counted
+  const toRemember = peerchatmode ? null : parseRemember(msg);
+  if (toRemember) {
+    target.reset();
+    autoGrow((target.elements as any).message as HTMLTextAreaElement);
+    const said = await rememberNote(toRemember);
+    await createNewMessageEntry(said, Date.now(), "system", false, "Notes", null, null, null, []);
+    return false;
+  }
   // nothing left: the server would refuse it, so the line says when to come back
   if (noneLeft()) {
     flashUsage();
@@ -4400,8 +4783,11 @@ async function submit(e: Event) {
     activeTab.lastTyped = String(msg || "");
     renderTabs();
     refreshMode();
+    // Auto: the task keeps the strong model from its first step to its last, and the chat says so
+    const autoModel = autoAgentModel();
+    if (autoModel) await createNewMessageEntry(autoNote({ model: autoModel, size: "strong", why: "Agent mode" }, modelById(autoModel).name, true), Date.now(), "system", false, "Auto", null, null, null, []);
     try {
-      await agentRunner.start(msg, task.block);
+      await startAgent(msg, task.block);
     } finally {
       runTab = null;
       renderTabs();
@@ -4417,6 +4803,7 @@ async function submit(e: Event) {
     activeTab.lastTyped = lastTyped;
   }
   const taken = await takeContext(!peerchatmode);
+  lastAttached = taken.items.length;
   const names = peerchatmode ? namesLine(taken.items) : "";
   addMessageToHistory(myrole, withAttached(msg, taken.block));
   const sentAt = Date.now();
@@ -4459,9 +4846,13 @@ async function runRequest() {
   if (config.api_key) {
     requestHeaders.append('Authorization', 'Bearer ' + config.api_key);
   }
+  // Auto: the model that answers this message, by the rules (or the stronger one the person asked for)
+  const auto = forcedPick || routeAuto(lastTyped, lastAttached);
+  forcedPick = null;
+  lastAuto = auto ? { tab, pick: auto } : null;
   const data = {
     ...config.user,
-    ...modelFields(),
+    ...(auto ? MC.fieldsFor(auto.model, { temperature: config.temperature, maxTokens: answerBudget(lastTyped, config.max_tokens) }, "chat") : modelFields()),
     // less than the page keeps: older answers have no long code in them, and the editor and terminal
     // are not sent twice
     messages: messagesToSend(tab.history, NUM_MANDATORY_ENTRIES, getcurrentIDECode()),
@@ -4470,10 +4861,11 @@ async function runRequest() {
     // has its own interviewer prompt and does not
     ...(onPracticePage() ? {} : { context: "chat" }),
   };
-  const usedCaption = captionText();
-  const thinking = chosenModel().reasoning && chosenEffort().id !== "none";
+  const usedModel = auto ? modelById(auto.model) : chosenModel();
+  const usedCaption = auto ? captionOf(usedModel) + " · " + autoNote(auto, usedModel.name, false) : captionText();
+  const thinking = usedModel.reasoning && chosenEffort().id !== "none";
   const thinkingLabel = tab.bubble.querySelector(".chat-widget__thinking-label");
-  if (thinkingLabel) thinkingLabel.textContent = thinking ? `${chosenModel().short} is thinking…` : "";
+  if (thinkingLabel) thinkingLabel.textContent = thinking ? `${usedModel.short} is thinking…` : "";
   bodyOf(tab).prepend(tab.bubble);
 
   try {

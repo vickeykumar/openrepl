@@ -50,6 +50,7 @@ async function localAssets(page) {
   if (!process.env.GENIE_LOCAL_ASSETS) return;
   const serve = (file) => (route) => route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(root, file)) });
   await page.route((u) => u.pathname.endsWith("/js/chat-widget.js"), serve("resources/chat-widget/dist/index.umd.js"));
+  await page.route((u) => u.pathname.endsWith("/js/chat-widget-agent.js"), serve("resources/chat-widget/dist/agent.js"));
   await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), serve("js/dist/scribbler.js"));
 }
 
