@@ -961,6 +961,8 @@ function changed(path) {
   if (!open || !target || target.kind !== "f" || !optAuto) return;
   var dir = target.path.slice(0, target.path.lastIndexOf("/") + 1);
   if (String(path).indexOf(dir) !== 0) return;
+  // a hidden file or folder is not the page (Genie keeps its chats in .genie, the shell its history): a page that sits in the home folder must not reload on every step of a task
+  if (/(^|\/)\.[^\/]/.test(String(path).slice(dir.length))) return;
   clearTimeout(reloadTimer);
   reloadTimer = setTimeout(reload, 400);
 }

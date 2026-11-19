@@ -17,6 +17,7 @@ async function localAssets(page) {
   const serve = (file) => (route) => route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(root, file)) });
   await page.route((u) => u.pathname.endsWith("/js/chat-widget.js"), serve("resources/chat-widget/dist/index.umd.js"));
   await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), serve("js/dist/scribbler.js"));
+  await page.route((u) => u.pathname.endsWith("/css/ui-refresh.css"), (route) => route.fulfill({ contentType: "text/css", body: fs.readFileSync(path.join(root, "resources/css/ui-refresh.css")) }));
   await page.route((u) => u.pathname.endsWith("/js/model-choice.js"), serve("resources/js/model-choice.js"));
 }
 
@@ -157,6 +158,123 @@ test("Undo this task puts the file back, and does not touch what was typed after
   await page.locator(".cw-agent__undo").click();
   await expect(page.locator(".cw-agent__undo")).toHaveText("Undone");
   expect(await code(page)).toBe("x = 1\n");
+});
+
+test("the Review bar above the box lists what the task changed; Keep and Undo make a row vanish and the bar goes with the last", async ({ page }) => {
+  await openAgent(
+    page,
+    [
+      { say: "Changing.", actions: [{ type: "editor_write", text: "x = 2\ny = 5\n" }], done: false },
+      { say: "Run.", actions: [{ type: "run" }], done: true },
+    ]
+  );
+  await setCode(page, "x = 1\n");
+  await agentMode(page);
+  await allowAll(page);
+  await accept(page);
+  await expect(page.locator("#chat-widget__review")).toBeHidden();
+  await ask(page, "set x to two and add y");
+  await expect(page.locator(".cw-agent--ended")).toBeVisible({ timeout: 30000 });
+  const bar = page.locator("#chat-widget__review");
+  await expect(bar).toBeVisible();
+  await expect(bar.locator(".cw-reviewbar__title")).toHaveText("Genie changed 1 file");
+  const rows = bar.locator(".cw-reviewbar__row");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.locator(".cw-reviewbar__count")).toHaveText("+2 \u22121");
+  // it is above the chat box, and the task card has no list
+  const box = await bar.boundingBox();
+  const input = await page.locator("#chat-widget__input").boundingBox();
+  expect(box.y + box.height).toBeLessThanOrEqual(input.y + 1);
+  await expect(page.locator(".cw-agent .cw-reviewbar__row")).toHaveCount(0);
+  // Keep: the row is gone, the bar is gone, the text stays, and the chat says what was done
+  await rows.getByRole("button", { name: "Keep" }).click();
+  await expect(bar).toBeHidden();
+  expect(await code(page)).toBe("x = 2\ny = 5\n");
+  await expect(page.locator(".chat-widget__message--system", { hasText: "Reviewed 1: 1 kept." })).toBeVisible();
+});
+
+test("Undo in the Review bar puts the text back and the row vanishes; Undo all asks first", async ({ page }) => {
+  await openAgent(
+    page,
+    [
+      { say: "Changing.", actions: [{ type: "editor_write", text: "x = 2\n" }], done: false },
+      { say: "Run.", actions: [{ type: "run" }], done: true },
+    ]
+  );
+  await setCode(page, "x = 1\n");
+  await agentMode(page);
+  await allowAll(page);
+  await accept(page);
+  await ask(page, "set x to two");
+  await expect(page.locator(".cw-agent--ended")).toBeVisible({ timeout: 30000 });
+  const bar = page.locator("#chat-widget__review");
+  await bar.getByRole("button", { name: "Undo all" }).click();
+  const card = page.locator(".cw-agent__ask", { hasText: "Undo all changes of this task?" });
+  await expect(card).toBeVisible();
+  expect(await code(page)).toBe("x = 2\n"); // nothing before the user says yes
+  await card.getByRole("button", { name: "Cancel" }).click();
+  expect(await code(page)).toBe("x = 2\n");
+  await bar.locator(".cw-reviewbar__row").getByRole("button", { name: "Undo" }).click();
+  await expect(bar).toBeHidden();
+  expect(await code(page)).toBe("x = 1\n");
+});
+
+test("a row of the Review bar shows the file in the editor itself: green band for what came, red lines for what went, a bar with Keep and Undo", async ({ page }) => {
+  await openAgent(
+    page,
+    [
+      { say: "Changing.", actions: [{ type: "editor_write", text: "a\nB\nc\nd\n" }], done: false },
+      { say: "Run.", actions: [{ type: "run" }], done: true },
+    ]
+  );
+  await setCode(page, "a\nb\nc\n");
+  await agentMode(page);
+  await allowAll(page);
+  await accept(page);
+  await ask(page, "change b to B and add d");
+  await expect(page.locator(".cw-agent--ended")).toBeVisible({ timeout: 30000 });
+  await page.locator("#chat-widget__review .cw-reviewbar__path").click();
+  const bar = page.locator(".genie-changes__bar");
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText("Genie changed this file");
+  await expect(bar.locator(".genie-changes__count")).toContainText("+2");
+  await expect(bar.locator(".genie-changes__count")).toContainText("\u22121");
+  // the added lines are marked in the editor's own layer, the removed line is a widget that cannot be edited
+  await expect(page.locator(".ace_editor .genie-changes__add")).toHaveCount(2);
+  await expect(page.locator(".ace_editor .genie-changes__del .genie-changes__line")).toHaveText(["b"]);
+  // the bands follow what is typed: another line added
+  await page.evaluate(() => { const ed = window.editor.env.editor; ed.session.insert({ row: 0, column: 0 }, "top\n"); });
+  await expect(page.locator(".ace_editor .genie-changes__add")).toHaveCount(3);
+  // Keep there settles the row in the chat's bar and takes the editor's bar away
+  await bar.getByRole("button", { name: "Keep" }).click();
+  await expect(bar).toBeHidden();
+  await expect(page.locator(".ace_editor .genie-changes__add")).toHaveCount(0);
+  await expect(page.locator("#chat-widget__review")).toBeHidden();
+});
+
+test("the lines Genie took out are shown where they were, also at the top and at the end of the file", async ({ page }) => {
+  await openAgent(page, [{ say: "Trimming.", actions: [{ type: "editor_write", text: "b\nc\n" }], done: false }, { say: "Run.", actions: [{ type: "run" }], done: true }]);
+  await setCode(page, "a\nb\nc\nz\n");
+  await agentMode(page);
+  await allowAll(page);
+  await accept(page);
+  await ask(page, "drop the first and the last line");
+  await expect(page.locator(".cw-agent--ended")).toBeVisible({ timeout: 30000 });
+  await page.locator("#chat-widget__review .cw-reviewbar__path").click();
+  await expect(page.locator(".genie-changes__bar")).toBeVisible();
+  const dels = page.locator(".ace_editor .genie-changes__del .genie-changes__line");
+  await expect(dels).toHaveText(["a", "z"]);
+  await page.waitForTimeout(500);
+  // each removed line sits at the right height: "a" above "b", "z" below "c"
+  const tops = await page.evaluate(() => {
+    const y = (e) => Math.round(e.getBoundingClientRect().top);
+    const lines = [...document.querySelectorAll(".ace_text-layer .ace_line")].map((e) => [e.textContent, y(e)]);
+    const del = [...document.querySelectorAll(".ace_editor .genie-changes__del .genie-changes__line")].map((e) => [e.textContent, y(e)]);
+    return { lines, del };
+  });
+  const top = (arr, t) => arr.find((x) => x[0] === t)[1];
+  expect(top(tops.del, "a")).toBeLessThan(top(tops.lines, "b"));
+  expect(top(tops.del, "z")).toBeGreaterThan(top(tops.lines, "c"));
 });
 
 test("the end of a stretch asks whether to carry on, and carrying on goes on with the same task", async ({ page }) => {

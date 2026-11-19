@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,10 @@ type shellResult struct {
 	Truncated  bool   `json:"truncated"`
 	TimedOut   bool   `json:"timed_out"`
 	DurationMS int64  `json:"duration_ms"`
+	// the files the command made, changed or deleted in the workspace (agent_shell_changes.go); ChangesNote says when they are not told
+	Changes     []shellChange `json:"changes,omitempty"`
+	ChangesMore int           `json:"changes_more,omitempty"`
+	ChangesNote string        `json:"changes_note,omitempty"`
 }
 
 // outputKeeper keeps the first shellHead and the last shellTail bytes of what a command printed, and how much was cut between them.
@@ -172,10 +177,22 @@ func (server *Server) handleAgentBash(rw http.ResponseWriter, req *http.Request)
 		return
 	}
 	defer release()
+	// the workspace before the command, to tell what it changed
+	realHome, homeErr := filepath.EvalSymlinks(home)
+	var before map[string]snapFile
+	tracked := false
+	if homeErr == nil {
+		before, tracked = snapshotWorkspace(realHome)
+	}
 	res, err := runShell(req.Context(), home, in.Command, shellTimeout(in.TimeoutSeconds))
 	if err != nil {
 		http.Error(rw, "The command could not be started: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if tracked {
+		res.Changes, res.ChangesMore = diffWorkspace(realHome, before)
+	} else if homeErr == nil {
+		res.ChangesNote = "the workspace has too many files to tell what the command changed"
 	}
 	// one line for the admin: where, how it ended; never the command's text or output
 	log.Printf("agent bash: %s exit %d in %d ms (timed out: %v)", home, res.ExitCode, res.DurationMS, res.TimedOut)

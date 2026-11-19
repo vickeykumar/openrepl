@@ -275,3 +275,30 @@ test("Practice saved in the workspace is a switch on the Workspaces section, and
   await expect.poll(() => st.saved.length).toBe(1);
   expect(st.saved[0].practiceWorkspaceOff).toBe(true);
 });
+
+test("the Genie log, its days and the models for a stuck task are settings of the Agent section, and they are saved", async ({ page }) => {
+  const st = await stub(page);
+  await page.goto("/admin#site/genie-agent");
+  await expect(page.locator(".card", { hasText: "Genie log" }).first()).toBeVisible();
+  await expect(page.locator("#f-genie-events")).toBeChecked(); // on by default
+  await expect(page.locator("#f-genie-days")).toHaveValue("");
+  await page.locator("#f-genie-events").evaluate((e) => e.click());
+  await page.locator("#f-genie-days").fill("14");
+  await page.locator("#f-escalation").fill("gpt-4o-mini, gpt-6-luna");
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect.poll(() => st.saved.length).toBe(1);
+  expect(st.saved[0].genieEventsOff).toBe(true);
+  expect(st.saved[0].genieEventDays).toBe(14);
+  expect(st.saved[0].genie.escalationModels).toEqual(["gpt-4o-mini", "gpt-6-luna"]);
+});
+
+test("Genie may act in the Preview is a switch on the Workspaces section, and off is saved", async ({ page }) => {
+  const st = await stub(page);
+  await page.goto("/admin#site/workspaces");
+  await expect(page.locator(".card", { hasText: "Genie may act in the Preview" })).toBeVisible();
+  await expect(page.locator("#f-preview-agent")).toBeChecked();
+  await page.locator("#f-preview-agent").evaluate((e) => e.click());
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect.poll(() => st.saved.length).toBe(1);
+  expect(st.saved[0].previewAgentOff).toBe(true);
+});

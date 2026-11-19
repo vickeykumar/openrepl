@@ -188,3 +188,45 @@ test("tokens are four characters each", () => {
   assert.equal(estimateTokens("abcd"), 1);
   assert.equal(estimateTokens("abcde"), 2);
 });
+
+// ---- a task that was running when the page closed (Resume) ----
+
+import { INTERRUPTED_HOURS, interruptedBrief, interruptedFresh, resumeNote } from "../src/chat-tabs.ts";
+
+const running = (extra: any = {}) => ({ t: "checkpoint", text: "Build the shop page", steps: 7, changed: "shop/index.html, shop/style.css, shop/app.js", file: "shop/app.js", outcome: "running", ts: 1000, ...extra });
+
+test("a chat whose last checkpoint says running was interrupted", () => {
+  const r = restore([{ t: "meta" }, { t: "user", text: "Build the shop page", ts: 900 }, running()] as any);
+  assert.deepEqual(r.interrupted, { text: "Build the shop page", steps: 7, changed: "shop/index.html, shop/style.css, shop/app.js", file: "shop/app.js", ts: 1000 });
+  assert.equal(r.messages.length, 1, "a checkpoint is not a message");
+});
+
+test("a checkpoint that says the task ended is not an interruption, and the newest checkpoint is the one that counts", () => {
+  assert.equal(restore([{ t: "meta" }, running({ outcome: "done" })] as any).interrupted, null);
+  assert.equal(restore([{ t: "meta" }, running(), running({ outcome: "stopped" })] as any).interrupted, null);
+  assert.equal(restore([{ t: "meta" }, running({ outcome: "done" }), running({ steps: 2 })] as any).interrupted!.steps, 2);
+  assert.equal(restore([{ t: "meta" }, { t: "user", text: "hi" }] as any).interrupted, null);
+  assert.equal(restore([{ t: "meta" }, { t: "checkpoint", outcome: "running" }] as any).interrupted, null, "a checkpoint with no task text says nothing");
+});
+
+test("an interrupted task is offered for a day", () => {
+  const i = restore([{ t: "meta" }, running({ ts: 0 })] as any).interrupted;
+  assert.equal(interruptedFresh(i, 3600 * 1000), true);
+  assert.equal(interruptedFresh(i, INTERRUPTED_HOURS * 3600 * 1000 + 1), false);
+  assert.equal(interruptedFresh(null, 0), false);
+});
+
+test("the bar says which task, how far it got, and when", () => {
+  const i = restore([{ t: "meta" }, running({ ts: 0 })] as any).interrupted!;
+  assert.equal(interruptedBrief(i, 4 * 60000), "Build the shop page · step 7 · 3 files changed · 4 minutes ago");
+  assert.match(interruptedBrief({ ...i, steps: 0, changed: "" }, 30 * 1000), /^Build the shop page · just now$/);
+  assert.match(interruptedBrief({ ...i, changed: "a.py" }, 2 * 3600 * 1000), /1 file changed · 2 hours ago$/);
+});
+
+test("the agent is told the task was interrupted, what it had changed, and to look before it acts", () => {
+  const n = resumeNote({ text: "Build", steps: 1, changed: "a.py", file: "", ts: 0 });
+  assert.match(n, /interrupted/);
+  assert.match(n, /1 step and had changed: a\.py/);
+  assert.match(n, /do not do again what is done/);
+  assert.match(resumeNote({ text: "Build", steps: 3, changed: "", file: "", ts: 0 }), /3 steps\. Some of it/);
+});

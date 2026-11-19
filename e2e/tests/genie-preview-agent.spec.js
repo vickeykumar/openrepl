@@ -33,6 +33,19 @@ setTimeout(function(){ console.error("boom"); }, 50);
 document.getElementById("gift").addEventListener("change", function(){ console.log("gift " + this.checked); });
 </script></body></html>`;
 
+// A game on a canvas: it listens for pointer events only, like a slingshot game, and counts a drag when the pointer is the primary one, a mouse, with the button down.
+const GAME = `<!doctype html><html><head><meta charset="utf-8"><title>Slingshot</title></head><body>
+<canvas id="c" width="400" height="300" aria-label="Game board" style="width:400px;height:300px;border:1px solid #888;touch-action:none"></canvas>
+<div id="bird" class="bird flying" style="position:absolute;left:60px;top:340px;width:48px;height:48px;background:#c33"></div><canvas id="c2" width="200" height="100" aria-label="Scaled board" style="width:400px;height:200px;border:0;display:block"></canvas><div id="clk2">no drawing click</div><div id="out">no shot</div><div id="clk">no click</div>
+<script>
+var c=document.getElementById("c"),out=document.getElementById("out"),d=null;
+c.addEventListener("pointerdown",function(e){if(!e.isPrimary||e.pointerType!=="mouse"||e.buttons!==1)return;var r=c.getBoundingClientRect();d={sx:Math.round(e.clientX-r.left),sy:Math.round(e.clientY-r.top),moves:0,ex:0,ey:0}});
+c.addEventListener("pointermove",function(e){if(d&&e.buttons===1){var r=c.getBoundingClientRect();d.moves++;d.ex=Math.round(e.clientX-r.left);d.ey=Math.round(e.clientY-r.top)}});
+c.addEventListener("pointerup",function(e){if(d){window.__shot=d;out.textContent="shot from "+d.sx+","+d.sy+" to "+d.ex+","+d.ey+" in "+d.moves+" moves";d=null}});
+document.getElementById("c2").addEventListener("pointerdown",function(e){var r=this.getBoundingClientRect();document.getElementById("clk2").textContent="drawing click at "+Math.round((e.clientX-r.left)*this.width/r.width)+","+Math.round((e.clientY-r.top)*this.height/r.height)});
+c.addEventListener("click",function(e){document.getElementById("clk").textContent=(function(r){return "clicked at "+Math.round(e.clientX-r.left)+","+Math.round(e.clientY-r.top)})(c.getBoundingClientRect())});
+</script></body></html>`;
+
 async function localAssets(page) {
   if (!process.env.GENIE_LOCAL_ASSETS) return;
   const serve = (file) => (route) => route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(root, file)) });
@@ -49,7 +62,7 @@ async function ready(page) {
 }
 
 async function makeSite(page) {
-  const files = { "index.html": PAGE, "about.html": "<!doctype html><title>About</title><h1>About us</h1><a id='back' href='index.html'>Home</a>", "note.md": "# Notes\n\nhello" };
+  const files = { "index.html": PAGE, "game.html": GAME, "about.html": "<!doctype html><title>About</title><h1>About us</h1><a id='back' href='index.html'>Home</a>", "note.md": "# Notes\n\nhello" };
   await page.evaluate(async ([d, files]) => {
     await window.FileBrowser.create(d, "folder");
     for (const name of Object.keys(files)) await window.FileBrowser.create(d + "/" + name, "file");
@@ -364,4 +377,136 @@ test("the ring and the label show where Genie acts, and the pane says it is in u
   await page.evaluate(() => window.Preview.busy(false));
   await expect(page.locator("#preview-status-text")).not.toHaveText("Genie is using this page");
   await expect(frame.locator("#openrepl-ring")).toBeHidden({ timeout: 4000 }); // gone after a moment
+});
+
+test("a canvas is a part, a drag on it is real pointer events with the button down, and a click can name a point of it", async ({ page }) => {
+  await ready(page);
+  await makeSite(page);
+  await openShop(page, "game.html");
+  const read = await call(page, "read", {});
+  const ref = /(e\d+) canvas "Game board" 402x302/.exec(read.text || JSON.stringify(read));
+  expect(ref, JSON.stringify(read).slice(0, 400)).not.toBeNull();
+  const r = await call(page, "drag", { ref: ref[1], x: 100, y: 200, dx: 120, dy: -60, steps: 10 }, 15000);
+  expect(r.ok, JSON.stringify(r)).toBe(true);
+  const frame = page.frameLocator("#preview-frame");
+  await expect(frame.locator("#out")).toHaveText("shot from 100,200 to 220,140 in 10 moves");
+  // a click at a point of the canvas reaches the page as a click there
+  const c = await call(page, "click", { ref: ref[1], x: 30, y: 40 }, 12000);
+  expect(c.ok, JSON.stringify(c)).toBe(true);
+  await expect(frame.locator("#clk")).toHaveText("clicked at 30,40");
+  // a canvas drawn at another size than it is shown: numbers in "drawing" space are scaled for the model
+  const scaled = (await call(page, "find", { selector: "#c2" })).items[0].ref;
+  expect((await call(page, "read", {})).text).toMatch(/canvas "Scaled board" 400x200 drawing 200x100/);
+  const sc = await call(page, "click", { ref: scaled, x: 50, y: 25, space: "drawing" }, 12000);
+  expect(sc.ok, JSON.stringify(sc)).toBe(true);
+  await expect(frame.locator("#clk2")).toHaveText("drawing click at 50,25");
+  // a drag with no distance, or a part that is not there, says so
+  const none = await call(page, "drag", { ref: ref[1] });
+  expect(none.ok).toBe(false);
+  expect(none.error).toMatch(/dx or dy/);
+  expect((await call(page, "drag", { ref: "e999", dx: 5 })).ok).toBe(false);
+});
+
+test("an agent task drags on a canvas through the Preview and the game really saw it", async ({ page }) => {
+  const seen = await openGenie(page, [
+    { say: "Opening the game.", actions: [{ type: "preview_open", path: `${dir}/game.html` }], done: false },
+    { say: "Reading.", actions: [{ type: "preview_read" }], done: false },
+    { say: "Pulling back and letting go.", actions: [{ type: "preview_drag", ref: "e1", x: 80, y: 150, dx: -60, dy: 30 }], done: false },
+    { say: "The game registered the shot.", actions: [], done: true },
+  ]);
+  await page.locator('#chat-widget__mode button[data-mode="agent"]').click();
+  await answerCards(page);
+  await askGenie(page, "shoot once in the game");
+  await expect(page.locator(".cw-agent--ended")).toBeVisible({ timeout: 60000 });
+  await expect(page.frameLocator("#preview-frame").locator("#out")).toHaveText("shot from 80,150 to 20,180 in 12 moves");
+  await expect(page.locator(".cw-agent__step", { hasText: "Dragging e1 by -60, 30 in the Preview page" })).toBeVisible();
+  expect(JSON.stringify(seen.requests[2].messages).replace(/\\/g, "")).toMatch(/e1 canvas "Game board" 402x302/);
+});
+
+test("the page's coordinates: boxes on every part, find by selector, text or point, and the canvas drawing size", async ({ page }) => {
+  await ready(page);
+  await makeSite(page);
+  // boxes: every part says where it is and how big
+  await openShop(page);
+  const plain = await call(page, "read", {});
+  expect(plain.text).not.toMatch(/ @\d+,\d+ \d+x\d+/);
+  const boxed = await call(page, "read", { boxes: true });
+  expect(boxed.text).toMatch(/e\d+ button "Add to cart" @\d+,\d+ \d+x\d+/);
+  // the game: a canvas always has its size, and its drawing size when that is not the same
+  await openShop(page, "game.html");
+  const read = await call(page, "read", {});
+  expect(read.text).toMatch(/canvas "Game board" 402x302 drawing 400x300/);
+  // find: by selector (with a ref that a drag can use), by text, by point
+  const f = await call(page, "find", { selector: "#bird" });
+  expect(f.ok, JSON.stringify(f)).toBe(true);
+  expect(f.items).toHaveLength(1);
+  expect(f.items[0]).toMatchObject({ tag: "div", id: "bird", cls: "bird.flying", x: 60, y: 340, w: 48, h: 48, visible: true });
+  expect(f.viewport.w).toBeGreaterThan(100);
+  const byText = await call(page, "find", { text: "no shot" });
+  expect(byText.items.map((i) => i.id)).toEqual(["out"]);
+  const at = await call(page, "find", { left: 70, top: 350 });
+  expect(at.items[0].id).toBe("bird");
+  const d = await call(page, "drag", { ref: f.items[0].ref, dx: 20, dy: 0 }, 15000);
+  expect(d.ok, JSON.stringify(d)).toBe(true);
+  expect((await call(page, "find", {})).ok).toBe(false);
+  expect((await call(page, "find", { selector: "((" })).error).toMatch(/not a CSS selector/);
+  expect((await call(page, "find", { selector: "#nothing-here" })).items).toEqual([]);
+  // the inspect of the canvas has its drawing size and its place on the page
+  const i = await call(page, "inspect", { ref: (await call(page, "find", { selector: "#c" })).items[0].ref });
+  expect(i.drawing).toEqual({ w: 400, h: 300 });
+  expect(i.page).toBeDefined();
+});
+
+test("a part that went when the page redrew is found again by what it is, and says so; one that is really gone still says so", async ({ page }) => {
+  await ready(page);
+  await makeSite(page);
+  await openShop(page);
+  const read = await call(page, "read", {});
+  const add = partRef(read.text, /e\d+ button "Add to cart"/);
+  expect(add).not.toBeNull();
+  // the page redraws the button: the old element is gone, a new one with the same name is there (and counts)
+  await page.frameLocator("#preview-frame").locator("#add").evaluate((el) => {
+    const n = el.cloneNode(true);
+    n.addEventListener("click", () => { document.getElementById("count").textContent = String(+document.getElementById("count").textContent + 1); });
+    el.replaceWith(n);
+  });
+  const r = await call(page, "click", { ref: add }, 12000);
+  expect(r.ok, JSON.stringify(r)).toBe(true);
+  expect(r.rebound).toBe(add);
+  await expect(page.frameLocator("#preview-frame").locator("#count")).toHaveText("1");
+  // the same ref again, with the new element still there: found without a word
+  const again = await call(page, "click", { ref: add }, 12000);
+  expect(again.ok).toBe(true);
+  expect(again.rebound).toBeUndefined();
+  // a part that is not on the page at all is still gone
+  await page.frameLocator("#preview-frame").locator("#add").evaluate((el) => el.remove());
+  const gone = await call(page, "click", { ref: add }, 12000);
+  expect(gone.ok).toBe(false);
+  expect(gone.error).toMatch(/is not on the page now/);
+  expect(["removed", "renamed"]).toContain(gone.why);
+  // a number that no read of this page gave
+  const never = await call(page, "click", { ref: "e999" }, 12000);
+  expect(never.ok).toBe(false);
+  expect(never.why).toBe("never");
+  expect(never.error).toMatch(/no preview_read of this page gave that number/);
+});
+
+test("a part whose name changed says what it is called now; a part that is gone with no other of its kind says it was removed", async ({ page }) => {
+  await ready(page);
+  await makeSite(page);
+  await openShop(page);
+  const read = await call(page, "read", {});
+  const add = partRef(read.text, /e\d+ button "Add to cart"/);
+  expect(add).not.toBeNull();
+  await page.frameLocator("#preview-frame").locator("#add").evaluate((el) => { el.textContent = "Add to cart (3)"; });
+  const r = await call(page, "click", { ref: add }, 12000);
+  // the same element is still on the page, so it is found as it is (the name is not part of finding a live element)
+  expect(r.ok, JSON.stringify(r)).toBe(true);
+  // the element is replaced by one of another name: the old name and the new one are said
+  await page.frameLocator("#preview-frame").locator("#add").evaluate((el) => { const n = el.cloneNode(true); n.textContent = "Buy now"; el.replaceWith(n); });
+  const g = await call(page, "click", { ref: add }, 12000);
+  expect(g.ok).toBe(false);
+  expect(g.why).toBe("renamed");
+  expect(g.error).toMatch(/it was called "Add to cart"/);
+  expect(g.error).toMatch(/now called "Buy now"/);
 });

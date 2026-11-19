@@ -44,6 +44,7 @@ export const ACTIONS = [
   "preview_console",
   "preview_network",
   "preview_inspect",
+  "preview_find",
   "preview_wait",
   "preview_click",
   "preview_type",
@@ -51,16 +52,70 @@ export const ACTIONS = [
   "preview_scroll",
   "preview_select",
   "preview_hover",
+  "preview_drag",
   "preview_go",
   "preview_resize",
   "preview_eval",
   "preview_storage",
   "store_suggest",
+  "need_tools",
   "finish",
 ] as const;
 export type ActionType = (typeof ACTIONS)[number];
 
 export const MAX_ACTIONS = 3; // a step does at most this many
+// The groups of actions the agent's instructions come in (server/agent.go, agentActionGroup). The core (files_list, files_search,
+// files_read, need_tools, finish) is always sent; a task is sent the others it needs, and a model asks for one with need_tools.
+export const GROUPS = ["editor", "files", "terminal", "preview", "store"] as const;
+export type Group = (typeof GROUPS)[number];
+export const ACTION_GROUP: Record<string, Group> = {
+  editor_write: "editor",
+  editor_insert: "editor",
+  editor_replace: "editor",
+  set_language: "editor",
+  files_open: "editor",
+  files_save: "editor",
+  run: "terminal",
+  debug: "terminal",
+  terminal_type: "terminal",
+  terminal_interrupt: "terminal",
+  terminal_reconnect: "terminal",
+  terminal_new_tab: "terminal",
+  terminal_select_tab: "terminal",
+  terminal_close_tab: "terminal",
+  bash: "terminal",
+  read_output: "terminal",
+  files_new: "files",
+  files_rename: "files",
+  files_cut: "files",
+  files_copy: "files",
+  files_paste: "files",
+  files_move: "files",
+  files_delete: "files",
+  preview_open: "preview",
+  preview_close: "preview",
+  preview_reload: "preview",
+  preview_state: "preview",
+  preview_read: "preview",
+  preview_console: "preview",
+  preview_network: "preview",
+  preview_inspect: "preview",
+  preview_find: "preview",
+  preview_wait: "preview",
+  preview_click: "preview",
+  preview_type: "preview",
+  preview_press: "preview",
+  preview_scroll: "preview",
+  preview_select: "preview",
+  preview_hover: "preview",
+  preview_drag: "preview",
+  preview_go: "preview",
+  preview_resize: "preview",
+  preview_eval: "preview",
+  preview_storage: "preview",
+  store_suggest: "store",
+};
+
 export const MAX_TEXT = 200000; // characters of code in one action
 export const MAX_SAY = 600; // characters shown to the user for a step
 export const MAX_OUTPUT = 4000; // characters of terminal output sent back
@@ -102,6 +157,17 @@ export interface Action {
   area?: string; // preview_storage: "local", "session" or "cookie"
   op?: string; // preview_storage: "get", "set", "remove" or "clear"
   size?: string; // preview_resize: "fit", "phone", "tablet" or "laptop"
+  groups?: string[]; // need_tools: the groups of actions the model asks for
+  x?: number; // preview_click, preview_drag: where in the part, in pixels from its top left (the middle when left out)
+  y?: number;
+  dx?: number; // preview_drag: how far to drag, in pixels (right and down are plus)
+  dy?: number;
+  steps?: number; // preview_drag: how many moves on the way, 2 to 40
+  selector?: string; // preview_find: a CSS selector
+  left?: number; // preview_find: a point of the visible page, in pixels from its top left
+  top?: number;
+  boxes?: boolean; // preview_read: say where each part is and how big
+  space?: "drawing"; // preview_click, preview_drag: x, y, dx and dy are in the canvas's own drawing coordinates, not screen pixels
 }
 
 export const MAX_PREVIEW_ACTIONS = 30; // the preview_* actions that look at or act in the page, in one task
@@ -139,6 +205,27 @@ export function parsePlanDone(v: unknown, size: number): number[] {
 }
 
 const MAX_FIELD_TEXT = 2000; // characters of text typed into a field of the page
+
+// Where in a part: "x" and "y", pixels from its top left; {} for the middle, null when they are not numbers.
+export function cleanPoint(a: any): { x?: number; y?: number } | null {
+  const one = (v: unknown) => (v === undefined ? undefined : typeof v === "number" && isFinite(v) && v >= 0 && v <= 5000 ? Math.round(v) : null);
+  const x = one(a.x);
+  const y = one(a.y);
+  if (x === null || y === null) return null;
+  if ((x === undefined) !== (y === undefined)) return null; // both or neither
+  return x === undefined ? {} : { x, y };
+}
+
+// "drawing": the numbers are in the canvas's own coordinates; undefined for screen pixels; null when it is anything else.
+export function cleanSpace(v: unknown): "drawing" | undefined | null {
+  return v === undefined || v === "screen" ? undefined : v === "drawing" ? "drawing" : null;
+}
+
+// How far to drag: whole pixels, from -3000 to 3000; undefined is 0, null is not a number.
+export function cleanDelta(v: unknown): number | null {
+  if (v === undefined) return 0;
+  return typeof v === "number" && isFinite(v) && Math.abs(v) <= 3000 ? Math.round(v) : null;
+}
 
 // "e12" is a part of the page as preview_read numbers them.
 export function cleanRef(v: unknown): string | null {
@@ -218,6 +305,7 @@ export function scopeOf(a: Action): Scope | null {
     case "preview_scroll":
     case "preview_select":
     case "preview_hover":
+    case "preview_drag":
     case "preview_go":
     case "preview_resize":
     case "preview_eval":
@@ -367,6 +455,8 @@ export function scopeDetail(scope: Scope, a: Action, openFile: string = ""): str
         return a.checked !== undefined ? "It will " + (a.checked ? "tick " : "untick ") + what + " in your Preview page." : "It will choose \"" + cut(a.value, 60) + "\" in " + what + " in your Preview page.";
       case "preview_hover":
         return "It will move the pointer over " + what + " in your Preview page.";
+      case "preview_drag":
+        return "It will press on " + what + ", drag it " + a.dx + " across and " + a.dy + " down, and let go, in your Preview page.";
       case "preview_go":
         return a.to === "back" ? "It will go back one page in the Preview." : a.to === "forward" ? "It will go forward one page in the Preview." : a.port ? "It will show the program on port " + a.port + " in the Preview." : "It will show " + (a.path || "another page") + " in the Preview.";
       case "preview_resize":
@@ -782,14 +872,44 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
         actions.push({ type });
         break;
       case "preview_read":
-        actions.push({ type, more: a.more === true, viewport: a.viewport === true });
+        actions.push({ type, more: a.more === true, viewport: a.viewport === true, boxes: a.boxes === true });
         break;
+      case "preview_find": {
+        const sel = typeof a.selector === "string" && a.selector.trim() !== "" && a.selector.length <= 300 ? a.selector.trim() : undefined;
+        const text = typeof a.query === "string" && a.query.trim() !== "" && a.query.length <= 200 ? a.query.trim() : undefined;
+        const num = (v: unknown) => (v === undefined ? undefined : typeof v === "number" && isFinite(v) && v >= 0 && v <= 20000 ? Math.round(v) : null);
+        const left = num(a.left);
+        const top = num(a.top);
+        if (left === null || top === null || (left === undefined) !== (top === undefined)) dropped.push('preview_find left out: "left" and "top" are pixels from the top left of the visible page, both or neither');
+        else if (sel === undefined && text === undefined && left === undefined) dropped.push('preview_find left out: give a "selector" (CSS), a "query" (text on the page), or "left" and "top"');
+        else actions.push({ type, ...(sel ? { selector: sel } : {}), ...(text ? { query: text } : {}), ...(left !== undefined ? { left, top } : {}) });
+        break;
+      }
       case "preview_click":
       case "preview_hover":
       case "preview_inspect": {
         const ref = cleanRef(a.ref);
-        if (ref === null) dropped.push(`${type} left out: "ref" has to be a part of the page as preview_read shows it, like "e12"`);
-        else actions.push({ type, ref });
+        const pt = type === "preview_click" ? cleanPoint(a) : {};
+        const space = cleanSpace(a.space);
+        if (space === null) dropped.push(`${type} left out: "space" is "drawing" (a canvas's own coordinates) or left out for screen pixels`);
+        else if (ref === null) dropped.push(`${type} left out: "ref" has to be a part of the page as preview_read shows it, like "e12"`);
+        else if (pt === null) dropped.push('preview_click left out: "x" and "y" are pixels from the top left of the part, numbers from 0 to 5000');
+        else actions.push({ type, ref, ...pt, ...(space ? { space } : {}) });
+        break;
+      }
+      case "preview_drag": {
+        const ref = cleanRef(a.ref);
+        const pt = cleanPoint(a);
+        const dx = cleanDelta(a.dx);
+        const dy = cleanDelta(a.dy);
+        const steps = a.steps === undefined ? undefined : typeof a.steps === "number" && a.steps >= 2 && a.steps <= 40 ? Math.round(a.steps) : null;
+        const space = cleanSpace(a.space);
+        if (space === null) dropped.push('preview_drag left out: "space" is "drawing" (a canvas\'s own coordinates) or left out for screen pixels');
+        else if (ref === null) dropped.push('preview_drag left out: "ref" has to be a part of the page as preview_read shows it (a canvas has one), like "e12"');
+        else if (pt === null) dropped.push('preview_drag left out: "x" and "y" are pixels from the top left of the part, numbers from 0 to 5000');
+        else if (dx === null || dy === null || (!dx && !dy)) dropped.push('preview_drag left out: "dx" and "dy" are how far to drag in pixels (right and down are plus), numbers from -3000 to 3000, not both 0');
+        else if (steps === null) dropped.push('preview_drag left out: "steps" is a whole number from 2 to 40');
+        else actions.push({ type, ref, ...pt, dx, dy, ...(steps ? { steps } : {}), ...(space ? { space } : {}) });
         break;
       }
       case "preview_type": {
@@ -864,6 +984,12 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
         else if ((op === "set" || op === "remove") && !key) dropped.push(`preview_storage left out: "${op}" needs "key"`);
         else if (area === "cookie" && op === "clear") dropped.push("preview_storage left out: cookies are removed one by one with op remove and a key");
         else actions.push({ type, op, area, ...(key ? { name: key } : {}), ...(value !== undefined ? { value } : {}) });
+        break;
+      }
+      case "need_tools": {
+        const asked = (Array.isArray(a.groups) ? a.groups : typeof a.groups === "string" ? [a.groups] : []).filter((g: unknown) => typeof g === "string" && (GROUPS as readonly string[]).includes(g)) as string[];
+        if (asked.length === 0) dropped.push('need_tools left out: "groups" is a list of: ' + GROUPS.join(", "));
+        else actions.push({ type, groups: asked.filter((g, i) => asked.indexOf(g) === i) });
         break;
       }
       case "store_suggest": {
@@ -981,6 +1107,8 @@ export function describe(a: Action): string {
       return "Deleting " + a.path;
     case "store_suggest":
       return "Offering to install " + a.name + " from the App Store";
+    case "need_tools":
+      return "Getting more actions: " + (a.groups || []).join(", ");
     case "preview_open":
       return a.port ? "Opening the Preview on port " + a.port : a.path ? "Opening " + a.path + " in the Preview" : "Opening the Preview";
     case "preview_close":
@@ -1011,6 +1139,10 @@ export function describe(a: Action): string {
       return "Choosing in " + a.ref + " in the Preview page";
     case "preview_hover":
       return "Moving over " + a.ref + " in the Preview page";
+    case "preview_find":
+      return a.selector ? "Finding " + a.selector + " in the Preview page" : a.query ? "Finding \"" + a.query + "\" in the Preview page" : "Looking at a point of the Preview page";
+    case "preview_drag":
+      return "Dragging " + a.ref + " by " + a.dx + ", " + a.dy + " in the Preview page";
     case "preview_go":
       return a.to ? "Going " + a.to + " in the Preview" : a.port ? "Showing port " + a.port + " in the Preview" : "Showing " + a.path + " in the Preview";
     case "preview_resize":

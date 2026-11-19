@@ -1645,7 +1645,9 @@
     root.appendChild(pageHead('Log', 'The end of this server\'s log, with keys, tokens, cookies and email addresses masked.'));
     root.appendChild(h('div', { class: 'toolbar' }, search, count,
       h('label', null, errs, ' Errors only'), h('label', null, followBox, ' Follow'),
-      h('span', { class: 'grow' }), h('button', { class: 'btn', type: 'button', text: 'Refresh', onclick: function () { load(); } })));
+      h('span', { class: 'grow' }),
+      h('a', { class: 'btn', href: BASE + 'admin/logs?download=1', download: 'openrepl-gotty-log.txt', text: 'Download log', title: 'The whole log file, with keys, tokens, cookies and email addresses masked' }),
+      h('button', { class: 'btn', type: 'button', text: 'Refresh', onclick: function () { load(); } })));
     root.appendChild(box);
 
     function load() {
@@ -1664,6 +1666,85 @@
     }
     function refresh() { return follow ? load() : Promise.resolve(); }
     return { root: root, refresh: refresh, poll: true };
+  }
+
+  // ---- Genie log: the agent's failed steps and the end of each task (server/genie_log.go), no text of the user's
+
+  function viewGenieLog() {
+    var root = h('div'), box = h('div');
+    var f = { days: '7', model: '', event: '', action: '', q: '' }, typing = null, lastRaw = null;
+    var days = h('select', { 'aria-label': 'Period', onchange: function () { f.days = days.value; load(); } },
+      [['1', 'Last day'], ['7', 'Last 7 days'], ['30', 'Last 30 days']].map(function (o) { return h('option', { value: o[0], text: o[1], selected: o[0] === f.days }); }));
+    var model = h('select', { 'aria-label': 'Model', onchange: function () { f.model = model.value; load(); } }, h('option', { value: '', text: 'Model: all' }));
+    var event = h('select', { 'aria-label': 'Event', onchange: function () { f.event = event.value; load(); } },
+      [['', 'Event: all'], ['step_failed', 'Failed steps'], ['stuck', 'Stuck'], ['retry', 'Retries'], ['need_tools', 'More actions asked'], ['task_end', 'Task ends']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+    var search = h('input', { type: 'search', placeholder: 'Search the reasons', 'aria-label': 'Search the reasons',
+      oninput: function () { clearTimeout(typing); typing = setTimeout(function () { f.q = search.value.trim(); load(); }, 300); } });
+    var dl = h('a', { class: 'btn', href: BASE + 'admin/genie-log?download=1&days=7', download: 'openrepl-genie-events.jsonl', text: 'Download whole log' });
+    var copy = h('button', { class: 'btn', type: 'button', text: 'Copy for support', onclick: function () {
+      var lines = (lastRaw && lastRaw.events || []).slice(0, 50).map(function (e) { return JSON.stringify(e); }).join('\n');
+      var done = function () { toast('Copied the newest ' + Math.min(50, (lastRaw && lastRaw.events || []).length) + ' events'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(lines).then(done, function () { toast('Could not copy'); });
+      else toast('Could not copy');
+    } });
+    root.appendChild(pageHead('Genie log', 'What the agent reports on the free plan: failed steps, stuck tasks and how each task ended. It holds the model, the action, the file extension, a short reason with paths and quoted text taken out, and counts. Never the user\'s name, messages, files or terminal text.'));
+    root.appendChild(h('div', { class: 'toolbar' }, days, model, event, search, h('span', { class: 'grow' }), copy, dl, refreshButton(function () { return load(); })));
+    root.appendChild(box);
+
+    function n(x) { return Number(x || 0).toLocaleString('en-US'); }
+    function tile(label, value) { return h('div', { class: 'card' }, h('div', { class: 'sub', text: label }), h('b', { text: value })); }
+    var cols = [
+      { key: 'model', label: 'Model', cell: function (r) { return mono(r.model); } },
+      { key: 'tasks', label: 'Tasks', num: true, cell: function (r) { return n(r.tasks); } },
+      { key: 'done', label: 'Done', num: true, cell: function (r) { return r.tasks ? r.donePct + '%' : '–'; } },
+      { key: 'stuck', label: 'Stuck', num: true, cell: function (r) { return n(r.stuck); } },
+      { key: 'fail', label: 'Failed steps', num: true, cell: function (r) { return n(r.failures); } },
+      { key: 'action', label: 'Top failing action', cell: function (r) { return r.topAction ? mono(r.topAction) : h('span', { class: 'sub', text: '–' }); } },
+      { key: 'reason', label: 'Top reason', cell: function (r) { return h('span', { class: 'wrap-text', text: r.topReason || '–' }); } }
+    ];
+    var ecols = [
+      { key: 't', label: 'When', cell: function (e) { return h('div', null, when(e.t), h('div', { class: 'sub', text: localTime(e.t) })); } },
+      { key: 'event', label: 'Event', cell: function (e) { return pill(e.event, e.event === 'stuck' ? 'warn' : e.event === 'task_end' && e.outcome === 'done' ? 'ok' : 'plain'); } },
+      { key: 'model', label: 'Model', cell: function (e) { return mono(e.model); } },
+      { key: 'action', label: 'Action', cell: function (e) { return e.action ? h('span', null, mono(e.action), e.ext ? ' .' + e.ext : null) : ''; } },
+      { key: 'step', label: 'Step', num: true, cell: function (e) { return e.step || ''; } },
+      { key: 'detail', label: 'Reason or outcome', cell: function (e) {
+        var text = e.event === 'task_end' ? e.outcome + (e.steps ? ' \u00b7 ' + e.steps + ' steps' : '') + (e.secs ? ' \u00b7 ' + e.secs + ' s' : '') + (e.tokens ? ' \u00b7 ' + n(e.tokens) + ' tokens' : '')
+          : e.event === 'stuck_answer' ? 'the user chose: ' + e.choice + (e.rule ? ' (' + e.rule + ')' : '')
+          : e.event === 'stuck' ? (e.rule ? e.rule + ': ' : '') + (e.reason || '')
+          : (e.code ? e.code + ': ' : '') + (e.reason || '');
+        return h('span', null, h('span', { class: 'wrap-text', text: text }), e.trail ? h('div', { class: 'sub', text: 'after: ' + e.trail.split(',').slice(-5).join(' \u2192 ') }) : null);
+      } }
+    ];
+    var codeCols = [
+      { key: 'code', label: 'Why a step failed', cell: function (r) { return mono(r.code); } },
+      { key: 'n', label: 'Times', num: true, cell: function (r) { return n(r.n); } },
+      { key: 'action', label: 'Most often in', cell: function (r) { return r.topAction ? mono(r.topAction) : h('span', { class: 'sub', text: '\u2013' }); } }
+    ];
+    function load() {
+      var url = 'admin/genie-log?days=' + f.days + (f.model ? '&model=' + encodeURIComponent(f.model) : '') + (f.event ? '&event=' + f.event : '') + (f.q ? '&q=' + encodeURIComponent(f.q) : '');
+      dl.setAttribute('href', BASE + 'admin/genie-log?download=1&days=' + f.days);
+      return api.get(url).then(function (r) {
+        lastRaw = r;
+        // the model list follows what the log holds
+        var have = {}; Array.prototype.forEach.call(model.options, function (o) { have[o.value] = true; });
+        r.models.forEach(function (m) { if (!have[m.model]) model.appendChild(h('option', { value: m.model, text: m.model })); });
+        var node = h('div', { class: 'stack' },
+          r.off ? h('p', { class: 'sub', text: 'The Genie log is switched off in Site settings, so nothing new is kept.' }) : null,
+          h('div', { class: 'grid five' },
+            tile('Tasks', n(r.tasks)), tile('Done', r.tasks ? r.donePct + '%' : '–'), tile('Stuck', n(r.stuck)),
+            tile('Failed steps', n(r.failures)), tile('Worst action', r.worstAction || '–')),
+          table(cols, r.models, { empty: 'Nothing has been reported in this period.' }),
+          r.codes && r.codes.length ? h('h3', { text: 'Most common failures' }) : null,
+          r.codes && r.codes.length ? table(codeCols, r.codes, {}) : null,
+          h('h3', { text: 'Events, newest first' }),
+          table(ecols, r.events, { empty: 'No events match.' }),
+          r.matching > r.events.length ? h('p', { class: 'sub', text: 'Showing the newest ' + r.events.length + ' of ' + n(r.matching) + '. Download the log for all of them.' }) : null,
+          h('p', { class: 'sub', text: 'Kept ' + r.keepDays + ' days (Site settings, Genie).' + (r.dropped ? ' ' + n(r.dropped) + ' events were not kept because a day\'s file was full.' : '') }));
+        render(box, JSON.stringify([r, f]), node);
+      }, fail);
+    }
+    return { root: root, refresh: load, poll: false }; // not polled: it reads the days of the log from the disk
   }
 
   // ---- audit log
@@ -2551,6 +2632,7 @@
     jobs: { label: 'Jobs', icon: 'jobs', make: viewJobs },
     params: { label: 'Parameters', icon: 'params', make: viewParams },
     logs: { label: 'Log', icon: 'logs', make: viewLogs },
+    genielog: { label: 'Genie log', icon: 'logs', make: viewGenieLog },
     store: { label: 'App Store', icon: 'apps', make: viewStore },
     audit: { label: 'Audit log', icon: 'audit', make: viewAudit }
   };
@@ -2559,7 +2641,7 @@
     ['', ['overview', 'map']],
     ['Fleet', ['workers', 'sessions']],
     ['Site', ['site', 'feedback', 'snippets', 'store', 'users', 'traffic', 'usage']],
-    ['System', ['health', 'jobs', 'params', 'logs', 'audit']]
+    ['System', ['health', 'jobs', 'params', 'logs', 'genielog', 'audit']]
   ];
 
   var unread = 0;

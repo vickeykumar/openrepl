@@ -7,6 +7,11 @@ const stamp = Date.now().toString(36);
 const dir = `site${stamp}`;
 
 async function ready(page) {
+  // GENIE_LOCAL_ASSETS=1 serves the page script of this checkout, for a run before an image is built
+  if (process.env.GENIE_LOCAL_ASSETS) {
+    const file = require("path").join(__dirname, "..", "..", "src", "js", "dist", "scribbler.js");
+    await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), (route) => route.fulfill({ contentType: "application/javascript", body: require("fs").readFileSync(file) }));
+  }
   await page.goto("/");
   await page.waitForFunction(() => window.FileBrowser && window.FileBrowser.ready() && window.Preview && window.EditorTabs);
   await expect(page.locator("#loader")).toBeHidden();
@@ -91,6 +96,24 @@ test("saving a file of the page reloads it", async ({ page }) => {
     window.SaveSelectedNodeToFile(window.editor.env.filename);
   });
   await expect(frame.locator("#t")).toHaveText("Changed in the editor");
+});
+
+test("a hidden file written next to the page (Genie's chat files in .genie) does not reload it, a visible one does", async ({ page }) => {
+  await ready(page);
+  await makeSite(page);
+  await openIndex(page);
+  await page.locator("#preview-button").click();
+  const frame = page.frameLocator("#preview-frame");
+  await expect(frame.locator("#t")).toHaveText("Hello from app.js");
+  await frame.locator("#t").evaluate(() => { window.__marker = 1; });
+  await page.evaluate((d) => {
+    window.Preview.changed(window.homedir + "/" + d + "/.genie/chats/a.jsonl");
+    window.Preview.changed(window.homedir + "/" + d + "/.hidden");
+  }, dir);
+  await page.waitForTimeout(1500);
+  expect(await frame.locator("#t").evaluate(() => window.__marker)).toBe(1);
+  await page.evaluate((d) => window.Preview.changed(window.homedir + "/" + d + "/style.css"), dir);
+  await expect.poll(() => frame.locator("#t").evaluate(() => window.__marker === undefined), { timeout: 8000 }).toBe(true);
 });
 
 test("Run on an .html file opens the preview, and the size menu sizes the page", async ({ page }) => {

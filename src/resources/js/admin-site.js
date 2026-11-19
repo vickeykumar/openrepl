@@ -81,6 +81,7 @@
         snippetMaxDays: int(form.snippetMax.value),
         previewOff: !form.previewOn.checked, practiceWorkspaceOff: !form.practiceWs.checked,
         previewGuestsOff: !form.previewGuests.checked, previewAgentOff: !form.previewAgent.checked,
+        genieEventsOff: !form.genieEvents.checked, genieEventDays: int(form.genieDays.value),
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
           customModels: (form.custom || []).map(readCustom),
@@ -102,7 +103,8 @@
           planCredits: num(form.planCredits.value), planBudget: num(form.planBudget.value), creditWeights: weightsOf(),
           agentDisabled: !form.agentOn.checked, agentOnPractice: form.agentPractice.checked,
           agentAutoOff: !form.agentAuto.checked, agentRiskyOff: !form.agentRisky.checked, agentShellOff: !form.agentShell.checked,
-          agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value) }
+          agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value),
+          escalationModels: form.escalation.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean) }
       };
     }
     function int(v) { v = parseInt(v, 10); return isNaN(v) ? 0 : v; }
@@ -168,6 +170,7 @@
         snippetMaxDays: s.snippetMaxDays || 0,
         previewOff: !!s.previewOff, practiceWorkspaceOff: !!s.practiceWorkspaceOff,
         previewGuestsOff: !!s.previewGuestsOff, previewAgentOff: !!s.previewAgentOff,
+        genieEventsOff: !!s.genieEventsOff, genieEventDays: s.genieEventDays || 0,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
           disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
           featuredModels: (s.genie.featuredModels || []).slice(),
@@ -189,7 +192,8 @@
           planCredits: s.genie.planCredits || 0, planBudget: s.genie.planBudget || 0, creditWeights: pricesClean(s.genie.creditWeights),
           agentDisabled: !!s.genie.agentDisabled, agentOnPractice: !!s.genie.agentOnPractice,
           agentAutoOff: !!s.genie.agentAutoOff, agentRiskyOff: !!s.genie.agentRiskyOff, agentShellOff: !!s.genie.agentShellOff,
-          agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0 } };
+          agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0,
+          escalationModels: (s.genie.escalationModels || []).slice() } };
     }
     function isDirty() { return !!form && !!form.ready && JSON.stringify(snapshot()) !== JSON.stringify(clean(saved)); }
 
@@ -537,6 +541,13 @@
       var agentRisky = toggle('f-agent-risky', !settings.genie.agentRiskyOff, 'Allow riskier things for a while');
       var agentShell = toggle('f-agent-shell', !settings.genie.agentShellOff, 'Agent: run commands');
       form.agentShell = agentShell.input;
+      var genieEvents = toggle('f-genie-events', !settings.genieEventsOff, 'Genie log');
+      form.genieEvents = genieEvents.input;
+      form.genieDays = h('input', { type: 'number', class: 'field', id: 'f-genie-days', min: '1', max: '365', step: '1', placeholder: '30', 'aria-label': 'Days the Genie log is kept', oninput: update });
+      form.genieDays.value = settings.genieEventDays || '';
+      form.genieDays.style.maxWidth = '9rem';
+      form.escalation = h('input', { type: 'text', class: 'field', id: 'f-escalation', placeholder: 'model ids, comma separated', 'aria-label': 'Models for a stuck task', oninput: update });
+      form.escalation.value = (settings.genie.escalationModels || []).join(', ');
       form.agentOn = agentOn.input; form.agentPractice = agentPractice.input; form.agentAuto = agentAuto.input; form.agentRisky = agentRisky.input;
       // what the models cost: dollars for a million tokens sent and written, by model
       var showCost = toggle('f-show-cost', !!settings.genie.showCostToUsers, 'Show the cost to users');
@@ -1123,7 +1134,10 @@
           row('Agent: native tool calling', 'Off by default. On: a model ticked below answers each agent step by calling one function (its host checks the shape) instead of writing JSON as text. The agent works the same. The OpenAI models are ticked until you choose; tick another model only if its host takes forced tool calls. If a host refuses the call, the same step is sent again as text, nobody sees an error, the refused call is not counted, and that model is left without the tool for an hour. Refusals are counted in Genie usage.', agentTools.node),
           row('Models that take it', 'One box for each model. Needs the switch above.', toolBoxes),
           row('Tasks per hour', 'How many tasks a signed-in user may start in an hour (admins have no limit). Counted on this server and reset when it restarts.', form.agentTasks),
-          row('Steps per task', 'How many times Genie may answer in one task, at most 8.', form.agentSteps) ]),
+          row('Steps per task', 'How many times Genie may answer in one task, at most 8.', form.agentSteps),
+          row('Models for a stuck task', 'When the same step fails three times, Genie stops and offers to try it again with the first of these models that the user may use. Model ids, in order, separated by commas, at most 5. Empty: the card offers only a hint and Stop.', form.escalation),
+          row('Genie log', 'On: the agent of a signed-in user reports each failed step, each stuck task and how each task ended (the model, the action, the file extension, a short reason with paths and quoted text taken out, and counts; never a name, a message, a file or the terminal text). You read it under System, Genie log. Switch it off for users on a paid plan once there is one, and say so in the privacy notes.', genieEvents.node),
+          row('Days the Genie log is kept', 'From 1 to 365. Leave it empty for 30. Older days are deleted.', form.genieDays) ]),
         card('Genie chat history', 'Each chat of the Genie panel is saved in its owner\'s own workspace, in the hidden folder .genie/chats, one JSON Lines file for each chat, and comes back as a tab after a reload. It goes when the workspace goes: a guest workspace that the server removes takes its chats with it. Nobody, an admin included, can read a chat from here; this page only sets whether and how much is kept.', [
           row('Save chat history in workspaces', 'On by default. Off: nothing is saved or listed, as before; chats already saved stay in the workspaces.', chatOn.node),
           row('Also for guests', 'Off: only signed-in users have their chats saved.', chatGuests.node),

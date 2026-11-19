@@ -45,3 +45,54 @@ test.describe("editor layout", () => {
     expect(await stacked(page)).toBe(false);
   });
 });
+
+// GENIE_LOCAL_ASSETS=1 serves the page script of this checkout, for a run before an image is built
+async function localPageScript(page) {
+  if (!process.env.GENIE_LOCAL_ASSETS) return;
+  const file = require("path").join(__dirname, "..", "..", "src", "js", "dist", "scribbler.js");
+  await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), (route) => route.fulfill({ contentType: "application/javascript", body: require("fs").readFileSync(file) }));
+}
+
+test.describe("double click on a bar", () => {
+  test("an empty part of the top bar maximizes the workspace and a second double click restores it; a button keeps its own click", async ({ page }) => {
+    await localPageScript(page);
+    await page.goto(PAGE);
+    await expect(page.locator("#rotate-button")).toBeVisible();
+    const maxed = () => page.locator("body").evaluate((b) => b.classList.contains("ide-maximized"));
+    expect(await maxed()).toBe(false);
+    // the bar moves when the workspace is maximized: its empty part is measured again each time
+    const dbl = async () => {
+      const bar = await page.locator("#optionMenu").boundingBox();
+      const spacer = await page.locator("#optionMenu .app-bar__spacer").boundingBox();
+      await page.mouse.dblclick(spacer.x + spacer.width / 2, bar.y + bar.height / 2);
+    };
+    await dbl();
+    await expect.poll(maxed).toBe(true);
+    await dbl();
+    await expect.poll(maxed).toBe(false);
+    // a double click on the language list or a button does not toggle
+    await page.locator("#rotate-button").dblclick();
+    await page.waitForTimeout(300);
+    expect(await maxed()).toBe(false);
+  });
+
+  test("an empty part of the terminal's tab bar hides the terminal, the strip it leaves shows it again; a tab keeps its own", async ({ page }) => {
+    await localPageScript(page);
+    await page.goto(PAGE);
+    await expect(page.locator("#rotate-button")).toBeVisible();
+    const termShown = () => page.locator("#terminal-div").evaluate((el) => getComputedStyle(el).display !== "none");
+    expect(await termShown()).toBe(true);
+    await page.locator("#terminal-tabs").scrollIntoViewIfNeeded();
+    const bar = await page.locator("#terminal-tabs").boundingBox();
+    await page.mouse.dblclick(bar.x + bar.width * 0.55, bar.y + bar.height / 2);
+    await expect.poll(termShown).toBe(false);
+    await expect(page.locator("#term-collapsed")).toBeVisible();
+    await page.locator("#term-collapsed").scrollIntoViewIfNeeded();
+    const strip = await page.locator("#term-collapsed").boundingBox();
+    await page.mouse.dblclick(strip.x + strip.width * 0.55, strip.y + strip.height / 2);
+    await expect.poll(termShown).toBe(true);
+    await page.locator("#terminal-tabs .tab").first().dblclick();
+    await page.waitForTimeout(300);
+    expect(await termShown()).toBe(true);
+  });
+});

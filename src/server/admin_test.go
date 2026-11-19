@@ -543,7 +543,34 @@ func TestLogViewer(t *testing.T) {
 		t.Errorf("%d lines returned, limit %d", len(r.Lines), logMaxRows)
 	}
 
+	// the whole file to save, masked like the viewer, and the download is in the audit log
+	dl := get(h, "/admin/logs?download=1")
+	body := dl.Body.String()
+	if dl.Code != 200 || !strings.Contains(dl.Header().Get("Content-Disposition"), "attachment") ||
+		!strings.Contains(dl.Header().Get("Content-Type"), "text/plain") {
+		t.Fatalf("download: %d %v", dl.Code, dl.Header())
+	}
+	if strings.Count(body, "\n") != 302 || !strings.Contains(body, "line 0\n") || strings.Contains(body, "abcd1234secret") || strings.Contains(body, "vickey@") {
+		t.Errorf("the download is not the whole masked log (%d lines)", strings.Count(body, "\n"))
+	}
+	var audit struct {
+		Entries []struct{ Action, Detail string }
+	}
+	decode(t, get(h, "/admin/audit"), &audit)
+	found := false
+	for _, e := range audit.Entries {
+		if e.Action == "log" && strings.Contains(e.Detail, "downloaded") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the download is not in the audit log: %+v", audit.Entries)
+	}
+
 	os.Remove(logFile)
+	if w := get(h, "/admin/logs?download=1"); w.Code != 404 {
+		t.Errorf("no log file to download: %d", w.Code)
+	}
 	var none struct {
 		Lines []string
 		Note  string

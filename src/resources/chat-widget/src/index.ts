@@ -3,8 +3,9 @@ import { marked } from "marked";
 
 import { widgetHTML } from "./widgetHtmlString";
 import { AgentMemory, AgentRunner, AgentState, TaskInfo } from "./agent";
+import { GenieEvent, PROMPT_VERSION, eventBody, pageSessionId } from "./genie-events";
 import { ChatStore } from "./chat-store";
-import { ChatLine, Restored, TabView, afterClose, clock, filterChats, fitText, groupChats, moveTab, newChatId, restore, SUMMARY_KEEP, SUMMARY_PREFIX, SUMMARY_PROMPT, applySummary, cleanSummary, sizeText, staleForAgent, staleNote, staleParts, summaryInput, summaryPlan, tabMark, tabToClose, titleFrom, toHistory } from "./chat-tabs";
+import { ChatLine, Interrupted, Restored, interruptedBrief, interruptedFresh, resumeNote, TabView, afterClose, clock, filterChats, fitText, groupChats, moveTab, newChatId, restore, SUMMARY_KEEP, SUMMARY_PREFIX, SUMMARY_PROMPT, applySummary, cleanSummary, sizeText, staleForAgent, staleNote, staleParts, summaryInput, summaryPlan, tabMark, tabToClose, titleFrom, toHistory } from "./chat-tabs";
 import { SSEParser, addEvent, answerOf, newStreamed } from "./sse";
 import { definesSomething } from "./chat-send";
 import { isSmallModel, starterChips } from "./agent-protocol";
@@ -547,6 +548,10 @@ function wireConversationScroll() {
   }
   const go = document.getElementById("chat-widget__wait-go");
   if (go) go.addEventListener("click", goToWaiting);
+  const resumeGo = document.getElementById("chat-widget__resume-go");
+  if (resumeGo) resumeGo.addEventListener("click", () => void resumeInterrupted());
+  const resumeDrop = document.getElementById("chat-widget__resume-drop");
+  if (resumeDrop) resumeDrop.addEventListener("click", () => dropInterrupted(activeTab));
 }
 
 function hasSummary(history: MessageType[]): boolean {
@@ -786,6 +791,7 @@ type ChatTab = {
   draft: string; // a half-typed message
   lastTyped: string;
   recap: AgentMemory | null; // what the agent remembers of the tasks of this chat
+  interrupted: Interrupted | null; // a task that was running when the chat was last open: the Resume bar offers it
 };
 
 function makeTab(id: string, title: string = "New chat"): ChatTab {
@@ -806,6 +812,7 @@ function makeTab(id: string, title: string = "New chat"): ChatTab {
     draft: "",
     lastTyped: "",
     recap: null,
+    interrupted: null,
   };
 }
 
@@ -901,6 +908,71 @@ function persistState(tab: ChatTab) {
   chatStore.append(tab.id, [{ t: "state", mode: tab.mode, model: chosenModel().id, effort: chosenEffort().id }]);
 }
 
+// The place a running task has reached, kept in the chat file (the server keeps only the newest checkpoint of a chat).
+function persistCheckpoint(tab: ChatTab, c: { state: string; task: string; steps: number; changed: string; file: string }) {
+  if (!tabsOn || !tab.saved) return;
+  chatStore.append(tab.id, [{ t: "checkpoint", ts: Date.now(), mode: "agent", model: chosenModel("agent").id, text: fitText(c.task).slice(0, 300), steps: c.steps, changed: c.changed.slice(0, 300) || undefined, file: c.file || undefined, outcome: c.state }]);
+}
+
+// The bar above the box: a task of this chat was running when it was last open. Resume starts a new task that looks at the
+// workspace as it is and carries on with what is left (the steps themselves are not kept); Discard lets it go.
+function renderResume() {
+  const bar = document.getElementById("chat-widget__resume");
+  const text = document.getElementById("chat-widget__resume-text");
+  if (!bar || !text) return;
+  const i = activeTab.interrupted;
+  const show = !!i && interruptedFresh(i, Date.now()) && !agentRunner.running && !peerchatmode && agentAvailability() === "ready";
+  bar.hidden = !show;
+  if (show && i) {
+    text.textContent = "";
+    const b = document.createElement("b");
+    b.textContent = "A task was running when this page closed. ";
+    text.append(b, document.createTextNode(interruptedBrief(i, Date.now())));
+  }
+}
+
+// The Review bar above the box (drawn by the agent): shown while the task of this chat has changes that are not settled.
+let reviewCount = 0;
+let reviewTab: ChatTab | null = null;
+function renderReviewButton() {
+  const b = document.getElementById("chat-widget__review");
+  if (!b) return;
+  b.hidden = !(reviewCount > 0 && reviewTab === activeTab);
+}
+
+function dropInterrupted(tab: ChatTab) {
+  const i = tab.interrupted;
+  tab.interrupted = null;
+  if (i) persistCheckpoint(tab, { state: "stopped", task: i.text, steps: i.steps, changed: i.changed, file: i.file });
+  renderResume();
+}
+
+async function resumeInterrupted() {
+  const tab = activeTab;
+  const i = tab.interrupted;
+  if (!i || agentRunner.running || agentAvailability() !== "ready") return;
+  if (noneLeft()) return flashUsage();
+  tab.interrupted = null;
+  renderResume();
+  setMode(true);
+  const msg = "Continue: " + i.text;
+  const task = await takeContext(true);
+  sentContext = task.items.length > 0 ? { items: task.items, notes: task.notes } : null;
+  runTab = tab;
+  persistUser(tab, msg, Date.now());
+  tab.lastTyped = msg;
+  renderTabs();
+  refreshMode();
+  try {
+    await agentRunner.start(msg, resumeNote(i) + (task.block ? "\n\n" + task.block : ""));
+  } finally {
+    runTab = null;
+    renderTabs();
+    refreshMode();
+  }
+  fetchUsage();
+}
+
 function persistTask(tab: ChatTab, outcome: string, info?: TaskInfo) {
   if (!tabsOn || !tab.saved || !info) return;
   chatStore.append(tab.id, [{ t: "task", at: clock(Date.now()), ts: Date.now(), text: fitText(info.task).slice(0, 300), steps: info.steps, checked: info.checked || undefined, changed: info.changed || undefined, outcome }]);
@@ -957,6 +1029,7 @@ async function loadTab(tab: ChatTab) {
   while (tab.history.length > maxHistorySize()) tab.history.splice(NUM_MANDATORY_ENTRIES + (hasSummary(tab.history) ? 1 : 0), 1);
   const lastUser = [...r.messages].reverse().find((m) => m.kind === "user");
   tab.lastTyped = lastUser ? lastUser.text : "";
+  tab.interrupted = r.interrupted;
   if (tab === activeTab) conversationHistory = tab.history;
   await drawRestored(tab, r);
   if (tab === activeTab) afterShown(tab);
@@ -1053,6 +1126,8 @@ function afterShown(tab: ChatTab) {
     autoGrow(input);
   }
   lastTyped = tab.lastTyped;
+  renderResume();
+  renderReviewButton();
   decorateLastTurn();
   refreshQuick();
   renderWaiting();
@@ -1977,13 +2052,79 @@ function requestHeaders(): Headers {
   return h;
 }
 
+// The request fields of the Agent for a model that is not the one chosen (a stuck task tried again with a stronger one): the same
+// room for a whole file, and the effort the admin set for Agent mode.
+function agentFieldsFor(id: string): Record<string, any> {
+  const m = MODELS.filter((x) => x.id === id)[0] || MODELS[0];
+  if (m.reasoning) {
+    const want = MC.agentDefault().effort;
+    const e = EFFORTS.filter((x) => x.id === want)[0] || EFFORTS[1];
+    return { model: m.id, reasoning_effort: e.id, max_completion_tokens: e.tokens + 2500 };
+  }
+  return { model: m.id, temperature: 0.2, max_tokens: 3000 };
+}
+
 let lastAgentState: AgentState = "idle";
 const agentRunner = new AgentRunner(
   {
     url: () => config.url,
     headers: requestHeaders,
     // a whole file may be in an answer: more room than a chat answer needs
-    modelFields: () => MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }, "agent"), // the Agent model, whichever tab is shown
+    modelFields: (modelId?: string) => (modelId ? agentFieldsFor(modelId) : MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }, "agent")), // the Agent model, whichever tab is shown
+    modelId: () => MC.get("agent").model,
+    // how many files the task has changed: the Review button above the box
+    reviewContainer: () => document.getElementById("chat-widget__review"),
+    changes: (n: number) => {
+      reviewCount = n;
+      reviewTab = runTab || activeTab;
+      renderReviewButton();
+    },
+    // a file put back as it was before a shell command, only if it is still as the command left it (server/agent_shell_changes.go)
+    restoreFile: async (path: string, text: string, expect: string | null) => {
+      const pp = (window as any).preprocessurl;
+      try {
+        const res = await fetch(typeof pp === "function" ? pp("/agent_restore") : "/agent_restore", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(expect === null ? { path, text, must_not_exist: true } : { path, text, expect }),
+        });
+        if (res.ok) return { ok: true as const };
+        return { ok: false as const, error: (await res.text()).trim().slice(0, 160) || "the server refused (" + res.status + ")" };
+      } catch (e) {
+        return { ok: false as const, error: "the server could not be reached" };
+      }
+    },
+    checkpoint: (c: { state: string; task: string; steps: number; changed: string; file: string }) => persistCheckpoint(runTab || activeTab, c),
+    // the model a stuck task may be tried again with: the first of the admin's list that the user may use and is not on
+    escalation: () => {
+      const ids: string[] = ((window as any).site_settings || {}).escalationModels || [];
+      const now = MC.get("agent").model;
+      for (const id of ids) {
+        const m = MODELS.filter((x) => x.id === id)[0];
+        if (m && id !== now && MC.agentOk(id)) return { id, name: m.name, note: usage && usage.credits ? "It counts toward your credits." : "" };
+      }
+      return null;
+    },
+    // words for the user to finish in the chat box
+    prefill: (text: string) => {
+      const box = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+      if (!box) return;
+      box.value = text;
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+      box.focus();
+      box.setSelectionRange(text.length, text.length);
+    },
+    // a failed step, a stuck task or a retry goes to the Genie log (server/genie_log.go), unless an admin switched it off
+    event: (e: GenieEvent) => {
+      if (!config.url || ((window as any).site_settings || {}).genieEventsOff) return;
+      fetch(config.url.replace(/completions\/?$/, "genie-event"), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(eventBody(e)),
+      }).catch(() => {});
+    },
     ideContext: () => getcurrentIDECode(),
     editorText: () => fetchEditorContent(),
     stream: () => streamOn(),
@@ -1993,13 +2134,30 @@ const agentRunner = new AgentRunner(
       return usage && usage.credits && usage.task ? usage.task.credits : null;
     },
     // how the task ended, counts only
-    report: (info: { token: string; outcome: string; changed: boolean; checked: boolean }) => {
+    report: (info: { token: string; outcome: string; changed: boolean; checked: boolean; model: string; steps: number; secs: number; failed: number; groups: string; tid: string; tokens: number; trail: string; lang: string }) => {
       if (!config.url) return;
       fetch(config.url.replace(/completions\/?$/, "agent-outcome"), {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task: info.token, outcome: info.outcome, changed: info.changed, checked: info.changed ? info.checked : null }),
+        body: JSON.stringify({
+          task: info.token,
+          outcome: info.outcome,
+          changed: info.changed,
+          checked: info.changed ? info.checked : null,
+          // for the Genie log: counts and the model, nothing of the task's words
+          sid: pageSessionId(),
+          model: info.model,
+          steps: info.steps,
+          secs: info.secs,
+          failed: info.failed,
+          groups: info.groups,
+          tid: info.tid,
+          tokens: info.tokens,
+          trail: info.trail,
+          lang: info.lang,
+          prompt: PROMPT_VERSION,
+        }),
       }).catch(() => {});
     },
     terminalText: () => fetchTerminalOutput(120),
@@ -2197,6 +2355,8 @@ const agentRunner = new AgentRunner(
     showAgentState(state);
     renderTabs(); // the ring of the tab that runs the task
     renderActivity();
+    renderResume();
+    renderReviewButton();
   }
 );
 // The review card of the editor's changes (js/src/page/18-genie-review.js) offers "apply later changes without asking" through this
@@ -2794,6 +2954,7 @@ function refreshMode() {
   if (signedSeen !== null && signed !== signedSeen) fetchUsage();
   const flipped = signedSeen !== null && signed !== signedSeen;
   signedSeen = signed;
+  renderResume();
   if (flipped && !agentRunner.running) resetTabs(); // the other workspace's chats
   const box = document.getElementById("chat-widget__mode");
   if (!box) return;

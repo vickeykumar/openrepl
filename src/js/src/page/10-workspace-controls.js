@@ -141,6 +141,22 @@ $(function () {
     }
   }, true);
 
+  // Double click on an empty part of a bar: the top bar maximizes or restores the workspace, the terminal's tab bar hides the terminal and the thin strip it leaves shows it again (the same as the Hide and Show terminal buttons)
+  // Buttons, tabs, lists and fields keep their own double click.
+  var BAR_OWN = "button, a, select, input, textarea, label, .tab, [role='button'], [role='menu'], .app-bar__menu, .dropdown-content";
+  function barDblClick(e, act) {
+    if (e.target && e.target.closest && e.target.closest(BAR_OWN)) return;
+    if (window.getSelection) { var sel = window.getSelection(); if (sel && sel.removeAllRanges) sel.removeAllRanges(); }
+    e.preventDefault();
+    act();
+  }
+  var topBar = document.getElementById("optionMenu");
+  if (topBar) topBar.addEventListener("dblclick", function (e) { barDblClick(e, function () { if (window.ToggleFunction) window.ToggleFunction(); }); });
+  ["terminal-tabs", "term-collapsed"].forEach(function (id) {
+    var bar = document.getElementById(id);
+    if (bar) bar.addEventListener("dblclick", function (e) { barDblClick(e, function () { if (window.ToggleTerminal) window.ToggleTerminal(); }); });
+  });
+
   attachEditorStatus();
 });
 

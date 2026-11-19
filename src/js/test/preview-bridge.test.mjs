@@ -29,7 +29,7 @@ test("the scripts of the bridge are valid JavaScript", () => {
 
 test("the command script has every command the agent uses", () => {
   const code = scripts("bridge_cmd.go")[0];
-  for (const name of ["read", "target", "click", "type", "press", "scroll", "select", "hover", "wait", "inspect", "eval", "storage"]) {
+  for (const name of ["read", "target", "click", "type", "press", "scroll", "select", "hover", "drag", "find", "wait", "inspect", "eval", "storage"]) {
     assert.ok(code.includes("C." + name + "="), "command " + name);
   }
   assert.ok(code.includes("e.source!==parent"), "a command is taken only from the page that holds the frame");

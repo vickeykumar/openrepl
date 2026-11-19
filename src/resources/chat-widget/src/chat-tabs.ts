@@ -4,7 +4,7 @@
 // server (server/genie_chats.go). The format is docs/lld/19-genie-agent.md, section 9.
 
 export interface ChatLine {
-  t: "meta" | "title" | "state" | "user" | "answer" | "task" | "summary";
+  t: "meta" | "title" | "state" | "user" | "answer" | "task" | "summary" | "checkpoint";
   id?: string;
   created?: string;
   context?: string;
@@ -83,7 +83,20 @@ export interface RestoredMessage {
   summary?: string; // a task: how it went, in a line
 }
 
+// A task of the agent that was running when the page closed or the connection was lost: the last checkpoint of the chat says
+// "running". The page offers to carry it on (Resume) or to drop it (Discard).
+export interface Interrupted {
+  text: string; // the task, as the user said it (cut short)
+  steps: number; // steps it had taken
+  changed: string; // the files it had changed, as a line
+  file: string; // the file that was open
+  ts: number; // when the last checkpoint was written, in ms
+}
+
+export const INTERRUPTED_HOURS = 24; // a task older than this is not offered again
+
 export interface Restored {
+  interrupted: Interrupted | null;
   title: string;
   context: string;
   language: string;
@@ -106,7 +119,7 @@ export function taskSummary(l: ChatLine): string {
 
 // The lines of a chat file as a conversation: the last title and state win, the messages are in order.
 export function restore(lines: ChatLine[]): Restored {
-  const r: Restored = { title: "", context: "chat", language: "", file: "", mode: "chat", model: "", effort: "", messages: [], summary: null };
+  const r: Restored = { interrupted: null, title: "", context: "chat", language: "", file: "", mode: "chat", model: "", effort: "", messages: [], summary: null };
   lines.forEach((l, i) => {
     if (!l || typeof l !== "object") return;
     const ts = typeof l.ts === "number" ? l.ts : i;
@@ -132,6 +145,13 @@ export function restore(lines: ChatLine[]): Restored {
         break;
       case "task":
         r.messages.push({ kind: "task", text: String(l.text || ""), ts, summary: taskSummary(l) });
+        break;
+      case "checkpoint":
+        // the newest one is the one that counts; one that says the task ended is not an interruption
+        r.interrupted =
+          l.outcome === "running" && l.text
+            ? { text: String(l.text), steps: typeof l.steps === "number" ? l.steps : 0, changed: String(l.changed || ""), file: String(l.file || ""), ts: typeof l.ts === "number" ? l.ts : 0 }
+            : null;
         break;
       case "summary": {
         // the last `steps` questions and answers before this line were kept as they were; the ones before them are in the text
@@ -335,5 +355,35 @@ export function staleForAgent(chat: { file: string; language: string }, now: { f
     "Note: this chat was about " + p.was + ", but the editor now has " + p.is + " (the page was reloaded or the language changed). " +
     "If the task continues that work, first switch the language (set_language) and open the file (files_open) it was about; " +
     "if you are not sure which project is meant, ask the user in \"say\" and set \"done\": true. Do not start a different project in the language that is open now."
+  );
+}
+
+// Whether an interrupted task is still worth offering: it is not older than INTERRUPTED_HOURS.
+export function interruptedFresh(i: Interrupted | null, now: number): boolean {
+  return !!i && now - i.ts <= INTERRUPTED_HOURS * 3600 * 1000;
+}
+
+// The bar's words: "Build the shop page · step 7 · 3 files changed · 4 minutes ago".
+export function interruptedBrief(i: Interrupted, now: number): string {
+  const mins = Math.max(0, Math.floor((now - i.ts) / 60000));
+  const ago = mins < 1 ? "just now" : mins < 60 ? mins + (mins === 1 ? " minute ago" : " minutes ago") : Math.floor(mins / 60) + (Math.floor(mins / 60) === 1 ? " hour ago" : " hours ago");
+  const files = i.changed ? i.changed.split(",").filter((x) => x.trim()).length : 0;
+  const bits = [fitText(i.text).slice(0, 60)];
+  if (i.steps > 0) bits.push("step " + i.steps);
+  if (files > 0) bits.push(files + (files === 1 ? " file changed" : " files changed"));
+  bits.push(ago);
+  return bits.join(" \u00b7 ");
+}
+
+// What the agent is told when a task is carried on: the page does not keep the steps of a task, so it is a new task that looks
+// at the workspace as it is now and does not repeat what is done.
+export function resumeNote(i: Interrupted): string {
+  return (
+    "[This task was interrupted before (the page was closed or the connection was lost). It had taken " +
+    i.steps +
+    " step" +
+    (i.steps === 1 ? "" : "s") +
+    (i.changed ? " and had changed: " + i.changed : "") +
+    ". Some of it may be done, and the files may have changed since. First look at the files as they are now (the editor and files_read), do not do again what is done, then carry on with what is left.]"
   );
 }

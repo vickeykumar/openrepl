@@ -504,6 +504,14 @@ func handleAgentOutcome(rw http.ResponseWriter, req *http.Request) {
 		Outcome string `json:"outcome"`
 		Checked *bool  `json:"checked"`
 		Changed bool   `json:"changed"`
+		// what the Genie log keeps of the end of a task (genie_log.go); nothing of the task's words
+		SID    string  `json:"sid"`
+		Model  string  `json:"model"`
+		Steps  float64 `json:"steps"`
+		Secs   float64 `json:"secs"`
+		Failed float64 `json:"failed"`
+		Prompt string  `json:"prompt"`
+		Groups string  `json:"groups"`
 	}
 	if !ok || json.NewDecoder(http.MaxBytesReader(rw, req.Body, 4096)).Decode(&in) != nil {
 		rw.WriteHeader(http.StatusBadRequest)
@@ -514,6 +522,7 @@ func handleAgentOutcome(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusNoContent) // not a task of this user, or already told: nothing to count
 		return
 	}
+	genieTaskEnd(uid, map[string]interface{}{"sid": in.SID, "model": in.Model, "outcome": in.Outcome, "steps": in.Steps, "secs": in.Secs, "failed": in.Failed, "prompt": in.Prompt, "groups": in.Groups})
 	statsAdd(func(s *agentStats) {
 		count(s)
 		if in.Changed && in.Checked != nil {
