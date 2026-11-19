@@ -206,7 +206,7 @@ export function newTaskId(): string {
 }
 
 export interface GenieEvent {
-  event: "step_failed" | "stuck" | "stuck_answer" | "retry" | "need_tools";
+  event: "step_failed" | "stuck" | "stuck_answer" | "retry" | "need_tools" | "auto_stronger";
   model: string;
   step?: number;
   action?: string;

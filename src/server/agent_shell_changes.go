@@ -203,7 +203,7 @@ func (server *Server) handleAgentRestore(rw http.ResponseWriter, req *http.Reque
 	}
 	rel, ok := plainRel(in.Path)
 	if !ok || rel == "" {
-		http.Error(rw, "The path has to be a file relative to the workspace, with no hidden name.", http.StatusBadRequest)
+		http.Error(rw, "The path has to be a file relative to the workspace, that is not inside .git or the chat store of Genie.", http.StatusBadRequest)
 		return
 	}
 	abs := filepath.Join(realHome, rel)

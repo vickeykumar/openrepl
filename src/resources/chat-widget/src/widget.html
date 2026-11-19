@@ -7,6 +7,7 @@
   </div>
   <span id="chat-widget__context"></span>
   <span id="chat-widget__auto"></span>
+  <button type="button" id="chat-widget__ctx-btn" class="cw-ctx-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="chat-widget__ctx" data-tip-name="What Genie sees" data-tip-desc="The editor, terminal, Preview and notes that go with your next message, with their sizes.">Context</button>
   <label class="chat-widget__peer" data-tip-name="Peer chat" data-tip-desc="Talk to the people in your shared session instead of Genie." title="Peer chat: talk to the people in your shared session instead of Genie">
     <input type="checkbox" id="peerchat-switch">
     <span class="chat-widget__peer-label">Peer chat</span>
@@ -24,9 +25,10 @@
 </div>
 <!-- The chats of this workspace as tabs, and the question or news in the strip (index.ts: renderTabs). Hidden when chats are not saved. -->
 <div id="chat-widget__tabs-wrap" class="cw-tabs-wrap" hidden>
-  <div id="chat-widget__tabs" class="cw-tabs" role="tablist" aria-label="Chats"></div>
+  <div id="chat-widget__tabs" class="cw-tabs"></div>
   <div id="chat-widget__toast" class="cw-toast" role="status" hidden></div>
 </div>
+<div id="chat-widget__ctx" class="cw-ctx" role="dialog" aria-modal="false" aria-labelledby="chat-widget__ctx-title" hidden></div>
 <div id="chat-widget__body">
   <!-- The arrow to the last message, while the user has scrolled up (index.ts: updateJump). -->
   <button type="button" id="chat-widget__jump" class="cw-jump" aria-label="Jump to the latest message" hidden>↓</button>

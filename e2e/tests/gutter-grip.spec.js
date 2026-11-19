@@ -39,6 +39,7 @@ test("the grip of the pinned Genie panel has the same three dots", async ({ page
   if (process.env.GENIE_LOCAL_ASSETS) {
     await page.route((u) => u.pathname.endsWith("/css/ui-refresh.css"), (r) => r.fulfill({ contentType: "text/css", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "resources", "css", "ui-refresh.css")) }));
     await page.route((u) => u.pathname.endsWith("/js/chat-widget.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "resources", "chat-widget", "dist", "index.umd.js")) }));
+    await page.route((u) => u.pathname.endsWith("/js/chat-widget-agent.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "resources", "chat-widget", "dist", "agent.js")) }));
   }
   await page.setViewportSize({ width: 1400, height: 850 });
   await page.goto("/");

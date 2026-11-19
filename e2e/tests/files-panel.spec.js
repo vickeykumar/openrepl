@@ -111,27 +111,149 @@ test("Clear change marks removes the colors", async ({ page }) => {
   await expect(anchor(page, file)).not.toHaveAttribute("data-fm", /.+/);
 });
 
-test("a folder whose name starts with a dot is listed, but not what is inside it", async ({ page }) => {
+// Hidden files: a name that starts with a dot is out of the tree by default; "Show hidden files" in the menu of a folder (or
+// Ctrl/Cmd+Shift+.) shows them in that folder and below, "Hide hidden files" hides them again (page/07-file-browser.js).
+async function localScript(page) {
   const fs = require("fs");
   const path = require("path");
-  // the page script of this checkout, and a workspace tree with a hidden folder that holds a folder and a file
-  // (in CI the server under test already has this script; the checkout's build is used only for a run with GENIE_LOCAL_ASSETS=1)
   if (process.env.GENIE_LOCAL_ASSETS) await page.route((u) => u.pathname.endsWith("/js/scribbler.js"), (r) => r.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", "js", "dist", "scribbler.js")) }));
+}
+// forget the setting of an earlier run, once (a reload inside the test keeps what the page saved)
+async function clearHidden(page) {
+  await page.addInitScript(() => {
+    try {
+      if (sessionStorage.getItem("hf-cleared")) return;
+      sessionStorage.setItem("hf-cleared", "1");
+      localStorage.removeItem("openrepl.hiddenfiles");
+    } catch (e) {}
+  });
+}
+async function hiddenTree(page) {
+  // the page script of this checkout, and a workspace tree with hidden names: .hid (a folder with a file), a folder subx
+  // with .inner in it (in CI the server under test already has this script; the checkout's build is used only for a run
+  // with GENIE_LOCAL_ASSETS=1)
+  await localScript(page);
   await page.route((u) => u.pathname.endsWith("/ws_filebrowser"), async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
     const res = await route.fetch();
     const tree = await res.json();
     const id = tree.id;
     tree.children = (tree.children || []).concat([
-      { id: id + "/.hid", text: ".hid", type: "default", children: [
-        { id: id + "/.hid/chats", text: "chats", type: "default", children: [{ id: id + "/.hid/chats/a.jsonl", text: "a.jsonl", type: "file" }] },
-        { id: id + "/.hid/tabs.json", text: "tabs.json", type: "file" },
-      ] },
+      { id: id + "/.hid", text: ".hid", type: "default", children: [{ id: id + "/.hid/a.txt", text: "a.txt", type: "file" }] },
+      { id: id + "/.rc", text: ".rc", type: "file" },
+      { id: id + "/subx", text: "subx", type: "default", children: [{ id: id + "/subx/.inner", text: ".inner", type: "file" }, { id: id + "/subx/plain.txt", text: "plain.txt", type: "file" }] },
+      { id: id + "/.git", text: ".git", type: "default", children: [{ id: id + "/.git/config", text: "config", type: "file" }] },
     ]);
     route.fulfill({ response: res, contentType: "application/json", body: JSON.stringify(tree) });
   });
+}
+const rootAnchor = (page) => page.locator("#file-browser li.jstree-open > a.jstree-anchor").first();
+async function menu(page, locator, item) {
+  await locator.click({ button: "right" });
+  await page.locator(".vakata-context a", { hasText: item }).click();
+}
+const count = (page, name) => page.locator("#file-browser .jstree-anchor", { hasText: name }).count();
+
+test("names that start with a dot are hidden by default, and Show / Hide hidden files on the workspace toggles them", async ({ page }) => {
+  await clearHidden(page);
+  await hiddenTree(page);
   await ready(page);
+  await expect(anchor(page, "subx")).toBeVisible();
+  expect(await count(page, ".hid")).toBe(0);
+  expect(await count(page, ".rc")).toBe(0);
+  expect(await count(page, ".git")).toBe(0);
+  await menu(page, rootAnchor(page), "Show hidden files");
   await expect(anchor(page, ".hid")).toBeVisible();
-  await expect(page.locator("#file-browser .jstree-anchor", { hasText: "tabs.json" })).toHaveCount(0);
-  await expect(page.locator("#file-browser .jstree-anchor", { hasText: "chats" })).toHaveCount(0);
-  await expect(page.locator("#file-browser .jstree-anchor", { hasText: "a.jsonl" })).toHaveCount(0);
+  await expect(anchor(page, ".rc")).toBeVisible();
+  await expect(anchor(page, ".hid")).toHaveClass(/is-dot/);
+  await expect(anchor(page, ".hid")).toHaveAttribute("title", "Hidden folder");
+  await expect(rootAnchor(page)).toHaveClass(/hidden-on/); // the folder says it shows them
+  // .git is listed, but what is inside it is not (it holds thousands of files nobody edits by hand)
+  await expect(anchor(page, ".git")).toBeVisible();
+  expect(await count(page, "config")).toBe(0);
+  // a reload keeps the choice
+  await page.reload();
+  await page.waitForFunction(() => window.FileBrowser && window.FileBrowser.ready());
+  await expect(anchor(page, ".rc")).toBeVisible();
+  await menu(page, rootAnchor(page), "Hide hidden files");
+  await expect(anchor(page, ".rc")).toHaveCount(0);
+  await expect(anchor(page, ".hid")).toHaveCount(0);
+});
+
+test("the nearest folder with a setting wins, and a click on a folder drops the settings below it; the keys toggle the selected folder", async ({ page }) => {
+  await clearHidden(page);
+  await hiddenTree(page);
+  await ready(page);
+  // open subx, then show hidden files only there: .inner appears, the workspace's .rc does not
+  await anchor(page, "subx").dblclick();
+  await expect(anchor(page, "plain.txt")).toBeVisible();
+  expect(await count(page, ".inner")).toBe(0);
+  await menu(page, anchor(page, "subx"), "Show hidden files");
+  await expect(anchor(page, ".inner")).toBeVisible();
+  expect(await count(page, ".rc")).toBe(0);
+  // show on the workspace, hide on subx: the nearest setting wins
+  await menu(page, rootAnchor(page), "Show hidden files");
+  await expect(anchor(page, ".rc")).toBeVisible();
+  await expect(anchor(page, ".inner")).toBeVisible(); // the workspace click dropped subx's own setting, and now shows it too
+  await menu(page, anchor(page, "subx"), "Hide hidden files");
+  await expect(anchor(page, ".inner")).toHaveCount(0);
+  await expect(anchor(page, ".rc")).toBeVisible();
+  // the keys: Ctrl/Cmd+Shift+. on the selected folder toggles it
+  await anchor(page, "subx").click();
+  await page.keyboard.press("ControlOrMeta+Shift+.");
+  await expect(anchor(page, ".inner")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+Shift+.");
+  await expect(anchor(page, ".inner")).toHaveCount(0);
+});
+
+test("a hidden text file made by the person is in the tree and opens in the editor like any file", async ({ page }) => {
+  await clearHidden(page);
+  await localScript(page);
+  await ready(page);
+  const name = `.hid${stamp}rc`;
+  await page.evaluate(([n]) => { localStorage.setItem("openrepl.hiddenfiles", JSON.stringify({ "": true })); }, [name]);
+  await page.reload();
+  await page.waitForFunction(() => window.FileBrowser && window.FileBrowser.ready());
+  // made by the person (the editor's way): the folder shows hidden files, so the new hidden name is in the tree
+  const made = await page.evaluate((n) => window.FileBrowser.create(n, "file", true), name);
+  expect(made.ok, JSON.stringify(made)).toBe(true);
+  await expect(anchor(page, name)).toBeVisible();
+  await expect(anchor(page, name)).not.toHaveClass(/jstree-disabled/);
+  await anchor(page, name).click();
+  await expect.poll(() => page.evaluate(() => window.editor.env.filename)).toContain(name);
+});
+
+test("in a shared session the owner and the collaborator see the same tree, and either can show or hide hidden files for both", async ({ browser }) => {
+  test.setTimeout(120 * 1000);
+  const octx = await browser.newContext();
+  const owner = await octx.newPage();
+  await clearHidden(owner);
+  await hiddenTree(owner);
+  await ready(owner);
+  await expect.poll(() => owner.evaluate(() => (document.getElementById("share-it").value.split("#")[1] || "").length), { timeout: 30 * 1000 }).toBeGreaterThan(0);
+  const url = new URL(await owner.evaluate(() => document.getElementById("share-it").value));
+  const vctx = await browser.newContext();
+  const viewer = await vctx.newPage();
+  await hiddenTree(viewer); // the same made-up workspace for the collaborator's own requests
+  await viewer.goto("/" + url.hash);
+  await viewer.waitForFunction(() => window.FileBrowser && window.FileBrowser.ready());
+  expect(await viewer.evaluate(() => isMaster())).toBe(false);
+  // the collaborator's workspace folder comes closed; open it
+  const vroot = viewer.locator("#file-browser a.jstree-anchor").first();
+  await expect(vroot).toBeVisible({ timeout: 20 * 1000 });
+  await expect.poll(async () => {
+    if (!(await anchor(viewer, "subx").isVisible())) await viewer.evaluate(() => { const t = $("#file-browser").jstree(true); t.open_node(window.homedir); });
+    return anchor(viewer, "subx").isVisible();
+  }, { timeout: 30 * 1000 }).toBe(true);
+  expect(await count(viewer, ".rc")).toBe(0);
+  // the owner shows them: the collaborator's panel follows
+  await menu(owner, rootAnchor(owner), "Show hidden files");
+  await expect(anchor(owner, ".rc")).toBeVisible();
+  await expect(anchor(viewer, ".rc")).toBeVisible({ timeout: 20 * 1000 });
+  // the collaborator hides them: the owner's panel follows (the owner's page builds the tree)
+  await menu(viewer, vroot, "Hide hidden files");
+  await expect(anchor(viewer, ".rc")).toHaveCount(0, { timeout: 20 * 1000 });
+  await expect(anchor(owner, ".rc")).toHaveCount(0, { timeout: 20 * 1000 });
+  await octx.close();
+  await vctx.close();
 });

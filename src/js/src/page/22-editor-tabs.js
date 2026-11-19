@@ -170,7 +170,6 @@ function badName(name) {
   var t = tree();
   if (!name) return "Type a name.";
   if (/[\/\\\u0000]/.test(name)) return "A name has no slash in it: the file goes in your workspace folder.";
-  if (name.charAt(0) === ".") return "A name that starts with a dot is a hidden file. Pick another.";
   if (name.length > 100) return "That name is too long.";
   if (t && t.get_node(home() + "/" + name)) return name + " exists already. Pick another name.";
   return "";
@@ -184,7 +183,7 @@ function saveAsNew(text, then) {
       if (name === null) { then(false); return; }
       var bad = badName(name);
       if (bad) { go(name, bad); return; }
-      Promise.resolve(window.FileBrowser.create(name, "file")).then(function (made) {
+      Promise.resolve(window.FileBrowser.create(name, "file", true)).then(function (made) {
         if (!made || !made.ok) { go(name, (made && made.error) || "The file could not be made."); return; }
         var path = home() + "/" + name;
         saveText(path, text, function (ok) { then(ok, ok ? path : null); });
@@ -874,7 +873,7 @@ var api = {
             say("A collaborator is saving the untitled file as " + v.name + ".", "info");
             return new Promise(function (resolve) {
               var text = textOf(UNTITLED);
-              Promise.resolve(window.FileBrowser.create(v.name, "file")).then(function (made) {
+              Promise.resolve(window.FileBrowser.create(v.name, "file", true)).then(function (made) {
                 if (!made || !made.ok) { releaseLock(); say("The file " + v.name + " could not be made.", "warning"); resolve(false); return; }
                 var file = home() + "/" + v.name;
                 saveText(file, text === undefined ? "" : text, function (ok) {

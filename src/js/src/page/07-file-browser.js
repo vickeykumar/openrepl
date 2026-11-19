@@ -159,8 +159,9 @@
   window.FileIconClass = filename2IconClass;
 
   function shoulddisable(filename) {
-    // should disable the hidden files, usually startes with . or any other binary file format that can't be loaded to the editor
-    return (filename.startsWith('.') || isObjFile(filename) || isVideoFile(filename) || isAudioFile(filename) || 
+    // should disable any binary file format that can't be loaded to the editor. A name that starts with a dot is not one:
+    // a hidden text file opens like any other (the tree hides it by default, see "Hidden files" below).
+    return (isObjFile(filename) || isVideoFile(filename) || isAudioFile(filename) || 
       isArchiveFile(filename) || isImageFile(filename) || isOtherDocFile(filename));
   }
 
@@ -179,13 +180,90 @@
   if (window.EditorTabs) window.EditorTabs.attachShared(thisbrowser);
 
 
-  // Whether a path is below a hidden folder of the workspace (some folder above it has a name that starts with a dot).
-  function inHiddenFolder(id) {
+  // ---- Hidden files: names that start with a dot ----------------------------------------------------------------------
+  // The editor opens any text file, hidden or not (only binary files are blocked). The tree hides every name that starts with
+  // a dot by default. "Show hidden files" in the menu of a folder (or Ctrl/Cmd+Shift+.) shows all of them in that folder and
+  // below; "Hide hidden files" hides them again. The setting is kept as {folder: true|false} (the folder is a path under the
+  // workspace, "" is the workspace itself); the nearest folder that has a setting wins, and a click on a folder drops the
+  // settings below it. The owner's page builds the tree and shares it with the viewers (Firebase "content"), so the setting
+  // is shared the same way (Firebase "hidden_shown"): everyone sees the same tree. The owner's browser remembers it.
+  var hiddenSettings = {};
+  var hiddenRef = thisbrowser.child("hidden_shown");
+  // one key for this browser: the settings are paths under the workspace, and the workspace folder is not known yet when the page starts
+  function hiddenStoreKey() { return "openrepl.hiddenfiles"; }
+  function hiddenLoad() {
+    try {
+      var o = JSON.parse(localStorage.getItem(hiddenStoreKey()) || "{}");
+      return (o && typeof o === "object" && !Array.isArray(o)) ? o : {};
+    } catch (e) { return {}; }
+  }
+  function hiddenSave() {
+    try { localStorage.setItem(hiddenStoreKey(), JSON.stringify(hiddenSettings)); } catch (e) {}
+  }
+  // a path of the tree as a path under the workspace ("" is the workspace)
+  function relFromId(id) {
     var rel = String(id || "");
+    if (homedir && rel === homedir) return "";
     if (homedir && rel.indexOf(homedir + "/") === 0) rel = rel.slice(homedir.length + 1);
-    var segs = rel.split("/");
-    segs.pop();
-    return segs.some(function (seg) { return seg.charAt(0) === "."; });
+    return rel;
+  }
+  function hasOwn(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  // whether hidden files are shown in a folder: the nearest setting at it or above it
+  function hiddenShownAt(rel) {
+    var r = String(rel || "");
+    for (;;) {
+      if (hasOwn(hiddenSettings, r)) return hiddenSettings[r] === true;
+      if (r === "") return false;
+      var i = r.lastIndexOf("/");
+      r = i < 0 ? "" : r.slice(0, i);
+    }
+  }
+  function setHiddenShown(rel, on) {
+    var next = {};
+    if (rel !== "") {
+      Object.keys(hiddenSettings).forEach(function (k) {
+        if (k !== rel && k.indexOf(rel + "/") !== 0) next[k] = hiddenSettings[k];
+      });
+    }
+    next[rel] = !!on;
+    hiddenRef.set(JSON.stringify(next));
+  }
+  // takes a setting that came in (from this page or another one); true when it changed
+  function hiddenApply(str) {
+    var o;
+    try { o = JSON.parse(str || "{}"); } catch (e) { return false; }
+    if (!o || typeof o !== "object" || Array.isArray(o)) return false;
+    var same = JSON.stringify(o) === JSON.stringify(hiddenSettings);
+    hiddenSettings = o;
+    if (isMaster()) hiddenSave();
+    return !same;
+  }
+  // .git holds thousands of files that nobody edits by hand: what is inside it comes only when it was switched on itself
+  function gitClosed(rel) {
+    var segs = String(rel || "").split("/");
+    for (var i = 0; i < segs.length - 1; i++) {
+      if (segs[i] === ".git" && hiddenSettings[segs.slice(0, i + 1).join("/")] !== true) return true;
+    }
+    return false;
+  }
+  function addClass(node, cls, title) {
+    var a = Object.assign({}, node.a_attr || {});
+    a["class"] = ((a["class"] || "") + " " + cls).trim();
+    if (title) a.title = title;
+    node.a_attr = a;
+  }
+  // takes the hidden names out of a folder (and the folders below it) where they are not shown
+  function filterHidden(node, rel, inherited) {
+    if (node.type === "file" || !Array.isArray(node.children)) return node;
+    var own = hasOwn(hiddenSettings, rel);
+    var shown = own ? hiddenSettings[rel] === true : inherited;
+    if (String(node.text || "") === ".git" && !(own && shown)) { node.children = []; return node; }
+    if (own && shown) addClass(node, "hidden-on", "Hidden files are shown here");
+    node.children = node.children.filter(function (c) { return shown || String(c.text || "").charAt(0) !== "."; });
+    node.children.forEach(function (c) {
+      if (c.type !== "file") filterHidden(c, rel ? rel + "/" + c.text : c.text, shown);
+    });
+    return node;
   }
 
   function preprocessnodedata(node) {
@@ -203,13 +281,12 @@
         });
       }
     }
-    // A hidden folder (a name that starts with a dot) shows nothing of what is inside it: not its files, not its subfolders.
-    if (node.type !== 'file' && node.text && node.text.startsWith('.') && node.id !== homedir) {
-      node.children = [];
+    // a name that starts with a dot is drawn quieter (it is only here when the person chose to show hidden files)
+    if (node.text && node.text.startsWith('.') && node.id !== homedir) {
+      addClass(node, "is-dot", node.type === 'file' ? "Hidden file" : "Hidden folder");
     }
-    // disable the hidden files, usually startes with . or any other binary file format that can't be loaded to the editor
-    if ((node.text) && (node.text.startsWith('.') || disabled)) {
-      console.log("disabled node: ", node);
+    // disable any binary file format that can't be loaded to the editor
+    if ((node.text) && disabled) {
       node.state = { 'disabled': true };
       node.draggable = false;
     }
@@ -410,7 +487,11 @@
           if (window.FileMarks && eventdata.type === "file") window.FileMarks.event("create", eventdata.Name); // a new file, in the colors
           let parentnode = eventdata.Name.split('/').slice(0, -1).join('/');
           let nodename = eventdata.Name.split('/').slice(-1).join('/');
-          if (inHiddenFolder(eventdata.Name)) break; // what is made inside a hidden folder is not shown
+          // what is made where the tree does not show it stays out: a folder that is not in the tree, a hidden name where
+          // hidden files are not shown, the inside of .git
+          if (!$('#file-browser').jstree(true).get_node(parentnode)) break;
+          if (nodename.charAt(0) === "." && !hiddenShownAt(relFromId(parentnode))) break;
+          if (gitClosed(relFromId(eventdata.Name))) break;
           $('#file-browser').jstree(true).create_node(parentnode, preprocessnodedata({ "id" : eventdata.Name, "text" : nodename, "type": eventdata.type }), "last", function(){
               console.log("node created: ", eventdata.Name);
            });
@@ -470,14 +551,17 @@
         window.homesig = nodedata.hsig || "";
       }
 
+      // the owner's browser remembers the setting and shares it; a viewer takes what the owner shares (the listener below)
+      if (isMaster()) {
+        hiddenSettings = hiddenLoad();
+        hiddenRef.set(JSON.stringify(hiddenSettings));
+      }
+
       $('#file-browser').jstree({
         "core": {
           "animation": 200,
           "check_callback": function(operation, node, parent, position, more) {
-            if (node.text.startsWith('.') && disabled_ops.includes(operation)) {
-              // Disable dnd and other ops for hiddend node and restricted nodes
-                return false;
-            }
+            // hidden files move like any other (disabled_ops is kept for the day a node needs it)
             // Allow other operations and nodes to have normal dnd behavior
             return true;
           },
@@ -493,7 +577,7 @@
               },
             'dataType': 'json',
              "dataFilter" : function (data) {
-                var node = preprocessnodedata(JSON.parse(data));
+                var node = filterHidden(preprocessnodedata(JSON.parse(data)), "", false);
                 // master updates homedir and content so that slave can consume
                 if (isMaster() && (node.id)) {
                   homedir=node.id;
@@ -834,8 +918,20 @@
               var created = items.create.submenu;
               items.create.submenu = { "create_file": created.create_file, "create_folder": created.create_folder };
             }
+            // Show hidden files / Hide hidden files: on a folder, for every name that starts with a dot in it and below it
+            if ($globalitemnode.type !== 'file') {
+              var hiddenRel = relFromId($globalitemnode.id);
+              var hiddenOn = hiddenShownAt(hiddenRel);
+              items.hiddenfiles = {
+                "label": hiddenOn ? "Hide hidden files" : "Show hidden files",
+                "icon": "ctx-i ctx-i-eye",
+                "shortcut": "off",
+                "shortcut_label": mod + "⇧.",
+                "action": function () { setHiddenShown(hiddenRel, !hiddenOn); }
+              };
+            }
             var menu = {};
-            ["create", "rename", "cut", "copy", "paste", "preview", "copypath", "copyrelpath", "clearmarks", "genie", "save", "download", "delete"].forEach(function (name) {
+            ["create", "rename", "cut", "copy", "paste", "preview", "copypath", "copyrelpath", "hiddenfiles", "clearmarks", "genie", "save", "download", "delete"].forEach(function (name) {
               if (items[name]) { menu[name] = items[name]; }
             });
             return menu;
@@ -966,6 +1062,10 @@
           var restoredFromTab = false;
           // another file was chosen. The file the viewer shows, chosen again, keeps it: the shared selection can come back
           // a moment late with the file that was chosen first, after the viewer has opened
+          // the chat store of Genie is written by Genie: it opens like any text file, with a word of care
+          if (/\/\.genie\/(chats\/|tabs\.json)/.test(String(newSelectedNodeId))) {
+            notify("Managed by Genie: this file is written by Genie for its chat history. A change made by hand can break the chat.", { type: "info", title: "Genie's chat history" });
+          }
           if (window.LargeFileViewer) window.LargeFileViewer.closeUnlessFor(String(newSelectedNodeId));
           if (window.EditorTabs && newSelectedNodeId!==undefined && newSelectedNodeId!="") {
             window.EditorTabs.beforeSwitch(String(newSelectedNodeId));
@@ -1021,6 +1121,14 @@
             }
             applying_select = false;
         });
+        // the hidden files setting changed (a click here, or in a viewer's page): the owner's page builds the tree again
+        hiddenRef.on("value", function (snapshot) {
+          var v = snapshot.val();
+          if (typeof v !== "string") return;
+          if (!hiddenApply(v)) return;
+          var t = $('#file-browser').jstree(true);
+          if (isMaster() && t) t.refresh();
+        });
         // master changed content. refresh the tree to update the content
         thisbrowser.child("content").on("value", function (snapshot) {
           if (!isMaster()) {
@@ -1038,7 +1146,24 @@
     });
 
 
-    // when context menu is shown
+    // Ctrl/Cmd+Shift+. shows or hides the hidden files of the selected folder (of the folder of the selected file; the
+  // workspace when nothing is selected)
+  document.addEventListener("keydown", function (e) {
+    if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.altKey || e.code !== "Period") return;
+    var a = document.activeElement;
+    if (a && /^(INPUT|SELECT)$/.test(a.tagName)) return;
+    if (a && a.tagName === "TEXTAREA" && !(a.classList && a.classList.contains("ace_text-input"))) return;
+    var t = window.jQuery && $('#file-browser').jstree ? $('#file-browser').jstree(true) : null;
+    if (!t || !homedir) return;
+    var sel = t.get_selected();
+    var node = sel.length ? t.get_node(sel[0]) : null;
+    var folder = node && node.type !== "file" ? node : (node ? t.get_node(node.parent) : null);
+    var rel = folder && folder.id !== "#" ? relFromId(folder.id) : "";
+    e.preventDefault();
+    setHiddenShown(rel, !hiddenShownAt(rel));
+  });
+
+  // when context menu is shown
   $(document).bind('context_show.vakata', function (reference, element, position) {
       $('.main-menu').addClass('expanded');
   });
@@ -1060,7 +1185,13 @@
     function idOf(rel) { return rel ? home() + "/" + rel : home(); }
     function relOf(id) { return id === home() ? "" : String(id).slice(home().length + 1); }
     function isFolder(node) { return node.type !== "file"; }
-    function isHidden(node) { return String(node.text || "").startsWith(".") || inHiddenFolder(node.id); }
+    // what is never Genie's: the chat store of Genie itself and the insides of .git (the rest of the hidden files are the
+    // person's, and are in the tree only where they chose to show them)
+    function isManaged(rel) {
+      rel = String(rel || "");
+      return /(^|\/)\.git(\/|$)/.test(rel) || rel === ".genie/chats" || rel.indexOf(".genie/chats/") === 0 || rel === ".genie/tabs.json" || rel === ".genie/tabs.json.tmp";
+    }
+    function isHidden(node) { return isManaged(relOf(node.id)); }
     function isProtected(node) { return !!(node.state && node.state.disabled); }
     function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
     function fail(error) { return { ok: false, error: error }; }
@@ -1126,8 +1257,8 @@
       if (!node || (rel === "" && !opts.allowHome)) return fail((rel || "the home folder") + " is not in the Files panel");
       if (opts.folder && !isFolder(node)) return fail(rel + " is a file, not a folder");
       if (opts.file && isFolder(node)) return fail(rel + " is a folder, not a file");
-      if (opts.writable && (isProtected(node) || isHidden(node))) return fail(rel + " is a protected file (hidden or binary): it is not Genie's to change");
-      if (opts.notHidden && isHidden(node)) return fail(rel + " is a hidden file: it is not Genie's to change");
+      if (opts.writable && (isProtected(node) || isHidden(node))) return fail(rel + " is a protected file (binary, Genie's chat store or inside .git): it is not Genie's to change");
+      if (opts.notHidden && isHidden(node)) return fail(rel + " is Genie's own chat store or inside .git: it is not Genie's to change");
       return { ok: true, node: node };
     }
 
@@ -1246,7 +1377,7 @@
           var n = t.get_node(id);
           if (!n || isProtected(n)) return;
           var rel = relOf(id);
-          if (!rel || rel.split("/").some(function (seg) { return seg.charAt(0) === "."; })) return;
+          if (!rel || isManaged(rel)) return;
           out.push({ path: id, name: rel + (isFolder(n) ? "/" : ""), kind: isFolder(n) ? "folder" : "file" });
         });
         return out;
@@ -1262,7 +1393,7 @@
         (node.children_d || []).slice().sort().forEach(function (cid) {
           var n = t.get_node(cid);
           if (!n || isFolder(n) || isProtected(n)) return;
-          if (relOf(cid).split("/").some(function (seg) { return seg.charAt(0) === "."; })) return;
+          if (isManaged(relOf(cid))) return;
           out.push({ path: cid });
         });
         return out;
@@ -1353,8 +1484,8 @@
           var node = t.get_node(id);
           if (!node) return;
           var path = relOf(id);
-          // hidden files and what is in a hidden folder are not listed
-          if (path.split("/").some(function (seg) { return seg.charAt(0) === "."; })) return;
+          // what is Genie's own store or inside .git is not listed
+          if (isManaged(path)) return;
           if (out.length >= MAX_LISTED) { more = true; return; }
           out.push(path + (isFolder(node) ? "/" : "") + (isProtected(node) ? "  (not editable)" : ""));
         });
@@ -1364,7 +1495,7 @@
       open: async function (rel) {
         var r = target(rel, { file: true });
         if (!r.ok) return r;
-        if (isProtected(r.node) || isHidden(r.node)) return fail(rel + " cannot be opened in the editor (hidden or binary)");
+        if (isProtected(r.node) || isHidden(r.node)) return fail(rel + " cannot be opened in the editor (binary, Genie's chat store or inside .git)");
         revealPanel();
         var t = tree();
         var editor = window["editor"];
@@ -1391,14 +1522,28 @@
         return { ok: true };
       },
 
-      create: async function (rel, kind) {
+      // byPerson: the person made the name (the editor's Save), so a hidden name switches hidden files on in its folder
+      // (else it would vanish from the tree); Genie's own file actions never do that
+      create: async function (rel, kind, byPerson) {
         if (!ready()) return fail("the Files panel is not ready yet");
         var at = rel.lastIndexOf("/");
         var parentRel = at < 0 ? "" : rel.slice(0, at);
         var name = at < 0 ? rel : rel.slice(at + 1);
         var p = target(parentRel, { allowHome: true, folder: true });
         if (!p.ok) return fail("the folder " + (parentRel || "the home folder") + " is not in the Files panel");
-        if (name.charAt(0) === ".") return fail("a name that starts with a dot is a hidden file: it is not Genie's to make");
+        if (isManaged(rel)) return fail(rel + " is Genie's own chat store or inside .git: it is not Genie's to make");
+        if (name.charAt(0) === "." && !hiddenShownAt(parentRel)) {
+          if (!byPerson) return fail("a name that starts with a dot is a hidden file, and hidden files are not shown in " + (parentRel || "the home folder") + ": the person has to choose Show hidden files there first");
+          await new Promise(function (resolve) {
+            var done = false;
+            var fin = function () { if (done) return; done = true; $('#file-browser').off('refresh.jstree.hiddenmake'); resolve(); };
+            $('#file-browser').on('refresh.jstree.hiddenmake', fin);
+            setTimeout(fin, 3000);
+            setHiddenShown(parentRel, true);
+          });
+          p = target(parentRel, { allowHome: true, folder: true });
+          if (!p.ok) return fail("the folder " + (parentRel || "the home folder") + " is not in the Files panel");
+        }
         var t = tree();
         var id = idOf(rel);
         if (t.get_node(id)) return fail(rel + " exists already");
@@ -1429,7 +1574,7 @@
       rename: async function (rel, newName) {
         var r = target(rel, { writable: true });
         if (!r.ok) return r;
-        if (newName.charAt(0) === ".") return fail("a name that starts with a dot is a hidden file: it is not Genie's to make");
+        if (newName.charAt(0) === "." && !hiddenShownAt(relFromId(r.node.parent))) return fail("a name that starts with a dot is a hidden file, and hidden files are not shown in that folder: the person has to choose Show hidden files there first");
         var t = tree();
         var node = r.node;
         var oldid = node.id;

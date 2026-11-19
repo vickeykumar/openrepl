@@ -69,6 +69,8 @@
       .guide kbd { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; border: 1px solid var(--line, #D8D4CC); border-bottom-width: 2px; border-radius: 6px; padding: 0 6px; }
       .guide figure { margin: 16px 0 0; }
       .guide figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line, #E7E4DE); border-radius: 12px; }
+      .guide figure.guide-gif { text-align: center; }
+      .guide figure.guide-gif img { display: inline-block; width: 100%; max-width: 860px; height: auto; }
       .guide figcaption { font-size: 13.5px; color: var(--text-2, #5B5963); margin-top: 6px; }
       .guide .tip { border: 1px solid var(--accent-text, #3F6B00); border-radius: 12px; padding: 12px 16px; background: rgba(120, 170, 20, .08); }
       .guide-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; list-style: none; padding: 0; counter-reset: s; }
@@ -87,7 +89,7 @@
     </header>
     <div class="guide-layout">
       <nav class="guide-toc" aria-label="On this page"><strong>On this page</strong>
-        <a href="#start">Start in a minute</a><a href="#code">Give it your code</a><a href="#modes">Chat or Agent</a><a href="#agent">Agent mode, safely</a><a href="#chats">Chats and tabs</a><a href="#models">Models and requests</a><a href="#phone">On a phone</a><a href="#coach">Practice coach</a><a href="#keys">Keys</a><a href="#questions">Questions</a>
+        <a href="#start">Start in a minute</a><a href="#code">Give it your code</a><a href="#modes">Chat or Agent</a><a href="#agent">Agent mode, safely</a><a href="#chats">Chats and tabs</a><a href="#models">Models and requests</a><a href="#tips">Handy things</a><a href="#phone">On a phone</a><a href="#coach">Practice coach</a><a href="#keys">Keys</a><a href="#questions">Questions</a>
       </nav>
       <main class="guide" id="guide">
         <!-- Written from the Genie knowledge notes (src/resources/knowledge/genie*.md): when one changes, change it here too. -->
@@ -117,6 +119,8 @@
             <li><strong>Agent</strong> carries out a task in steps: it writes in the editor, switches the language, presses Run and reads the output. It is for signed-in users: switch from Chat to Agent beside the Send button.</li>
           </ul>
           <p>Each mode remembers its own model, so choosing a model in Agent does not change your Chat model.</p>
+          <p>When a task is done, its card folds to one line when you write again ("Done · Changed 3 files · 7 steps · 14 s"); click the line to see the steps.</p>
+          <figure class="guide-gif"><img src="/images/genie/guide-cards.gif" alt="The Genie panel in Agent mode: a task asks to use the files, finishes with its steps listed, and when the next message is sent the finished card folds to one line that opens with a click" loading="lazy" width="939" height="710"><figcaption>A finished task is one line once you write again. Click it to see the steps; a task that failed or is stuck is never folded.</figcaption></figure>
         </section>
         <section id="agent">
           <h2>Agent mode, safely</h2>
@@ -137,6 +141,8 @@
         <section id="chats">
           <h2>Chats and tabs</h2>
           <p>Each chat is a tab above the conversation, saved in your own workspace, so it comes back after a reload and follows your workspace. The list button shows every chat; you can rename, close and reopen them, and export a chat as Markdown.</p>
+          <p>The search box in the list looks in the titles and in what was said, with Starred, Chat and Agent buttons to narrow it. Star a chat to keep it first in the list and out of Delete all. It is kept in the chat's own file, and you can star 20.</p>
+          <figure class="guide-gif"><img src="/images/genie/guide-search-star.gif" alt="The list of all chats: a search for the word stale shows the chat that has it with the word marked, then a star on a chat moves it to the top and the Starred button shows only starred chats" loading="lazy" width="939" height="710"><figcaption>Search the words of every chat, and star the chats you want to keep at the top.</figcaption></figure>
           <p>While the panel has the focus: <kbd>Alt</kbd> <kbd>T</kbd> a new chat, <kbd>Alt</kbd> <kbd>W</kbd> close, <kbd>Alt</kbd> <kbd>←</kbd> <kbd>→</kbd> move between chats, <kbd>Alt</kbd> <kbd>1</kbd> to <kbd>8</kbd> go to a chat, <kbd>Alt</kbd> <kbd>H</kbd> all chats.</p>
         </section>
         <section id="models">
@@ -144,8 +150,24 @@
           <ul>
             <li>Choose the model with the chip beside Send. Star a model to keep it in your list, open Other models for the rest, or search (press <kbd>/</kbd>).</li>
             <li>Some models think first and have an effort setting; some are free and share a daily allowance. A small model gets a note in Agent mode, because Agent works best with a stronger one.</li>
+            <li>Auto, at the top of the list when your site offers it, picks a small model for plain questions and a stronger one for changes, files and tasks. The chat says which one answered, and Use a stronger one asks again. Choosing a model yourself turns Auto off.</li>
             <li>Each message, and each Agent task, uses one request. The line under the message box shows how many you have left and when they refill; click it for the details. Signed-in users get more.</li>
           </ul>
+          <figure class="guide-gif"><img src="/images/genie/guide-auto.gif" alt="The model list with Auto at the top and selected, then a plain question that Auto answers with the small model and a note saying so, then Use a stronger one asking the question again with the stronger model" loading="lazy" width="939" height="710"><figcaption>Auto picks the model for you and tells you which one answered. Use a stronger one asks again.</figcaption></figure>
+        </section>
+        <section id="tips">
+          <h2>Handy things</h2>
+          <h3>See what Genie sees</h3>
+          <p>Click <strong>Context</strong> in the header of the panel. It lists each part that goes with your next message, with its size: the editor, the terminal, the Preview page, your project notes, this chat and what you attached. A grey line says why something is not sent. It shows sizes and names only, never the text.</p>
+          <figure class="guide-gif"><img src="/images/genie/guide-context.gif" alt="The Genie panel with the Context button clicked: a list shows the editor, terminal, Preview page, project notes, this chat, attached items and other files, each with its size and whether it is sent" loading="lazy" width="939" height="710"><figcaption>The Context list: what goes with your next message, and how big it is.</figcaption></figure>
+          <h3>Type / for commands</h3>
+          <p>Type <kbd>/</kbd> at the start of the message box to list the commands, each with a line about it. Use <kbd>↑</kbd> <kbd>↓</kbd> and <kbd>Enter</kbd> or <kbd>Tab</kbd>, or click one; <kbd>Esc</kbd> closes the list. <strong>/context</strong> opens the list above, <strong>/tour</strong> shows the tour again, and <strong>/remember</strong> adds a note for Genie.</p>
+          <figure class="guide-gif"><img src="/images/genie/guide-slash.gif" alt="The message box with a slash typed: a menu lists /context, /tour and /remember with what each does, narrows to /remember as it is typed, then a note typed after it is saved and the chat confirms it was remembered in GENIE.md" loading="lazy" width="939" height="710"><figcaption>The / menu, and a note saved with /remember.</figcaption></figure>
+          <h3>Teach Genie about your project</h3>
+          <p>Type <kbd>remember:</kbd> and a sentence, or use <strong>/remember</strong>, for example "remember: indent with tabs". It is added to a file called <code>GENIE.md</code> in your workspace, and every Agent task starts with it. Open the file to change or delete a note. No model is asked, so it costs no request.</p>
+          <h3>The tour</h3>
+          <p>The first time you open Genie, a short tour points at Chat and Agent, the model picker, the starter chips and the box. <kbd>Esc</kbd> or Skip ends it. Type <strong>/tour</strong> to see it again.</p>
+          <figure class="guide-gif"><img src="/images/genie/guide-tour.gif" alt="The first-run tour of the Genie panel: four short cards in turn point at the Chat and Agent switch, the model picker, the starter chips and the message box" loading="lazy" width="939" height="710"><figcaption>The tour, four steps.</figcaption></figure>
         </section>
         <section id="phone">
           <h2>On a phone</h2>
@@ -157,7 +179,7 @@
         </section>
         <section id="keys">
           <h2>Keys</h2>
-          <p>Press <kbd>?</kbd> outside a text field for the list of all the keys. The ones for Genie: <kbd>Enter</kbd> sends, <kbd>Shift</kbd> <kbd>Enter</kbd> starts a new line, <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>L</kbd> adds the selection to the chat, and the <kbd>Alt</kbd> keys above move between chats.</p>
+          <p>Press <kbd>?</kbd> outside a text field for the list of all the keys. The ones for Genie: <kbd>Enter</kbd> sends, <kbd>Shift</kbd> <kbd>Enter</kbd> starts a new line, <kbd>/</kbd> at the start of the box lists the commands, <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>L</kbd> adds the selection to the chat, and the <kbd>Alt</kbd> keys above move between chats.</p>
         </section>
         <section id="questions">
           <h2>Questions</h2>
@@ -166,7 +188,9 @@
           <h3>Does Genie keep working if I close its panel?</h3>
           <p>Yes. An answer or an Agent task carries on while the panel is closed.</p>
           <h3>What does Genie see?</h3>
-          <p>Your editor code and the latest terminal output, and the files you add to the chat. You can click the dashed chip to stop it looking at the editor.</p>
+          <p>Your editor code and the latest terminal output, and the files you add to the chat. You can click the dashed chip to stop it looking at the editor. The Context button in the panel's header lists each part with its size, so you can see exactly what goes with the next message.</p>
+          <h3>Can it remember things about my project?</h3>
+          <p>Type remember: and a sentence in the box. It is added to GENIE.md in your workspace, and every Agent task starts with it.</p>
           <p>More answers: <a href="/faq#genie">the Genie questions in the FAQ</a>.</p>
           <p class="tip">Still stuck? Ask Genie "how do I…", it knows this guide.</p>
         </section>

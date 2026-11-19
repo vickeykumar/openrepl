@@ -15,7 +15,7 @@ import (
 // The agent's read-only actions files_search and files_read: the page of the owner asks
 // the server to look in the user's workspace, and gets lines back. Nothing is changed, so
 // the page asks the user nothing. The server keeps the limits: only text files, never a
-// hidden name or a path out of the workspace, and a few thousand files and a few seconds
+// path out of the workspace, nor Genie's chat store or .git, and a few thousand files and a few seconds
 // at the most.
 //
 //	POST /agent_files {"op":"search","query":"login","path":"src"}
@@ -55,7 +55,23 @@ type filesReply struct {
 	Next       int    `json:"next_line,omitempty"` // where to go on when the read stopped early
 }
 
-// plainRel is a path relative to the workspace: no "..", no absolute path, no hidden name.
+// managedRel says whether a path (relative, with slashes) is Genie's own chat store or inside .git: never the agent's.
+func managedRel(p string) bool {
+	p = strings.Trim(p, "/")
+	if p == ".genie/chats" || strings.HasPrefix(p, ".genie/chats/") || p == ".genie/tabs.json" || p == ".genie/tabs.json.tmp" {
+		return true
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".git" {
+			return true
+		}
+	}
+	return false
+}
+
+// plainRel is a path relative to the workspace: no "..", no absolute path. A hidden name (.env, .gitignore, .genie/skills) is
+// allowed, since the person may show and edit those; the chat store of Genie and the insides of .git are not (managedRel).
+// The page asks the person before any action on a hidden file.
 func plainRel(p string) (string, bool) {
 	p = strings.TrimSpace(p)
 	if p == "" || p == "." {
@@ -65,9 +81,12 @@ func plainRel(p string) (string, bool) {
 		return "", false
 	}
 	for _, seg := range strings.Split(strings.TrimSuffix(p, "/"), "/") {
-		if seg == "" || seg == "." || seg == ".." || strings.HasPrefix(seg, ".") || len(seg) > 100 {
+		if seg == "" || seg == "." || seg == ".." || len(seg) > 100 {
 			return "", false
 		}
+	}
+	if managedRel(p) {
+		return "", false
 	}
 	return filepath.FromSlash(strings.TrimSuffix(p, "/")), true
 }
@@ -255,7 +274,7 @@ func (server *Server) handleAgentFiles(rw http.ResponseWriter, req *http.Request
 	}
 	rel, ok := plainRel(in.Path)
 	if !ok {
-		http.Error(rw, "The path has to be relative to the workspace, with no hidden name.", http.StatusBadRequest)
+		http.Error(rw, "The path has to be relative to the workspace, that is not Genie's chat store or inside .git.", http.StatusBadRequest)
 		return
 	}
 	target, inWorkspace := inside(realHome, filepath.Join(realHome, rel))

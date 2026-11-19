@@ -4,7 +4,8 @@
 // server (server/genie_chats.go). The format is docs/lld/19-genie-agent.md, section 9.
 
 export interface ChatLine {
-  t: "meta" | "title" | "state" | "user" | "answer" | "task" | "summary" | "checkpoint";
+  t: "meta" | "title" | "state" | "user" | "answer" | "task" | "summary" | "checkpoint" | "star";
+  on?: number; // star: 1 keeps the chat first in History, 0 lets it go (the last star line wins)
   id?: string;
   created?: string;
   context?: string;
@@ -32,6 +33,7 @@ export interface ChatSummary {
   context?: string;
   language?: string;
   size: number;
+  starred?: boolean;
 }
 
 export const MAX_TITLE = 60;
@@ -104,6 +106,7 @@ export interface Restored {
   mode: string;
   model: string;
   effort: string;
+  starred: boolean;
   messages: RestoredMessage[];
   summary: { text: string; covered: number } | null; // the last summary line: it stands for the messages before index `covered`
 }
@@ -119,7 +122,7 @@ export function taskSummary(l: ChatLine): string {
 
 // The lines of a chat file as a conversation: the last title and state win, the messages are in order.
 export function restore(lines: ChatLine[]): Restored {
-  const r: Restored = { interrupted: null, title: "", context: "chat", language: "", file: "", mode: "chat", model: "", effort: "", messages: [], summary: null };
+  const r: Restored = { interrupted: null, title: "", context: "chat", language: "", file: "", mode: "chat", model: "", effort: "", starred: false, messages: [], summary: null };
   lines.forEach((l, i) => {
     if (!l || typeof l !== "object") return;
     const ts = typeof l.ts === "number" ? l.ts : i;
@@ -129,6 +132,9 @@ export function restore(lines: ChatLine[]): Restored {
         break;
       case "title":
         if (l.text) r.title = l.text;
+        break;
+      case "star":
+        r.starred = l.on === 1;
         break;
       case "state":
         if (l.mode) r.mode = l.mode;
@@ -246,6 +252,7 @@ export interface TabView {
   needsYou: boolean; // the task waits for the user
   unread: boolean; // an answer came while it was not shown
   busy: boolean; // an answer is being written
+  starred?: boolean; // a starred tab is not the one that closes to make room
 }
 
 // What the strip shows at the side of a tab: a ring while a task runs, a dot when it needs you or an answer is ready.
@@ -261,7 +268,7 @@ export function tabMark(t: TabView, active: boolean): "ring" | "needs" | "dot" |
 // answer or question waiting. null when every tab is in use.
 export function tabToClose(tabs: TabView[], activeId: string): string | null {
   for (const t of tabs) {
-    if (t.id !== activeId && !t.running && !t.needsYou && !t.unread && !t.busy) return t.id;
+    if (t.id !== activeId && !t.starred && !t.running && !t.needsYou && !t.unread && !t.busy) return t.id;
   }
   return null;
 }
@@ -290,10 +297,13 @@ export interface ChatGroup {
   chats: ChatSummary[];
 }
 
-// Open chats first, then the closed ones by day.
+// Starred chats first, then the open chats, then the closed ones by day.
 export function groupChats(chats: ChatSummary[], openIds: string[], now: Date): ChatGroup[] {
   const open = new Set(openIds);
   const groups: ChatGroup[] = [];
+  const stars = chats.filter((c) => c.starred).sort((a, b) => b.updated - a.updated);
+  if (stars.length) groups.push({ label: "Starred", chats: stars });
+  chats = chats.filter((c) => !c.starred);
   const opened = chats.filter((c) => open.has(c.id));
   if (opened.length) groups.push({ label: "Open", chats: opened });
   const closed = chats.filter((c) => !open.has(c.id)).sort((a, b) => b.updated - a.updated);
