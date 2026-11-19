@@ -82,6 +82,7 @@
         previewOff: !form.previewOn.checked, practiceWorkspaceOff: !form.practiceWs.checked,
         previewGuestsOff: !form.previewGuests.checked, previewAgentOff: !form.previewAgent.checked,
         genieEventsOff: !form.genieEvents.checked, genieEventDays: int(form.genieDays.value),
+        genieHealthErrPct: int(form.healthErr.value), genieHealthSlowMs: int(form.healthSlow.value),
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
           disabledModels: models.filter(function (m) { return !form.models[m.id].checked; }).map(function (m) { return m.id; }).sort(),
           customModels: (form.custom || []).map(readCustom),
@@ -104,7 +105,8 @@
           agentDisabled: !form.agentOn.checked, agentOnPractice: form.agentPractice.checked,
           agentAutoOff: !form.agentAuto.checked, agentRiskyOff: !form.agentRisky.checked, agentShellOff: !form.agentShell.checked,
           agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value),
-          escalationModels: form.escalation.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean) }
+          escalationModels: form.escalation.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean),
+          autoOn: form.autoOn.checked, autoSmall: form.autoSmall.value, autoStrong: form.autoStrong.value, autoDefault: form.autoDefault.value }
       };
     }
     function int(v) { v = parseInt(v, 10); return isNaN(v) ? 0 : v; }
@@ -171,6 +173,7 @@
         previewOff: !!s.previewOff, practiceWorkspaceOff: !!s.practiceWorkspaceOff,
         previewGuestsOff: !!s.previewGuestsOff, previewAgentOff: !!s.previewAgentOff,
         genieEventsOff: !!s.genieEventsOff, genieEventDays: s.genieEventDays || 0,
+        genieHealthErrPct: s.genieHealthErrPct || 0, genieHealthSlowMs: s.genieHealthSlowMs || 0,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
           disabledModels: (s.genie.disabledModels || []).slice().sort(), customModels: (s.genie.customModels || []).map(cleanCustom),
           featuredModels: (s.genie.featuredModels || []).slice(),
@@ -193,7 +196,8 @@
           agentDisabled: !!s.genie.agentDisabled, agentOnPractice: !!s.genie.agentOnPractice,
           agentAutoOff: !!s.genie.agentAutoOff, agentRiskyOff: !!s.genie.agentRiskyOff, agentShellOff: !!s.genie.agentShellOff,
           agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0,
-          escalationModels: (s.genie.escalationModels || []).slice() } };
+          escalationModels: (s.genie.escalationModels || []).slice(),
+          autoOn: !!s.genie.autoOn, autoSmall: s.genie.autoSmall || '', autoStrong: s.genie.autoStrong || '', autoDefault: s.genie.autoDefault || 'new' } };
     }
     function isDirty() { return !!form && !!form.ready && JSON.stringify(snapshot()) !== JSON.stringify(clean(saved)); }
 
@@ -546,8 +550,28 @@
       form.genieDays = h('input', { type: 'number', class: 'field', id: 'f-genie-days', min: '1', max: '365', step: '1', placeholder: '30', 'aria-label': 'Days the Genie log is kept', oninput: update });
       form.genieDays.value = settings.genieEventDays || '';
       form.genieDays.style.maxWidth = '9rem';
+      form.healthErr = h('input', { type: 'number', class: 'field', id: 'f-health-err', min: '1', max: '100', step: '1', placeholder: '20', 'aria-label': 'Percent of failed calls that raises an alert', oninput: update });
+      form.healthErr.value = settings.genieHealthErrPct || '';
+      form.healthErr.style.maxWidth = '9rem';
+      form.healthSlow = h('input', { type: 'number', class: 'field', id: 'f-health-slow', min: '500', max: '120000', step: '100', placeholder: '8000', 'aria-label': 'Milliseconds to start answering that raise an alert', oninput: update });
+      form.healthSlow.value = settings.genieHealthSlowMs || '';
+      form.healthSlow.style.maxWidth = '9rem';
       form.escalation = h('input', { type: 'text', class: 'field', id: 'f-escalation', placeholder: 'model ids, comma separated', 'aria-label': 'Models for a stuck task', oninput: update });
       form.escalation.value = (settings.genie.escalationModels || []).join(', ');
+      // Auto model choice: the two models the page picks between, and who starts on it
+      var autoOn = toggle('f-auto-on', !!settings.genie.autoOn, 'Auto model choice');
+      form.autoOn = autoOn.input;
+      function autoSelect(id, label, value) {
+        var sel = h('select', { class: 'field', id: id, 'aria-label': label, onchange: update }, h('option', { value: '', text: 'Choose a model' }));
+        models.forEach(function (m) { sel.appendChild(h('option', { value: m.id, text: m.name })); });
+        sel.value = value || '';
+        return sel;
+      }
+      form.autoSmall = autoSelect('f-auto-small', 'Auto: small model', settings.genie.autoSmall);
+      form.autoStrong = autoSelect('f-auto-strong', 'Auto: strong model', settings.genie.autoStrong);
+      form.autoDefault = h('select', { class: 'field', id: 'f-auto-default', 'aria-label': 'Auto is the default for', onchange: update },
+        [['new', 'New users only'], ['all', 'Everybody who has not chosen a model'], ['none', 'Nobody (they choose Auto themselves)']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+      form.autoDefault.value = settings.genie.autoDefault || 'new';
       form.agentOn = agentOn.input; form.agentPractice = agentPractice.input; form.agentAuto = agentAuto.input; form.agentRisky = agentRisky.input;
       // what the models cost: dollars for a million tokens sent and written, by model
       var showCost = toggle('f-show-cost', !!settings.genie.showCostToUsers, 'Show the cost to users');
@@ -1135,9 +1159,15 @@
           row('Models that take it', 'One box for each model. Needs the switch above.', toolBoxes),
           row('Tasks per hour', 'How many tasks a signed-in user may start in an hour (admins have no limit). Counted on this server and reset when it restarts.', form.agentTasks),
           row('Steps per task', 'How many times Genie may answer in one task, at most 8.', form.agentSteps),
+          row('Auto model choice', 'On: the model list has an Auto entry. The page picks by rules, with no model asked: the small model answers a plain question in Chat, the strong one answers a message that asks for a change, one with files attached, one with code in it, and every Agent task. The chat says which one answered and offers a stronger one. Both models must be on in Models.', autoOn.node),
+          row('Auto: small model', 'Answers plain questions. A model that is off in Models cannot be chosen.', form.autoSmall),
+          row('Auto: strong model', 'Answers edits, tasks and anything with files attached.', form.autoStrong),
+          row('Auto is the default for', 'New users: people who never picked a model. A person who picks Auto or a model themselves keeps that.', form.autoDefault),
           row('Models for a stuck task', 'When the same step fails three times, Genie stops and offers to try it again with the first of these models that the user may use. Model ids, in order, separated by commas, at most 5. Empty: the card offers only a hint and Stop.', form.escalation),
           row('Genie log', 'On: the agent of a signed-in user reports each failed step, each stuck task and how each task ended (the model, the action, the file extension, a short reason with paths and quoted text taken out, and counts; never a name, a message, a file or the terminal text). You read it under System, Genie log. Switch it off for users on a paid plan once there is one, and say so in the privacy notes.', genieEvents.node),
-          row('Days the Genie log is kept', 'From 1 to 365. Leave it empty for 30. Older days are deleted.', form.genieDays) ]),
+          row('Days the Genie log is kept', 'From 1 to 365. Leave it empty for 30. Older days are deleted.', form.genieDays),
+          row('Health alert: failed calls (%)', 'The Genie health card flags a model when this share of its calls failed (1 to 100). Leave it empty for 20.', form.healthErr),
+          row('Health alert: time to start answering (ms)', 'The Genie health card flags a model when its slowest twentieth takes this long to start answering (500 to 120000). Leave it empty for 8000.', form.healthSlow) ]),
         card('Genie chat history', 'Each chat of the Genie panel is saved in its owner\'s own workspace, in the hidden folder .genie/chats, one JSON Lines file for each chat, and comes back as a tab after a reload. It goes when the workspace goes: a guest workspace that the server removes takes its chats with it. Nobody, an admin included, can read a chat from here; this page only sets whether and how much is kept.', [
           row('Save chat history in workspaces', 'On by default. Off: nothing is saved or listed, as before; chats already saved stay in the workspaces.', chatOn.node),
           row('Also for guests', 'Off: only signed-in users have their chats saved.', chatGuests.node),

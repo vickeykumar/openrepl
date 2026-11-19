@@ -41,7 +41,7 @@ const (
 )
 
 // the events a page may report
-var genieEventKinds = map[string]bool{"step_failed": true, "stuck": true, "stuck_answer": true, "retry": true, "need_tools": true, "task_end": true}
+var genieEventKinds = map[string]bool{"step_failed": true, "stuck": true, "stuck_answer": true, "retry": true, "need_tools": true, "task_end": true, "auto_stronger": true}
 
 // the codes a page may give for why a step failed (agent side: genie-events.ts reasonCode), the stuck rules and what the user chose after a stuck task
 var (

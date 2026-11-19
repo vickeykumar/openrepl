@@ -515,6 +515,9 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 
 	// Send the proxy request using the custom transport
 	asked := time.Now()
+	// the health of the model (genie_health.go): what became of this call, and how long the host took to start answering
+	hOutcome, hFirst := "network", time.Duration(0)
+	defer func() { healthNote(model, hOutcome, hFirst, time.Since(asked)) }()
 	resp, err := customTransport.RoundTrip(proxyReq)
 	// A host that refuses the call with the tool gets the same request once more as text JSON, and is not asked with the tool
 	// for an hour. The refused call is not an answer: it is not a step, it is not charged and it leaves no usage event.
@@ -539,6 +542,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 	if err != nil {
+		hOutcome = healthOutcomeOfError(err)
 		noteChat(model.Provider, false, asked)
 		log.Println("Error: making request: ", err)
 		if model.Provider != providerOpenAI {
@@ -557,6 +561,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	defer resp.Body.Close()
+	hFirst, hOutcome = time.Since(asked), healthOutcomeOfStatus(resp.StatusCode)
 
 	if model.Provider != providerOpenAI && resp.StatusCode >= 400 {
 		// no host could answer (404), no credit (402), a limit (429) or a host
@@ -578,6 +583,7 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
 		whole, rerr := io.ReadAll(io.LimitReader(resp.Body, maxUpstreamAnswerBytes))
 		if rerr == nil {
 			if why := emptyAnswer(whole); why != "" {
+				hOutcome = "empty"
 				noteChat(model.Provider, false, asked)
 				log.Println("Error:", providerName(model.Provider), "answered", resp.StatusCode, "for", model.ID, "without an answer:", why, "; body:", string(clipBytes(whole, 600)))
 				modelAnswerEmpty(rw, req, model, why)
@@ -633,6 +639,9 @@ func handleChatProxy(rw http.ResponseWriter, req *http.Request) {
         err = copyFlushing(rw, tap)
     } else {
         _, err = io.Copy(rw, tap)
+    }
+    if err != nil && hOutcome == "ok" {
+        hOutcome = "cut" // the answer began and was cut off on the way
     }
     noteChat(model.Provider, err == nil && resp.StatusCode < 400, asked)
     if err == nil && !tap.over && resp.StatusCode < 300 {

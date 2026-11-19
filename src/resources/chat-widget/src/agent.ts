@@ -51,6 +51,7 @@ import {
 import { SSEParser, addEvent, answerOf, newStreamed, partialSay } from "./sse";
 import { addGroups, groupsFor } from "./agent-groups";
 import { Change, FileOp, ShellChange, buildChanges, mergeShell, reviewTitle, undoOf } from "./review-changes";
+import { FoldFacts, THINKING, foldLine, foldWord, thinkingLabel } from "./task-fold";
 import { ESCALATE_STEPS, GenieEvent, StuckDetector, StuckInfo, extOf, isCheckFailure, isLimit, newTaskId, reasonCode, safeReason, stuckText } from "./genie-events";
 import { ASK_FIRST, CHECK_BEFORE_DONE, MAX_CARRIES, MAX_FIXES, PlanState, WorkTrack, changeLine, compactHistory, countLines, factsText, isVagueTask, lastErrorLines } from "./agent-task";
 
@@ -449,6 +450,8 @@ export class AgentRunner {
   private list: HTMLElement | null = null;
   private header: HTMLElement | null = null;
   private stopBtn: HTMLButtonElement | null = null;
+  private cardNo = 0;
+  private endedCards: { card: HTMLElement; facts: FoldFacts }[] = []; // the cards of tasks that ended well, until the user writes again (foldEnded)
 
   // What the last task was and how far it got, told to the next one: a task starts with the editor, the terminal and the
   // user's words, so "continue" would mean nothing to it. Page only; the model is told it is data.
@@ -473,6 +476,7 @@ export class AgentRunner {
 
   async start(task: string, attached: string = ""): Promise<void> {
     if (this.running) return;
+    this.foldEnded(); // the user wrote again: the cards of the tasks before fold to a line
     this.running = true;
     this.stopped = false;
     this.replaceFails = 0;
@@ -599,7 +603,23 @@ export class AgentRunner {
           this.card = null;
         }
         if (lastTask) await this.drawSummary(lastTask, finished);
+        const endedCard = this.card;
         this.endCard(finished);
+        // a task that is done, or that the user stopped, folds to one line when the user writes next; a task that failed, is stuck or waits never folds
+        if (endedCard && lastTask && !answeredOnly && (outcome === "done" || outcome === "stopped")) {
+          const t = lastTask;
+          this.endedCards.push({
+            card: endedCard,
+            facts: {
+              outcome,
+              changed: buildChanges(t.before, t.after, t.ops, t.shell).length,
+              checks: t.trail.filter((x) => x === "run" || x === "bash").length,
+              steps: t.steps,
+              secs: Math.round((Date.now() - t.startedAt) / 1000),
+              reason: t.endReason,
+            },
+          });
+        }
         this.clearHighlight();
       } catch (e) {
         console.error("agent:", e);
@@ -2400,7 +2420,7 @@ export class AgentRunner {
   private drawCard() {
     const card = el("div", "cw-agent");
     card.setAttribute("role", "region");
-    card.setAttribute("aria-label", "Agent task");
+    card.setAttribute("aria-label", "Agent task " + ++this.cardNo); // each card has a name of its own, as every region must
     const head = el("div", "cw-agent__head");
     const title = el("span", "cw-agent__title", "Agent task");
     this.header = el("span", "cw-agent__count", "");
@@ -2942,6 +2962,55 @@ export class AgentRunner {
     } finally {
       if (this.host.attention) this.host.attention(false);
     }
+  }
+
+  // The user wrote again (a task, a question, a note): the cards of the tasks that ended well fold to one line each, which opens on a click.
+  foldEnded() {
+    const list = this.endedCards;
+    this.endedCards = [];
+    list.forEach((e) => this.foldCard(e.card, e.facts));
+  }
+
+  private foldCard(card: HTMLElement, f: FoldFacts) {
+    if (!card.isConnected || card.classList.contains("cw-agent--folded")) return;
+    const btn = el("button", "cw-agent__fold");
+    btn.type = "button";
+    btn.setAttribute("aria-expanded", "false");
+    btn.appendChild(el("span", "cw-agent__fold-mark cw-agent__fold-mark--" + f.outcome, f.outcome === "done" ? MARKS.done : "\u2715"));
+    btn.appendChild(el("b", "cw-agent__fold-word", foldWord(f)));
+    btn.appendChild(el("span", "cw-agent__fold-line", "\u00b7 " + foldLine(f)));
+    const chevron = el("span", "cw-agent__fold-chevron", "\u2304");
+    chevron.setAttribute("aria-hidden", "true");
+    btn.appendChild(chevron);
+    btn.addEventListener("click", () => {
+      const open = card.classList.toggle("cw-agent--open");
+      btn.setAttribute("aria-expanded", String(open));
+      chevron.textContent = open ? "\u2303" : "\u2304";
+      if (open) this.foldThinking(card);
+    });
+    card.insertBefore(btn, card.firstChild);
+    card.classList.add("cw-agent--folded");
+  }
+
+  // In an opened card the thinking steps are one line, "2 thinking steps", that opens them.
+  private foldThinking(card: HTMLElement) {
+    const steps = card.querySelector(".cw-agent__steps");
+    if (!steps || card.dataset.thinkingFolded) return;
+    card.dataset.thinkingFolded = "1";
+    const lines = Array.from(steps.children).filter((li) => THINKING.test((li.querySelector(".cw-agent__what") || { textContent: "" }).textContent || ""));
+    if (!lines.length) return;
+    lines.forEach((li) => ((li as HTMLElement).hidden = true));
+    const row = el("li", "cw-agent__step cw-agent__think");
+    const b = el("button", "cw-agent__think-btn", thinkingLabel(lines.length));
+    b.type = "button";
+    b.setAttribute("aria-expanded", "false");
+    b.addEventListener("click", () => {
+      const show = b.getAttribute("aria-expanded") !== "true";
+      b.setAttribute("aria-expanded", String(show));
+      lines.forEach((li) => ((li as HTMLElement).hidden = !show));
+    });
+    row.appendChild(b);
+    steps.insertBefore(row, lines[0]);
   }
 
   private addLine(label: string): StepLine {

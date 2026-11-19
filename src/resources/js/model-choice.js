@@ -500,7 +500,20 @@
     }
   });
 
+  // Whether the visitor ever picked a model for the mode (Auto starts for people who did not, when an admin says so), the request fields of any
+  // model with the effort of the mode (Auto sends the model it chose), and a nudge for the listeners (Auto turned on or off).
+  function hasPick(mode) {
+    return !!readSaved(mode === "agent" ? "agent" : "chat");
+  }
+  function fieldsFor(id, opts, mode) {
+    var m = mode === "agent" ? "agent" : "chat";
+    return fieldsOf({ model: id, effort: choices[m].effort }, opts, m);
+  }
+
   window.ModelChoice = {
+    hasPick: hasPick,
+    fieldsFor: fieldsFor,
+    notify: changed,
     models: MODELS,
     efforts: EFFORTS,
     get: get,

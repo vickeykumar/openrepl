@@ -18,6 +18,12 @@ test("the words of the task, and the page, add the groups they say", () => {
   assert.ok(groupsFor([], { ...none, previewOpen: true }).includes("preview"), "the pane is open");
   assert.ok(groupsFor([], { ...none, openFile: "shop/index.html" }).includes("preview"), "a web file is open");
   assert.ok(!groupsFor([], { ...none, openFile: "main.py", task: "explain this" }).includes("preview"));
+  for (const task of ["play this new game by launching it", "try it out", "change the colors", "make a dashboard", "add a modal", "show me the demo", "make the app look better"]) {
+    assert.ok(groupsFor([], { ...none, task }).includes("preview"), task);
+  }
+  for (const task of ["explain this loop", "what does a closure do", "rename the variable total"]) {
+    assert.ok(!groupsFor([], { ...none, task }).includes("preview"), "not for: " + task);
+  }
   assert.ok(groupsFor([], { ...none, openFile: "main.py" }).includes("editor"), "a file is open");
   assert.ok(groupsFor([], { ...none, haveEditorText: true }).includes("editor"));
 });

@@ -8,7 +8,7 @@
   --cw-border: #24242E;
   --cw-text: #E6E4EC;
   --cw-strong: #F2F0EC;
-  --cw-muted: #8C8A98;
+  --cw-muted: #9A98A6;
   --cw-icon: #A9A7B4;
   --cw-field-bg: #0D0D12;
   --cw-field-border: #34343F;
@@ -1831,7 +1831,7 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 .cw-wait__dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--cw-accent); animation: cw-pulse 1.6s ease-out infinite; }
 @keyframes cw-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--cw-accent) 55%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
 .cw-wait__text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cw-wait__go { flex: 0 0 auto; font-size: 11.5px; font-weight: 600; border-radius: 6px; padding: 1px 8px; color: var(--cw-bg, #15151c); background: var(--cw-accent); }
+.cw-wait__go { flex: 0 0 auto; font-size: 11.5px; font-weight: 600; border-radius: 6px; padding: 1px 8px; color: var(--cw-on-accent, #15151c); background: var(--cw-accent); }
 /* The bar of a task that was running when the page closed (index.ts: renderResume) */
 .cw-resume { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 8px; padding: 7px 9px; font-size: 12.5px; color: var(--cw-strong); background: color-mix(in srgb, var(--cw-accent) 11%, transparent); border: 1.5px solid var(--cw-accent); border-radius: 10px; }
 .cw-resume[hidden] { display: none; }
@@ -1915,3 +1915,100 @@ body.is-mobile #chat-widget__container.is-docked .cw-reviewbar button { min-heig
 /* In Agent mode a model the admin did not allow there is listed, greyed, and cannot be chosen (index.ts: modelRow) */
 .cw-model.is-unsupported { opacity: 0.5; cursor: not-allowed; }
 .cw-model.is-unsupported .cw-model__tag { opacity: 1; }
+
+/* The first-run tour above the box (tour.ts): one card at a time, and a ring on what it points at. */
+.cw-tour { margin: 0 0 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--cw-accent); background: var(--cw-secondary-bg); color: var(--cw-text); font-size: 12.5px; line-height: 1.45; }
+.cw-tour__count { font-size: 11px; color: var(--cw-icon); margin-bottom: 2px; }
+.cw-tour__title { font-weight: 600; color: var(--cw-strong); margin-bottom: 3px; }
+.cw-tour__text { color: var(--cw-text); }
+.cw-tour__buttons { display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end; }
+.cw-tour__buttons button { font: inherit; font-size: 12px; cursor: pointer; border-radius: 6px; padding: 3px 11px; color: inherit; background: transparent; border: 1px solid var(--cw-field-border); }
+.cw-tour__buttons .cw-tour__next { background: var(--cw-accent); color: var(--cw-on-accent); border-color: var(--cw-accent); font-weight: 600; }
+.cw-tour__skip { margin-right: auto; border-color: transparent !important; color: var(--cw-icon) !important; }
+.cw-tour-target { outline: 2px solid var(--cw-accent); outline-offset: 2px; border-radius: 8px; }
+
+/* Light panel: the accent and danger colours are too pale to read as small text on white (axe color-contrast), so text takes darker reds. */
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-agent__ask-all,
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-auto { color: #B8323A; }
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-reviewbar__undo,
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-agent__stop,
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-auto--risky,
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-usage--empty .cw-usage__line { color: #B42A2A; }
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-usage--low .cw-usage__line { color: #8A5A00; }
+
+/* A task card that ended well folds to one line when the user writes again (agent.ts foldEnded, task-fold.ts). */
+.cw-agent--folded:not(.cw-agent--open) > .cw-agent__head,
+.cw-agent--folded:not(.cw-agent--open) > .cw-agent__steps,
+.cw-agent--folded:not(.cw-agent--open) > .cw-agent__sum { display: none; }
+.cw-agent__fold { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; cursor: pointer; font: inherit; font-size: 12.5px; padding: 7px 10px; color: var(--cw-text); background: transparent; border: 0; border-radius: 8px; }
+.cw-agent__fold:hover { background: color-mix(in srgb, var(--cw-text) 6%, transparent); }
+.cw-agent__fold-mark { font-weight: 700; }
+.cw-agent__fold-mark--done { color: #4CAF7D; }
+.cw-agent__fold-mark--stopped { color: #E0A64A; }
+.cw-agent__fold-word { color: var(--cw-strong); }
+.cw-agent__fold-line { color: var(--cw-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-agent__fold-chevron { color: var(--cw-icon); }
+.cw-agent--open > .cw-agent__fold { border-bottom: 1px solid var(--cw-border); border-radius: 8px 8px 0 0; }
+.cw-agent__think-btn { font: inherit; font-size: 12px; cursor: pointer; padding: 0; color: var(--cw-muted); background: transparent; border: 0; text-decoration: underline dotted; }
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-agent__fold-mark--done { color: #1F7A4D; }
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-agent__fold-mark--stopped { color: #8A5A00; }
+
+/* The Context button and the list "What Genie sees now" (context-view.ts): a dialog over the chat, under the header. */
+.cw-ctx-btn { font: inherit; font-size: 12px; cursor: pointer; padding: 2px 9px; border-radius: 99px; color: var(--cw-text); background: transparent; border: 1px solid var(--cw-field-border); white-space: nowrap; }
+.cw-ctx-btn[aria-expanded="true"] { background: var(--cw-secondary-bg); border-color: var(--cw-accent); }
+.cw-ctx { position: absolute; left: 0; right: 0; top: 46px; bottom: 0; z-index: 30; overflow: auto; padding: 14px 16px 18px; background: var(--cw-bg); color: var(--cw-text); font-size: 12.5px; line-height: 1.45; }
+.cw-ctx[hidden] { display: none; }
+.cw-ctx__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cw-ctx__title { margin: 0; font-size: 15px; font-weight: 600; color: var(--cw-strong); }
+.cw-ctx__close { font: inherit; cursor: pointer; border: 0; background: transparent; color: var(--cw-icon); padding: 4px 8px; border-radius: 6px; }
+.cw-ctx__lede { margin: 6px 0 10px; color: var(--cw-muted); }
+.cw-ctx__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cw-ctx__row { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 10px; align-items: start; padding: 8px 10px; border: 1px solid var(--cw-border); border-radius: 10px; background: var(--cw-secondary-bg); }
+.cw-ctx__dot { width: 9px; height: 9px; margin-top: 5px; border-radius: 50%; background: #7A7685; }
+.cw-ctx__row--sent .cw-ctx__dot { background: #6FB52C; }
+.cw-ctx__row--yours .cw-ctx__dot { background: #E0A64A; }
+.cw-ctx__top { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.cw-ctx__label { color: var(--cw-strong); }
+.cw-ctx__name { color: var(--cw-text); overflow-wrap: anywhere; }
+.cw-ctx__detail, .cw-ctx__hint { color: var(--cw-muted); }
+.cw-ctx__hint { margin-top: 2px; }
+.cw-ctx__size { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cw-ctx__count { color: var(--cw-muted); }
+.cw-ctx__state { font-size: 11px; color: var(--cw-muted); white-space: nowrap; }
+.cw-ctx__foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--cw-border); color: var(--cw-text); }
+.cw-ctx__model { color: var(--cw-muted); }
+.cw-ctx__note { margin: 8px 0 0; color: var(--cw-muted); font-size: 11.5px; }
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-ctx__row--sent .cw-ctx__dot { background: #4A7A00; }
+@media (max-width: 480px) { .cw-ctx__row { grid-template-columns: 10px 1fr auto; } .cw-ctx__state { display: none; } }
+
+/* History: chips, a star on each chat, the words found (chat-search.ts, index.ts allChats) and the star on a tab. */
+.cw-tabmenu__chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px 2px; }
+.cw-tabmenu__chip { font: inherit; font-size: 11.5px; cursor: pointer; padding: 2px 10px; border-radius: 99px; color: var(--cw-text); background: transparent; border: 1px solid var(--cw-field-border); }
+.cw-tabmenu__chip[aria-pressed="true"] { background: var(--cw-secondary-bg); border-color: var(--cw-accent); color: var(--cw-strong); }
+.cw-tabmenu__status { padding: 2px 10px 4px; font-size: 11.5px; color: var(--cw-muted); min-height: 1em; }
+.cw-tabmenu__rowwrap { display: flex; align-items: flex-start; }
+.cw-tabmenu__rowwrap .cw-tabmenu__row { flex: 1; min-width: 0; flex-wrap: wrap; }
+.cw-tabmenu__star { font: inherit; font-size: 15px; line-height: 1; cursor: pointer; padding: 8px 6px 8px 10px; border: 0; background: transparent; color: var(--cw-muted); }
+.cw-tabmenu__star.is-on { color: #E8B34B; }
+.cw-tabmenu__snippet { flex-basis: 100%; font-size: 11.5px; color: var(--cw-muted); overflow-wrap: anywhere; }
+.cw-tabmenu__snippet mark { background: color-mix(in srgb, var(--cw-accent) 30%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.cw-tab__star { color: #E8B34B; margin-right: 3px; font-size: 11px; }
+.cw-toast__danger { color: var(--danger-color, #F07171); }
+.chat-widget__message.cw-found { outline: 2px solid var(--cw-accent); outline-offset: 3px; border-radius: 8px; }
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-tabmenu__star.is-on,
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-tab__star { color: #9A6A00; }
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-toast__danger { color: #B42A2A; }
+
+/* Auto in the model list, and the links under an answer that Auto chose (index.ts autoRow, decorateLastTurn). */
+.cw-model--auto .cw-model__name { font-weight: 600; }
+.cw-turn .cw-turn__auto { color: var(--cw-text); }
+
+/* The tab list holds only the tabs; the buttons beside it are in the bar (index.ts renderTabs). */
+.cw-tabs__list { display: flex; align-items: flex-end; gap: 2px; min-width: 0; }
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-tabmenu__badge { color: #1F7A4D; }
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-tabmenu__del { color: #B42A2A; }
+
+/* The "/" menu uses the list of the # picker: a command and a line about it (index.ts renderSlash). */
+.cw-picker__item--command { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.cw-picker__item--command b { color: var(--cw-strong); }
+.cw-picker__desc { color: var(--cw-muted); font-size: 11.5px; }

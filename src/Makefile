@@ -20,7 +20,7 @@ gotty: go-toolchain asset landlock-helper appstore/*.go ${TARGET}/main.go utils/
 	#godep go build ${BUILD_OPTIONS}
 
 .PHONY: asset
-asset: go-bindata bindata/static/js/gotty-bundle.js bindata/static/js/chat-widget.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/admin.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta bindata/knowledge
+asset: go-bindata bindata/static/js/gotty-bundle.js bindata/static/js/chat-widget.js bindata/static/js/chat-widget-agent.js bindata/static/js/jsconsole.js bindata/static/index.html bindata/static/doc.html bindata/static/editblog.html bindata/static/admin.html bindata/static/about.html bindata/static/NewFile.html bindata/static/images bindata/static/css bindata/static/css/xterm.css bindata/static/meta bindata/knowledge
 	$(ROOT)/bin/go-bindata -prefix bindata -pkg server -ignore=\\.gitkeep -o server/asset.go bindata/...
 	GO111MODULE=off $(GOROOT)/bin/gofmt -w server/asset.go
 
@@ -161,6 +161,10 @@ resources/chat-widget/dist/index.umd.js: $(CHAT_JS_FILES)
 
 bindata/static/js/chat-widget.js: resources/chat-widget/dist/index.umd.js
 	cp resources/chat-widget/dist/index.umd.js bindata/static/js/chat-widget.js
+
+# the agent's code is a second file, fetched when Genie's Agent mode is first used (resources/chat-widget/src/lazy-agent.ts)
+bindata/static/js/chat-widget-agent.js: resources/chat-widget/dist/index.umd.js
+	cp resources/chat-widget/dist/agent.js bindata/static/js/chat-widget-agent.js
 
 deb: all
 	mkdir -p ${DEBIAN_ROOT}/gotty/usr/lib/systemd/system

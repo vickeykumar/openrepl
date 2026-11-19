@@ -1747,6 +1747,58 @@
     return { root: root, refresh: load, poll: false }; // not polled: it reads the days of the log from the disk
   }
 
+  // ---- Genie health: how each model host answers Genie (server/genie_health.go), kept in memory by the hour
+
+  function viewGenieHealth() {
+    var root = h('div'), box = h('div');
+    var hours = '24';
+    var sel = h('select', { 'aria-label': 'Period', onchange: function () { hours = sel.value; load(); } },
+      [['1', 'Last hour'], ['6', 'Last 6 hours'], ['24', 'Last 24 hours'], ['48', 'Last 48 hours']].map(function (o) { return h('option', { value: o[0], text: o[1], selected: o[0] === hours }); }));
+    root.appendChild(pageHead('Genie health', 'For each model: how many of the calls to its host failed and why, and how long the host took to start answering. The alert limits are in Site settings, Genie. Kept in memory for 48 hours, so a restart starts it again; it holds no text and no user.'));
+    root.appendChild(h('div', { class: 'toolbar' }, sel, h('span', { class: 'grow' }), refreshButton(function () { return load(); })));
+    root.appendChild(box);
+
+    function n(x) { return Number(x || 0).toLocaleString('en-US'); }
+    function tile(label, value) { return h('div', { class: 'card' }, h('div', { class: 'sub', text: label }), h('b', { text: value })); }
+    function ms(v) { return v === 0 ? '\u2013' : v < 0 ? 'over 32 s' : v < 1000 ? 'under ' + v + ' ms' : 'under ' + (v / 1000) + ' s'; }
+    var REASON = { no_credit: 'no credit (402)', limit: 'limit (429)', no_host: 'no host (404)', host_error: 'host error (5xx)', refused: 'refused (4xx)', empty: 'no answer', network: 'network', timeout: 'timed out', cut: 'cut off' };
+    var cols = [
+      { key: 'model', label: 'Model', cell: function (r) { return h('div', null, h('div', { text: r.name || r.model }), h('div', { class: 'sub mono', text: r.model })); } },
+      { key: 'calls', label: 'Calls', num: true, cell: function (r) { return n(r.calls); } },
+      { key: 'err', label: 'Failed', num: true, cell: function (r) { return r.errors ? r.errPct.toFixed(r.errPct < 10 ? 1 : 0) + '% (' + n(r.errors) + ')' : '0%'; } },
+      { key: 'why', label: 'Why', cell: function (r) {
+        var keys = Object.keys(r.reasons || {}).sort(function (a, b) { return r.reasons[b] - r.reasons[a]; });
+        return keys.length ? h('span', { class: 'wrap-text', text: keys.map(function (k) { return (REASON[k] || k) + ' \u00d7' + r.reasons[k]; }).join(' \u00b7 ') }) : h('span', { class: 'sub', text: '\u2013' });
+      } },
+      { key: 'p50', label: 'Starts answering, half', cell: function (r) { return ms(r.p50Ms); } },
+      { key: 'p95', label: 'Starts answering, slowest 5%', cell: function (r) { return ms(r.p95Ms); } },
+      { key: 'avg', label: 'Whole call, average', num: true, cell: function (r) { return r.avgMs ? (r.avgMs / 1000).toFixed(1) + ' s' : '\u2013'; } },
+      { key: 'last', label: 'Last failure', cell: function (r) { return r.lastError ? when(new Date(r.lastError * 1000).toISOString()) : h('span', { class: 'sub', text: '\u2013' }); } },
+      { key: 'alert', label: 'Status', cell: function (r) { return r.alerts && r.alerts.length ? h('span', null, r.alerts.map(function (a) { return pill(a, 'bad'); })) : pill('fine', 'ok'); } }
+    ];
+    var autoCols = [
+      { key: 'role', label: 'Chosen', cell: function (r) { return h('div', null, h('div', { text: r.role }), h('div', { class: 'sub', text: r.s.name })); } },
+      { key: 'calls', label: 'Calls', num: true, cell: function (r) { return n(r.s.calls); } },
+      { key: 'err', label: 'Failed', num: true, cell: function (r) { return r.s.calls ? r.s.errPct.toFixed(r.s.errPct < 10 ? 1 : 0) + '%' : '\u2013'; } },
+      { key: 'more', label: 'Asked for a stronger one', num: true, cell: function (r) { return r.extra; } }
+    ];
+    function load() {
+      return api.get('admin/genie-health?hours=' + hours).then(function (r) {
+        var calls = 0, errors = 0;
+        r.rows.forEach(function (x) { calls += x.calls; errors += x.errors; });
+        var node = h('div', { class: 'stack' },
+          h('div', { class: 'grid four' }, tile('Models called', n(r.rows.length)), tile('Needing a look', n(r.alerting)), tile('Calls', n(calls)), tile('Failed', calls ? (errors * 100 / calls).toFixed(1) + '%' : '\u2013')),
+          table(cols, r.rows, { empty: 'No model has been called since the server started.' }),
+          r.auto ? h('h3', { text: 'Auto model choice' }) : null,
+          r.auto ? table(autoCols, [{ role: 'Small', s: r.auto.small, extra: r.auto.stronger ? n(r.auto.stronger) + ' (' + r.auto.askedPct.toFixed(0) + '%)' : '\u2013' }, { role: 'Strong', s: r.auto.strong, extra: '\u2013' }], {}) : null,
+          r.auto ? h('p', { class: 'sub', text: '\u201cAsked for a stronger one\u201d counts the clicks on Use a stronger one under an answer of the small model. If it is high, the rule sends too much to the small model.' }) : null,
+          h('p', { class: 'sub', text: 'A model is flagged when at least ' + r.errPctLimit + '% of its calls failed, or when its slowest 5% took ' + (r.slowMsLimit / 1000) + ' s or more to start answering (with at least 5 calls). Counting began ' + localTime(new Date(r.since * 1000).toISOString()) + '.' }));
+        render(box, JSON.stringify([r, hours]), node);
+      }, fail);
+    }
+    return { root: root, refresh: load, poll: true };
+  }
+
   // ---- audit log
 
   function viewAudit() {
@@ -2633,6 +2685,7 @@
     params: { label: 'Parameters', icon: 'params', make: viewParams },
     logs: { label: 'Log', icon: 'logs', make: viewLogs },
     genielog: { label: 'Genie log', icon: 'logs', make: viewGenieLog },
+    geniehealth: { label: 'Genie health', icon: 'health', make: viewGenieHealth },
     store: { label: 'App Store', icon: 'apps', make: viewStore },
     audit: { label: 'Audit log', icon: 'audit', make: viewAudit }
   };
@@ -2641,7 +2694,7 @@
     ['', ['overview', 'map']],
     ['Fleet', ['workers', 'sessions']],
     ['Site', ['site', 'feedback', 'snippets', 'store', 'users', 'traffic', 'usage']],
-    ['System', ['health', 'jobs', 'params', 'logs', 'genielog', 'audit']]
+    ['System', ['health', 'jobs', 'params', 'logs', 'genielog', 'geniehealth', 'audit']]
   ];
 
   var unread = 0;

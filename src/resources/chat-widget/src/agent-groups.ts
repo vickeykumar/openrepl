@@ -3,7 +3,7 @@
 // The core is always sent. The others come when something says the task needs them: the words of the task, the page (the
 // Preview is open, an .html file is open) or what the terminal printed (a module that is missing). A guess that is too low
 // costs one step, because the model can ask for a group (need_tools) and a group that came stays for the rest of the task; a
-// guess that is too high costs the tokens it saves. So the lists of words are wide and plain, and they are all in this file.
+// guess that is too high costs the tokens it saves. (2026-11-19: the Genie log showed need_tools for the preview in most tasks that used it, "play the game by launching it" among them, so the words for it grew.) So the lists of words are wide and plain, and they are all in this file.
 
 import type { Group } from "./agent-protocol";
 
@@ -23,7 +23,7 @@ const WORDS: Record<Group, RegExp> = {
   editor: /\b(creat\w*|edit\w*|writ\w*|chang\w*|fix\w*|add\w*|mak\w*|build\w*|refactor\w*|updat\w*|implement\w*|modif\w*|replac\w*|insert\w*|remov\w*|delet\w*|rewrit\w*|improv\w*|generat\w*|code|function|class|file|script|program|page|bug|error|save|open|convert|translat\w*|optimi[sz]\w*|complete|finish|continue)\b/i,
   files: /\b(renam\w*|mov(e|ing)|copy\w*|cut|paste|delet\w*|remov\w*|folder\w*|director\w*|new file|organi[sz]\w*|restructur\w*|tidy|clean ?up|trash|split (it )?into (files|modules)|separate files)\b/i,
   terminal: /\b(run\w*|execut\w*|install\w*|test\w*|build\w*|compil\w*|start\w*|serve\w*|server|debug\w*|command\w*|shell|bash|terminal|output|print\w*|pip|npm|node|python|git|curl|make|pytest|error|bug|crash\w*|fail\w*|exception|traceback|stack ?trace|works?|working|try|check)\b/i,
-  preview: /\b(html|css|website|web ?site|web ?page|page|site|ui|button|form|browser|preview|layout|responsive|phone|mobile|tablet|click\w*|style\w*|dark mode|landing|navbar|menu|canvas|svg|animation|draw\w*|diagram|chart|game|console|screenshot|fits? (a )?(phone|screen)|looks?)\b/i,
+  preview: /\b(html|css|website|web ?site|web ?page|page|site|ui|button|form|browser|preview|layout|responsive|phone|mobile|tablet|click\w*|style\w*|dark mode|landing|navbar|menu|canvas|svg|animation|draw\w*|diagram|chart|game|console|screenshot|fits? (a )?(phone|screen)|looks?|play\w*|launch\w*|apps?|demo|level|score|try (it|this|that)( out)?|see (it|how|what)|visual\w*|colou?r\w*|font\w*|image\w*|front-?end|tailwind|bootstrap|dashboard|widget|sprite|scroll\w*|hover\w*|modal|popup|dialog|tab|tabs|icon\w*|theme)\b/i,
   store: /\b(install\w*|librar\w*|package\w*|pip|npm|module\w*|import\w*|dependenc\w*|conda|app ?store|apt|requirements|numpy|pandas|flask|django|express|react|matplotlib|requests)\b/i,
 };
 

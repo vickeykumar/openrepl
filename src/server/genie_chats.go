@@ -52,9 +52,9 @@ const (
 var chatIDPattern = regexp.MustCompile(`^[a-z0-9]{4,16}$`)
 
 // the kinds of line, and the keys a line may have (anything else is left out when it is stored)
-var chatLineKinds = map[string]bool{"meta": true, "title": true, "state": true, "user": true, "answer": true, "task": true, "summary": true, "checkpoint": true}
+var chatLineKinds = map[string]bool{"meta": true, "title": true, "state": true, "user": true, "answer": true, "task": true, "summary": true, "checkpoint": true, "star": true}
 var chatLineKeys = map[string]bool{"t": true, "id": true, "created": true, "context": true, "language": true, "file": true, "text": true, "at": true, "ts": true,
-	"model": true, "effort": true, "mode": true, "tokens": true, "steps": true, "checked": true, "changed": true, "outcome": true}
+	"model": true, "effort": true, "mode": true, "tokens": true, "steps": true, "checked": true, "changed": true, "outcome": true, "on": true}
 
 func (g GenieSettings) chatsMax() int  { return orDefault(g.ChatHistoryChats, defaultChatsMax) }
 func (g GenieSettings) chatsTabs() int { return orDefault(g.ChatHistoryTabs, defaultChatsTabs) }
@@ -111,7 +111,11 @@ func cleanChatLine(raw map[string]interface{}) (map[string]interface{}, bool) {
 	return out, true
 }
 
+// maxStarredChats is how many chats can be starred (a star line with on 1 keeps a chat first in History and out of Delete all).
+const maxStarredChats = 20
+
 type chatSummary struct {
+	Starred  bool   `json:"starred,omitempty"`
 	ID       string `json:"id"`
 	Title    string `json:"title"`
 	Created  string `json:"created,omitempty"`
@@ -214,6 +218,9 @@ func summaryOf(path, id string) (chatSummary, bool) {
 			if t, ok := l["text"].(string); ok && strings.TrimSpace(t) != "" {
 				s.Title = t
 			}
+		case "star":
+			on, _ := l["on"].(float64)
+			s.Starred = on == 1
 		case "user", "answer":
 			s.Messages++
 			if l["t"] == "user" {
@@ -246,6 +253,17 @@ func listChats(dir string) []chatSummary {
 	return out
 }
 
+// starredElsewhere counts the starred chats other than the one given.
+func starredElsewhere(dir, except string) int {
+	n := 0
+	for _, c := range listChats(dir) {
+		if c.Starred && c.ID != except {
+			n++
+		}
+	}
+	return n
+}
+
 // pruneChats removes the chats past their age, and the oldest chats that are not open while there are more than max.
 func pruneChats(dir string, g GenieSettings, tabs chatTabs, now time.Time) {
 	open := map[string]bool{}
@@ -256,7 +274,7 @@ func pruneChats(dir string, g GenieSettings, tabs chatTabs, now time.Time) {
 	days := g.ChatHistoryDays
 	keep := []chatSummary{}
 	for _, c := range chats {
-		if days > 0 && !open[c.ID] && now.Sub(time.Unix(c.Updated, 0)) > time.Duration(days)*24*time.Hour {
+		if days > 0 && !open[c.ID] && !c.Starred && now.Sub(time.Unix(c.Updated, 0)) > time.Duration(days)*24*time.Hour {
 			os.Remove(filepath.Join(dir, chatsSubdir, c.ID+".jsonl"))
 			continue
 		}
@@ -264,7 +282,7 @@ func pruneChats(dir string, g GenieSettings, tabs chatTabs, now time.Time) {
 	}
 	// newest first: from the end, the oldest closed chats go
 	for i := len(keep) - 1; i >= 0 && len(keep) > g.chatsMax(); i-- {
-		if open[keep[i].ID] {
+		if open[keep[i].ID] || keep[i].Starred { // an open chat and a starred one stay
 			continue
 		}
 		os.Remove(filepath.Join(dir, chatsSubdir, keep[i].ID+".jsonl"))
@@ -290,7 +308,7 @@ func trimChat(path string, limit int) error {
 	var head, body []map[string]interface{}
 	for _, l := range lines {
 		switch l["t"] {
-		case "meta", "title", "state":
+		case "meta", "title", "state", "star":
 			head = append(head, l)
 		default:
 			body = append(body, l)
@@ -355,6 +373,8 @@ type chatsRequest struct {
 	Lines []map[string]interface{} `json:"lines"`
 	Open  []string                 `json:"open"`
 	Off   bool                     `json:"off"`
+	// IncludeStarred makes deleteAll remove the starred chats as well
+	IncludeStarred bool `json:"includeStarred"`
 }
 
 // handleGenieChats answers POST /genie_chats.
@@ -475,6 +495,12 @@ func (server *Server) handleGenieChats(rw http.ResponseWriter, req *http.Request
 					return
 				}
 			}
+			if l["t"] == "star" {
+				if on, _ := l["on"].(float64); on == 1 && starredElsewhere(dir, in.ID) >= maxStarredChats {
+					jsonError(rw, http.StatusConflict, "star_limit", "You can star 20 chats. Unstar one first.")
+					return
+				}
+			}
 			j := asciiJSON(l)
 			data = append(append(data, j...), '\n')
 			written = append(written, l)
@@ -578,14 +604,37 @@ func (server *Server) handleGenieChats(rw http.ResponseWriter, req *http.Request
 		}
 		reply(map[string]interface{}{"ok": true})
 	case "deleteAll":
-		os.RemoveAll(filepath.Join(dir, chatsSubdir))
+		// the starred chats stay unless the person asked for them too
+		kept := map[string]bool{}
+		if !in.IncludeStarred {
+			for _, c := range listChats(dir) {
+				if c.Starred {
+					kept[c.ID] = true
+				}
+			}
+		}
+		if len(kept) == 0 {
+			os.RemoveAll(filepath.Join(dir, chatsSubdir))
+		} else {
+			for _, c := range listChats(dir) {
+				if !kept[c.ID] {
+					os.Remove(filepath.Join(dir, chatsSubdir, c.ID+".jsonl"))
+				}
+			}
+		}
 		os.Remove(filepath.Join(dir, chatsTabsFile+".tmp"))
 		t := readTabs(dir)
-		t.Open = []string{}
+		open := []string{}
+		for _, id := range t.Open {
+			if kept[id] {
+				open = append(open, id)
+			}
+		}
+		t.Open = open
 		if _, err := os.Stat(dir); err == nil {
 			writeTabs(dir, t)
 		}
-		reply(map[string]interface{}{"ok": true})
+		reply(map[string]interface{}{"ok": true, "kept": len(kept)})
 	case "export":
 		p, ok := chatPath(in.ID)
 		if !ok {
