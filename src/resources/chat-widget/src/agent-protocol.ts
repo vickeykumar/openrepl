@@ -313,7 +313,7 @@ export function scopeQuestion(scope: Scope): string {
 export function scopeDetail(scope: Scope, a: Action, openFile: string = ""): string {
   if (scope === "store") {
     const n = a.name || "an app";
-    return "It will install " + n + " (a conda-forge package) on the server and turn it on for your terminals, if it is on the safe list; an app that needs an admin is only offered to you in the store. It is installed once and shared: it does not change your files.";
+    return "It will install " + n + " (a conda-forge package) on the server and enable it for your terminals, if it is on the safe list; an app that needs an admin is only offered to you in the store. It is installed once and shared: it does not change your files.";
   }
   if (scope === "editor") return "It will propose changes. You review each one before anything is applied.";
   if (scope === "language") {

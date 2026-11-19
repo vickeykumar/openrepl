@@ -2172,7 +2172,7 @@
             var n = d.users[a.id] || 0, idle = d.now - Math.max(a.at || 0, a.lastUsed || 0);
             var everyone = (d.defaults || []).indexOf(a.name) >= 0;
             return h('div', null, n + (n === 1 ? ' user' : ' users'), n === 0 && a.state === 'installed' && idle > 60 * DAY ? h('div', { class: 'warn', text: 'unused for ' + Math.floor(idle / DAY) + ' days' }) : null,
-              a.state === 'installed' ? h('div', null, everyone ? h('span', { class: 'ok', text: 'on for everyone ' }) : null, h('button', { class: 'btn', type: 'button', text: everyone ? 'Turn off for everyone' : 'Turn on for everyone',
+              a.state === 'installed' ? h('div', null, everyone ? h('span', { class: 'ok', text: 'enabled for everyone ' }) : null, h('button', { class: 'btn', type: 'button', text: everyone ? 'Disable for everyone' : 'Enable for everyone',
                 title: 'Every signed-in user, the ones who sign in later too, gets it on; each may turn it off for themselves.',
                 onclick: function () { post({ action: 'default', name: a.name, on: !everyone }, a.name + (everyone ? ' is no longer on for everyone.' : ' is on for every signed-in user now.')); } })) : null);
           } }

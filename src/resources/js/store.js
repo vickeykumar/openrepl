@@ -160,7 +160,7 @@
     } else if (v.state === "installing") btn("Details", function () { progress(v.name); });
     else if (v.state === "installed") {
       var checking = S.checking === v.id;
-      var sw = el("button", "sswitch" + (v.on ? " is-on" : ""), checking ? "" : v.on ? "On" : "Off");
+      var sw = el("button", "sswitch" + (v.on ? " is-on" : ""), checking ? "" : v.on ? "Enabled" : "Disabled");
       if (checking) { sw.appendChild(spin(14)); sw.appendChild(document.createTextNode(" Checking…")); }
       sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", v.on ? "true" : "false");
       if (checking) { sw.disabled = true; sw.title = "Checking that it works in your terminal environment"; }
@@ -240,12 +240,12 @@
     gomod: "Go modules, fetched by the server from the Go module proxy with their checksums checked, and used with no internet. The version is the newest that builds with this server's Go. Use go run; a Go REPL cannot import them.",
     jar: "Java libraries (jars and what they need) from Maven Central, checksums checked, on the class path of javac, java and jshell. The version is the newest this server's Java can load.",
     crate: "Rust crates, fetched by the server from crates.io with their checksums checked. In evcxr use :dep name = \"version\". The version is the newest that builds with this server's Rust.",
-    lib: "Python libraries from conda-forge. Installed once on the server; your terminals import them when you switch them on.",
-    tool: "Programs from conda-forge (jq and the like), on the PATH of your terminals when switched on.",
-    node: "Node libraries from npm (scripts of the packages are not run). Your terminals can require() them when switched on.",
+    lib: "Python libraries from conda-forge. Installed once on the server; your terminals import them when you enable them.",
+    tool: "Programs from conda-forge (jq and the like), on the PATH of your terminals when enabled.",
+    node: "Node libraries from npm (scripts of the packages are not run). Your terminals can require() them when enabled.",
     lang: "Languages (Lua, Ruby, Julia, R...): a program a terminal can run. They are large, so an admin installs them; ask for the one you need. These are samples.",
     browser: "Libraries for the pages you preview (html, css, javascript) and the plugins of the preview browser. They are served by this site, with their checksums checked.",
-    plugin: "Editor plugins that come with the server (samples). An admin installs one; once it is on for you it shows in the editor's status bar. A plugin runs in a sandboxed frame: it can read the text of your editor and show one line of text, nothing else."
+    plugin: "Editor plugins that come with the server (samples). An admin installs one; once it is enabled for you it shows in the editor's status bar. A plugin runs in a sandboxed frame: it can read the text of your editor and show one line of text, nothing else."
   };
   var searchTimer = 0;
 
@@ -428,7 +428,7 @@
         if (e.kind === "plugin" && e.place === "preview") {
           var pp = ppOf(e.id);
           if (pp && pp.ready) {
-            var sw = el("button", "sswitch" + (pp.on ? " is-on" : ""), pp.on ? "On" : "Off"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", pp.on ? "true" : "false");
+            var sw = el("button", "sswitch" + (pp.on ? " is-on" : ""), pp.on ? "Enabled" : "Disabled"); sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", pp.on ? "true" : "false");
             sw.setAttribute("aria-label", "Use " + e.name + " in my preview");
             sw.addEventListener("click", function () {
               store("plugin-switch", { id: e.id, on: !pp.on }).then(function () { S.pp = null; if (window.PreviewPlugins) window.PreviewPlugins.reload(); render(); }, function (er) { say(er.message, "bad"); render(); });
@@ -451,7 +451,7 @@
     var l = el("p", "store__legend");
     var b = el("b", "", "States: ");
     l.appendChild(b);
-    l.appendChild(document.createTextNode("not installed (Install, or Request when it needs an admin) · installing (progress) · installed (a switch, off until you turn it on) · needs approval (waiting for an admin) · failed (see why, report it). Installed means installed for everyone; the switch is yours alone."));
+    l.appendChild(document.createTextNode("not installed (Install, or Request when it needs an admin) · installing (progress) · installed (a switch, disabled until you enable it) · needs approval (waiting for an admin) · failed (see why, report it). Installed means installed for everyone; the switch is yours alone."));
     return l;
   }
 
@@ -472,7 +472,7 @@
       return r;
     });
     if (minePager) wrap.appendChild(minePager);
-    if (!mineList.length) wrap.appendChild(el("p", "store__legend", "Nothing is on for you yet. Browse the store and switch an app on."));
+    if (!mineList.length) wrap.appendChild(el("p", "store__legend", "Nothing is enabled for you yet. Browse the store and enable an app."));
     // what the image has built in: listed with the apps, always on, nothing to install or remove
     if (S.builtins.length) wrap.appendChild(el("h3", "store__h3", "Built in"));
     S.builtins.forEach(function (b) {
@@ -484,7 +484,7 @@
       d.appendChild(el("small", "", "Built in" + (b.used && b.used.length ? " · used by " + b.used.join(", ") : "")));
       r.appendChild(d);
       r.appendChild(el("span", "stag stag--builtin", "Built in"));
-      var sw = el("button", "sswitch is-on", "On"); sw.type = "button"; sw.disabled = true; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", "true");
+      var sw = el("button", "sswitch is-on", "Enabled"); sw.type = "button"; sw.disabled = true; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", "true");
       sw.title = "Built in: always on"; sw.setAttribute("aria-label", b.name + " is built in and always on");
       r.appendChild(sw);
       var u = el("button", "sbtn", "Uninstall"); u.type = "button"; u.disabled = true; u.title = "Built in: it comes with the server"; r.appendChild(u);
@@ -653,7 +653,7 @@
         rbtn(row, "Open", "", function () { go("#app/" + encodeURIComponent(a.name)); });
         if (a.state === "installed") {
           var everyone = (d.defaults || []).indexOf(a.name) >= 0;
-          rbtn(row, everyone ? "On for everyone: turn off" : "Turn on for everyone", "", function () { adminPost({ action: "default", name: a.name, on: !everyone }, a.name + (everyone ? " is no longer on for everyone." : " is on for every signed-in user now (each may turn it off for themselves).")); });
+          rbtn(row, everyone ? "Enabled for everyone: disable" : "Enable for everyone", "", function () { adminPost({ action: "default", name: a.name, on: !everyone }, a.name + (everyone ? " is no longer enabled for everyone." : " is enabled for every signed-in user now (each may disable it for themselves).")); });
         }
         if (a.state === "installed" && a.kind !== "node" && a.kind !== "plugin") {
           rbtn(row, "New lock", "", function () {
@@ -667,7 +667,7 @@
         rbtn(row, "Uninstall for everyone", "is-danger", function () {
           modal(function (dd) {
             dd.appendChild(heading("Uninstall " + a.name + "?"));
-            dd.appendChild(el("p", "", users ? users + " users have it on. It is switched off for them and deleted on every server." : "Nobody has it on. It is deleted on every server."));
+            dd.appendChild(el("p", "", users ? users + " users have it enabled. It is disabled for them and deleted on every server." : "Nobody has it enabled. It is deleted on every server."));
             dd.appendChild(dialogButtons([{ label: "Uninstall", primary: true, run: function () { closeModal(); adminPost({ action: "remove", name: a.name }, a.name + " was uninstalled."); } }, { label: "Cancel", run: closeModal }]));
           });
         });
@@ -695,7 +695,7 @@
       case "tool": return "$ " + v.name + " --version";
       case "node": return "$ node -e \"console.log(require('" + v.name + "'))\"";
       case "lang": return "$ " + (v.name === "r-base" ? "R" : v.name) + " --version";
-      case "plugin": return "It shows in the status bar of the editor once it is on for you.";
+      case "plugin": return "It shows in the status bar of the editor once it is enabled for you.";
       default: return "$ python3 -c \"import " + mod + "\"";
     }
   }
@@ -725,7 +725,7 @@
     modal(function (d) {
       d.appendChild(heading((S.admin ? "Uninstall " : "Uninstall ") + v.name + "?"));
       d.appendChild(el("p", "", S.admin
-        ? "It is deleted from every server, and switched off for the users that have it on. They can install it again from the store."
+        ? "It is deleted from every server, and disabled for the users that have it enabled. They can install it again from the store."
         : "It is deleted from the server (nobody else has it on). You can install it again from the store."));
       d.appendChild(dialogButtons([
         { label: "Uninstall", primary: true, run: function () {
@@ -780,7 +780,7 @@
       if (v.docs.indexOf("https://") === 0) { da.target = "_blank"; da.rel = "noopener noreferrer"; }
       db.appendChild(da); kv.appendChild(db);
     }
-    kvRow("Who can", v.state === "installed" ? "Everyone can switch it on for themselves" : v.safe ? "You, right away (it is on the safe list)" : S.admin ? "You, as an admin" : "An admin approves it first");
+    kvRow("Who can", v.state === "installed" ? "Everyone can enable it for themselves" : v.safe ? "You, right away (it is on the safe list)" : S.admin ? "You, as an admin" : "An admin approves it first");
     w.appendChild(kv);
     var actions = el("div", "sapp__row");
     if (v.state === "available" || (v.state === "unknown" && v.safe)) {
@@ -801,18 +801,18 @@
     if (v.state === "installed") {
       var row = el("div", "store__switchrow");
       var p = el("p"); p.appendChild(el("b", "", v.kind === "plugin" ? "Use it in my editor" : "Use it in my terminals")); p.appendChild(document.createElement("br"));
-      p.appendChild(document.createTextNode(v.default ? "An admin turned this on for everyone. You can turn it off for yourself." : v.kind === "plugin" ? "Off for you until you turn it on. It shows in the status bar of your editor." : "Off for you until you turn it on. It takes effect in terminals you start next."));
+      p.appendChild(document.createTextNode(v.default ? "An admin enabled this for everyone. You can disable it for yourself." : v.kind === "plugin" ? "Disabled for you until you enable it. It shows in the status bar of your editor." : "Disabled for you until you enable it. It takes effect in terminals you start next."));
       row.appendChild(p);
       control(v, row);
       w.appendChild(row);
       w.appendChild(el("pre", "store__code", useLine(v)));
       if (S.admin) {
-        var ev = el("button", "sbtn", v.default ? "Admin: on for everyone, turn that off" : "Admin: turn it on for every signed-in user"); ev.type = "button";
-        ev.addEventListener("click", function () { adminPost({ action: "default", name: name, on: !v.default }, v.default ? name + " is no longer on for everyone." : name + " is on for every signed-in user now (each may turn it off for themselves)."); });
+        var ev = el("button", "sbtn", v.default ? "Admin: enabled for everyone, disable that" : "Admin: enable it for every signed-in user"); ev.type = "button";
+        ev.addEventListener("click", function () { adminPost({ action: "default", name: name, on: !v.default }, v.default ? name + " is no longer enabled for everyone." : name + " is enabled for every signed-in user now (each may disable it for themselves)."); });
         w.appendChild(ev);
       }
       if (v.on && v.kind !== "plugin" && S.sandbox && !S.admin) {
-        w.appendChild(el("p", "store__legend", "It is on for terminals you open from now on. A terminal that is already open keeps what it had: open a new one (the + beside the terminal tabs)."));
+        w.appendChild(el("p", "store__legend", "It is enabled for terminals you open from now on. A terminal that is already open keeps what it had: open a new one (the + beside the terminal tabs)."));
         w.appendChild(el("p", "store__legend", "Turning it off removes it from your terminals only. Other users keep their own switch."));
       } else if (v.on && v.kind !== "plugin") {
         var ap = el("button", "sbtn", "Copy the line for an open terminal"); ap.type = "button"; ap.addEventListener("click", function () { copy(". '" + S.envScript + "'"); });
@@ -825,7 +825,7 @@
       if (!S.admin && v.othersOn > 0) {
         ub.disabled = true;
         un.appendChild(ub);
-        un.appendChild(el("p", "store__legend", "Other users have it on, so it stays. You can switch it off for yourself, or ask an admin to remove it."));
+        un.appendChild(el("p", "store__legend", "Other users have it enabled, so it stays. You can disable it for yourself, or ask an admin to remove it."));
       } else {
         ub.addEventListener("click", function () { uninstallDialog(v); });
         un.appendChild(ub);
@@ -1036,7 +1036,7 @@
     if (S.checking) return Promise.resolve();
     S.checking = v.id; say("Checking that " + v.name + " works in your terminals…", "info"); render();
     return store("switch", { id: v.id, on: true }).then(function (j) {
-      S.checking = null; take(j); say(v.name + " is on for your terminals. It was checked and works.", "info"); render();
+      S.checking = null; take(j); say(v.name + " is enabled for your terminals. It was checked and works.", "info"); render();
     }, function (e) {
       S.checking = null;
       if (e.code === "verify" && e.body) { take(e.body); say(""); render(); useFailure(v, e.body); return; }
