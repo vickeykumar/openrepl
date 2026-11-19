@@ -483,4 +483,30 @@ test("a part that went when the page redrew is found again by what it is, and sa
   const gone = await call(page, "click", { ref: add }, 12000);
   expect(gone.ok).toBe(false);
   expect(gone.error).toMatch(/is not on the page now/);
+  expect(["removed", "renamed"]).toContain(gone.why);
+  // a number that no read of this page gave
+  const never = await call(page, "click", { ref: "e999" }, 12000);
+  expect(never.ok).toBe(false);
+  expect(never.why).toBe("never");
+  expect(never.error).toMatch(/no preview_read of this page gave that number/);
+});
+
+test("a part whose name changed says what it is called now; a part that is gone with no other of its kind says it was removed", async ({ page }) => {
+  await ready(page);
+  await makeSite(page);
+  await openShop(page);
+  const read = await call(page, "read", {});
+  const add = partRef(read.text, /e\d+ button "Add to cart"/);
+  expect(add).not.toBeNull();
+  await page.frameLocator("#preview-frame").locator("#add").evaluate((el) => { el.textContent = "Add to cart (3)"; });
+  const r = await call(page, "click", { ref: add }, 12000);
+  // the same element is still on the page, so it is found as it is (the name is not part of finding a live element)
+  expect(r.ok, JSON.stringify(r)).toBe(true);
+  // the element is replaced by one of another name: the old name and the new one are said
+  await page.frameLocator("#preview-frame").locator("#add").evaluate((el) => { const n = el.cloneNode(true); n.textContent = "Buy now"; el.replaceWith(n); });
+  const g = await call(page, "click", { ref: add }, 12000);
+  expect(g.ok).toBe(false);
+  expect(g.why).toBe("renamed");
+  expect(g.error).toMatch(/it was called "Add to cart"/);
+  expect(g.error).toMatch(/now called "Buy now"/);
 });

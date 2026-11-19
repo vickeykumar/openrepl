@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ESCALATE_STEPS, PROMPT_VERSION, STUCK_ERROR, STUCK_SAME, StuckDetector, eventBody, extOf, isCheckFailure, isLimit, newTaskId, reasonCode, safeReason, sameWords, stuckText, targetOf } from "../src/genie-events.ts";
+import { ESCALATE_STEPS, PROMPT_VERSION, STUCK_ERROR, STUCK_SAME, StuckDetector, eventBody, extOf, isCheckFailure, isLimit, isLooking, newTaskId, reasonCode, safeReason, sameWords, stuckText, targetOf } from "../src/genie-events.ts";
 
 test("a target is short and names the thing the action works on", () => {
   assert.equal(targetOf({ type: "files_read", path: "src/a.py" }), "src/a.py");
@@ -34,18 +34,41 @@ test("the same step failing three times is stuck, and the counts start again aft
   assert.equal(d.note(a, "failed", "not found"), null, "after the user chose, it takes three more");
 });
 
-test("a step that worked, whatever it was, ends the run of failures: it takes three in a row", () => {
+test("a step that changed something ends the run of failures: it takes three in a row", () => {
   const d = new StuckDetector();
   const a = { type: "preview_click", ref: "e1" };
   d.note(a, "failed", "e1 is not on the page");
   d.note(a, "failed", "e1 is not on the page");
-  d.note({ type: "preview_read" }, "done", ""); // read the page again: another way
+  d.note({ type: "editor_write", path: "a.js" }, "done", ""); // something else worked
   assert.equal(d.note(a, "failed", "e1 is not on the page"), null);
   assert.equal(d.note(a, "failed", "e1 is not on the page"), null);
-  d.note({ type: "preview_read" }, "done", "");
+  d.note({ type: "bash", command: "ls" }, "done", "");
   assert.equal(d.note(a, "failed", "e1 is not on the page"), null, "failures with something that worked between are not in a row");
   assert.equal(d.note(a, "failed", "e1 is not on the page"), null);
   assert.ok(d.note(a, "failed", "e1 is not on the page"), "the third in a row is stuck");
+});
+
+test("reading between failed clicks does not end the run: the third failed click is stuck", () => {
+  const d = new StuckDetector();
+  const a = { type: "preview_click", ref: "e2" };
+  assert.equal(d.note(a, "failed", "e2 is not on the page now"), null);
+  d.note({ type: "preview_read" }, "done", "");
+  assert.equal(d.note(a, "failed", "e2 is not on the page now"), null);
+  d.note({ type: "preview_read" }, "done", "");
+  d.note({ type: "files_read", path: "x.js" }, "done", "");
+  const s = d.note(a, "failed", "e2 is not on the page now");
+  assert.ok(s && s.rule === "same-step", "stuck although the page was read between");
+});
+
+test("isLooking names the steps that only look", () => {
+  for (const t of ["preview_read", "preview_find", "preview_console", "files_read", "files_list", "files_search", "read_output"]) assert.ok(isLooking(t), t);
+  for (const t of ["preview_click", "editor_write", "bash", "run", "files_rename"]) assert.ok(!isLooking(t), t);
+});
+
+test("the reason a part is gone gets its own code", () => {
+  assert.equal(reasonCode('e2 is not on the page now: it was called "Fire" and the same kind of part at that place is now called "Fire (3)".'), "stale_ref_renamed");
+  assert.equal(reasonCode("e2 is not on the page now: it was removed (no button of that kind is left)."), "stale_ref_removed");
+  assert.equal(reasonCode("e2 is not on the page now: no preview_read of this page gave that number"), "stale_ref_reload");
 });
 
 test("three steps in a row with the same words are stuck, whatever the steps are", () => {

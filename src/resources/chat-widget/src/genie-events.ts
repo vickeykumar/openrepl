@@ -17,6 +17,13 @@ export const ESCALATE_STEPS = 5; // steps a stronger model keeps a stuck task be
 
 type ActionLike = { type: string; [k: string]: any };
 
+// Steps that only look: reading the page or a file does not change anything, so it is no sign that a way of working succeeded.
+// A task that reads before each retry of a failing click is still failing in a row.
+const LOOKING = /^(preview_(read|console|network|inspect|find|state|wait|storage)|files_(list|search|read)|read_output|editor_read)$/;
+export function isLooking(type: string): boolean {
+  return LOOKING.test(type);
+}
+
 // The thing an action works on, short: a file, a part of the page, the start of a text or a command.
 export function targetOf(a: ActionLike): string {
   const pick = a.path || a.ref || a.name || a.to || a.query || a.old || a.text || a.command || a.language || "";
@@ -85,8 +92,8 @@ export class StuckDetector {
   note(a: ActionLike, status: string, detail: string): StuckInfo | null {
     const key = a.type + "|" + targetOf(a);
     if (status !== "failed") {
-      // a step that worked, whatever it was (reading the page again is another way to go about it): the run of failures is over
-      if (status !== "skipped") {
+      // a step that worked and changed something (or ran something): the run of failures is over. A step that only looked leaves the counts as they are.
+      if (status !== "skipped" && !isLooking(a.type)) {
         this.count.clear();
         this.lastWords = "";
         this.run = 0;
@@ -164,6 +171,9 @@ export function pageSessionId(): string {
 export function reasonCode(detail: string): string {
   const d = String(detail || "");
   const table: [RegExp, string][] = [
+    [/is not on the page now: it was called/i, "stale_ref_renamed"],
+    [/is not on the page now: it was removed/i, "stale_ref_removed"],
+    [/is not on the page now: no preview_read/i, "stale_ref_reload"],
     [/is not on the page now/i, "stale_ref"],
     [/no file is open/i, "no_file_open"],
     [/answer could not be read/i, "unreadable"],

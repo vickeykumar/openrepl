@@ -1718,12 +1718,12 @@ test("built: reading the console after a change of a web page is its check", asy
 });
 
 test("built: a part that is not on the page now says why on the step line and tells the model to read again", async () => {
-  fakePreview({ call: async (cmd) => (cmd === "target" ? { ok: false, error: "e1 is not on the page now: read the page again" } : { ok: true }) });
+  fakePreview({ call: async (cmd) => (cmd === "target" ? { ok: false, why: "renamed", error: 'e1 is not on the page now: it was called "Fire" and the same kind of part at that place is now called "Fire (3)". Read the page again.' } : { ok: true }) });
   const t = setup([{ say: "", actions: [{ type: "preview_click", ref: "e1" }], done: false }, { say: "ok", actions: [], done: true }], { answer: () => "Allow once" });
   await t.done(t.runner.start("click it"));
   assert.equal(t.log.asked, undefined, "no card for a part that is not there");
   const r = t.results(1).step_results[0];
   assert.equal(r.status, "failed");
-  assert.match(r.detail, /belong to your last preview_read/);
+  assert.match(r.detail, /it was called "Fire" and .* now called "Fire \(3\)"/, "the bridge's own reason reaches the model");
   assert.match(t.steps().join("\n"), /Clicking e1 in the Preview page: e1 is not on the page now/);
 });

@@ -45,7 +45,7 @@ var genieEventKinds = map[string]bool{"step_failed": true, "stuck": true, "stuck
 
 // the codes a page may give for why a step failed (agent side: genie-events.ts reasonCode), the stuck rules and what the user chose after a stuck task
 var (
-	genieCodes   = map[string]bool{"stale_ref": true, "no_file_open": true, "unreadable": true, "too_long": true, "covered": true, "disabled": true, "limit": true, "edit_mismatch": true, "exists": true, "no_such_path": true, "refused": true, "not_available": true, "timeout": true, "other": true, "no-progress": true, "budget": true}
+	genieCodes   = map[string]bool{"stale_ref": true, "stale_ref_renamed": true, "stale_ref_removed": true, "stale_ref_reload": true, "no_file_open": true, "unreadable": true, "too_long": true, "covered": true, "disabled": true, "limit": true, "edit_mismatch": true, "exists": true, "no_such_path": true, "refused": true, "not_available": true, "timeout": true, "other": true, "no-progress": true, "budget": true}
 	genieRules   = map[string]bool{"same-step": true, "same-error": true, "no-progress": true, "budget": true}
 	genieChoices = map[string]bool{"go": true, "hint": true, "stronger": true, "stop": true}
 	langOK       = regexp.MustCompile(`^[A-Za-z0-9+#.\- ]{1,24}$`)

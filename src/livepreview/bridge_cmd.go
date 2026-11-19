@@ -55,7 +55,12 @@ var SIG={},SC={},RES=null;
 function allInter(){var out=[];(function w(n){if(n.nodeType!==1||SKIP[n.tagName]===1||/^openrepl-/.test(n.id))return;if(!vis(n))return;if(inter(n)){out.push(n);return}[].forEach.call(n.childNodes,w)})(document.body);return out}
 function sigOf(e){return e.tagName+"|"+roleOf(e)+"|"+sh(nm(e),60)}
 function find(a){var e=R[a.ref];if(e&&document.contains(e))return e;var g=SIG[a.ref];if(!g)return null;var m=allInter().filter(function(x){return sigOf(x)===g.s});if(!m.length)return null;e=m[Math.min(g.i,m.length-1)];R[a.ref]=e;RES=a.ref;return e}
-function gone(a){return{ok:false,error:(a.ref||"that part")+" is not on the page now: read the page again"}}
+function gone(a){var r=a.ref||"that part",g=SIG[a.ref],w,t;
+if(!g){w="never";t=" is not on the page now: no preview_read of this page gave that number (a reload or another page starts the numbers again). Send preview_read, then use the numbers it shows."}
+else{var k=g.s.split("|").slice(0,2).join("|"),sm=allInter().filter(function(x){return x.tagName+"|"+roleOf(x)===k});
+if(sm.length){w="renamed";var c=sm[Math.min(g.i,sm.length-1)];t=" is not on the page now: it was called \""+g.s.split("|").slice(2).join("|")+"\" and the same kind of part at that place is now called \""+sh(nm(c),60)+"\". The names change while the page runs, so read the page again and pick the part by what it does."}
+else{w="removed";t=" is not on the page now: it was removed (no "+g.s.split("|")[0].toLowerCase()+" of that kind is left). Send preview_read to see what the page shows now."}}
+return{ok:false,why:w,error:r+t}}
 function ringOn(e,label){try{var r=e.getBoundingClientRect();if(!ring){ring=document.createElement("div");ring.id="openrepl-ring";ring.setAttribute("style","position:fixed;z-index:2147483647;pointer-events:none;border:3px solid #B7E34B;border-radius:6px;box-shadow:0 0 0 4px rgba(183,227,75,.35);box-sizing:border-box;transition:all .15s");var l=document.createElement("div");l.setAttribute("style","position:absolute;left:-3px;background:#15151C;color:#B7E34B;font:600 11px system-ui,sans-serif;padding:2px 7px;border-radius:5px;white-space:nowrap");ring.appendChild(l);document.documentElement.appendChild(ring)}
 var s=ring.style;s.left=r.left+"px";s.top=r.top+"px";s.width=Math.max(8,r.width)+"px";s.height=Math.max(8,r.height)+"px";s.display="block";ring.firstChild.textContent=label;ring.firstChild.style.top=r.top<28?(Math.max(8,r.height)+4)+"px":"-26px";clearTimeout(ringT);ringT=setTimeout(function(){if(ring)ring.style.display="none"},2500)}catch(x){}}
 var cur=null,curT=0,curSeen=false;
