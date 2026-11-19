@@ -118,10 +118,14 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) {
   gap: 10px;
   min-width: 0;
   flex-grow: 1;
+  flex-shrink: 0; /* the name is never squeezed under the pill beside it: the pill and the labels give way */
   font-size: 15px;
   font-weight: 600;
   color: var(--cw-strong);
 }
+/* A narrow panel: the word Peer chat goes (the switch and its tip stay) so that the permission pill keeps room, and the pill, not the name, is cut with an ellipsis. */
+#chat-widget__header { container-type: inline-size; container-name: cwhead; }
+@container cwhead (max-width: 420px) { .chat-widget__peer-label { display: none; } }
 #chat-widget__title_icon {
   flex-shrink: 0;
   color: var(--cw-accent);
@@ -1661,12 +1665,13 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-model__tag.
 
 /* What is allowed for the session (agent.ts: renderBadge, toggleMenu, openPermissions, confirmEverything). Designed in the
    "Genie agent: remember my answers for the session" canvas. */
-#chat-widget__auto { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; flex-shrink: 0; }
+#chat-widget__auto { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; flex: 0 1 auto; min-width: 0; }
 .cw-auto {
   font: inherit; font-size: 11.5px; font-weight: 500; padding: 2px 9px; cursor: pointer;
   color: var(--cw-accent); background: color-mix(in srgb, var(--cw-accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--cw-accent) 55%, transparent); border-radius: 99px;
   white-space: nowrap; /* "Auto: 1 of 7 ▾" is one line, however narrow the panel is */
+  overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 100%;
 }
 .cw-auto--risky { color: var(--danger-color, #F07171); background: rgba(240, 113, 113, 0.14); border-color: rgba(240, 113, 113, 0.55); }
 .cw-menu {

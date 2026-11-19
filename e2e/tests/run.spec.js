@@ -51,3 +51,26 @@ for (const run of RUNS) {
     expect(await terminalText(page), "the server could not run the program").not.toMatch(/executable file not found|failed to create backend|command not found|No such file or directory/i);
   });
 }
+
+// The terminal says "[Program Exited]" when a run ends and nothing more: the job id is internal to the platform.
+test("a finished Run says [Program Exited] without the internal job id", async ({ page }) => {
+  test.setTimeout(180 * 1000);
+  if (process.env.GENIE_LOCAL_ASSETS) {
+    // for a run before an image is built: the terminal script of this checkout
+    const file = require("path").join(__dirname, "..", "..", "src", "js", "dist", "gotty-bundle.js");
+    await page.route((u) => u.pathname.endsWith("/js/gotty-bundle.js"), (route) => route.fulfill({ contentType: "application/javascript", body: require("fs").readFileSync(file) }));
+  }
+  await page.goto("/bash");
+  await page.waitForFunction(() => {
+    try {
+      return window.editor.env.editor.getValue().length > 20;
+    } catch (e) {
+      return false;
+    }
+  });
+  await expect(page.locator("#terminal-div .xterm-rows").first()).toContainText(/\S/, { timeout: 60 * 1000 });
+  await page.waitForTimeout(2000);
+  await page.locator("#play-button").click();
+  await expect.poll(() => terminalText(page), { timeout: 120 * 1000, intervals: [1000, 2000] }).toMatch(/\[Program Exited\]/);
+  expect(await terminalText(page)).not.toMatch(/Jobid/i);
+});

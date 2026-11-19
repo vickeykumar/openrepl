@@ -5,7 +5,7 @@ Status: for review, nothing built. Scope: `docs/agent-mode-plan.md` steps 1 (dif
 ## What exists today (the parts this builds on)
 
 - **Editor:** an Ace instance, `window.editor.env.editor`. Genie's Insert and Replace buttons call `window.insertcodesnippet` and `window.replacecodesnippet` (`index.html`), which use `session.replace` and `setValue`.
-- **Run and Debug:** `window.CompileandRun()` and `window.RunandDebug()` (`js/src/page/03-run-and-files.js`) dispatch `optionrun` and `optiondebug` on the active terminals. A finished Run prints `[Program Exited] Jobid: ...` in the terminal.
+- **Run and Debug:** `window.CompileandRun()` and `window.RunandDebug()` (`js/src/page/03-run-and-files.js`) dispatch `optionrun` and `optiondebug` on the active terminals. A finished Run prints `[Program Exited]` in the terminal.
 - **Reading the terminal:** `fetchTerminalOutput()` in the widget, through the xterm adapter's `recentText`. The widget already sends the editor code and the terminal's recent output with every request (`getcurrentIDECode`).
 - **Terminal input (step 3):** `connection.send(msgInput + data)` in `webtty.ts`; the xterm adapter's `onInput`.
 - **Rate limit:** `handleChatProxy` takes one unit from a balance kept in the signed session cookie (`cookie.UpdateOpenApiRequestCountBalance`), refilled per minute by `utils.UserFactor()` / `GuestFactor()`. Admins are exempt (`IsUserAdmin`). `cookie.Is_UserLoggedIn(req)` and `cookie.Get_Uid(req)` tell who is signed in.

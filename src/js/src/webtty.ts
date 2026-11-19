@@ -418,15 +418,15 @@ Please close/disconnect the old Terminals to proceed or try after "+sessionCooki
                                 // a page opened by the Fork button: the terminal it was forked from is not there
                                 TermOutput("\r\n[The terminal this page was forked from has ended. Close this window and use Fork again from a running terminal.]");
                             } else {
-                                TermOutput("\r\n[This terminal was closed because the first terminal ended. A fork ends with the terminal it was made from. Restart the first terminal, then open a new one.] Jobid: "+WebTTY.getjid());
+                                TermOutput("\r\n[This terminal was closed because the first terminal ended. A fork ends with the terminal it was made from. Restart the first terminal, then open a new one.]");
                             }
                         } else if (closeKind == "killed") {
-                            TermOutput("\r\n[Program stopped: it was killed, most likely by the memory limit] Jobid: "+WebTTY.getjid());
+                            TermOutput("\r\n[Program stopped: it was killed, most likely by the memory limit]");
                         } else if (closeReason.match("local command")) {
-                            TermOutput("[Program Exited] Jobid: "+WebTTY.getjid());
+                            TermOutput("[Program Exited]");
                         } else {
                             if (!bannerShown) {
-                                TermOutput("connection closed by remote host "+WebTTY.getjid());
+                                TermOutput("connection closed by remote host");
                             }
                             if (!this.firebaseref.isprimary && closeEvent['reason'].match("error.*invalid parent id")) {
                                 // parent terminal disconnected
