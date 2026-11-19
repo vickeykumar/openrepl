@@ -371,7 +371,7 @@ func TestAFileIsPutBackOnlyWhenItIsStillAsTheCommandLeftIt(t *testing.T) {
 	// a file that is gone when text was expected, a hidden name, a path out of the workspace, too much text, a visitor
 	for body, want := range map[string]int{
 		`{"path":"shell/none.txt","text":"x","expect":"y"}`:                                                     http.StatusConflict,
-		`{"path":".env","text":"x","must_not_exist":true}`:                                                      http.StatusBadRequest,
+		`{"path":".git/config","text":"x","must_not_exist":true}`:                                                      http.StatusBadRequest,
 		`{"path":"../x.txt","text":"x","must_not_exist":true}`:                                                  http.StatusBadRequest,
 		`{"path":"/etc/passwd","text":"x","expect":"y"}`:                                                        http.StatusBadRequest,
 		`{"path":"","text":"x"}`:                                                                                http.StatusBadRequest,
