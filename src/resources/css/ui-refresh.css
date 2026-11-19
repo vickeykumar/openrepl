@@ -526,6 +526,18 @@ body.is-mobile .genie-dock { display: none; }
 .genie-dock__grip:hover::after,
 .genie-dock__grip:focus-visible::after,
 .genie-dock__grip.is-dragging::after { background: var(--accent-color); }
+/* the same three dots as the gutter between the editor and the terminal: it is something to drag */
+.genie-dock__grip::before {
+  content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 10px; height: 34px; box-sizing: border-box; border-radius: 6px; pointer-events: none; z-index: 1;
+  background-color: var(--ink-700); border: 1px solid var(--ink-600, rgba(128, 128, 140, .35));
+  --grip-dot: var(--muted-1, #a9a7b4);
+  background-image: radial-gradient(circle at 50% 50%, var(--grip-dot) 1.5px, transparent 1.9px);
+  background-size: 100% 11.34px; background-repeat: repeat-y;
+}
+.genie-dock__grip:hover::before,
+.genie-dock__grip:focus-visible::before,
+.genie-dock__grip.is-dragging::before { --grip-dot: var(--on-accent-color, #15190a); background-color: var(--accent-color); border-color: transparent; }
 .genie-dock__grip:focus-visible { outline: none; }
 body.genie-dock-dragging { cursor: col-resize; user-select: none; }
 body.genie-dock-dragging iframe { pointer-events: none; }
@@ -1000,7 +1012,29 @@ body.files-collapsed .files-panel { display: none; }
   opacity: 1;
 }
 .ide-split .gutter:hover { background: var(--accent-color); }
-.ide-split .gutter::after { display: none; }
+.ide-split .gutter { position: relative; z-index: 3; }
+/* three dots in the middle of the gutter, so that it looks like something to drag: a column of them beside the editor,
+   a row of them between the editor and the terminal when they are stacked */
+.ide-split .gutter::after {
+  display: block; content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  pointer-events: none; border-radius: 6px; background-color: var(--ink-700);
+  border: 1px solid var(--ink-600, rgba(128, 128, 140, .35));
+  --grip-dot: var(--muted-1, #a9a7b4);
+}
+.ide-split .gutter.gutter-horizontal::after {
+  width: 10px; height: 34px; right: auto; box-sizing: border-box; opacity: 1; transform: translate(-50%, -50%);
+  border: 1px solid var(--ink-600, rgba(128, 128, 140, .35));
+  background-image: radial-gradient(circle at 50% 50%, var(--grip-dot) 1.5px, transparent 1.9px);
+  background-size: 100% 11.34px; background-repeat: repeat-y;
+}
+.ide-split .gutter.gutter-vertical::after {
+  width: 34px; height: 10px; right: auto; box-sizing: border-box; opacity: 1; transform: translate(-50%, -50%);
+  border: 1px solid var(--ink-600, rgba(128, 128, 140, .35));
+  background-image: radial-gradient(circle at 50% 50%, var(--grip-dot) 1.5px, transparent 1.9px);
+  background-size: 11.34px 100%; background-repeat: repeat-x;
+}
+.ide-split .gutter.gutter-horizontal:hover::after,
+.ide-split .gutter.gutter-vertical:hover::after { --grip-dot: var(--on-accent-color, #15190a); background-color: var(--accent-color); border-color: transparent; }
 .ide-split.is-vertical .gutter { cursor: ns-resize; }
 
 .ide-split .ide {
@@ -4459,6 +4493,10 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .preview-status__dot { width: 7px; height: 7px; border-radius: 50%; background: #4CC38A; flex-shrink: 0; }
 .preview-status.is-loading .preview-status__dot { background: #F5C37A; }
 .preview-status.is-bad .preview-status__dot { background: #F07171; }
+.preview-status.is-genie { color: var(--accent-1, #B7E34B); font-weight: 600; }
+.preview-status.is-genie .preview-status__dot { background: #B7E34B; animation: preview-genie-pulse 1.4s ease-out infinite; }
+@keyframes preview-genie-pulse { 0% { box-shadow: 0 0 0 0 rgba(183, 227, 75, .55); } 100% { box-shadow: 0 0 0 7px rgba(183, 227, 75, 0); } }
+@media (prefers-reduced-motion: reduce) { .preview-status.is-genie .preview-status__dot { animation: none; } }
 .preview-error { flex-shrink: 0; padding: 9px 12px; color: var(--paper); background: rgba(240, 113, 113, 0.12); border-bottom: 1px solid rgba(240, 113, 113, 0.4); font-size: 13px; }
 .preview-error[hidden] { display: none; }
 .preview-error__head { color: #F07171; font-weight: 600; }

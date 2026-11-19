@@ -661,7 +661,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 		}
 	case "default":
 		err = svc.SetDefault(who, c.Name, c.On)
-		detail = c.Name + map[bool]string{true: " on for everyone", false: " not on for everyone"}[c.On]
+		detail = c.Name + map[bool]string{true: " enabled for everyone", false: " not enabled for everyone"}[c.On]
 	case "reinstall":
 		// make a bundle again on one server: the gateway at once, a worker the next time it asks for the catalog (within a minute)
 		if !appstore.ValidBundle(c.ID) {
@@ -707,7 +707,7 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 	case "remove":
 		var n int
 		if n, err = svc.Remove(who, c.Name); err == nil {
-			detail = fmt.Sprintf("%s (it was on for %d users)", c.Name, n)
+			detail = fmt.Sprintf("%s (it was enabled for %d users)", c.Name, n)
 		}
 	case "apt":
 		if err = svc.SetApt(c.Apt); err == nil {

@@ -124,10 +124,11 @@ export class PlanState {
 // ---- checking the work ----------------------------------------------------------------
 
 const CHANGING: string[] = ["editor_write", "editor_insert", "editor_replace"];
-const CHECKING: string[] = ["run", "debug", "bash", "terminal_type"];
+const CHECKING: string[] = ["run", "debug", "bash", "terminal_type", "preview_console", "preview_read"]; // reading the page of a web page that was changed is its check
 
 export const CHECK_BEFORE_DONE =
   "You changed code but have not run it or its tests since. Run the program or the tests now and read what they print, then fix what fails. " +
+  "For a web page (.html, .css or .js that a page uses): open it in the Preview (preview_open or preview_reload), then read its console (preview_console) and the page (preview_read), and fix what is wrong. " +
   "If this cannot be run here (nothing to run, no tests, it needs input), say so in \"say\" and finish with done:true.";
 
 export const MAX_CARRIES = 3; // times a task may be carried on (the server keeps the same number: server/agent.go maxAgentCarries)
@@ -136,6 +137,8 @@ export const MAX_FIXES = 2; // fix attempts after a check, then the task says wh
 export function checkLabel(a: Action): string {
   if (a.type === "run") return "Run";
   if (a.type === "debug") return "Debug run";
+  if (a.type === "preview_console") return "Preview console";
+  if (a.type === "preview_read") return "Preview page";
   return (a.text || "").replace(/\s+/g, " ").trim().slice(0, 60);
 }
 

@@ -135,12 +135,12 @@ function schedulePoll() {
         var mode = watching[v.name];
         delete watching[v.name];
         if (v.state === "installed" && mode === "on") {
-          // asked with "Install and turn on": it is switched on now
+          // asked with "Install and enable": it is enabled now
           switchApp(v, true);
           if (window.notify) window.notify(v.name + " is installed and on. New terminals have it; open ones need the line from My apps.", { type: "success", title: "App Store" });
         } else if (v.state === "installed" && window.notify) {
           window.notify(v.name + " is installed.", { type: "success", variant: "program", title: "App Store", timeout: 0, actions: [
-            { label: "Turn it on", primary: true, onClick: function () { switchApp(v, true); } },
+            { label: "Enable it", primary: true, onClick: function () { switchApp(v, true); } },
             { label: "Later", onClick: function () {} }
           ] });
         } else if (v.state === "failed" && window.notify) {
@@ -177,7 +177,7 @@ function guarded(what, v) {
   if (what === "install") install(v); else if (what === "request") request(v);
 }
 
-// "Install and turn on": a safe app is installed and, when it is done, switched on (an installed one is only switched on)
+// "Install and enable": a safe app is installed and, when it is done, enabled (an installed one is only enabled)
 function installAndOn(name) {
   name = String(name || "").toLowerCase();
   return api("list").then(function (j) {
@@ -199,12 +199,12 @@ function request(v) {
 function switchApp(v, on) {
   changed = true;
   if (window.AppStorePlugins) setTimeout(function () { window.AppStorePlugins.refresh(); }, 600); // a plugin starts or stops at once
-  if (!on) return act("switch", { id: v.id, on: false }, v.name + " is off for your terminals.");
+  if (!on) return act("switch", { id: v.id, on: false }, v.name + " is disabled for your terminals.");
   // turning it on is checked first: the server runs the app's own check for this user, on the server of their terminals
   if (checking) return Promise.resolve();
   checking = v.id; useFail = null; say("Checking that " + v.name + " works in your terminals…"); render();
   return api("switch", { id: v.id, on: true }).then(function (j) {
-    checking = ""; take(j); noteRecent(v.name); say(v.name + " is on for your terminals. It was checked and works."); render();
+    checking = ""; take(j); noteRecent(v.name); say(v.name + " is enabled for your terminals. It was checked and works."); render();
   }, function (e) {
     checking = "";
     if (e.code === "verify" && e.body) {
@@ -289,7 +289,7 @@ function card(v) {
     if (showDet) button("Copy", function () { if (navigator.clipboard) navigator.clipboard.writeText(v.name + "\n" + detailsText()); });
   }
   if (v.state === "installed") {
-    var sw = h("button", "appstore__switch" + (v.on ? " is-on" : ""), checking === v.id ? "" : v.on ? "On" : "Off");
+    var sw = h("button", "appstore__switch" + (v.on ? " is-on" : ""), checking === v.id ? "" : v.on ? "Enabled" : "Disabled");
     if (checking === v.id) { sw.appendChild(spin(14)); sw.appendChild(document.createTextNode(" Checking…")); }
     sw.type = "button"; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", v.on ? "true" : "false");
     if (checking === v.id) { sw.disabled = true; sw.title = "Checking that it works in your terminal environment"; }
@@ -298,7 +298,7 @@ function card(v) {
     row.appendChild(sw);
   }
   if (v.state === "installed" && useFail && useFail.name === v.name) {
-    c.appendChild(h("p", "appstore__sum", "It was checked the way your terminals start it" + (useFail.node ? ", on " + useFail.node : "") + ", and failed, so it is off:"));
+    c.appendChild(h("p", "appstore__sum", "It was checked the way your terminals start it" + (useFail.node ? ", on " + useFail.node : "") + ", and failed, so it is disabled:"));
     if (useFail.log) c.appendChild(h("pre", "appstore__log", useFail.log));
     var fr = h("div", "appstore__row");
     var rb = h("button", "appstore__btn is-primary", "Report to admin"); rb.type = "button";
@@ -331,7 +331,7 @@ function builtinCard(b) {
   c.appendChild(top);
   if (b.used && b.used.length) c.appendChild(h("p", "appstore__sum", "Used by " + b.used.join(", ") + ". It comes with the server."));
   var row = h("div", "appstore__row");
-  var sw = h("button", "appstore__switch is-on", "On"); sw.type = "button"; sw.disabled = true; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", "true");
+  var sw = h("button", "appstore__switch is-on", "Enabled"); sw.type = "button"; sw.disabled = true; sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", "true");
   sw.title = "Built in: always on"; row.appendChild(sw);
   var u = h("button", "appstore__btn", "Uninstall"); u.type = "button"; u.disabled = true; u.title = "Built in: it comes with the server"; row.appendChild(u);
   if (b.docs) { var dl = h("a", "appstore__btn", "Docs"); dl.href = b.docs; dl.target = "_blank"; dl.rel = "noopener noreferrer"; row.appendChild(dl); }
@@ -426,7 +426,7 @@ function emptyFilter(q) {
   return c;
 }
 
-// "Your file uses ...": apps the open file imports and that are not on; "Recently switched on": the last three apps the user used (My apps)
+// "Your file uses ...": apps the open file imports and that are not on; "Recently enabled": the last three apps the user used (My apps)
 function renderSuggest() {
   var box = el("appstore-suggest");
   if (!box) return;
@@ -442,7 +442,7 @@ function renderSuggest() {
       r.appendChild(h("span", "", "Your file uses "));
       var n = h("b", "", v.name.replace(/^(gomod|jar|crate|py27)-/, "")); r.appendChild(n);
       r.appendChild(h("span", "appstore__sp"));
-      var b = h("button", "appstore__btn is-primary", v.state === "installed" ? "Turn it on" : v.safe ? "Install" : "Request"); b.type = "button";
+      var b = h("button", "appstore__btn is-primary", v.state === "installed" ? "Enable it" : v.safe ? "Install" : "Request"); b.type = "button";
       b.addEventListener("click", function () { if (v.state === "installed") switchApp(v, true).catch(function () {}); else guarded(v.safe ? "install" : "request", v); });
       r.appendChild(b);
       s1.appendChild(r);
@@ -454,12 +454,12 @@ function renderSuggest() {
     if (rec.length) {
       any = true;
       var s2 = h("div", "appstore__sugg"); s2.setAttribute("data-suggest", "recent");
-      s2.appendChild(h("span", "appstore__cap", "Recently switched on"));
+      s2.appendChild(h("span", "appstore__cap", "Recently enabled"));
       var row = h("div", "appstore__row");
       rec.forEach(function (v) {
         var b = h("button", "appstore__chip" + (v.on ? " is-on" : ""), v.name.replace(/^(gomod|jar|crate|py27)-/, "")); b.type = "button";
         b.setAttribute("aria-pressed", v.on ? "true" : "false");
-        b.title = v.on ? "On: click to turn it off" : "Off: click to turn it on";
+        b.title = v.on ? "Enabled: click to disable" : "Disabled: click to enable";
         b.addEventListener("click", function () { switchApp(v, !v.on).catch(function () {}); });
         row.appendChild(b);
       });
@@ -554,7 +554,7 @@ function render(err) {
   if (tab === "browse" && q && !shown.length && !category && !repl && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(q)) list.appendChild(lookupCard(q));
   if (!shown.length && !biShown.length && (category || repl || (tab === "browse" && q))) {
     if (tab !== "browse" || category || repl) list.appendChild(emptyFilter(q));
-  } else if (!shown.length && !biShown.length) list.appendChild(h("p", "appstore__sum", tab === "mine" ? "Nothing is on for you yet. Browse the store and switch an app on." : "No apps yet."));
+  } else if (!shown.length && !biShown.length) list.appendChild(h("p", "appstore__sum", tab === "mine" ? "Nothing is enabled for you yet. Browse the store and enable an app." : "No apps yet."));
   if (foot) {
     foot.textContent = "";
     if (changed && tab === "mine") {
@@ -628,11 +628,11 @@ function checkHint() {
     // only an app the store has (the safe list, or already installed or asked for); a guess is never offered
     if (!v || v.state === "installing" || (v.state === "installed" && v.on)) return;
     hinted[name] = true;
-    var text = v.state === "installed" ? name + " is installed, but not on for your terminals." : name + " is in the App Store.";
+    var text = v.state === "installed" ? name + " is installed, but not enabled for your terminals." : name + " is in the App Store.";
     window.notify(text, { type: "info", variant: "program", title: "Missing something?", timeout: 0, actions: [
-      { label: v.state === "installed" ? "Turn it on" : v.state === "available" ? "Install and turn on" : "Open the App Store", primary: true, onClick: function () {
+      { label: v.state === "installed" ? "Enable it" : v.state === "available" ? "Install and enable" : "Open the App Store", primary: true, onClick: function () {
         if (v.state === "installed") switchApp(v, true);
-        else if (v.state === "available") installAndOn(name).then(function () { if (window.notify) window.notify("Installing " + name + "\u2026 it is switched on when it is done.", { type: "info", title: "App Store" }); }, function (e) { if (window.notify) window.notify(e.message, { type: "error", title: "App Store" }); });
+        else if (v.state === "available") installAndOn(name).then(function () { if (window.notify) window.notify("Installing " + name + "\u2026 it is enabled when it is done.", { type: "info", title: "App Store" }); }, function (e) { if (window.notify) window.notify(e.message, { type: "error", title: "App Store" }); });
         else open(name);
       } },
       { label: "Open the App Store", onClick: function () { open(name); } },

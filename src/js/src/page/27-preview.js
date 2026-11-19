@@ -326,7 +326,7 @@ function render() {
 }
 
 // a page that loads again starts with an empty console, as in a browser
-function clearLogs() { var tb = tab(); if (tb) { tb.logs = []; tb.reqs = []; tb.errs = 0; renderConsole(); } }
+function clearLogs() { var tb = tab(); if (tb) { tb.logs = []; tb.reqs = []; tb.events = []; tb.errs = 0; renderConsole(); } }
 
 function setStatus(state) {
   var box = el("preview-status"), text = el("preview-status-text");
@@ -388,12 +388,29 @@ function hideDrawer() {
 
 // ---- what the page reports (BridgeScript in package livepreview) ------------------------------------------------------
 
+// The page around tells the Genie panel that the pane opened, closed or changed its page (its chip "the preview" follows).
+function tellPane() { try { window.dispatchEvent(new Event("openrepl-preview")); } catch (e) {} }
+
 function onNav(tb, href, title) {
   var p = pathOf(href);
   if (navTo && p === navTo) { navTo = ""; tb.hist[tb.idx] = p; }
   else if (tb.hist[tb.idx] !== p) { tb.hist = tb.hist.slice(0, tb.idx + 1); tb.hist.push(p); tb.idx = tb.hist.length - 1; }
   tb.title = title;
   if (tb === tab()) { setAddress(describe(p)); render(); }
+  endCallsOfGonePage(tb);
+  tellPane();
+  // Genie is working in the pane and the page changed: its pointer shows in the new page where it was
+  if (busyOn && tb === tab() && lastCursor) setTimeout(function () { call("cursor", { x: lastCursor.x, y: lastCursor.y, label: "browsing", from: lastCursor }, 3000); }, 120);
+}
+
+// A command that waits for its answer from a page that has been left (a click went to another page): it ends, saying where the
+// frame is now. Told by the load of the frame, which is after the command was sent, so a page that only changes its address
+// (pushState, a hash) does not end it.
+function endCallsOfGonePage(tb) {
+  Object.keys(pending).forEach(function (k) {
+    var pc = pending[k];
+    if (pc && pc.tb === tb && pc.seq !== loadSeq) pc.finish({ ok: true, navigated: true, address: tb.hist.length ? describe(tb.hist[tb.idx]) : "", title: tb.title || "" });
+  });
 }
 
 function addLog(tb, l) {
@@ -439,7 +456,7 @@ function renderConsole() {
     else {
       d.className = "preview-console__row" + (r.status >= 400 || !r.status ? " preview-console__row--error" : "");
       var st = document.createElement("span"); st.className = "st"; st.textContent = r.status || "ERR";
-      d.appendChild(st); d.appendChild(document.createTextNode(" " + r.method + " " + describe(pathOf(r.url)) + "  " + r.ms + " ms"));
+      d.appendChild(st); d.appendChild(document.createTextNode(" " + r.method + " " + describe(pathOf(r.url)) + "  " + r.ms + " ms" + (r.err ? "  \u2014 " + r.err : "")));
     }
     body.appendChild(d);
   });
@@ -914,6 +931,7 @@ function show(t) {
   mobileTab(true);
   syncButton();
   setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50);
+  tellPane();
 }
 
 function closePane() {
@@ -933,6 +951,7 @@ function closePane() {
     if (frame) { frame.removeAttribute("src"); frame.removeAttribute("data-url"); }
   });
   syncButton();
+  tellPane();
   // the terminal draws itself again at its size
   setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50);
 }
@@ -981,6 +1000,9 @@ function init() {
   el("preview-forward").addEventListener("click", goForward);
   var fr = el("preview-frame");
   if (fr) fr.addEventListener("load", function () {
+    loadSeq++;
+    var gone = tab();
+    if (gone) setTimeout(function () { endCallsOfGonePage(gone); }, 60); // the page's own nav message (its address and title) comes first, if it can
     if (!fr.getAttribute("src")) return;
     setStatus("live");
     var u = fr.getAttribute("data-url");
@@ -995,7 +1017,11 @@ function init() {
     if (!tb) return;
     if (d.openrepl === "nav") onNav(tb, String(d.href || ""), String(d.title || ""));
     else if (d.openrepl === "console") addLog(tb, { level: ["log", "info", "warn", "error", "debug"].indexOf(d.level) >= 0 ? d.level : "log", text: String(d.text || "").slice(0, 2000) });
-    else if (d.openrepl === "request") addReq(tb, { method: String(d.method || "GET").slice(0, 8), url: String(d.url || "").slice(0, 500), status: +d.status || 0, ms: +d.ms || 0 });
+    else if (d.openrepl === "request") addReq(tb, { method: String(d.method || "GET").slice(0, 8), url: String(d.url || "").slice(0, 500), status: +d.status || 0, ms: +d.ms || 0, err: d.err ? String(d.err).slice(0, 200) : "" });
+    else if (d.openrepl === "reply") { var pc = pending[d.id]; if (pc && pc.tb === tb) pc.finish(d.result && typeof d.result === "object" ? d.result : { ok: false, error: "the page gave an empty answer" }); }
+    else if (d.openrepl === "cursor") { lastCursor = { x: +d.x || 0, y: +d.y || 0 }; }
+    else if (d.openrepl === "popup") addEvent(tb, { kind: "popup", text: String(d.url || "").slice(0, 300) });
+    else if (d.openrepl === "download") addEvent(tb, { kind: "download", text: String(d.name || "").slice(0, 100), size: +d.size || 0, body: typeof d.text === "string" ? d.text.slice(0, 20000) : "" });
     else if (d.openrepl === "outline" && Array.isArray(d.items)) { tb.outline = d.items.slice(0, 200).map(function (x) { return { i: +x.i || 0, l: +x.l || 0, tag: String(x.tag || "").slice(0, 12), text: String(x.text || "").slice(0, 120) }; }); if (consoleOn && consoleTab === "outline") renderConsole(); }
     else if (d.openrepl === "key") onKey(String(d.key));
   });
@@ -1087,6 +1113,102 @@ function init() {
   }, 300);
 }
 
+// ---- Genie's agent in the page (docs/lld/17-preview-pane.md, section "The agent in the preview") ----------------------------------
+// The bridge in the page (livepreview/bridge_cmd.go) takes commands and answers each with its id. A page that has no bridge
+// (Markdown, a picture, a PDF) answers nothing: said at once, not after the wait.
+
+var pending = {};        // id -> { finish, tb, at }
+var lastCursor = null;   // where Genie's pointer was in the page last, so that it goes on from there in the next page
+var pid = 0;
+var loadSeq = 0;         // counts the loads of the frame: a command that goes to another page can tell
+
+function addEvent(tb, ev) { (tb.events = tb.events || []).push(ev); if (tb.events.length > 20) tb.events.shift(); }
+
+function bridgeProblem() {
+  if (disabled()) return "the Preview is switched off on this site";
+  if (!open) return "the Preview is not open";
+  var tb = tab();
+  if (!tb || !target || target.kind === "n") return "the Preview shows no page yet: open one first";
+  if (target.kind === "f") {
+    var k = previewKind(target.path);
+    if (k !== "html") return "this page has no script, so Genie cannot act in it (" + (k === "md" ? "Markdown" : k === "pdf" ? "a PDF" : "a picture") + " is shown as it is): read the file instead";
+  }
+  var f = el("preview-frame");
+  if (!f || f.hidden || !f.contentWindow || !f.getAttribute("src")) return "the page is not loaded";
+  return "";
+}
+
+// Sends a command to the page and waits for its answer: { ok, ... }. Never rejects.
+function call(cmd, args, waitMs) {
+  return new Promise(function (resolve) {
+    var why = bridgeProblem();
+    if (why) { resolve({ ok: false, error: why }); return; }
+    var id = ++pid, f = el("preview-frame"), tb = tab(), msg = { openreplCmd: String(cmd), id: id };
+    if (lastCursor) msg.from = lastCursor;
+    Object.keys(args || {}).forEach(function (k) { if (k !== "openreplCmd" && k !== "id") msg[k] = args[k]; });
+    var ms = Math.min(20000, Math.max(1000, +waitMs || 10000));
+    var timer = setTimeout(function () { finish({ ok: false, error: "no answer from the page in " + Math.round(ms / 1000) + " s: it may still be loading, be busy, or have no script" }); }, ms);
+    function finish(r) { if (!pending[id]) return; delete pending[id]; clearTimeout(timer); resolve(r); }
+    pending[id] = { finish: finish, tb: tb, at: Date.now(), seq: loadSeq };
+    try { f.contentWindow.postMessage(msg, "*"); } catch (e) { finish({ ok: false, error: "the page could not be reached" }); }
+  });
+}
+
+// "Genie is using this page": the status line of the pane says so while a command of the agent is under way.
+var busyOn = false;
+function setBusy(on) {
+  busyOn = !!on;
+  var box = el("preview-status"), text = el("preview-status-text");
+  if (!box || !text) return;
+  box.classList.toggle("is-genie", busyOn);
+  if (busyOn) text.textContent = "Genie is using this page";
+  else setStatus(open && target && target.kind === "n" ? "newtab" : "live");
+}
+
+function cancelCalls() { Object.keys(pending).forEach(function (k) { pending[k].finish({ ok: false, error: "stopped" }); }); }
+
+function waitLoad(seq, ms) {
+  return new Promise(function (resolve) {
+    var t0 = Date.now();
+    (function tick() { if (loadSeq !== seq || Date.now() - t0 > ms) resolve(loadSeq !== seq); else setTimeout(tick, 60); })();
+  });
+}
+
+// "back", "forward", or a page of the workspace: { path } (a file) or { port }
+function goTo(where) {
+  var why = disabled() ? "the Preview is switched off on this site" : !open ? "the Preview is not open" : "";
+  if (why) return Promise.resolve({ ok: false, error: why });
+  var tb = tab(), seq = loadSeq;
+  if (!tb) return Promise.resolve({ ok: false, error: "the Preview shows no page yet" });
+  if (where === "back") { if (tb.idx <= 0) return Promise.resolve({ ok: false, error: "there is no earlier page" }); goBack(); }
+  else if (where === "forward") { if (tb.idx >= tb.hist.length - 1) return Promise.resolve({ ok: false, error: "there is no later page" }); goForward(); }
+  else if (where && where.port) navigateTo({ kind: "p", port: Number(where.port) });
+  else if (where && where.path) { if (!canShow(where.path)) return Promise.resolve({ ok: false, error: where.path + " cannot be shown in the Preview" }); navigateTo({ kind: "f", path: String(where.path) }); }
+  else return Promise.resolve({ ok: false, error: "say back, forward, a path or a port" });
+  return waitLoad(seq, 6000).then(function (loaded) { var t = tab(); return { ok: true, loaded: loaded, address: t && t.hist.length ? describe(t.hist[t.idx]) : "", title: t ? t.title || "" : "" }; });
+}
+
+function setSize(name) {
+  if (!SIZES.hasOwnProperty(name)) return { ok: false, error: "the sizes are: " + Object.keys(SIZES).join(", ") };
+  size = name;
+  try { localStorage.setItem(SIZE_KEY, size); } catch (e) {}
+  var sel = el("preview-size"); if (sel) sel.value = size;
+  applySize();
+  return { ok: true, size: size, width: SIZES[size] ? SIZES[size][0] : 0, height: SIZES[size] ? SIZES[size][1] : 0 };
+}
+
+// What the pane holds of the page, for Genie. The user's own switches (Outline, Console in the App Store plugins) decide what is
+// given: what is switched off is left out.
+function snapshot(more) {
+  var tb = tab();
+  var o = { open: open, target: target, tabs: tabs.length, address: tb && tb.hist.length ? describe(tb.hist[tb.idx]) : "", title: tb ? tb.title || "" : "", ports: knownPorts.slice(), size: size, sizes: Object.keys(SIZES) };
+  o.errors = tb ? tb.errs : 0;
+  if (plug.console) { o.console = tb ? tb.logs.slice(-(more ? 20 : 20)) : []; o.requests = tb ? tb.reqs.slice(-20) : []; o.events = tb && tb.events ? tb.events.slice(-10) : []; }
+  if (plug.outline) o.outline = tb && tb.outline ? tb.outline.slice(0, 60).map(function (x) { return { l: x.l, tag: x.tag, text: x.text }; }) : [];
+  o.plugins = { console: !!plug.console, outline: !!plug.outline, viewport: !!plug.viewport };
+  return o;
+}
+
 window.Preview = {
   open: openPane,
   close: closePane,
@@ -1099,7 +1221,14 @@ window.Preview = {
   openPort: openPort,
   onRun: onRun,
   hasDrawer: function () { var t = el("terminal-div"); return !!t && t.classList.contains("with-drawer"); },
-  state: function () { var tb = tab(); return { open: open, target: target, tabs: tabs.length, address: tb && tb.hist.length ? describe(tb.hist[tb.idx]) : "", errors: tb ? tb.errs : 0, console: tb ? tb.logs.slice(-20) : [], requests: tb ? tb.reqs.slice(-20) : [], ports: knownPorts.slice() }; },
+  state: function () { return snapshot(); },
+  logs: function (n) { var tb = tab(); return plug.console && tb ? tb.logs.slice(-(+n || 20)) : []; },
+  requests: function (n) { var tb = tab(); return plug.console && tb ? tb.reqs.slice(-(+n || 20)) : []; },
+  call: call,
+  cancel: cancelCalls,
+  busy: setBusy,
+  go: goTo,
+  resize: setSize,
   openPath: function (path) { if (canShow(path)) show({ kind: "f", path: String(path) }); return canShow(path); },
   reload: reload,
   console: function (on) { toggleConsole(on); },
