@@ -3,6 +3,14 @@
 const { test, expect } = require("@playwright/test");
 
 function fake(page, opts = {}) {
+  // GENIE_LOCAL_ASSETS=1: the page scripts of this checkout instead of the ones inside the server under test
+  if (process.env.GENIE_LOCAL_ASSETS) {
+    const fs = require("fs");
+    const path = require("path");
+    const serve = (file) => (route) => route.fulfill({ contentType: "application/javascript", body: fs.readFileSync(path.join(__dirname, "..", "..", "src", file)) });
+    page.route((u) => u.pathname.endsWith("/js/store.js"), serve("resources/js/store.js"));
+    page.route((u) => u.pathname.endsWith("/js/scribbler.js"), serve("js/dist/scribbler.js"));
+  }
   const st = {
     admin: !!opts.admin,
     apps: {
@@ -142,7 +150,7 @@ test("installing shows the steps and the progress, and ends with a switch; the s
   await expect(page.locator(".store-dialog__steps li.is-done").first()).toContainText("Checked that it is allowed");
   await expect(page.locator(".store-dialog__bar i")).toHaveAttribute("style", /width/);
   await expect(page.locator("#store-dialog h3")).toHaveText("flask is installed", { timeout: 15000 });
-  await page.locator("#store-dialog button", { hasText: "Turn it on" }).click();
+  await page.locator("#store-dialog button", { hasText: "Enable it" }).click();
   expect(st.calls.at(-1)).toEqual(["switch", { id: "flask-3.0.2", on: true }]);
   await expect(page.locator('[data-app="flask"] .sswitch')).toHaveAttribute("aria-checked", "true");
   await page.goto("/store#mine");
@@ -170,7 +178,7 @@ test("a request asks for a reason; My requests lists what was asked; the answers
   await page.goto("/store");
   // the answer to an earlier request
   await expect(page.locator("#store-dialog h3")).toHaveText("numpy is installed");
-  await page.locator("#store-dialog button", { hasText: "Turn it on" }).click();
+  await page.locator("#store-dialog button", { hasText: "Enable it" }).click();
   expect(st.calls.some((c) => c[0] === "ack" && c[1].name === "numpy")).toBe(true);
   expect(st.calls.some((c) => c[0] === "switch" && c[1].id === "numpy-2.1.0" && c[1].on)).toBe(true);
   await expect(page.locator("#store-dialog")).toBeHidden();
@@ -214,7 +222,7 @@ test("a user may uninstall an app only when nobody else has it on; an admin alwa
   const st = fake(page);
   await page.goto("/store#app/shared");
   await expect(page.locator(".store__uninstall button")).toBeDisabled();
-  await expect(page.locator(".store__uninstall")).toContainText("Other users have it on, so it stays");
+  await expect(page.locator(".store__uninstall")).toContainText("Other users have it enabled, so it stays");
   // numpy has nobody else: the user may remove it
   await page.goto("/store#app/numpy");
   await expect(page.locator(".store__uninstall button")).toBeEnabled();
@@ -327,17 +335,17 @@ test("an app an admin turned on for everyone says so to the users, who may turn 
   st.apps.numpy.default = true;
   st.on.push("numpy-2.1.0");
   await page.goto("/store");
-  await expect(page.locator('[data-app="numpy"]')).toContainText("on for everyone");
+  await expect(page.locator('[data-app="numpy"]')).toContainText("enabled for everyone");
   await page.goto("/store#app/numpy");
-  await expect(page.locator(".store__switchrow")).toContainText("An admin turned this on for everyone. You can turn it off for yourself.");
+  await expect(page.locator(".store__switchrow")).toContainText("An admin enabled this for everyone. You can disable it for yourself.");
   await page.locator(".store__switchrow .sswitch").click();
   await expect.poll(() => st.calls.some((c) => c[0] === "switch" && c[1].id === "numpy-2.1.0" && c[1].on === false)).toBe(true);
   // the admin's own buttons: on the app page, and in the list of installed apps
-  await expect(page.getByRole("button", { name: "Admin: on for everyone, turn that off" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Admin: enabled for everyone, disable that" })).toBeVisible();
   await page.goto("/store#admin/servers");
   await page.goto("/store");
   await page.goto("/store#app/jq");
-  await page.getByRole("button", { name: "Admin: turn it on for every signed-in user" }).click();
+  await page.getByRole("button", { name: "Admin: enable it for every signed-in user" }).click();
   await expect.poll(() => st.calls.some((c) => c[0] === "admin:default" && c[1].name === "jq" && c[1].on === true)).toBe(true);
 });
 
@@ -367,7 +375,7 @@ test("on the store page, turning an app on is checked first; a failure shows the
   fail = false;
   await sw.click();
   await expect(page.locator(".store__note")).toContainText("checked and works");
-  await expect(sw).toHaveText("On");
+  await expect(sw).toHaveText("Enabled");
 });
 
 test("an admin can ask for a new lock of an installed app, and the lists say which apps have one", async ({ page }) => {

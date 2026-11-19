@@ -198,7 +198,7 @@
     if (v.version) row.appendChild(el("span", "sapp__ver", v.version));
     var tag = stateTag(v);
     if (tag) row.appendChild(tag);
-    if (v.default && v.state === "installed") row.appendChild(el("span", "stag stag--installed", "on for everyone"));
+    if (v.default && v.state === "installed") row.appendChild(el("span", "stag stag--installed", "enabled for everyone"));
     if (v.state === "installed" && v.sizeMB) row.appendChild(el("span", "sapp__size", v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB"));
     row.appendChild(el("span", "sapp__sp"));
     control(v, row);
@@ -945,9 +945,9 @@
         if (v.state === "installed") {
           finished = true;
           d.appendChild(heading(name + " is installed"));
-          d.appendChild(el("p", "", "It is installed for everyone. Turn it on to use it in your terminals."));
+          d.appendChild(el("p", "", "It is installed for everyone. Enable it to use it in your terminals."));
           d.appendChild(dialogButtons([
-            { label: "Turn it on", primary: true, run: function () { stop(); onClose = null; closeModal(); switchApp(v, true); } },
+            { label: "Enable it", primary: true, run: function () { stop(); onClose = null; closeModal(); switchApp(v, true); } },
             { label: "Later", run: function () { closeModal(); } }
           ]));
           return;
@@ -1032,7 +1032,7 @@
 
   // turning it on is checked first: the server runs the app's own check for this user, on the server of their terminals, and only then says it is on
   function switchApp(v, on) {
-    if (!on) return act("switch", { id: v.id, on: false }, v.name + " is off for your terminals.").catch(function () {});
+    if (!on) return act("switch", { id: v.id, on: false }, v.name + " is disabled for your terminals.").catch(function () {});
     if (S.checking) return Promise.resolve();
     S.checking = v.id; say("Checking that " + v.name + " works in your terminals…", "info"); render();
     return store("switch", { id: v.id, on: true }).then(function (j) {
@@ -1054,7 +1054,7 @@
         return;
       }
       d.appendChild(heading(v.name + " did not work for your terminals"));
-      d.appendChild(el("p", "", "It was checked the way your terminals start it" + (b.node ? ", on " + b.node : "") + ", and the check failed, so it is off. Nothing changed for anyone else."));
+      d.appendChild(el("p", "", "It was checked the way your terminals start it" + (b.node ? ", on " + b.node : "") + ", and the check failed, so it is disabled. Nothing changed for anyone else."));
       if (b.log) d.appendChild(el("pre", "store__code", b.log));
       d.appendChild(dialogButtons([
         { label: "Report to admin", primary: true, run: function () { reportDialog({ name: v.name, err: "Turning it on", node: b.node }, true); } },
@@ -1074,7 +1074,7 @@
         d.appendChild(heading(n.status === "rejected" ? n.name + " is not available" : n.name + " is installed"));
         d.appendChild(el("p", "", n.text));
         var items = [];
-        if (n.status !== "rejected" && v && v.state === "installed" && !v.on) items.push({ label: "Turn it on", primary: true, run: function () { closeModal(); store("ack", { name: n.name }); switchApp(v, true); } });
+        if (n.status !== "rejected" && v && v.state === "installed" && !v.on) items.push({ label: "Enable it", primary: true, run: function () { closeModal(); store("ack", { name: n.name }); switchApp(v, true); } });
         items.push({ label: n.status === "rejected" ? "Close" : "Later", run: closeModal });
         d.appendChild(dialogButtons(items));
       });

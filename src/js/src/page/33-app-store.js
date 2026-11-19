@@ -135,12 +135,12 @@ function schedulePoll() {
         var mode = watching[v.name];
         delete watching[v.name];
         if (v.state === "installed" && mode === "on") {
-          // asked with "Install and turn on": it is switched on now
+          // asked with "Install and enable": it is enabled now
           switchApp(v, true);
           if (window.notify) window.notify(v.name + " is installed and on. New terminals have it; open ones need the line from My apps.", { type: "success", title: "App Store" });
         } else if (v.state === "installed" && window.notify) {
           window.notify(v.name + " is installed.", { type: "success", variant: "program", title: "App Store", timeout: 0, actions: [
-            { label: "Turn it on", primary: true, onClick: function () { switchApp(v, true); } },
+            { label: "Enable it", primary: true, onClick: function () { switchApp(v, true); } },
             { label: "Later", onClick: function () {} }
           ] });
         } else if (v.state === "failed" && window.notify) {
@@ -177,7 +177,7 @@ function guarded(what, v) {
   if (what === "install") install(v); else if (what === "request") request(v);
 }
 
-// "Install and turn on": a safe app is installed and, when it is done, switched on (an installed one is only switched on)
+// "Install and enable": a safe app is installed and, when it is done, enabled (an installed one is only enabled)
 function installAndOn(name) {
   name = String(name || "").toLowerCase();
   return api("list").then(function (j) {
@@ -199,7 +199,7 @@ function request(v) {
 function switchApp(v, on) {
   changed = true;
   if (window.AppStorePlugins) setTimeout(function () { window.AppStorePlugins.refresh(); }, 600); // a plugin starts or stops at once
-  if (!on) return act("switch", { id: v.id, on: false }, v.name + " is off for your terminals.");
+  if (!on) return act("switch", { id: v.id, on: false }, v.name + " is disabled for your terminals.");
   // turning it on is checked first: the server runs the app's own check for this user, on the server of their terminals
   if (checking) return Promise.resolve();
   checking = v.id; useFail = null; say("Checking that " + v.name + " works in your terminals…"); render();
@@ -298,7 +298,7 @@ function card(v) {
     row.appendChild(sw);
   }
   if (v.state === "installed" && useFail && useFail.name === v.name) {
-    c.appendChild(h("p", "appstore__sum", "It was checked the way your terminals start it" + (useFail.node ? ", on " + useFail.node : "") + ", and failed, so it is off:"));
+    c.appendChild(h("p", "appstore__sum", "It was checked the way your terminals start it" + (useFail.node ? ", on " + useFail.node : "") + ", and failed, so it is disabled:"));
     if (useFail.log) c.appendChild(h("pre", "appstore__log", useFail.log));
     var fr = h("div", "appstore__row");
     var rb = h("button", "appstore__btn is-primary", "Report to admin"); rb.type = "button";
@@ -442,7 +442,7 @@ function renderSuggest() {
       r.appendChild(h("span", "", "Your file uses "));
       var n = h("b", "", v.name.replace(/^(gomod|jar|crate|py27)-/, "")); r.appendChild(n);
       r.appendChild(h("span", "appstore__sp"));
-      var b = h("button", "appstore__btn is-primary", v.state === "installed" ? "Turn it on" : v.safe ? "Install" : "Request"); b.type = "button";
+      var b = h("button", "appstore__btn is-primary", v.state === "installed" ? "Enable it" : v.safe ? "Install" : "Request"); b.type = "button";
       b.addEventListener("click", function () { if (v.state === "installed") switchApp(v, true).catch(function () {}); else guarded(v.safe ? "install" : "request", v); });
       r.appendChild(b);
       s1.appendChild(r);
