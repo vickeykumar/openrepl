@@ -1635,11 +1635,11 @@ export class AgentRunner {
   private filesProblem(a: Action): string {
     const f = this.host.files;
     if (!f.ready()) return "the Files panel is not available here";
-    // hidden (a name with a dot in front) and binary files are not Genie's to change
+    // binary files, Genie's own chat store and the insides of .git are not Genie's to change (a hidden file the person shows is)
     const locked = (path: string | undefined): string => {
       const i = f.info(path || "");
       if (!i.exists) return (path || "") + " is not in the Files panel; files_list shows what is";
-      if (i.hidden) return (path || "") + " is a hidden file: it is not Genie's to touch";
+      if (i.hidden) return (path || "") + " is Genie's own chat store or inside .git: it is not Genie's to touch";
       if (i.protected) return (path || "") + " is a binary or protected file: it is not Genie's to change";
       return "";
     };
@@ -1657,7 +1657,6 @@ export class AgentRunner {
       case "files_new": {
         const { parent, name } = splitPath(a.path || "");
         if (f.info(a.path || "").exists) return (a.path || "") + " exists already";
-        if (name.charAt(0) === ".") return "a name that starts with a dot is a hidden file: it is not Genie's to make";
         return need(parent, "folder", "a new item in it");
       }
       case "files_save":
@@ -1677,10 +1676,10 @@ export class AgentRunner {
       case "files_move":
         return locked(a.path) || need(a.to, "folder", "moving into it");
       default: {
-        // a binary file (a.out) may be deleted; a hidden one may not
+        // a binary file (a.out) may be deleted; Genie's chat store and .git may not
         const i = f.info(a.path || "");
         if (!i.exists) return (a.path || "") + " is not in the Files panel; files_list shows what is";
-        return i.hidden ? (a.path || "") + " is a hidden file: it is not Genie's to touch" : "";
+        return i.hidden ? (a.path || "") + " is Genie's own chat store or inside .git: it is not Genie's to touch" : "";
       }
     }
   }
@@ -2339,7 +2338,7 @@ export class AgentRunner {
       el(
         "p",
         "cw-agent__ask-warn",
-        "Genie could change or remove files without asking. Text that Genie reads in your files or in terminal output could try to steer it: that is the main risk. It will not touch hidden files or anything outside your workspace, and a delete goes to a Trash folder first.",
+        "Genie could change or remove files without asking. Text that Genie reads in your files or in terminal output could try to steer it: that is the main risk. It always asks before it touches a hidden file you have chosen to show, it will not touch anything outside your workspace, and a delete goes to a Trash folder first.",
       ),
     );
     const typed = el("input", "cw-perm__typed");

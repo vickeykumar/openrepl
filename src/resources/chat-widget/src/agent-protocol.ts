@@ -340,10 +340,12 @@ export function cleanPath(raw: unknown, allowEmpty: boolean): string | null {
   if (p.startsWith("~")) return null; // a path from the shell's home, not this one
   const parts = p.split("/");
   for (const s of parts) {
-    // a name with a dot in front is a hidden file or folder (.env, .git, .ssh):
-    // those are not listed and not Genie's to name
-    if (s === "" || s.startsWith(".") || s.length > MAX_NAME) return null;
+    // a name with a dot in front is a hidden file or folder (.env, .gitignore, .genie): it may be named. The page lists
+    // those only where the person shows hidden files, and a file action on one always asks first (hardBlockOf).
+    if (s === "" || s === "." || s === ".." || s.length > MAX_NAME) return null;
   }
+  // Genie's own chat store and the insides of .git are never named
+  if (parts.includes(".git") || (parts[0] === ".genie" && (parts[1] === "chats" || parts[1] === "tabs.json" || parts[1] === "tabs.json.tmp"))) return null;
   return parts.join("/");
 }
 

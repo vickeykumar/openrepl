@@ -989,6 +989,9 @@ body.files-collapsed .files-panel { display: none; }
 }
 .files-panel .jstree-default .jstree-clicked { color: var(--paper); }
 .files-panel .jstree-default .jstree-disabled { color: var(--muted-3); }
+/* hidden files the person chose to show: quieter and italic; a folder that shows them carries a small tag */
+.files-panel .jstree-default .is-dot { opacity: .65; font-style: italic; }
+.files-panel .jstree-default .hidden-on::after { content: "hidden shown"; margin-left: 6px; padding: 0 6px; font-size: 10px; font-style: normal; border: 1px solid var(--accent, #6E8F2E); color: var(--accent, #6E8F2E); border-radius: 99px; vertical-align: 1px; opacity: .9; }
 .files-panel .jstree-striped,
 .files-panel .jstree-default .jstree-striped,
 .files-panel .jstree-default.jstree-striped { background: none !important; }

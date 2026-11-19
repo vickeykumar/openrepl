@@ -28,12 +28,12 @@ func workspace(t *testing.T, files map[string]string) string {
 }
 
 func TestAPathOfTheAgentIsPlainAndInsideTheWorkspace(t *testing.T) {
-	for _, ok := range []string{"", ".", "a.py", "src/auth.py", "src/", "a b/c d.txt"} {
+	for _, ok := range []string{"", ".", "a.py", "src/auth.py", "src/", "a b/c d.txt", ".env", ".genie/skills/a.md"} {
 		if _, good := plainRel(ok); !good {
 			t.Errorf("%q was refused", ok)
 		}
 	}
-	for _, bad := range []string{"/etc/passwd", "../x", "a/../../x", "~/x", ".env", "src/.git/config", "a\\b", "a\x00b", "a//b", strings.Repeat("x", 500)} {
+	for _, bad := range []string{"/etc/passwd", "../x", "a/../../x", "~/x", ".genie/chats/a.jsonl", ".genie/tabs.json", "src/.git/config", "a\\b", "a\x00b", "a//b", strings.Repeat("x", 500)} {
 		if _, good := plainRel(bad); good {
 			t.Errorf("%q was accepted", bad)
 		}
@@ -196,7 +196,9 @@ func TestTheFilesEndpointIsForTheOwnerOfASignedInWorkspaceAndReadOnly(t *testing
 		c    *http.Cookie
 	}{
 		"a guest":          {`{"op":"search","query":"login"}`, http.StatusForbidden, nil},
-		"a hidden file":    {`{"op":"read","path":".env"}`, http.StatusBadRequest, c},
+		"inside .git":      {`{"op":"read","path":".git/config"}`, http.StatusBadRequest, c},
+		"the chat store":   {`{"op":"read","path":".genie/chats/a.jsonl"}`, http.StatusBadRequest, c},
+		"a hidden name":    {`{"op":"read","path":".env"}`, http.StatusOK, c},
 		"a path out":       {`{"op":"read","path":"../x"}`, http.StatusBadRequest, c},
 		"no such file":     {`{"op":"read","path":"nope.py"}`, http.StatusNotFound, c},
 		"an empty query":   {`{"op":"search","query":"  "}`, http.StatusBadRequest, c},

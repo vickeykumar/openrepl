@@ -151,6 +151,7 @@ func TestSearchFindsTheRightNoteForQuestionsAboutTheSite(t *testing.T) {
 		{"which models does genie use", "genie"},
 		{"how do I use genie", "genie"},
 		{"does openrepl have a file explorer sidebar", "files-and-workspace"},
+		{"how do I show hidden files like .gitignore", "files-and-workspace"},
 		{"how do I open genie", "genie"},
 		{"what does the insert button do in genie", "genie-insert-and-replace"},
 		{"how do I undo what genie put in my editor", "genie-insert-and-replace"},

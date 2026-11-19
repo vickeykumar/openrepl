@@ -8,12 +8,12 @@ import { searchFiles, dirOf, MAX_RESULTS } from "./lib-filesearch.mjs";
 function tree() { return window.jQuery && $("#file-browser").jstree ? $("#file-browser").jstree(true) : null; }
 function home() { return String(window.homedir || ""); }
 
-// A file is left out when it, or a folder above it, is hidden (its name starts with a dot) or protected (disabled in the
-// tree): the Files panel does not offer those for opening either.
+// A file is left out when it, or a folder above it, is protected (disabled in the tree): the Files panel does not offer
+// those for opening either. A hidden name (a dot in front) is in the tree only where the person shows hidden files, so it
+// is found only there.
 function offered(t, node) {
   if (!node || node.type !== "file") return false;
   for (var n = node; n && n.id !== "#"; n = t.get_node(n.parent)) {
-    if (String(n.text || "").charAt(0) === ".") return false;
     if (n.state && n.state.disabled) return false;
   }
   return true;

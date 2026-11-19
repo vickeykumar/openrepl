@@ -434,10 +434,12 @@ test("a path is relative to the home directory and stays inside it", () => {
     assert.equal(cleanPath(raw, false), null, JSON.stringify(raw));
   }
   // what leaves it, or hides something
-  for (const raw of ["/etc/passwd", "/", "//x", "../x", "a/../b", "a/./b", "a//b", "~/x", ".env", ".git/config", "src/.secret", ".ssh/id_rsa", "a/.b/c", "a\\b", "a\nb", "a\u0000b", "a\u001b[2Jb", "a\u009bb", "x".repeat(401), "a/" + "x".repeat(101), 5, null, undefined, {}, ["a"]]) {
+  for (const raw of ["/etc/passwd", "/", "//x", "../x", "a/../b", "a/./b", "a//b", "~/x", ".git/config", "a/.git/x", ".genie/chats/a.jsonl", ".genie/tabs.json", "a\\b", "a\nb", "a\u0000b", "a\u001b[2Jb", "a\u009bb", "x".repeat(401), "a/" + "x".repeat(101), 5, null, undefined, {}, ["a"]]) {
     const v = cleanPath(raw as any, true);
     assert.ok(v === null || raw === "" , "should be refused: " + JSON.stringify(raw) + " -> " + v);
   }
+  // a hidden name may be named (the person shows those, and a card asks before any action on one)
+  for (const ok of [".env", "src/.secret", ".genie/skills/a.md"]) assert.equal(cleanPath(ok, false), ok);
   assert.equal(cleanName("notes.txt"), "notes.txt");
   assert.equal(cleanName("a/b"), null);
   assert.equal(cleanName(".."), null);
@@ -609,7 +611,7 @@ test("files_search and files_read are read-only: they need no permission, and th
   }
   assert.equal(scopeOf({ type: "files_search" }), null);
   assert.equal(scopeOf({ type: "files_read" }), null);
-  const bad = parseStep(JSON.stringify({ actions: [{ type: "files_search", query: "" }, { type: "files_search", query: "x", path: "../up" }, { type: "files_read", path: ".env" }, { type: "files_read", path: "/etc/passwd" }, { type: "files_read", path: "a", start_line: 5, end_line: 2 }, { type: "files_search", query: "a\nb" }] }));
+  const bad = parseStep(JSON.stringify({ actions: [{ type: "files_search", query: "" }, { type: "files_search", query: "x", path: "../up" }, { type: "files_read", path: ".git/config" }, { type: "files_read", path: "/etc/passwd" }, { type: "files_read", path: "a", start_line: 5, end_line: 2 }, { type: "files_search", query: "a\nb" }] }));
   assert.ok(bad.ok);
   if (bad.ok) {
     assert.equal(bad.step.actions.length, 0);
