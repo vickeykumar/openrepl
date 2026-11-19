@@ -4685,3 +4685,72 @@ html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/test_anchor"] 
 html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/images_anchor"] > .jstree-icon.fa-folder, html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/media_anchor"] > .jstree-icon.fa-folder { color: #BDA6EA; }
 .files-panel .jstree-anchor[id$="/docs_anchor"] > .jstree-icon.fa-folder { color: #A9B1BD; }
 html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/docs_anchor"] > .jstree-icon.fa-folder { color: #A9B1BD; }
+
+/* ------------------------------------------------------------------ */
+/* What Genie changed in a file, shown in the editor itself (35-genie-changes.js) */
+/* ------------------------------------------------------------------ */
+.genie-changes__bar {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--ok-color) 14%, var(--ink-850));
+  border-bottom: 1px solid color-mix(in srgb, var(--ok-color) 40%, var(--ink-600));
+  color: var(--paper);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+.genie-changes__title { font-weight: 600; }
+.genie-changes__count { font-family: var(--font-code); }
+.genie-changes__plus { color: var(--ok-color); }
+.genie-changes__minus { color: var(--danger-color); }
+.genie-changes__note { color: var(--muted-2); min-width: 0; overflow-wrap: anywhere; }
+.genie-changes__sp { flex: 1 1 auto; }
+.genie-changes__pos { color: var(--muted-2); }
+.genie-changes__btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  color: var(--paper);
+  background: var(--ink-700);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.genie-changes__btn:hover:not(:disabled) { background: var(--ink-600); }
+.genie-changes__btn:disabled { opacity: 0.5; cursor: default; }
+.genie-changes__keep { color: #15210A; background: var(--ok-color); border-color: var(--ok-color); font-weight: 600; }
+.genie-changes__keep:hover:not(:disabled) { background: color-mix(in srgb, var(--ok-color) 85%, white); }
+.genie-changes__undo { color: var(--danger-color); background: transparent; border-color: color-mix(in srgb, var(--danger-color) 50%, transparent); }
+.ace_editor .genie-changes__add { position: absolute; background: color-mix(in srgb, var(--ok-color) 16%, transparent); }
+.genie-changes__del {
+  background: color-mix(in srgb, var(--danger-color) 16%, transparent);
+  color: var(--paper);
+  font-family: var(--font-code);
+  pointer-events: none;
+  user-select: none;
+}
+.genie-changes__line { white-space: pre; padding-left: 8px; text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger-color) 60%, transparent); }
+.genie-changes__ghost {
+  position: absolute;
+  z-index: 19;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: auto;
+  background: var(--ink-900);
+  color: var(--paper);
+  font-family: var(--font-code);
+  font-size: 13px;
+  padding: 6px 0;
+}
+.genie-changes__ghost .genie-changes__line { background: color-mix(in srgb, var(--danger-color) 14%, transparent); }
+body.is-mobile .genie-changes__btn { min-height: 44px; }

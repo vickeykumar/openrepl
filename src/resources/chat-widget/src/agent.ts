@@ -49,6 +49,9 @@ import {
   locateOld,
 } from "./agent-protocol";
 import { SSEParser, addEvent, answerOf, newStreamed, partialSay } from "./sse";
+import { addGroups, groupsFor } from "./agent-groups";
+import { Change, FileOp, ShellChange, buildChanges, mergeShell, reviewTitle, undoOf } from "./review-changes";
+import { ESCALATE_STEPS, GenieEvent, StuckDetector, StuckInfo, extOf, isCheckFailure, isLimit, newTaskId, reasonCode, safeReason, stuckText } from "./genie-events";
 import { ASK_FIRST, CHECK_BEFORE_DONE, MAX_CARRIES, MAX_FIXES, PlanState, WorkTrack, changeLine, compactHistory, countLines, factsText, isVagueTask, lastErrorLines } from "./agent-task";
 
 type Msg = { role: string; content: string };
@@ -99,6 +102,22 @@ type TaskState = {
   original: string; // the file that was open when the task began
   carry: boolean; // the next request carries the task on (the user said so): the server lets it past its steps or its budget
   carries: number; // times the user carried the task on
+  failedSteps: number; // actions that failed in this task (the Genie log keeps the count)
+  stuck: StuckDetector; // notices the same step failing again and again
+  escalated: { id: string; name: string; left: number } | null; // a stronger model has the task for a few steps, after the user chose it
+  returnTo: string; // the model the task was on before that: back to it when the user does not keep the stronger one
+  nextNote: string; // a line for the model in its next request only (the stronger model is told what failed)
+  taskText: string; // what the user asked, for choosing the groups of actions
+  groups: string[]; // the groups of actions the task has been sent (agent-groups.ts): they only grow
+  ops: FileOp[]; // what the task did in the Files panel (a file made, renamed, moved, deleted), for Review all changes
+  shell: ShellChange[]; // what its shell commands made, changed or deleted, for Review all changes
+  seenOutputs: Set<string>; // the outputs the task has had, to tell a step that printed something new
+  settled: Map<string, "kept" | "undone">; // the changes the user has kept or put back in Review: they are not listed any more
+  rowNotes: Map<string, string>; // why a change could not be put back, shown on its row
+  tid: string; // an id of this task, for the Genie log
+  trail: string[]; // the actions it has carried out, in order (names only)
+  over: boolean; // the task has ended: Review lists the files and offers Keep and Undo
+  noted: boolean; // the chat was told what the review did
 };
 type StepOutcome = "next" | "finished" | "end";
 
@@ -111,7 +130,18 @@ export type AgentState = "idle" | "running" | "stopping";
 export interface AgentHost {
   url(): string;
   headers(): Headers;
-  modelFields(): Record<string, any>; // the chosen model, with room for a whole file
+  modelFields(modelId?: string): Record<string, any>; // the chosen model, with room for a whole file (modelId: another model, for a stuck task)
+  // The model a stuck task may be tried again with: the first of the admin's list that the user may use and is not on already.
+  escalation?(): { id: string; name: string; note: string } | null;
+  // Puts words in the chat box for the user to finish (the "Give a hint" choice of a stuck task).
+  prefill?(text: string): void;
+  // Tells the server about a failed step, a stuck task or a retry (the Genie log, genie-events.ts). Fire and forget.
+  event?(e: GenieEvent): void;
+  // The model of the task: its id, for the Genie log.
+  modelId?(): string;
+  // Where the task is, written to the chat file after each step so that a page that closes or loses its connection can offer to
+  // carry the task on (Resume, chat-tabs.ts: Interrupted). The last call of a task says how it ended. Fire and forget.
+  checkpoint?(c: { state: "running" | "done" | "failed" | "stopped"; task: string; steps: number; changed: string; file: string }): void;
   ideContext(): Msg; // the editor and the terminal, as Genie sees them
   terminalText(): string;
   // The terminal of the active tab, as an object to compare: Run closes the
@@ -132,7 +162,14 @@ export interface AgentHost {
   files: FilesHost;
   closeTab(n: number): boolean; // presses the x of tab n
   // Runs one command in its own shell in the user's workspace (POST agent_bash); the signal ends it (Stop). Absent where the page cannot.
-  runCommand?(command: string, seconds: number, signal: AbortSignal): Promise<{ status: number; message?: string; exit_code?: number; output?: string; truncated?: boolean; timed_out?: boolean; duration_ms?: number }>;
+  runCommand?(command: string, seconds: number, signal: AbortSignal): Promise<{ status: number; message?: string; exit_code?: number; output?: string; truncated?: boolean; timed_out?: boolean; duration_ms?: number; changes?: { path: string; kind: string; before?: string; after?: string; size?: number; undo?: boolean }[]; changes_more?: number; changes_note?: string }>;
+  // Writes a file back as it was before a command (POST agent_restore): `expect` is the text it has now, null when it is not there (a file the command
+  // deleted). Fails when the file is not as expected, so what the user wrote since is not overwritten.
+  restoreFile?(path: string, text: string, expect: string | null): Promise<{ ok: true } | { ok: false; error: string }>;
+  // Where the Review bar is drawn (above the box), and how many changes are not settled yet (0: the panel hides the bar, also for a chat tab
+  // that did not run the task).
+  reviewContainer?(): HTMLElement | null;
+  changes?(n: number): void;
   // Whether the answer of a step is streamed to the page as it is written (an admin allows it: server/settings.go StreamAnswers).
   stream?(): boolean;
   // Looks in the user's workspace without changing anything (POST agent_files): a search for text, or some lines of a file.
@@ -143,7 +180,7 @@ export interface AgentHost {
   // The credits a task used, once it ended, when the plan counts them (null: not counted, or not known).
   taskCredits?(token: string): Promise<number | null>;
   // Tells the server how a task ended, counts only (POST chat/agent-outcome).
-  report?(info: { token: string; outcome: string; changed: boolean; checked: boolean }): void;
+  report?(info: { token: string; outcome: string; changed: boolean; checked: boolean; model: string; steps: number; secs: number; failed: number; groups: string; tid: string; tokens: number; trail: string; lang: string }): void;
   // The last turns of the chat before this task, and a note when the editor is not what the chat was about (both "" when
   // there is nothing to say). Asked before userSaid, so the task itself is not in the turns.
   chatBefore?(): string | Promise<string>;
@@ -287,6 +324,7 @@ function previewReply(r: any): string {
   if (r.navigated) return "the page went to " + r.address + (r.title ? ' ("' + clip(r.title, 80) + '")' : "") + ": read it again to see it";
   const bits: string[] = [];
   if (r.url) bits.push("now at " + r.url + (r.title ? ' "' + clip(r.title, 80) + '"' : ""));
+  if (r.rebound) bits.push(r.rebound + " had gone when the page redrew, so the same kind of part was found again (the numbers from your last read may have moved: read the page again before the next step)");
   if (r.added && r.added.length) bits.push("new text: " + r.added.join(" | "));
   if (r.scroll) bits.push("scrolled " + r.scroll.y + " of " + r.scroll.max);
   if (r.focus) bits.push("focus: " + r.focus);
@@ -315,13 +353,17 @@ function previewNetworkText(P: any): string {
 function previewCommand(a: Action, allowLeave: boolean): { cmd: string; args: any; ms: number } | null {
   switch (a.type) {
     case "preview_read":
-      return { cmd: "read", args: { more: !!a.more, viewport: !!a.viewport }, ms: 10000 };
+      return { cmd: "read", args: { more: !!a.more, viewport: !!a.viewport, boxes: !!a.boxes }, ms: 10000 };
+    case "preview_find":
+      return { cmd: "find", args: { selector: a.selector, text: a.query, left: a.left, top: a.top }, ms: 8000 };
     case "preview_inspect":
       return { cmd: "inspect", args: { ref: a.ref }, ms: 8000 };
     case "preview_wait":
       return { cmd: "wait", args: { text: a.text, ref: a.ref, gone: !!a.gone, timeout: a.waitSeconds || 5 }, ms: ((a.waitSeconds || 5) + 4) * 1000 };
     case "preview_click":
-      return { cmd: "click", args: { ref: a.ref, allowLeave: allowLeave }, ms: 12000 };
+      return { cmd: "click", args: { ref: a.ref, x: a.x, y: a.y, space: a.space, allowLeave: allowLeave }, ms: 12000 };
+    case "preview_drag":
+      return { cmd: "drag", args: { ref: a.ref, x: a.x, y: a.y, dx: a.dx, dy: a.dy, steps: a.steps, space: a.space }, ms: 15000 };
     case "preview_type":
       return { cmd: "type", args: { ref: a.ref, text: a.text, enter: !!a.enter, append: !!a.append }, ms: 12000 };
     case "preview_press":
@@ -347,7 +389,15 @@ function previewOutput(a: Action, r: any): string {
     return (r.title ? "title: " + clip(r.title, 100) + "\n" : "") + "address: " + r.url + "\n" + r.text + (r.more ? "\n(more of the page: send preview_read with \"more\": true)" : "") + "\n(" + r.parts + " parts, scrolled " + r.scroll.y + " of " + r.scroll.max + ")";
   }
   if (a.type === "preview_inspect") {
-    return clip(JSON.stringify({ tag: r.tag, rect: r.rect, inView: r.inView, visible: r.visible, coveredBy: r.coveredBy || undefined, disabled: r.disabled, styles: r.styles, attrs: r.attrs, text: r.text }), 3000);
+    return clip(JSON.stringify({ tag: r.tag, rect: r.rect, page: r.page, drawing: r.drawing, inView: r.inView, visible: r.visible, coveredBy: r.coveredBy || undefined, disabled: r.disabled, styles: r.styles, attrs: r.attrs, text: r.text }), 3000);
+  }
+  if (a.type === "preview_find") {
+    const items: any[] = r.items || [];
+    if (!items.length) return "nothing matched" + (r.count ? "" : "") + "; the page is " + (r.viewport ? r.viewport.w + " by " + r.viewport.h : "?") + " and scrolled to " + (r.scroll ? r.scroll.x + "," + r.scroll.y : "0,0");
+    return (
+      items.map((i) => i.ref + " " + i.tag + (i.id ? "#" + i.id : "") + (i.cls ? "." + i.cls : "") + " @" + i.x + "," + i.y + " " + i.w + "x" + i.h + (i.visible ? "" : " hidden") + (i.text ? ' "' + i.text + '"' : "")).join("\n") +
+      "\n(" + (r.count > items.length ? items.length + " of " + r.count + " matches; " : "") + "x,y are page pixels from the top left, scrolled to " + (r.scroll ? r.scroll.x + "," + r.scroll.y : "0,0") + " in a view of " + (r.viewport ? r.viewport.w + " by " + r.viewport.h : "?") + "; the e-numbers work with preview_click, preview_drag and preview_inspect)"
+    );
   }
   if (a.type === "preview_wait") return "found: " + (r.url || "") + (r.quiet ? " (the page is quiet)" : "");
   if (a.type === "preview_eval") return "result: " + r.value;
@@ -382,6 +432,7 @@ export class AgentRunner {
   private menu: HTMLElement | null = null;
   private pendingAction: { a: Action; risk: string } | null = null;
   private trashNext = false; // the delete that goes is moved to the Trash (the riskier level allowed it)
+  private reviewT: TaskState | null = null; // the running task, or the last one: what Review shows
   private lastLine: StepLine | null = null; // the line of the action that just ran (perform adds an Undo to its own)
   private pendingAnswer: ((a: "once" | "session" | "deny") => void) | null = null;
   // The run this task started, if any: the terminal that was there when Run was
@@ -466,9 +517,28 @@ export class AgentRunner {
         original: this.openFile(),
         carry: false,
         carries: 0,
+        failedSteps: 0,
+        stuck: new StuckDetector(),
+        escalated: null,
+        returnTo: "",
+        nextNote: "",
+        taskText: task,
+        groups: [],
+        ops: [],
+        shell: [],
+        seenOutputs: new Set<string>(),
+        settled: new Map<string, "kept" | "undone">(),
+        rowNotes: new Map<string, string>(),
+        tid: newTaskId(),
+        trail: [],
+        over: false,
+        noted: false,
       };
+      this.reviewT = task_;
+      this.announce(task_);
       lastTask = task_;
       this.task = task_;
+      this.mark(task_, "running");
       const notes = await this.projectNotes();
       if (notes && !this.stopped) {
         const line = this.addLine("Reading " + NOTES_FILE + ", the project notes");
@@ -486,10 +556,14 @@ export class AgentRunner {
       while (go === "next" && !this.stopped) {
         go = await this.step(n, task_);
         n++;
+        if (go === "next") this.mark(task_, "running");
         if (go === "next" && n > task_.max && !this.stopped) {
           // the steps of the stretch are used and there is more to do: ask whether to go on
           go = await this.pause(task_);
-          if (go === "next") n = 1;
+          if (go === "next") {
+            n = 1;
+            task_.stuck.newStretch();
+          }
         }
       }
       finished = go === "finished";
@@ -507,6 +581,11 @@ export class AgentRunner {
       // error, a timeout, a second unreadable answer) is a failure
       const outcome = finished ? "done" : this.stopped && !this.timedOut ? "stopped" : "failed";
       const answeredOnly = finished && !!lastTask && lastTask.ran === 0 && lastTask.steps === 1;
+      if (lastTask) {
+        this.mark(lastTask, outcome);
+        lastTask.over = true;
+        this.announce(lastTask);
+      }
       if (lastTask) {
         const prior = this.lastTaskLine;
         if (prior) this.past = [...this.past, prior].slice(-(MEMORY_TASKS - 1));
@@ -529,7 +608,21 @@ export class AgentRunner {
       try {
         if (lastTask && lastTask.token && this.host.report) {
           const why = lastTask.endReason;
-          this.host.report({ token: lastTask.token, outcome: finished ? "done" : why ? why : outcome, changed: lastTask.work.changed, checked: lastTask.work.checked !== null });
+          this.host.report({
+            token: lastTask.token,
+            outcome: finished ? "done" : why ? why : outcome,
+            changed: lastTask.work.changed,
+            checked: lastTask.work.checked !== null,
+            model: this.host.modelId ? this.host.modelId() : "",
+            steps: lastTask.steps,
+            secs: Math.round((Date.now() - lastTask.startedAt) / 1000),
+            failed: lastTask.failedSteps,
+            groups: lastTask.groups.join(","),
+            tid: lastTask.tid,
+            tokens: lastTask.tokens,
+            trail: lastTask.trail.slice(-10).join(","),
+            lang: this.pickerLanguage(),
+          });
         }
       } catch (e) {
         console.error("agent:", e);
@@ -572,6 +665,7 @@ export class AgentRunner {
         return await this.step(n, t);
       }
       reading.set("failed", res.error);
+      this.tell({ event: "step_failed", step: n, reason: res.error, failed: t.failedSteps }, t);
       await this.host.note(res.error);
       return "end";
     }
@@ -585,6 +679,7 @@ export class AgentRunner {
     if (!parsed.ok) {
       t.messages.push({ role: "assistant", content: res.content });
       t.badAnswers++;
+      this.tell({ event: "step_failed", step: n, reason: res.cut ? "the answer was too long" : "the answer could not be read", failed: t.failedSteps }, t);
       if (t.badAnswers >= 2) {
         t.endReason = res.cut ? "toolong" : "unreadable";
         reading.set("failed", res.cut ? "Genie's answer was too long" : "Genie's answer could not be read");
@@ -610,11 +705,21 @@ export class AgentRunner {
       t.baseline = { file: this.openFile(), text: this.host.editorText() };
     }
     const results: StepResult[] = [];
+    const changesBefore = t.work.changes + t.ops.length + t.shell.length; // to tell whether this step changed anything
+    let stuck: StuckInfo | null = null; // set by the first action of the step that makes the task stuck
     for (let i = 0; i < step.actions.length && !this.stopped; i++) {
       const r = await this.run(step.actions[i]);
       t.ran++;
+      t.trail.push(step.actions[i].type);
       t.work.noteAction(step.actions[i], r, this.openFile());
       results.push(r);
+      const check = isCheckFailure(step.actions[i], r.status, r.detail || "") || isLimit(r.status, r.detail || ""); // a program that failed, or a limit the model was told of: not a step Genie could not do
+      if (r.status === "failed" && !check) {
+        t.failedSteps++;
+        this.tell({ event: "step_failed", step: n, action: step.actions[i].type, ext: extOf(this.openFile()), reason: safeReason(step.actions[i].type, r.detail || ""), failed: t.failedSteps }, t);
+      }
+      const s = t.stuck.note(step.actions[i], check ? "done" : r.status, r.detail || "");
+      if (s && !stuck) stuck = s;
     }
     if (this.stopped) return "end";
     // A task that changed code and says it is done is sent back once to run it, unless it has no steps left.
@@ -626,7 +731,148 @@ export class AgentRunner {
     }
     if (step.done) return "finished";
     t.messages.push({ role: "user", content: resultsMessage(results, step.dropped) });
+    if (!stuck) {
+      // a step that changed nothing and printed nothing new, again and again; or most of the steps used with nothing changed at all
+      const fresh = results.some((r) => this.freshOutput(t, r));
+      const now = t.work.changes + t.ops.length + t.shell.length;
+      stuck = t.stuck.noteStep({ progress: now > changesBefore || fresh, step: n, max: t.max, changedAnything: now > 0 });
+    }
+    const had = t.escalated; // the stronger model that answered this step, if one did (a stuck task that is handed over now has not had a step yet)
+    if (stuck) {
+      const how = await this.onStuck(t, stuck, n);
+      if (how !== "next") return how;
+    }
+    if (had && t.escalated === had) {
+      had.left--;
+      if (had.left <= 0) await this.keepOrReturn(t, n);
+    }
     return "next";
+  }
+
+  // Whether a result printed something the task has not had before (the same output again is not new).
+  private freshOutput(t: TaskState, r: StepResult): boolean {
+    const o = r.output ? String(r.output).trim() : "";
+    if (o === "" || o === "(no output)") return false;
+    const key = o.length + ":" + o.slice(0, 200);
+    if (t.seenOutputs.has(key)) return false;
+    t.seenOutputs.add(key);
+    return true;
+  }
+
+  // The checkpoint of a task: what the chat file keeps so that the task can be carried on after the page was closed.
+  private mark(t: TaskState, state: "running" | "done" | "failed" | "stopped") {
+    try {
+      if (this.host.checkpoint) this.host.checkpoint({ state, task: t.taskText, steps: t.steps, changed: t.work.files.join(", "), file: this.openFile() });
+    } catch (e) {
+      console.error("agent:", e);
+    }
+  }
+
+  // ---- a task that is stuck ------------------------------------------------------------------
+
+  // The Genie log hears of it; nothing here waits for the answer.
+  private tell(e: Omit<GenieEvent, "model">, t: TaskState) {
+    try {
+      if (this.host.event) {
+        this.host.event({
+          ...e,
+          model: t.escalated ? t.escalated.id : this.host.modelId ? this.host.modelId() : "",
+          groups: t.groups.join(","),
+          tid: t.tid,
+          code: e.code !== undefined ? e.code : reasonCode(e.reason || ""),
+          lang: this.pickerLanguage(),
+          trail: e.event === "step_failed" || e.event === "stuck" || e.event === "stuck_answer" ? t.trail.slice(-8).join(",") : undefined,
+        });
+      }
+    } catch (err) {
+      console.error("agent:", err);
+    }
+  }
+
+  // The same step failed again and again: nothing more is used until the user says what to do. "next": go on (a stronger model has
+  // the task); "end": the task is over (a hint is to be typed, or Stop).
+  private async onStuck(t: TaskState, info: StuckInfo, n: number): Promise<StepOutcome> {
+    this.tell({ event: "stuck", step: n, action: info.action, reason: safeReason(info.action, info.reason), failed: t.failedSteps, rule: info.rule, code: info.rule === "no-progress" || info.rule === "budget" ? info.rule : undefined }, t);
+    const esc = t.escalated ? null : this.host.escalation ? this.host.escalation() : null;
+    const buttons: { label: string; cls: string; value: string }[] = [];
+    if (esc) buttons.push({ label: "Try with " + esc.name, cls: "is-primary", value: "stronger" });
+    const looksAround = info.rule === "no-progress" || info.rule === "budget"; // it may be what was asked: reading and looking around
+    if (looksAround) buttons.unshift({ label: "Keep going", cls: "is-primary", value: "go" });
+    buttons.push({ label: "Give a hint", cls: esc || looksAround ? "" : "is-primary", value: "hint" }, { label: "Stop", cls: "", value: "stop" });
+    const line = this.addLine("Paused: Genie seems stuck");
+    line.set("done", "Paused: Genie seems stuck");
+    const choice = await this.askChoice("Genie seems stuck", stuckText(info) + (esc && esc.note ? " " + esc.note : ""), buttons, "stop");
+    t.stuck.reset();
+    this.tell({ event: "stuck_answer", step: n, choice: this.stopped ? "stop" : choice, rule: info.rule, code: "" }, t);
+    if (this.stopped) return "end";
+    if (choice === "go") return "next";
+    if (choice === "stronger" && esc) {
+      t.returnTo = this.host.modelId ? this.host.modelId() : "";
+      t.escalated = { id: esc.id, name: esc.name, left: ESCALATE_STEPS };
+      t.nextNote = "[Another model tried this and failed. " + stuckText(info).replace(/ It is paused.*$/, "") + ". Do not repeat that step: read what is there again and take a different way. Steps so far are above.]";
+      this.addLine("A stronger model takes over: " + esc.name).set("done");
+      this.tell({ event: "retry", step: n, action: info.action, reason: "", failed: t.failedSteps }, t);
+      return "next";
+    }
+    if (choice === "hint") {
+      if (this.host.prefill) this.host.prefill("That step failed" + (info.reason ? " (" + info.reason.slice(0, 120) + ")" : "") + ". Instead, ");
+      this.stopped = true;
+      await this.host.note("Paused. Tell me what to do and send it; I go on from the files as they are.");
+      return "end";
+    }
+    this.stopped = true;
+    await this.host.note("Stopped. Nothing more was changed.");
+    return "end";
+  }
+
+  // A stronger model has had its steps: keep it for the rest of the task, or go back to the model the user chose.
+  private async keepOrReturn(t: TaskState, n: number) {
+    const e = t.escalated;
+    if (!e || this.stopped) return;
+    const keep = await this.askCarryOn("Keep " + e.name + "?", e.name + " has done " + ESCALATE_STEPS + " steps of this task. Keep it for the rest, or go back to the model you chose?", "Keep " + e.name, "Go back");
+    if (!keep) {
+      t.escalated = null;
+      this.addLine("Back to the model you chose").set("done");
+    } else {
+      e.left = 1e9;
+    }
+  }
+
+  // A card with the buttons given; the answer is the value of the one pressed, or `stopValue` when the user presses Stop.
+  private askChoice(title: string, text: string, buttons: { label: string; cls: string; value: string }[], stopValue: string): Promise<string> {
+    return new Promise<string>((resolve) => {
+      const box = el("div", "cw-agent__ask");
+      box.setAttribute("role", "group");
+      box.setAttribute("aria-label", title);
+      box.appendChild(el("div", "cw-agent__ask-title", title));
+      box.appendChild(el("p", "cw-agent__ask-text", text));
+      const row = el("div", "cw-agent__ask-buttons");
+      let answered = false;
+      if (this.host.attention) this.host.attention(true, { brief: title.charAt(0).toLowerCase() + title.slice(1), card: box });
+      const done = (v: string) => {
+        if (answered) return;
+        answered = true;
+        if (this.host.attention) this.host.attention(false);
+        this.pendingAnswer = null;
+        box.remove();
+        resolve(v);
+      };
+      buttons.forEach((b) => {
+        const btn = el("button", b.cls, b.label);
+        btn.type = "button";
+        btn.addEventListener("click", () => done(b.value));
+        row.appendChild(btn);
+      });
+      box.appendChild(row);
+      this.pendingAnswer = () => done(stopValue); // Stop answers it
+      if (this.list && this.list.parentElement) this.list.parentElement.appendChild(box);
+      else this.host.messages().prepend(box);
+      try {
+        box.scrollIntoView({ block: "nearest" });
+      } catch (e) {
+        // scrolling is not essential
+      }
+    });
   }
 
   // Stop: the request in flight is cancelled, a question to the user is
@@ -652,11 +898,16 @@ export class AgentRunner {
   private async ask(t: TaskState): Promise<AskResult> {
     // what is sent is less than what the page keeps: older results are a line each, older answers
     // have no code in them, and the editor and terminal are sent only when they changed
-    const here = this.host.ideContext();
+    const here0 = this.host.ideContext();
+    // a line for this request only: what a stronger model that took over is told about the failure
+    const here = t.nextNote ? { ...here0, content: here0.content + "\n\n" + t.nextNote } : here0;
+    t.nextNote = "";
     const body = {
-      ...this.host.modelFields(),
+      ...this.host.modelFields(t.escalated ? t.escalated.id : undefined),
       context: "agent",
       agent_task: t.token,
+      // the groups of actions this step is sent; the model asks for another with need_tools
+      agent_groups: this.groupsNow(t),
       ...(t.carry ? { agent_carry: true } : {}),
       // the REPL in use, by name: the server adds what it knows about it
       repl: this.host.repl ? this.host.repl() : "",
@@ -686,6 +937,25 @@ export class AgentRunner {
       this.clearLive();
       this.host.thinking(false);
     }
+  }
+
+  // The groups of actions for this step: those the task has, and what the task, the page and the terminal say it needs now.
+  private groupsNow(t: TaskState): string[] {
+    let previewOpen = false;
+    try {
+      const P = (window as any).Preview;
+      previewOpen = !!(P && typeof P.isOpen === "function" && P.isOpen());
+    } catch (e) {
+      previewOpen = false;
+    }
+    let editorText = "";
+    try {
+      editorText = this.host.editorText ? this.host.editorText() : "";
+    } catch (e) {
+      editorText = "";
+    }
+    t.groups = groupsFor(t.groups, { task: t.taskText, previewOpen, openFile: this.openFile(), terminal: (this.host.terminalText() || "").slice(-600), haveEditorText: editorText.trim() !== "" });
+    return t.groups;
   }
 
   private aborted(): Promise<never> {
@@ -780,6 +1050,17 @@ export class AgentRunner {
   // ---- one action -------------------------------------------------------------
 
   private async run(a: Action): Promise<StepResult> {
+    // more actions: the model asked for a group that was not sent (they come with the next request)
+    if (a.type === "need_tools") {
+      const t = this.task;
+      const asked = a.groups || [];
+      if (!t) return { type: a.type, status: "failed", detail: "there is no task" };
+      const fresh = asked.filter((g) => t.groups.indexOf(g) < 0);
+      t.groups = addGroups(t.groups, asked);
+      this.tell({ event: "need_tools", reason: fresh.join(", ") }, t);
+      this.addLine("Getting more actions: " + asked.join(", ")).set("done");
+      return { type: a.type, status: "done", detail: fresh.length ? "added: " + fresh.join(", ") + ". Their actions are listed for you from your next step." : "those were already yours" };
+    }
     // a new tab in the language already chosen changes nothing in the editor
     if (a.type === "terminal_new_tab" && a.language && this.isCurrentLanguage(a.language)) a = { type: a.type };
     // a change after a check is a fix attempt, and there are two of them: then the task says what still fails
@@ -898,6 +1179,8 @@ export class AgentRunner {
       }
     }
     if (changing && this.task && this.host.editorText && (result.status === "accepted" || result.status === "partly_accepted")) this.task.after.set(fileKey, this.host.editorText());
+    if (this.task && result.status === "done") this.noteFileOp(this.task, a, result);
+    if (this.task && (changing || a.type.startsWith("files_"))) this.announce(this.task);
     await sleep(a.type === "terminal_type" ? 700 : 350); // long enough to see where it was (and the line that was typed)
     this.clearHighlight();
     const phase: Phase = result.status === "failed" || result.status === "denied" || result.status === "rejected" ? "failed" : result.status === "skipped" ? "stopped" : "done";
@@ -1155,6 +1438,7 @@ export class AgentRunner {
       case "preview_scroll":
       case "preview_select":
       case "preview_hover":
+      case "preview_drag":
       case "preview_go":
       case "preview_resize":
       case "preview_eval":
@@ -1216,11 +1500,12 @@ export class AgentRunner {
         if (this.stopped) return { type: a.type, status: "skipped", detail: "the user stopped the task; the command was ended" };
         if (r.status !== 200) return { type: a.type, status: "failed", detail: r.message || "the server refused the command (" + r.status + ")" };
         const out = String(r.output || "");
+        const told = this.noteShell(r);
         const secsUsed = Math.round(((r.duration_ms || 0) / 1000) * 10) / 10;
         if (out.trim()) line.addOutput(out);
         const detail = r.timed_out
           ? "stopped after " + secs + " s: it ran too long and was killed (try a smaller command, or start a long-running program with terminal_type in a Bash terminal)"
-          : "exit code " + r.exit_code + ", " + secsUsed + " s" + (r.truncated ? "; the middle of a very long output was cut" : "");
+          : "exit code " + r.exit_code + ", " + secsUsed + " s" + (r.truncated ? "; the middle of a very long output was cut" : "") + told;
         return {
           type: a.type,
           status: r.timed_out || r.exit_code !== 0 ? "failed" : "done",
@@ -1357,7 +1642,7 @@ export class AgentRunner {
         return need(parent, "folder", "a new item in it");
       }
       case "files_save":
-        return f.current() ? "" : "no file is open: open one with files_open first";
+        return ""; // with no file open there is nothing to save: fileAction says so, as a result and not as a failure
       case "files_rename": {
         const bad = locked(a.path);
         if (bad) return bad;
@@ -1433,7 +1718,7 @@ export class AgentRunner {
     if (!r || !r.ok) return PART_GONE_HINT.test(String((r && r.error) || "")) || !r ? a.ref + " is not on the page now: the numbers (e1, e2, ...) belong to your last preview_read of the page that is loaded, and a reload, another page or a change of the page starts them again. Send preview_read, then use the numbers it shows." : String(r.error);
     a.name = r.name || "";
     if (r.sensitive && a.type === "preview_type") return "refused: " + a.ref + " is a password or card field; ask the user to type it themselves";
-    if (r.disabled && (a.type === "preview_click" || a.type === "preview_type")) return a.ref + " is disabled";
+    if (r.disabled && (a.type === "preview_click" || a.type === "preview_type" || a.type === "preview_drag")) return a.ref + " is disabled";
     this.previewTarget = { submits: !!r.submits || (a.type === "preview_type" && !!a.enter && !!r.form), leaves: !!r.leaves, href: String(r.href || "") };
     return "";
   }
@@ -1588,6 +1873,7 @@ export class AgentRunner {
         return done(r, { type: a.type, status: "done", detail: "created " + path + (a.kind === "folder" ? "" : "; it is empty and not open (files_open opens it)") });
       }
       case "files_save": {
+        if (!f.current()) return { type: a.type, status: "done", detail: "no file is open, so there was nothing to save: the code is only in the editor (files_new makes a file, files_open opens it, and the editor's text is saved into the open file)" };
         const r = await f.save();
         return done(r, { type: a.type, status: "done", detail: r.ok ? r.detail : undefined });
       }
@@ -2270,6 +2556,41 @@ export class AgentRunner {
     return "";
   }
 
+  // The files a shell command made, changed or deleted (the server looks at the workspace before and after), kept for the review of the task.
+  // Returns a line for the model: which files, so that it knows what its command did.
+  private noteShell(r: { changes?: { path: string; kind: string; before?: string; after?: string }[]; changes_more?: number; changes_note?: string }): string {
+    const t = this.task;
+    if (!t) return "";
+    const list = r.changes || [];
+    list.forEach((c) => {
+      const kind = c.kind === "new" ? "new" : c.kind === "deleted" ? "deleted" : "changed";
+      t.shell = mergeShell(t.shell, { path: c.path, kind, before: typeof c.before === "string" ? c.before : null, after: typeof c.after === "string" ? c.after : null });
+    });
+    if (list.length) this.announce(t);
+    const names = list.slice(0, 6).map((c) => c.kind + " " + c.path).join(", ");
+    return list.length ? "; files the command changed: " + names + (list.length > 6 || r.changes_more ? " and more" : "") : r.changes_note ? "; (" + r.changes_note + ")" : "";
+  }
+
+  // The Review bar above the box says what the task changed so far (and, when it is over, lists the files with Keep and Undo).
+  private announce(t: TaskState) {
+    this.reviewT = t;
+    this.renderReview();
+  }
+
+  // What an action did in the Files panel, kept for the review of the task (Review all changes).
+  private noteFileOp(t: TaskState, a: Action, r: StepResult) {
+    const path = a.path || "";
+    const { parent } = splitPath(path);
+    if (a.type === "files_new") t.ops.push({ kind: "new", path, folder: a.kind === "folder" });
+    else if (a.type === "files_rename" && a.name) t.ops.push({ kind: "renamed", path, to: parent ? parent + "/" + a.name : a.name });
+    else if (a.type === "files_move") t.ops.push({ kind: "moved", path, to: (a.to ? a.to + "/" : "") + splitPath(path).name });
+    else if (a.type === "files_paste") t.ops.push({ kind: "pasted", path: "a copy", to: a.to || "" });
+    else if (a.type === "files_delete") {
+      const m = /moved .* to (\S+) \(/.exec(r.detail || "");
+      t.ops.push(m ? { kind: "trashed", path, to: m[1] } : { kind: "deleted", path });
+    }
+  }
+
   // The first part of GENIE.md in the workspace, if there is one: what the user wrote about this project (how to run it,
   // its style, what not to touch). Read at the start of a task, never more than NOTES_CHARS of it; it is the user's own
   // text, a hint for the task and not a way to change the rules, and the model is told so.
@@ -2337,6 +2658,8 @@ export class AgentRunner {
       row.appendChild(undo);
       box.appendChild(row);
     }
+    // every file the task changed, with its lines, and Keep or Undo for each
+    // (the files the task changed are in the Review bar above the box, not here)
     // what it used: steps, time, tokens, and the credits when the plan counts them
     const secs = Math.max(1, Math.round((Date.now() - t.startedAt) / 1000));
     const bits = [t.steps + (t.steps === 1 ? " step" : " steps"), secs + " s"];
@@ -2353,6 +2676,249 @@ export class AgentRunner {
     box.appendChild(el("div", "cw-agent__meta", bits.join(" \u00b7 ")));
     // a card that ended while the summary was drawn is not drawn on twice
     if (this.card) this.card.appendChild(box);
+  }
+
+  // ---- Review all changes: the bar above the box -----------------------------------------------------------------------
+
+  // The rows the user has not settled: what the task changed, less what was kept or put back (those vanish).
+  private openRows(t: TaskState): Change[] {
+    return buildChanges(t.before, t.after, t.ops, t.shell).filter((c) => !t.settled.has(c.id));
+  }
+
+  // Draws the bar in the panel's container (canvas "Genie: Review above the box"): while the task runs one line with a count, with Show to
+  // watch the latest file in the editor; when it is over the files, each with its lines, Keep and Undo. A row that was settled is gone, and
+  // when the last one goes the bar goes. The container's owner hides it for a chat tab that did not run the task.
+  private renderReview() {
+    const box = this.host.reviewContainer ? this.host.reviewContainer() : null;
+    const t = this.reviewT;
+    const rows = t ? this.openRows(t) : [];
+    try {
+      if (this.host.changes) this.host.changes(rows.length);
+    } catch (e) {
+      console.error("agent:", e);
+    }
+    if (!box) return;
+    box.textContent = "";
+    if (!t || rows.length === 0) return;
+    const live = !t.over;
+    if (live) {
+      const line = el("div", "cw-reviewbar__live");
+      line.appendChild(el("span", "cw-reviewbar__dot", "\u25cf"));
+      line.appendChild(el("b", "", " " + rows.length + (rows.length === 1 ? " file" : " files") + " changed so far"));
+      const latest = rows[rows.length - 1];
+      const show = el("button", "cw-reviewbar__link", "Show in the editor");
+      show.type = "button";
+      show.addEventListener("click", () => void this.showInEditor(t, latest));
+      line.append(el("span", "", " "), show);
+      box.appendChild(line);
+      return;
+    }
+    const head = el("div", "cw-reviewbar__head");
+    head.appendChild(el("b", "cw-reviewbar__title", "Genie changed " + rows.length + (rows.length === 1 ? " file" : " files")));
+    const keepAll = el("button", "cw-reviewbar__all cw-reviewbar__keep", "Keep all");
+    const undoAll = el("button", "cw-reviewbar__all cw-reviewbar__undo", "Undo all");
+    keepAll.type = undoAll.type = "button";
+    keepAll.addEventListener("click", () => {
+      rows.forEach((c) => t.settled.set(c.id, "kept"));
+      this.finishReview(t);
+    });
+    undoAll.addEventListener("click", () => void this.undoAllRows(t));
+    head.append(keepAll, undoAll);
+    box.appendChild(head);
+    const list = el("div", "cw-reviewbar__list");
+    rows.forEach((c) => {
+      const row = el("div", "cw-reviewbar__row");
+      const path = el("button", "cw-reviewbar__path", c.label);
+      path.type = "button";
+      path.title = "Show it in the editor";
+      path.addEventListener("click", () => void this.showInEditor(t, c));
+      row.appendChild(path);
+      if (c.added || c.removed) row.appendChild(el("span", "cw-reviewbar__count", "+" + c.added + " \u2212" + c.removed));
+      else if (c.kind === "new") row.appendChild(el("span", "cw-reviewbar__count", "new"));
+      const note = el("span", "cw-reviewbar__note", t.rowNotes.get(c.id) || c.why || "");
+      const keep = el("button", "cw-reviewbar__keep", "Keep");
+      const undo = el("button", "cw-reviewbar__undo", "Undo");
+      keep.type = undo.type = "button";
+      keep.addEventListener("click", () => this.settleRow(t, c, "kept"));
+      if (!c.undoable) {
+        undo.disabled = true;
+        undo.title = c.why;
+      }
+      undo.addEventListener("click", async () => {
+        undo.disabled = true;
+        const why = await this.undoChange(t, c, (window as any).GenieReview);
+        if (why === "") this.settleRow(t, c, "undone");
+        else {
+          t.rowNotes.set(c.id, why);
+          this.renderReview();
+        }
+      });
+      row.append(note, keep, undo);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+  }
+
+  // A row is settled: it goes. When it was the last, the bar goes and the chat says what was done.
+  private settleRow(t: TaskState, c: Change, how: "kept" | "undone") {
+    t.settled.set(c.id, how);
+    this.finishReview(t);
+  }
+
+  private finishReview(t: TaskState) {
+    this.renderReview();
+    if (this.openRows(t).length > 0) return;
+    try {
+      const g = (window as any).GenieChanges;
+      if (g && g.hide) g.hide();
+    } catch (e) {
+      // the editor's bar is not essential
+    }
+    const kept = Array.from(t.settled.values()).filter((v) => v === "kept").length;
+    const undone = t.settled.size - kept;
+    if (t.settled.size > 0 && !t.noted) {
+      t.noted = true;
+      void this.host.note("Reviewed " + t.settled.size + ": " + kept + " kept" + (undone ? ", " + undone + " undone" : "") + ".");
+    }
+  }
+
+  private async undoAllRows(t: TaskState) {
+    const rows = this.openRows(t);
+    const sure = await this.askCarryOn("Undo all changes of this task?", "Changed files go back as they were, and files the task made go to the Trash folder. A file you changed since is left as it is.", "Undo all", "Cancel");
+    if (!sure) return;
+    const left: string[] = [];
+    // the latest first, as they were made; no `continue` in what awaits: one change is undone by a function that returns
+    for (const c of rows.slice().reverse()) {
+      if (!c.undoable) {
+        left.push(c.label + " (" + c.why + ")");
+      } else {
+        const why = await this.undoChange(t, c, (window as any).GenieReview);
+        if (why === "") t.settled.set(c.id, "undone");
+        else {
+          t.rowNotes.set(c.id, why);
+          left.push(c.label + " (" + why + ")");
+        }
+      }
+    }
+    this.renderReview();
+    if (this.openRows(t).length === 0) this.finishReview(t);
+    if (left.length) void this.host.note("Left as they are: " + left.join("; ") + ".");
+  }
+
+  // The file in the editor with what Genie changed marked on it (page script 35-genie-changes.js), with Keep and Undo there too.
+  // A change that has nothing inside to show (a rename, a move, a file made empty) has no view.
+  private async showInEditor(t: TaskState, c: Change) {
+    const G = (window as any).GenieChanges;
+    if (!G || typeof G.show !== "function") return;
+    let path = "";
+    let before = "";
+    let after = "";
+    let kind: "changed" | "new" | "deleted" = "changed";
+    if (c.shell >= 0) {
+      const sc = t.shell[c.shell];
+      if (!sc || (sc.kind !== "deleted" && sc.after === null) || (sc.kind === "changed" && sc.before === null)) return;
+      path = sc.path;
+      before = sc.before || "";
+      after = sc.after || "";
+      kind = sc.kind;
+    } else if (c.op < 0) {
+      path = c.id;
+      before = t.before.get(c.id) || "";
+      after = t.after.get(c.id) || "";
+      kind = c.kind === "new" ? "new" : "changed";
+    } else {
+      return;
+    }
+    if (kind !== "deleted" && path && this.openFile() !== path) {
+      const r = await this.host.files.open(path);
+      if (!r.ok) return;
+      await sleep(400); // the editor takes the file's text a moment after
+    }
+    const rows = this.openRows(t);
+    const idx = rows.findIndex((r) => r.id === c.id);
+    const neighbour = (d: number) => {
+      const viewable = rows.filter((r) => r.shell >= 0 || r.op < 0);
+      const at = viewable.findIndex((r) => r.id === c.id);
+      const next = viewable[(at + d + viewable.length) % viewable.length];
+      if (next && next.id !== c.id) void this.showInEditor(t, next);
+    };
+    G.show({
+      kind,
+      path,
+      before,
+      after,
+      index: idx + 1,
+      total: rows.length,
+      keepLabel: kind === "deleted" ? "Dismiss" : "Keep",
+      undoLabel: kind === "deleted" ? "Restore" : "Undo",
+      onKeep: async () => {
+        this.settleRow(t, c, "kept");
+        return "";
+      },
+      onUndo: async () => {
+        const why = await this.undoChange(t, c, (window as any).GenieReview);
+        if (why === "") this.settleRow(t, c, "undone");
+        else t.rowNotes.set(c.id, why);
+        return why;
+      },
+      onPrev: () => neighbour(-1),
+      onNext: () => neighbour(1),
+    });
+  }
+
+  // One change put back: "" when it was, else why it was left. Works through the same editor and Files panel the task used.
+  private async undoChange(t: TaskState, c: Change, review: any): Promise<string> {
+    if (this.running) return "Genie is working on a task: stop it first";
+    const f = this.host.files;
+    try {
+      // a file a shell command made, changed or deleted
+      if (c.shell >= 0) return await this.undoShell(t, c);
+      // a change of text: the file as it was before the task, unless the user changed it since
+      if (c.op < 0 && c.kind === "changed") {
+        if (!review || typeof review.applyDirect !== "function" || !this.host.editorText) return "the editor is not available";
+        return await this.undoFile(t, c.id, review);
+      }
+      // a file the task made, with text: it goes to the Trash
+      const o = c.op >= 0 ? t.ops[c.op] : ({ kind: "new", path: c.id } as FileOp);
+      const u = undoOf(o);
+      if (!u) return c.why || "it cannot be undone";
+      if (u.do === "trash") {
+        const r = await this.moveToTrash(u.path);
+        return r.ok ? "" : r.error;
+      }
+      if (u.do === "rename") {
+        const r = await f.rename(u.path, u.arg);
+        return r.ok ? "" : r.error;
+      }
+      const m = await f.move(u.path, u.arg);
+      if (!m.ok) return m.error;
+      // a file that was put in the Trash under another name gets its own back
+      const was = splitPath(o.path).name;
+      const now = splitPath(u.path).name;
+      if (o.kind === "trashed" && was !== now) {
+        const back = (u.arg ? u.arg + "/" : "") + now;
+        const r = await f.rename(back, was);
+        if (!r.ok) return "it is back as " + back + ", but not under its own name: " + r.error;
+      }
+      return "";
+    } catch (e: any) {
+      return String((e && e.message) || e).slice(0, 120);
+    }
+  }
+
+  // One change of a shell command put back: a file it made goes to the Trash folder, a file it changed or deleted is written back by the server,
+  // which does it only when the file is still as the command left it.
+  private async undoShell(t: TaskState, c: Change): Promise<string> {
+    const sc = t.shell[c.shell];
+    if (!sc) return "it is not in the list any more";
+    if (sc.kind === "new") {
+      const r = await this.moveToTrash(sc.path);
+      return r.ok ? "" : r.error;
+    }
+    if (!this.host.restoreFile) return "this page cannot put files back";
+    if (sc.before === null) return c.why || "there is no copy to put back";
+    const r = await this.host.restoreFile(sc.path, sc.before, sc.kind === "deleted" ? null : sc.after);
+    return r.ok ? "" : r.error;
   }
 
   private fmtTokens(n: number): string {

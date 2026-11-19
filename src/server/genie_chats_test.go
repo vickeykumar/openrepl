@@ -346,3 +346,60 @@ func TestAsciiJSON(t *testing.T) {
 		t.Fatalf("round trip: %v %v %s", err, back, b)
 	}
 }
+
+// A running agent task writes a checkpoint after each step (the page's Resume bar reads the last one): the file keeps one, and it
+// is the newest, so that a task of many steps does not grow the chat and nothing else in it moves.
+func TestACheckpointReplacesTheOneBeforeItAndTheRestOfTheChatStaysAsItWas(t *testing.T) {
+	e := chatsSetup(t, GenieSettings{})
+	e.ok(t, `{"op":"append","id":"k3x9","lines":[`+metaLine+`,{"t":"user","text":"build the shop","ts":1},{"t":"checkpoint","text":"build the shop","steps":0,"outcome":"running","ts":2}]}`)
+	e.ok(t, `{"op":"append","id":"k3x9","lines":[{"t":"answer","text":"On it","ts":3},{"t":"checkpoint","text":"build the shop","steps":1,"changed":"shop/index.html","file":"shop/index.html","outcome":"running","ts":4,"evil":"x"}]}`)
+	e.ok(t, `{"op":"append","id":"k3x9","lines":[{"t":"checkpoint","text":"build the shop","steps":2,"outcome":"running","ts":5}]}`)
+	b, _ := os.ReadFile(filepath.Join(e.home, ".genie", "chats", "k3x9.jsonl"))
+	if n := strings.Count(string(b), `"t":"checkpoint"`); n != 1 {
+		t.Fatalf("%d checkpoints: %s", n, b)
+	}
+	lines := e.ok(t, `{"op":"read","id":"k3x9"}`)["lines"].([]interface{})
+	kinds := []string{}
+	for _, l := range lines {
+		kinds = append(kinds, l.(map[string]interface{})["t"].(string))
+	}
+	if strings.Join(kinds, ",") != "meta,user,answer,checkpoint" {
+		t.Errorf("the lines are %v", kinds)
+	}
+	last := lines[3].(map[string]interface{})
+	if last["steps"].(float64) != 2 || last["outcome"] != "running" {
+		t.Errorf("the checkpoint is not the newest: %v", last)
+	}
+	if strings.Contains(string(b), "evil") {
+		t.Error("a key that is not allowed was kept")
+	}
+	// a checkpoint is not a message: the list counts the user's words and the answers only
+	c := e.ok(t, `{"op":"state"}`)["chats"].([]interface{})[0].(map[string]interface{})
+	if c["messages"].(float64) != 2 {
+		t.Errorf("messages: %v", c["messages"])
+	}
+	// the end of the task replaces it with its outcome
+	e.ok(t, `{"op":"append","id":"k3x9","lines":[{"t":"checkpoint","text":"build the shop","steps":4,"outcome":"done","ts":6}]}`)
+	lines = e.ok(t, `{"op":"read","id":"k3x9"}`)["lines"].([]interface{})
+	if got := lines[len(lines)-1].(map[string]interface{}); got["outcome"] != "done" || len(lines) != 4 {
+		t.Errorf("after the end: %v", lines)
+	}
+	// a checkpoint may not start a chat, and the Markdown of the chat does not hold it
+	if code, _ := e.call(t, `{"op":"append","id":"zz99","lines":[{"t":"checkpoint","text":"x"}]}`, e.c, ""); code != http.StatusBadRequest {
+		t.Errorf("a chat that starts with a checkpoint: %d", code)
+	}
+	md := e.ok(t, `{"op":"export","id":"k3x9"}`)["markdown"].(string)
+	if strings.Contains(md, "running") || strings.Contains(md, "checkpoint") {
+		t.Errorf("the export holds the checkpoint: %s", md)
+	}
+}
+
+func TestCheckpointsSentTogetherKeepOnlyTheLast(t *testing.T) {
+	e := chatsSetup(t, GenieSettings{})
+	e.ok(t, `{"op":"append","id":"k3x9","lines":[`+metaLine+`,{"t":"user","text":"go","ts":1}]}`)
+	e.ok(t, `{"op":"append","id":"k3x9","lines":[{"t":"checkpoint","text":"go","steps":1,"outcome":"running","ts":2},{"t":"answer","text":"ok","ts":3},{"t":"checkpoint","text":"go","steps":2,"outcome":"running","ts":4}]}`)
+	b, _ := os.ReadFile(filepath.Join(e.home, ".genie", "chats", "k3x9.jsonl"))
+	if n := strings.Count(string(b), `"t":"checkpoint"`); n != 1 || !strings.Contains(string(b), `"steps":2`) || !strings.Contains(string(b), `"t":"answer"`) {
+		t.Errorf("the file: %s", b)
+	}
+}

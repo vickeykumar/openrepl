@@ -52,7 +52,7 @@ const (
 var chatIDPattern = regexp.MustCompile(`^[a-z0-9]{4,16}$`)
 
 // the kinds of line, and the keys a line may have (anything else is left out when it is stored)
-var chatLineKinds = map[string]bool{"meta": true, "title": true, "state": true, "user": true, "answer": true, "task": true, "summary": true}
+var chatLineKinds = map[string]bool{"meta": true, "title": true, "state": true, "user": true, "answer": true, "task": true, "summary": true, "checkpoint": true}
 var chatLineKeys = map[string]bool{"t": true, "id": true, "created": true, "context": true, "language": true, "file": true, "text": true, "at": true, "ts": true,
 	"model": true, "effort": true, "mode": true, "tokens": true, "steps": true, "checked": true, "changed": true, "outcome": true}
 
@@ -272,6 +272,15 @@ func pruneChats(dir string, g GenieSettings, tabs chatTabs, now time.Time) {
 	}
 }
 
+// encodeChatLines is the lines of a chat as the file holds them: one JSON object a line.
+func encodeChatLines(ls []map[string]interface{}) []byte {
+	var b []byte
+	for _, l := range ls {
+		b = append(append(b, asciiJSON(l)...), '\n')
+	}
+	return b
+}
+
 // trimChat rewrites a chat that is over its size without its oldest messages, keeping its meta, title and state.
 func trimChat(path string, limit int) error {
 	lines, err := chatLines(path)
@@ -452,6 +461,8 @@ func (server *Server) handleGenieChats(rw http.ResponseWriter, req *http.Request
 		_, statErr := os.Stat(p)
 		isNew := os.IsNotExist(statErr)
 		var data []byte
+		var written []map[string]interface{} // the lines, cleaned, for a checkpoint that replaces the last one
+		hasCheckpoint := false
 		for i, raw := range in.Lines {
 			l, ok := cleanChatLine(raw)
 			if !ok {
@@ -466,17 +477,45 @@ func (server *Server) handleGenieChats(rw http.ResponseWriter, req *http.Request
 			}
 			j := asciiJSON(l)
 			data = append(append(data, j...), '\n')
+			written = append(written, l)
+			hasCheckpoint = hasCheckpoint || l["t"] == "checkpoint"
 		}
 		if isNew && len(listChats(dir)) >= g.chatsMax() {
 			pruneChats(dir, g, readTabs(dir), time.Now()) // the oldest closed chat makes room
 		}
-		f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-		if err != nil {
-			jsonError(rw, http.StatusInsufficientStorage, "write", "The chat could not be written. Is the workspace full?")
-			return
+		// A checkpoint (the state of a running agent task, for Resume) replaces the one before it: the file keeps one, so a task of
+		// many steps does not grow the chat. The file is written whole, atomically, as when it is trimmed.
+		var werr error
+		if hasCheckpoint && !isNew {
+			old, _ := chatLines(p)
+			var all []map[string]interface{}
+			for _, l := range old {
+				if l["t"] != "checkpoint" {
+					all = append(all, l)
+				}
+			}
+			// of the checkpoints in this call (a page that was offline sends them together) only the last is kept
+			last := -1
+			for i, l := range written {
+				if l["t"] == "checkpoint" {
+					last = i
+				}
+			}
+			for i, l := range written {
+				if l["t"] != "checkpoint" || i == last {
+					all = append(all, l)
+				}
+			}
+			werr = writeFileAtomic(p, encodeChatLines(all))
+		} else {
+			f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+			if err != nil {
+				jsonError(rw, http.StatusInsufficientStorage, "write", "The chat could not be written. Is the workspace full?")
+				return
+			}
+			_, werr = f.Write(data)
+			f.Close()
 		}
-		_, werr := f.Write(data)
-		f.Close()
 		if werr != nil {
 			jsonError(rw, http.StatusInsufficientStorage, "write", "The chat could not be written. Is the workspace full?")
 			return

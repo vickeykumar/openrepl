@@ -8,3 +8,5 @@ In agent mode Genie can use the Preview as you do. It opens it on an .html, Mark
 It asks once for the Preview permission, which covers opening, reloading and closing. Only looking asks nothing. Text from your page's console is treated as data, never as instructions. A program is only found where each workspace has a private network; the Preview can also be switched off by a site admin, and then Genie says so.
 
 Ask for example: "start a Flask app on port 5000 and show it in the Preview", "why is my page blank?", "reload the preview".
+
+It can also press and drag with real pointer events, which a game on a canvas needs: a canvas is listed as a part with its size, and "drawing" coordinates are scaled for it. It can find any element, by selector, text or point, with where it is and how big.

@@ -224,3 +224,174 @@ func TestTheFilesEndpointIsForTheOwnerOfASignedInWorkspaceAndReadOnly(t *testing
 		t.Errorf("GET: %d", w2.Code)
 	}
 }
+
+// ---- what a shell command changed, and putting a file back (agent_shell_changes.go) ----------------------------------
+
+func TestTheWorkspaceBeforeAndAfterTellsWhatACommandMadeChangedAndDeleted(t *testing.T) {
+	home := workspace(t, map[string]string{
+		"keep.txt":              "same\n",
+		"edit.py":               "x = 1\n",
+		"gone.txt":              "bye\n",
+		"touched.txt":           "same text\n",
+		".env":                  "SECRET=1\n",
+		"node_modules/lib/a.js": "a\n",
+		"Trash/old.txt":         "trashed\n",
+		"big.txt":               strings.Repeat("x", shellSnapFileBytes+10),
+		"bin.dat":               "a\x00b",
+		"sub/inner.txt":         "inner\n",
+	})
+	before, ok := snapshotWorkspace(home)
+	if !ok || before["edit.py"].text == nil || *before["edit.py"].text != "x = 1\n" {
+		t.Fatalf("the snapshot: %v %+v", ok, before["edit.py"])
+	}
+	for _, skipped := range []string{".env", "node_modules/lib/a.js", "Trash/old.txt"} {
+		if _, in := before[skipped]; in {
+			t.Errorf("%s was looked at", skipped)
+		}
+	}
+	if before["big.txt"].text != nil || before["bin.dat"].text != nil {
+		t.Error("a large file or a binary file was kept as text")
+	}
+	time.Sleep(20 * time.Millisecond)
+	os.WriteFile(filepath.Join(home, "edit.py"), []byte("x = 2\ny = 3\n"), 0o644)
+	os.WriteFile(filepath.Join(home, "new.txt"), []byte("hello\n"), 0o644)
+	os.WriteFile(filepath.Join(home, "touched.txt"), []byte("same text\n"), 0o644) // written again, the same
+	os.WriteFile(filepath.Join(home, "big.txt"), []byte(strings.Repeat("y", shellSnapFileBytes+10)), 0o644)
+	os.WriteFile(filepath.Join(home, ".env"), []byte("SECRET=2\n"), 0o644)
+	os.Remove(filepath.Join(home, "gone.txt"))
+	got, more := diffWorkspace(home, before)
+	if more != 0 {
+		t.Errorf("more: %d", more)
+	}
+	byPath := map[string]shellChange{}
+	for _, c := range got {
+		byPath[c.Path] = c
+	}
+	if len(got) != 4 {
+		t.Fatalf("%d changes: %+v", len(got), got)
+	}
+	if c := byPath["edit.py"]; c.Kind != "changed" || !c.Undo || *c.Before != "x = 1\n" || *c.After != "x = 2\ny = 3\n" {
+		t.Errorf("edit.py: %+v", c)
+	}
+	if c := byPath["new.txt"]; c.Kind != "new" || !c.Undo || c.After == nil || *c.After != "hello\n" || c.Before != nil {
+		t.Errorf("new.txt: %+v", c)
+	}
+	if c := byPath["gone.txt"]; c.Kind != "deleted" || !c.Undo || *c.Before != "bye\n" {
+		t.Errorf("gone.txt: %+v", c)
+	}
+	if c := byPath["big.txt"]; c.Kind != "changed" || c.Undo || c.Before != nil {
+		t.Errorf("a large file changed has no copy to put back: %+v", c)
+	}
+	if _, in := byPath["touched.txt"]; in {
+		t.Error("a file written again with the same text is a change")
+	}
+	if _, in := byPath[".env"]; in {
+		t.Error("a hidden file is told")
+	}
+}
+
+func TestChangesAreLimitedAndAHugeWorkspaceIsNotFollowed(t *testing.T) {
+	files := map[string]string{}
+	for i := 0; i < shellChangesMax+7; i++ {
+		files[fmt.Sprintf("f%03d.txt", i)] = "a"
+	}
+	home := workspace(t, files)
+	before, _ := snapshotWorkspace(home)
+	for i := 0; i < shellChangesMax+7; i++ {
+		os.WriteFile(filepath.Join(home, fmt.Sprintf("n%03d.txt", i)), []byte("b"), 0o644)
+	}
+	got, more := diffWorkspace(home, before)
+	if len(got) != shellChangesMax || more != 7 {
+		t.Errorf("%d changes and %d more", len(got), more)
+	}
+	big := map[string]string{}
+	for i := 0; i < shellSnapMaxFiles+3; i++ {
+		big[fmt.Sprintf("d%d/f%d.txt", i%50, i)] = "x"
+	}
+	if _, ok := snapshotWorkspace(workspace(t, big)); ok {
+		t.Error("a workspace of more than the allowed files was followed")
+	}
+}
+
+func restoreCall(t *testing.T, s *Server, c *http.Cookie, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest("POST", "/agent_restore", strings.NewReader(body))
+	if c != nil {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	s.handleAgentRestore(w, req)
+	return w
+}
+
+func TestAFileIsPutBackOnlyWhenItIsStillAsTheCommandLeftIt(t *testing.T) {
+	s, _ := adminTestServer(t)
+	if err := SaveSiteSettings(SiteSettings{Genie: GenieSettings{}}); err != nil {
+		t.Fatal(err)
+	}
+	c := sessionCookie(t, "uid-ann", "ann@example.com")
+	probe := httptest.NewRequest("POST", "/agent_restore", nil)
+	probe.AddCookie(c)
+	_, home := s.requestIdentity(httptest.NewRecorder(), probe)
+	if home == "" {
+		t.Skip("no workspace for the test user")
+	}
+	os.MkdirAll(home, 0o755)
+	t.Cleanup(func() { os.RemoveAll(filepath.Join(home, "shell")) })
+	shellAllowedReset()
+	os.MkdirAll(filepath.Join(home, "shell"), 0o755)
+	os.WriteFile(filepath.Join(home, "shell", "a.py"), []byte("x = 2\n"), 0o644)
+	// as the command left it: it is put back
+	if w := restoreCall(t, s, c, `{"path":"shell/a.py","text":"x = 1\n","expect":"x = 2\n"}`); w.Code != 200 {
+		t.Fatalf("put back: %d %s", w.Code, w.Body.String())
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, "shell", "a.py")); string(b) != "x = 1\n" {
+		t.Errorf("the file: %q", b)
+	}
+	// changed since: it is not
+	os.WriteFile(filepath.Join(home, "shell", "a.py"), []byte("mine\n"), 0o644)
+	if w := restoreCall(t, s, c, `{"path":"shell/a.py","text":"x = 1\n","expect":"x = 2\n"}`); w.Code != http.StatusConflict {
+		t.Errorf("changed since: %d", w.Code)
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, "shell", "a.py")); string(b) != "mine\n" {
+		t.Errorf("the user's text was overwritten: %q", b)
+	}
+	// a file the command deleted comes back, with its folder; if it is there again it is left
+	if w := restoreCall(t, s, c, `{"path":"shell/sub/b.txt","text":"back\n","must_not_exist":true}`); w.Code != 200 {
+		t.Fatalf("a deleted file: %d %s", w.Code, w.Body.String())
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, "shell", "sub", "b.txt")); string(b) != "back\n" {
+		t.Errorf("the deleted file: %q", b)
+	}
+	if w := restoreCall(t, s, c, `{"path":"shell/sub/b.txt","text":"again\n","must_not_exist":true}`); w.Code != http.StatusConflict {
+		t.Errorf("it is there again: %d", w.Code)
+	}
+	// a file that is gone when text was expected, a hidden name, a path out of the workspace, too much text, a visitor
+	for body, want := range map[string]int{
+		`{"path":"shell/none.txt","text":"x","expect":"y"}`:                                                     http.StatusConflict,
+		`{"path":".env","text":"x","must_not_exist":true}`:                                                      http.StatusBadRequest,
+		`{"path":"../x.txt","text":"x","must_not_exist":true}`:                                                  http.StatusBadRequest,
+		`{"path":"/etc/passwd","text":"x","expect":"y"}`:                                                        http.StatusBadRequest,
+		`{"path":"","text":"x"}`:                                                                                http.StatusBadRequest,
+		`{"path":"shell/big.txt","text":"` + strings.Repeat("x", restoreMaxText+1) + `","must_not_exist":true}`: http.StatusBadRequest,
+	} {
+		if w := restoreCall(t, s, c, body); w.Code != want {
+			t.Errorf("%.60s: %d, want %d", body, w.Code, want)
+		}
+	}
+	if w := restoreCall(t, s, nil, `{"path":"shell/c.txt","text":"x","must_not_exist":true}`); w.Code != http.StatusForbidden {
+		t.Errorf("a visitor: %d", w.Code)
+	}
+	req := httptest.NewRequest("GET", "/agent_restore", nil)
+	w := httptest.NewRecorder()
+	s.handleAgentRestore(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("GET: %d", w.Code)
+	}
+}
+
+func shellAllowedReset() {
+	shellRateMu.Lock()
+	shellRate = map[string][]time.Time{}
+	shellRateMu.Unlock()
+}

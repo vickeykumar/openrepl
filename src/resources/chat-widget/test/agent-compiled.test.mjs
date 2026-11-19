@@ -121,8 +121,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // of the server, {hang: true} for a model that never answers, {cut: "..."} for an
 // answer that was cut off at the length limit.
 function setup(script, opts = {}) {
-  const log = { requests: [], said: [], notes: [], states: [], typed: [], events: [], reports: [] };
+  const log = { requests: [], said: [], notes: [], states: [], typed: [], events: [], reports: [], genieEvents: [], prefilled: null, checkpoints: [], changeCounts: [], restored: [] };
   const messages = new El("div");
+  const reviewEl = new El("div"); // the Review bar above the box (the panel's container)
   const term = { text: opts.terminal || "$ ", object: {} };
   globalThis.fetch = (url, init) => {
     log.requests.push(JSON.parse(init.body));
@@ -163,7 +164,18 @@ function setup(script, opts = {}) {
   const host = {
     url: () => "http://test/chat/completions",
     headers: () => ({}),
-    modelFields: () => ({ model: "test-model" }),
+    modelFields: (id) => ({ model: id || "test-model" }),
+    modelId: () => "test-model",
+    checkpoint: (c) => log.checkpoints.push(c),
+    reviewContainer: () => reviewEl,
+    changes: (n) => log.changeCounts.push(n),
+    restoreFile: async (path, text, expect) => (log.restored.push([path, text, expect]), opts.restoreFails ? { ok: false, error: opts.restoreFails } : { ok: true }),
+    // the Genie log hears of failed steps, a stuck task and a retry; a stronger model may be offered; a hint goes in the chat box
+    event: (e) => log.genieEvents.push(e),
+    escalation: opts.escalation ? () => opts.escalation : undefined,
+    prefill: (text) => {
+      log.prefilled = text;
+    },
     ideContext: () => ({ role: "system", content: opts.context ? opts.context() : "ide context" }),
     editorText: () => (opts.editorText ? opts.editorText() : ""),
     chatBefore: () => (opts.chatBefore ? opts.chatBefore() : ""),
@@ -257,7 +269,7 @@ function setup(script, opts = {}) {
     const last = req.messages.filter((m) => m.role === "user").pop();
     return JSON.parse(last.content);
   };
-  return { runner, log, done, steps, header, results, messages };
+  return { runner, log, done, steps, header, results, messages, review: reviewEl };
 }
 
 before(() => {
@@ -810,6 +822,188 @@ test("built: how a task ended is reported with its reason, and an unreadable ans
   assert.deepEqual(long.log.reports.map((r) => r.outcome), ["toolong"]);
 });
 
+// ---- a task that is stuck, and the Genie log ----------------------------------------------------------------------------
+
+const rowsOf = (t) => t.review.querySelectorAll(".cw-reviewbar__row");
+const rbtn = (row, label) => row.querySelectorAll("button").find((b) => b.textContent === label);
+const readFail = { say: "", actions: [{ type: "files_read", path: "gone.py" }], done: false };
+const noFile = async () => ({ status: 404, message: "no such file" });
+
+test("built: the same step failing three times pauses the task and Stop ends it; the Genie log hears of every failure, the stuck task and the end", async () => {
+  const t = setup([readFail, readFail, readFail, { say: "never asked", actions: [], done: true }], {
+    readFiles: noFile,
+    answer: (title) => (/stuck/.test(title) ? "Stop" : "Allow for this session"),
+  });
+  await t.done(t.runner.start("read gone.py"));
+  assert.equal(t.log.requests.length, 3, "no fourth request: nothing more is used while the user decides");
+  assert.match(t.log.asked.join("\n"), /Genie seems stuck \[Give a hint\/Stop\] -> Stop/);
+  assert.deepEqual(t.log.genieEvents.map((e) => e.event), ["step_failed", "step_failed", "step_failed", "stuck", "stuck_answer"]);
+  const f = t.log.genieEvents[0];
+  assert.equal(f.action, "files_read");
+  assert.equal(f.model, "test-model");
+  assert.equal(f.reason, "no such file");
+  assert.equal(f.failed, 1);
+  assert.equal(t.log.genieEvents[3].failed, 3);
+  assert.equal(t.log.reports.length, 1);
+  assert.equal(t.log.reports[0].outcome, "stopped");
+  assert.equal(t.log.reports[0].failed, 3);
+  assert.equal(t.log.reports[0].steps, 3);
+  assert.equal(t.log.reports[0].model, "test-model");
+  // the log can tell the tasks apart, count why, see the way to it and what the user chose
+  const tid = t.log.genieEvents[0].tid;
+  assert.match(tid, /^t[a-z0-9]{6}$/);
+  assert.ok(t.log.genieEvents.every((e) => e.tid === tid), "one task id on every event");
+  assert.equal(t.log.reports[0].tid, tid);
+  assert.equal(t.log.genieEvents[0].trail, "files_read");
+  assert.equal(t.log.genieEvents[2].trail, "files_read,files_read,files_read");
+  const stuckEv = t.log.genieEvents.find((e) => e.event === "stuck");
+  assert.equal(stuckEv.rule, "same-step");
+  const ans = t.log.genieEvents.find((e) => e.event === "stuck_answer");
+  assert.deepEqual([ans.choice, ans.rule], ["stop", "same-step"]);
+  assert.equal(t.log.reports[0].trail, "files_read,files_read,files_read");
+  assert.equal(typeof t.log.reports[0].tokens, "number");
+  assert.match(t.log.notes.join("\n"), /Stopped\. Nothing more was changed/);
+  assert.equal(t.runner.running, false);
+});
+
+test("built: a hint puts the failure in the chat box and ends the task, and a task that keeps failing differently is not stuck", async () => {
+  const t = setup([readFail, readFail, readFail], { readFiles: noFile, answer: (title) => (/stuck/.test(title) ? "Give a hint" : "Allow for this session") });
+  await t.done(t.runner.start("read gone.py"));
+  assert.match(t.log.prefilled || "", /^That step failed \(no such file\)\. Instead, $/);
+  assert.match(t.log.notes.join("\n"), /Paused\. Tell me what to do/);
+  assert.equal(t.log.reports[0].outcome, "stopped");
+  // three failures with different words, on different files, go on to the end
+  let n = 0;
+  const other = setup(
+    [{ say: "", actions: [{ type: "files_read", path: "a.py" }], done: false }, { say: "", actions: [{ type: "files_read", path: "b.py" }], done: false }, { say: "", actions: [{ type: "files_read", path: "c.py" }], done: false }, { say: "ok", actions: [], done: true }],
+    { readFiles: async () => ({ status: 404, message: "message " + String.fromCharCode(97 + n++) }), answer: () => "Allow for this session" }
+  );
+  await other.done(other.runner.start("read them"));
+  assert.equal(other.log.requests.length, 4);
+  assert.ok(!(other.log.genieEvents || []).some((e) => e.event === "stuck"));
+});
+
+test("built: a stronger model takes over a stuck task for a few steps, is told what failed, and the user chooses whether to keep it", async () => {
+  const list = { say: "", actions: [{ type: "files_list" }], done: false };
+  const t = setup([readFail, readFail, readFail, list, list, list, list, list, { say: "done", actions: [], done: true }], {
+    readFiles: noFile,
+    max: 12,
+    escalation: { id: "big-model", name: "Big Model", note: "It counts toward your credits." },
+    answer: (title, labels) => (/stuck/.test(title) ? "Try with Big Model" : /^Keep/.test(title) ? "Go back" : "Allow for this session"),
+  });
+  await t.done(t.runner.start("read gone.py"));
+  assert.match(t.log.asked.join("\n"), /Genie seems stuck \[Try with Big Model\/Give a hint\/Stop\] -> Try with Big Model/);
+  assert.deepEqual(t.log.requests.slice(0, 3).map((r) => r.model), ["test-model", "test-model", "test-model"]);
+  assert.equal(t.log.requests[3].model, "big-model", "the stronger model has the next step");
+  const last = t.log.requests[3].messages[t.log.requests[3].messages.length - 1].content;
+  assert.match(last, /Another model tried this and failed/);
+  assert.match(last, /files_read gone\.py/);
+  assert.ok(!/Another model tried/.test(t.log.requests[4].messages[t.log.requests[4].messages.length - 1].content), "the note is for one request only");
+  assert.deepEqual(t.log.genieEvents.filter((e) => e.event === "stuck" || e.event === "retry").map((e) => e.event), ["stuck", "retry"]);
+  // after its five steps the user is asked, and "Go back" returns the task to the model that was chosen
+  assert.match(t.log.asked.join("\n"), /Keep Big Model\? \[Keep Big Model\/Go back\] -> Go back/);
+  const models = t.log.requests.map((r) => r.model);
+  assert.equal(models.slice(3, 8).every((m) => m === "big-model"), true, models.join(","));
+  assert.equal(models[8], "test-model", models.join(","));
+  assert.equal(t.log.reports[0].outcome, "done");
+});
+
+test("built: a command that exits with an error is a check that failed: no failed step in the log, never stuck", async () => {
+  const run = { say: "run", actions: [{ type: "bash", command: "pytest -q" }], done: false };
+  const t = setup([run, run, run, run, { say: "it still fails", actions: [], done: true }], { max: 8, answer: () => "Allow for this session" });
+  const host = t.runner.host;
+  t.runner.perms.grantEverything();
+  host.runCommand = async () => ({ status: 200, exit_code: 1, output: "1 failed: password = hunter2", duration_ms: 5 });
+  await t.done(t.runner.start("run the tests"));
+  assert.equal(t.log.requests.length, 5);
+  assert.deepEqual(t.log.genieEvents, []);
+  assert.equal(t.log.reports[0].failed, 0);
+});
+
+test("built: a failed step reports the first line of its reason and none of the user's code or output", async () => {
+  const t = setup([{ say: "", actions: [{ type: "editor_replace", old: "zzz", new: "y" }], done: false }, { say: "ok", actions: [], done: true }], {
+    editorText: () => "const apiKey = 'sk-abc'\nreturn 1\n",
+    answer: () => "Allow for this session",
+  });
+  await t.done(t.runner.start("change it"));
+  const f = t.log.genieEvents.find((e) => e.event === "step_failed");
+  assert.ok(f, "a failed step was reported");
+  assert.equal(f.action, "editor_replace");
+  assert.ok(!/apiKey|sk-abc|return 1/.test(JSON.stringify(t.log.genieEvents)), JSON.stringify(t.log.genieEvents));
+});
+
+// ---- the groups of actions a step is sent ---------------------------------------------------------------------------------
+
+test("built: a step is sent the groups its task needs, a model asks for another with need_tools, and it stays for the task", async () => {
+  const t = setup(
+    [
+      { say: "I need the terminal.", actions: [{ type: "need_tools", groups: ["terminal"] }], done: false },
+      { say: "Now.", actions: [{ type: "files_list" }], done: false },
+      { say: "ok", actions: [], done: true },
+    ],
+    { answer: () => "Allow for this session" }
+  );
+  await t.done(t.runner.start("hello there"));
+  assert.deepEqual(t.log.requests[0].agent_groups, [], "a greeting needs the core only");
+  assert.deepEqual(t.log.requests[1].agent_groups, ["terminal"], "the group the model asked for comes with the next request");
+  assert.deepEqual(t.log.requests[2].agent_groups, ["terminal"], "and stays");
+  const r = t.results(1).step_results;
+  assert.equal(r[0].type, "need_tools");
+  assert.equal(r[0].status, "done");
+  assert.match(r[0].detail, /added: terminal/);
+  assert.deepEqual(t.log.genieEvents.filter((e) => e.event === "need_tools").map((e) => e.reason), ["terminal"]);
+  assert.equal(t.log.reports[0].groups, "terminal");
+  assert.deepEqual(t.steps().filter((s) => /Getting more actions/.test(s)).length, 1);
+});
+
+test("built: the words of the task and the page bring their groups from the first step", async () => {
+  const t = setup([{ say: "ok", actions: [], done: true }], { terminal: "$ python a.py\nModuleNotFoundError: No module named 'flask'\n$ " });
+  await t.done(t.runner.start("make a page for my shop and run it"));
+  const g = t.log.requests[0].agent_groups;
+  for (const want of ["editor", "terminal", "preview", "store"]) assert.ok(g.includes(want), want + " is not in " + g.join(","));
+  assert.ok(!g.includes("files"));
+  // asking for a group that is already there, or that does not exist, changes nothing
+  const u = setup([{ say: "", actions: [{ type: "need_tools", groups: ["nonsense"] }], done: false }, { say: "ok", actions: [], done: true }], {});
+  await u.done(u.runner.start("hello"));
+  assert.deepEqual(u.log.requests[1].agent_groups, []);
+});
+
+// ---- the checkpoint of a running task (Resume) -------------------------------------------------------------------
+
+test("built: a task writes a checkpoint when it starts and after each step, and the last one says how it ended", async () => {
+  const t = setup([{ say: "", actions: [{ type: "files_list" }], done: false }, { say: "", actions: [{ type: "files_list" }], done: false }, { say: "ok", actions: [], done: true }], { answer: () => "Allow for this session" });
+  await t.done(t.runner.start("list my files"));
+  const c = t.log.checkpoints;
+  assert.deepEqual(c.map((x) => x.state), ["running", "running", "running", "done"]);
+  assert.deepEqual(c.map((x) => x.steps), [0, 1, 2, 3]);
+  assert.ok(c.every((x) => x.task === "list my files"));
+  assert.equal(c[3].changed, "");
+});
+
+test("built: a task that is stopped, or fails, says so in its last checkpoint", async () => {
+  const t = setup(["nope", "still nope"]);
+  await t.done(t.runner.start("do a thing"));
+  assert.equal(t.log.checkpoints[t.log.checkpoints.length - 1].state, "failed");
+  const u = setup([{ hang: true }]);
+  const run = u.runner.start("wait for it");
+  await sleep(30);
+  u.runner.stop();
+  await u.done(run);
+  assert.equal(u.log.checkpoints[u.log.checkpoints.length - 1].state, "stopped");
+});
+
+test("built: the files a task changed are in its checkpoint", async () => {
+  let text = "a = 1\n";
+  globalThis.window.GenieReview = {
+    proposeAsync: async (x) => ((text = x), { total: 1, accepted: 1 }),
+    applyDirect: (d) => ((text = d.text), { total: 1, accepted: 1, rejected: 0, undo: () => true }),
+  };
+  globalThis.window.CompileandRun = () => {};
+  const t = setup([{ say: "", actions: [{ type: "editor_write", text: "a = 2\n" }], done: false }, { say: "", actions: [{ type: "run" }], done: true }], { editorText: () => text, answer: () => "Allow once" });
+  await t.done(t.runner.start("change a"));
+  assert.equal(t.log.checkpoints.some((x) => x.changed === "the editor" && x.steps >= 1), true, JSON.stringify(t.log.checkpoints));
+});
+
 test("built: the end of a task tells the steps, the tokens and, when a plan counts them, the credits", async () => {
   const t = setup([{ say: "Looking.", actions: [{ type: "files_list" }], done: false }, { say: "Yes.", actions: [], done: true }], { credits: 9, answer: () => "Allow for this session" });
   await t.done(t.runner.start("explain"));
@@ -1044,6 +1238,237 @@ test("built: Undo this task does not overwrite what the user wrote after the tas
   assert.equal(t.messages.querySelector(".cw-agent__undo").textContent, "Undo this task");
 });
 
+test("built: Review is a bar above the box with the files the task changed, and Keep and Undo make a row vanish", async () => {
+  let text = "x = 1\n";
+  globalThis.window.GenieReview = {
+    proposeAsync: async (x) => ((text = x), { total: 1, accepted: 1 }),
+    applyDirect: (d) => ((text = d.text), { total: 1, accepted: 1, rejected: 0, undo: () => true }),
+  };
+  globalThis.window.CompileandRun = () => {};
+  const t = setup([{ say: "", actions: [{ type: "editor_write", text: "x = 2\ny = 5\n" }, { type: "files_new", path: "notes.txt", kind: "file" }], done: false }, { say: "", actions: [{ type: "run" }], done: true }], { editorText: () => text, answer: () => "Allow once" });
+  const files = t.runner.host.files;
+  const moved = [];
+  files.move = async (p, to) => (moved.push(p + " -> " + to), { ok: true });
+  files.info = (p) => (p === "" || p === "Trash" ? { exists: true, type: "folder" } : { exists: false });
+  t.runner.perms.grantEverything();
+  await t.done(t.runner.start("change x and add notes"));
+  const rows = rowsOf(t);
+  assert.equal(rows.length, 2);
+  assert.equal(t.review.querySelector(".cw-reviewbar__title").textContent, "Genie changed 2 files");
+  assert.deepEqual(t.messages.querySelectorAll(".cw-review"), [], "the card has no list any more");
+  assert.deepEqual(t.review.querySelectorAll(".cw-reviewbar__path").map((x) => x.textContent), ["the editor", "notes.txt"]);
+  assert.equal(t.review.querySelector(".cw-reviewbar__count").textContent, "+2 \u22121");
+  assert.deepEqual(t.log.changeCounts.slice(-1), [2]);
+  // Keep: the row vanishes, the text stays
+  rbtn(rows[0], "Keep").click();
+  assert.equal(rowsOf(t).length, 1, "a kept row is gone, not greyed");
+  assert.equal(text, "x = 2\ny = 5\n");
+  assert.deepEqual(t.log.changeCounts.slice(-1), [1]);
+  // Undo of the last row: it goes too, then the bar is empty and the chat says what was done
+  rbtn(rowsOf(t)[0], "Undo").click();
+  await sleep(60);
+  assert.deepEqual(moved, ["notes.txt -> Trash"]);
+  assert.equal(rowsOf(t).length, 0);
+  assert.equal(t.review.children.length, 0, "the bar is empty");
+  assert.deepEqual(t.log.changeCounts.slice(-1), [0]);
+  assert.match(t.log.notes[t.log.notes.length - 1], /Reviewed 2: 1 kept, 1 undone/);
+});
+
+test("built: Undo of a change of text puts the text back, a file edited since is left, and Undo all asks first", async () => {
+  let text = "x = 1\n";
+  globalThis.window.GenieReview = {
+    proposeAsync: async (x) => ((text = x), { total: 1, accepted: 1 }),
+    applyDirect: (d) => ((text = d.text), { total: 1, accepted: 1, rejected: 0, undo: () => true }),
+  };
+  globalThis.window.CompileandRun = () => {};
+  const t = setup([{ say: "", actions: [{ type: "editor_write", text: "x = 2\n" }], done: false }, { say: "", actions: [{ type: "run" }], done: true }], { editorText: () => text, answer: (title) => (/^Undo all/.test(title) ? "Undo all" : "Allow once") });
+  await t.done(t.runner.start("set x to two"));
+  text = "x = 2\nmy own line\n"; // the user typed after the task
+  rbtn(rowsOf(t)[0], "Undo").click();
+  await sleep(60);
+  assert.equal(text, "x = 2\nmy own line\n", "the user's text was not overwritten");
+  assert.match(rowsOf(t)[0].querySelector(".cw-reviewbar__note").textContent, /changed since the task/);
+  assert.equal(rowsOf(t).length, 1, "the row stays when it could not be put back");
+  text = "x = 2\n";
+  t.review.querySelector(".cw-reviewbar__head").querySelectorAll("button").find((b) => b.textContent === "Undo all").click();
+  await sleep(30);
+  const card = t.messages.querySelector(".cw-agent__ask");
+  assert.ok(card, "Undo all asks first");
+  assert.equal(text, "x = 2\n", "nothing is undone before the user says yes");
+  card.querySelectorAll("button").find((b) => b.textContent === "Undo all").click();
+  await sleep(120);
+  assert.equal(text, "x = 1\n");
+  assert.equal(rowsOf(t).length, 0);
+});
+
+test("built: Keep all makes every row vanish and changes nothing, and the next task starts with an empty bar", async () => {
+  const t = setup([{ say: "", actions: [{ type: "files_new", path: "a.txt", kind: "file" }, { type: "files_new", path: "b.txt", kind: "file" }], done: false }, { say: "ok", actions: [], done: true }, { say: "second", actions: [], done: true }], { answer: () => "Allow for this session" });
+  t.runner.perms.grantEverything();
+  t.runner.host.files.info = (p) => (p === "" ? { exists: true, type: "folder" } : { exists: false });
+  await t.done(t.runner.start("make two files"));
+  assert.equal(rowsOf(t).length, 2);
+  t.review.querySelector(".cw-reviewbar__head").querySelectorAll("button").find((b) => b.textContent === "Keep all").click();
+  assert.equal(rowsOf(t).length, 0);
+  assert.match(t.log.notes[t.log.notes.length - 1], /Reviewed 2: 2 kept\./);
+  await t.runner.start("another one").catch(() => {});
+  assert.equal(rowsOf(t).length, 0);
+});
+
+
+const shellRun = (changes, output = "done") => async () => ({ status: 200, exit_code: 0, output, duration_ms: 5, changes });
+
+test("built: what a shell command made, changed and deleted is in the bar, with Undo that goes through the server, and the model is told which files", async () => {
+  const t = setup([{ say: "", actions: [{ type: "bash", command: "sh build.sh" }], done: false }, { say: "ok", actions: [], done: true }], { max: 8, answer: () => "Allow for this session" });
+  t.runner.perms.grantEverything();
+  const files = t.runner.host.files;
+  const moved = [];
+  files.move = async (p, to) => (moved.push(p + " -> " + to), { ok: true });
+  files.info = (p) => (p === "" || p === "Trash" ? { exists: true, type: "folder" } : { exists: false });
+  t.runner.host.runCommand = shellRun([
+    { path: "out/app.js", kind: "new", after: "console.log(1)\n", size: 15, undo: true },
+    { path: "main.py", kind: "changed", before: "x = 1\n", after: "x = 2\n", size: 6, undo: true },
+    { path: "old.txt", kind: "deleted", before: "bye\n", size: 4, undo: true },
+    { path: "huge.bin", kind: "changed", size: 99999, undo: false },
+  ]);
+  await t.done(t.runner.start("build it"));
+  assert.match(JSON.stringify(t.results(1)), /files the command changed: new out\/app\.js, changed main\.py, deleted old\.txt, changed huge\.bin/);
+  assert.deepEqual(t.log.changeCounts.slice(-1), [4], "the panel was told: 4 files");
+  const rows = rowsOf(t);
+  assert.deepEqual(t.review.querySelectorAll(".cw-reviewbar__path").map((x) => x.textContent), ["out/app.js (by a command)", "main.py (by a command)", "old.txt (by a command)", "huge.bin (by a command)"]);
+  assert.equal(rbtn(rows[3], "Undo").disabled, true, "a file too large to keep has no Undo");
+  assert.match(rows[3].querySelector(".cw-reviewbar__note").textContent, /too large or not text/);
+  rbtn(rows[1], "Undo").click();
+  await sleep(40);
+  rbtn(rowsOf(t).find((r) => /old\.txt/.test(r.textContent)), "Undo").click();
+  await sleep(40);
+  rbtn(rowsOf(t).find((r) => /out\/app\.js/.test(r.textContent)), "Undo").click();
+  await sleep(40);
+  assert.deepEqual(t.log.restored, [["main.py", "x = 1\n", "x = 2\n"], ["old.txt", "bye\n", null]], "the server is asked to write the text back, only if the file is as the command left it");
+  assert.deepEqual(moved, ["out/app.js -> Trash"]);
+  assert.equal(rowsOf(t).length, 1, "only the file that cannot be put back is left");
+});
+
+test("built: a file the user changed since the command is not put back, and the server's reason is shown on its row", async () => {
+  const t = setup([{ say: "", actions: [{ type: "bash", command: "sh edit.sh" }], done: false }, { say: "ok", actions: [], done: true }], { max: 8, answer: () => "Allow for this session", restoreFails: "The file has changed since: it was not put back." });
+  t.runner.perms.grantEverything();
+  t.runner.host.runCommand = shellRun([{ path: "main.py", kind: "changed", before: "x = 1\n", after: "x = 2\n", size: 6, undo: true }]);
+  await t.done(t.runner.start("edit it"));
+  const row = rowsOf(t)[0];
+  rbtn(row, "Undo").click();
+  await sleep(40);
+  const again = rowsOf(t)[0];
+  assert.match(again.querySelector(".cw-reviewbar__note").textContent, /has changed since: it was not put back/);
+  assert.equal(rowsOf(t).length, 1, "the row stays");
+  assert.ok(!rbtn(again, "Undo").disabled, "it can be tried again");
+});
+
+test("built: commands that touch the same file are one change, and a command that changes nothing adds none", async () => {
+  const t = setup([{ say: "", actions: [{ type: "bash", command: "one" }], done: false }, { say: "", actions: [{ type: "bash", command: "two" }], done: false }, { say: "", actions: [{ type: "bash", command: "three" }], done: false }, { say: "ok", actions: [], done: true }], { max: 8, answer: () => "Allow for this session" });
+  t.runner.perms.grantEverything();
+  const runs = [[{ path: "a.txt", kind: "changed", before: "0", after: "1" }], [{ path: "a.txt", kind: "changed", before: "1", after: "2" }], []];
+  let i = 0;
+  t.runner.host.runCommand = async () => ({ status: 200, exit_code: 0, output: "out" + i, duration_ms: 1, changes: runs[i++] });
+  await t.done(t.runner.start("go"));
+  assert.equal(rowsOf(t).length, 1);
+  rbtn(rowsOf(t)[0], "Undo").click();
+  await sleep(40);
+  assert.deepEqual(t.log.restored, [["a.txt", "0", "2"]], "the first text before, the last text now");
+});
+
+test("built: the panel is told the count when a task starts, as files change, and as rows are settled; while the task runs the bar is one line with Show", async () => {
+  let text = "a = 1\n";
+  globalThis.window.GenieReview = {
+    proposeAsync: async (x) => ((text = x), { total: 1, accepted: 1 }),
+    applyDirect: (d) => ((text = d.text), { total: 1, accepted: 1, rejected: 0, undo: () => true }),
+  };
+  globalThis.window.CompileandRun = () => {};
+  const t = setup([{ say: "", actions: [{ type: "editor_write", text: "a = 2\n" }], done: false }, { say: "", actions: [{ type: "files_list" }], done: false }, { say: "ok", actions: [], done: true }], { editorText: () => text, answer: () => "Allow once" });
+  const p = t.runner.start("change a");
+  for (let k = 0; k < 300 && !t.log.changeCounts.includes(1); k++) await sleep(10);
+  assert.match(t.review.textContent, /1 file changed so far/);
+  assert.deepEqual(rowsOf(t), [], "while the task runs there are no Keep and Undo");
+  assert.ok(t.review.querySelectorAll("button").find((b) => b.textContent === "Show in the editor"));
+  await t.done(p);
+  assert.equal(t.log.changeCounts[0], 0, "told 0 when the task starts");
+  assert.equal(rowsOf(t).length, 1, "at the end the list has its Keep and Undo");
+  assert.equal(t.review.querySelector(".cw-reviewbar__title").textContent, "Genie changed 1 file");
+  rbtn(rowsOf(t)[0], "Keep").click();
+  assert.equal(t.log.changeCounts[t.log.changeCounts.length - 1], 0);
+});
+
+test("built: a row opens its file in the editor with the changes marked, and Keep and Undo there are the same as in the bar", async () => {
+  let text = "x = 1\n";
+  globalThis.window.GenieReview = {
+    proposeAsync: async (v) => ((text = v), { total: 1, accepted: 1 }),
+    applyDirect: (d) => ((text = d.text), { total: 1, accepted: 1, rejected: 0, undo: () => true }),
+  };
+  globalThis.window.CompileandRun = () => {};
+  const shown = [];
+  globalThis.window.GenieChanges = { show: (o) => (shown.push(o), true), hide: () => shown.push("hidden") };
+  const t = setup([{ say: "", actions: [{ type: "editor_write", text: "x = 2\ny = 5\n" }, { type: "bash", command: "make" }], done: false }, { say: "ok", actions: [], done: true }], { editorText: () => text, answer: () => "Allow once" });
+  t.runner.perms.grantEverything();
+  t.runner.host.runCommand = shellRun([{ path: "out/a.txt", kind: "changed", before: "a\n", after: "b\n", size: 2, undo: true }, { path: "gone.txt", kind: "deleted", before: "bye\n", size: 4, undo: true }]);
+  await t.done(t.runner.start("do it"));
+  assert.equal(rowsOf(t).length, 3);
+  // the editor's own change: opened with its text before and after, and a position in the list
+  t.review.querySelectorAll(".cw-reviewbar__path")[0].click();
+  await sleep(20);
+  assert.equal(shown[0].kind, "changed");
+  assert.equal(shown[0].before, "x = 1\n");
+  assert.equal(shown[0].after, "x = 2\ny = 5\n");
+  assert.deepEqual([shown[0].index, shown[0].total], [1, 3]);
+  assert.equal(shown[0].keepLabel, "Keep");
+  // Keep in the editor's bar settles the row in the chat's bar
+  assert.equal(await shown[0].onKeep(), "");
+  assert.equal(rowsOf(t).length, 2);
+  // a file deleted by a command: a read-only view, with Restore and Dismiss
+  t.review.querySelectorAll(".cw-reviewbar__path").find((x) => /gone\.txt/.test(x.textContent)).click();
+  await sleep(20);
+  const d = shown[shown.length - 1];
+  assert.deepEqual([d.kind, d.before, d.keepLabel, d.undoLabel], ["deleted", "bye\n", "Dismiss", "Restore"]);
+  assert.equal(await d.onUndo(), "");
+  assert.deepEqual(t.log.restored, [["gone.txt", "bye\n", null]]);
+  assert.equal(rowsOf(t).length, 1);
+  // the next changed file from the editor's bar
+  const last = t.review.querySelectorAll(".cw-reviewbar__path")[0];
+  last.click();
+  await sleep(20);
+  delete globalThis.window.GenieChanges;
+});
+
+test("built: six steps that change nothing and print nothing new pause the task, and Keep going carries on", async () => {
+  const list = { say: "", actions: [{ type: "files_list" }], done: false };
+  const t = setup([list, list, list, list, list, list, list, list, { say: "ok", actions: [], done: true }], {
+    max: 12,
+    answer: (title) => (/stuck/.test(title) ? "Keep going" : "Allow for this session"),
+  });
+  await t.done(t.runner.start("look around"));
+  const asked = t.log.asked.join("\n");
+  assert.match(asked, /Genie seems stuck \[Keep going\/Give a hint\/Stop\] -> Keep going/);
+  assert.equal(t.log.requests.length, 9, "it went on after Keep going");
+  assert.deepEqual(t.log.genieEvents.filter((e) => e.event === "stuck").length, 1);
+  assert.equal(t.log.reports[0].outcome, "done");
+});
+
+test("built: in a long stretch, most of the steps used with nothing changed asks once; Stop ends the task, and with the usual few steps it does not ask", async () => {
+  let n = 0;
+  const run = { say: "", actions: [{ type: "bash", command: "date" }], done: false };
+  const t = setup(Array(14).fill(run), { max: 15, answer: (title) => (/stuck/.test(title) ? "Stop" : "Allow for this session") });
+  t.runner.perms.grantEverything();
+  t.runner.host.runCommand = async () => ({ status: 200, exit_code: 0, output: "line " + ++n, duration_ms: 1, changes: [] });
+  await t.done(t.runner.start("look at the date a lot"));
+  assert.match(t.log.asked.join("\n"), /Genie seems stuck \[Keep going\/Give a hint\/Stop\] -> Stop/);
+  assert.equal(t.log.requests.length, 12, "paused at step 12 of 15");
+  assert.equal(t.log.reports[0].outcome, "stopped");
+  // eight steps of eight, nothing changed: no card from this rule (the step limit has its own)
+  let m = 0;
+  const small = setup(Array(7).fill(run).concat([{ say: "ok", actions: [], done: true }]), { max: 8, answer: () => "Allow for this session" });
+  small.runner.perms.grantEverything();
+  small.runner.host.runCommand = async () => ({ status: 200, exit_code: 0, output: "out " + ++m, duration_ms: 1, changes: [] });
+  await small.done(small.runner.start("run a few times"));
+  assert.ok(!(small.log.asked || []).some((x) => /stuck/.test(x)), (small.log.asked || []).join("|"));
+});
+
 test("built: a task that changed nothing has no Undo", async () => {
   const t = setup([{ say: "It is a loop.", actions: [], done: true }]);
   await t.done(t.runner.start("explain"));
@@ -1266,7 +1691,8 @@ test("built: a task may use the Preview page 30 times; the 31st is left out and 
   const steps = [];
   for (let i = 0; i < 11; i++) steps.push({ say: "", actions: [{ type: "preview_read" }, { type: "preview_read" }, { type: "preview_read" }], done: false });
   steps.push({ say: "ok", actions: [], done: true });
-  const t = setup(steps, { max: 14 });
+  // eleven steps that read the same page again: the task is paused as one that changes nothing, and Keep going carries it on
+  const t = setup(steps, { max: 14, answer: (title) => (/stuck/.test(title) ? "Keep going" : "Allow for this session") });
   await t.done(t.runner.start("read it a lot"));
   const last = t.results(11).step_results; // the 11th step: reads 31, 32, 33
   assert.ok(last.every((r) => r.status === "failed" && /30 times/.test(r.detail)), JSON.stringify(last));

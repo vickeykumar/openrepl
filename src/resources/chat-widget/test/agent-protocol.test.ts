@@ -139,6 +139,7 @@ test("the list of actions is the one in the server's prompt", () => {
     "preview_console",
     "preview_network",
     "preview_inspect",
+    "preview_find",
     "preview_wait",
     "preview_click",
     "preview_type",
@@ -146,11 +147,13 @@ test("the list of actions is the one in the server's prompt", () => {
     "preview_scroll",
     "preview_select",
     "preview_hover",
+    "preview_drag",
     "preview_go",
     "preview_resize",
     "preview_eval",
     "preview_storage",
     "store_suggest",
+    "need_tools",
     "finish",
   ]);
 });
@@ -666,4 +669,58 @@ test("the lines of an old text that are not in the editor are named", () => {
   assert.equal(missingLines(text, "<title>x</title>"), "");
   const r = locateOld(text, '<link href="a.css" rel="stylesheet">\n<meta charset="utf-8">');
   assert.ok(!r.ok && !(r as any).many && (r as any).missing === '<meta charset="utf-8">');
+});
+
+test("preview_drag takes a part, how far to drag and where to press, and checks every number", () => {
+  const types = (j: string) => { const r = parseStep(j); return r.ok ? { actions: r.step.actions, dropped: r.step.dropped } : null; };
+  const ok = types('{"actions":[{"type":"preview_drag","ref":"e4","dx":-80,"dy":40}]}');
+  assert.deepEqual(ok!.actions, [{ type: "preview_drag", ref: "e4", dx: -80, dy: 40 }]);
+  const full = types('{"actions":[{"type":"preview_drag","ref":"e4","x":120.4,"y":300,"dx":0,"dy":-200.6,"steps":20}]}');
+  assert.deepEqual(full!.actions, [{ type: "preview_drag", ref: "e4", x: 120, y: 300, dx: 0, dy: -201, steps: 20 }]);
+  for (const bad of [
+    '{"type":"preview_drag","dx":5,"dy":5}', // no part
+    '{"type":"preview_drag","ref":"e4"}', // no distance
+    '{"type":"preview_drag","ref":"e4","dx":0,"dy":0}',
+    '{"type":"preview_drag","ref":"e4","dx":99999,"dy":0}',
+    '{"type":"preview_drag","ref":"e4","dx":"far","dy":0}',
+    '{"type":"preview_drag","ref":"e4","x":10,"dx":5}', // x without y
+    '{"type":"preview_drag","ref":"e4","x":-5,"y":5,"dx":5}',
+    '{"type":"preview_drag","ref":"e4","dx":5,"steps":1}',
+    '{"type":"preview_drag","ref":"e4","dx":5,"steps":200}',
+  ]) {
+    const r = types('{"actions":[' + bad + "]}");
+    assert.equal(r!.actions.length, 0, bad);
+    assert.ok(r!.dropped.some((d: string) => /preview_drag left out/.test(d)), bad);
+  }
+});
+
+test("preview_click takes a point of the part for a canvas, both numbers or neither", () => {
+  const one = (a: string) => { const r = parseStep('{"actions":[' + a + "]}"); return r.ok ? r.step : null; };
+  assert.deepEqual(one('{"type":"preview_click","ref":"e2"}')!.actions, [{ type: "preview_click", ref: "e2" }]);
+  assert.deepEqual(one('{"type":"preview_click","ref":"e2","x":50,"y":60}')!.actions, [{ type: "preview_click", ref: "e2", x: 50, y: 60 }]);
+  assert.equal(one('{"type":"preview_click","ref":"e2","x":50}')!.actions.length, 0);
+  assert.equal(one('{"type":"preview_click","ref":"e2","x":"a","y":1}')!.actions.length, 0);
+});
+
+test("preview_find takes a selector, a text or a point, and preview_read can ask for boxes", () => {
+  const one = (a: string) => { const r = parseStep('{"actions":[' + a + "]}"); return r.ok ? r.step : null; };
+  assert.deepEqual(one('{"type":"preview_find","selector":"#bird, .pig"}')!.actions, [{ type: "preview_find", selector: "#bird, .pig" }]);
+  assert.deepEqual(one('{"type":"preview_find","query":"Score"}')!.actions, [{ type: "preview_find", query: "Score" }]);
+  assert.deepEqual(one('{"type":"preview_find","left":300.4,"top":420}')!.actions, [{ type: "preview_find", left: 300, top: 420 }]);
+  for (const bad of ['{"type":"preview_find"}', '{"type":"preview_find","selector":""}', '{"type":"preview_find","left":5}', '{"type":"preview_find","left":-1,"top":2}', '{"type":"preview_find","left":"a","top":2}']) {
+    const r = one(bad)!;
+    assert.equal(r.actions.length, 0, bad);
+    assert.ok(r.dropped.some((d: string) => /preview_find left out/.test(d)), bad);
+  }
+  assert.deepEqual(one('{"type":"preview_read","boxes":true}')!.actions, [{ type: "preview_read", more: false, viewport: false, boxes: true }]);
+  assert.equal((one('{"type":"preview_read"}')!.actions[0] as any).boxes, false);
+});
+
+test("space is drawing or nothing, for a click and for a drag", () => {
+  const one = (a: string) => { const r = parseStep('{"actions":[' + a + "]}"); return r.ok ? r.step : null; };
+  assert.deepEqual(one('{"type":"preview_click","ref":"e1","x":5,"y":6,"space":"drawing"}')!.actions, [{ type: "preview_click", ref: "e1", x: 5, y: 6, space: "drawing" }]);
+  assert.deepEqual(one('{"type":"preview_drag","ref":"e1","dx":5,"space":"drawing"}')!.actions, [{ type: "preview_drag", ref: "e1", dx: 5, dy: 0, space: "drawing" }]);
+  assert.deepEqual(one('{"type":"preview_click","ref":"e1","space":"screen"}')!.actions, [{ type: "preview_click", ref: "e1" }]);
+  assert.equal(one('{"type":"preview_click","ref":"e1","space":"world"}')!.actions.length, 0);
+  assert.equal(one('{"type":"preview_drag","ref":"e1","dx":5,"space":3}')!.actions.length, 0);
 });

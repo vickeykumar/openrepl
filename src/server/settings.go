@@ -110,6 +110,10 @@ type SiteSettings struct {
 	// PreviewAgentOff stops Genie's agent from acting in the Preview page (click, type, press, scroll, select, hover, go, resize, run
 	// an expression, change its storage). It can still look at the page (read, console, calls). The Preview itself stays as it is.
 	PreviewAgentOff bool `json:"previewAgentOff"`
+	// GenieEventsOff stops the Genie log (genie_log.go): the agent's failed steps and the end of each task, kept without any text of the
+	// user's. GenieEventDays is how many days it is kept, 1 to 365; 0 means 30.
+	GenieEventsOff bool `json:"genieEventsOff"`
+	GenieEventDays int  `json:"genieEventDays"`
 	// Genie holds the AI assistant's switch and its rate limits.
 	Genie GenieSettings `json:"genie"`
 	// Admins are the accounts added in the dashboard, lower case, besides the
@@ -207,6 +211,9 @@ type GenieSettings struct {
 	// deleting, renaming and moving, closing tabs) for a while. Allowing one kind for the session stays.
 	AgentAutoOff  bool `json:"agentAutoOff"`
 	AgentRiskyOff bool `json:"agentRiskyOff"`
+	// EscalationModels are the models, in order, that a task that is stuck may be tried again with (the user chooses; the page offers
+	// the first the user may use, and credits count as for any answer). Empty: the stuck card offers only a hint and Stop.
+	EscalationModels []string `json:"escalationModels"`
 	// AgentShellOff takes away the agent's "bash" action: the server refuses a command (agent_shell.go).
 	AgentShellOff bool `json:"agentShellOff"`
 	AgentMaxSteps int  `json:"agentMaxSteps"`
@@ -308,6 +315,9 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 		safe = append(safe, n)
 	}
 	s.StoreSafeList = safe
+	if s.GenieEventDays != 0 && (s.GenieEventDays < 1 || s.GenieEventDays > 365) {
+		return s, fmt.Errorf("the days the Genie log is kept must be between 1 and 365 (or empty for 30)")
+	}
 	if s.SnippetMaxDays != 0 && (s.SnippetMaxDays < minSnippetMaxDays || s.SnippetMaxDays > maxSnippetMaxDays) {
 		return s, fmt.Errorf("the longest a code link works must be between %d and %d days (or empty)", minSnippetMaxDays, maxSnippetMaxDays)
 	}
@@ -589,6 +599,10 @@ type publicSettings struct {
 	PreviewOff       bool `json:"previewOff"`
 	PreviewGuestsOff bool `json:"previewGuestsOff"`
 	PreviewAgentOff  bool `json:"previewAgentOff"`
+	// the page reports the agent's failed steps (genie_log.go) unless an admin switched that off
+	GenieEventsOff bool `json:"genieEventsOff"`
+	// the models a stuck task may be tried again with, in order (GenieSettings.EscalationModels)
+	EscalationModels []string `json:"escalationModels"`
 	// the largest file the editor opens, in MB (the effective number: 16 when none is set)
 	MaxEditorFileMB int `json:"maxEditorFileMB"`
 	// ShareMaxGuestMinutes and ShareMaxUserMinutes are the longest a share link works (SiteSettings.ShareLinkGuestMinutes)
@@ -704,6 +718,9 @@ func (g *GenieSettings) normalizeNumbers() error {
 		return err
 	}
 	if err := g.normalizeNativeTools(); err != nil {
+		return err
+	}
+	if err := g.normalizeEscalation(); err != nil {
 		return err
 	}
 	prices := map[string]modelPrice{}
@@ -872,6 +889,8 @@ func (s SiteSettings) public() publicSettings {
 		PreviewOff:           s.PreviewOff,
 		PreviewGuestsOff:     s.PreviewGuestsOff,
 		PreviewAgentOff:      s.PreviewAgentOff,
+		GenieEventsOff:       s.GenieEventsOff,
+		EscalationModels:     s.Genie.EscalationModels,
 		MaxEditorFileMB:      s.maxEditorFileMB(),
 		ShareMaxGuestMinutes: s.shareLinkMax(true),
 		ShareMaxUserMinutes:  s.shareLinkMax(false),
@@ -1128,6 +1147,12 @@ func settingsChanges(a, b SiteSettings) []string {
 	if a.PreviewAgentOff != b.PreviewAgentOff {
 		out = append(out, "Genie acting in the preview "+onoff(!b.PreviewAgentOff))
 	}
+	if a.GenieEventsOff != b.GenieEventsOff {
+		out = append(out, "the Genie log "+onoff(!b.GenieEventsOff))
+	}
+	if a.GenieEventDays != b.GenieEventDays {
+		out = append(out, fmt.Sprintf("the Genie log is kept %d days", b.GenieEventDays))
+	}
 	if a.PreviewGuestsOff != b.PreviewGuestsOff {
 		out = append(out, "preview for guests "+onoff(!b.PreviewGuestsOff))
 	}
@@ -1170,6 +1195,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.Genie.AgentAutoOff != b.Genie.AgentAutoOff {
 		out = append(out, "agent: allow everything for a session "+onoff(!b.Genie.AgentAutoOff))
+	}
+	if fmt.Sprint(a.Genie.EscalationModels) != fmt.Sprint(b.Genie.EscalationModels) {
+		out = append(out, "Genie: models for a stuck task "+strings.Join(b.Genie.EscalationModels, ", "))
 	}
 	if a.Genie.AgentShellOff != b.Genie.AgentShellOff {
 		out = append(out, "agent: run commands "+onoff(!b.Genie.AgentShellOff))

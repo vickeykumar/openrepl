@@ -55,6 +55,32 @@ func (g *GenieSettings) normalizeNativeTools() error {
 	return nil
 }
 
+// normalizeEscalation checks the models a stuck task may be tried again with: each is a model of the site, none twice, at most five.
+func (g *GenieSettings) normalizeEscalation() error {
+	known := map[string]bool{}
+	for _, id := range g.allModelIDs() {
+		known[id] = true
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	for _, id := range g.EscalationModels {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		if !known[id] {
+			return fmt.Errorf("%q is not a model", id)
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	if len(out) > 5 {
+		return fmt.Errorf("at most 5 models for a stuck task")
+	}
+	g.EscalationModels = out
+	return nil
+}
+
 // nativeToolFor says whether a model is given the tool: the admin's switch is on, the model is one of those that take it,
 // and its host has not refused it lately (a host that refused a call with the tool is not asked again for an hour).
 func nativeToolFor(g GenieSettings, m chatModel) bool {
@@ -160,6 +186,16 @@ func stepTool() map[string]interface{} {
 			"enter":           map[string]string{"type": "boolean"},
 			"append":          map[string]string{"type": "boolean"},
 			"gone":            map[string]string{"type": "boolean"},
+			"x":               map[string]string{"type": "integer"},
+			"y":               map[string]string{"type": "integer"},
+			"dx":              map[string]string{"type": "integer"},
+			"dy":              map[string]string{"type": "integer"},
+			"steps":           map[string]string{"type": "integer"},
+			"selector":        str,
+			"left":            map[string]string{"type": "integer"},
+			"top":             map[string]string{"type": "integer"},
+			"boxes":           map[string]string{"type": "boolean"},
+			"space":           str,
 		},
 		"required": []string{"type"},
 	}

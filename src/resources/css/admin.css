@@ -447,6 +447,8 @@ pre.code {
 
 /* usage: a row's 30-day sparkline, one account's day bars, and the site's visitors per day */
 .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 0; }
+.grid.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 720px) { .grid.five { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .nowrap { white-space: nowrap; }
 .drawer .stat .value { font-size: 19px; }
 .hbars.wide > div { grid-template-columns: 130px minmax(0, 1fr) 56px; }

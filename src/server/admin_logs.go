@@ -1,12 +1,14 @@
 package server
 
 import (
+	"bufio"
 	"io"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"utils"
 )
@@ -95,7 +97,41 @@ func tailLines(path string, n int) ([]string, bool, error) {
 
 var errorWords = regexp.MustCompile(`(?i)\b(error|failed|panic|fatal)\b`)
 
+// downloadLog sends the whole log file, line by line through the same masking as the viewer, as a text file to save.
+// The file is read as it is written, so a line that is half written is sent as it is.
+func (server *Server) downloadLog(w http.ResponseWriter, r *http.Request) {
+	f, err := os.Open(logFile)
+	if err != nil {
+		adminError(w, http.StatusNotFound, "No log file yet.")
+		return
+	}
+	defer f.Close()
+	h := w.Header()
+	h.Set("Content-Type", "text/plain; charset=utf-8")
+	h.Set("Content-Disposition", `attachment; filename="openrepl-gotty-log-`+time.Now().UTC().Format("2006-01-02")+`.txt"`)
+	h.Set("Cache-Control", "no-store")
+	h.Set("X-Content-Type-Options", "nosniff")
+	server.audit(r, "log", "downloaded the server log")
+	in := bufio.NewReaderSize(f, 64*1024)
+	out := bufio.NewWriterSize(w, 64*1024)
+	for {
+		line, err := in.ReadString('\n') // no limit on a line; redactLine cuts a runaway one
+		if line != "" {
+			out.WriteString(redactLine(strings.TrimRight(line, "\r\n")))
+			out.WriteByte('\n')
+		}
+		if err != nil {
+			break
+		}
+	}
+	out.Flush()
+}
+
 func (server *Server) handleAdminLogs(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("download") == "1" {
+		server.downloadLog(w, r)
+		return
+	}
 	rows := logDefaultRows
 	if v, err := strconv.Atoi(r.URL.Query().Get("lines")); err == nil && v > 0 {
 		rows = v
