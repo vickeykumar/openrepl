@@ -143,14 +143,38 @@ export function effortFor(used: readonly SkillInfo[], current: string): string |
 export function saveSkillRequest(name: string): string | null {
   const n = String(name || "").trim().toLowerCase();
   if (!/^[a-z][a-z0-9-]{0,39}$/.test(n)) return null;
+  const path = ".genie/skills/" + n + ".md";
   return (
-    "Save what we just did as a skill: write the file .genie/skills/" +
+    "Save what we just did as a skill. Steps: (1) ask for the files actions with need_tools if you do not have them, (2) create a new file at " +
+    path +
+    " with files_new (kind file), (3) open it with files_open and put the whole text in it with editor_write, (4) save it with files_save. " +
+    "The text starts with a header: a line of three dashes, then name: " +
     n +
-    ".md with a header (three dashes, then name: " +
-    n +
-    ", description: one line on what it is for, mode: agent or chat, args: what the user adds, then three dashes) and then the steps in plain words, so that someone can do the same again. " +
-    "Show me the file when it is saved. Do not run anything else."
+    ", description: one line on what it is for, mode: agent or chat, args: what the user adds (leave the line out if nothing), then a line of three dashes. After the header write the steps in plain words, so that someone can do the same again. " +
+    "Save it only in that folder, and show me the file when it is saved. Do not run anything else."
   );
+}
+
+// The commands in a message, to be drawn in the colour of a link and deleted as one piece: a skill the person has anywhere in the message (after a space
+// or at the start), and a command of the panel (/context, /tour ...) only as the first word. A name that is neither stays plain text.
+export interface CommandSpan {
+  start: number;
+  end: number;
+  name: string;
+}
+export function commandSpans(text: string, commands: readonly string[], skills: readonly SkillInfo[]): CommandSpan[] {
+  const known = new Set(skills.map((s) => s.name));
+  const cmds = new Set(commands);
+  const out: CommandSpan[] = [];
+  const re = /(^|\s)\/([a-z][a-z0-9-]{0,39})(?=$|\s|[.,;:!?])/gi;
+  const t = String(text || "");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(t)) !== null) {
+    const name = m[2].toLowerCase();
+    const start = m.index + m[1].length;
+    if (known.has(name) || (cmds.has(name) && t.slice(0, start).trim() === "")) out.push({ start, end: start + 1 + m[2].length, name });
+  }
+  return out;
 }
 
 // The message with a skill's name taken out ("let's /explain this" -> "let's this"): what the x on a skill chip does.

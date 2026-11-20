@@ -247,6 +247,12 @@ type GenieSettings struct {
 
 	// Skills and plugins (genie_ext.go): ExtensionsOff switches both off; PluginsFromLinks lets a signed-in user install a plugin from a GitHub or
 	// .zip link (off: the catalogue only); SitePlugins are catalogue plugins that are on for everyone.
+	// Connections (MCP, genie_conn.go): ConnectionsOff switches them off; ConnectionsNoApproval lets a user connect what a plugin from a link asks for
+	// without an admin approving it (off: a request, genie_conn_requests.go); ConnectionHosts, when not empty, are the only hosts a connection from a
+	// link may talk to.
+	ConnectionsOff        bool     `json:"connectionsOff"`
+	ConnectionsNoApproval bool     `json:"connectionsNoApproval"`
+	ConnectionHosts       []string `json:"connectionHosts"`
 	ExtensionsOff    bool     `json:"extensionsOff"`
 	PluginsFromLinks bool     `json:"pluginsFromLinks"`
 	SitePlugins      []string `json:"sitePlugins"`
@@ -505,6 +511,11 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	if err := s.Genie.normalizeAgentModels(); err != nil {
 		return s, err
 	}
+	hosts, hostsErr := normalizeConnectionHosts(s.Genie.ConnectionHosts)
+	if hostsErr != nil {
+		return s, hostsErr
+	}
+	s.Genie.ConnectionHosts = hosts
 	sp, spOK := validSitePlugins(s.Genie.SitePlugins)
 	if !spOK {
 		return s, fmt.Errorf("a plugin that is on for everyone is not in the catalogue")
@@ -1219,6 +1230,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	if ga, gb := a.Genie, b.Genie; ga.context() != gb.context() || ga.OpenRouterTimeoutSec != gb.OpenRouterTimeoutSec ||
 		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || fmt.Sprint(ga.ModelPrices) != fmt.Sprint(gb.ModelPrices) || ga.ShowCostToUsers != gb.ShowCostToUsers || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {
 		out = append(out, "Genie limits changed (context, history, answer sizes, OpenRouter time limit or hosts)")
+	}
+	if ga, gb := a.Genie, b.Genie; ga.ConnectionsOff != gb.ConnectionsOff || ga.ConnectionsNoApproval != gb.ConnectionsNoApproval || strings.Join(ga.ConnectionHosts, ",") != strings.Join(gb.ConnectionHosts, ",") {
+		out = append(out, "Genie connections "+onoff(!gb.ConnectionsOff)+" (without approval "+onoff(gb.ConnectionsNoApproval)+", only these servers: "+orStr(strings.Join(gb.ConnectionHosts, ", "), "any")+")")
 	}
 	if ga, gb := a.Genie, b.Genie; ga.ExtensionsOff != gb.ExtensionsOff || ga.PluginsFromLinks != gb.PluginsFromLinks || strings.Join(ga.SitePlugins, ",") != strings.Join(gb.SitePlugins, ",") {
 		out = append(out, "Genie skills and plugins "+onoff(!gb.ExtensionsOff)+" (from a link "+onoff(gb.PluginsFromLinks)+", on for everyone: "+orStr(strings.Join(gb.SitePlugins, ", "), "none")+")")

@@ -61,3 +61,16 @@ test("every action is in the core or in one group, and the groups are the server
   for (const a of Object.keys(ACTION_GROUP)) assert.ok((ACTIONS as readonly string[]).includes(a), a + " is not an action");
   for (const g of Object.values(ACTION_GROUP)) assert.ok((GROUPS as readonly string[]).includes(g), g);
 });
+
+test("a task that writes a skill file gets the files actions, so that the model does not look for them in the store", () => {
+  const save = "Save what we just did as a skill. Steps: create a new file at .genie/skills/release-notes.md with files_new";
+  assert.ok(groupsFor([], { ...none, task: save }).includes("files"));
+  assert.ok(groupsFor([], { ...none, task: "write a skill file for me" }).includes("files"));
+});
+
+test("the connect group comes with the words of a service, and not with an ordinary use of issue or connection", () => {
+  assert.ok(groupsFor([], { ...none, task: "open an issue on GitHub about the crash" }).includes("connect"));
+  assert.ok(groupsFor([], { ...none, task: "draft a pull request for this branch" }).includes("connect"));
+  assert.ok(groupsFor([], { ...none, task: "use my connections to look at the tracker" }).includes("connect"));
+  assert.ok(!groupsFor([], { ...none, task: "there is an issue in my code, the socket connection drops" }).includes("connect"));
+});

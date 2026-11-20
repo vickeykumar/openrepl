@@ -449,6 +449,7 @@ type extRequest struct {
 	ID     string `json:"id"`
 	URL    string `json:"url"`
 	Digest string `json:"digest"`
+	Note   string `json:"note"`
 }
 
 func (server *Server) handleGenieExt(rw http.ResponseWriter, req *http.Request) {
@@ -603,7 +604,7 @@ func (server *Server) handleGenieExt(rw http.ResponseWriter, req *http.Request) 
 			return
 		}
 		reply(map[string]interface{}{"deleted": in.Name})
-	case "catalogue", "plugin_fetch", "plugin_apply", "plugin_remove":
+	case "catalogue", "plugin_fetch", "plugin_apply", "plugin_remove", "plugin_request":
 		server.handlePluginOp(rw, in, realHome, g, who, reply)
 	default:
 		jsonError(rw, http.StatusBadRequest, "bad_op", "That is not something Genie's skills can do.")

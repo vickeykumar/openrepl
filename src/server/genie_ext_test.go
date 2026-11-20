@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,7 +40,9 @@ func extSetup(t *testing.T, g GenieSettings) *extEnv {
 	os.RemoveAll(filepath.Join(home, skillsDirName))
 	oldLog := pluginLogDir
 	pluginLogDir = t.TempDir()
-	t.Cleanup(func() { pluginLogDir = oldLog })
+	oldGH := githubFiles
+	githubFiles = githubViaFetchZip
+	t.Cleanup(func() { pluginLogDir = oldLog; githubFiles = oldGH })
 	extRate.Lock()
 	extRate.seen = map[string][]time.Time{}
 	linkHours = map[string][]time.Time{}
@@ -327,23 +331,201 @@ func makeZip(t *testing.T, files map[string]string) []byte {
 const linkManifest = `{"name":"acme-review","title":"Acme review","version":"0.3","description":"Review skills","author":"acme"}`
 
 func TestALinkIsTurnedIntoAFetchAddressOrRefused(t *testing.T) {
-	for in, want := range map[string]struct{ zip, sub string }{
-		"https://github.com/acme/kit":                          {"https://codeload.github.com/acme/kit/zip/HEAD", ""},
-		"https://github.com/acme/kit.git":                      {"https://codeload.github.com/acme/kit/zip/HEAD", ""},
-		"https://github.com/acme/kit/tree/main/plugins/review": {"https://codeload.github.com/acme/kit/zip/main", "plugins/review"},
-		"https://example.com/plugins/review.zip":               {"https://example.com/plugins/review.zip", ""},
+	// a GitHub link: the owner, the repository, and what follows "tree" (the branch and the folder together)
+	for in, want := range map[string]string{
+		"https://github.com/acme/kit":                                       "acme/kit|",
+		"https://github.com/acme/kit.git":                                   "acme/kit|",
+		"https://github.com/acme/kit/tree/main/plugins/review":              "acme/kit|main/plugins/review",
+		"https://github.com/acme/kit/tree/feature/genie-agent/examples/one": "acme/kit|feature/genie-agent/examples/one",
+		"https://github.com/acme/kit/tree/main":                             "acme/kit|main",
 	} {
-		z, sub, err := linkSource(in)
-		if err != nil || z != want.zip || sub != want.sub {
-			t.Errorf("%s: %q %q %v", in, z, sub, err)
+		o, r, rest, ok, err := parseGitHubLink(in)
+		if err != nil || !ok || o+"/"+r+"|"+strings.Join(rest, "/") != want {
+			t.Errorf("%s: %s/%s %v %v %v", in, o, r, rest, ok, err)
 		}
 	}
+	if _, _, _, ok, err := parseGitHubLink("https://example.com/plugins/review.zip"); ok || err != nil {
+		t.Errorf("not GitHub: %v %v", ok, err)
+	}
+	for _, bad := range []string{"https://github.com/acme", "https://github.com/acme/kit/blob/main/x", "https://github.com/acme/kit/tree", "https://github.com/acme/kit/tree/../x",
+		"https://github.com/acme/kit/tree/main/a/../b", "https://github.com/../kit", "http://github.com/acme/kit", "https://user:pw@github.com/acme/kit", "https://github.com:8443/acme/kit",
+		"https://github.com/acme/kit/tree/a/b/c/d/e/f/g/h/i/j/k/l/m"} {
+		if _, _, _, ok, err := parseGitHubLink(bad); err == nil && ok {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+	// a .zip link is fetched as it is
+	if z, sub, err := linkSource("https://example.com/plugins/review.zip"); err != nil || z != "https://example.com/plugins/review.zip" || sub != "" {
+		t.Errorf("a zip: %q %q %v", z, sub, err)
+	}
 	for _, bad := range []string{"", "http://github.com/acme/kit", "ftp://x/y.zip", "https://user:pw@example.com/a.zip", "https://example.com:8443/a.zip",
-		"https://example.com/readme.html", "https://github.com/acme", "https://github.com/acme/kit/blob/main/x", "https://github.com/acme/kit/tree/../x",
-		"https://github.com/../kit", "https://" + strings.Repeat("a", 400) + ".com/a.zip", "javascript:alert(1)", "file:///etc/passwd"} {
+		"https://example.com/readme.html", "https://github.com/acme", "https://" + strings.Repeat("a", 400) + ".com/a.zip", "javascript:alert(1)", "file:///etc/passwd"} {
 		if _, _, err := linkSource(bad); err == nil {
 			t.Errorf("%q was accepted", bad)
 		}
+	}
+}
+
+// githubViaFetchZip is the GitHub reader of the tests that stand in for fetchZip: it asks fetchZip for the zip at the address the reader used to
+// use, and keeps what the real reader keeps (plugin.json, skills/*.md and knowledge/*.md of the folder that holds plugin.json).
+func githubViaFetchZip(owner, repo string, rest []string) (map[string][]byte, int, error) {
+	ref := "HEAD"
+	if len(rest) > 0 {
+		ref = rest[0]
+	}
+	data, err := fetchZip("https://codeload.github.com/" + owner + "/" + repo + "/zip/" + ref)
+	if err != nil {
+		return nil, 0, err
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, 0, err
+	}
+	root, depth := "", 1<<20
+	for _, f := range zr.File {
+		if path.Base(f.Name) == "plugin.json" {
+			d := strings.Count(f.Name, "/")
+			if d < depth {
+				root, depth = strings.TrimSuffix(strings.TrimSuffix(f.Name, "plugin.json"), "/"), d
+			}
+		}
+	}
+	files := map[string][]byte{}
+	ignored := 0
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() || !strings.HasPrefix(f.Name, root) {
+			continue
+		}
+		rel := strings.TrimPrefix(strings.TrimPrefix(f.Name, root), "/")
+		if rel == "plugin.json" || (strings.HasSuffix(rel, ".md") && (strings.HasPrefix(rel, "skills/") || strings.HasPrefix(rel, "knowledge/")) && strings.Count(rel, "/") == 1) {
+			rc, _ := f.Open()
+			b, _ := io.ReadAll(rc)
+			rc.Close()
+			files[rel] = b
+		} else {
+			ignored++
+		}
+	}
+	return files, ignored, nil
+}
+
+// ---- GitHub, folder by folder (no zip of the whole repository) ----
+
+type fakeGitHub struct {
+	srv   *httptest.Server
+	asked []string
+}
+
+// newFakeGitHub is a GitHub API with one repository: acme/kit, with a branch "feature/x" and, on it, the folder plugins/review (a plugin) and plugins/empty (none).
+func newFakeGitHub(t *testing.T) *fakeGitHub {
+	t.Helper()
+	g := &fakeGitHub{}
+	skill := "---\nname: review-it\ndescription: Review the code\nmode: chat\n---\nLook at the code.\n"
+	note := "# Team rules\n\nNo tabs.\n"
+	mux := http.NewServeMux()
+	listing := func(w http.ResponseWriter, entries []map[string]interface{}) {
+		json.NewEncoder(w).Encode(entries)
+	}
+	file := func(name, text string) map[string]interface{} {
+		return map[string]interface{}{"name": name, "type": "file", "size": len(text), "download_url": g.srv.URL + "/raw/" + name}
+	}
+	dir := func(name string) map[string]interface{} { return map[string]interface{}{"name": name, "type": "dir"} }
+	mux.HandleFunc("/repos/acme/kit/contents/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/repos/acme/kit/contents/")
+		ref := r.URL.Query().Get("ref")
+		g.asked = append(g.asked, ref+":"+path)
+		if ref == "rate" {
+			http.Error(w, "limit", http.StatusForbidden)
+			return
+		}
+		if ref != "feature/x" && ref != "" {
+			http.NotFound(w, r)
+			return
+		}
+		switch path {
+		case "plugins/review":
+			listing(w, []map[string]interface{}{file("plugin.json", linkManifest), dir("skills"), dir("knowledge"), file("README.md", "# hi"), dir("scripts")})
+		case "plugins/review/skills":
+			listing(w, []map[string]interface{}{file("review-it.md", skill), file("notes.txt", "x")})
+		case "plugins/review/knowledge":
+			listing(w, []map[string]interface{}{file("rules.md", note)})
+		case "plugins/empty":
+			listing(w, []map[string]interface{}{file("README.md", "# nothing")})
+		case "plugins/bigfile":
+			listing(w, []map[string]interface{}{{"name": "plugin.json", "type": "file", "size": 100 << 10, "download_url": g.srv.URL + "/raw/big"}})
+		case "plugins/evilurl":
+			listing(w, []map[string]interface{}{{"name": "plugin.json", "type": "file", "size": 10, "download_url": "https://evil.example.com/plugin.json"}})
+		case "":
+			if ref == "" {
+				listing(w, []map[string]interface{}{file("plugin.json", linkManifest), dir("skills")})
+				return
+			}
+			http.NotFound(w, r)
+		case "skills":
+			listing(w, []map[string]interface{}{file("review-it.md", skill)})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	mux.HandleFunc("/raw/", func(w http.ResponseWriter, r *http.Request) {
+		switch strings.TrimPrefix(r.URL.Path, "/raw/") {
+		case "plugin.json":
+			w.Write([]byte(linkManifest))
+		case "review-it.md":
+			w.Write([]byte(skill))
+		case "rules.md":
+			w.Write([]byte(note))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	g.srv = httptest.NewServer(mux)
+	t.Cleanup(g.srv.Close)
+	return g
+}
+
+func TestAGitHubFolderIsReadFileByFileAndABranchWithASlashIsFound(t *testing.T) {
+	extAllowLoopback = true
+	defer func() { extAllowLoopback = false }()
+	g := newFakeGitHub(t)
+	oldBase, oldZip := githubAPIBase, fetchZip
+	githubAPIBase = g.srv.URL
+	fetchZip = func(u string) ([]byte, error) { return nil, fmt.Errorf("the link answered 404") }
+	defer func() { githubAPIBase, fetchZip = oldBase, oldZip }()
+	// the link does not say where the branch ends: feature/x/plugins/review is tried as feature + x/plugins/review (not there), then feature/x + plugins/review
+	pkg, err := packageFromLink("https://github.com/acme/kit/tree/feature/x/plugins/review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pkg.Manifest.Name != "acme-review" || len(pkg.Skills) != 1 || len(pkg.Notes) != 1 || pkg.Notes[0].Title != "Team rules" || pkg.Source != "link:https://github.com/acme/kit/tree/feature/x/plugins/review" {
+		t.Errorf("the package: %+v", pkg)
+	}
+	// README.md, scripts/ and notes.txt are not kept, and counted
+	if pkg.Ignored != 3 {
+		t.Errorf("ignored: %d", pkg.Ignored)
+	}
+	if len(g.asked) < 4 || g.asked[0] != "feature:x/plugins/review" || g.asked[1] != "feature/x:plugins/review" {
+		t.Errorf("what was asked: %v", g.asked)
+	}
+	// the repository itself, at its default branch: no ref in the request
+	g.asked = nil
+	if p, err := packageFromLink("https://github.com/acme/kit"); err != nil || len(p.Skills) != 1 || g.asked[0] != ":" {
+		t.Errorf("the repository: %v %v", err, g.asked)
+	}
+	for name, tc := range map[string]struct{ link, want string }{
+		"a branch that is not there":             {"https://github.com/acme/kit/tree/nope/plugins/review", "no plugin.json at that link"},
+		"a folder with no plugin":                {"https://github.com/acme/kit/tree/feature/x/plugins/empty", "no plugin.json at that link"},
+		"a file bigger than 32 KB":               {"https://github.com/acme/kit/tree/feature/x/plugins/bigfile", "longer than 32 KB"},
+		"a download that is not GitHub's":        {"https://github.com/acme/kit/tree/feature/x/plugins/evilurl", "no download address GitHub gave"},
+		"the limit without a token, then no zip": {"https://github.com/acme/kit/tree/rate/plugins/review", "may not exist"},
+	} {
+		if _, err := packageFromLink(tc.link); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: %v (wanted %q)", name, err, tc.want)
+		}
+	}
+	// a skill with a mistake stops the install with what is wrong, as from a zip
+	if _, err := buildPackage(map[string][]byte{"plugin.json": []byte(linkManifest), "skills/review-it.md": []byte("no header")}, "x", 0, true); err == nil {
+		t.Error("a bad skill was accepted")
 	}
 }
 
@@ -415,7 +597,7 @@ func TestAPluginZipIsCheckedAndOnlyTextIsKept(t *testing.T) {
 		"bad skill":       {map[string]string{"plugin.json": linkManifest, "skills/review-it.md": "oops"}, "header"},
 		"wrong file name": {map[string]string{"plugin.json": linkManifest, "skills/other.md": skill}, "file name has to be"},
 		"too long":        {map[string]string{"plugin.json": linkManifest, "skills/review-it.md": skill + strings.Repeat("x", pluginMaxFile)}, "longer than"},
-		"a connection":    {map[string]string{"plugin.json": `{"name":"acme-review","connections":[{"service":"github"}]}`, "skills/review-it.md": skill}, "asks for a connection"},
+		"a connection":    {map[string]string{"plugin.json": `{"name":"acme-review","connections":[{"service":"github"}]}`, "skills/review-it.md": skill}, "needs an id"},
 		"a path out":      {map[string]string{"plugin.json": linkManifest, "../evil.md": skill}, "not allowed"},
 	} {
 		if _, err := packageFromZip(makeZip(t, tc.files), "", "x"); err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -643,5 +825,55 @@ func TestEveryInstallUpdateAndRemovalIsRecordedForTheAdmin(t *testing.T) {
 	logPluginInstall(pluginInstallEntry{User: "u1\nx", Op: "install", Plugin: "p"}, time.Now())
 	if got := recentPluginInstalls(1)[0]; strings.ContainsAny(got.User, "\n") {
 		t.Errorf("a new line in a field: %q", got.User)
+	}
+}
+
+func TestWhenGitHubsAPILimitIsReachedASmallRepositoryIsReadAsAZipAndABigOneSaysWhy(t *testing.T) {
+	skill := "---\nname: review-it\ndescription: Review the code\nmode: chat\n---\nLook at the code.\n"
+	zipBytes := makeZip(t, map[string]string{"kit-feature-x/plugins/review/plugin.json": linkManifest, "kit-feature-x/plugins/review/skills/review-it.md": skill, "kit-feature-x/README.md": "# hi"})
+	oldGH, oldZip := githubFiles, fetchZip
+	defer func() { githubFiles, fetchZip = oldGH, oldZip }()
+	githubFiles = func(owner, repo string, rest []string) (map[string][]byte, int, error) { return nil, 0, errGitHubRate }
+	var asked []string
+	fetchZip = func(u string) ([]byte, error) {
+		asked = append(asked, strings.TrimPrefix(u, "https://codeload.github.com/acme/kit/zip/"))
+		if strings.HasSuffix(u, "/zip/feature") {
+			return nil, fmt.Errorf("the link answered 404")
+		}
+		return zipBytes, nil
+	}
+	pkg, err := packageFromLink("https://github.com/acme/kit/tree/feature/x/plugins/review")
+	if err != nil || pkg.Manifest.Name != "acme-review" || len(pkg.Skills) != 1 {
+		t.Fatalf("the fallback: %v", err)
+	}
+	if strings.Join(asked, ",") != "feature,feature/x" {
+		t.Errorf("the ways of cutting the link: %v", asked)
+	}
+	// a repository too big for the zip limit: the reason says both things
+	fetchZip = func(u string) ([]byte, error) { return nil, fmt.Errorf("the download is bigger than 2 MB") }
+	if _, err := packageFromLink("https://github.com/acme/kit"); err == nil || !strings.Contains(err.Error(), "bigger than 2 MB") || !strings.Contains(err.Error(), "OPENREPL_GITHUB_TOKEN") {
+		t.Errorf("a big repository: %v", err)
+	}
+	// nothing there at all
+	fetchZip = func(u string) ([]byte, error) { return nil, fmt.Errorf("the link answered 404") }
+	if _, err := packageFromLink("https://github.com/acme/kit/tree/nope/x"); err == nil || !strings.Contains(err.Error(), "may not exist") {
+		t.Errorf("nothing there: %v", err)
+	}
+}
+
+func TestTheServersGitHubTokenGoesToGitHubsAPIOnlyAndNeverToADownloadAddress(t *testing.T) {
+	extAllowLoopback = true
+	defer func() { extAllowLoopback = false }()
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Get("Authorization"))
+		w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+	t.Setenv("OPENREPL_GITHUB_TOKEN", "ghp_servertoken")
+	// the test server is not api.github.com, so no token goes to it (the real API address is the only one that gets it)
+	getURL(srv.URL+"/x", 1024)
+	if len(seen) != 1 || seen[0] != "" {
+		t.Errorf("a token was sent to another address: %v", seen)
 	}
 }

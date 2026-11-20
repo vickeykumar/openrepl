@@ -268,3 +268,72 @@ test("a skill that asks for less effort lowers it for its message only, and neve
   await expect(page.locator("#chat-widget__messages_history")).toContainText("Second answer.");
   expect(seen.requests[1].reasoning_effort).toBe("high"); // the person's own choice is back
 });
+
+test("/save-skill starts an Agent task that names the folder, the header and the actions that make the file", async ({ page }) => {
+  const srv = extServer();
+  const seen = await openPanel(page, srv, [{ json: { say: "I will write it.", actions: [], done: true } }], { signedIn: true });
+  await page.locator("#chat-widget__input").fill("/save-skill release-notes");
+  await page.locator("#chat-widget__submit").click();
+  await expect.poll(() => seen.requests.length).toBeGreaterThan(0);
+  const first = JSON.stringify(seen.requests[0].messages);
+  expect(first).toContain(".genie/skills/release-notes.md");
+  expect(first).toContain("files_new");
+  expect(first).toContain("editor_write");
+  expect(first).toContain("name: release-notes");
+  await expect(page.locator('#chat-widget__mode button[data-mode="agent"]')).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a command in the box is drawn in the colour of a link, and Backspace right after it takes the whole command out", async ({ page }) => {
+  const srv = extServer();
+  await openPanel(page, srv, [], { signedIn: true });
+  const input = page.locator("#chat-widget__input");
+  const cmd = page.locator("#chat-widget__hl .cw-cmd");
+  await input.click();
+  await input.pressSequentially("let's /explain this and /context");
+  // /explain is a skill (anywhere), /context is a command of the panel and only counts as the first word
+  await expect(cmd).toHaveCount(1);
+  await expect(cmd.first()).toHaveText("/explain");
+  const colours = await page.evaluate(() => {
+    const c = document.querySelector("#chat-widget__hl .cw-cmd");
+    const plain = document.getElementById("chat-widget__hl");
+    return { cmd: getComputedStyle(c).color, text: getComputedStyle(plain).color };
+  });
+  expect(colours.cmd).not.toBe(colours.text);
+  // the box shows only the caret: its own text is not drawn twice
+  expect(await input.evaluate((e) => getComputedStyle(e).color)).toBe("rgba(0, 0, 0, 0)");
+  await input.fill("/context now");
+  await expect(cmd).toHaveCount(1);
+  await expect(cmd.first()).toHaveText("/context");
+  // Backspace with the caret right after the name takes the whole name out
+  await input.fill("please /explain");
+  await expect(cmd).toHaveCount(1);
+  await input.press("Backspace");
+  await expect(input).toHaveValue("please ");
+  await expect(cmd).toHaveCount(0);
+  // a space after the name: the first Backspace takes the space, the next the name
+  await input.fill("please /explain ");
+  await input.press("Backspace");
+  await expect(input).toHaveValue("please /explain");
+  await input.press("Backspace");
+  await expect(input).toHaveValue("please ");
+  // half a name, or anything that is not a command, is deleted one letter at a time
+  await input.fill("/expl");
+  await input.press("Backspace");
+  await expect(input).toHaveValue("/exp");
+  await input.fill("hello");
+  await input.press("Backspace");
+  await expect(input).toHaveValue("hell");
+  // one Undo puts the command back
+  await input.fill("");
+  await input.pressSequentially("write /explain");
+  await input.press("Backspace");
+  await expect(input).toHaveValue("write ");
+  await input.press("ControlOrMeta+z");
+  await expect(input).toHaveValue("write /explain");
+  // a sent message empties the box and the drawn text with it
+  await input.fill("/explain");
+  await expect(cmd).toHaveCount(1);
+  await page.locator("#chat-widget__submit").click();
+  await expect(input).toHaveValue("");
+  await expect(cmd).toHaveCount(0);
+});

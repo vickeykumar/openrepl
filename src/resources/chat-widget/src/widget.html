@@ -74,15 +74,18 @@
     </div>
     <div id="chat-widget__field">
       <div id="chat-widget__attached" role="group" aria-label="Added to this message" hidden></div>
-      <textarea
-        autocomplete="off"
-        aria-autocomplete="list"
-        aria-controls="chat-widget__picker"
-        id="chat-widget__input"
-        name="message"
-        rows="1"
-        placeholder="Ask about your code"
-        required></textarea>
+      <div id="chat-widget__inputwrap">
+        <div id="chat-widget__hl" aria-hidden="true" hidden></div>
+        <textarea
+          autocomplete="off"
+          aria-autocomplete="list"
+          aria-controls="chat-widget__picker"
+          id="chat-widget__input"
+          name="message"
+          rows="1"
+          placeholder="Ask about your code"
+          required></textarea>
+      </div>
       <div id="chat-widget__tools">
         <div id="chat-widget__mode" class="cw-mode" role="group" aria-label="Mode" hidden>
           <button type="button" data-mode="chat" data-tip-desc="Genie answers your questions." aria-pressed="true">Chat</button>

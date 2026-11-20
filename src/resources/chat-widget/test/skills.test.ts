@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SkillInfo } from "../src/skills.ts";
-import { limitFor, matchSkills, saveSkillRequest, skillBlock, skillGroup, skillsIn, skillsNoteText, slashToken } from "../src/skills.ts";
+import { commandSpans, limitFor, matchSkills, saveSkillRequest, skillBlock, skillGroup, skillsIn, skillsNoteText, slashToken } from "../src/skills.ts";
 
 const sk = (name: string, over: Partial<SkillInfo> = {}): SkillInfo => ({ name, description: "does " + name, mode: "chat", source: "builtin", ...over });
 const SKILLS: SkillInfo[] = [
@@ -81,6 +81,8 @@ test("an agent task starts with the names of the skills that are files, never th
 test("/save-skill makes a request for the file, with a safe name, and refuses a bad name", () => {
   const r = saveSkillRequest("release-notes");
   assert.ok(r && r.includes(".genie/skills/release-notes.md") && r.includes("name: release-notes"));
+  assert.ok(r && /files_new/.test(r) && /files_open/.test(r) && /editor_write/.test(r) && /files_save/.test(r), "it names the actions that make the file");
+  assert.ok(r && /new file/.test(r), "the words that bring the files actions");
   assert.equal(saveSkillRequest(""), null);
   assert.equal(saveSkillRequest("../x"), null);
   assert.equal(saveSkillRequest("Bad Name"), null);
@@ -119,4 +121,19 @@ test("plugin notes are listed with their paths for an agent task, and a task wit
   // a skill of a plugin on for everyone has a path under the server's own folder, so Genie reads it like any other
   const site = sk("commit-message", { source: "site", plugin: "git-helper", path: ".genie/site-plugins/git-helper/skills/commit-message.md" });
   assert.match(skillsNoteText([site]), /\/commit-message: does commit-message \(\.genie\/site-plugins\/git-helper\/skills\/commit-message\.md\)/);
+});
+
+test("the commands of a message: a skill anywhere, a command of the panel only as the first word, nothing else", () => {
+  const cmds = ["context", "tour", "add-plugin", "remember"];
+  const names = (t: string) => commandSpans(t, cmds, SKILLS).map((s) => t.slice(s.start, s.end));
+  assert.deepEqual(names("/context"), ["/context"]);
+  assert.deepEqual(names("  /tour now"), ["/tour"], "spaces before the first word do not matter");
+  assert.deepEqual(names("why /context"), [], "a command of the panel is for the first word");
+  assert.deepEqual(names("let's /explain this and then /test"), ["/explain", "/test"]);
+  assert.deepEqual(names("/remember use /explain"), ["/remember", "/explain"]);
+  assert.deepEqual(names("/nothing /usr/bin/explain a/test"), []);
+  assert.deepEqual(names("so /explain."), ["/explain"], "a full stop after the name stays out of it");
+  assert.deepEqual(names("/exp"), [], "half a name is not a command yet");
+  const t = "a /explain b";
+  assert.deepEqual(commandSpans(t, cmds, SKILLS), [{ start: 2, end: 10, name: "explain" }]);
 });

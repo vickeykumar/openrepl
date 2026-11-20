@@ -123,6 +123,9 @@ test("Genie pinned beside the IDE gets the theme's colours, readable on the file
     ["text", "strong", "muted", "icon", "link"].forEach((n) => {
       assert.ok(contrast(parseColor(p.genie[n]), bg) >= 4.5, n + " on " + p.genie.bg + " is " + contrast(parseColor(p.genie[n]), bg).toFixed(2));
     });
+    // a command typed in the box (/name) is in the blue of a link, on the box
+    assert.ok(contrast(parseColor(p.genie.cmd), parseColor(p.genie.fieldBg)) >= 4.5, "a command in the box is " + contrast(parseColor(p.genie.cmd), parseColor(p.genie.fieldBg)).toFixed(2));
+    assert.match(paletteCss(p), /--cw-cmd: #[0-9a-f]{6};/);
     assert.ok(contrast(parseColor(p.genie.userText), parseColor(p.genie.userBg)) >= 4.5, "your message");
     assert.ok(contrast(parseColor(p.genie.codeText), parseColor(p.genie.code)) >= 7, "code in a reply");
   });

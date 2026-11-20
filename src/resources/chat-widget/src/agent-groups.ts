@@ -9,7 +9,7 @@ import type { Group } from "./agent-protocol";
 
 // the groups in their fixed order (agent-protocol.ts GROUPS says the same: a test compares them; this file takes no runtime import so that
 // the tests can load it as it is)
-const ORDER: readonly Group[] = ["editor", "files", "terminal", "preview", "store"];
+const ORDER: readonly Group[] = ["editor", "files", "terminal", "preview", "store", "connect"];
 
 export interface GroupSignals {
   task: string; // what the user asked
@@ -21,10 +21,11 @@ export interface GroupSignals {
 
 const WORDS: Record<Group, RegExp> = {
   editor: /\b(creat\w*|edit\w*|writ\w*|chang\w*|fix\w*|add\w*|mak\w*|build\w*|refactor\w*|updat\w*|implement\w*|modif\w*|replac\w*|insert\w*|remov\w*|delet\w*|rewrit\w*|improv\w*|generat\w*|code|function|class|file|script|program|page|bug|error|save|open|convert|translat\w*|optimi[sz]\w*|complete|finish|continue)\b/i,
-  files: /\b(renam\w*|mov(e|ing)|copy\w*|cut|paste|delet\w*|remov\w*|folder\w*|director\w*|new file|organi[sz]\w*|restructur\w*|tidy|clean ?up|trash|split (it )?into (files|modules)|separate files)\b/i,
+  files: /(\.genie\/skills|\b(skill file)\b)|\b(renam\w*|mov(e|ing)|copy\w*|cut|paste|delet\w*|remov\w*|folder\w*|director\w*|new file|organi[sz]\w*|restructur\w*|tidy|clean ?up|trash|split (it )?into (files|modules)|separate files)\b/i,
   terminal: /\b(run\w*|execut\w*|install\w*|test\w*|build\w*|compil\w*|start\w*|serve\w*|server|debug\w*|command\w*|shell|bash|terminal|output|print\w*|pip|npm|node|python|git|curl|make|pytest|error|bug|crash\w*|fail\w*|exception|traceback|stack ?trace|works?|working|try|check)\b/i,
   preview: /\b(html|css|website|web ?site|web ?page|page|site|ui|button|form|browser|preview|layout|responsive|phone|mobile|tablet|click\w*|style\w*|dark mode|landing|navbar|menu|canvas|svg|animation|draw\w*|diagram|chart|game|console|screenshot|fits? (a )?(phone|screen)|looks?|play\w*|launch\w*|apps?|demo|level|score|try (it|this|that)( out)?|see (it|how|what)|visual\w*|colou?r\w*|font\w*|image\w*|front-?end|tailwind|bootstrap|dashboard|widget|sprite|scroll\w*|hover\w*|modal|popup|dialog|tab|tabs|icon\w*|theme)\b/i,
   store: /\b(install\w*|librar\w*|package\w*|pip|npm|module\w*|import\w*|dependenc\w*|conda|app ?store|apt|requirements|numpy|pandas|flask|django|express|react|matplotlib|requests)\b/i,
+  connect: /\b(github|git ?hub|pull requests?|notion|figma|mcp|my connections?|connected services?)\b/i,
 };
 
 // the page and the terminal say more than the words: these are checked on each step
@@ -40,6 +41,7 @@ export function groupsFor(have: readonly string[], s: GroupSignals): Group[] {
   if (WORDS.terminal.test(text) || MISSING_MODULE.test(s.terminal || "")) on.add("terminal");
   if (s.previewOpen || WEB_FILE.test(s.openFile || "") || WORDS.preview.test(text)) on.add("preview");
   if (WORDS.store.test(text) || MISSING_MODULE.test(s.terminal || "")) on.add("store");
+  if (WORDS.connect.test(text)) on.add("connect");
   return ORDER.filter((g) => on.has(g));
 }
 

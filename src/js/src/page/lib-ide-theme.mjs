@@ -200,6 +200,7 @@ export function derivePalette(theme) {
     userBg: accent,
     userText: onAccent,
     link: onFiles(accent, 4.5),
+    cmd: ensureContrast([111, 160, 240], bg, 4.5), // a command typed in the Genie box (/name), in the blue of a link
     chip: chrome,
     chipText: ensureContrast(chromeText, chrome, 4.5),
     popBg: menu,
@@ -322,7 +323,7 @@ export function paletteCss(p) {
       ["--cw-bg", g.bg], ["--cw-border", g.border], ["--cw-text", g.text], ["--cw-strong", g.strong], ["--cw-muted", g.muted],
       ["--cw-icon", g.icon], ["--cw-field-bg", g.fieldBg], ["--cw-field-border", g.fieldBorder], ["--cw-code-bg", g.code],
       ["--cw-code-text", g.codeText], ["--cw-secondary-bg", g.secondary], ["--cw-user-bg", g.userBg], ["--cw-user-text", g.userText],
-      ["--cw-accent", p.accent], ["--cw-on-accent", p.onAccent], ["--cw-link", g.link], ["--cw-chip-bg", g.chip],
+      ["--cw-accent", p.accent], ["--cw-on-accent", p.onAccent], ["--cw-link", g.link], ["--cw-cmd", g.cmd], ["--cw-chip-bg", g.chip],
       ["--cw-chip-text", g.chipText], ["--cw-pop-bg", g.popBg], ["--cw-pop-border", g.popBorder], ["--cw-seg-bg", g.segBg],
       ["--cw-seg-on", g.segOn]
     ].map((kv) => "  " + kv[0] + ": " + kv[1] + ";").join("\n") + "\n}"

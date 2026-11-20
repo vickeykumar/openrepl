@@ -4,6 +4,8 @@
 
 export interface PluginApi {
   call(body: Record<string, any>): Promise<{ ok: boolean; status: number; data: any }>;
+  // POST genie_conn: the connections (MCP) of the person
+  conn(body: Record<string, any>): Promise<{ ok: boolean; status: number; data: any }>;
   // a plugin was installed, updated or removed: the skills of the box change
   changed(): void;
   close(): void;
@@ -17,11 +19,38 @@ interface CatalogueRow {
   official: boolean;
   skills: string[];
   notes?: number;
+  connections?: string[];
   installed: boolean;
   installedVersion?: string;
   update: boolean;
   site: boolean;
 }
+interface ConnTool {
+  name: string;
+  description: string;
+  level: "read" | "write" | "irreversible";
+  args?: string[];
+}
+interface ConnRow {
+  id: string;
+  title: string;
+  url: string;
+  help?: string;
+  custom?: boolean;
+  connected: boolean;
+  tools: ConnTool[];
+  error?: string;
+}
+interface ConnRequestRow {
+  id: string;
+  plugin: string;
+  version: string;
+  status: "waiting" | "approved" | "declined";
+  reason?: string;
+  scope?: string;
+  connections: { title: string }[];
+}
+
 interface InstalledRow {
   name: string;
   title: string;
@@ -64,7 +93,11 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
   let catalogue: CatalogueRow[] = [];
   let installed: InstalledRow[] = [];
   let fromLinks = false;
-  let tab: "all" | "installed" = "all";
+  let tab: "all" | "installed" | "connections" | "requests" = "all";
+  let conns: ConnRow[] = [];
+  let connsNote = "";
+  let requests: ConnRequestRow[] = [];
+  let openConn = ""; // the connection whose token field is open
   let query = "";
   let card: HTMLElement | null = null; // the install card, when one is shown
   let message = "";
@@ -110,6 +143,16 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
     catalogue = r.data.plugins || [];
     installed = r.data.installed || [];
     fromLinks = !!r.data.fromLinks;
+    const cr = await api.conn({ op: "list" });
+    if (cr.ok) {
+      conns = (cr.data.connections || []) as ConnRow[];
+      connsNote = cr.data.canStore === false ? "This server has no secret to keep tokens with: an admin has to set OPENREPL_SECRET." : "";
+    } else {
+      conns = [];
+      connsNote = cr.status === 403 ? (cr.data && cr.data.error && cr.data.error.code === "off" ? "Connections are switched off on this site." : "Sign in to your own account to connect a service.") : "";
+    }
+    const rr = await api.conn({ op: "requests" });
+    requests = rr.ok ? ((rr.data.requests || []) as ConnRequestRow[]) : [];
     drawTabs();
     drawList();
     drawLink();
@@ -119,7 +162,9 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
 
   function drawTabs() {
     tabs.textContent = "";
-    ([["all", "All"], ["installed", "Installed " + installed.length]] as const).forEach(([id, label]) => {
+    const waiting = requests.filter((r) => r.status === "waiting").length;
+    const have = conns.filter((c) => c.connected).length;
+    ([["all", "All"], ["installed", "Installed " + installed.length], ["connections", "Connections " + have], ["requests", "Requests" + (requests.length ? " " + requests.length : "") + (waiting ? " ·" : "")]] as const).forEach(([id, label]) => {
       const b = button(label, "cw-plg__tab" + (tab === id ? " is-on" : ""), () => {
         tab = id;
         card = null;
@@ -141,6 +186,18 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
       list.appendChild(card);
       return;
     }
+    if (tab === "connections") {
+      list.appendChild(el("div", "cw-plg__desc", "A connection lets Genie use a service as you. Your token is sent once, kept encrypted on the server, and never shown again. Reading asks once; writing asks each time; what cannot be undone asks every time."));
+      if (connsNote) list.appendChild(el("div", "cw-plg__warn", connsNote));
+      conns.filter((c) => !query || (c.title + " " + c.id).toLowerCase().includes(query)).forEach((c) => list.appendChild(connectionCard(c)));
+      if (conns.length === 0 && !connsNote) list.appendChild(el("div", "cw-plg__none", "No connection is offered here."));
+      return;
+    }
+    if (tab === "requests") {
+      requests.forEach((r) => list.appendChild(requestCard(r)));
+      if (requests.length === 0) list.appendChild(el("div", "cw-plg__none", "You have asked for nothing. A plugin from a link that needs a connection can be sent to an admin from its card."));
+      return;
+    }
     if (tab === "all") {
       const rows = catalogue.filter((c) => matches(c.title + " " + c.description + " " + c.skills.join(" ")));
       rows.forEach((c) => list.appendChild(catalogueCard(c)));
@@ -152,6 +209,84 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
     }
   }
 
+  function connectionCard(c: ConnRow): HTMLElement {
+    const box = el("div", "cw-plg__card cw-plg__card--col");
+    box.dataset.connection = c.id;
+    const head = el("div", "cw-plg__connhead");
+    head.append(el("b", "", c.title), pill(c.connected ? "connected" : "not connected", c.connected ? "ok" : ""));
+    const actions = el("div", "cw-plg__actions");
+    if (c.connected) {
+      actions.append(button("Disconnect", "cw-plg__btn--danger", async () => {
+        const r = await api.conn({ op: "disconnect", id: c.id });
+        if (!r.ok) return say(errorText(r), true);
+        say(c.title + " is disconnected: its token is deleted.");
+        api.changed();
+        await load();
+      }));
+    } else {
+      actions.append(button("Connect", "cw-plg__btn--main", () => {
+        openConn = openConn === c.id ? "" : c.id;
+        drawList();
+      }));
+    }
+    head.appendChild(actions);
+    box.appendChild(head);
+    box.appendChild(el("div", "cw-plg__desc", c.url));
+    if (c.error) box.appendChild(el("div", "cw-plg__warn", c.error));
+    if (c.connected && c.tools.length) {
+      const tools = el("div", "cw-plg__pills");
+      c.tools.forEach((t) => {
+        const p = pill(t.name, t.level === "read" ? "" : t.level === "write" ? "warn" : "bad");
+        p.title = t.description + (t.args && t.args.length ? " (" + t.args.join(", ") + ")" : "");
+        tools.appendChild(p);
+      });
+      box.appendChild(tools);
+      box.appendChild(el("div", "cw-plg__desc", "Grey: reads, asked once. Yellow: writes, asked each time. Red: cannot be undone, asked every time."));
+    }
+    if (!c.connected && openConn === c.id) {
+      if (c.help) box.appendChild(el("div", "cw-plg__desc", c.help));
+      const token = el("input", "cw-plg__search") as HTMLInputElement;
+      token.type = "password";
+      token.autocomplete = "off";
+      token.placeholder = "Paste the token";
+      token.setAttribute("aria-label", "Token for " + c.title);
+      const go = button("Connect", "cw-plg__btn--main", async () => {
+        const t = token.value.trim();
+        if (!t) return;
+        go.disabled = true;
+        const r = await api.conn({ op: "connect", id: c.id, token: t });
+        token.value = ""; // sent once, never kept in the page
+        go.disabled = false;
+        if (!r.ok) return say(errorText(r), true);
+        openConn = "";
+        say(c.title + " is connected. Its tools are listed for Genie when a task is about it.");
+        api.changed();
+        await load();
+      });
+      token.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          go.click();
+        }
+      });
+      const row = el("div", "cw-plg__linkrow");
+      row.append(token, go);
+      box.append(row, el("div", "cw-plg__desc", "The token is sent to the server once and tested with a real call. It is not shown again, and it is never put in a chat, a log or a snapshot."));
+    }
+    return box;
+  }
+
+  function requestCard(r: ConnRequestRow): HTMLElement {
+    const box = el("div", "cw-plg__card");
+    box.dataset.request = r.id;
+    const body = el("div", "cw-plg__body");
+    body.append(el("b", "", r.plugin + (r.version ? " v" + r.version : "")), el("div", "cw-plg__desc", "Needs: " + r.connections.map((c) => c.title).join(", ")));
+    if (r.status === "declined" && r.reason) body.appendChild(el("div", "cw-plg__desc", "Reason: " + r.reason));
+    box.appendChild(body);
+    box.appendChild(pill(r.status === "approved" ? "approved" + (r.scope === "user" ? " for you" : "") : r.status, r.status === "approved" ? "ok" : r.status === "declined" ? "bad" : "warn"));
+    return box;
+  }
+
   function catalogueCard(c: CatalogueRow): HTMLElement {
     const box = el("div", "cw-plg__card");
     box.dataset.plugin = c.id;
@@ -160,6 +295,7 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
     const pills = el("div", "cw-plg__pills");
     pills.append(pill(c.skills.length + (c.skills.length === 1 ? " skill" : " skills"), "ok"));
     if (c.notes) pills.append(pill(c.notes + (c.notes === 1 ? " note" : " notes"), "ok"));
+    if (c.connections && c.connections.length) pills.append(pill("needs " + c.connections.join(", "), "warn"));
     if (c.official) pills.append(pill("official", "info"));
     if (c.site) pills.append(pill("on for everyone", "info"));
     body.appendChild(pills);
@@ -243,6 +379,25 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
       notes.appendChild(document.createTextNode((p.notes as any[]).map((n) => n.title).join(", ") + ". Genie reads a note when a task is about what its title says."));
       box.appendChild(notes);
     }
+    // the connections the plugin names, and where they stand: from the catalogue they need nothing more; from a link an admin has to say yes (or have switched the approval off)
+    const access: string = p.access || "none";
+    if (p.connections && p.connections.length) {
+      const cbox = el("div", "cw-plg__conns");
+      cbox.appendChild(el("b", "", "Needs a connection: "));
+      cbox.appendChild(document.createTextNode((p.connections as any[]).map((c) => c.title + " (" + String(c.url).replace(/^https:\/\//, "").split("/")[0] + ")").join(", ") + ". You connect it yourself, with your own token, in the Connections tab."));
+      box.appendChild(cbox);
+      const words: Record<string, string> = {
+        official: "",
+        open: "The admin lets plugins from a link use connections without approval.",
+        approved: "An admin approved this plugin's connection.",
+        waiting: "Waiting for an admin to approve the connection. You will see the answer in the Requests tab.",
+        declined: "An admin declined this connection. You can send a new request.",
+        needed: "Connections from a link need an admin to approve them first. Send a request: the admin sees the files, the server address and what each tool can do.",
+        host_denied: "The admin's list of servers does not include the server this connection talks to.",
+        off: "Connections are switched off on this site.",
+      };
+      if (words[access]) box.appendChild(el("div", access === "approved" || access === "open" ? "cw-plg__desc" : "cw-plg__warn", words[access]));
+    }
     if (p.ignored > 0) box.appendChild(el("div", "cw-plg__desc", p.ignored + " other file" + (p.ignored === 1 ? "" : "s") + " in the package will not be installed (only plugin.json and skills are kept)."));
     if (p.installed && p.changes) {
       const changes = el("div", "cw-plg__changes");
@@ -286,6 +441,36 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
       go.disabled = true;
       tick.addEventListener("change", () => (go.disabled = !tick!.checked));
     }
+    // a connection that is not approved: no Install, but a request
+    const blocked = access === "needed" || access === "declined" || access === "waiting" || access === "host_denied" || access === "off";
+    let ask: HTMLElement | null = null;
+    if (blocked) {
+      go.disabled = true;
+      go.hidden = true;
+      if (access === "needed" || access === "declined") {
+        const note = el("input", "cw-plg__search") as HTMLInputElement;
+        note.type = "text";
+        note.placeholder = "A note for the admin (optional)";
+        note.maxLength = 300;
+        note.setAttribute("aria-label", "A note for the admin");
+        const send = button("Send request", "cw-plg__btn--main", async () => {
+          send.disabled = true;
+          const r = await api.call({ op: "plugin_request", ...sel, note: note.value.trim() });
+          if (!r.ok) {
+            send.disabled = false;
+            return say(errorText(r), true);
+          }
+          card = null;
+          say("Your request was sent. An admin will answer it: see the Requests tab.");
+          tab = "requests";
+          await load();
+        });
+        const wrap = el("div", "cw-plg__linkrow");
+        wrap.append(note, send);
+        ask = wrap;
+      }
+    }
+    if (ask) foot.appendChild(ask);
     foot.append(go, button("Cancel", "", () => {
       card = null;
       say("");

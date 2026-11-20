@@ -58,6 +58,7 @@ export const ACTIONS = [
   "preview_eval",
   "preview_storage",
   "store_suggest",
+  "mcp_call",
   "need_tools",
   "finish",
 ] as const;
@@ -66,7 +67,7 @@ export type ActionType = (typeof ACTIONS)[number];
 export const MAX_ACTIONS = 3; // a step does at most this many
 // The groups of actions the agent's instructions come in (server/agent.go, agentActionGroup). The core (files_list, files_search,
 // files_read, need_tools, finish) is always sent; a task is sent the others it needs, and a model asks for one with need_tools.
-export const GROUPS = ["editor", "files", "terminal", "preview", "store"] as const;
+export const GROUPS = ["editor", "files", "terminal", "preview", "store", "connect"] as const;
 export type Group = (typeof GROUPS)[number];
 export const ACTION_GROUP: Record<string, Group> = {
   editor_write: "editor",
@@ -114,6 +115,7 @@ export const ACTION_GROUP: Record<string, Group> = {
   preview_eval: "preview",
   preview_storage: "preview",
   store_suggest: "store",
+  mcp_call: "connect",
 };
 
 export const MAX_TEXT = 200000; // characters of code in one action
@@ -168,7 +170,16 @@ export interface Action {
   top?: number;
   boxes?: boolean; // preview_read: say where each part is and how big
   space?: "drawing"; // preview_click, preview_drag: x, y, dx and dy are in the canvas's own drawing coordinates, not screen pixels
+  // mcp_call: a tool of a service the user connected (docs/lld/19 section 24)
+  connection?: string; // "github"
+  tool?: string; // "create_issue"
+  args?: Record<string, unknown>; // the tool's arguments: a plain object
+  level?: "read" | "write" | "irreversible"; // set by the page from the connection's own list, never taken from the model
+  title?: string; // the connection's name for the user ("GitHub"), set by the page
 }
+
+export const MAX_MCP_CALLS = 20; // calls to connections in one task (the server counts too)
+export const MAX_MCP_ARGS = 16000; // characters of the arguments of one call
 
 export const MAX_PREVIEW_ACTIONS = 30; // the preview_* actions that look at or act in the page, in one task
 export const MAX_EVAL = 2000; // characters of an expression run in the page
@@ -257,7 +268,7 @@ export interface StepResult {
 // Switching the language is a kind of its own: it is not a change the user
 // reviews, the page puts the language's starter code in the editor and starts
 // the terminal again.
-export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview" | "previewact" | "shell" | "store";
+export type Scope = "editor" | "language" | "run" | "terminal" | "files" | "preview" | "previewact" | "shell" | "store" | "mcpread" | "mcpwrite" | "mcpdanger";
 
 export function scopeOf(a: Action): Scope | null {
   switch (a.type) {
@@ -315,6 +326,9 @@ export function scopeOf(a: Action): Scope | null {
     // an app of the App Store is installed (when it is on the safe list) and switched on: the user is asked each time
     case "store_suggest":
       return "store";
+    // a tool of a connection: what it can do decides the kind. A tool the page does not know is treated as a write.
+    case "mcp_call":
+      return a.level === "read" ? "mcpread" : a.level === "irreversible" ? "mcpdanger" : "mcpwrite";
     default:
       return null;
   }
@@ -394,6 +408,9 @@ export function scopeQuestion(scope: Scope): string {
   if (scope === "preview") return "Genie wants to use the Preview";
   if (scope === "previewact") return "Genie wants to act in your Preview";
   if (scope === "store") return "Genie wants to install an app from the App Store";
+  if (scope === "mcpread") return "Genie wants to read from a service you connected";
+  if (scope === "mcpwrite") return "Genie wants to change something at a service you connected";
+  if (scope === "mcpdanger") return "Genie wants to do something at a service that cannot be undone";
   if (scope === "shell") return "Genie wants to run a command in your workspace";
   return "Genie wants to run your code";
 }
@@ -401,6 +418,13 @@ export function scopeQuestion(scope: Scope): string {
 // openFile: the file that is open in the editor, if any. The page leaves the
 // editor alone on a change of language then, and the card must not say otherwise.
 export function scopeDetail(scope: Scope, a: Action, openFile: string = ""): string {
+  if (scope === "mcpread" || scope === "mcpwrite" || scope === "mcpdanger") {
+    const who = a.title || a.connection || "the service";
+    const args = JSON.stringify(a.args || {}, null, 2);
+    const shown = args.length > 600 ? args.slice(0, 600) + "\n..." : args;
+    const what = scope === "mcpread" ? "It will read from " + who + " as you. Nothing is changed there." : scope === "mcpwrite" ? "It will write to " + who + " as you." : "It will do this at " + who + " as you, and it cannot be undone. It asks every time.";
+    return what + " " + (a.tool || "") + " " + shown;
+  }
   if (scope === "store") {
     const n = a.name || "an app";
     return "It will install " + n + " (a conda-forge package) on the server and enable it for your terminals, if it is on the safe list; an app that needs an admin is only offered to you in the store. It is installed once and shared: it does not change your files.";
@@ -994,6 +1018,17 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
         else actions.push({ type, groups: asked.filter((g, i) => asked.indexOf(g) === i) });
         break;
       }
+      case "mcp_call": {
+        const conn = typeof a.connection === "string" ? a.connection.trim().toLowerCase() : "";
+        const tool = typeof a.tool === "string" ? a.tool.trim() : "";
+        const args = a.args === undefined ? {} : a.args;
+        const plain = typeof args === "object" && args !== null && !Array.isArray(args);
+        if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(conn)) dropped.push('mcp_call left out: "connection" is the name of a connection from the task note, for example github');
+        else if (!/^[A-Za-z0-9_.-]{1,80}$/.test(tool)) dropped.push('mcp_call left out: "tool" is the name of one of the connection\'s tools, as the task note lists it');
+        else if (!plain || JSON.stringify(args).length > MAX_MCP_ARGS) dropped.push('mcp_call left out: "args" is an object of at most ' + MAX_MCP_ARGS + " characters");
+        else actions.push({ type, connection: conn, tool, args: args as Record<string, unknown> });
+        break;
+      }
       case "store_suggest": {
         const n = typeof a.name === "string" ? a.name.trim().toLowerCase() : "";
         if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(n)) dropped.push('store_suggest left out: "name" has to be a conda-forge package name, for example flask');
@@ -1109,6 +1144,8 @@ export function describe(a: Action): string {
       return "Deleting " + a.path;
     case "store_suggest":
       return "Offering to install " + a.name + " from the App Store";
+    case "mcp_call":
+      return "Calling " + (a.connection || "a connection") + " " + (a.tool || "a tool");
     case "need_tools":
       return "Getting more actions: " + (a.groups || []).join(", ");
     case "preview_open":
@@ -1207,7 +1244,7 @@ export function findLanguage(options: { value: string; text: string }[], name: s
 //     themselves. Those are still asked about.
 // Everything is kept in the page only: not saved, not sent, not shared with a collaborator; a reload starts again.
 
-export const EVERYDAY_SCOPES: Scope[] = ["editor", "language", "run", "terminal", "files", "preview", "previewact", "shell"];
+export const EVERYDAY_SCOPES: Scope[] = ["editor", "language", "run", "terminal", "files", "preview", "previewact", "shell", "mcpread", "mcpwrite"];
 
 export const SCOPE_LABELS: Record<Scope, string> = {
   editor: "Editor changes",
@@ -1219,6 +1256,9 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   previewact: "Preview (click, type, run code in the page)",
   shell: "Run commands (safe ones)",
   store: "App Store (install an app)",
+  mcpread: "Connections (read)",
+  mcpwrite: "Connections (write)",
+  mcpdanger: "Connections (cannot be undone: asked every time)",
 };
 
 export type RiskKind = "terminal" | "delete" | "move" | "tab";
@@ -1306,7 +1346,15 @@ export interface UndoItem {
   done: boolean;
 }
 
+// After text from outside (what a connection returned), these ask again whatever was allowed for the session: a shell command, anything risky in the
+// Files or the terminal (a delete, a move), a write to a connection, and running code in the Preview page.
+export function riskyAfterOutside(a: Action): boolean {
+  const scope = scopeOf(a);
+  return scope === "shell" || scope === "mcpwrite" || scope === "mcpdanger" || a.type === "preview_eval" || riskKindOf(a) !== null;
+}
+
 export class Permissions {
+  private outside = false; // text from outside (a connection's result) is in this task
   private grants = new Set<Scope>();
   private apply = false; // the editor's changes go in without a review
   private risky = new Set<RiskKind>();
@@ -1317,6 +1365,17 @@ export class Permissions {
   constructor(policy: () => SitePolicy = () => ({}), clock: () => number = () => Date.now()) {
     this.policy = policy;
     this.clock = clock;
+  }
+
+  // ---- text from outside (the taint guard)
+  markOutside(): void {
+    this.outside = true;
+  }
+  clearOutside(): void {
+    this.outside = false;
+  }
+  isOutside(): boolean {
+    return this.outside;
   }
 
   // ---- the everyday level
@@ -1398,6 +1457,9 @@ export class Permissions {
   //   "risky" it goes: the riskier level allows it, and the chat says so
   // everyday: the caller has judged the action not risky (a paste of a copy, say): only the everyday level is looked at
   decide(a: Action, everyday: boolean = false): "ask" | "auto" | "risky" {
+    // what cannot be undone at a service is asked every time; after text from outside, a risky action is asked again
+    if (scopeOf(a) === "mcpdanger") return "ask";
+    if (this.outside && riskyAfterOutside(a)) return "ask";
     const kind = everyday ? null : riskKindOf(a);
     if (kind) {
       if (this.riskyOn() && this.risky.has(kind) && hardBlockOf(a) === "") return "risky";

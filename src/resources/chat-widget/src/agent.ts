@@ -10,6 +10,7 @@ import {
   CUT_OFF,
   EVERYDAY_SCOPES,
   MAX_OUTPUT,
+  MAX_MCP_CALLS,
   MAX_PREVIEW_ACTIONS,
   MAX_TABS,
   PAGE_ONLY_LANGUAGES,
@@ -36,6 +37,7 @@ import {
   parseStep,
   resultsMessage,
   riskOf,
+  riskyAfterOutside,
   recapOf,
   memoryLine,
   memoryOf,
@@ -176,6 +178,11 @@ export interface AgentHost {
   // Looks in the user's workspace without changing anything (POST agent_files): a search for text, or some lines of a file.
   // The signal ends it (Stop). Absent where the page cannot.
   readFiles?(req: { op: "search" | "read"; query?: string; path?: string; start_line?: number; end_line?: number }, signal: AbortSignal): Promise<{ status: number; message?: string; matches?: { file: string; line: number; text: string }[]; files_scanned?: number; truncated?: boolean; path?: string; start_line?: number; end_line?: number; total_lines?: number; text?: string; next_line?: number }>;
+  // Connections (genie_conn; LLD 19 section 24): the tool of a connection the user connected (its level and the connection's name), null when there is none; the note a
+  // task starts with (names and, when the task needs them, the tools); and a call, which the server makes with the user's token.
+  connectionTool?(connection: string, tool: string): { level: "read" | "write" | "irreversible"; title: string } | null;
+  connectionsNote?(withTools: boolean): Promise<string>;
+  mcpCall?(req: { connection: string; tool: string; args: Record<string, unknown>; task: string; confirmed: boolean }, signal: AbortSignal): Promise<{ status: number; message?: string; text?: string; isError?: boolean }>;
   // What the workspace has as skills, as a note for the start of a task (names and descriptions; "" when there are none). skills.ts: skillsNoteText.
   skillsNote?(): Promise<string>;
   // The text of the editor, for what a task changed (+ and - lines at its end). Absent where the page cannot.
@@ -445,6 +452,7 @@ export class AgentRunner {
   private ran = false;
   private replaceFails = 0; // editor_replace steps that found no old text, in a row
   private previewCount = 0; // the preview_* actions that look at the page or act in it, in this task
+  private mcpCount = 0; // the calls to connections in this task (the server counts too)
   private previewTarget: { submits: boolean; leaves: boolean; href: string } | null = null; // what the part of the page is, found before the card
   private runTerm: unknown = null;
   private runAt = 0;
@@ -487,6 +495,8 @@ export class AgentRunner {
     this.stopped = false;
     this.replaceFails = 0;
     this.previewCount = 0;
+    this.mcpCount = 0;
+    this.perms.clearOutside(); // a new task has no text from outside in it
     this.timedOut = false;
     this.onState("running");
     this.ctl = new AbortController();
@@ -557,6 +567,10 @@ export class AgentRunner {
       // the skills of this workspace: their names and what they are for (the text of one is read with files_read when it is used)
       const skills = this.host.skillsNote ? await this.host.skillsNote() : "";
       if (skills && !this.stopped) task_.messages[0].content += "\n\n" + skills;
+      // the services the user connected: their names, and their tools when the words of the task say it is about one
+      const wantsConn = groupsFor([], { task, previewOpen: false, openFile: "", terminal: "", haveEditorText: false }).indexOf("connect") >= 0;
+      const conns = this.host.connectionsNote ? await this.host.connectionsNote(wantsConn) : "";
+      if (conns && !this.stopped) task_.messages[0].content += "\n\n" + conns;
       lastText = task;
       // No `break` or `continue` in a loop that awaits, here or anywhere in the
       // widget: the build tool (microbundle rewrites async functions into promise
@@ -1087,6 +1101,9 @@ export class AgentRunner {
       t.groups = addGroups(t.groups, asked);
       this.tell({ event: "need_tools", reason: fresh.join(", ") }, t);
       this.addLine("Getting more actions: " + asked.join(", ")).set("done");
+      // the tools of the connections come with the group that uses them
+      const toolsNote = fresh.indexOf("connect") >= 0 && this.host.connectionsNote ? await this.host.connectionsNote(true) : "";
+      if (toolsNote) return { type: a.type, status: "done", detail: "added: connect. Its action is listed for you from your next step. " + toolsNote };
       return { type: a.type, status: "done", detail: fresh.length ? "added: " + fresh.join(", ") + ". Their actions are listed for you from your next step." : "those were already yours" };
     }
     // a skill the user chose may allow only some actions: the others are refused, and the model is told which are left
@@ -1151,19 +1168,37 @@ export class AgentRunner {
         return { type: a.type, status: "failed", detail: found };
       }
     }
+    // a call to a connection: the page looks the tool up in the connection's own list, and the level (read, write, cannot be undone) is that list's word, never the model's
+    if (a.type === "mcp_call") {
+      const info = this.host.connectionTool ? this.host.connectionTool(a.connection || "", a.tool || "") : null;
+      if (!info) {
+        line.set("failed", describe(a) + ": not available");
+        return { type: a.type, status: "failed", detail: "there is no connected service " + (a.connection || "") + " with a tool " + (a.tool || "") + ": use only the connections and tools of the task note, or say that the user has to connect one in /add-plugin, under Connections" };
+      }
+      this.mcpCount++;
+      if (this.mcpCount > MAX_MCP_CALLS) {
+        line.set("failed", describe(a) + ": limit");
+        return { type: a.type, status: "failed", detail: "a task may make " + MAX_MCP_CALLS + " calls to connections: say in \"say\" what is done and what is left, and finish" };
+      }
+      a = { ...a, level: info.level, title: info.title };
+    }
     const scope = scopeOf(a);
     // Nothing to ask about: the language is the one in use already, so nothing
     // would change (perform says so to the model)
     const noChange = a.type === "set_language" && this.isCurrentLanguage(a.language || "");
     // a line that can do harm is asked about every time, whatever was allowed
-    const risk =
+    const risk0 =
       a.type === "terminal_type" || a.type === "bash"
         ? riskOf(a.text || "")
         : a.type === "terminal_close_tab"
         ? "closes the tab and stops what is running in it"
         : scopeOf(a) === "files"
         ? filesAskReason(a, this.host.files.buffer())
+        : scope === "mcpdanger"
+        ? "cannot be undone at the service"
         : "";
+    // after text from outside, a risky action is asked again, and the card says why
+    const risk = risk0 || (this.perms.isOutside() && riskyAfterOutside(a) ? "follows text from outside, which can carry orders" : "");
     let riskyNote = "";
     this.trashNext = false;
     if (scope && !noChange) {
@@ -1448,6 +1483,14 @@ export class AgentRunner {
           status: "done",
           detail: "tab closed; now on tab " + now.active + " of " + now.count + "; Run uses the language in the picker (" + this.pickerLanguage() + ")",
         };
+      }
+      case "mcp_call": {
+        if (!this.host.mcpCall) return { type: a.type, status: "failed", detail: "this page cannot use connections" };
+        const res = await this.host.mcpCall({ connection: a.connection || "", tool: a.tool || "", args: a.args || {}, task: this.task ? this.task.tid : "", confirmed: true }, this.ctl ? this.ctl.signal : new AbortController().signal);
+        if (res.status !== 200) return { type: a.type, status: "failed", detail: res.message || "the call failed" };
+        // from here on the task holds text from outside: a risky action asks again
+        this.perms.markOutside();
+        return { type: a.type, status: res.isError ? "failed" : "done", detail: res.text || "" };
       }
       case "store_suggest": {
         // the user said yes on the permission card: a safe app is installed and switched on; one that needs an admin is only offered

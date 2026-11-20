@@ -5,6 +5,7 @@
    admin "colour of the day" switch still applies. */
 #chat-widget__container {
   --cw-bg: #15151C;
+  --cw-cmd: #7AA7E8;
   --cw-border: #24242E;
   --cw-text: #E6E4EC;
   --cw-strong: #F2F0EC;
@@ -52,6 +53,7 @@
    written by page/21-ide-theme.js). */
 html[data-theme="light"] #chat-widget__container:not(.is-docked) {
   --cw-bg: #FFFFFF;
+  --cw-cmd: #1F5FBF;
   --cw-border: #E4E1DA;
   --cw-text: #2A2A32;
   --cw-strong: #15151C;
@@ -765,6 +767,34 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) {
 }
 .chat-widget__message--user .cw-chip--warn .cw-chip__meta {
   color: #6B4B00;
+}
+/* A command in the box (/name) is drawn in the colour of a link: the text is drawn behind the box (index.ts drawHighlight) */
+#chat-widget__inputwrap {
+  position: relative;
+  display: block;
+}
+#chat-widget__hl {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font: 400 14px/22px var(--font-ui, "IBM Plex Sans", system-ui, sans-serif);
+  color: var(--cw-strong);
+}
+#chat-widget__hl[hidden] {
+  display: none;
+}
+#chat-widget__hl .cw-cmd {
+  color: var(--cw-cmd, #7AA7E8);
+}
+#chat-widget__input.has-hl {
+  position: relative;
+  color: transparent;
+  caret-color: var(--cw-strong);
 }
 #chat-widget__input {
   display: block;
@@ -1885,7 +1915,8 @@ body.is-mobile #chat-widget__container.is-docked .cw-reviewbar button { min-heig
   body.is-mobile #chat-widget__container.is-docked .cw-tab.is-active { flex: 1; max-width: none; min-height: 40px; }
   body.is-mobile #chat-widget__container.is-docked .cw-tab__x { display: none; }
   /* touch: 16 px text in the box (a smaller one makes the browser zoom in), 44 px targets */
-  body.is-mobile #chat-widget__container.is-docked #chat-widget__input { font-size: 16px; }
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__input,
+  body.is-mobile #chat-widget__container.is-docked #chat-widget__hl { font-size: 16px; }
   body.is-mobile #chat-widget__container.is-docked #chat-widget__submit { width: 44px; height: 44px; }
   body.is-mobile #chat-widget__container.is-docked #chat-widget__model-btn,
   body.is-mobile #chat-widget__container.is-docked #chat-widget__mode button { min-height: 40px; }
@@ -2060,3 +2091,10 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-picker__tag
 .cw-chip--skill .cw-chip__name { color: #6FB52C; font-weight: 600; }
 html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-chip--skill .cw-chip__name { color: #4A7A00; }
 .cw-plg__notes { color: var(--cw-text); overflow-wrap: anywhere; }
+
+/* Connections (MCP) in the Plugins dialog */
+.cw-plg__card--col { flex-direction: column; align-items: stretch; }
+.cw-plg__connhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cw-plg__connhead .cw-plg__actions { margin-left: auto; }
+.cw-plg__pill--bad { border-color: #E57373; color: #F2A0A0; }
+.cw-plg__conns { color: var(--cw-text); overflow-wrap: anywhere; }

@@ -342,6 +342,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.HandleFunc(pathPrefix+"agent_restore", server.handleAgentRestore)
 	siteMux.HandleFunc(pathPrefix+"genie_chats", server.handleGenieChats)
 	siteMux.HandleFunc(pathPrefix+"genie_ext", server.handleGenieExt)
+	siteMux.HandleFunc(pathPrefix+"genie_conn", server.handleGenieConn)
 	siteMux.HandleFunc(pathPrefix+"practice_ws", server.handlePracticeWS)
 	siteMux.HandleFunc(pathPrefix+"preview/", server.handlePreview)
 	siteMux.HandleFunc(pathPrefix+"upload_file", server.handleFileUpload)

@@ -7,7 +7,7 @@ const path = require("path");
 const ADMIN_HTML = fs.readFileSync(path.join(__dirname, "..", "..", "src", "resources", "admin.html"), "utf8");
 const fixture = (n) => JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", n), "utf8"));
 
-async function stub(page, measures, installs) {
+async function stub(page, measures, installs, conn) {
   const st = { saved: [], baselines: 0 };
   await page.route(/\/admin\/?(\?.*)?(#.*)?$/, (r) => (r.request().resourceType() === "document" ? r.fulfill({ contentType: "text/html", body: ADMIN_HTML }) : r.continue()));
   if (process.env.GENIE_LOCAL_ASSETS) {
@@ -20,6 +20,18 @@ async function stub(page, measures, installs) {
   const json = (r, o) => r.fulfill({ contentType: "application/json", body: JSON.stringify(o) });
   let settings = Object.assign(fixture("admin-settings.json"), { pluginCatalogue: [{ id: "code-review-kit", title: "Code review kit" }, { id: "git-helper", title: "Git helper" }] });
   await page.route("**/admin/plugin-installs", (r) => json(r, installs));
+  const cst = { answers: [], requests: (conn && conn.requests) || [] };
+  st.conn = cst;
+  await page.route("**/admin/connection-requests", (r) => {
+    if (r.request().method() === "POST") {
+      const b = r.request().postDataJSON();
+      cst.answers.push(b);
+      cst.requests = cst.requests.map((q) => (q.id === b.id ? Object.assign({}, q, { status: b.action === "decline" ? "declined" : "approved", scope: b.action === "approve_user" ? "user" : b.action === "approve" ? "site" : "", reason: b.reason || "" }) : q));
+      return json(r, { request: {} });
+    }
+    json(r, { requests: cst.requests, waiting: cst.requests.filter((q) => q.status === "waiting").length });
+  });
+  await page.route("**/admin/connections", (r) => json(r, { connected: (conn && conn.connected) || [], calls: (conn && conn.calls) || [] }));
   await page.route("**/admin/settings", (r) => {
     if (r.request().method() === "POST") {
       const b = r.request().postDataJSON();
@@ -87,4 +99,59 @@ test("Plugin installs lists who installed what and from where, newest first, wit
   await expect(rows.nth(0)).toContainText("link https://github.com/acme/genie-review-kit");
   await expect(rows.nth(1)).toContainText("remove");
   await expect(rows.nth(1)).toContainText("catalogue");
+});
+
+const REQ = {
+  id: "r1", user: "uid-ann", plugin: "acme-review", version: "0.3", source: "link:https://github.com/acme/genie-review-kit", status: "waiting", at: "2026-11-20T12:00:00Z",
+  connections: [{ id: "github", title: "GitHub", url: "https://api.githubcopilot.com/mcp/" }], skills: ["review-it", "team-style"], note: "for my team",
+};
+
+test("Site settings has the connections card: on, no approval off, and the switches and the list of servers are saved", async ({ page }) => {
+  const st = await stub(page, {}, INSTALLS, {});
+  await page.goto("/admin#site/genie-agent");
+  const card = page.locator(".card", { hasText: "Connections to other services" }).first();
+  await expect(card).toBeVisible();
+  await expect(card.locator("#f-conn-on")).toBeChecked();
+  await expect(card.locator("#f-conn-noapproval")).not.toBeChecked();
+  await expect(card.locator("#f-conn-hosts")).toHaveValue("");
+  await expect(card).toContainText("20 calls");
+  await card.locator("#f-conn-noapproval").evaluate((e) => e.click());
+  await card.locator("#f-conn-hosts").fill("API.githubcopilot.com\nmcp.acme.example, api.githubcopilot.com");
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect.poll(() => st.saved.length).toBe(1);
+  expect(st.saved[0].genie).toMatchObject({ connectionsOff: false, connectionsNoApproval: true, connectionHosts: ["api.githubcopilot.com", "mcp.acme.example"] });
+});
+
+test("a request for a connection waits in the admin's list with what the server fetched, and is approved for one user or declined with a reason", async ({ page }) => {
+  const st = await stub(page, {}, INSTALLS, { requests: [REQ, Object.assign({}, REQ, { id: "r2", plugin: "other", status: "approved", scope: "site" })], connected: [{ user: "uid-bob", conn: "github", at: "2026-11-20T11:00:00Z" }], calls: [{ conn: "github", tool: "get_issue", ok: true }] });
+  await page.goto("/admin#site/genie-agent");
+  const card = page.locator('[data-card="Connection requests"]');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("acme-review v0.3 · uid-ann");
+  await expect(card).toContainText("link:https://github.com/acme/genie-review-kit");
+  await expect(card).toContainText("GitHub (api.githubcopilot.com/mcp/)");
+  await expect(card).toContainText("review-it, team-style");
+  await expect(card).toContainText("for my team");
+  await expect(card).toContainText("1 waiting");
+  await expect(card).toContainText("uid-bob");
+  await expect(card).toContainText("github.get_issue");
+  // approve for this user
+  await card.getByRole("button", { name: "Approve for this user" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Approve" }).click();
+  await expect.poll(() => st.conn.answers.length).toBe(1);
+  expect(st.conn.answers[0]).toMatchObject({ id: "r1", action: "approve_user" });
+  await expect(card).toContainText("approved (user)");
+  await expect(card).toContainText("0 waiting".replace("0", "No"));
+});
+
+test("a request can be declined with a reason the user sees", async ({ page }) => {
+  const st = await stub(page, {}, INSTALLS, { requests: [REQ] });
+  await page.goto("/admin#site/genie-agent");
+  const card = page.locator('[data-card="Connection requests"]');
+  await card.getByRole("button", { name: "Decline…" }).click();
+  await page.locator("dialog[open] input").fill("Server not on our list");
+  await page.locator("dialog[open]").getByRole("button", { name: "Decline" }).click();
+  await expect.poll(() => st.conn.answers.length).toBe(1);
+  expect(st.conn.answers[0]).toMatchObject({ id: "r1", action: "decline", reason: "Server not on our list" });
+  await expect(card).toContainText("declined: Server not on our list");
 });

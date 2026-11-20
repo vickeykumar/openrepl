@@ -53,6 +53,8 @@ type pluginPackage struct {
 	Ignored  int
 	Skills   []skillInfo
 	Notes    []noteInfo
+	// the connections the plugin names (genie_conn_requests.go parsePluginConnections)
+	Connections []connectionDef
 }
 
 // noteInfo is a note a plugin brings: plain Markdown in knowledge/<name>.md that Genie reads when a task is about what it says.
@@ -104,13 +106,11 @@ func buildPackage(files map[string][]byte, source string, ignored int, fromLink 
 	if len([]rune(m.Title)) > 60 || len([]rune(m.Description)) > 300 || len(m.Version) > 20 || len([]rune(m.Author)) > 60 {
 		return nil, fmt.Errorf("plugin.json has a title, description, version or author that is too long")
 	}
-	if len(m.Connections) > 0 {
-		if fromLink {
-			return nil, fmt.Errorf("this plugin asks for a connection to an outside service. Connections are not installed from a link: they need an admin's approval, which this version of Genie does not have yet")
-		}
-		return nil, fmt.Errorf("connections are not supported yet")
+	conns, cerr := parsePluginConnections(m.Connections, fromLink)
+	if cerr != nil {
+		return nil, cerr
 	}
-	pkg := &pluginPackage{Manifest: m, Source: source, Ignored: ignored}
+	pkg := &pluginPackage{Manifest: m, Source: source, Ignored: ignored, Connections: conns}
 	pkg.Files = append(pkg.Files, pkgFile{"plugin.json", mb})
 	var paths []string
 	for p := range files {
@@ -277,51 +277,270 @@ func packageFromZip(data []byte, subpath, source string) (*pluginPackage, error)
 var githubPart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 var githubRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 
-// linkSource says where to download a link from: a GitHub repository (or a folder in it) or a .zip file at an https address.
-func linkSource(raw string) (zipURL, subpath string, err error) {
+// parseGitHubLink reads a GitHub link: a repository (https://github.com/owner/repository), or a folder of it
+// (https://github.com/owner/repository/tree/<branch>/<folder>). `rest` is what follows "tree": the branch and the folder together, because a branch
+// name may hold slashes (feature/x) and then nothing in the link says where the branch ends. ok is false for a link that is not GitHub's.
+func parseGitHubLink(raw string) (owner, repo string, rest []string, ok bool, err error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || len(raw) > 300 {
-		return "", "", fmt.Errorf("paste a link of at most 300 characters")
+		return "", "", nil, false, fmt.Errorf("paste a link of at most 300 characters")
 	}
 	u, perr := url.Parse(raw)
 	if perr != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
-		return "", "", fmt.Errorf("the link has to start with https://")
+		return "", "", nil, false, fmt.Errorf("the link has to start with https://")
 	}
 	if p := u.Port(); p != "" && p != "443" {
-		return "", "", fmt.Errorf("the link cannot name a port")
+		return "", "", nil, false, fmt.Errorf("the link cannot name a port")
 	}
 	host := strings.ToLower(u.Hostname())
-	segs := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if host == "github.com" || host == "www.github.com" {
-		if len(segs) < 2 || !githubPart.MatchString(segs[0]) {
-			return "", "", fmt.Errorf("a GitHub link looks like https://github.com/owner/repository")
-		}
-		repo := strings.TrimSuffix(segs[1], ".git")
-		if !githubPart.MatchString(repo) {
-			return "", "", fmt.Errorf("a GitHub link looks like https://github.com/owner/repository")
-		}
-		ref, sub := "HEAD", ""
-		if len(segs) >= 4 && segs[2] == "tree" {
-			if !githubRef.MatchString(segs[3]) {
-				return "", "", fmt.Errorf("the branch name in the link is not allowed")
-			}
-			ref = segs[3]
-			sub = strings.Join(segs[4:], "/")
-		} else if len(segs) > 2 {
-			return "", "", fmt.Errorf("a GitHub link names a repository, or a folder as https://github.com/owner/repository/tree/main/folder")
-		}
-		for _, s := range strings.Split(sub, "/") {
-			if s == ".." || strings.ContainsAny(s, "\\\x00") {
-				return "", "", fmt.Errorf("the folder in the link is not allowed")
-			}
-		}
-		return "https://codeload.github.com/" + segs[0] + "/" + repo + "/zip/" + ref, sub, nil
+	if host != "github.com" && host != "www.github.com" {
+		return "", "", nil, false, nil
 	}
+	segs := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(segs) < 2 || !githubPart.MatchString(segs[0]) {
+		return "", "", nil, true, fmt.Errorf("a GitHub link looks like https://github.com/owner/repository")
+	}
+	repo = strings.TrimSuffix(segs[1], ".git")
+	if !githubPart.MatchString(repo) {
+		return "", "", nil, true, fmt.Errorf("a GitHub link looks like https://github.com/owner/repository")
+	}
+	if len(segs) == 2 {
+		return segs[0], repo, nil, true, nil
+	}
+	if segs[2] != "tree" || len(segs) < 4 {
+		return "", "", nil, true, fmt.Errorf("a GitHub link names a repository, or a folder as https://github.com/owner/repository/tree/main/folder")
+	}
+	rest = segs[3:]
+	if len(rest) > 12 {
+		return "", "", nil, true, fmt.Errorf("the folder in the link is too deep")
+	}
+	for _, sg := range rest {
+		if sg == "" || sg == "." || sg == ".." || len(sg) > 100 || strings.ContainsAny(sg, "\\\x00") {
+			return "", "", nil, true, fmt.Errorf("the branch or the folder in the link is not allowed")
+		}
+	}
+	return segs[0], repo, rest, true, nil
+}
+
+// linkSource says where to download a link from: a .zip file at an https address. (A GitHub link does not come here: it is read through
+// GitHub's API, githubPackageFiles, so that a folder of a big repository does not need the whole repository.)
+func linkSource(raw string) (zipURL, subpath string, err error) {
+	if _, _, _, ok, gerr := parseGitHubLink(raw); ok || gerr != nil {
+		if gerr != nil {
+			return "", "", gerr
+		}
+		return "", "", fmt.Errorf("a GitHub link is read through the API")
+	}
+	u, _ := url.Parse(strings.TrimSpace(raw))
 	if strings.HasSuffix(strings.ToLower(u.Path), ".zip") {
 		return u.String(), "", nil
 	}
 	return "", "", fmt.Errorf("paste a GitHub repository link or a link to a .zip file")
 }
+
+// ---- a GitHub folder, file by file ---------------------------------------------------------------------------------------------------
+
+var githubAPIBase = "https://api.github.com"
+
+// errGitHubRate is GitHub's limit on requests that carry no token (60 an hour for an address). A server that has OPENREPL_GITHUB_TOKEN is
+// allowed far more; without one, a repository small enough for a zip is read as a zip instead (githubZipFallback).
+var errGitHubRate = fmt.Errorf("GitHub's limit for requests without a token was reached: try again in an hour, or ask an admin to set OPENREPL_GITHUB_TOKEN on the server")
+
+// getURL is the one GET the server makes for a GitHub link; tests replace it. Public addresses only, https, the size limit given.
+var getURL = func(rawURL string, limit int64) ([]byte, int, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("User-Agent", "openrepl-plugin-fetch")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	// the token, if the server has one, goes only to GitHub's own API, never to a download address
+	if tok := os.Getenv("OPENREPL_GITHUB_TOKEN"); tok != "" && strings.HasPrefix(rawURL, "https://api.github.com/") {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	resp, err := newExtClient().Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("GitHub could not be reached")
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("the download stopped")
+	}
+	if int64(len(b)) > limit {
+		return nil, resp.StatusCode, fmt.Errorf("the download is bigger than %d KB", limit>>10)
+	}
+	return b, resp.StatusCode, nil
+}
+
+type githubEntry struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Size        int64  `json:"size"`
+	DownloadURL string `json:"download_url"`
+}
+
+// githubList lists a folder of a repository at a ref ("" is the default branch). found is false when the ref or the folder is not there.
+func githubList(owner, repo, ref, path string) (entries []githubEntry, found bool, err error) {
+	u := githubAPIBase + "/repos/" + owner + "/" + repo + "/contents"
+	if path != "" {
+		u += "/" + path
+	}
+	if ref != "" {
+		u += "?ref=" + url.QueryEscape(ref)
+	}
+	b, status, err := getURL(u, 256<<10)
+	if err != nil {
+		return nil, false, err
+	}
+	switch {
+	case status == http.StatusNotFound:
+		return nil, false, nil
+	case status == http.StatusForbidden || status == http.StatusTooManyRequests:
+		return nil, false, errGitHubRate
+	case status != http.StatusOK:
+		return nil, false, fmt.Errorf("GitHub answered %d", status)
+	}
+	if json.Unmarshal(b, &entries) != nil {
+		return nil, false, nil // a file, not a folder
+	}
+	return entries, true, nil
+}
+
+// githubPackageFiles reads the files of a plugin from a GitHub folder: plugin.json, skills/*.md and knowledge/*.md, and counts what else is there.
+// The folder may be the repository itself or a folder named in a tree link. The branch of a tree link may hold slashes (feature/x): the link does not say
+// where it ends, so each way of cutting it is tried, and the one that is a folder with a plugin.json in it is taken (a name that does not exist answers 404).
+func githubPackageFiles(owner, repo string, rest []string) (map[string][]byte, int, error) {
+	type cut struct{ ref, path string }
+	var cuts []cut
+	if len(rest) == 0 {
+		cuts = []cut{{"", ""}}
+	} else {
+		for k := 1; k <= len(rest) && k <= 6; k++ {
+			cuts = append(cuts, cut{strings.Join(rest[:k], "/"), strings.Join(rest[k:], "/")})
+		}
+	}
+	for _, c := range cuts {
+		entries, found, err := githubList(owner, repo, c.ref, c.path)
+		if err != nil {
+			return nil, 0, err
+		}
+		if !found {
+			continue
+		}
+		hasManifest := false
+		for _, e := range entries {
+			hasManifest = hasManifest || (e.Name == "plugin.json" && e.Type == "file")
+		}
+		if !hasManifest {
+			if len(cuts) == 1 {
+				return nil, 0, fmt.Errorf("there is no plugin.json in that folder: link to the folder that holds it")
+			}
+			continue
+		}
+		return githubReadPlugin(owner, repo, c.ref, c.path, entries)
+	}
+	return nil, 0, fmt.Errorf("there is no plugin.json at that link: link to a repository or a folder that holds one (on a branch that exists)")
+}
+
+func githubReadPlugin(owner, repo, ref, path string, root []githubEntry) (map[string][]byte, int, error) {
+	files := map[string][]byte{}
+	ignored, total, skills, notes := 0, 0, 0, 0
+	fetchFile := func(rel string, e githubEntry) error {
+		if e.Size > pluginMaxFile {
+			return fmt.Errorf("%s is longer than %d KB", rel, pluginMaxFile>>10)
+		}
+		dl := e.DownloadURL
+		if !strings.HasPrefix(dl, "https://raw.githubusercontent.com/") && !(extAllowLoopback && strings.HasPrefix(dl, "http://")) {
+			return fmt.Errorf("%s has no download address GitHub gave", rel)
+		}
+		b, status, err := getURL(dl, pluginMaxFile)
+		if err != nil || status != http.StatusOK {
+			return fmt.Errorf("%s could not be read", rel)
+		}
+		total += len(b)
+		if total > pluginMaxTotal {
+			return fmt.Errorf("the plugin is bigger than %d KB", pluginMaxTotal>>10)
+		}
+		files[rel] = b
+		return nil
+	}
+	for _, e := range root {
+		switch {
+		case e.Name == "plugin.json" && e.Type == "file":
+			if err := fetchFile("plugin.json", e); err != nil {
+				return nil, 0, err
+			}
+		case (e.Name == "skills" || e.Name == "knowledge") && e.Type == "dir":
+			sub := e.Name
+			if path != "" {
+				sub = path + "/" + e.Name
+			}
+			list, found, err := githubList(owner, repo, ref, sub)
+			if err != nil {
+				return nil, 0, err
+			}
+			if !found {
+				continue
+			}
+			for _, f := range list {
+				if f.Type != "file" || !strings.HasSuffix(f.Name, ".md") {
+					ignored++
+					continue
+				}
+				if e.Name == "skills" {
+					skills++
+					if skills > pluginMaxSkills {
+						return nil, 0, fmt.Errorf("the plugin has more than %d skills", pluginMaxSkills)
+					}
+				} else {
+					notes++
+					if notes > pluginMaxNotes {
+						return nil, 0, fmt.Errorf("the plugin has more than %d notes", pluginMaxNotes)
+					}
+				}
+				if err := fetchFile(e.Name+"/"+f.Name, f); err != nil {
+					return nil, 0, err
+				}
+			}
+		default:
+			ignored++
+		}
+	}
+	return files, ignored, nil
+}
+
+// githubZipFallback reads the plugin from the zip of the repository when the API's limit was reached: only a repository small enough for the 2 MB limit
+// can be read this way. The branch of a tree link may hold slashes: each way of cutting it is tried, and a zip that is not there answers 404.
+func githubZipFallback(owner, repo string, rest []string, source string) (*pluginPackage, error) {
+	type cut struct{ ref, sub string }
+	cuts := []cut{{"HEAD", ""}}
+	if len(rest) > 0 {
+		cuts = nil
+		for k := 1; k <= len(rest) && k <= 6; k++ {
+			cuts = append(cuts, cut{strings.Join(rest[:k], "/"), strings.Join(rest[k:], "/")})
+		}
+	}
+	var last error
+	for _, c := range cuts {
+		data, err := fetchZip("https://codeload.github.com/" + owner + "/" + repo + "/zip/" + c.ref)
+		if err != nil {
+			last = err
+			if strings.Contains(err.Error(), "bigger than") {
+				return nil, fmt.Errorf("%v. GitHub's limit for requests without a token was reached too, so this repository cannot be read just now: try again in an hour, or ask an admin to set OPENREPL_GITHUB_TOKEN on the server", err)
+			}
+			continue
+		}
+		return packageFromZip(data, c.sub, source)
+	}
+	if last == nil {
+		last = errGitHubRate
+	}
+	return nil, fmt.Errorf("%v (the branch or the folder in the link may not exist)", last)
+}
+
+// githubFiles reads a plugin from a GitHub link; tests replace it.
+var githubFiles = githubPackageFiles
 
 // publicIP says whether an address is one a plugin link may be fetched from: not this machine, not a private or link-local network
 // (which includes the addresses clouds use for their metadata service), not a shared or reserved range.
@@ -342,7 +561,10 @@ func publicIP(ip net.IP) bool {
 // extAllowLoopback lets a test fetch from a server on this machine; nothing else sets it.
 var extAllowLoopback = false
 
-func newExtClient() *http.Client {
+func newExtClient() *http.Client { return newExtClientFor(12 * time.Second) }
+
+// newExtClientFor is the client of every call the server makes for a person to an address the person (or a plugin) named: public addresses only, https, a few redirects.
+func newExtClientFor(timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{Timeout: 5 * time.Second, Control: func(network, address string, _ syscall.RawConn) error {
 		host, _, err := net.SplitHostPort(address)
 		if err != nil {
@@ -355,7 +577,7 @@ func newExtClient() *http.Client {
 		return nil
 	}}
 	tr := &http.Transport{DialContext: dialer.DialContext, Proxy: nil, TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: 8 * time.Second, DisableKeepAlives: true}
-	return &http.Client{Transport: tr, Timeout: 12 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	return &http.Client{Transport: tr, Timeout: timeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 3 {
 			return fmt.Errorf("too many redirects")
 		}
@@ -395,6 +617,18 @@ var fetchZip = func(zipURL string) ([]byte, error) {
 }
 
 func packageFromLink(link string) (*pluginPackage, error) {
+	if owner, repo, rest, ok, err := parseGitHubLink(link); err != nil {
+		return nil, err
+	} else if ok {
+		files, ignored, err := githubFiles(owner, repo, rest)
+		if err == errGitHubRate {
+			return githubZipFallback(owner, repo, rest, "link:"+strings.TrimSpace(link))
+		}
+		if err != nil {
+			return nil, err
+		}
+		return buildPackage(files, "link:"+strings.TrimSpace(link), ignored, true)
+	}
 	zipURL, sub, err := linkSource(link)
 	if err != nil {
 		return nil, err
@@ -498,6 +732,7 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 			Official         bool     `json:"official"`
 			Skills           []string `json:"skills"`
 			Notes            int      `json:"notes"`
+			Connections      []string `json:"connections"`
 			Installed        bool     `json:"installed"`
 			InstalledVersion string   `json:"installedVersion,omitempty"`
 			Update           bool     `json:"update"`
@@ -514,6 +749,7 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 				r.Skills = append(r.Skills, s.Name)
 			}
 			r.Notes = len(c.Notes)
+			r.Connections = append([]string{}, c.Connections...)
 			if p, ok := readInstalled(pluginsDir, c.Name); ok && strings.HasPrefix(p.Source, "catalogue:") {
 				r.Installed, r.InstalledVersion = true, p.Version
 				r.Update = p.Version != c.Version
@@ -607,6 +843,21 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 	}
 	dir := filepath.Join(pluginsDir, pkg.Manifest.Name)
 	cur, installed := readInstalled(pluginsDir, pkg.Manifest.Name)
+	access := connAccess(g, who, pkg, fromLink)
+	if in.Op == "plugin_request" {
+		if !fromLink || (access != "needed" && access != "declined" && access != "waiting") {
+			jsonError(rw, http.StatusBadRequest, "no_request", "There is nothing to ask an admin for here.")
+			return
+		}
+		rq, err := createConnRequest(who, pkg, in.Note)
+		if err != nil {
+			jsonError(rw, http.StatusBadRequest, "request", err.Error()+".")
+			return
+		}
+		logExt("connection request %s by %s: %s from %s", rq.ID, who, pkg.Manifest.Name, pkg.Source)
+		reply(map[string]interface{}{"request": rq})
+		return
+	}
 	if in.Op == "plugin_fetch" {
 		var changes []fileChange
 		if installed {
@@ -622,7 +873,7 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 		reply(map[string]interface{}{"plugin": map[string]interface{}{
 			"name": pkg.Manifest.Name, "title": orStr(pkg.Manifest.Title, pkg.Manifest.Name), "version": pkg.Manifest.Version,
 			"description": pkg.Manifest.Description, "author": pkg.Manifest.Author, "source": pkg.Source, "link": fromLink,
-			"skills": pkg.Skills, "notes": pkg.Notes, "files": files, "ignored": pkg.Ignored, "digest": pkg.Digest,
+			"skills": pkg.Skills, "notes": pkg.Notes, "connections": pkg.Connections, "access": access, "files": files, "ignored": pkg.Ignored, "digest": pkg.Digest,
 			"installed": installed, "installedVersion": cur.Version, "changes": changes,
 		}})
 		return
@@ -630,6 +881,17 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 	// plugin_apply
 	if in.Digest == "" || in.Digest != pkg.Digest {
 		jsonError(rw, http.StatusConflict, "changed", "It is not the same as what you were shown. Look at it again before you install it.")
+		return
+	}
+	switch access {
+	case "off":
+		jsonError(rw, http.StatusForbidden, "connections_off", "Connections are switched off on this site, so a plugin that needs one cannot be installed.")
+		return
+	case "host_denied":
+		jsonError(rw, http.StatusForbidden, "host_not_allowed", "The admin's list of servers does not include a server this plugin's connection talks to.")
+		return
+	case "needed", "waiting", "declined":
+		jsonError(rw, http.StatusForbidden, "needs_approval", "This plugin needs a connection to an outside service, and an admin has to approve it first.")
 		return
 	}
 	if !installed {
