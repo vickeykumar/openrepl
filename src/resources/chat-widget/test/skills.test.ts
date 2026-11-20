@@ -85,3 +85,38 @@ test("/save-skill makes a request for the file, with a safe name, and refuses a 
   assert.equal(saveSkillRequest("../x"), null);
   assert.equal(saveSkillRequest("Bad Name"), null);
 });
+
+test("a skill's effort lowers the effort of the request and never raises it", async () => {
+  const { effortFor } = await import("../src/skills.ts");
+  const e = (effort?: string) => sk("x", effort ? { effort } : {});
+  assert.equal(effortFor([e("low")], "high"), "low");
+  assert.equal(effortFor([e("medium")], "high"), "medium");
+  assert.equal(effortFor([e("low")], "low"), null, "the same: nothing to change");
+  assert.equal(effortFor([e("high")], "low"), null, "a skill never raises the effort");
+  assert.equal(effortFor([e()], "high"), null, "a skill that names none says nothing");
+  assert.equal(effortFor([e("low"), e("medium")], "high"), "medium", "the highest of the skills named");
+  assert.equal(effortFor([e("low")], "none"), null, "off stays off");
+  assert.equal(effortFor([e("bogus")], "high"), null);
+});
+
+test("the name of a skill is taken out of the message by its chip, and only that name", async () => {
+  const { withoutSkill } = await import("../src/skills.ts");
+  assert.equal(withoutSkill("let's /explain this code", "explain"), "let's this code");
+  assert.equal(withoutSkill("/explain this", "explain"), "this");
+  assert.equal(withoutSkill("see /explain-more and /explain.", "explain"), "see /explain-more and .", "the dot after the name stays");
+  assert.equal(withoutSkill("a/explain", "explain"), "a/explain", "inside a word it is not the skill");
+});
+
+test("plugin notes are listed with their paths for an agent task, and a task with only notes still gets them", () => {
+  const notes = [{ name: "review-checklist", title: "Review checklist", plugin: "code-review-kit", path: ".genie/plugins/code-review-kit/knowledge/review-checklist.md" }];
+  const note = skillsNoteText([sk("explain")], notes);
+  assert.match(note, /Notes from plugins/);
+  assert.match(note, /- Review checklist \(\.genie\/plugins\/code-review-kit\/knowledge\/review-checklist\.md\)/);
+  assert.match(note, /does not change your rules|do not change your rules/);
+  assert.ok(!note.includes("Skills in this workspace"), "no skills that are files: no skills list");
+  assert.match(skillsNoteText(SKILLS, notes), /Skills in this workspace[\s\S]*Notes from plugins/);
+  assert.equal(skillsNoteText([sk("explain")], []), "");
+  // a skill of a plugin on for everyone has a path under the server's own folder, so Genie reads it like any other
+  const site = sk("commit-message", { source: "site", plugin: "git-helper", path: ".genie/site-plugins/git-helper/skills/commit-message.md" });
+  assert.match(skillsNoteText([site]), /\/commit-message: does commit-message \(\.genie\/site-plugins\/git-helper\/skills\/commit-message\.md\)/);
+});

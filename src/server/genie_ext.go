@@ -365,6 +365,38 @@ func workspaceSkills(realHome string) (skills []skillInfo, plugins []installedPl
 	return skills, plugins, problems
 }
 
+// workspaceNotes lists the notes of the plugins installed in a workspace (knowledge/<name>.md): Genie reads one when a task is about what it says.
+func workspaceNotes(realHome string) []noteInfo {
+	out := []noteInfo{}
+	_, pluginsDir, err := extDirs(realHome, false)
+	if err != nil {
+		return out
+	}
+	plugins, err := os.ReadDir(pluginsDir)
+	if err != nil {
+		return out
+	}
+	for _, pe := range plugins {
+		if !pe.IsDir() || !pluginNamePattern.MatchString(pe.Name()) {
+			continue
+		}
+		files, err := os.ReadDir(filepath.Join(pluginsDir, pe.Name(), "knowledge"))
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			name := strings.TrimSuffix(f.Name(), ".md")
+			if !strings.HasSuffix(f.Name(), ".md") || !noteNamePattern.MatchString(name) || len(out) >= 60 {
+				continue
+			}
+			if b, ok := plainFile(filepath.Join(pluginsDir, pe.Name(), "knowledge", f.Name()), pluginMaxNote+1024); ok {
+				out = append(out, noteInfo{Name: name, Title: noteTitle(string(b), name), Plugin: pe.Name(), Source: "plugin", Path: ".genie/plugins/" + pe.Name() + "/knowledge/" + f.Name(), Chars: len(b)})
+			}
+		}
+	}
+	return out
+}
+
 // mergeSkills puts the sources in order of who wins a name: the workspace's own, then plugins, then the site's, then the built-in
 // ones. A name that is taken keeps the first; the others are dropped from the list and counted.
 func mergeSkills(lists ...[]skillInfo) ([]skillInfo, int) {
@@ -506,7 +538,15 @@ func (server *Server) handleGenieExt(rw http.ResponseWriter, req *http.Request) 
 		if plugins == nil {
 			plugins = []installedPlugin{}
 		}
-		reply(map[string]interface{}{"skills": all, "plugins": plugins, "problems": problems, "dropped": dropped,
+		notes := workspaceNotes(realHome)
+		for _, id := range g.SitePlugins {
+			if cp, ok := catalogueByID(id); ok {
+				for _, n := range cp.Notes {
+					notes = append(notes, noteInfo{Name: n.Name, Title: noteTitle(n.Text, n.Name), Plugin: cp.Name, Source: "site", Path: sitePluginDir + cp.Name + "/knowledge/" + n.Name + ".md", Chars: len(n.Text)})
+				}
+			}
+		}
+		reply(map[string]interface{}{"skills": all, "plugins": plugins, "problems": problems, "dropped": dropped, "notes": notes,
 			"canWrite": true, "fromLinks": g.PluginsFromLinks})
 	case "read":
 		reply2, status, code, msg := server.readSkill(realHome, in, g)

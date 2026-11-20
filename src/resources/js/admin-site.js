@@ -11,7 +11,7 @@
 
   function viewSite() {
     var root = h('div'), body = h('div');
-    var saved = null, form = null, languages = [], models = [], pluginChoices = [], saving = false, keysState = null, adminsState = null;
+    var saved = null, form = null, languages = [], models = [], pluginChoices = [], saving = false, keysState = null, adminsState = null, plugsState = null;
     root.appendChild(pageHead('Site settings', 'Switches that change what every visitor sees. Changes apply to the next page a visitor loads.'));
     root.appendChild(body);
 
@@ -1001,6 +1001,27 @@
         ? 'Stored in MongoDB (version ' + (settings.version || 0) + '). A change made on another instance appears here within about 10 seconds.'
         : 'Stored in the file settings.json on this server. Set OPENREPL_MONGODB_URI to keep the settings in MongoDB instead.';
       // API keys: saved at once, not with the form's Save button, and never shown
+      // who installed which plugin, from where (server/genie_ext_log.go): read-only, drawn when it arrives
+      var plugBox = h('div', { 'data-card': 'Plugin installs' });
+      function drawPlugs(info) {
+        plugBox.textContent = '';
+        var entries = (info && info.entries) || [];
+        var counts = (info && info.counts) || [];
+        var head = h('tr', null, ['When', 'Who', 'What', 'Plugin', 'Where from'].map(function (t) { return h('th', { scope: 'col', text: t }); }));
+        var rows = entries.slice(0, 50).map(function (e) {
+          var src = String(e.source || '');
+          var from = src.indexOf('link:') === 0 ? 'link ' + src.slice(5) : src.indexOf('catalogue:') === 0 ? 'catalogue' : src;
+          return h('tr', null, h('td', { text: String(e.t || '').replace('T', ' ').replace('Z', '') }), h('td', { text: e.user || '' }),
+            h('td', { text: e.op || '' }), h('td', { text: (e.plugin || '') + (e.version ? ' v' + e.version : '') }), h('td', { text: from }));
+        });
+        var table = entries.length
+          ? h('div', { class: 'table-wrap' }, h('table', null, h('thead', null, head), h('tbody', null, rows)))
+          : h('p', { class: 'sub', text: 'Nothing has been installed yet.' });
+        var summary = counts.length
+          ? h('p', { class: 'sub', text: 'Now installed: ' + counts.filter(function (c) { return c.users > 0; }).map(function (c) { return c.plugin + ' (' + c.users + (c.users === 1 ? ' person' : ' people') + ')'; }).join(', ') + '.' })
+          : null;
+        plugBox.appendChild(card('Plugin installs', 'Each install, update and removal of a plugin, newest first, for the last ' + ((info && info.days) || 90) + ' days. Who is the account id (the Users view has the email). A link is shown in full. The text of a skill is never recorded.', [summary, table]));
+      }
       var keysBox = h('div', { 'data-card': 'API keys' });
       function drawKeys(info) {
         keysState = info;
@@ -1170,6 +1191,7 @@
           row('Skills and plugins', 'On by default. Off: the / menu has no skills and /add-plugin does nothing; files already in workspaces stay where they are.', extOn.node),
           row('Plugins from a link', 'Off by default: a user can install only the plugins of the catalogue below. On: a signed-in user can also paste a GitHub repository or a .zip link. The server fetches it (public https addresses only, at most 2 MB, 12 links an hour for each user) and keeps only text: plugin.json and skills. The user reads what it brings, and ticks a box, before it is installed. A plugin that asks for a connection to an outside service is never installed from a link. Each link fetched is written to the server log with the user and the address.', plgLinks.node),
           row('On for everyone', 'Plugins of the catalogue that every user has without installing them (their skills are in the / menu). Their text lives in the server, not in the workspace.', sitePlugBoxes) ]),
+        plugBox,
         card('Agent mode', 'Genie works on a task in steps: it writes in the editor and runs the code, after the user allowed each kind of action and reviewed the changes. Only signed-in users have it, and it is on unless you switch it off here. Each task costs a user one request, like a chat message, however many steps it has.', [
           row('Agent mode', 'Shows the Chat | Agent switch in the Genie panel for signed-in users. Chat stays the default.', agentOn.node),
           row('Allow everything for a session', 'On: a user can answer one card with "Allow everything for this session", and the editor\'s changes then go in without a review (each can be undone). Off: a card for every kind of action, and every change is reviewed. Allowing one kind for the session stays.', agentAuto.node),
@@ -1213,6 +1235,8 @@
         adminsBox,
         bar);
       form.ready = true;
+      late.plugs = drawPlugs;
+      if (plugsState) drawPlugs(plugsState); // the list came before the form was drawn
       late.keys = drawKeys;
       late.admins = drawAdmins;
       syncDefaultModels(); // the lists that follow other controls, as they will be, before the starting values of the sections are taken
@@ -1228,6 +1252,7 @@
       if (form) return Promise.resolve(); // never redraw a form the admin may be editing
       var keys = api.get('admin/keys').then(function (r) { keysState = r; if (late.keys) late.keys(r); }, fail);
       var admins = api.get('admin/admins').then(function (r) { adminsState = r; if (late.admins) late.admins(r); }, fail);
+      api.get('admin/plugin-installs').then(function (r) { plugsState = r; if (late.plugs) late.plugs(r); }, function () { /* the list is not essential */ });
       return api.get('admin/settings').then(function (r) { body.textContent = ''; body.appendChild(build(r, keysState, adminsState)); return Promise.all([keys, admins]); });
     }
     return { root: root, refresh: refresh, poll: false, dirty: isDirty, destroy: function () { document.removeEventListener('keydown', onSlash); window.removeEventListener('hashchange', onHash); } };

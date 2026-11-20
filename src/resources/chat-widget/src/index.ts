@@ -20,7 +20,7 @@ import { CreditUsage, TokenUsage, answerTokens, creditLine, creditRows, tokenRow
 import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntry, addItem, gather, hashQuery, itemKey, metaOf, namesLine, problemsLine, rankEntries, removeItem, withAttached, withoutHash } from "./attach";
 import { CoachKind, MAX_HINTS, NO_CODE_IN_A_HINT, NO_HINTS_LEFT, askedText, carriesCode, hintsUsed, questionKey, withHint } from "./coach";
 import { addNote, parseRemember } from "./remember";
-import { SkillInfo, limitFor, matchSkills, saveSkillRequest, skillBlock, skillGroup, skillsIn, skillsNoteText, slashToken } from "./skills";
+import { NoteInfo, SkillInfo, effortFor, withoutSkill, limitFor, matchSkills, saveSkillRequest, skillBlock, skillGroup, skillsIn, skillsNoteText, slashToken } from "./skills";
 import { drawPlugins } from "./plugins-dialog";
 import { announcePin, canDock, configureDock, dockEl, isPinned, onPhone, placePanel, refreshPin, requestResize, setPinned, wireDock } from "./dock";
 import { ContextFacts, contextRows, drawContextView } from "./context-view";
@@ -2384,7 +2384,7 @@ const agentRunner = new LazyAgent((Runner) => new Runner(
     url: () => config.url,
     headers: requestHeaders,
     // a whole file may be in an answer: more room than a chat answer needs
-    modelFields: (modelId?: string) => (modelId ? agentFieldsFor(modelId) : autoAgentModel() ? agentFieldsFor(autoAgentModel()) : MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }, "agent")), // the Agent model, whichever tab is shown
+    modelFields: (modelId?: string) => withSkillEffort(modelId ? agentFieldsFor(modelId) : autoAgentModel() ? agentFieldsFor(autoAgentModel()) : MC.fields({ temperature: 0.2, maxTokens: 3000, extraTokens: 2500 }, "agent")), // the Agent model, whichever tab is shown
     modelId: () => autoAgentModel() || MC.get("agent").model,
     // how many files the task has changed: the Review button above the box
     reviewContainer: () => document.getElementById("chat-widget__review"),
@@ -2502,7 +2502,7 @@ const agentRunner = new LazyAgent((Runner) => new Runner(
       return { status: 200, ...(await res.json()) };
     },
     // from the list fetched when Agent mode was switched on; a task never waits more than a moment for it
-    skillsNote: async () => skillsNoteText(await Promise.race([loadSkills(), new Promise<SkillInfo[]>((res) => setTimeout(() => res(skillList), 300))])),
+    skillsNote: async () => skillsNoteText(await Promise.race([loadSkills(), new Promise<SkillInfo[]>((res) => setTimeout(() => res(skillList), 300))]), noteList),
     terminal: () => activeTerminal(),
     terminalType: (data: string) => {
       const term = activeTerminal();
@@ -3606,8 +3606,11 @@ function open(e?: Event, opts?: { pin?: boolean }) {
   input.addEventListener("input", () => {
     autoGrow(input);
     updatePicker(input);
+    syncSkillChips();
   });
   input.addEventListener("click", () => updatePicker(input));
+  // a message that was sent empties the box without an input event: the chips of its skills go
+  input.form?.addEventListener("reset", () => setTimeout(syncSkillChips, 0));
   // the list goes when the box loses the focus, unless the focus came back meanwhile (a click away and straight back must not close the list that was opened after it)
   input.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== input) closePicker(); }, 120));
   // before the box's own keys (Enter sends, Escape closes the panel): the open list takes them
@@ -4083,8 +4086,53 @@ function renderTray() {
   if (current) tray.appendChild(current);
   const pv = previewChip();
   if (pv) tray.appendChild(pv);
-  tray.hidden = pendingContext.length === 0 && !current && !pv;
+  const skills = skillChips();
+  tray.hidden = pendingContext.length === 0 && !current && !pv && skills.length === 0;
+  skills.forEach((c) => tray.appendChild(c));
   pendingContext.forEach((it) => tray.appendChild(chipElement(it, true)));
+}
+
+// The skills the message names, as chips in the tray like the files (skills.ts skillsIn): the name stays in the text, and the x takes it out.
+let skillChipKey = "";
+function skillChips(): HTMLElement[] {
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  if (!input || peerchatmode) return [];
+  return skillsIn(input.value, skillList).map((sk) => {
+    const chip = document.createElement("span");
+    chip.className = "cw-chip cw-chip--skill";
+    chip.dataset.skill = sk.name;
+    chip.title = sk.description + (sk.plugin ? " (plugin " + sk.plugin + ")" : "");
+    const name = document.createElement("span");
+    name.className = "cw-chip__name";
+    name.textContent = "/" + sk.name;
+    const tag = document.createElement("span");
+    tag.className = "cw-chip__meta";
+    tag.textContent = sk.mode;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "cw-chip__x";
+    x.setAttribute("aria-label", "Take /" + sk.name + " out of the message");
+    x.textContent = "×";
+    x.addEventListener("click", () => {
+      input.value = withoutSkill(input.value, sk.name);
+      autoGrow(input);
+      syncSkillChips();
+      input.focus();
+    });
+    const body = document.createElement("span");
+    body.className = "cw-chip__open cw-chip__skill";
+    body.append(name, tag);
+    chip.append(body, x);
+    return chip;
+  });
+}
+// the tray is drawn again only when the set of skills named has changed
+function syncSkillChips() {
+  const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  const key = input && !peerchatmode ? skillsIn(input.value, skillList).map((x) => x.name).join(",") : "";
+  if (key === skillChipKey) return;
+  skillChipKey = key;
+  renderTray();
 }
 
 function chipsRow(items: ContextItem[], notes: Note[]): HTMLElement {
@@ -4114,6 +4162,8 @@ function putContext(item: ContextItem): boolean {
 // ---- skills and plugins (skills.ts, plugins-dialog.ts, server/genie_ext.go) ---------------------------------------------------
 
 let skillList: SkillInfo[] = [];
+let noteList: NoteInfo[] = []; // the notes of plugins: listed at the start of a task
+let skillEffort: string | null = null; // the effort a skill asked for this message or task, below the person's own (skills.ts effortFor)
 let skillsAt = 0; // when the list was fetched (0: not yet); a failed fetch leaves it 0
 
 async function extCall(body: Record<string, any>): Promise<{ ok: boolean; status: number; data: any }> {
@@ -4143,7 +4193,9 @@ async function loadSkills(force = false): Promise<SkillInfo[]> {
   const r = await extCall({ op: "list" });
   if (r.ok && r.data && Array.isArray(r.data.skills)) {
     skillList = r.data.skills as SkillInfo[];
+    noteList = Array.isArray(r.data.notes) ? (r.data.notes as NoteInfo[]) : [];
     skillsAt = Date.now();
+    syncSkillChips();
   }
   return skillList;
 }
@@ -4160,6 +4212,17 @@ function menuEntries(query: string, atStart: boolean): SlashCommand[] {
     .map((s, i) => ({ s, i, g: skillGroup(s) }))
     .sort((a, b) => rank[a.g.id] - rank[b.g.id] || a.i - b.i)
     .forEach(({ s, g }) => out.push({ name: s.name, desc: s.description, kind: "skill", skill: s, group: g.title }));
+  return out;
+}
+
+// A skill that asks for less effort lowers it for the request (never raises it): the fields of the request with the lower effort and its room.
+function withSkillEffort(fields: Record<string, any>): Record<string, any> {
+  if (!skillEffort || typeof fields.reasoning_effort !== "string") return fields;
+  const cur = EFFORTS.filter((e) => e.id === fields.reasoning_effort)[0];
+  const low = EFFORTS.filter((e) => e.id === skillEffort)[0];
+  if (!cur || !low || low.tokens >= cur.tokens) return fields;
+  const out: Record<string, any> = { ...fields, reasoning_effort: low.id };
+  if (typeof fields.max_completion_tokens === "number") out.max_completion_tokens = fields.max_completion_tokens - cur.tokens + low.tokens;
   return out;
 }
 
@@ -4291,6 +4354,7 @@ function chooseSlash(c: SlashCommand) {
     input.value = v.slice(0, start) + put + v.slice(end).replace(/^ /, "");
     input.setSelectionRange(start + put.length, start + put.length);
     autoGrow(input);
+    syncSkillChips();
     input.focus();
     return;
   }
@@ -4886,6 +4950,7 @@ async function submit(e: Event) {
   // skills: "/save-skill name" asks Genie to write what it did as a skill file; a "/name" of a skill adds its text to the message
   let skillsText = "";
   let skillLimit: string[] | null = null;
+  skillEffort = null; // a skill's effort is for the message or task that names it
   if (!peerchatmode) {
     const tell = (text: string) => createNewMessageEntry(text, Date.now(), "system", false, "Skills", null, null, null, []);
     const save = /^\s*\/save-skill(?:\s+(\S+))?\s*$/i.exec(String(msg));
@@ -4920,6 +4985,7 @@ async function submit(e: Event) {
         if (!wantsAgent && agentMode && !agentRunner.running) setMode(false); // a chat skill answers in Chat; the remembered mode stays
         skillsText = skillBlock(used.map((u, i) => ({ skill: u, text: texts[i] as string })), String(msg));
         skillLimit = limitFor(used);
+        skillEffort = effortFor(used, chosenEffort(wantsAgent ? "agent" : "chat").id);
       }
     }
   }
@@ -5023,7 +5089,7 @@ async function runRequest() {
   lastAuto = auto ? { tab, pick: auto } : null;
   const data = {
     ...config.user,
-    ...(auto ? MC.fieldsFor(auto.model, { temperature: config.temperature, maxTokens: answerBudget(lastTyped, config.max_tokens) }, "chat") : modelFields()),
+    ...withSkillEffort(auto ? MC.fieldsFor(auto.model, { temperature: config.temperature, maxTokens: answerBudget(lastTyped, config.max_tokens) }, "chat") : modelFields()),
     // less than the page keeps: older answers have no long code in them, and the editor and terminal
     // are not sent twice
     messages: messagesToSend(tab.history, NUM_MANDATORY_ENTRIES, getcurrentIDECode()),

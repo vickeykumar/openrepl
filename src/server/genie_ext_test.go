@@ -36,6 +36,9 @@ func extSetup(t *testing.T, g GenieSettings) *extEnv {
 	}
 	os.MkdirAll(home, 0o755)
 	os.RemoveAll(filepath.Join(home, skillsDirName))
+	oldLog := pluginLogDir
+	pluginLogDir = t.TempDir()
+	t.Cleanup(func() { pluginLogDir = oldLog })
 	extRate.Lock()
 	extRate.seen = map[string][]time.Time{}
 	linkHours = map[string][]time.Time{}
@@ -508,5 +511,137 @@ func TestAGuestsCallDoesNotMakeAnIdentityOrSetACookie(t *testing.T) {
 	e.s.handleGenieExt(w, req)
 	if w.Code != 200 || len(w.Result().Cookies()) != 0 || w.Header().Get("Set-Cookie") != "" {
 		t.Errorf("a guest's list: %d, cookies %v", w.Code, w.Result().Cookies())
+	}
+}
+
+func TestAPluginBringsNotesThatAreListedAndReadByGenieAndKeptOutOfAnythingThatIsNotText(t *testing.T) {
+	e := extSetup(t, GenieSettings{})
+	fetched := e.ok(t, `{"op":"plugin_fetch","id":"code-review-kit"}`)["plugin"].(map[string]interface{})
+	notes := fetched["notes"].([]interface{})
+	if len(notes) != 1 || notes[0].(map[string]interface{})["name"] != "review-checklist" || notes[0].(map[string]interface{})["title"] != "Review checklist" {
+		t.Fatalf("the notes on the card: %v", notes)
+	}
+	e.ok(t, `{"op":"plugin_apply","id":"code-review-kit","digest":"`+fetched["digest"].(string)+`"}`)
+	if _, err := os.Stat(filepath.Join(e.home, ".genie/plugins/code-review-kit/knowledge/review-checklist.md")); err != nil {
+		t.Fatalf("the note was not written: %v", err)
+	}
+	out := e.ok(t, `{"op":"list"}`)
+	ln := out["notes"].([]interface{})
+	if len(ln) != 1 || ln[0].(map[string]interface{})["path"] != ".genie/plugins/code-review-kit/knowledge/review-checklist.md" || ln[0].(map[string]interface{})["plugin"] != "code-review-kit" {
+		t.Errorf("the notes of the list: %v", ln)
+	}
+	// a note that was edited by hand shows as a change, and one that is gone from the new version is a removal
+	os.WriteFile(filepath.Join(e.home, ".genie/plugins/code-review-kit/knowledge/old.md"), []byte("# Old"), 0o644)
+	ch := e.ok(t, `{"op":"plugin_fetch","name":"code-review-kit"}`)["plugin"].(map[string]interface{})["changes"].([]interface{})
+	if len(ch) != 1 || ch[0].(map[string]interface{})["path"] != "knowledge/old.md" || ch[0].(map[string]interface{})["status"] != "removed" {
+		t.Errorf("the changes: %v", ch)
+	}
+	// from a zip: notes are kept, anything else is not, and a bad note is refused
+	skill := "---\nname: review-it\ndescription: Review the code\nmode: chat\n---\nLook at the code.\n"
+	zipOf := func(extra map[string]string) []byte {
+		f := map[string]string{"kit/plugin.json": linkManifest, "kit/skills/review-it.md": skill}
+		for k, v := range extra {
+			f["kit/"+k] = v
+		}
+		return makeZip(t, f)
+	}
+	pkg, err := packageFromZip(zipOf(map[string]string{"knowledge/rules.md": "# Team rules\n\nNo tabs.", "knowledge/deep/x.md": "x", "knowledge/pic.png": "png"}), "", "x")
+	if err != nil || len(pkg.Notes) != 1 || pkg.Notes[0].Title != "Team rules" || pkg.Ignored != 2 {
+		t.Fatalf("a zip with notes: %v %+v ignored %d", err, pkg, pkg.Ignored)
+	}
+	for name, tc := range map[string]struct{ file, text, want string }{
+		"a bad name": {"knowledge/Bad Name.md", "text", "a note has to be a file"},
+		"too long":   {"knowledge/long.md", strings.Repeat("x", pluginMaxNote+1), "at most"},
+		"empty":      {"knowledge/empty.md", "  \n", "at most"},
+	} {
+		if _, err := packageFromZip(zipOf(map[string]string{tc.file: tc.text}), "", "x"); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestSkillsAndNotesOfAPluginOnForEveryoneAreReadFromTheServerUnderAPathOfTheirOwn(t *testing.T) {
+	e := extSetup(t, GenieSettings{SitePlugins: []string{"code-review-kit"}})
+	out := e.ok(t, `{"op":"list"}`)
+	var path string
+	for _, s := range out["skills"].([]interface{}) {
+		if m := s.(map[string]interface{}); m["name"] == "security-check" {
+			path, _ = m["path"].(string)
+			if m["source"] != "site" {
+				t.Errorf("the source: %v", m)
+			}
+		}
+	}
+	if path != ".genie/site-plugins/code-review-kit/skills/security-check.md" {
+		t.Fatalf("the path of a site skill: %q", path)
+	}
+	if n := out["notes"].([]interface{}); len(n) != 1 || n[0].(map[string]interface{})["path"] != ".genie/site-plugins/code-review-kit/knowledge/review-checklist.md" {
+		t.Errorf("the site notes: %v", out["notes"])
+	}
+	// agent_files reads them, read only, and nothing else under that folder
+	w := filesCall(t, e.s, e.c, `{"op":"read","path":"`+path+`"}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "secrets") {
+		t.Errorf("reading a site skill: %d %s", w.Code, w.Body.String())
+	}
+	w = filesCall(t, e.s, e.c, `{"op":"read","path":".genie/site-plugins/code-review-kit/knowledge/review-checklist.md"}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Review checklist") {
+		t.Errorf("reading a site note: %d %s", w.Code, w.Body.String())
+	}
+	for _, bad := range []string{".genie/site-plugins/git-helper/skills/commit-message.md", ".genie/site-plugins/code-review-kit/skills/nope.md", ".genie/site-plugins/code-review-kit/plugin.json", ".genie/site-plugins/code-review-kit/skills/../../x.md", ".genie/site-plugins/code-review-kit/skills"} {
+		if w := filesCall(t, e.s, e.c, `{"op":"read","path":"`+bad+`"}`); w.Code == 200 {
+			t.Errorf("%s was read", bad)
+		}
+	}
+}
+
+func TestEveryInstallUpdateAndRemovalIsRecordedForTheAdmin(t *testing.T) {
+	e := extSetup(t, GenieSettings{PluginsFromLinks: true})
+	d := e.ok(t, `{"op":"plugin_fetch","id":"git-helper"}`)["plugin"].(map[string]interface{})["digest"].(string)
+	e.ok(t, `{"op":"plugin_apply","id":"git-helper","digest":"`+d+`"}`)
+	e.ok(t, `{"op":"plugin_apply","id":"git-helper","digest":"`+d+`"}`) // again: an update
+	e.ok(t, `{"op":"plugin_remove","name":"git-helper"}`)
+	list := recentPluginInstalls(10)
+	if len(list) != 3 || list[0].Op != "remove" || list[1].Op != "update" || list[2].Op != "install" {
+		t.Fatalf("the entries, newest first: %+v", list)
+	}
+	if list[2].Plugin != "git-helper" || list[2].User == "" || list[2].Source != "catalogue:git-helper" || list[2].Skills != 3 || list[2].Digest != d {
+		t.Errorf("an entry: %+v", list[2])
+	}
+	// a link install records the link in full
+	skill := "---\nname: review-it\ndescription: Review the code\nmode: chat\n---\nLook at the code.\n"
+	zipBytes := makeZip(t, map[string]string{"kit-main/plugin.json": linkManifest, "kit-main/skills/review-it.md": skill})
+	old := fetchZip
+	fetchZip = func(u string) ([]byte, error) { return zipBytes, nil }
+	defer func() { fetchZip = old }()
+	ld := e.ok(t, `{"op":"plugin_fetch","url":"https://github.com/acme/kit"}`)["plugin"].(map[string]interface{})["digest"].(string)
+	e.ok(t, `{"op":"plugin_apply","url":"https://github.com/acme/kit","digest":"`+ld+`"}`)
+	if got := recentPluginInstalls(1)[0]; got.Source != "link:https://github.com/acme/kit" || got.Plugin != "acme-review" {
+		t.Errorf("a link install: %+v", got)
+	}
+	// the admin route: the entries and how many people have each plugin now
+	w := httptest.NewRecorder()
+	e.s.handleAdminPluginInstalls(w, httptest.NewRequest("GET", "/admin/plugin-installs", nil))
+	var body struct {
+		Entries []pluginInstallEntry `json:"entries"`
+		Counts  []struct {
+			Plugin string `json:"plugin"`
+			Users  int    `json:"users"`
+		} `json:"counts"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if w.Code != 200 || len(body.Entries) != 4 {
+		t.Fatalf("the admin list: %d %s", w.Code, w.Body.String())
+	}
+	users := map[string]int{}
+	for _, c := range body.Counts {
+		users[c.Plugin] = c.Users
+	}
+	if users["git-helper"] != 0 || users["acme-review"] != 1 {
+		t.Errorf("who has what now: %v", users)
+	}
+	// the record never holds what is in a skill, and a line is one line
+	logPluginInstall(pluginInstallEntry{User: "u1\nx", Op: "install", Plugin: "p"}, time.Now())
+	if got := recentPluginInstalls(1)[0]; strings.ContainsAny(got.User, "\n") {
+		t.Errorf("a new line in a field: %q", got.User)
 	}
 }

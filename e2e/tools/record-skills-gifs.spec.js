@@ -44,6 +44,7 @@ function extServer(opts = {}) {
     skills: link
       ? [{ name: "review-it", description: "Review the code against the team rules", mode: "agent", actions: ["files_read", "files_search", "bash"] }, { name: "team-style", description: "Check the code style", mode: "chat" }]
       : [{ name: "security-check", description: "Look for security problems in the code", mode: "chat", actions: ["files_read"] }, { name: "perf-check", description: "Find the slow parts of the code", mode: "chat" }, { name: "test-ideas", description: "List the tests the code needs", mode: "chat" }],
+    notes: link ? [] : [{ name: "review-checklist", title: "Review checklist" }],
     ignored: link ? 3 : 0, installed: false, changes: [],
     files: [{ path: "plugin.json", bytes: 120, text: '{ "name": "' + name + '", "version": "' + (link ? "0.3" : "1.0") + '" }' }, { path: "skills/review-it.md", bytes: 210, text: "---\nname: review-it\ndescription: Review the code against the team rules\nmode: agent\nactions: [files_read, files_search, bash]\n---\nRead the files that changed and check them against the team rules." }],
   });
@@ -59,7 +60,7 @@ function extServer(opts = {}) {
         return ok(route, {
           fromLinks: st.fromLinks, installed: st.installed,
           plugins: [
-            { id: "code-review-kit", title: "Code review kit", version: "1.0", description: "A security check, a performance look and test ideas.", official: true, skills: ["security-check", "perf-check", "test-ideas"], installed: st.installed.length > 0, update: false, site: false },
+            { id: "code-review-kit", title: "Code review kit", version: "1.0", description: "A security check, a performance look and test ideas.", official: true, skills: ["security-check", "perf-check", "test-ideas"], notes: 1, installed: st.installed.length > 0, update: false, site: false },
             { id: "git-helper", title: "Git helper", version: "1.0", description: "A commit message, an explanation of a change, and help to undo a mistake.", official: true, skills: ["commit-message", "explain-diff", "undo-help"], installed: false, update: false, site: false },
             { id: "docs-writer", title: "Docs writer", version: "1.0", description: "A README, comments for functions, and a short summary of a project.", official: true, skills: ["readme", "comments"], installed: false, update: false, site: false },
           ],
@@ -152,8 +153,7 @@ test("skills-menu", async ({ page }) => {
     await box(page).press("ArrowDown");
     await r.snap(i === 5 || i === 8 || i === 11 ? 1100 : 380, true);
   }
-  await box(page).press("Escape");
-  await box(page).fill("");
+  await box(page).fill(""); // not Escape: it also leaves the maximized IDE
   await r.snap(600, true);
   await box(page).press("/");
   await r.typed("fix", { every: 1, hold: 450, last: 900 });
@@ -220,8 +220,9 @@ test("plugins", async ({ page }) => {
   await r.snap(2400);
   await dlg.getByRole("button", { name: /^Installed/ }).click();
   await r.snap(2200);
-  await page.keyboard.press("Escape");
+  await dlg.getByRole("button", { name: "Close plugins" }).click();
   await r.snap(500, true);
+  await box(page).click();
   await box(page).press("/");
   await r.typed("sec", { every: 1, hold: 500, last: 2000 });
   r.done();

@@ -2053,3 +2053,10 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-picker__tag
 .cw-plg__linkrow { display: flex; gap: 8px; margin: 6px 0; }
 .cw-plg__linkrow .cw-plg__search { margin-bottom: 0; }
 .cw-plg__none { color: var(--cw-muted); padding: 8px 2px; }
+
+/* a skill the message names, as a chip in the tray (skills.ts skillsIn) */
+.cw-chip--skill { padding: 0 2px 0 0; border-color: #6E8F2E; }
+.cw-chip--skill .cw-chip__skill { cursor: default; padding: 0 4px 0 9px; gap: 6px; }
+.cw-chip--skill .cw-chip__name { color: #6FB52C; font-weight: 600; }
+html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-chip--skill .cw-chip__name { color: #4A7A00; }
+.cw-plg__notes { color: var(--cw-text); overflow-wrap: anywhere; }

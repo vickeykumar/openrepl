@@ -29,6 +29,13 @@ type cataloguePlugin struct {
 	Description string
 	Official    bool
 	Skills      []string // the text of each skill file
+	Notes       []catalogueNote
+}
+
+// catalogueNote is a note a plugin brings: plain Markdown that Genie reads when a task is about what it says (knowledge/<name>.md).
+type catalogueNote struct {
+	Name string
+	Text string
 }
 
 func (c cataloguePlugin) skillInfos(source string) []skillInfo {
@@ -36,10 +43,52 @@ func (c cataloguePlugin) skillInfos(source string) []skillInfo {
 	for _, s := range c.Skills {
 		if info, _, err := parseSkill(s); err == nil {
 			info.Source, info.Plugin = source, c.Name
+			// a plugin that is on for everyone has no file in the workspace: Genie reads it from the server under this path
+			if source == "site" {
+				info.Path = sitePluginDir + c.Name + "/skills/" + info.Name + ".md"
+			}
 			out = append(out, info)
 		}
 	}
 	return out
+}
+
+// sitePluginDir is the path Genie reads the text of a plugin that is on for everyone under (agent_files read; it is not in any workspace).
+const sitePluginDir = ".genie/site-plugins/"
+
+// sitePluginText is the text at a path under sitePluginDir, if the plugin is on for everyone and the path is one of its skills or notes.
+func sitePluginText(rel string) (string, bool) {
+	if !strings.HasPrefix(rel, sitePluginDir) {
+		return "", false
+	}
+	parts := strings.Split(strings.TrimPrefix(rel, sitePluginDir), "/")
+	if len(parts) != 3 {
+		return "", false
+	}
+	on := false
+	for _, id := range GetSiteSettings().Genie.SitePlugins {
+		on = on || id == parts[0]
+	}
+	c, ok := catalogueByID(parts[0])
+	if !on || !ok || !strings.HasSuffix(parts[2], ".md") {
+		return "", false
+	}
+	name := strings.TrimSuffix(parts[2], ".md")
+	switch parts[1] {
+	case "skills":
+		for _, sk := range c.Skills {
+			if info, _, err := parseSkill(sk); err == nil && info.Name == name {
+				return sk, true
+			}
+		}
+	case "knowledge":
+		for _, n := range c.Notes {
+			if n.Name == name {
+				return n.Text, true
+			}
+		}
+	}
+	return "", false
 }
 
 func (c cataloguePlugin) manifest() pluginManifest {
@@ -153,6 +202,7 @@ func builtinSkillText(name string) (string, skillInfo, bool) {
 var pluginCatalogue = []cataloguePlugin{
 	{Name: "code-review-kit", Title: "Code review kit", Version: "1.0", Official: true,
 		Description: "A security check, a performance look and test ideas for the code you have open.",
+		Notes:       []catalogueNote{{Name: "review-checklist", Text: "# Review checklist\n\nWhat a good review of a change looks at, in this order:\n\n1. Does it do what it says, and is the edge case handled (empty, one, many, wrong type)?\n2. Can it fail, and does the failure say what went wrong?\n3. Is anything trusted that came from outside: input, files, addresses, commands?\n4. Is it slower than it needs to be for the biggest input it will see?\n5. Is there a test, and would it have caught the bug?\n"}},
 		Skills: []string{
 			`---
 name: security-check

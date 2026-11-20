@@ -16,6 +16,7 @@ interface CatalogueRow {
   description: string;
   official: boolean;
   skills: string[];
+  notes?: number;
   installed: boolean;
   installedVersion?: string;
   update: boolean;
@@ -158,6 +159,7 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
     body.append(el("b", "", c.title), el("div", "cw-plg__desc", c.description));
     const pills = el("div", "cw-plg__pills");
     pills.append(pill(c.skills.length + (c.skills.length === 1 ? " skill" : " skills"), "ok"));
+    if (c.notes) pills.append(pill(c.notes + (c.notes === 1 ? " note" : " notes"), "ok"));
     if (c.official) pills.append(pill("official", "info"));
     if (c.site) pills.append(pill("on for everyone", "info"));
     body.appendChild(pills);
@@ -235,6 +237,12 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
       rows.appendChild(row);
     });
     box.appendChild(rows);
+    if (p.notes && p.notes.length) {
+      const notes = el("div", "cw-plg__notes");
+      notes.appendChild(el("b", "", (p.notes.length === 1 ? "1 note" : p.notes.length + " notes") + ": "));
+      notes.appendChild(document.createTextNode((p.notes as any[]).map((n) => n.title).join(", ") + ". Genie reads a note when a task is about what its title says."));
+      box.appendChild(notes);
+    }
     if (p.ignored > 0) box.appendChild(el("div", "cw-plg__desc", p.ignored + " other file" + (p.ignored === 1 ? "" : "s") + " in the package will not be installed (only plugin.json and skills are kept)."));
     if (p.installed && p.changes) {
       const changes = el("div", "cw-plg__changes");

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 // Plugins: the package a plugin is, how one is fetched from a link, and how it is put into a workspace.
@@ -33,6 +34,8 @@ const (
 	pluginMaxTotal   = 512 << 10
 	pluginMaxSkills  = 40
 	pluginMaxEntries = 3000
+	pluginMaxNotes   = 20
+	pluginMaxNote    = 8 << 10
 	linkFetchesPerHr = 12
 )
 
@@ -49,6 +52,29 @@ type pluginPackage struct {
 	Source   string // "catalogue:<id>" or "link:<url>"
 	Ignored  int
 	Skills   []skillInfo
+	Notes    []noteInfo
+}
+
+// noteInfo is a note a plugin brings: plain Markdown in knowledge/<name>.md that Genie reads when a task is about what it says.
+type noteInfo struct {
+	Name   string `json:"name"`
+	Title  string `json:"title"`
+	Plugin string `json:"plugin,omitempty"`
+	Path   string `json:"path,omitempty"`
+	Source string `json:"source,omitempty"`
+	Chars  int    `json:"chars"`
+}
+
+var noteNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+
+// noteTitle is the first heading of a note, else its name.
+func noteTitle(text, name string) string {
+	for _, l := range strings.Split(text, "\n") {
+		if t := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(l), "#")); strings.HasPrefix(strings.TrimSpace(l), "#") && t != "" {
+			return clipRunes(t, 80)
+		}
+	}
+	return name
 }
 
 func digestOf(files []pkgFile) string {
@@ -95,6 +121,23 @@ func buildPackage(files map[string][]byte, source string, ignored int, fromLink 
 	sort.Strings(paths)
 	names := map[string]bool{}
 	for _, p := range paths {
+		// a note: plain text, flat in knowledge/
+		if strings.HasPrefix(p, "knowledge/") {
+			name := strings.TrimSuffix(strings.TrimPrefix(p, "knowledge/"), ".md")
+			text := string(files[p])
+			if !strings.HasSuffix(p, ".md") || !noteNamePattern.MatchString(name) {
+				return nil, fmt.Errorf("%s: a note has to be a file like knowledge/checklist.md, with a name of lower case letters, digits and dashes", p)
+			}
+			if !utf8.ValidString(text) || strings.ContainsRune(text, 0) || len(text) > pluginMaxNote || strings.TrimSpace(text) == "" {
+				return nil, fmt.Errorf("%s: a note has to be text of at most %d KB", p, pluginMaxNote>>10)
+			}
+			if len(pkg.Notes) >= pluginMaxNotes {
+				return nil, fmt.Errorf("the plugin has more than %d notes", pluginMaxNotes)
+			}
+			pkg.Notes = append(pkg.Notes, noteInfo{Name: name, Title: noteTitle(text, name), Plugin: m.Name, Chars: len(text)})
+			pkg.Files = append(pkg.Files, pkgFile{p, files[p]})
+			continue
+		}
 		info, _, err := parseSkill(string(files[p]))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %v", p, err)
@@ -196,7 +239,8 @@ func packageFromZip(data []byte, subpath, source string) (*pluginPackage, error)
 			continue
 		}
 		rel := strings.TrimPrefix(e.name, prefix)
-		keep := rel == "plugin.json" || (strings.HasPrefix(rel, "skills/") && strings.HasSuffix(rel, ".md") && strings.Count(rel, "/") == 1)
+		isNote := strings.HasPrefix(rel, "knowledge/") && strings.HasSuffix(rel, ".md") && strings.Count(rel, "/") == 1
+		keep := rel == "plugin.json" || isNote || (strings.HasPrefix(rel, "skills/") && strings.HasSuffix(rel, ".md") && strings.Count(rel, "/") == 1)
 		if !keep {
 			ignored++
 			continue
@@ -217,7 +261,7 @@ func packageFromZip(data []byte, subpath, source string) (*pluginPackage, error)
 		if total > pluginMaxTotal {
 			return nil, fmt.Errorf("the plugin is bigger than %d KB", pluginMaxTotal>>10)
 		}
-		if rel != "plugin.json" {
+		if rel != "plugin.json" && !isNote {
 			skills++
 			if skills > pluginMaxSkills {
 				return nil, fmt.Errorf("the plugin has more than %d skills", pluginMaxSkills)
@@ -373,6 +417,9 @@ func packageFromCatalogue(c cataloguePlugin) (*pluginPackage, error) {
 		}
 		files["skills/"+info.Name+".md"] = []byte(s)
 	}
+	for _, n := range c.Notes {
+		files["knowledge/"+n.Name+".md"] = []byte(n.Text)
+	}
 	return buildPackage(files, "catalogue:"+c.Name, 0, false)
 }
 
@@ -423,10 +470,12 @@ func changesAgainst(dir string, pkg *pluginPackage) []fileChange {
 			out = append(out, fileChange{f.Path, "changed"})
 		}
 	}
-	if entries, err := os.ReadDir(filepath.Join(dir, "skills")); err == nil {
-		for _, e := range entries {
-			if p := "skills/" + e.Name(); !have[p] && strings.HasSuffix(e.Name(), ".md") {
-				out = append(out, fileChange{p, "removed"})
+	for _, sub := range []string{"skills", "knowledge"} {
+		if entries, err := os.ReadDir(filepath.Join(dir, sub)); err == nil {
+			for _, e := range entries {
+				if p := sub + "/" + e.Name(); !have[p] && strings.HasSuffix(e.Name(), ".md") {
+					out = append(out, fileChange{p, "removed"})
+				}
 			}
 		}
 	}
@@ -448,6 +497,7 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 			Description      string   `json:"description"`
 			Official         bool     `json:"official"`
 			Skills           []string `json:"skills"`
+			Notes            int      `json:"notes"`
 			Installed        bool     `json:"installed"`
 			InstalledVersion string   `json:"installedVersion,omitempty"`
 			Update           bool     `json:"update"`
@@ -463,6 +513,7 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 			for _, s := range c.skillInfos("plugin") {
 				r.Skills = append(r.Skills, s.Name)
 			}
+			r.Notes = len(c.Notes)
 			if p, ok := readInstalled(pluginsDir, c.Name); ok && strings.HasPrefix(p.Source, "catalogue:") {
 				r.Installed, r.InstalledVersion = true, p.Version
 				r.Update = p.Version != c.Version
@@ -485,10 +536,12 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 			jsonError(rw, http.StatusNotFound, "no_plugin", "That plugin is not installed.")
 			return
 		}
+		old, _ := readInstalled(pluginsDir, in.Name)
 		if err := os.RemoveAll(dir); err != nil {
 			jsonError(rw, http.StatusInternalServerError, "remove", "The plugin could not be removed.")
 			return
 		}
+		logPluginInstall(pluginInstallEntry{User: who, Op: "remove", Plugin: in.Name, Version: old.Version, Source: old.Source}, time.Now())
 		reply(map[string]interface{}{"removed": in.Name})
 		return
 	}
@@ -569,7 +622,7 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 		reply(map[string]interface{}{"plugin": map[string]interface{}{
 			"name": pkg.Manifest.Name, "title": orStr(pkg.Manifest.Title, pkg.Manifest.Name), "version": pkg.Manifest.Version,
 			"description": pkg.Manifest.Description, "author": pkg.Manifest.Author, "source": pkg.Source, "link": fromLink,
-			"skills": pkg.Skills, "files": files, "ignored": pkg.Ignored, "digest": pkg.Digest,
+			"skills": pkg.Skills, "notes": pkg.Notes, "files": files, "ignored": pkg.Ignored, "digest": pkg.Digest,
 			"installed": installed, "installedVersion": cur.Version, "changes": changes,
 		}})
 		return
@@ -594,6 +647,11 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 		jsonError(rw, http.StatusInternalServerError, "write", "The plugin could not be written.")
 		return
 	}
+	op := "install"
+	if installed {
+		op = "update"
+	}
+	logPluginInstall(pluginInstallEntry{User: who, Op: op, Plugin: pkg.Manifest.Name, Version: pkg.Manifest.Version, Source: pkg.Source, Digest: pkg.Digest, Skills: len(pkg.Skills), Notes: len(pkg.Notes)}, time.Now())
 	reply(map[string]interface{}{"installed": pkg.Manifest.Name, "version": pkg.Manifest.Version, "skills": len(pkg.Skills)})
 }
 
@@ -606,6 +664,10 @@ func writePlugin(pluginsDir string, pkg *pluginPackage) error {
 		return err
 	}
 	for _, f := range pkg.Files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(tmp, filepath.FromSlash(f.Path))), 0o755); err != nil {
+			os.RemoveAll(tmp)
+			return err
+		}
 		if err := writeTextFile(filepath.Join(tmp, filepath.FromSlash(f.Path)), f.Data); err != nil {
 			os.RemoveAll(tmp)
 			return err

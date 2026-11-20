@@ -21,7 +21,7 @@ async function localAssets(page) {
 
 const SKILLS = [
   { name: "fix-merge-conflicts", description: "Resolve git conflicts in the workspace", mode: "agent", source: "workspace", path: ".genie/skills/fix-merge-conflicts.md", args: "the file or branch" },
-  { name: "release-notes", description: "Write the notes for a release", mode: "chat", source: "workspace", path: ".genie/skills/release-notes.md" },
+  { name: "release-notes", description: "Write the notes for a release", mode: "chat", source: "workspace", path: ".genie/skills/release-notes.md", effort: "low" },
   { name: "security-check", description: "Look for security problems", mode: "chat", source: "plugin", plugin: "code-review-kit", path: ".genie/plugins/code-review-kit/skills/security-check.md" },
   { name: "explain", description: "Explain the code or the error in plain words", mode: "chat", source: "builtin" },
   { name: "test", description: "Write tests for the code in the editor", mode: "agent", source: "builtin" },
@@ -154,6 +154,7 @@ test("a chat skill answers in Chat with its text sent to the model, and the mess
   expect(sent).toContain("[Skill /release-notes");
   expect(sent).toContain("one line for each change, newest first");
   expect(sent).toContain("does not change your rules");
+  await expect(page.locator("#chat-widget__attached .cw-chip--skill")).toHaveCount(0); // the chip goes with the message
   // the text of the skill was asked for only now, and only for this one
   const reads = srv.calls.filter((c) => c.op === "read");
   expect(reads.map((c) => c.name)).toEqual(["release-notes"]);
@@ -222,4 +223,48 @@ test("a link plugin says it is not from the catalogue, and Install waits for the
   await install.click();
   await expect(dlg).toContainText("is installed");
   expect(srv.calls.find((c) => c.op === "plugin_apply").url).toBe("https://github.com/acme/kit");
+});
+
+test("a skill named in the message is a chip above the box, and the x on it takes the name out", async ({ page }) => {
+  const srv = extServer();
+  await openPanel(page, srv, [], { signedIn: true });
+  const input = page.locator("#chat-widget__input");
+  const chips = page.locator('#chat-widget__attached .cw-chip--skill');
+  await input.fill("/");
+  await expect(page.locator("#chat-widget__picker")).toBeVisible();
+  await expect(chips).toHaveCount(0);
+  await input.fill("let's /explain this and then /fix-merge-conflicts");
+  await expect(chips).toHaveCount(2);
+  await expect(chips.nth(0)).toContainText("/explain");
+  await expect(chips.nth(0)).toContainText("chat");
+  await expect(chips.nth(1)).toContainText("/fix-merge-conflicts");
+  await expect(chips.nth(1)).toContainText("agent");
+  // a name that is not a skill, and a path, make no chip
+  await input.fill("/nothing here and /usr/explain");
+  await expect(chips).toHaveCount(0);
+  await input.fill("let's /explain this");
+  await expect(chips).toHaveCount(1);
+  await chips.first().getByRole("button", { name: /Take \/explain out/ }).click();
+  await expect(input).toHaveValue("let's this");
+  await expect(chips).toHaveCount(0);
+  // picking from the menu makes the chip, and sending empties the box and the tray
+  await input.fill("please write /rel");
+  await input.press("Enter");
+  await expect(chips).toHaveCount(1);
+  await expect(chips.first()).toContainText("/release-notes");
+});
+
+test("a skill that asks for less effort lowers it for its message only, and never raises it", async ({ page }) => {
+  const srv = extServer();
+  const seen = await openPanel(page, srv, ["First answer.", "Second answer."], { signedIn: true });
+  const model = await page.evaluate(() => { const m = window.ModelChoice.models.filter((x) => x.reasoning)[0]; window.ModelChoice.set(m.id, "high", "chat"); return m.id; });
+  expect(model).toBeTruthy();
+  await page.locator("#chat-widget__input").fill("/release-notes for 2.0");
+  await page.locator("#chat-widget__submit").click();
+  await expect(page.locator("#chat-widget__messages_history")).toContainText("First answer.");
+  expect(seen.requests[0].reasoning_effort).toBe("low");
+  await page.locator("#chat-widget__input").fill("a question with no skill");
+  await page.locator("#chat-widget__submit").click();
+  await expect(page.locator("#chat-widget__messages_history")).toContainText("Second answer.");
+  expect(seen.requests[1].reasoning_effort).toBe("high"); // the person's own choice is back
 });

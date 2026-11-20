@@ -29,6 +29,7 @@ async function stub(page, measures) {
   });
   await page.route("**/admin/keys", (r) => json(r, fixture("admin-keys.json")));
   await page.route("**/admin/admins", (r) => json(r, fixture("admin-admins.json")));
+  await page.route("**/admin/plugin-installs", (r) => json(r, { entries: [], counts: [], days: 90 }));
   await page.route("**/admin/gateway", (r) => json(r, { mode: "single" }));
   await page.route(/\/admin\/(health|stats|audit|feedback|workers|sessions|jobs)(\?.*)?$/, (r) => json(r, {}));
   await page.route("**/admin/genie-usage**", (r) => json(r, { range: "month", month: "2026-11", users: [], visitors: {}, total: { answers: 0, in: 0, out: 0, cost: 0 }, pricesSet: false }));
