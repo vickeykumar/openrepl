@@ -6,10 +6,10 @@ test("the guide is at /genie, with its sections and screenshots", async ({ page 
   const res = await page.goto("/genie");
   expect(res.status()).toBe(200);
   await expect(page.locator("h1")).toHaveText("How to use Genie");
-  for (const id of ["start", "code", "modes", "agent", "chats", "models", "tips", "phone", "coach", "keys", "questions"]) {
+  for (const id of ["start", "code", "modes", "agent", "chats", "models", "tips", "skills", "phone", "coach", "keys", "questions"]) {
     await expect(page.locator(`#${id}`)).toHaveCount(1);
   }
-  await expect(page.locator(".guide-toc a")).toHaveCount(11);
+  await expect(page.locator(".guide-toc a")).toHaveCount(12);
   // the pictures are there
   for (const img of await page.locator(".guide figure img").all()) {
     expect((await (await page.request.get(await img.getAttribute("src"))).status())).toBe(200);

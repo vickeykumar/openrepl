@@ -245,6 +245,12 @@ type GenieSettings struct {
 	ChatHistoryKB       int  `json:"chatHistoryKB"`
 	ChatHistoryDays     int  `json:"chatHistoryDays"`
 
+	// Skills and plugins (genie_ext.go): ExtensionsOff switches both off; PluginsFromLinks lets a signed-in user install a plugin from a GitHub or
+	// .zip link (off: the catalogue only); SitePlugins are catalogue plugins that are on for everyone.
+	ExtensionsOff    bool     `json:"extensionsOff"`
+	PluginsFromLinks bool     `json:"pluginsFromLinks"`
+	SitePlugins      []string `json:"sitePlugins"`
+
 	// A long chat is summarized by the model in use (one more request, counted like any other) once the older turns pass
 	// SummaryTokens tokens (0: 6000); SummaryOff stops it. The editor and terminal text is not counted: it is sent as it is.
 	// The summary is kept in the chat file and sent with the last turns.
@@ -499,6 +505,11 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	if err := s.Genie.normalizeAgentModels(); err != nil {
 		return s, err
 	}
+	sp, spOK := validSitePlugins(s.Genie.SitePlugins)
+	if !spOK {
+		return s, fmt.Errorf("a plugin that is on for everyone is not in the catalogue")
+	}
+	s.Genie.SitePlugins = sp
 	s.Genie.AgentModel = strings.TrimSpace(s.Genie.AgentModel)
 	if d := s.Genie.AgentModel; d != "" {
 		m, known := s.Genie.modelByID(d)
@@ -1001,6 +1012,8 @@ type settingsReply struct {
 	// Models are the models the form offers, with whether the server can call
 	// each (its key is set).
 	Models []modelInfo `json:"models"`
+	// PluginCatalogue is the plugins the site ships, for the list of those that are on for everyone.
+	PluginCatalogue []pluginChoice `json:"pluginCatalogue"`
 	// Defaults are the built-in values of the numbers, for the form to show
 	// where a field is empty.
 	Defaults genieDefaults `json:"defaults"`
@@ -1029,7 +1042,7 @@ func reply(s SiteSettings) settingsReply {
 	}
 	s.Genie.CustomModels = append([]CustomModel{}, s.Genie.customList()...) // the list in effect, never null
 	s.Secrets = nil
-	return settingsReply{SiteSettings: s, Languages: languageChoices(), Models: modelInfos(), Defaults: currentGenieDefaults(), Store: store, Version: version}
+	return settingsReply{SiteSettings: s, Languages: languageChoices(), Models: modelInfos(), PluginCatalogue: pluginChoices(), Defaults: currentGenieDefaults(), Store: store, Version: version}
 }
 
 // handleAdminSettings reads and saves the settings. It runs behind adminAPI,
@@ -1206,6 +1219,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	if ga, gb := a.Genie, b.Genie; ga.context() != gb.context() || ga.OpenRouterTimeoutSec != gb.OpenRouterTimeoutSec ||
 		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || fmt.Sprint(ga.ModelPrices) != fmt.Sprint(gb.ModelPrices) || ga.ShowCostToUsers != gb.ShowCostToUsers || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {
 		out = append(out, "Genie limits changed (context, history, answer sizes, OpenRouter time limit or hosts)")
+	}
+	if ga, gb := a.Genie, b.Genie; ga.ExtensionsOff != gb.ExtensionsOff || ga.PluginsFromLinks != gb.PluginsFromLinks || strings.Join(ga.SitePlugins, ",") != strings.Join(gb.SitePlugins, ",") {
+		out = append(out, "Genie skills and plugins "+onoff(!gb.ExtensionsOff)+" (from a link "+onoff(gb.PluginsFromLinks)+", on for everyone: "+orStr(strings.Join(gb.SitePlugins, ", "), "none")+")")
 	}
 	if ga, gb := a.Genie, b.Genie; ga.ChatHistoryOff != gb.ChatHistoryOff || ga.ChatHistoryNoGuests != gb.ChatHistoryNoGuests || ga.ChatHistoryChats != gb.ChatHistoryChats || ga.ChatHistoryTabs != gb.ChatHistoryTabs || ga.ChatHistoryKB != gb.ChatHistoryKB || ga.ChatHistoryDays != gb.ChatHistoryDays {
 		out = append(out, "Genie chat history "+onoff(!gb.ChatHistoryOff)+" (guests "+onoff(!gb.ChatHistoryNoGuests)+")")

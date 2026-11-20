@@ -14,16 +14,16 @@ test("the menu belongs to the first word of a message that starts with a slash",
 });
 
 test("every command has a name, a line that says what it does, and a kind", () => {
-  assert.deepEqual(COMMANDS.map((c) => c.name), ["context", "tour", "remember"]);
+  assert.deepEqual(COMMANDS.map((c) => c.name), ["context", "tour", "add-plugin", "save-skill", "remember"]);
   for (const c of COMMANDS) {
-    assert.ok(/^[a-z]+$/.test(c.name), c.name);
+    assert.ok(/^[a-z-]+$/.test(c.name), c.name);
     assert.ok(c.desc.length > 10 && c.desc.length < 90, c.name);
     assert.ok(c.kind === "run" || (c.kind === "insert" && !!c.insert && c.insert.startsWith("/" + c.name)), c.name);
   }
 });
 
 test("matching: all for nothing, names that start with it first, then names that contain it, none for a path", () => {
-  assert.equal(matchCommands("").length, 3);
+  assert.equal(matchCommands("").length, 5);
   assert.deepEqual(matchCommands("co").map((c) => c.name), ["context"]);
   assert.deepEqual(matchCommands("t").map((c) => c.name), ["tour", "context"], "tour starts with t, context only contains it");
   assert.deepEqual(matchCommands("rem").map((c) => c.name), ["remember"]);

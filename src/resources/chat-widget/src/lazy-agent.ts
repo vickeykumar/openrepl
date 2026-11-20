@@ -88,7 +88,7 @@ export class LazyAgent {
     return this.real;
   }
 
-  async start(task: string, attached: string = ""): Promise<void> {
+  async start(task: string, attached: string = "", limit: string[] | null = null): Promise<void> {
     if (this.running) return;
     this.starting = true;
     let r: AgentRunner;
@@ -101,7 +101,7 @@ export class LazyAgent {
     } finally {
       this.starting = false;
     }
-    await r.start(task, attached);
+    await r.start(task, attached, limit);
   }
 
   stop() {

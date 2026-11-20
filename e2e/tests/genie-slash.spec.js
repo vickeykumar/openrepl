@@ -113,11 +113,12 @@ test("typing / lists the commands with what each does, and narrows as the name i
   await expect(menu(page)).toBeVisible();
   await expect(menu(page)).toHaveAttribute("aria-label", "Commands");
   const items = menu(page).getByRole("option");
-  await expect(items).toHaveCount(3);
+  // the commands of the panel, then the skills (a guest has the built-in chat ones: genie-skills.spec.js)
   await expect(items.nth(0)).toContainText("/context");
   await expect(items.nth(0)).toContainText("what goes with your next message");
   await expect(items.nth(1)).toContainText("/tour");
-  await expect(items.nth(2)).toContainText("/remember");
+  const commands = await menu(page).locator(".cw-picker__item--command b").allTextContents();
+  expect(commands.slice(0, 5)).toEqual(["/context", "/tour", "/add-plugin", "/save-skill", "/remember"]);
   await expect(items.nth(0)).toHaveAttribute("aria-selected", "true");
   await box(page).pressSequentially("to");
   await expect(items).toHaveCount(1);
@@ -134,8 +135,13 @@ test("a path that starts with a slash, or a slash in the middle of a message, sh
   await box(page).pressSequentially("/usr/bin/python fails");
   await expect(menu(page)).toBeHidden();
   await box(page).fill("");
-  await box(page).pressSequentially("why does 1/2 give 0 and what about /");
+  await box(page).pressSequentially("why does 1/2 give 0");
   await expect(menu(page)).toBeHidden();
+  // after a space a slash can start a skill, but the commands of the panel are for the first word only
+  await box(page).pressSequentially(" and /");
+  await expect(menu(page)).toBeVisible();
+  const names = await menu(page).locator(".cw-picker__item--command b").allTextContents();
+  expect(names).not.toContain("/context");
 });
 
 test("arrows move, Enter runs /context and /tour and empties the box, Escape closes the menu and keeps the panel", async ({ page }) => {

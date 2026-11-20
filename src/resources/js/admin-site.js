@@ -11,7 +11,7 @@
 
   function viewSite() {
     var root = h('div'), body = h('div');
-    var saved = null, form = null, languages = [], models = [], saving = false, keysState = null, adminsState = null;
+    var saved = null, form = null, languages = [], models = [], pluginChoices = [], saving = false, keysState = null, adminsState = null;
     root.appendChild(pageHead('Site settings', 'Switches that change what every visitor sees. Changes apply to the next page a visitor loads.'));
     root.appendChild(body);
 
@@ -64,6 +64,10 @@
       return ids;
     }
 
+    function sitePluginsNow() {
+      return pluginChoices.filter(function (p) { return form.sitePlug && form.sitePlug[p.id] && form.sitePlug[p.id].checked; }).map(function (p) { return p.id; }).sort();
+    }
+
     function snapshot() {
       return {
         colorOfTheDay: form.colour.checked,
@@ -104,6 +108,7 @@
           planCredits: num(form.planCredits.value), planBudget: num(form.planBudget.value), creditWeights: weightsOf(),
           agentDisabled: !form.agentOn.checked, agentOnPractice: form.agentPractice.checked,
           agentAutoOff: !form.agentAuto.checked, agentRiskyOff: !form.agentRisky.checked, agentShellOff: !form.agentShell.checked,
+          extensionsOff: !form.extOn.checked, pluginsFromLinks: form.plgLinks.checked, sitePlugins: sitePluginsNow(),
           agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value),
           escalationModels: form.escalation.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean),
           autoOn: form.autoOn.checked, autoSmall: form.autoSmall.value, autoStrong: form.autoStrong.value, autoDefault: form.autoDefault.value }
@@ -195,6 +200,7 @@
           planCredits: s.genie.planCredits || 0, planBudget: s.genie.planBudget || 0, creditWeights: pricesClean(s.genie.creditWeights),
           agentDisabled: !!s.genie.agentDisabled, agentOnPractice: !!s.genie.agentOnPractice,
           agentAutoOff: !!s.genie.agentAutoOff, agentRiskyOff: !!s.genie.agentRiskyOff, agentShellOff: !!s.genie.agentShellOff,
+          extensionsOff: !!s.genie.extensionsOff, pluginsFromLinks: !!s.genie.pluginsFromLinks, sitePlugins: (s.genie.sitePlugins || []).slice().sort(),
           agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0,
           escalationModels: (s.genie.escalationModels || []).slice(),
           autoOn: !!s.genie.autoOn, autoSmall: s.genie.autoSmall || '', autoStrong: s.genie.autoStrong || '', autoDefault: s.genie.autoDefault || 'new' } };
@@ -495,6 +501,7 @@
       saved = settings;
       languages = settings.languages || [];
       models = settings.models || [];
+      pluginChoices = settings.pluginCatalogue || [];
       form = { langs: {}, models: {}, caps: {} };
       layout = null; // the form of an earlier drawing is gone
       var defaults = settings.defaults || {};
@@ -543,6 +550,17 @@
       var agentPractice = toggle('f-agent-practice', !!settings.genie.agentOnPractice, 'Agent mode on the practice page');
       var agentAuto = toggle('f-agent-auto', !settings.genie.agentAutoOff, 'Allow everything for a session');
       var agentRisky = toggle('f-agent-risky', !settings.genie.agentRiskyOff, 'Allow riskier things for a while');
+      // skills and plugins (server/genie_ext.go)
+      var extOn = toggle('f-ext-on', !settings.genie.extensionsOff, 'Skills and plugins');
+      var plgLinks = toggle('f-plg-links', !!settings.genie.pluginsFromLinks, 'Plugins from a link');
+      form.extOn = extOn.input; form.plgLinks = plgLinks.input;
+      form.sitePlug = {};
+      var sitePicked = settings.genie.sitePlugins || [];
+      var sitePlugBoxes = h('div', { class: 'toolbar', style: 'flex-wrap:wrap;gap:6px 16px' }, (settings.pluginCatalogue || []).map(function (p) {
+        var box = h('input', { type: 'checkbox', id: 'f-site-plugin-' + p.id, checked: sitePicked.indexOf(p.id) >= 0, 'aria-label': p.title + ' is on for everyone', onchange: update });
+        form.sitePlug[p.id] = box;
+        return h('label', { class: 'sub', style: 'display:flex;gap:6px;align-items:center' }, box, h('span', { text: p.title }));
+      }));
       var agentShell = toggle('f-agent-shell', !settings.genie.agentShellOff, 'Agent: run commands');
       form.agentShell = agentShell.input;
       var genieEvents = toggle('f-genie-events', !settings.genieEventsOff, 'Genie log');
@@ -1148,6 +1166,10 @@
               h('div', { class: 'toolbar' }, h('span', { class: 'sub', text: 'Sent' }), p.inBox, h('span', { class: 'sub', text: 'Written' }), p.outBox));
           }),
           row('Show the cost to users', 'Off by default: users see the tokens they used. On adds their cost to the usage details.', showCost.node) ]),
+        card('Skills and plugins', 'A skill is a short text file that tells Genie how to do a kind of task. Users keep their own in the hidden folder .genie/skills of their workspace, type / to use one, and install plugins (folders of skills, with no code) with /add-plugin. Nothing in a skill or a plugin runs by itself: whatever a skill asks Genie to do goes through the same cards, permissions and limits as any task, and a skill can only narrow the actions of a task, never add to them.', [
+          row('Skills and plugins', 'On by default. Off: the / menu has no skills and /add-plugin does nothing; files already in workspaces stay where they are.', extOn.node),
+          row('Plugins from a link', 'Off by default: a user can install only the plugins of the catalogue below. On: a signed-in user can also paste a GitHub repository or a .zip link. The server fetches it (public https addresses only, at most 2 MB, 12 links an hour for each user) and keeps only text: plugin.json and skills. The user reads what it brings, and ticks a box, before it is installed. A plugin that asks for a connection to an outside service is never installed from a link. Each link fetched is written to the server log with the user and the address.', plgLinks.node),
+          row('On for everyone', 'Plugins of the catalogue that every user has without installing them (their skills are in the / menu). Their text lives in the server, not in the workspace.', sitePlugBoxes) ]),
         card('Agent mode', 'Genie works on a task in steps: it writes in the editor and runs the code, after the user allowed each kind of action and reviewed the changes. Only signed-in users have it, and it is on unless you switch it off here. Each task costs a user one request, like a chat message, however many steps it has.', [
           row('Agent mode', 'Shows the Chat | Agent switch in the Genie panel for signed-in users. Chat stays the default.', agentOn.node),
           row('Allow everything for a session', 'On: a user can answer one card with "Allow everything for this session", and the editor\'s changes then go in without a review (each can be undone). Off: a card for every kind of action, and every change is reviewed. Allowing one kind for the session stays.', agentAuto.node),

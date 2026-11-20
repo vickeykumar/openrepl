@@ -30,7 +30,7 @@
     { id: 'genie-limits', group: 'genie', title: 'Limits and context', blurb: 'What Genie is told about the page and how long its answers may be.',
       cards: ['Genie limits'] },
     { id: 'genie-agent', group: 'genie', title: 'Agent', blurb: 'Agent mode: its steps, the risky actions and the tools.',
-      cards: ['Agent mode'] },
+      cards: ['Agent mode', 'Skills and plugins'] },
     { id: 'genie-chats', group: 'genie', title: 'Chats and credits', blurb: 'Saved chats, the summary of long chats, and credits and plans.',
       cards: ['Genie chat history', 'Usage record and credits'] },
     { id: 'access', group: 'access', title: 'API keys and admins', blurb: 'The keys the site uses and who may open this dashboard.',

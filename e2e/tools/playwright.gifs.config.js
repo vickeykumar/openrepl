@@ -4,7 +4,7 @@ const { defineConfig, devices } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: ".",
-  testMatch: /record-guide-gifs\.spec\.js/,
+  testMatch: /record-(guide|skills)-gifs\.spec\.js/,
   timeout: 120 * 1000,
   expect: { timeout: 15 * 1000 },
   workers: 1,

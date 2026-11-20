@@ -20,9 +20,11 @@ import { CreditUsage, TokenUsage, answerTokens, creditLine, creditRows, tokenRow
 import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntry, addItem, gather, hashQuery, itemKey, metaOf, namesLine, problemsLine, rankEntries, removeItem, withAttached, withoutHash } from "./attach";
 import { CoachKind, MAX_HINTS, NO_CODE_IN_A_HINT, NO_HINTS_LEFT, askedText, carriesCode, hintsUsed, questionKey, withHint } from "./coach";
 import { addNote, parseRemember } from "./remember";
+import { SkillInfo, limitFor, matchSkills, saveSkillRequest, skillBlock, skillGroup, skillsIn, skillsNoteText, slashToken } from "./skills";
+import { drawPlugins } from "./plugins-dialog";
 import { announcePin, canDock, configureDock, dockEl, isPinned, onPhone, placePanel, refreshPin, requestResize, setPinned, wireDock } from "./dock";
 import { ContextFacts, contextRows, drawContextView } from "./context-view";
-import { SlashCommand, matchCommands, slashQuery } from "./slash-commands";
+import { SlashCommand, matchCommands } from "./slash-commands";
 import { isTourCommand, markTourSeen, startTour, tourSeen } from "./tour";
 import css from "./widget.css";
 
@@ -2499,6 +2501,8 @@ const agentRunner = new LazyAgent((Runner) => new Runner(
       if (!res.ok) return { status: res.status, message: (await res.text()).trim().slice(0, 200) };
       return { status: 200, ...(await res.json()) };
     },
+    // from the list fetched when Agent mode was switched on; a task never waits more than a moment for it
+    skillsNote: async () => skillsNoteText(await Promise.race([loadSkills(), new Promise<SkillInfo[]>((res) => setTimeout(() => res(skillList), 300))])),
     terminal: () => activeTerminal(),
     terminalType: (data: string) => {
       const term = activeTerminal();
@@ -3059,6 +3063,7 @@ function setMode(agent: boolean) {
     box.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String((b.getAttribute("data-mode") === "agent") === agent)));
   }
   if (agent) void agentRunner.preload(); // the agent's code is fetched now, so that it is there when a task starts
+  if (agent && skillsAt === 0) void loadSkills(); // and the skills, for the note a task starts with
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
   if (input && !agentRunner.running) input.placeholder = modePlaceholder();
   renderUsage(); // the line counts tasks in Agent mode
@@ -3066,9 +3071,9 @@ function setMode(agent: boolean) {
 }
 
 // Starts a task. The agent's code is fetched the first time (lazy-agent.ts); when that fails the chat says so and the task can be sent again.
-async function startAgent(msg: string, block: string) {
+async function startAgent(msg: string, block: string, limit: string[] | null = null) {
   try {
-    await agentRunner.start(msg, block);
+    await agentRunner.start(msg, block, limit);
   } catch (e) {
     await createNewMessageEntry("The agent could not be loaded. Check your connection and send the task again.", Date.now(), "system", false, "Agent", null, null, null, []);
     showAgentState("idle"); // the runner never started, so nothing else gives the box back
@@ -3582,6 +3587,7 @@ function open(e?: Event, opts?: { pin?: boolean }) {
   wireCoach();
   wireQuick();
   wireContext();
+  wirePlugins();
   const draftBox = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
   if (draftBox) {
     if (tabsOn) {
@@ -4105,6 +4111,90 @@ function putContext(item: ContextItem): boolean {
   return true;
 }
 
+// ---- skills and plugins (skills.ts, plugins-dialog.ts, server/genie_ext.go) ---------------------------------------------------
+
+let skillList: SkillInfo[] = [];
+let skillsAt = 0; // when the list was fetched (0: not yet); a failed fetch leaves it 0
+
+async function extCall(body: Record<string, any>): Promise<{ ok: boolean; status: number; data: any }> {
+  const pp = (window as any).preprocessurl;
+  try {
+    const res = await fetch(typeof pp === "function" ? pp("/genie_ext") : "/genie_ext", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    let data: any = null;
+    try {
+      data = await res.json();
+    } catch (e) {
+      data = null;
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) {
+    return { ok: false, status: 0, data: null };
+  }
+}
+
+// The skills this person has now: the built-in ones, those of the workspace, of its plugins, and of the site.
+async function loadSkills(force = false): Promise<SkillInfo[]> {
+  if (!force && skillsAt > 0 && Date.now() - skillsAt < 60000) return skillList;
+  const r = await extCall({ op: "list" });
+  if (r.ok && r.data && Array.isArray(r.data.skills)) {
+    skillList = r.data.skills as SkillInfo[];
+    skillsAt = Date.now();
+  }
+  return skillList;
+}
+
+// The entries of the "/" menu for what is typed: the commands of the panel (only as the first word), then the skills, in the groups
+// Genie, Your skills, Plugins.
+function menuEntries(query: string, atStart: boolean): SlashCommand[] {
+  const out: SlashCommand[] = [];
+  if (atStart) matchCommands(query).forEach((c) => out.push({ ...c, group: "Genie" }));
+  const taken = new Set(out.map((c) => c.name));
+  const rank: Record<string, number> = { builtin: 0, workspace: 1, plugin: 2 };
+  matchSkills(query, skillList)
+    .filter((s) => !taken.has(s.name))
+    .map((s, i) => ({ s, i, g: skillGroup(s) }))
+    .sort((a, b) => rank[a.g.id] - rank[b.g.id] || a.i - b.i)
+    .forEach(({ s, g }) => out.push({ name: s.name, desc: s.description, kind: "skill", skill: s, group: g.title }));
+  return out;
+}
+
+async function readSkillText(s: SkillInfo): Promise<string | null> {
+  const r = await extCall({ op: "read", source: s.source, name: s.name, id: s.plugin || "" });
+  return r.ok && r.data && typeof r.data.text === "string" ? r.data.text : null;
+}
+
+function pluginsEl(): HTMLElement | null {
+  return document.getElementById("chat-widget__plugins");
+}
+
+function closePlugins() {
+  const box = pluginsEl();
+  if (box) box.hidden = true;
+  (document.getElementById("chat-widget__input") as HTMLTextAreaElement | null)?.focus();
+}
+
+function openPlugins() {
+  const box = pluginsEl();
+  if (!box) return;
+  const close = drawPlugins(box, { call: extCall, changed: () => void loadSkills(true), close: closePlugins });
+  box.hidden = false;
+  close.focus();
+}
+
+function wirePlugins() {
+  pluginsEl()?.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      ev.stopPropagation();
+      closePlugins();
+    }
+  });
+}
+
 // ---- # in the message box: pick a file or a folder by name ------------------------------------
 //
 // Typing # and a few letters of a name lists the matching files and folders of the Files
@@ -4113,6 +4203,7 @@ function putContext(item: ContextItem): boolean {
 
 let pickerShown: PickerEntry[] = [];
 let slashShown: SlashCommand[] = []; // the same list shows the commands when the message starts with "/" (slash-commands.ts)
+let slashTok: { start: number; end: number } | null = null; // the "/word" the list is for, in the message
 let slashMode = false;
 let pickerAt = 0;
 let pickerWord: { start: number; query: string } | null = null;
@@ -4133,6 +4224,7 @@ function closePicker() {
   pickerWord = null;
   pickerShown = [];
   slashShown = [];
+  slashTok = null;
   slashMode = false;
   if (el) el.setAttribute("aria-label", "Files and folders");
   document.getElementById("chat-widget__input")?.removeAttribute("aria-activedescendant"); // nothing to point at once the list is gone
@@ -4149,7 +4241,16 @@ function renderSlash() {
   if (!el) return;
   el.textContent = "";
   el.setAttribute("aria-label", "Commands");
+  let lastGroup = "";
   slashShown.forEach((c, i) => {
+    if (c.group && c.group !== lastGroup) {
+      lastGroup = c.group;
+      const g = document.createElement("div");
+      g.className = "cw-picker__group";
+      g.setAttribute("role", "presentation");
+      g.textContent = c.group;
+      el.appendChild(g);
+    }
     const row = document.createElement("button");
     row.type = "button";
     row.id = "cw-picker-" + i;
@@ -4160,8 +4261,14 @@ function renderSlash() {
     name.textContent = "/" + c.name;
     const desc = document.createElement("span");
     desc.className = "cw-picker__desc";
-    desc.textContent = c.desc;
+    desc.textContent = c.desc + (c.skill && c.skill.plugin ? " · " + c.skill.plugin : "") + (c.skill && c.skill.args ? " · " + c.skill.args : "");
     row.append(name, desc);
+    if (c.skill) {
+      const tag = document.createElement("span");
+      tag.className = "cw-picker__tag" + (c.skill.mode === "agent" ? " is-agent" : "");
+      tag.textContent = c.skill.mode;
+      row.appendChild(tag);
+    }
     row.addEventListener("mousedown", (ev) => ev.preventDefault());
     row.addEventListener("click", () => chooseSlash(c));
     el.appendChild(row);
@@ -4172,8 +4279,21 @@ function renderSlash() {
 
 function chooseSlash(c: SlashCommand) {
   const input = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
+  const tok = slashTok;
   closePicker();
   if (!input) return;
+  // a skill: its name goes into the message where the person was typing, and they carry on with their words
+  if (c.skill) {
+    const v = input.value;
+    const start = tok ? tok.start : 0;
+    const end = tok ? Math.max(tok.end, start) : v.length;
+    const put = "/" + c.name + " ";
+    input.value = v.slice(0, start) + put + v.slice(end).replace(/^ /, "");
+    input.setSelectionRange(start + put.length, start + put.length);
+    autoGrow(input);
+    input.focus();
+    return;
+  }
   if (c.kind === "insert" && c.insert) {
     input.value = c.insert;
     input.setSelectionRange(c.insert.length, c.insert.length);
@@ -4185,7 +4305,8 @@ function chooseSlash(c: SlashCommand) {
   autoGrow(input);
   if (c.name === "context") void openContext();
   else if (c.name === "tour") startTour();
-  input.focus();
+  else if (c.name === "add-plugin") openPlugins();
+  if (c.name !== "add-plugin") input.focus();
 }
 
 function renderPicker() {
@@ -4223,9 +4344,11 @@ function renderPicker() {
 
 function updatePicker(input: HTMLTextAreaElement) {
   // a message that starts with "/": the commands, as long as one matches (a path like /usr/bin shows nothing)
-  const sq = peerchatmode || !document.getElementById("chat-widget__picker") ? null : slashQuery(input.value, input.selectionStart || 0);
-  if (sq !== null) {
-    const found = matchCommands(sq);
+  const tok = peerchatmode || !document.getElementById("chat-widget__picker") ? null : slashToken(input.value, input.selectionStart || 0);
+  if (tok !== null) {
+    // the skills are asked for the first time here (and again after a minute), and the list is drawn again when they come
+    if (skillsAt === 0 || Date.now() - skillsAt > 60000) void loadSkills().then(() => skillsAt > 0 && document.activeElement === input && updatePicker(input));
+    const found = menuEntries(tok.query, tok.atStart);
     if (found.length === 0) {
       if (pickerOpen()) closePicker();
       return;
@@ -4233,6 +4356,7 @@ function updatePicker(input: HTMLTextAreaElement) {
     pickerWord = null;
     pickerShown = [];
     slashShown = found;
+    slashTok = { start: tok.start, end: input.selectionStart || tok.start + 1 + tok.query.length };
     slashMode = true;
     pickerAt = 0;
     renderPicker();
@@ -4725,7 +4849,7 @@ async function submit(e: Event) {
     agentRunner.stop();
     return;
   }
-  const msg = (target.elements as any).message.value;
+  let msg = (target.elements as any).message.value;
   // nothing to send: an empty task would still cost a request
   if (!String(msg || "").trim()) return;
   agentRunner.foldEnded(); // the user wrote again: the cards of finished tasks above fold to a line
@@ -4751,6 +4875,53 @@ async function submit(e: Event) {
     const said = await rememberNote(toRemember);
     await createNewMessageEntry(said, Date.now(), "system", false, "Notes", null, null, null, []);
     return false;
+  }
+  // "/add-plugin": the Plugins dialog
+  if (!peerchatmode && /^\s*\/add-plugin\s*$/i.test(String(msg))) {
+    target.reset();
+    autoGrow((target.elements as any).message as HTMLTextAreaElement);
+    openPlugins();
+    return false;
+  }
+  // skills: "/save-skill name" asks Genie to write what it did as a skill file; a "/name" of a skill adds its text to the message
+  let skillsText = "";
+  let skillLimit: string[] | null = null;
+  if (!peerchatmode) {
+    const tell = (text: string) => createNewMessageEntry(text, Date.now(), "system", false, "Skills", null, null, null, []);
+    const save = /^\s*\/save-skill(?:\s+(\S+))?\s*$/i.exec(String(msg));
+    if (save) {
+      const asked = saveSkillRequest(save[1] || "");
+      if (!asked) {
+        await tell("A skill needs a name of lower case letters, digits and dashes, for example /save-skill release-notes.");
+        return false;
+      }
+      if (agentAvailability() !== "ready") {
+        await tell("Saving a skill is a task for Agent mode, which is for signed-in users.");
+        return false;
+      }
+      msg = asked;
+      if (!agentMode) setMode(true);
+    } else if (/(^|\s)\/[a-z]/i.test(String(msg))) {
+      await loadSkills();
+      const used = skillsIn(String(msg), skillList);
+      if (used.length > 0) {
+        const texts = await Promise.all(used.map((u) => readSkillText(u)));
+        const missing = used.filter((_, i) => texts[i] === null);
+        if (missing.length > 0) {
+          await tell("The skill /" + missing[0].name + " could not be read. Check its file, or open /add-plugin.");
+          return false;
+        }
+        const wantsAgent = used.some((u) => u.mode === "agent");
+        if (wantsAgent && agentAvailability() !== "ready") {
+          await tell("The skill /" + used.filter((u) => u.mode === "agent")[0].name + " is a task for Agent mode, which is for signed-in users.");
+          return false;
+        }
+        if (wantsAgent && !agentMode) setMode(true);
+        if (!wantsAgent && agentMode && !agentRunner.running) setMode(false); // a chat skill answers in Chat; the remembered mode stays
+        skillsText = skillBlock(used.map((u, i) => ({ skill: u, text: texts[i] as string })), String(msg));
+        skillLimit = limitFor(used);
+      }
+    }
   }
   // nothing left: the server would refuse it, so the line says when to come back
   if (noneLeft()) {
@@ -4787,7 +4958,7 @@ async function submit(e: Event) {
     const autoModel = autoAgentModel();
     if (autoModel) await createNewMessageEntry(autoNote({ model: autoModel, size: "strong", why: "Agent mode" }, modelById(autoModel).name, true), Date.now(), "system", false, "Auto", null, null, null, []);
     try {
-      await startAgent(msg, task.block);
+      await startAgent(msg, task.block + skillsText, skillLimit);
     } finally {
       runTab = null;
       renderTabs();
@@ -4805,7 +4976,7 @@ async function submit(e: Event) {
   const taken = await takeContext(!peerchatmode);
   lastAttached = taken.items.length;
   const names = peerchatmode ? namesLine(taken.items) : "";
-  addMessageToHistory(myrole, withAttached(msg, taken.block));
+  addMessageToHistory(myrole, withAttached(msg, taken.block + skillsText));
   const sentAt = Date.now();
   if (!peerchatmode) {
     messagesHistory.querySelectorAll(".cw-stale").forEach((n) => n.remove());
