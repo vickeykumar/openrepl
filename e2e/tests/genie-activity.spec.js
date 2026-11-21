@@ -81,7 +81,7 @@ test("with nobody else in the session the card says so and offers Share; a conne
   await page.locator("#chat-widget__act-btn").click();
   await expect(page.locator("#chat-widget__act-people")).toContainText("Nobody else here");
   await expect(page.getByRole("button", { name: "Share this session" })).toBeVisible();
-  const rows = page.locator("#chat-widget__act-conns .cw-act__row--btn");
+  const rows = page.locator("#chat-widget__act-conns .cw-act__svc > .cw-act__row--btn");
   if (await rows.count()) {
     const first = rows.first();
     await expect(first).toHaveAttribute("aria-expanded", "false");
