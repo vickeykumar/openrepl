@@ -479,7 +479,7 @@ func TestASignInTheServiceDeniedOrFromAnotherIssuerIsNotKept(t *testing.T) {
 	if _, ok := readConnRecord("uid-ann", "github"); ok {
 		t.Error("a sign-in that was refused was kept")
 	}
-	connectionCatalogue[0].OAuth.RequireIssuer = true
+	editIntegration(t, "github", func(i *Integration) { i.Auth.RequireIssuer = true })
 	state, code = e.startSignIn(t, idp)
 	if w := e.callback(t, "code="+code+"&state="+state, e.c); w.Code != http.StatusBadRequest {
 		t.Errorf("no issuer when one is required: %d", w.Code)
@@ -593,9 +593,7 @@ func TestARenewalThatCannotBeReachedKeepsTheOldTokenWhileItLastsAndDoesNotMarkIt
 func TestTheTokenIsNeverSentToAnAddressThatChangedSinceItWasGiven(t *testing.T) {
 	e := connSetup(t, GenieSettings{})
 	e.ok(t, `{"op":"connect","id":"github","token":"`+testToken+`"}`)
-	old := connectionCatalogue[0].URL
-	connectionCatalogue[0].URL = "https://elsewhere.example/mcp/"
-	defer func() { connectionCatalogue[0].URL = old }()
+	editIntegration(t, "github", func(i *Integration) { i.URL = "https://elsewhere.example/mcp/" })
 	if code, out := e.call(t, `{"op":"call","id":"github","tool":"get_issue","args":{"number":1},"task":"c1"}`, e.c); code != http.StatusConflict || !strings.Contains(fmtErr(out), "changed") {
 		t.Errorf("a changed address: %d %v", code, out)
 	}
@@ -762,5 +760,21 @@ func TestTheCallLogIsKeptFourteenDays(t *testing.T) {
 	}
 	if _, err := os.Stat(other); err != nil {
 		t.Error("a file that is not a log was removed")
+	}
+}
+
+// editIntegration changes a record of the registry, as the admin's page does.
+func editIntegration(t *testing.T, id string, fn func(i *Integration)) {
+	t.Helper()
+	err := updateRegistry(func(list *[]Integration, _ map[string]IntegrationSecret) error {
+		k := integIndex(*list, id)
+		if k < 0 {
+			return fmt.Errorf("no integration %s", id)
+		}
+		fn(&(*list)[k])
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -42,6 +42,13 @@ type oauthDef struct {
 	ScopesEnv       string // the environment variable that holds the scopes (space or comma separated) for a service that wants them asked for
 	Issuer          string // when set, a response that names another issuer (RFC 9207) is refused
 	RequireIssuer   bool   // ... and one that names none
+	// an integration of the registry (genie_integrations.go): the client the admin made, the server's registration address, whether Genie
+	// registers itself, and the resource a token is asked for (RFC 8707)
+	ClientID        string
+	Auto            bool
+	RegistrationURL string
+	IntegrationID   string
+	Resource        string
 }
 
 // scopes are the ones asked for: the definition's own, else those the admin set in the environment ("" for none: a GitHub App has no scopes).
@@ -52,17 +59,18 @@ func (o *oauthDef) scopes() []string {
 	return strings.FieldsFunc(os.Getenv(o.ScopesEnv), func(r rune) bool { return r == ' ' || r == ',' })
 }
 
-func (o *oauthDef) clientID() string { return strings.TrimSpace(os.Getenv(o.ClientIDEnv)) }
-func (o *oauthDef) secret() string {
-	if o.ClientSecretEnv == "" {
-		return ""
-	}
-	return os.Getenv(o.ClientSecretEnv)
-}
-
-// configured: the admin gave the site a client for this service.
+// configured: a person can sign in: Genie registers itself (Auto), the admin gave the site a client (ClientID, or the variables of the environment).
 func (o *oauthDef) configured() bool {
-	return o != nil && o.clientID() != "" && (o.ClientSecretEnv == "" || o.secret() != "")
+	if o == nil {
+		return false
+	}
+	if o.Auto || o.ClientID != "" {
+		return true
+	}
+	if o.ClientIDEnv == "" || strings.TrimSpace(os.Getenv(o.ClientIDEnv)) == "" {
+		return false
+	}
+	return o.ClientSecretEnv == "" || os.Getenv(o.ClientSecretEnv) != ""
 }
 
 // ---- the state of a sign-in that was started -------------------------------------------------------------------------------------------------
@@ -114,12 +122,28 @@ func oauthStart(uid string, def connectionDef, redirect string, now time.Time) (
 		oauthStates.Unlock()
 		return "", fmt.Errorf("too many sign-ins are waiting: try again in a few minutes")
 	}
+	oauthStates.Unlock()
+	// the client of this site's address: the admin's app, or the one Genie registered by itself (registered now when there is none)
+	cid, _ := clientFor(def.ID, o, redirect)
+	if cid == "" && o.Auto {
+		var err error
+		if cid, _, err = registerClient(def, redirect); err != nil {
+			return "", err
+		}
+	}
+	if cid == "" {
+		return "", fmt.Errorf("signing in to %s is not set up on this site: paste a token instead", def.Title)
+	}
+	oauthStates.Lock()
 	oauthStates.m[state] = oauthPending{uid: uid, id: def.ID, verifier: verifier, redirect: redirect, exp: now.Add(oauthStateTTL)}
 	oauthStates.Unlock()
 	ch := sha256.Sum256([]byte(verifier))
 	q := url.Values{}
 	q.Set("response_type", "code")
-	q.Set("client_id", o.clientID())
+	q.Set("client_id", cid)
+	if o.Resource != "" {
+		q.Set("resource", o.Resource)
+	}
 	q.Set("redirect_uri", redirect)
 	q.Set("state", state)
 	q.Set("code_challenge", base64.RawURLEncoding.EncodeToString(ch[:]))
@@ -176,10 +200,13 @@ var oauthHTTP = func() *http.Client { return newExtClientFor(15 * time.Second) }
 
 // oauthToken posts to the token endpoint. A refusal by the service (an error in the answer, or a 4xx) is errOAuthRefused: the credential is no good.
 // Anything else (the service cannot be reached, a 5xx) is another error: try again later.
-func oauthToken(o *oauthDef, form url.Values) (oauthCred, error) {
-	form.Set("client_id", o.clientID())
-	if s := o.secret(); s != "" {
-		form.Set("client_secret", s)
+func oauthToken(o *oauthDef, clientID, secret string, form url.Values) (oauthCred, error) {
+	form.Set("client_id", clientID)
+	if secret != "" {
+		form.Set("client_secret", secret)
+	}
+	if o.Resource != "" {
+		form.Set("resource", o.Resource)
 	}
 	req, err := http.NewRequest(http.MethodPost, o.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -219,13 +246,17 @@ func oauthToken(o *oauthDef, form url.Values) (oauthCred, error) {
 }
 
 // saveConnOAuth seals the access and refresh tokens as the person's credential for a connection.
-func saveConnOAuth(uid string, def connectionDef, c oauthCred) error {
+func saveConnOAuth(uid string, def connectionDef, c oauthCred, redirect ...string) error {
 	payload, _ := json.Marshal(c)
+	rd := ""
+	if len(redirect) > 0 {
+		rd = redirect[0]
+	}
 	sealed, err := sealKey(utils.Secret(), connAAD(uid, def.ID), string(payload))
 	if err != nil {
 		return err
 	}
-	return storeConnRecord(uid, connRecord{User: uid, ID: def.ID, URL: def.URL, Title: def.Title, Sealed: sealed, At: time.Now().UTC().Format(time.RFC3339), Kind: "oauth", Expires: c.Expires})
+	return storeConnRecord(uid, connRecord{User: uid, ID: def.ID, URL: def.URL, Title: def.Title, Sealed: sealed, At: time.Now().UTC().Format(time.RFC3339), Kind: "oauth", Expires: c.Expires, Redirect: rd})
 }
 
 func openOAuthCred(uid string, rec connRecord) (oauthCred, error) {
@@ -284,7 +315,8 @@ func oauthAccessToken(uid string, rec connRecord) (connRecord, string, bool) {
 	if !ok || def.OAuth == nil || cred.Refresh == "" {
 		return markReconnect(uid, rec)
 	}
-	fresh, err := oauthToken(def.OAuth, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {cred.Refresh}})
+	cid, sec := clientFor(def.ID, def.OAuth, rec.Redirect)
+	fresh, err := oauthToken(def.OAuth, cid, sec, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {cred.Refresh}})
 	if err == errOAuthRefused {
 		return markReconnect(uid, rec)
 	}
@@ -298,7 +330,7 @@ func oauthAccessToken(uid string, rec connRecord) (connRecord, string, bool) {
 	if fresh.Refresh == "" {
 		fresh.Refresh = cred.Refresh
 	}
-	if err := saveConnOAuth(uid, def, fresh); err != nil {
+	if err := saveConnOAuth(uid, def, fresh, rec.Redirect); err != nil {
 		return rec, "", false
 	}
 	rec.Expires = fresh.Expires
@@ -376,7 +408,8 @@ func (server *Server) handleGenieConnOAuth(rw http.ResponseWriter, req *http.Req
 		oauthPage(rw, http.StatusBadRequest, "Not connected", "The answer had no code. Nothing was saved.", back)
 		return
 	}
-	cred, err := oauthToken(def.OAuth, url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {pending.redirect}, "code_verifier": {pending.verifier}})
+	cid, sec := clientFor(def.ID, def.OAuth, pending.redirect)
+	cred, err := oauthToken(def.OAuth, cid, sec, url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {pending.redirect}, "code_verifier": {pending.verifier}})
 	if err != nil {
 		oauthPage(rw, http.StatusBadGateway, "Not connected", def.Title+" did not accept the sign-in. Nothing was saved.", back)
 		return
@@ -399,7 +432,7 @@ func (server *Server) handleGenieConnOAuth(rw http.ResponseWriter, req *http.Req
 		oauthPage(rw, http.StatusServiceUnavailable, "Not connected", "This server has no secret to keep sign-ins with: an admin has to set OPENREPL_SECRET.", back)
 		return
 	}
-	if err := saveConnOAuth(uid, def, cred); err != nil {
+	if err := saveConnOAuth(uid, def, cred, pending.redirect); err != nil {
 		oauthPage(rw, http.StatusBadRequest, "Not connected", err.Error()+".", back)
 		return
 	}

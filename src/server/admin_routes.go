@@ -44,6 +44,7 @@ func (server *Server) registerAdmin(mux *http.ServeMux, prefix string) {
 	api("admin/plugin-installs", server.handleAdminPluginInstalls)
 	api("admin/connection-requests", server.handleAdminConnectionRequests)
 	api("admin/connections", server.handleAdminConnections)
+	api("admin/integrations", server.handleAdminIntegrations)
 	api("admin/genie-health", server.handleAdminGenieHealth)
 	api("admin/genie-measures", server.handleAdminGenieMeasures)
 	api("admin/genie-plan", server.handleAdminGeniePlan)

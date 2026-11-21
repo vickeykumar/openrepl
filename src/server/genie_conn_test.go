@@ -156,10 +156,11 @@ func mcpToolReadOnly(name string) mcpTool {
 }
 
 type connEnv struct {
-	s    *Server
-	c    *http.Cookie
-	mcp  *fakeMCP
-	home string
+	s     *Server
+	c     *http.Cookie
+	mcp   *fakeMCP
+	home  string
+	admin *http.Cookie
 }
 
 func connSetup(t *testing.T, g GenieSettings) *connEnv {

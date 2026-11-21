@@ -34,8 +34,19 @@ function servers(opts = {}) {
     const b = JSON.parse(route.request().postData() || "{}");
     st.conn.push(b);
     switch (b.op) {
-      case "list":
-        return ok(route, { connections: [{ id: "github", title: "GitHub", url: "https://api.githubcopilot.com/mcp/", help: "A personal access token.", connected: st.connected, tools: st.connected ? TOOLS : [] }], canStore: true, noApproval: false, hosts: [] });
+      case "list": {
+        const rows = [{ id: "github", title: "GitHub", url: "https://api.githubcopilot.com/mcp/", help: "A personal access token.", connected: st.connected, tools: st.connected ? TOOLS : [] }];
+        if (opts.open) rows.push({ id: "wiki", title: "Acme wiki", url: "https://wiki.acme.dev/mcp", description: "Search the team wiki.", mode: "none", enabled: !!st.wikiOn, connected: !!st.wikiOn, tools: st.wikiOn ? [{ name: "search_pages", description: "Search", level: "read", args: ["query*"] }] : [], keywords: ["wiki"] });
+        return ok(route, { connections: rows, canStore: true, noApproval: false, hosts: [] });
+      }
+      case "enable":
+        st.wikiOn = true;
+        return ok(route, { id: b.id, enabled: true });
+      case "ask":
+        if (!b.title || !b.address) return err(route, 400, "bad_request", "Give the server a name.");
+        st.asked = b;
+        st.requests = [{ id: "s1", kind: "server", title: b.title, url: b.address, status: "waiting", at: "2026-11-21T08:00:00Z" }];
+        return ok(route, { request: st.requests[0] });
       case "requests":
         return ok(route, { requests: st.requests });
       case "connect":
@@ -118,7 +129,7 @@ async function openPanel(page, srv, script, opts = {}) {
     route.fulfill({ response: res, body: (await res.text()) + extra });
   });
   await page.goto("/");
-  await page.waitForFunction(() => window.ChatWidget && window.editor && window.editor.env.editor);
+  await page.waitForFunction(() => window.ChatWidget && window.editor && window.editor.env && window.editor.env.editor);
   await expect(page.locator("#loader")).toBeHidden();
   await waitForTerminalReady(page);
   await page.waitForFunction(() => window.editor.env.editor.getValue().length > 0);
@@ -279,4 +290,35 @@ test("a plugin from a link may be installed when the admin lets connections thro
   await expect(dlg).toContainText("The admin lets plugins from a link use connections without approval.");
   await expect(dlg.getByRole("button", { name: "Send request" })).toHaveCount(0);
   await expect(dlg.locator(".cw-plg__foot").getByRole("button", { name: "Install" })).toBeVisible();
+});
+
+test("an open server of the admin's is enabled with one click, and a person asks for a server in text only", async ({ page }) => {
+  const srv = servers({ open: true });
+  await openPanel(page, srv, []);
+  const dlg = await openDialog(page);
+  await dlg.getByRole("button", { name: /^Connections/ }).click();
+  const wiki = dlg.locator('[data-connection="wiki"]');
+  await expect(wiki).toContainText("Search the team wiki.");
+  await expect(wiki).toContainText("not connected");
+  await wiki.getByRole("button", { name: "Enable" }).click();
+  await expect(dlg.locator(".cw-plg__msg")).toContainText("Acme wiki is enabled");
+  await expect(wiki).toContainText("connected");
+  await expect(wiki.locator(".cw-plg__pill", { hasText: "search_pages" })).toBeVisible();
+  expect(srv.conn.filter((c) => c.op === "enable").map((c) => c.id)).toEqual(["wiki"]);
+  // ask for a server: a form of text, and it says that nothing is contacted
+  await dlg.getByRole("button", { name: "Ask for a server" }).click();
+  await expect(dlg.locator('[data-ask="1"]')).toContainText("Nothing contacts that address");
+  await dlg.getByLabel("Name of the server").fill("Linear");
+  await dlg.getByLabel("Address of the server").fill("https://mcp.linear.app/mcp");
+  await dlg.getByLabel("What Genie should do with it").fill("Look at my tickets.");
+  await dlg.getByLabel("How you sign in to it").selectOption("oauth");
+  await dlg.getByRole("button", { name: "Send request" }).click();
+  await expect(dlg.locator(".cw-plg__msg")).toContainText("Sent");
+  expect(srv.asked).toMatchObject({ op: "ask", title: "Linear", address: "https://mcp.linear.app/mcp", why: "Look at my tickets.", signin: "oauth" });
+  // the answer is in Requests: waiting, with the address as typed
+  const req = dlg.locator('[data-request="s1"]');
+  await expect(req).toBeVisible();
+  await expect(req).toContainText("Linear");
+  await expect(req).toContainText("https://mcp.linear.app/mcp");
+  await expect(req).toContainText("Nothing is connected until then");
 });

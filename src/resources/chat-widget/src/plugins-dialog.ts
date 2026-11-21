@@ -40,17 +40,25 @@ interface ConnRow {
   connected: boolean;
   tools: ConnTool[];
   error?: string;
-  oauth?: boolean; // the admin set up a client: the person can sign in instead of pasting a token
+  oauth?: boolean; // the person can sign in (Genie registers itself, or the admin made an app)
   reconnect?: boolean; // the sign-in ended or was taken back
+  enabled?: boolean; // the person switched it on (a service is enabled before it is connected)
+  description?: string;
+  mode?: "none" | "token" | "oauth"; // how a person signs in; a list from an older server has none
 }
 interface ConnRequestRow {
   id: string;
-  plugin: string;
-  version: string;
+  plugin?: string;
+  version?: string;
   status: "waiting" | "approved" | "declined";
   reason?: string;
   scope?: string;
-  connections: { title: string }[];
+  connections?: { title: string }[];
+  // a request for a server (kind "server"): what the person typed, and whether they can use it now
+  kind?: string;
+  title?: string;
+  url?: string;
+  available?: boolean;
 }
 
 interface InstalledRow {
@@ -100,6 +108,7 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
   let connsNote = "";
   let requests: ConnRequestRow[] = [];
   let openConn = ""; // the connection whose token field is open
+  let askOpen = false; // the form to ask for a server
   let query = "";
   let card: HTMLElement | null = null; // the install card, when one is shown
   let message = "";
@@ -193,6 +202,7 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
       if (connsNote) list.appendChild(el("div", "cw-plg__warn", connsNote));
       conns.filter((c) => !query || (c.title + " " + c.id).toLowerCase().includes(query)).forEach((c) => list.appendChild(connectionCard(c)));
       if (conns.length === 0 && !connsNote) list.appendChild(el("div", "cw-plg__none", "No connection is offered here."));
+      if (!connsNote) list.appendChild(askForm());
       return;
     }
     if (tab === "requests") {
@@ -215,8 +225,9 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
     const box = el("div", "cw-plg__card cw-plg__card--col");
     box.dataset.connection = c.id;
     const head = el("div", "cw-plg__connhead");
-    head.append(el("b", "", c.title), pill(c.connected ? "connected" : "not connected", c.connected ? "ok" : ""));
+    head.append(el("b", "", c.title), pill(c.connected ? "connected" : c.enabled ? "enabled · not signed in" : "not connected", c.connected ? "ok" : ""));
     const actions = el("div", "cw-plg__actions");
+    const signable = !!c.oauth && c.mode === "oauth"; // a server of the admin's with a sign-in: no token to paste unless the person asks for it
     if (c.connected) {
       actions.append(button("Disconnect", "cw-plg__btn--danger", async () => {
         const r = await api.conn({ op: "disconnect", id: c.id });
@@ -225,8 +236,17 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
         api.changed();
         await load();
       }));
+    } else if (c.mode === "none") {
+      // an open server: there is nothing to give, so enabling connects it
+      actions.append(button("Enable", "cw-plg__btn--main", async () => {
+        const r = await api.conn({ op: "enable", id: c.id });
+        if (!r.ok) return say(errorText(r), true);
+        say(c.title + " is enabled. Genie can use it when a task is about it.");
+        api.changed();
+        await load();
+      }));
     } else {
-      actions.append(button("Connect", "cw-plg__btn--main", () => {
+      actions.append(button(signable ? "Use a token instead" : "Connect", signable ? "" : "cw-plg__btn--main", () => {
         openConn = openConn === c.id ? "" : c.id;
         drawList();
       }));
@@ -245,6 +265,7 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
     }
     head.appendChild(actions);
     box.appendChild(head);
+    if (c.description) box.appendChild(el("div", "cw-plg__desc", c.description));
     box.appendChild(el("div", "cw-plg__desc", c.url));
     if (c.error) box.appendChild(el("div", "cw-plg__warn", c.error));
     if (c.connected && c.tools.length) {
@@ -290,11 +311,83 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
     return box;
   }
 
+  // "Ask for a server": text only. Nothing is contacted and nothing is connected until an admin answers.
+  function askForm(): HTMLElement {
+    const box = el("div", "cw-plg__card cw-plg__card--col");
+    box.dataset.ask = "1";
+    const head = el("div", "cw-plg__connhead");
+    head.append(el("b", "", "Can't find the server you need?"));
+    const toggle = button(askOpen ? "Close" : "Ask for a server", askOpen ? "" : "cw-plg__btn--main", () => {
+      askOpen = !askOpen;
+      drawList();
+    });
+    const actions = el("div", "cw-plg__actions");
+    actions.append(toggle);
+    head.appendChild(actions);
+    box.appendChild(head);
+    if (!askOpen) return box;
+    const mk = (label: string, type: string, ph: string, max: number): HTMLInputElement => {
+      const i = el("input", "cw-plg__search") as HTMLInputElement;
+      i.type = type;
+      i.placeholder = ph;
+      i.maxLength = max;
+      i.setAttribute("aria-label", label);
+      return i;
+    };
+    const name = mk("Name of the server", "text", "Name, for example Acme wiki", 40);
+    const addr = mk("Address of the server", "url", "https://wiki.example.com/mcp", 300);
+    const why = mk("What Genie should do with it", "text", "What should Genie do with it?", 300);
+    const how = el("select", "cw-plg__search") as HTMLSelectElement;
+    how.setAttribute("aria-label", "How you sign in to it");
+    [["unknown", "How do you sign in to it? I don't know"], ["oauth", "I sign in with an account (OAuth)"], ["token", "I use a token"]].forEach(([v, t]) => {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = t;
+      how.appendChild(o);
+    });
+    const docs = mk("Link to its MCP documentation", "url", "Link to its MCP docs (optional)", 200);
+    const send = button("Send request", "cw-plg__btn--main", async () => {
+      if (!name.value.trim() || !addr.value.trim()) return say("Give the server a name and an address.", true);
+      send.disabled = true;
+      const r = await api.conn({ op: "ask", title: name.value.trim(), address: addr.value.trim(), why: why.value.trim(), signin: how.value, docs: docs.value.trim() });
+      send.disabled = false;
+      if (!r.ok) return say(errorText(r), true);
+      askOpen = false;
+      say("Sent. An admin will look at it; you will see the answer in Requests.");
+      await load();
+      tab = "requests";
+      drawTabs();
+      drawList();
+    });
+    box.append(name, addr, why, how, docs, send, el("div", "cw-plg__desc", "This only sends a request. Nothing contacts that address and nothing is connected until an admin publishes it. You never type client IDs, secrets or endpoints."));
+    return box;
+  }
+
   function requestCard(r: ConnRequestRow): HTMLElement {
     const box = el("div", "cw-plg__card");
     box.dataset.request = r.id;
     const body = el("div", "cw-plg__body");
-    body.append(el("b", "", r.plugin + (r.version ? " v" + r.version : "")), el("div", "cw-plg__desc", "Needs: " + r.connections.map((c) => c.title).join(", ")));
+    if (r.kind === "server") {
+      // a request for a server: what was typed, and what became of it
+      body.append(el("b", "", r.title || "A server"), el("div", "cw-plg__desc", r.url || ""));
+      if (r.status === "waiting") body.appendChild(el("div", "cw-plg__desc", "An admin will look at it. Nothing is connected until then."));
+      if (r.status === "declined" && r.reason) body.appendChild(el("div", "cw-plg__desc", "Reason: " + r.reason));
+      if (r.status === "approved") {
+        body.appendChild(el("div", "cw-plg__desc", r.available ? "Ready: enable it and sign in under Connections." : "Approved. An admin is setting it up: you will see it under Connections when it is published."));
+      }
+      box.appendChild(body);
+      if (r.status === "approved" && r.available) {
+        box.appendChild(button("Open Connections", "cw-plg__btn--main", () => {
+          tab = "connections";
+          drawTabs();
+          drawList();
+        }));
+      } else {
+        box.appendChild(pill(r.status === "approved" ? "set up soon" : r.status, r.status === "declined" ? "bad" : "warn"));
+      }
+      return box;
+    }
+    body.append(el("b", "", (r.plugin || "") + (r.version ? " v" + r.version : "")), el("div", "cw-plg__desc", "Needs: " + (r.connections || []).map((c) => c.title).join(", ")));
     if (r.status === "declined" && r.reason) body.appendChild(el("div", "cw-plg__desc", "Reason: " + r.reason));
     box.appendChild(body);
     box.appendChild(pill(r.status === "approved" ? "approved" + (r.scope === "user" ? " for you" : "") : r.status, r.status === "approved" ? "ok" : r.status === "declined" ? "bad" : "warn"));

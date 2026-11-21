@@ -2688,13 +2688,14 @@
     genielog: { label: 'Genie log', icon: 'logs', make: viewGenieLog },
     geniehealth: { label: 'Genie health', icon: 'health', make: viewGenieHealth },
     store: { label: 'App Store', icon: 'apps', make: viewStore },
+    integrations: { label: 'Integrations', icon: 'apps', make: lazyView(['admin-integrations.js'], 'AdminIntegrations') },
     audit: { label: 'Audit log', icon: 'audit', make: viewAudit }
   };
 
   var GROUPS = [
     ['', ['overview', 'map']],
     ['Fleet', ['workers', 'sessions']],
-    ['Site', ['site', 'feedback', 'snippets', 'store', 'users', 'traffic', 'usage']],
+    ['Site', ['site', 'feedback', 'snippets', 'store', 'integrations', 'users', 'traffic', 'usage']],
     ['System', ['health', 'jobs', 'params', 'logs', 'genielog', 'geniehealth', 'audit']]
   ];
 

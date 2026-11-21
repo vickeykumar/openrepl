@@ -2524,6 +2524,9 @@ const agentRunner = new LazyAgent((Runner) => new Runner(
     // from the list fetched when Agent mode was switched on; a task never waits more than a moment for it
     connectionTool: (c: string, t: string) => connectionTool(c, t),
     connectionsNote: (withTools: boolean) => connectionsNote(withTools),
+    connectWords: () => connectWords(),
+    connectionOffer: (task: string) => connectionOffer(task),
+    openConnection: (id: string) => void openConnection(id),
     mcpCall: (req: { connection: string; tool: string; args: Record<string, unknown>; task: string; approval: "once" | "session" | "auto"; tainted: boolean }, signal: AbortSignal) => mcpCallPage(req, signal),
     skillsNote: async () => skillsNoteText(await Promise.race([loadSkills(), new Promise<SkillInfo[]>((res) => setTimeout(() => res(skillList), 300))]), noteList),
     terminal: () => activeTerminal(),
@@ -4242,9 +4245,16 @@ interface ConnInfo {
   title: string;
   connected: boolean;
   tools: ConnToolInfo[];
+  enabled?: boolean;
+  description?: string;
+  keywords?: string[];
+  mode?: "none" | "token" | "oauth";
+  oauth?: boolean;
 }
-let connList: ConnInfo[] = [];
+let connList: ConnInfo[] = []; // the ones that are connected
+let connAll: ConnInfo[] = []; // everything the admin published for this person
 let connAt = 0;
+const offeredConn = new Set<string>(); // the servers the page showed a card for, once each
 
 const connApi = (body: Record<string, any>) => extCall(body, "/genie_conn");
 
@@ -4253,10 +4263,52 @@ async function loadConnections(force = false): Promise<ConnInfo[]> {
   if (!document.body.classList.contains("is-signed-in")) return [];
   if (!force && connAt > 0 && Date.now() - connAt < 60000) return connList;
   const r = await connApi({ op: "list" });
-  if (r.ok && r.data && Array.isArray(r.data.connections)) connList = (r.data.connections as ConnInfo[]).filter((c) => c.connected);
-  else connList = []; // off on this site, or not allowed: nothing to ask again for a minute
+  if (r.ok && r.data && Array.isArray(r.data.connections)) {
+    connAll = r.data.connections as ConnInfo[];
+    connList = connAll.filter((c) => c.connected);
+  } else {
+    connAll = [];
+    connList = []; // off on this site, or not allowed: nothing to ask again for a minute
+  }
   connAt = Date.now();
   return connList;
+}
+
+// The words that say a task is about one of the servers the admin published for this person: its name and its keywords (a word of three letters or more).
+function connectWords(): RegExp | null {
+  const words = new Set<string>();
+  connAll.forEach((c) => [c.title, c.id].concat(c.keywords || []).forEach((w) => String(w || "").toLowerCase().trim().length >= 3 && words.add(String(w).toLowerCase().trim())));
+  if (words.size === 0) return null;
+  const esc = Array.from(words).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp("\\b(" + esc.join("|") + ")\\b", "i");
+}
+
+// A server that the task is about and that the person has not switched on, once for each server in a page's life.
+function connectionOffer(task: string): { id: string; title: string; description: string } | null {
+  if (!document.body.classList.contains("is-signed-in")) return null;
+  const text = task.toLowerCase();
+  const c = connAll.filter((x) => !x.connected && !offeredConn.has(x.id) && [x.title, x.id].concat(x.keywords || []).some((w) => String(w || "").length >= 3 && new RegExp("\\b" + String(w).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(text)))[0];
+  if (!c) return null;
+  offeredConn.add(c.id);
+  return { id: c.id, title: c.title, description: c.description || "" };
+}
+
+// What the card's button does: an open server is enabled at once, one with a sign-in sends the person to it, anything else opens the Connections tab.
+async function openConnection(id: string) {
+  const c = connAll.filter((x) => x.id === id)[0];
+  if (c && c.mode === "none") {
+    await connApi({ op: "enable", id });
+    await loadConnections(true);
+    return;
+  }
+  if (c && c.mode === "oauth" && c.oauth) {
+    const r = await connApi({ op: "oauth_start", id });
+    if (r.ok && r.data && r.data.url) {
+      window.location.href = String(r.data.url);
+      return;
+    }
+  }
+  openPlugins();
 }
 
 // The tool of a connection the person connected, from the list the server gave (never from the model): its level and the connection's name.

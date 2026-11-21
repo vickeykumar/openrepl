@@ -127,6 +127,12 @@ type SiteSettings struct {
 	// Secrets are the API keys an admin saved in the dashboard, encrypted
 	// (settings_keys.go). No API reply carries them and a form cannot set them.
 	Secrets *StoredKeys `json:"secrets,omitempty"`
+	// Integrations are the servers Genie can be connected to, as an admin set them up (genie_integrations.go); IntegrationSecrets are their sealed
+	// secrets, which no reply carries; IntegrationsSeeded says that the list in Go made the first record. The Settings page does not send them:
+	// /admin/integrations changes them.
+	Integrations       []Integration                `json:"integrations,omitempty"`
+	IntegrationSecrets map[string]IntegrationSecret `json:"integrationSecrets,omitempty"`
+	IntegrationsSeeded bool                         `json:"integrationsSeeded,omitempty"`
 }
 
 // Announcement is the banner at the top of every page.
@@ -1053,6 +1059,8 @@ func reply(s SiteSettings) settingsReply {
 	}
 	s.Genie.CustomModels = append([]CustomModel{}, s.Genie.customList()...) // the list in effect, never null
 	s.Secrets = nil
+	s.IntegrationSecrets = nil // sealed, and not for a browser
+	s.Integrations = nil       // the Integrations page asks /admin/integrations
 	return settingsReply{SiteSettings: s, Languages: languageChoices(), Models: modelInfos(), PluginCatalogue: pluginChoices(), Defaults: currentGenieDefaults(), Store: store, Version: version}
 }
 
@@ -1085,6 +1093,7 @@ func (server *Server) handleAdminSettings(rw http.ResponseWriter, req *http.Requ
 		}
 		s.NodeLanguages = before.NodeLanguages // nor the languages of single nodes; /admin/workers does
 		s.NodeWeights = before.NodeWeights     // nor their weights
+		s.Integrations, s.IntegrationSecrets, s.IntegrationsSeeded = before.Integrations, before.IntegrationSecrets, before.IntegrationsSeeded // nor the integrations
 		if err := SaveSiteSettings(s, base); err != nil {
 			if _, bad := s.normalize(); bad != nil {
 				adminError(rw, http.StatusBadRequest, bad.Error())

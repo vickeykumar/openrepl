@@ -37,9 +37,16 @@ type connRequest struct {
 	Note    string          `json:"note,omitempty"`
 	Status  string          `json:"status"` // waiting, approved, declined
 	Scope   string          `json:"scope,omitempty"`
-	Reason  string          `json:"reason,omitempty"`
-	At      string          `json:"at"`
-	Decided string          `json:"decided,omitempty"`
+	// a request for a server (Kind "server"; a plugin's request has none): what the person typed, as text, and what became of it
+	Kind    string `json:"kind,omitempty"`
+	Title   string `json:"title,omitempty"`
+	URL     string `json:"url,omitempty"`
+	Signin  string `json:"signin,omitempty"` // what the person thinks: oauth, token or unknown
+	Docs    string `json:"docs,omitempty"`
+	DraftID string `json:"draftId,omitempty"` // the integration an approval made
+	Reason  string `json:"reason,omitempty"`
+	At      string `json:"at"`
+	Decided string `json:"decided,omitempty"`
 }
 
 // the connections a plugin names, read from its plugin.json: {"id":"github"} (the site's catalogue) or {"id":"acme","title":"Acme","url":"https://…"}
@@ -232,8 +239,25 @@ func (server *Server) handleAdminConnectionRequests(w http.ResponseWriter, r *ht
 			adminError(w, http.StatusBadRequest, "Send {id, action}.")
 			return
 		}
-		if in.Action != "approve" && in.Action != "approve_user" && in.Action != "decline" {
-			adminError(w, http.StatusBadRequest, "The action is approve, approve_user or decline.")
+		if in.Action != "approve" && in.Action != "approve_user" && in.Action != "decline" && in.Action != "customize" {
+			adminError(w, http.StatusBadRequest, "The action is approve, approve_user, customize or decline.")
+			return
+		}
+		// a request for a server (genie_integrations_requests.go)
+		connReqMu.Lock()
+		isServer := false
+		for _, rq := range readConnRequests() {
+			if rq.ID == in.ID && rq.Kind == "server" {
+				isServer = true
+			}
+		}
+		connReqMu.Unlock()
+		if isServer {
+			server.decideServerRequest(w, r, in.ID, in.Action, in.Reason)
+			return
+		}
+		if in.Action == "customize" {
+			adminError(w, http.StatusBadRequest, "Only a request for a server can be customized.")
 			return
 		}
 		connReqMu.Lock()

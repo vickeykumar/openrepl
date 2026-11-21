@@ -17,6 +17,7 @@ export interface GroupSignals {
   openFile: string; // the file open in the editor ("" for none)
   terminal: string; // the end of the terminal
   haveEditorText: boolean; // the editor holds something
+  connectWords?: RegExp | null; // the names and keywords of the servers the admin published for this person (the page builds it from the list the server gave)
 }
 
 const WORDS: Record<Group, RegExp> = {
@@ -41,7 +42,7 @@ export function groupsFor(have: readonly string[], s: GroupSignals): Group[] {
   if (WORDS.terminal.test(text) || MISSING_MODULE.test(s.terminal || "")) on.add("terminal");
   if (s.previewOpen || WEB_FILE.test(s.openFile || "") || WORDS.preview.test(text)) on.add("preview");
   if (WORDS.store.test(text) || MISSING_MODULE.test(s.terminal || "")) on.add("store");
-  if (WORDS.connect.test(text)) on.add("connect");
+  if (WORDS.connect.test(text) || (s.connectWords && s.connectWords.test(text))) on.add("connect");
   return ORDER.filter((g) => on.has(g));
 }
 

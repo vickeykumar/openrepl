@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -65,6 +66,7 @@ type connUserConn struct {
 	ConnectedAt string `json:"connectedAt,omitempty"`
 	RenewedAt   string `json:"renewedAt,omitempty"`
 	Reconnect   bool   `json:"reconnect,omitempty"`
+	Redirect    string `json:"redirect,omitempty"`
 }
 
 func connKey(uid string) []byte { return []byte(connKeyPrefix + uid) }
@@ -111,7 +113,7 @@ func legacyConnFile(uid string) string {
 }
 
 func (c *connUserConn) toRecord(uid, id string) connRecord {
-	return connRecord{User: uid, ID: id, URL: c.URL, Sealed: c.Sealed, At: c.ConnectedAt, Kind: c.Kind, Expires: c.Expires, Reconnect: c.Reconnect}
+	return connRecord{User: uid, ID: id, URL: c.URL, Sealed: c.Sealed, At: c.ConnectedAt, Kind: c.Kind, Expires: c.Expires, Reconnect: c.Reconnect, Redirect: c.Redirect}
 }
 
 // readConnRecords gives the connected services of a person (a record that is only enabled is not one of them). A person the database does
@@ -168,7 +170,10 @@ func writeConnRecords(uid string, recs []connRecord) error {
 			e = &connUserInteg{Enabled: true, EnabledAt: r.At}
 			d.Integrations[r.ID] = e
 		}
-		conn := &connUserConn{Kind: r.Kind, URL: r.URL, Sealed: r.Sealed, Expires: r.Expires, ConnectedAt: r.At, Reconnect: r.Reconnect}
+		if e.Connection == nil && !e.Enabled {
+			e.Enabled, e.EnabledAt = true, r.At // connecting enables
+		}
+		conn := &connUserConn{Kind: r.Kind, URL: r.URL, Sealed: r.Sealed, Expires: r.Expires, ConnectedAt: r.At, Reconnect: r.Reconnect, Redirect: r.Redirect}
 		if e.Connection != nil {
 			conn.Account, conn.RenewedAt = e.Connection.Account, e.Connection.RenewedAt // what this file's callers do not set stays
 		}
@@ -217,6 +222,82 @@ func writeConnRequests(r []connRequest) error {
 }
 
 func legacyReqFile() string { return filepath.Join(connDir, "requests.json") }
+
+// enabledServices are the services a person has switched on.
+func enabledServices(uid string) map[string]bool {
+	out := map[string]bool{}
+	connMu.Lock()
+	defer connMu.Unlock()
+	readConnRecords(uid) // the old file, once
+	if d := loadConnDoc(uid); d != nil {
+		for id, e := range d.Integrations {
+			if e.Enabled {
+				out[id] = true
+			}
+		}
+	}
+	return out
+}
+
+func connEnabled(uid, id string) bool { return enabledServices(uid)[id] }
+
+// setConnEnabled switches a service on or off for a person. Switching on a server that has no sign-in connects it at once (there is no
+// credential to give); switching off keeps the credential, so switching on again needs no new sign-in.
+func setConnEnabled(uid string, def connectionDef, on bool) error {
+	connMu.Lock()
+	defer connMu.Unlock()
+	readConnRecords(uid)
+	d := loadConnDoc(uid)
+	if d == nil {
+		d = &connUserDoc{V: 1, UID: uid, Integrations: map[string]*connUserInteg{}}
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	e := d.Integrations[def.ID]
+	if e == nil {
+		if !on {
+			return nil
+		}
+		if connConnected(d) >= connPerUser {
+			return fmt.Errorf("a person can have at most %d connections", connPerUser)
+		}
+		e = &connUserInteg{}
+		d.Integrations[def.ID] = e
+	}
+	e.Enabled = on
+	if on && e.EnabledAt == "" {
+		e.EnabledAt = now
+	}
+	if on && def.Mode == "none" && e.Connection == nil {
+		e.Connection = &connUserConn{Kind: "none", URL: def.URL, ConnectedAt: now}
+	}
+	if !on && e.Connection == nil {
+		delete(d.Integrations, def.ID)
+	}
+	return saveConnDoc(d)
+}
+
+func connConnected(d *connUserDoc) (n int) {
+	for _, e := range d.Integrations {
+		if e.Enabled || e.Connection != nil {
+			n++
+		}
+	}
+	return n
+}
+
+// forEachConnDoc calls fn with the record of each person.
+func forEachConnDoc(fn func(d *connUserDoc)) {
+	connDB().Each(func(key, value []byte) bool {
+		if !strings.HasPrefix(string(key), connKeyPrefix) {
+			return true
+		}
+		var d connUserDoc
+		if json.Unmarshal(value, &d) == nil && d.Integrations != nil {
+			fn(&d)
+		}
+		return true
+	})
+}
 
 // ---- who is connected, for the admin --------------------------------------------------------------------------------------------
 

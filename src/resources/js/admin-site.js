@@ -1042,7 +1042,7 @@
       function drawConn(info) {
         connState = info;
         connBox.textContent = '';
-        var reqs = (info && info.requests) || [];
+        var reqs = ((info && info.requests) || []).filter(function (r) { return r.kind !== 'server'; }); // the requests for a server are on the Integrations page
         var who = (info && info.connected) || [];
         var calls = (info && info.calls) || [];
         function answer(r, action) {

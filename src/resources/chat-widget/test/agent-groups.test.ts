@@ -74,3 +74,12 @@ test("the connect group comes with the words of a service, and not with an ordin
   assert.ok(groupsFor([], { ...none, task: "use my connections to look at the tracker" }).includes("connect"));
   assert.ok(!groupsFor([], { ...none, task: "there is an issue in my code, the socket connection drops" }).includes("connect"));
 });
+
+test("the connect group also comes with the name or a keyword of a server the admin published (no change of code for a new server)", () => {
+  const words = /\b(linear|wiki|acme wiki|tickets)\b/i;
+  assert.ok(!groupsFor([], { ...none, task: "make a Linear ticket from this" }).includes("connect"), "without the words of the list, only the words in the code");
+  assert.ok(groupsFor([], { ...none, task: "make a Linear ticket from this", connectWords: words }).includes("connect"));
+  assert.ok(groupsFor([], { ...none, task: "search the acme wiki for the release steps", connectWords: words }).includes("connect"));
+  assert.ok(!groupsFor([], { ...none, task: "explain this loop", connectWords: words }).includes("connect"));
+  assert.ok(!groupsFor([], { ...none, task: "explain this loop", connectWords: null }).includes("connect"));
+});

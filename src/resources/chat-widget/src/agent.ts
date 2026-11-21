@@ -182,6 +182,11 @@ export interface AgentHost {
   // task starts with (names and, when the task needs them, the tools); and a call, which the server makes with the user's token.
   connectionTool?(connection: string, tool: string): { level: "read" | "write" | "irreversible"; title: string } | null;
   connectionsNote?(withTools: boolean): Promise<string>;
+  // the words of the servers the admin published for this person (names and keywords), and a server that a task is about but that the person has not
+  // switched on (shown as a card, once), with what the card's button does (index.ts)
+  connectWords?(): RegExp | null;
+  connectionOffer?(task: string): { id: string; title: string; description: string } | null;
+  openConnection?(id: string): void;
   // approval: how the person allowed it ("once" or "session" on the card, "auto" when the page's own session level did); tainted: the task holds text from outside.
   // The server keeps the approval: needsCard comes back when it holds none for this call.
   mcpCall?(req: { connection: string; tool: string; args: Record<string, unknown>; task: string; approval: "once" | "session" | "auto"; tainted: boolean }, signal: AbortSignal): Promise<{ status: number; message?: string; text?: string; isError?: boolean; needsCard?: boolean }>;
@@ -570,9 +575,12 @@ export class AgentRunner {
       const skills = this.host.skillsNote ? await this.host.skillsNote() : "";
       if (skills && !this.stopped) task_.messages[0].content += "\n\n" + skills;
       // the services the user connected: their names, and their tools when the words of the task say it is about one
-      const wantsConn = groupsFor([], { task, previewOpen: false, openFile: "", terminal: "", haveEditorText: false }).indexOf("connect") >= 0;
+      const wantsConn = groupsFor([], { task, previewOpen: false, openFile: "", terminal: "", haveEditorText: false, connectWords: this.host.connectWords ? this.host.connectWords() : null }).indexOf("connect") >= 0;
       const conns = this.host.connectionsNote ? await this.host.connectionsNote(wantsConn) : "";
       if (conns && !this.stopped) task_.messages[0].content += "\n\n" + conns;
+      // a server the person could use for this task but has not switched on: a card, and the task goes on without it
+      const offer = this.host.connectionOffer ? this.host.connectionOffer(task) : null;
+      if (offer && !this.stopped) this.showConnectionOffer(offer);
       lastText = task;
       // No `break` or `continue` in a loop that awaits, here or anywhere in the
       // widget: the build tool (microbundle rewrites async functions into promise
@@ -998,7 +1006,7 @@ export class AgentRunner {
     } catch (e) {
       editorText = "";
     }
-    t.groups = groupsFor(t.groups, { task: t.taskText, previewOpen, openFile: this.openFile(), terminal: (this.host.terminalText() || "").slice(-600), haveEditorText: editorText.trim() !== "" });
+    t.groups = groupsFor(t.groups, { task: t.taskText, previewOpen, openFile: this.openFile(), terminal: (this.host.terminalText() || "").slice(-600), haveEditorText: editorText.trim() !== "", connectWords: this.host.connectWords ? this.host.connectWords() : null });
     return t.groups;
   }
 
@@ -2068,6 +2076,29 @@ export class AgentRunner {
 
   // risk: why a terminal line is risky, "" if it is not. A risky line is asked
   // about every time and can only be allowed once.
+  // "Notion is available for you": a card above the box, once for each server. It asks nothing of the model and does not stop the task.
+  private showConnectionOffer(offer: { id: string; title: string; description: string }) {
+    const box = el("div", "cw-agent__ask");
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", offer.title + " is available for you");
+    box.appendChild(el("div", "cw-agent__ask-title", offer.title + " is available for you"));
+    box.appendChild(el("p", "cw-agent__ask-text", (offer.description ? offer.description + " " : "") + "Enable it and sign in so that Genie can use it. This task goes on without it."));
+    const buttons = el("div", "cw-agent__ask-buttons");
+    const go = el("button", "is-primary", "Enable and sign in");
+    go.type = "button";
+    go.addEventListener("click", () => {
+      box.remove();
+      if (this.host.openConnection) this.host.openConnection(offer.id);
+    });
+    const no = el("button", "", "Not now");
+    no.type = "button";
+    no.addEventListener("click", () => box.remove());
+    buttons.append(go, no);
+    box.appendChild(buttons);
+    if (this.list && this.list.parentElement) this.list.parentElement.appendChild(box);
+    else this.host.messages().prepend(box);
+  }
+
   private lastApproval: "once" | "session" | "auto" = "auto"; // how the last action was allowed: what the server's approval of a connection call is made from
   private permission(scope: Scope, a: Action, risk: string = ""): Promise<boolean> {
     if (this.perms.decide(a, !risk) !== "ask") {

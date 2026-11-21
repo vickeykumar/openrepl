@@ -66,6 +66,14 @@ type connectionDef struct {
 	Custom bool              `json:"custom,omitempty"`
 	// OAuth: how a person signs in to the service instead of pasting a token (genie_conn_oauth.go); nil: a token only
 	OAuth *oauthDef `json:"-"`
+	// from the admin's record (genie_integrations.go); a plugin's own server has none of them
+	Description string                `json:"description,omitempty"`
+	Keywords    []string              `json:"keywords,omitempty"`
+	Mode        string                `json:"mode,omitempty"` // none, token or oauth
+	Managed     bool                  `json:"-"`              // an integration of the registry
+	Policy      map[string]ToolPolicy `json:"-"`              // what the admin decided about each tool; empty: the tools were never tested here
+	Limits      IntegrationLimits     `json:"-"`
+	Status      string                `json:"-"`
 }
 
 // the connections the site ships. Official: they need no approval, and no host list applies to them.
@@ -76,11 +84,11 @@ var connectionCatalogue = []connectionDef{
 		Levels: map[string]string{"merge_pull_request": "irreversible", "delete_file": "irreversible", "delete_repository": "irreversible", "delete_workflow_run_logs": "irreversible"}},
 }
 
+// catalogueConnection finds a server of the registry by its id, whatever its status except off: what a plugin may name (plugin.json) and what the
+// admin's own pages look up. Who may see it is decided apart (userConnectionDefs).
 func catalogueConnection(id string) (connectionDef, bool) {
-	for _, c := range connectionCatalogue {
-		if c.ID == id {
-			return c, true
-		}
+	if i, ok := findIntegration(id); ok && i.Status != integOff {
+		return i.toDef(), true
 	}
 	return connectionDef{}, false
 }
@@ -97,6 +105,9 @@ type connTool struct {
 // toolLevel says how much a tool can do. The catalogue's word first, then what the tool says about itself; a tool that says nothing is a write,
 // never a read: a wrong guess has to be the careful one.
 func toolLevel(def connectionDef, t mcpTool) string {
+	if p, ok := def.Policy[t.Name]; ok && levelOfPolicy[p.Level] != "" {
+		return levelOfPolicy[p.Level] // the admin's word
+	}
 	if l, ok := def.Levels[t.Name]; ok && (l == "read" || l == "write" || l == "irreversible") {
 		return l
 	}
@@ -116,6 +127,12 @@ func toConnTools(def connectionDef, tools []mcpTool) []connTool {
 	for _, t := range tools {
 		if !connToolPattern.MatchString(t.Name) {
 			continue
+		}
+		// a server the admin tested: only the tools that are on, with a level, and as the admin saw them (a tool the server changed since is off)
+		if len(def.Policy) > 0 {
+			if p, ok := def.Policy[t.Name]; !ok || !p.Enabled || levelOfPolicy[p.Level] == "" || p.Digest != toolDigest(t) {
+				continue
+			}
 		}
 		ct := connTool{Name: t.Name, Description: clipRunes(strings.Join(strings.Fields(t.Description), " "), 160), Level: toolLevel(def, t), Digest: toolDigest(t)}
 		var schema struct {
@@ -160,6 +177,7 @@ type connRecord struct {
 	Kind      string `json:"kind,omitempty"`
 	Expires   string `json:"expires,omitempty"`
 	Reconnect bool   `json:"reconnect,omitempty"`
+	Redirect  string `json:"redirect,omitempty"` // an oauth sign-in: the address of this site it came back to (names the client it was made with)
 }
 
 var connMu sync.Mutex
@@ -193,6 +211,9 @@ func connToken(uid, id string) (connRecord, string, bool) {
 	}
 	if r.Kind == "oauth" {
 		return oauthAccessToken(uid, r)
+	}
+	if r.Kind == "none" {
+		return r, "", true // an open server: there is no credential
 	}
 	tok, err := openKey(utils.Secret(), connAAD(uid, id), r.Sealed)
 	if err != nil {
@@ -370,26 +391,34 @@ type taskCalls struct {
 	at time.Time
 }
 
-func connAllowed(uid string, now time.Time) bool {
+func connAllowed(uid string, now time.Time) bool { return connAllowedN(uid, now, connPerMinute) }
+
+// connAllowedN counts a request of a key (a person, or a person and a server) in the last minute; false once it has made max.
+func connAllowedN(key string, now time.Time, max int) bool {
 	connRate.Lock()
 	defer connRate.Unlock()
 	cut := now.Add(-time.Minute)
-	keep := connRate.perMin[uid][:0]
-	for _, t := range connRate.perMin[uid] {
+	keep := connRate.perMin[key][:0]
+	for _, t := range connRate.perMin[key] {
 		if t.After(cut) {
 			keep = append(keep, t)
 		}
 	}
-	if len(keep) >= connPerMinute {
-		connRate.perMin[uid] = keep
+	if len(keep) >= max {
+		connRate.perMin[key] = keep
 		return false
 	}
-	connRate.perMin[uid] = append(keep, now)
+	connRate.perMin[key] = append(keep, now)
 	return true
 }
 
 // takeTaskCall counts a call of a task; false once the task has made connCallsPerTask. Old tasks are forgotten.
 func takeTaskCall(uid, task string, now time.Time) bool {
+	return takeTaskCallN(uid+"|"+task, task, now, connCallsPerTask)
+}
+
+// takeTaskCallN counts a call under a key; a server with a limit of its own counts under its own key.
+func takeTaskCallN(key, task string, now time.Time, max int) bool {
 	if task == "" || len(task) > 80 {
 		return false
 	}
@@ -400,13 +429,12 @@ func takeTaskCall(uid, task string, now time.Time) bool {
 			delete(connRate.tasks, k)
 		}
 	}
-	key := uid + "|" + task
 	t := connRate.tasks[key]
 	if t == nil {
 		t = &taskCalls{}
 		connRate.tasks[key] = t
 	}
-	if t.n >= connCallsPerTask {
+	if t.n >= max {
 		return false
 	}
 	t.n++
@@ -462,13 +490,29 @@ type connRequestBody struct {
 	Ticket   string                 `json:"ticket"`   // the approval of a call (op call), or the one an answer is for (op approve)
 	Remember string                 `json:"remember"` // op approve: "session" also allows this connection's writes for a while
 	Tainted  bool                   `json:"tainted"`  // op propose: the task holds text from outside, so a grant does not cover the call
+	// op ask: a request for a server (text only)
+	Title   string `json:"title"`
+	Address string `json:"address"`
+	Why     string `json:"why"`
+	Signin  string `json:"signin"`
+	Docs    string `json:"docs"`
 }
 
 // userConnectionDefs are the connections a person can connect: the site's catalogue, and those a plugin asked for that an admin approved for them or everyone.
 func userConnectionDefs(uid string) []connectionDef {
-	defs := append([]connectionDef{}, connectionCatalogue...)
+	email, admin := personOf(uid)
+	var defs []connectionDef
+	seen := map[string]bool{}
+	for _, i := range registry() {
+		if i.visibleTo(uid, email, admin) {
+			defs = append(defs, i.toDef())
+			seen[i.ID] = true
+		}
+	}
 	for _, d := range approvedCustomConnections(uid) {
-		defs = append(defs, d)
+		if !seen[d.ID] {
+			defs = append(defs, d)
+		}
 	}
 	return defs
 }
@@ -524,7 +568,22 @@ func (server *Server) handleGenieConn(rw http.ResponseWriter, req *http.Request)
 	case "list":
 		reply(server.connectionList(uid, g))
 	case "requests":
-		reply(map[string]interface{}{"requests": userConnRequests(uid)})
+		reply(map[string]interface{}{"requests": requestsForPerson(uid)})
+	case "ask":
+		server.connectionAsk(rw, uid, in, reply)
+	case "enable", "disable":
+		def, ok := resolveConnection(uid, in.ID)
+		if !ok {
+			jsonError(rw, http.StatusNotFound, "no_connection", "That connection is not offered here.")
+			return
+		}
+		if err := setConnEnabled(uid, def, in.Op == "enable"); err != nil {
+			jsonError(rw, http.StatusBadRequest, "save", err.Error()+".")
+			return
+		}
+		dropCachedTools(uid, def.ID)
+		logConnCall(connCallEntry{User: uid, Conn: def.ID, Op: in.Op, OK: true})
+		reply(map[string]interface{}{"id": def.ID, "enabled": in.Op == "enable"})
 	case "connect":
 		def, ok := resolveConnection(uid, in.ID)
 		if !ok {
@@ -637,15 +696,17 @@ func (server *Server) connectionList(uid string, g GenieSettings) map[string]int
 	type row struct {
 		connectionDef
 		Connected bool       `json:"connected"`
+		Enabled   bool       `json:"enabled"`
 		Tools     []connTool `json:"tools"`
 		Error     string     `json:"error,omitempty"`
 		OAuth     bool       `json:"oauth"`               // the person can sign in (the admin set up a client)
 		Reconnect bool       `json:"reconnect,omitempty"` // the sign-in ended: sign in again
 	}
 	rows := []row{}
+	enabledIDs := enabledServices(uid)
 	for _, d := range userConnectionDefs(uid) {
-		r := row{connectionDef: d, Tools: []connTool{}, OAuth: d.OAuth.configured()}
-		if rec, ok := have[d.ID]; ok {
+		r := row{connectionDef: d, Tools: []connTool{}, OAuth: d.OAuth.configured(), Enabled: enabledIDs[d.ID]}
+		if rec, ok := have[d.ID]; ok && enabledIDs[d.ID] {
 			r.Connected = true
 			if t, fresh := cachedTools(uid, d.ID); fresh {
 				r.Tools = t
@@ -688,6 +749,9 @@ func listConnTools(ctx context.Context, url, token string) ([]mcpTool, error) {
 func connectionTarget(rw http.ResponseWriter, req *http.Request, uid string, in connRequestBody) (def connectionDef, rec connRecord, tok string, tool *connTool, ok bool) {
 	def, found := resolveConnection(uid, in.ID)
 	rec, tok, have := connToken(uid, in.ID)
+	if have && !connEnabled(uid, in.ID) {
+		have = false // switched off by the person
+	}
 	if !found || !have {
 		if found && rec.Reconnect {
 			jsonError(rw, http.StatusConflict, "reconnect", def.Title+" ended the sign-in. Sign in again in /add-plugin, under Connections.")
@@ -778,6 +842,15 @@ func (server *Server) connectionCall(rw http.ResponseWriter, req *http.Request, 
 	}
 	if !takeTaskCall(uid, in.Task, time.Now()) {
 		jsonError(rw, http.StatusTooManyRequests, "task_limit", fmt.Sprintf("A task may make %d calls to connections. Say what is done and what is left.", connCallsPerTask))
+		return
+	}
+	// the limits of this server, when its admin made them lower than the site's
+	if n := def.Limits.CallsPerTask; n > 0 && !takeTaskCallN(uid+"|"+in.Task+"|"+def.ID, in.Task, time.Now(), n) {
+		jsonError(rw, http.StatusTooManyRequests, "task_limit", fmt.Sprintf("A task may make %d calls to %s. Say what is done and what is left.", n, def.Title))
+		return
+	}
+	if n := def.Limits.PerMinute; n > 0 && !connAllowedN(uid+"|"+def.ID, time.Now(), n) {
+		jsonError(rw, http.StatusTooManyRequests, "rate", "Too many calls to "+def.Title+" in a minute: wait a little.")
 		return
 	}
 	start := time.Now()
