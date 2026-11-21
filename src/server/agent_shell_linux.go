@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"containers"
+	"egress"
 	"netemu"
 	"utils"
 )
@@ -38,6 +39,11 @@ func runShell(ctx context.Context, home, command string, timeout time.Duration) 
 	env := utils.ChildEnviron(os.Environ())
 	env = append(env, "TERM=dumb", "HOME="+home, "HOSTNAME=bash", "GOPATH=/opt/gotty/", "GOCACHE=/tmp/go_cache/.cache/go-build/", "GCC_EXEC_PREFIX=/usr/lib/gcc/")
 	env = append(env, "PATH="+os.Getenv("PATH")+string(os.PathListSeparator)+"/opt/gotty/bin")
+	// the agent is for signed-in people: the way out of the sandbox is the proxy, when it is on (LLD 16 "Egress")
+	wantEgress := containers.EgressWanted("bash", true, false)
+	if wantEgress {
+		env = append(env, egress.Env()...)
+	}
 	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	containers.AddContainerAttributes("bash", cmd.SysProcAttr, params)
@@ -62,6 +68,9 @@ func runShell(ctx context.Context, home, command string, timeout time.Duration) 
 	if netParent != nil {
 		netChild.Close()
 		netemu.Attach(netParent, home, pid)
+	}
+	if wantEgress {
+		containers.StartEgress("bash", home, pid)
 	}
 	if c, ok := containers.Containers["bash"]; ok {
 		c.AddProcesstoNewSubCgroup(pid, false) // the memory limit of the bash REPL

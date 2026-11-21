@@ -68,3 +68,19 @@ Linux 5.9 or later (seccomp user notification with `ADDFD`), `pidfd_open`/`pidfd
 ## Not done
 
 `sendmmsg`/`recvmmsg` on datagram sockets, ancillary data (`SCM_RIGHTS`) on emulated datagram sockets, `SO_REUSEPORT` load balancing, hiding the host's interfaces from `ifconfig`/`ip`, an allow-list for outbound connections, honouring `IPV6_V6ONLY`.
+
+## Egress: the way out for signed-in users (2026-11-21)
+
+Two ways to turn it on, either is enough: the admin switch **Site settings > Workspaces > Internet for REPLs** (`SiteSettings.EgressOn`, no restart; the gateway hands it to every worker with the site rules, `tunnel.WorkerConfig.Egress`, so it holds for REPLs on the gateway and on any worker) and the environment variable `OPENREPL_EGRESS=off|public` (default `off`, per server, kept). When on, a signed-in non-admin REPL that has no direct network (a REPL in the emulation, or one in a kernel namespace) gets `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` (and lower case), `NO_PROXY`, `PIP_PROXY` and the npm proxy settings. So `pip`, `npm`, `curl`, `wget` and git over https work; ssh and raw sockets still have no route, because the REPL's network is unchanged. The agent's bash action gets the same.
+
+**The proxy** is `src/egress`: an HTTP and `CONNECT` forward proxy run by the server. It resolves the name itself and checks what it resolved to (`Denied`): loopback, private ranges, CGNAT, link-local (the cloud metadata address 169.254.169.254), multicast and other special ranges, IPv4-mapped IPv6 judged as IPv4; port 25 is refused. It limits simultaneous connections (64) and bytes (2 GB) per workspace, and keeps counters and the latest refusals for the admin Health page ("Internet for REPLs").
+
+**Reaching it:**
+- *Emulation (Render):* the server listens on the emulation's own name for `127.0.0.1:3128` of the workspace (`@openrepl-ne/<id>/t/3128`), so the REPL's `connect` lands in the proxy. One listener per workspace.
+- *Kernel namespace (Pi):* a thread joins the REPL's network namespace with `setns` (the way `livepreview.DialIn` does), opens the listener on `127.0.0.1:3128` and ends: it is never given back to the runtime, so nothing else runs in the namespace. The socket stays there and is accepted on from any thread; it is closed when the REPL's process is gone. The loopback must be up first, so it is tried for a few seconds. Port 3128 is taken before user code is likely to ask for it, but this is not guaranteed.
+
+**Who:** signed in and not an admin. Guests get nothing. An admin's REPL is not sandboxed and reaches the network directly, so the proxy and its rules do not apply to it (and its traffic is not counted).
+
+**Render bandwidth:** outbound traffic is billed above the plan's included amount (inbound is free): the proxy's byte limit is the guard, and the Health page shows the totals.
+
+Not built: a switch per user group (the switch is one for all signed-in users), a per-user byte limit, an allow-list of hosts, the raw `--allow-network` option, a test of the Pi listener on real hardware (the `setns` step needs privilege and is not in the automated tests).

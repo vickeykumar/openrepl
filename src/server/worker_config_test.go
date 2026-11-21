@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"egress"
 	"tunnel"
 	"webtty"
 )
@@ -133,5 +134,31 @@ func TestWhatTheGatewayForwardsIsNotCheckedAgainOnTheWorker(t *testing.T) {
 	// the gateway decided, knowing who is an admin; the worker does not ask again
 	if ok, text := dialTerminal(t, url+"/ws_python"); !ok {
 		t.Fatalf("a forwarded terminal was refused by the worker: %q", text)
+	}
+}
+
+// the admin's switch for the internet of signed-in users' REPLs holds on every node: the gateway hands it to the workers with the site rules,
+// and a worker's proxy follows it
+func TestTheInternetSwitchReachesTheWorkers(t *testing.T) {
+	adminTestServer(t)
+	t.Setenv("OPENREPL_EGRESS", "")
+	s := &Server{}
+	before := s.gatewayWorkerConfig()
+	if before.Egress {
+		t.Fatal("off by default")
+	}
+	SaveSiteSettings(SiteSettings{EgressOn: true})
+	got := s.gatewayWorkerConfig()
+	if !got.Egress || got.Revision == before.Revision {
+		t.Fatalf("the switch must be in the config and change its revision: %+v", got)
+	}
+	// the worker puts it in place, and its proxy is on
+	applyWorkerConfig(&tunnel.WorkerConfig{Revision: 9, Egress: true})
+	if !GetSiteSettings().EgressOn || !egress.Enabled() {
+		t.Fatal("a worker did not follow the gateway's switch")
+	}
+	applyWorkerConfig(&tunnel.WorkerConfig{Revision: 10})
+	if egress.Enabled() {
+		t.Fatal("a worker kept the switch after the gateway turned it off")
 	}
 }

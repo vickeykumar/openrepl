@@ -96,6 +96,7 @@ type WorkerConfig struct {
 	Maintenance        bool     `json:"maintenance,omitempty"`
 	MaintenanceMessage string   `json:"maintenance_message,omitempty"`
 	DisabledLanguages  []string `json:"disabled_languages,omitempty"`
+	Egress             bool     `json:"egress,omitempty"` // internet for signed-in users' REPLs through the proxy (LLD 16 "Egress")
 }
 
 // StoreUpdate is the App Store's catalog as the gateway hands it to a worker (the tunnel does not look inside it). Rev identifies

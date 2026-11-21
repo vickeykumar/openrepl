@@ -9,6 +9,7 @@ import (
 	"unsafe"
 	"io/ioutil"
 	"containers"
+	"egress"
 	"netemu"
 	"github.com/kr/pty"
 	"github.com/pkg/errors"
@@ -109,6 +110,11 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 		cmd.Env = append(cmd.Env, "RUSTUP_HOME="+rh)
 	}
 	cmd.Env = append(cmd.Env, "HOSTNAME="+command)
+	// the way out of the sandbox (LLD 16 "Egress"): the tools use the proxy of the workspace
+	wantEgress := ppid == -1 && containers.EgressWanted(command, uid != "", utils.IsUserAdmin(params))
+	if wantEgress {
+		cmd.Env = append(cmd.Env, egress.Env()...)
+	}
 	cmd.Env = append(cmd.Env, "GCC_EXEC_PREFIX=/usr/lib/gcc/")
 	cmd.Env = append(cmd.Env, utils.IdeLangKey+"="+utils.GetCompilerLang(params))
 	cmd.Env = append(cmd.Env, utils.CompilerOptionKey+"="+utils.GetCompilerOption(params))
@@ -149,6 +155,9 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	if netParent != nil {
 		netChild.Close()
 		netemu.Attach(netParent, dir, cmd.Process.Pid)
+	}
+	if wantEgress {
+		containers.StartEgress(command, dir, cmd.Process.Pid)
 	}
 	ptyClosed := make(chan struct{})
 
