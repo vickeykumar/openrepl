@@ -668,3 +668,37 @@ func TestGitHubKeepsItsShippedLogoUntilTheAdminSetsOne(t *testing.T) {
 		t.Errorf("the admin's logo was not kept: %q", l)
 	}
 }
+
+// A seeded record (GitHub) has no tool policy and its tools work by the site's own levels. Testing it must not switch every tool off.
+func TestTestingASeededRecordKeepsItsToolsOnAtTheLevelsTheSiteGaveThem(t *testing.T) {
+	var live []mcpTool
+	if err := json.Unmarshal([]byte(`[{"name":"get_issue","annotations":{"readOnlyHint":true}},{"name":"create_issue","annotations":{"readOnlyHint":false}},{"name":"delete_repository"}]`), &live); err != nil {
+		t.Fatal(err)
+	}
+	rec := Integration{ID: "github", Status: integPublished, LegacyLevels: map[string]string{"delete_repository": "irreversible"}}
+	rec.Tools, _ = mergeToolPolicy(nil, live, "now")
+	rec.Tools = adoptBuiltInLevels(rec, live)
+	got := map[string]string{}
+	for _, p := range rec.Tools {
+		if !p.Enabled || p.New {
+			t.Errorf("%s is off or new", p.Name)
+		}
+		got[p.Name] = p.Level
+	}
+	if got["get_issue"] != "read" || got["create_issue"] != "write" || got["delete_repository"] != "restricted" {
+		t.Errorf("levels: %v", got)
+	}
+	// once the admin switched one off, a test leaves the decision alone
+	rec.Tools[0].Enabled = false
+	if again := adoptBuiltInLevels(rec, live); again[0].Enabled {
+		t.Error("an admin's decision was overridden")
+	}
+	// a record of the admin's own (no built-in levels) starts with everything off
+	own := Integration{ID: "acme", Status: integPublished}
+	own.Tools, _ = mergeToolPolicy(nil, live, "now")
+	for _, p := range adoptBuiltInLevels(own, live) {
+		if p.Enabled {
+			t.Errorf("%s was switched on", p.Name)
+		}
+	}
+}

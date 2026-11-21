@@ -310,6 +310,37 @@ func applySafeDefaults(tools []ToolPolicy, live []mcpTool) []ToolPolicy {
 	return tools
 }
 
+// adoptBuiltInLevels keeps a record that the site seeded (GitHub) working as it did before it had a tool policy. Such a record published with the
+// site's own levels, so every tool was usable. The first test of it would otherwise make a policy in which every tool is new and off, and the people
+// using it would lose all its tools. So while the admin has not decided anything (no tool is on, every tool is still new), each tool is switched on at
+// the level the site's rules gave it (reads read, what cannot be undone restricted, the rest write). After the admin changes any tool this does nothing.
+func adoptBuiltInLevels(i Integration, live []mcpTool) []ToolPolicy {
+	if i.Status != integPublished || i.LegacyLevels == nil || len(i.Tools) == 0 {
+		return i.Tools
+	}
+	for _, t := range i.Tools {
+		if t.Enabled || !t.New {
+			return i.Tools
+		}
+	}
+	def := i.toDef()
+	def.Policy = nil
+	byName := map[string]mcpTool{}
+	for _, t := range live {
+		byName[t.Name] = t
+	}
+	out := append([]ToolPolicy(nil), i.Tools...)
+	for k := range out {
+		t, ok := byName[out[k].Name]
+		if !ok {
+			continue
+		}
+		level := map[string]string{"read": "read", "write": "write", "irreversible": "restricted"}[toolLevel(def, t)]
+		out[k].Enabled, out[k].Level, out[k].New = true, level, false
+	}
+	return out
+}
+
 func policyOn(tools []ToolPolicy) (on int) {
 	for _, t := range tools {
 		if t.Enabled {
@@ -394,6 +425,7 @@ func testIntegrationLive(ctx context.Context, id, adminUID string, defaults bool
 			if defaults {
 				cur.Tools = applySafeDefaults(cur.Tools, live)
 			}
+			cur.Tools = adoptBuiltInLevels(*cur, live)
 		}
 		// what the test found about the sign-in, unless the admin set it by hand
 		if cur.Auth.Detected || (cur.Auth.ClientID == "" && cur.Auth.ClientIDEnv == "" && cur.Auth.AuthURL == "" && cur.LastTest == nil) {
