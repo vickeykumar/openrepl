@@ -94,12 +94,13 @@ test("an admin adds a server with a name, an address and a logo, tests it, switc
   await page.getByLabel("Name", { exact: true }).fill("Notion");
   await page.getByLabel("Server address").fill("https://mcp.notion.com/mcp");
   await page.getByLabel("Keywords").fill("notion, pages");
+  await page.getByLabel("Short description").fill("Pages and notes.");
   await page.getByLabel("Logo", { exact: true }).fill("https://cdn.simpleicons.org/notion");
   await expect(card(page).locator(".int-logo img").first()).toHaveAttribute("src", "https://cdn.simpleicons.org/notion");
   await page.getByRole("button", { name: "Test the server" }).click();
   await expect(page.getByRole("heading", { name: "Notion · Discover and test" })).toBeVisible();
   expect(st.posts.map((p) => p.op)).toEqual(["save", "test"]);
-  expect(st.posts[0].integration).toMatchObject({ title: "Notion", url: "https://mcp.notion.com/mcp", keywords: ["notion", "pages"], logo: "https://cdn.simpleicons.org/notion" });
+  expect(st.posts[0].integration).toMatchObject({ title: "Notion", url: "https://mcp.notion.com/mcp", keywords: ["notion", "pages"], description: "Pages and notes.", logo: "https://cdn.simpleicons.org/notion" });
   await page.getByRole("button", { name: "Next: tools" }).click();
   const tools = card(page).locator(".int-tool");
   await expect(tools).toHaveCount(3);

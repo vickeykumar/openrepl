@@ -177,6 +177,9 @@ test("the Connections tab connects a service with a token that is sent once, nev
   const connect = srv.conn.filter((c) => c.op === "connect");
   expect(connect.map((c) => c.token)).toEqual(["bad-token-123", "ghp_good_token_1234"]);
   await expect(gh).toContainText("connected");
+  // a connection is collapsed to a short line; Show tools lists them, grey for reads, yellow for writes, red for what cannot be undone
+  await expect(gh.locator(".cw-plg__pill", { hasText: "get_issue" })).toHaveCount(0);
+  await gh.getByRole("button", { name: /^Show tools/ }).click();
   await expect(gh.locator(".cw-plg__pill", { hasText: "get_issue" })).toBeVisible();
   await expect(gh.locator(".cw-plg__pill--warn", { hasText: "create_issue" })).toBeVisible();
   await expect(gh.locator(".cw-plg__pill--bad", { hasText: "merge_pull_request" })).toBeVisible();
@@ -303,6 +306,7 @@ test("an open server of the admin's is enabled with one click, and a person asks
   await wiki.getByRole("button", { name: "Enable" }).click();
   await expect(dlg.locator(".cw-plg__msg")).toContainText("Acme wiki is enabled");
   await expect(wiki).toContainText("connected");
+  await wiki.getByRole("button", { name: /^Show tools/ }).click();
   await expect(wiki.locator(".cw-plg__pill", { hasText: "search_pages" })).toBeVisible();
   expect(srv.conn.filter((c) => c.op === "enable").map((c) => c.id)).toEqual(["wiki"]);
   // ask for a server: a form of text, and it says that nothing is contacted

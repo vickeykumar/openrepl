@@ -204,6 +204,7 @@
       var choice = a.mode === 'oauth' ? (a.auto ? 'auto' : 'oauth') : a.mode || 'token';
       var title = wide(h('input', { type: 'text', class: 'field', maxlength: '40', value: w.title || '', 'aria-label': 'Name' }));
       var keywords = wide(h('input', { type: 'text', class: 'field', value: (w.keywords || []).join(', '), placeholder: 'notion, page, wiki, notes', 'aria-label': 'Keywords' }));
+      var desc = wide(h('input', { type: 'text', class: 'field', maxlength: '140', value: w.description || '', placeholder: 'Pages and notes. Genie can search and read.', 'aria-label': 'Short description' }));
       var addr = wide(h('input', { type: 'url', class: 'field', maxlength: '300', value: w.url || '', placeholder: 'https://mcp.example.com/mcp', 'aria-label': 'Server address' }));
       var hint = h('p', { class: 'int-hint' });
       function paintHint() {
@@ -269,6 +270,7 @@
         h('div', { class: 'int-sec', text: '1 · Only two things to type' }),
         h('div', { class: 'int-two' }, h('div', null, field('Name', title)), h('div', null, field('Keywords (how Genie knows a task is about it)', keywords))),
         h('div', null, h('label', { class: 'int-lb', text: 'Server address (https only)' }), addr, hint),
+        h('div', null, h('label', { class: 'int-lb', text: 'Short description (optional)' }), desc, h('p', { class: 'int-hint', text: 'One short line. It is shown on the Genie plugins page, under the name of the server, and nowhere else.' })),
         h('div', null, h('label', { class: 'int-lb', text: 'Logo (optional)' }), logoBox, h('p', { class: 'int-hint', text: 'An https image address. It is shown before the name in the list people see; without one, the first letter of the name is shown.' })),
         h('div', { style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap' }, testBtn, h('span', { class: 'int-hint', style: 'margin:0', text: 'It reads only: connect, list, look at how sign-in works.' })),
         h('div', { class: 'int-sec', text: '2 · Sign-in, detected by the test' }), cards, adv,
@@ -294,7 +296,7 @@
         else if (choice === 'oauth') { au.mode = 'oauth'; au.auto = false; au.authUrl = authUrl.value.trim(); au.tokenUrl = tokenUrl.value.trim(); au.clientId = clientId.value.trim(); }
         else { au.mode = choice; au.auto = false; }
         delete au.clients;
-        var rec = { id: w.id || '', title: title.value.trim(), url: addr.value.trim(), keywords: words(keywords.value), description: w.description || '', help: help.value.trim() || w.help || '', logo: logo, auth: au,
+        var rec = { id: w.id || '', title: title.value.trim(), url: addr.value.trim(), keywords: words(keywords.value), description: desc.value.trim(), help: help.value.trim() || w.help || '', logo: logo, auth: au,
           audience: w.audience || { everyone: false, people: [] }, limits: w.limits || {} };
         return act({ op: 'save', integration: rec });
       }

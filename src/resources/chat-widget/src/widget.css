@@ -2100,3 +2100,4 @@ html[data-theme="light"] #chat-widget__container:not(.is-docked) .cw-chip--skill
 .cw-plg__conns { color: var(--cw-text); overflow-wrap: anywhere; }
 .cw-plg__logo { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; border-radius: 6px; background: var(--cw-surface-2, rgba(127,127,127,.15)); font-weight: 700; font-size: 12px; overflow: hidden; }
 .cw-plg__logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cw-plg__toggle { align-self: flex-start; background: none; border: 0; padding: 2px 0; color: inherit; font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; opacity: .8; }

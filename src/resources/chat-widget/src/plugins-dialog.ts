@@ -124,6 +124,7 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
   let connsNote = "";
   let requests: ConnRequestRow[] = [];
   let openConn = ""; // the connection whose token field is open
+  const showTools = new Set<string>(); // the connections whose tools are listed (collapsed: a short line)
   let askOpen = false; // the form to ask for a server
   let query = "";
   let card: HTMLElement | null = null; // the install card, when one is shown
@@ -281,18 +282,33 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
     }
     head.appendChild(actions);
     box.appendChild(head);
-    if (c.description) box.appendChild(el("div", "cw-plg__desc", c.description));
-    box.appendChild(el("div", "cw-plg__desc", c.url));
+    const open = showTools.has(c.id);
     if (c.error) box.appendChild(el("div", "cw-plg__warn", c.error));
-    if (c.connected && c.tools.length) {
-      const tools = el("div", "cw-plg__pills");
-      c.tools.forEach((t) => {
-        const p = pill(t.name, t.level === "read" ? "" : t.level === "write" ? "warn" : "bad");
-        p.title = t.description + (t.args && t.args.length ? " (" + t.args.join(", ") + ")" : "");
-        tools.appendChild(p);
+    if (!open) {
+      // collapsed: one short line about the service
+      box.appendChild(el("div", "cw-plg__desc", c.description || c.url));
+    } else {
+      if (c.description) box.appendChild(el("div", "cw-plg__desc", c.description));
+      box.appendChild(el("div", "cw-plg__desc", c.url));
+      if (c.tools.length) {
+        const tools = el("div", "cw-plg__pills");
+        c.tools.forEach((t) => {
+          const p = pill(t.name, t.level === "read" ? "" : t.level === "write" ? "warn" : "bad");
+          p.title = t.description + (t.args && t.args.length ? " (" + t.args.join(", ") + ")" : "");
+          tools.appendChild(p);
+        });
+        box.appendChild(tools);
+        box.appendChild(el("div", "cw-plg__desc", "Grey: reads, asked once. Yellow: writes, asked each time. Red: cannot be undone, asked every time."));
+      }
+    }
+    if (c.tools.length) {
+      const toggle = button((open ? "Hide tools" : "Show tools") + " (" + c.tools.length + ")", "cw-plg__toggle", () => {
+        if (showTools.has(c.id)) showTools.delete(c.id); else showTools.add(c.id);
+        drawList();
       });
-      box.appendChild(tools);
-      box.appendChild(el("div", "cw-plg__desc", "Grey: reads, asked once. Yellow: writes, asked each time. Red: cannot be undone, asked every time."));
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      toggle.dataset.tools = c.id;
+      box.appendChild(toggle);
     }
     if (!c.connected && openConn === c.id) {
       if (c.help) box.appendChild(el("div", "cw-plg__desc", c.help));
