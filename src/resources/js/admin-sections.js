@@ -31,6 +31,8 @@
       cards: ['Genie limits'] },
     { id: 'genie-agent', group: 'genie', title: 'Agent', blurb: 'Agent mode: its steps, the risky actions and the tools.',
       cards: ['Agent mode', 'Skills and plugins', 'Connections', 'Connection requests', 'Plugin installs'] },
+    { id: 'genie-integrations', group: 'genie', title: 'Integrations', blurb: 'The servers Genie can connect to: add, test, set up and publish them, and answer requests for a new one.',
+      cards: ['Integrations'] },
     { id: 'genie-chats', group: 'genie', title: 'Chats and credits', blurb: 'Saved chats, the summary of long chats, and credits and plans.',
       cards: ['Genie chat history', 'Usage record and credits'] },
     { id: 'access', group: 'access', title: 'API keys and admins', blurb: 'The keys the site uses and who may open this dashboard.',

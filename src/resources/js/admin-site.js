@@ -223,7 +223,8 @@
     var layout = null; // {nav, main, sections, show(), refresh()} of the form that is drawn
     var SECTION_KEY = 'admin-site-section';
 
-    function controlsOf(node) { return Array.prototype.slice.call(node.querySelectorAll('input, select, textarea')); }
+    // the controls of the settings: not those of the Integrations card, which saves its own records, one server at a time
+    function controlsOf(node) { return Array.prototype.slice.call(node.querySelectorAll('input, select, textarea')).filter(function (el) { return !el.closest('[data-card="Integrations"]'); }); }
     function valueOf(el) { return el.type === 'checkbox' || el.type === 'radio' ? (el.checked ? '1' : '0') : String(el.value); }
     // a setting that has a value of its own: a number or a text that is not empty, a list with something chosen
     function isSetControl(el) {
@@ -368,6 +369,7 @@
           window.scrollTo(0, 0);
         }
         if (info.def.tabs) openTab(id, info.active, true);
+        if (id === 'genie-integrations' && late.integ) late.integ();
         try { localStorage.setItem(SECTION_KEY, id); } catch (e) { /* storage off */ }
         refreshMarks();
         document.title = info.def.title + ' · Site settings · OpenREPL Admin';
@@ -1038,6 +1040,19 @@
         plugBox.appendChild(card('Plugin installs', 'Each install, update and removal of a plugin, newest first, for the last ' + ((info && info.days) || 90) + ' days. Who is the account id (the Users view has the email). A link is shown in full. The text of a skill is never recorded.', [summary, table]));
       }
       // the requests for a connection a plugin needs, and who is connected to what (server/genie_conn_requests.go): drawn when they arrive, answered at once
+      // Integrations: the servers of the registry (admin-integrations.js, loaded when the section is opened)
+      var intBox = h('div', { 'data-card': 'Integrations' }), intView = null;
+      function mountIntegrations() {
+        if (intView) return intView.refresh();
+        intBox.appendChild(h('p', { class: 'loading', text: 'Loading…' }));
+        return AdminKit.loadScript('admin-integrations.js').then(function () {
+          intView = window.AdminIntegrations.make({ switchesHref: AS.hashFor('genie-agent') });
+          intBox.textContent = '';
+          intBox.appendChild(card('Integrations', 'Servers Genie can connect to. Only a published server is shown to people; a draft or a tested one is seen by admins alone.', intView.root));
+          return intView.refresh();
+        }, function (e) { intBox.textContent = ''; intBox.appendChild(h('p', { class: 'sub', text: e.message })); });
+      }
+      late.integ = mountIntegrations;
       var connBox = h('div', { 'data-card': 'Connection requests' });
       function drawConn(info) {
         connState = info;
@@ -1261,6 +1276,7 @@
           row('Only these servers', 'One host for each line, like api.githubcopilot.com (no https:// and no port). Empty: any public https server. When it is filled, a plugin from a link may name only these, with or without approval, and a connection to another host is refused at Connect.', form.connHosts) ]),
         connBox,
         plugBox,
+        intBox,
         card('Agent mode', 'Genie works on a task in steps: it writes in the editor and runs the code, after the user allowed each kind of action and reviewed the changes. Only signed-in users have it, and it is on unless you switch it off here. Each task costs a user one request, like a chat message, however many steps it has.', [
           row('Agent mode', 'Shows the Chat | Agent switch in the Genie panel for signed-in users. Chat stays the default.', agentOn.node),
           row('Allow everything for a session', 'On: a user can answer one card with "Allow everything for this session", and the editor\'s changes then go in without a review (each can be undone). Off: a card for every kind of action, and every change is reviewed. Allowing one kind for the session stays.', agentAuto.node),

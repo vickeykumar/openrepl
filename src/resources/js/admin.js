@@ -2668,7 +2668,7 @@
     };
   }
   // what the pages that are loaded later need from this file
-  window.AdminKit = { api: api, ask: ask, colourOfTheDay: colourOfTheDay, fail: fail, h: h, pageHead: pageHead, toast: toast };
+  window.AdminKit = { api: api, ask: ask, colourOfTheDay: colourOfTheDay, fail: fail, h: h, loadScript: loadScript, pageHead: pageHead, toast: toast };
 
   var VIEWS = {
     overview: { label: 'Overview', icon: 'overview', make: viewOverview },
@@ -2688,14 +2688,13 @@
     genielog: { label: 'Genie log', icon: 'logs', make: viewGenieLog },
     geniehealth: { label: 'Genie health', icon: 'health', make: viewGenieHealth },
     store: { label: 'App Store', icon: 'apps', make: viewStore },
-    integrations: { label: 'Integrations', icon: 'apps', make: lazyView(['admin-integrations.js'], 'AdminIntegrations') },
     audit: { label: 'Audit log', icon: 'audit', make: viewAudit }
   };
 
   var GROUPS = [
     ['', ['overview', 'map']],
     ['Fleet', ['workers', 'sessions']],
-    ['Site', ['site', 'feedback', 'snippets', 'store', 'integrations', 'users', 'traffic', 'usage']],
+    ['Site', ['site', 'feedback', 'snippets', 'store', 'users', 'traffic', 'usage']],
     ['System', ['health', 'jobs', 'params', 'logs', 'genielog', 'geniehealth', 'audit']]
   ];
 
@@ -2748,6 +2747,7 @@
 
   function route() {
     var id = (location.hash || '#overview').slice(1).split('/')[0];
+    if (id === 'integrations') { history.replaceState(null, '', '#site/genie-integrations'); id = 'site'; } // it moved into Site settings, under Genie
     if (!VIEWS[id] || (VIEWS[id].gateway && (!params || params.mode !== 'gateway'))) id = 'overview';
     if (id === shownId) return;
     // leaving a form with unsaved changes asks first

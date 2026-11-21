@@ -36,6 +36,7 @@ interface ConnRow {
   title: string;
   url: string;
   help?: string;
+  logo?: string; // an https image address of the admin's; none: the first letter of the name is shown
   custom?: boolean;
   connected: boolean;
   tools: ConnTool[];
@@ -83,6 +84,21 @@ function button(label: string, cls: string, onClick: () => void): HTMLButtonElem
   b.type = "button";
   b.addEventListener("click", onClick);
   return b;
+}
+
+// the logo of a service: the admin's small image (an https address), or the first letter of its name
+function logoTile(title: string, logo?: string): HTMLElement {
+  const t = el("span", "cw-plg__logo");
+  t.setAttribute("aria-hidden", "true");
+  if (logo && /^https:\/\//.test(logo)) {
+    const img = document.createElement("img");
+    img.src = logo;
+    img.alt = "";
+    t.appendChild(img);
+  } else {
+    t.textContent = (title.trim().charAt(0) || "?").toUpperCase();
+  }
+  return t;
 }
 
 function pill(text: string, cls = ""): HTMLElement {
@@ -225,7 +241,7 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
     const box = el("div", "cw-plg__card cw-plg__card--col");
     box.dataset.connection = c.id;
     const head = el("div", "cw-plg__connhead");
-    head.append(el("b", "", c.title), pill(c.connected ? "connected" : c.enabled ? "enabled · not signed in" : "not connected", c.connected ? "ok" : ""));
+    head.append(logoTile(c.title, c.logo), el("b", "", c.title), pill(c.connected ? "connected" : c.enabled ? "enabled · not signed in" : "not connected", c.connected ? "ok" : ""));
     const actions = el("div", "cw-plg__actions");
     const signable = !!c.oauth && c.mode === "oauth"; // a server of the admin's with a sign-in: no token to paste unless the person asks for it
     if (c.connected) {

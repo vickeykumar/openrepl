@@ -66,6 +66,7 @@ async function stub(page, st) {
     }
     return json(r, { error: { message: "no" } }, 400);
   });
+  await page.route("**/admin/connections", (r) => json(r, { connected: [{ user: "uid-ann", conn: "github", at: "2026-11-20T21:31:10Z" }], calls: [{ t: "2026-11-21T09:00:00Z", user: "uid-ann", conn: "github", tool: "get_issue", level: "read", op: "call", ok: true }] }));
   await page.route("**/admin/connection-requests", (r) => {
     if (r.request().method() === "GET") return json(r, { requests: st.reqs, waiting: st.reqs.filter((q) => q.status === "waiting").length });
     const b = JSON.parse(r.request().postData() || "{}");
@@ -148,4 +149,23 @@ test("a secret is write-only: the page says whether one is set and never holds i
   // after the save the field is empty again and the secret is not anywhere in the page
   await expect(page.getByLabel("Client secret")).toHaveValue("");
   expect(await page.evaluate(() => document.body.innerHTML.includes("a-new-secret-value"))).toBe(false);
+});
+
+test("the list says which server has tools that changed or are new, the Usage tab shows who is connected and the last calls, and Switches goes to the site settings", async ({ page }) => {
+  const st = newState();
+  st.list.push({ id: "notion", title: "Notion", url: "https://mcp.notion.com/mcp", status: "published", auth: { mode: "oauth", auto: true }, audience: { everyone: true }, limits: {}, secrets: {}, usage: {}, toolsOn: 1,
+    tools: [{ name: "search_pages", enabled: true, level: "read" }, { name: "share_page", enabled: false, changed: true }, { name: "make_page", enabled: false, new: true }], publishable: "" });
+  await stub(page, st);
+  await page.goto("/admin#integrations");
+  await expect(page.locator(".warn")).toContainText("Notion: 1 tool changed since you approved it. They are off until you look.");
+  await expect(page.locator(".warn")).toContainText("1 new tool was found");
+  await expect(page.getByRole("link", { name: "Switches" })).toHaveAttribute("href", "#site");
+  await page.locator(".warn").getByRole("button", { name: "Review" }).click();
+  await expect(page.locator("table").first().locator("tbody tr")).toHaveCount(3);
+  await expect(page.getByText("2 Test and sign-in")).toBeVisible();
+  await page.getByRole("button", { name: "← All servers" }).click();
+  await page.getByRole("tab", { name: "Usage" }).click();
+  await expect(page.locator("table").first()).toContainText("uid-ann");
+  await expect(page.locator("table").nth(1)).toContainText("get_issue");
+  await expect(page.locator("table").nth(1)).not.toContainText("args");
 });

@@ -325,10 +325,17 @@ func policyOn(tools []ToolPolicy) (on int) {
 // credential an admin gave it for this (the discovery token), else the admin's own sign-in to it; without one, a server that wants a credential is
 // only looked at. defaults switches on the read-only tools that are new (the one-click approval of a request).
 func testIntegration(ctx context.Context, id, adminUID string, defaults bool) (Integration, error) {
+	i, _, err := testIntegrationLive(ctx, id, adminUID, defaults)
+	return i, err
+}
+
+// testIntegrationLive is testIntegration that also gives the tools as the server described them (for the screen of the test; never kept).
+func testIntegrationLive(ctx context.Context, id, adminUID string, defaults bool) (Integration, []LiveTool, error) {
 	i, ok := findIntegration(id)
 	if !ok {
-		return i, fmt.Errorf("there is no such integration")
+		return i, nil, fmt.Errorf("there is no such integration")
 	}
+	started := time.Now()
 	si := detectSignIn(ctx, i.URL)
 	res := &IntegrationTest{At: time.Now().UTC().Format(time.RFC3339), SignIn: si.Mode, NeedsAuth: si.NeedsAuth, Detail: si.Detail}
 	token := integrationSecret(id, secretDiscovery)
@@ -359,6 +366,7 @@ func testIntegration(ctx context.Context, id, adminUID string, defaults bool) (I
 			break
 		}
 		res.OK = true
+		res.Ms = int(time.Since(started) / time.Millisecond)
 		res.Protocol = "2025-06-18"
 		mcpModes.Lock()
 		if mcpModes.m[i.URL] == "modern" {
@@ -368,6 +376,10 @@ func testIntegration(ctx context.Context, id, adminUID string, defaults bool) (I
 		if source != "" {
 			res.Detail = strings.TrimSpace(res.Detail + " (tools listed with " + source + ")")
 		}
+	}
+	var liveTools []LiveTool
+	if res.OK {
+		liveTools, res.Bytes, res.Schemas, res.NoDescription, res.Refused = describeTools(live)
 	}
 	err := updateRegistry(func(list *[]Integration, _ map[string]IntegrationSecret) error {
 		k := integIndex(*list, id)
@@ -405,7 +417,42 @@ func testIntegration(ctx context.Context, id, adminUID string, defaults bool) (I
 		i = *cur
 		return nil
 	})
-	return i, err
+	return i, liveTools, err
+}
+
+// describeTools makes what the screen of the test shows: each tool as the server described it, how big the list is, how many schemas are valid
+// JSON, how many tools say nothing about themselves, and the names a call cannot use.
+func describeTools(live []mcpTool) (out []LiveTool, bytes, schemas, noDesc int, refused []string) {
+	for _, t := range live {
+		b, _ := json.Marshal(t)
+		bytes += len(b)
+		if !connToolPattern.MatchString(t.Name) {
+			if len(refused) < 5 {
+				refused = append(refused, clipRunes(t.Name, 40))
+			}
+			continue
+		}
+		hint := "none"
+		if t.Annotations.DestructiveHint != nil && *t.Annotations.DestructiveHint {
+			hint = "destructive"
+		} else if t.Annotations.ReadOnlyHint != nil && *t.Annotations.ReadOnlyHint {
+			hint = "read-only"
+		}
+		lt := LiveTool{Name: t.Name, Description: clipRunes(strings.Join(strings.Fields(t.Description), " "), 160), Args: argNamesOf(t.InputSchema), Hint: hint}
+		if len(t.InputSchema) > 0 && json.Valid(t.InputSchema) {
+			schemas++
+			if len(t.InputSchema) <= 8<<10 {
+				lt.Schema = t.InputSchema
+			}
+		} else if len(t.InputSchema) == 0 {
+			schemas++ // a tool with no schema at all takes no arguments
+		}
+		if strings.TrimSpace(t.Description) == "" {
+			noDesc++
+		}
+		out = append(out, lt)
+	}
+	return out, bytes, schemas, noDesc, refused
 }
 
 // ---- the routes -----------------------------------------------------------------------------------------------------------------------------------
@@ -419,6 +466,7 @@ type integrationView struct {
 }
 
 func viewOfIntegration(i Integration, use map[string]integrationUsage, sec map[string]IntegrationSecret) integrationView {
+	i.Logo = i.logoOrDefault()
 	if len(i.Auth.Clients) > 0 {
 		cl := map[string]RegisteredClient{}
 		for k, c := range i.Auth.Clients {
@@ -557,7 +605,7 @@ func (server *Server) integrationOp(w http.ResponseWriter, r *http.Request, in i
 	case "test":
 		ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 		defer cancel()
-		i, err := testIntegration(ctx, in.ID, adminUID, false)
+		i, live, err := testIntegrationLive(ctx, in.ID, adminUID, false)
 		if err != nil {
 			fail(http.StatusBadRequest, err.Error()+".")
 			return
@@ -568,7 +616,7 @@ func (server *Server) integrationOp(w http.ResponseWriter, r *http.Request, in i
 		}
 		server.audit(r, "integration", "tested "+in.ID+": "+result)
 		dropCachedToolsFor(in.ID)
-		server.integrationReply(w, in.ID)
+		adminJSON(w, http.StatusOK, map[string]interface{}{"integration": viewOfIntegration(i, usageOfIntegrations(), GetSiteSettings().IntegrationSecrets), "live": live})
 	case "tools":
 		err := updateRegistry(func(list *[]Integration, _ map[string]IntegrationSecret) error {
 			k := integIndex(*list, in.ID)

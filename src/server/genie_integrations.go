@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -44,6 +45,7 @@ type Integration struct {
 	URL          string              `json:"url"`
 	Keywords     []string            `json:"keywords,omitempty"` // how Genie knows that a task is about it
 	Help         string              `json:"help,omitempty"`     // for a token: how to get one
+	Logo         string              `json:"logo,omitempty"`     // optional: an https image address; none: the first letter of the name is shown
 	Status       string              `json:"status"`
 	Auth         IntegrationAuth     `json:"auth"`
 	Audience     IntegrationAudience `json:"audience"`
@@ -119,6 +121,22 @@ type IntegrationTest struct {
 	Error     string `json:"error,omitempty"`
 	Detail    string `json:"detail,omitempty"`
 	Skipped   int    `json:"skipped,omitempty"` // tools with a name that a call cannot use
+	// what the test saw, for the screen of the test (canvas board 6)
+	Ms            int      `json:"ms,omitempty"`            // how long the server took to answer
+	Bytes         int      `json:"bytes,omitempty"`         // the size of the list of tools
+	Schemas       int      `json:"schemas,omitempty"`       // tools whose schema is valid JSON
+	NoDescription int      `json:"noDescription,omitempty"` // tools that say nothing about themselves
+	Refused       []string `json:"refused,omitempty"`       // names a call cannot use (at most 5)
+}
+
+// LiveTool is a tool as the server described it, sent to the admin once, with the answer to a test, and never kept: the schema is fetched live and
+// only its hash is saved.
+type LiveTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Args        []string        `json:"args"`
+	Hint        string          `json:"hint"` // read-only, destructive or none: the server's own claim
+	Schema      json.RawMessage `json:"schema,omitempty"`
 }
 
 // IntegrationSecret holds sealed values (AES-GCM under OPENREPL_SECRET, tied to the integration and the kind): never sent to a browser,
@@ -153,7 +171,7 @@ func seedIntegrations(s SiteSettings) (SiteSettings, bool) {
 		if have[c.ID] {
 			continue
 		}
-		i := Integration{ID: c.ID, Title: c.Title, URL: c.URL, Help: c.Help, Status: integPublished, Audience: IntegrationAudience{Everyone: true},
+		i := Integration{ID: c.ID, Title: c.Title, URL: c.URL, Help: c.Help, Logo: c.Logo, Status: integPublished, Audience: IntegrationAudience{Everyone: true},
 			LegacyLevels: c.Levels, CreatedBy: "seed", CreatedAt: now, UpdatedAt: now}
 		i.Auth = IntegrationAuth{Mode: "token"}
 		if c.OAuth != nil {
@@ -279,7 +297,8 @@ var levelOfPolicy = map[string]string{"read": "read", "write": "write", "restric
 
 // toDef makes the connection the gateway works with.
 func (i Integration) toDef() connectionDef {
-	d := connectionDef{ID: i.ID, Title: i.Title, URL: i.URL, Help: i.Help, Description: i.Description, Keywords: i.Keywords, Mode: i.Auth.Mode, Managed: true,
+	i.Logo = i.logoOrDefault()
+	d := connectionDef{ID: i.ID, Title: i.Title, URL: i.URL, Help: i.Help, Logo: i.Logo, Description: i.Description, Keywords: i.Keywords, Mode: i.Auth.Mode, Managed: true,
 		Levels: i.LegacyLevels, Limits: i.Limits, Status: i.Status}
 	if d.Mode == "" {
 		d.Mode = "token"
@@ -344,6 +363,10 @@ func normalizeIntegration(in Integration) (Integration, error) {
 	}
 	in.Description = clipRunes(strings.TrimSpace(in.Description), 300)
 	in.Help = clipRunes(strings.TrimSpace(in.Help), 600)
+	in.Logo = strings.TrimSpace(in.Logo)
+	if err := checkLogo(in.Logo); err != nil {
+		return in, err
+	}
 	if _, err := integrationURLOK(in.URL); err != nil {
 		return in, err
 	}
@@ -536,4 +559,30 @@ func publicHost(raw string) string {
 		return h
 	}
 	return strings.ToLower(h)
+}
+
+// logoOrDefault is the logo of the record, or the one the site ships for that id (a record saved before logos existed has none).
+func (i Integration) logoOrDefault() string {
+	if i.Logo != "" {
+		return i.Logo
+	}
+	for _, c := range connectionCatalogue {
+		if c.ID == i.ID {
+			return c.Logo
+		}
+	}
+	return ""
+}
+
+// checkLogo accepts an https image address the admin typed, or nothing. It is only ever shown in an img tag (so an svg there cannot run script);
+// people's browsers ask that site for it.
+func checkLogo(s string) error {
+	if s == "" {
+		return nil
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "https" || u.Host == "" || len(s) > 300 || strings.ContainsAny(s, " \t\r\n\"'<>") {
+		return fmt.Errorf("the logo has to be an https image address")
+	}
+	return nil
 }

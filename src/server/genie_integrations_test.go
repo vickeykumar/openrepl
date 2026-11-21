@@ -639,3 +639,32 @@ func TestEnablingIsTheirsAndSwitchingOffKeepsTheSignIn(t *testing.T) {
 		t.Errorf("enabling again needs no new sign-in: %v", row)
 	}
 }
+
+// The optional logo of a server: an https image address, or nothing.
+func TestTheLogoOfAServerIsAnHTTPSAddressOrNothing(t *testing.T) {
+	for name, c := range map[string]struct {
+		logo string
+		ok   bool
+	}{
+		"none":             {"", true},
+		"an https address": {"https://cdn.simpleicons.org/github", true},
+		"plain http":       {"http://example.com/logo.png", false},
+		"a data address":   {"data:image/png;base64,AAAA", false},
+		"a script address": {"javascript:alert(1)", false},
+		"a quote in it":    {"https://example.com/a\"b.png", false},
+	} {
+		_, err := normalizeIntegration(Integration{ID: "acme", Title: "Acme", URL: "https://mcp.acme.dev/mcp", Logo: c.logo})
+		if (err == nil) != c.ok {
+			t.Errorf("%s: err=%v, want ok=%v", name, err, c.ok)
+		}
+	}
+}
+
+func TestGitHubKeepsItsShippedLogoUntilTheAdminSetsOne(t *testing.T) {
+	if l := (Integration{ID: "github", Title: "GitHub"}).toDef().Logo; l != "https://cdn.simpleicons.org/github" {
+		t.Errorf("logo %q", l)
+	}
+	if l := (Integration{ID: "github", Logo: "https://example.com/g.png"}).toDef().Logo; l != "https://example.com/g.png" {
+		t.Errorf("the admin's logo was not kept: %q", l)
+	}
+}

@@ -61,6 +61,7 @@ type connectionDef struct {
 	Title string `json:"title"`
 	URL   string `json:"url"`
 	Help  string `json:"help,omitempty"`
+	Logo  string `json:"logo,omitempty"` // an integration's small image (genie_integrations.go); empty: the page shows the first letter
 	// Levels overrides what the tool says about itself: "read", "write" or "irreversible"
 	Levels map[string]string `json:"-"`
 	Custom bool              `json:"custom,omitempty"`
@@ -78,7 +79,7 @@ type connectionDef struct {
 
 // the connections the site ships. Official: they need no approval, and no host list applies to them.
 var connectionCatalogue = []connectionDef{
-	{ID: "github", Title: "GitHub", URL: "https://api.githubcopilot.com/mcp/",
+	{ID: "github", Title: "GitHub", URL: "https://api.githubcopilot.com/mcp/", Logo: "https://cdn.simpleicons.org/github",
 		Help:   "Sign in with GitHub (when the admin set up the GitHub App), or paste a personal access token from github.com/settings/tokens. Give it only what you want Genie to do: read access to repositories to look, and write access to open issues and pull requests.",
 		OAuth:  &oauthDef{AuthURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token", ClientIDEnv: "OPENREPL_GITHUB_APP_CLIENT_ID", ClientSecretEnv: "OPENREPL_GITHUB_APP_CLIENT_SECRET", ScopesEnv: "OPENREPL_GITHUB_APP_SCOPES"},
 		Levels: map[string]string{"merge_pull_request": "irreversible", "delete_file": "irreversible", "delete_repository": "irreversible", "delete_workflow_run_logs": "irreversible"}},
@@ -135,32 +136,38 @@ func toConnTools(def connectionDef, tools []mcpTool) []connTool {
 			}
 		}
 		ct := connTool{Name: t.Name, Description: clipRunes(strings.Join(strings.Fields(t.Description), " "), 160), Level: toolLevel(def, t), Digest: toolDigest(t)}
-		var schema struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-			Required   []string                   `json:"required"`
-		}
-		if json.Unmarshal(t.InputSchema, &schema) == nil {
-			req := map[string]bool{}
-			for _, r := range schema.Required {
-				req[r] = true
-			}
-			var names []string
-			for n := range schema.Properties {
-				if req[n] {
-					names = append(names, n+"*")
-				} else {
-					names = append(names, n)
-				}
-			}
-			sort.Strings(names)
-			if len(names) > 12 {
-				names = names[:12]
-			}
-			ct.Args = names
-		}
+		ct.Args = argNamesOf(t.InputSchema)
 		out = append(out, ct)
 	}
 	return out
+}
+
+// argNamesOf lists the names of a tool's arguments, a required one ending with *, at most 12.
+func argNamesOf(schemaJSON json.RawMessage) []string {
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+		Required   []string                   `json:"required"`
+	}
+	if json.Unmarshal(schemaJSON, &schema) != nil {
+		return nil
+	}
+	req := map[string]bool{}
+	for _, r := range schema.Required {
+		req[r] = true
+	}
+	var names []string
+	for n := range schema.Properties {
+		if req[n] {
+			names = append(names, n+"*")
+		} else {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	if len(names) > 12 {
+		names = names[:12]
+	}
+	return names
 }
 
 // ---- the tokens, sealed, one file for each person ------------------------------------------------------------------------------------
@@ -706,6 +713,19 @@ func (server *Server) connectionList(uid string, g GenieSettings) map[string]int
 	enabledIDs := enabledServices(uid)
 	for _, d := range userConnectionDefs(uid) {
 		r := row{connectionDef: d, Tools: []connTool{}, OAuth: d.OAuth.configured(), Enabled: enabledIDs[d.ID]}
+		// a server that is not connected yet shows the tools the admin switched on, by name and level (no call is made to the server)
+		if len(d.Policy) > 0 {
+			names := make([]string, 0, len(d.Policy))
+			for n, p := range d.Policy {
+				if p.Enabled && levelOfPolicy[p.Level] != "" {
+					names = append(names, n)
+				}
+			}
+			sort.Strings(names)
+			for _, n := range names {
+				r.Tools = append(r.Tools, connTool{Name: n, Level: levelOfPolicy[d.Policy[n].Level], Description: d.Policy[n].Note})
+			}
+		}
 		if rec, ok := have[d.ID]; ok && enabledIDs[d.ID] {
 			r.Connected = true
 			if t, fresh := cachedTools(uid, d.ID); fresh {
