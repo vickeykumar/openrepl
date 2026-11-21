@@ -160,11 +160,14 @@ test("context", async ({ page }) => {
   const r = rec(page, "context");
   await r.snap(900);
   await r.typed("why does my loop print twice?", { every: 4, hold: 130, last: 900 });
-  await page.locator("#chat-widget__ctx-btn").hover();
+  await page.locator("#chat-widget__act-btn").hover();
   await r.snap(700, true);
+  await page.locator("#chat-widget__act-btn").click();
+  await r.snap(1200);
   await page.locator("#chat-widget__ctx-btn").click();
   await expect(page.locator("#chat-widget__ctx")).toBeVisible();
   await r.snap(3200);
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await r.snap(1200);
   r.done();

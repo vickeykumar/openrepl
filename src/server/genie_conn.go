@@ -576,6 +576,20 @@ func (server *Server) handleGenieConn(rw http.ResponseWriter, req *http.Request)
 		reply(server.connectionList(uid, g))
 	case "requests":
 		reply(map[string]interface{}{"requests": requestsForPerson(uid)})
+	case "calls":
+		// the person's own last calls (the Activity panel): the connection, the tool, its level, whether it worked and when. Never what was sent or returned.
+		me := clean1Line(uid, 80)
+		mine := []connCallEntry{}
+		for _, c := range recentConnCalls(400) {
+			if c.User == me && c.Op == "call" {
+				c.User = ""
+				mine = append(mine, c)
+				if len(mine) == 8 {
+					break
+				}
+			}
+		}
+		reply(map[string]interface{}{"calls": mine})
 	case "ask":
 		server.connectionAsk(rw, uid, in, reply)
 	case "enable", "disable":

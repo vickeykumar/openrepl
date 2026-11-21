@@ -806,3 +806,12 @@ dialog.logs { width: min(1180px, calc(100vw - 32px)); max-height: calc(100vh - 3
 .int-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .int-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .int-logorow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* the logo of an app in the catalogue and in its add and edit dialogs: a light tile, the first letter when there is no logo */
+.logo-tile { flex: none; width: 28px; height: 28px; border-radius: 8px; background: #fff; border: 1px solid rgba(128, 128, 128, 0.35); display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 5px; font-weight: 700; font-size: 13px; color: #3d5a14; text-transform: uppercase; overflow: hidden; }
+.logo-tile img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.logo-tile.is-letter { background: #eef0e2; border-color: #d4d9bf; padding: 0; }
+.logo-row { display: flex; align-items: center; gap: 10px; }
+.logo-row > input { flex: 1; min-width: 0; }
+.logo-prev { display: inline-flex; }
+.logo-prev .logo-tile { width: 34px; height: 34px; padding: 6px; }

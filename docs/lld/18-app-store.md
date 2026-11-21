@@ -288,3 +288,7 @@ A list that can grow long shows one page at a time with a pager at its foot ("Sh
 - The editor's quick dialog (33-app-store.js): 30 cards and a "Show 30 more" button, starting again at 30 on a new search, tab, category or language.
 - Test: e2e/tests/store-page.spec.js (60 extra apps). Not run in a browser here; the CI runs it.
 - Also in this change: the switch for an app that is on for everyone drops ids with no files from the own list too (the same stale-id fix as in section 16's follow-up).
+
+## 18. Logos (2026-11-21; canvas claude.ai/artifact/F3VRUc8uQJnGBn7BL94v4E boards 6 to 8)
+
+`Entry.Logo` (optional, any link; `simple:<name>` is saved as `https://cdn.simpleicons.org/<name>`, see `NormalizeLogo`; refused only when over 2000 characters, with control characters, or a bad `simple:` name). `View.Logo` carries it. 53 starter entries in `catalogue_default.json` have one (the project's own icon only, no language marks as stand-ins; `TestCatalogueFileLogos`). Shown in a light tile with the first letter as fallback (`onerror`): main-page Apps dialog, store page (cards 28px, detail 52px), admin Catalogue table, Add app and Add plugin dialogs (optional "Logo" field with live preview). Not built: a Look-it-up suggestion, a Bulk add logo column. Not checked: the page CSP for https images.
