@@ -41,10 +41,18 @@ test("the terminal hint shows on a first visit, goes when Run is pressed and sta
 test("the terminal does not jump while the page loads", async ({ page }) => {
   await page.addInitScript(() => {
     window.__shift = 0;
-    new PerformanceObserver((l) => l.getEntries().forEach((e) => { if (!e.hadRecentInput) window.__shift += e.value; })).observe({ type: "layout-shift", buffered: true });
+    window.__src = [];
+    new PerformanceObserver((l) => l.getEntries().forEach((e) => {
+      if (e.hadRecentInput) return;
+      window.__shift += e.value;
+      // what moved, when and how far: the failure message says it, so a run that fails in the CI can be read without a trace
+      window.__src.push(e.value.toFixed(3) + " at " + Math.round(e.startTime) + " ms: " + (e.sources || []).map((s) => ((s.node && (s.node.id || s.node.className || s.node.nodeName)) || "?") + " y " + Math.round(s.previousRect.y) + "->" + Math.round(s.currentRect.y) + " h " + Math.round(s.currentRect.height)).join("; "));
+    })).observe({ type: "layout-shift", buffered: true });
   });
   await page.goto("/");
   await page.waitForTimeout(4000);
-  expect(await page.evaluate(() => window.__shift)).toBeLessThan(0.1);
+  const shift = await page.evaluate(() => window.__shift);
+  const sources = await page.evaluate(() => window.__src.filter((x) => parseFloat(x) > 0.003).join(" | "));
+  expect(shift, "layout shifts: " + sources).toBeLessThan(0.1);
   expect(await page.locator("#ide-split").getAttribute("data-split-init")).toBe("1");
 });

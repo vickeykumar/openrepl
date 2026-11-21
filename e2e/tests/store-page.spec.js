@@ -275,6 +275,8 @@ test("a plugin that is on runs in a sandboxed frame and shows its line in the ed
   await page.route("**/store/api/plugins", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ plugins: [{ id: "wordcount-1.0.0", name: "wordcount", code: "function openreplPlugin(api){ api.every(1000, function(){ api.text().then(function(t){ api.status((t.trim().match(/\\S+/g)||[]).length + ' words'); }); }); }" }] }) }));
   await page.goto("/");
   await page.waitForFunction(() => window.AppStorePlugins && window.editor && window.editor.env && window.editor.env.editor);
+  // the page puts the language's starter code into the editor when it is ready: the text of this test goes in after that, not before it
+  await page.waitForFunction(() => window.editor.env.editor.getValue().length > 0);
   await page.evaluate(() => { document.body.classList.add("is-signed-in"); window.editor.env.editor.setValue("one two three four", -1); return window.AppStorePlugins.refresh(); });
   await expect(page.locator(".appstore__plugin")).toHaveText("4 words", { timeout: 10000 });
   // the frame has no origin of its own: it cannot reach this page
