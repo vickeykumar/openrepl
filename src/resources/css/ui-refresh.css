@@ -4824,7 +4824,7 @@ body.is-mobile .genie-changes__btn { min-height: 44px; }
 
 /* Before the split is built (page/02-layout.js sets data-split-init), the editor and the terminal already have the
    sizes the split gives them (55 and 45), so the terminal does not jump when it starts. */
-@media screen and (min-width: 801px) {
+@media screen and (min-width: 801px) and (min-height: 481px) { /* the page counts a window of 480 px or less in height as a phone too (ismob in 01-session.js): no split is built there */
   .ide-split:not([data-split-init]) #ide { display: flex; width: calc(55% - 1.5px); }
   .ide-split:not([data-split-init]) #terminal-div { width: calc(45% - 1.5px); }
   /* the layout of the last visit: stacked (html.editor-stacked) or terminal hidden (html.terminal-off), set in the head from localStorage */

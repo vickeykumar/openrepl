@@ -830,9 +830,19 @@ function initOnce() {
   initStarted = true;
   init();
 }
+// The fallback does not start the panel before the page it reads is there (the editor, the settings, Firebase for the peer chat): it
+// looks again every half second for 10 seconds, and then starts anyway.
+function fallbackStart(tries = 0) {
+  if (initStarted) return;
+  const w = window as any;
+  const ready = !!(w.firebase && w.firebase.database && w.site_settings && w.editor && w.editor.env && w.editor.env.editor);
+  if (ready || tries >= 20) initOnce();
+  else setTimeout(() => fallbackStart(tries + 1), 500);
+}
 window.addEventListener("load", initOnce);
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(initOnce, 3000));
-else setTimeout(initOnce, 3000);
+if (document.readyState === "complete") initOnce(); // the load event has gone: there is nothing to wait for
+else if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(fallbackStart, 3000));
+else setTimeout(fallbackStart, 3000);
 window.addEventListener("pagehide", cleanup); // not "unload": browsers are phasing it out and a permissions policy may block it
 
 const containerElement = document.createElement("div");

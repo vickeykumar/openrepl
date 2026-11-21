@@ -77,7 +77,9 @@
     },
     true
   );
-  window.addEventListener("load", function () {
-    setTimeout(show, 1200);
-  });
+  if (document.readyState === "complete") setTimeout(show, 1200);
+  else
+    window.addEventListener("load", function () {
+      setTimeout(show, 1200);
+    });
 })();
