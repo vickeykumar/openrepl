@@ -36,3 +36,4 @@ import "./32-remember-language"; // the language of the last visit
 import "./33-app-store"; // libraries and tools for signed-in users
 import "./34-store-plugins"; // the editor plugins of the store, in sandboxed frames
 import "./35-genie-changes"; // what Genie changed, shown in the editor
+import "./36-run-hint"; // a hint in the terminal of a first visit

@@ -822,7 +822,17 @@ async function init() {
   void loadTabs(); // the chats of the workspace, when it keeps them
   setupFBListener();
 }
-window.addEventListener("load", init);
+// A slow script of another site holds the load event back for a long time, and the panel would not work until then: it
+// starts at the load event, or 3 seconds after the page was read at the latest, whichever comes first.
+let initStarted = false;
+function initOnce() {
+  if (initStarted) return;
+  initStarted = true;
+  init();
+}
+window.addEventListener("load", initOnce);
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(initOnce, 3000));
+else setTimeout(initOnce, 3000);
 window.addEventListener("pagehide", cleanup); // not "unload": browsers are phasing it out and a permissions policy may block it
 
 const containerElement = document.createElement("div");
