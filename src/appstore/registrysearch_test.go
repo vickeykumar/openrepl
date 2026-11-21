@@ -2,6 +2,9 @@ package appstore
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -169,5 +172,47 @@ func TestADebianPackageIsRequestedApprovedAndListed(t *testing.T) {
 	}
 	if _, err := svc.RequestFor("ann", "Bad Name", "apt", "", ""); err == nil {
 		t.Error("a bad name")
+	}
+}
+
+// the search of everything asks every source, a few results of each, and a source that fails does not stop the others
+type sourceStub struct {
+	found []Found
+	err   error
+}
+
+func (s sourceStub) Name() string { return "stub" }
+func (s sourceStub) Resolve(ctx context.Context, name, version, kind string) (Resolved, error) {
+	return Resolved{}, nil
+}
+func (s sourceStub) Install(ctx context.Context, name, version, kind, dest string, log io.Writer) error {
+	return nil
+}
+func (s sourceStub) Search(ctx context.Context, q, kind string) ([]Found, error) {
+	return s.found, s.err
+}
+
+func TestTheSearchOfEverythingAsksEverySource(t *testing.T) {
+	many := func(kind string, n int) []Found {
+		var out []Found
+		for i := 0; i < n; i++ {
+			out = append(out, Found{Name: fmt.Sprintf("%s%d", kind, i), Kind: kind})
+		}
+		return out
+	}
+	m := Multi{Conda: sourceStub{found: many(KindLib, 1)}, Node: sourceStub{found: many(KindNode, 1)}, Crate: sourceStub{found: many(KindCrate, 9)},
+		Jar: sourceStub{err: errors.New("maven down")}, GoMod: sourceStub{found: many(KindGoMod, 2)}, Apt: sourceStub{found: many(KindApt, 2)}}
+	out, err := m.Search(context.Background(), "x", "")
+	counts := map[string]int{}
+	for _, f := range out {
+		counts[f.Kind]++
+	}
+	if err != nil || counts[KindLib] != 1 || counts[KindNode] != 1 || counts[KindCrate] != 6 || counts[KindGoMod] != 2 || counts[KindApt] != 2 || counts[KindJar] != 0 {
+		t.Fatalf("%v %v", counts, err)
+	}
+	// one kind asks only its own source
+	one, _ := m.Search(context.Background(), "x", KindGoMod)
+	if len(one) != 2 {
+		t.Errorf("a kind: %d results", len(one))
 	}
 }

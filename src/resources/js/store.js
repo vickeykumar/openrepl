@@ -383,13 +383,13 @@
     if (pgr) wrap.appendChild(pgr);
     if (!list.length && !q) wrap.appendChild(el("p", "store__legend", "Nothing matches here."));
     // what the whole of conda-forge and npm have under that name (the plugins and languages of the store are searched in the store)
-    if (q.length >= 2 && /^[a-z0-9][a-z0-9._-]{0,40}$/.test(q) && S.chip === "all") {
+    if (q.length >= 2 && /^[a-z0-9][a-z0-9._\/-]{0,100}$/.test(q) && S.chip === "all") {
       var key = searchKey(q, kind), h = S.hits[key];
       var have = {};
       list.forEach(function (v) { have[v.name + "/" + (v.kind || "lib")] = true; });
       var box = el("div", "store__hits");
       var where = { node: " on npm", plugin: "", gomod: " on pkg.go.dev", jar: " on Maven Central", crate: " on crates.io", apt: " in the Ubuntu archive" };
-      box.appendChild(el("h3", "store__h3", "Found for \u201c" + q + "\u201d" + (kind && where[kind] !== undefined ? where[kind] : kind ? " on conda-forge" : " on conda-forge and npm")));
+      box.appendChild(el("h3", "store__h3", "Found for \u201c" + q + "\u201d" + (kind && where[kind] !== undefined ? where[kind] : kind ? " on conda-forge" : " on conda-forge, npm, crates.io, Maven Central, pkg.go.dev and the Ubuntu archive")));
       if (!h) { box.appendChild(loadingLine("store__legend", "Searching\u2026")); searchTimer = 0; }
       else if (h.loading) box.appendChild(loadingLine("store__legend", "Searching\u2026 (the first search of conda-forge can take a minute)"));
       else {
@@ -413,10 +413,10 @@
       if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (e) { /* not every input has a caret */ } }
       clearTimeout(searchTimer);
       var qq = S.q.trim().toLowerCase();
-      if (qq.length >= 2 && /^[a-z0-9][a-z0-9._-]{0,40}$/.test(qq) && S.chip === "all") searchTimer = setTimeout(function () { runSearch(qq, kind); render(); var a2 = document.getElementById("store-search"); if (a2) { a2.focus(); try { a2.setSelectionRange(pos, pos); } catch (e) { /* no caret */ } } }, 450);
+      if (qq.length >= 2 && /^[a-z0-9][a-z0-9._\/-]{0,100}$/.test(qq) && S.chip === "all") searchTimer = setTimeout(function () { runSearch(qq, kind); render(); var a2 = document.getElementById("store-search"); if (a2) { a2.focus(); try { a2.setSelectionRange(pos, pos); } catch (e) { /* no caret */ } } }, 450);
     });
     // a search box that holds text when the page opens (or the section changes): look for it
-    if (q.length >= 2 && /^[a-z0-9][a-z0-9._-]{0,40}$/.test(q) && S.chip === "all" && !S.hits[searchKey(q, kind)]) setTimeout(function () { runSearch(q, kind); render(); }, 0);
+    if (q.length >= 2 && /^[a-z0-9][a-z0-9._\/-]{0,100}$/.test(q) && S.chip === "all" && !S.hits[searchKey(q, kind)]) setTimeout(function () { runSearch(q, kind); render(); }, 0);
     return wrap;
   }
 
@@ -741,6 +741,7 @@
     switch (v.kind) {
       case "gomod": return "$ go mod init demo && go get " + (v.source || v.name) + "   (from the mirror, no internet needed)\n$ go run .";
       case "jar": return "$ javac Main.java && java Main   (the jars are on the CLASSPATH of this terminal)";
+      case "apt": return "$ " + v.name + "   (once it is on the apt list it is on the PATH of every terminal; a library has no program to run)";
       case "crate": return "evcxr> :dep " + (v.source || v.name) + " = \"" + (v.version || "*") + "\"";
       case "py27": return "$ python2.7 -c \"import " + moduleOf(v.source || v.name.replace(/^py27-/, "")) + "\"";
       case "tool": return "$ " + v.name + " --version";
@@ -750,7 +751,7 @@
       default: return "$ python3 -c \"import " + mod + "\"";
     }
   }
-  function kindLabel(k) { return { lib: "Python library", tool: "Tool", node: "Node library", lang: "Language", plugin: "Editor plugin", gomod: "Go module", jar: "Java library", crate: "Rust crate", py27: "Python 2.7 library" }[k] || "Python library"; }
+  function kindLabel(k) { return { lib: "Python library", tool: "Tool", node: "Node library", lang: "Language", plugin: "Editor plugin", gomod: "Go module", jar: "Java library", crate: "Rust crate", apt: "System package", py27: "Python 2.7 library" }[k] || "Python library"; }
   function needs(v) {
     switch (v.kind) {
       case "node": return "Node.js (the server's), from npm";
@@ -758,6 +759,7 @@
       case "gomod": return "Go (the server's), from the Go module proxy";
       case "jar": return "Java (the server's), from Maven Central";
       case "crate": return "Rust (the server's), from crates.io";
+      case "apt": return "Nothing: an admin adds it to the apt list, and every server installs it from the Ubuntu archive";
       case "py27": return "Python 2.7, from conda-forge";
       case "tool": case "lang": return "Nothing else: it brings what it needs, from conda-forge";
       default: return S.python ? "Python " + S.python + " (the server's), from conda-forge" : "the server's Python, from conda-forge";
@@ -766,7 +768,7 @@
 
   function loadSize(v) {
     var key = (v.kind || "lib") + ":" + v.name;
-    if (S.sizes[key] || v.kind === "plugin" || v.state === "installed" || v.kind === "gomod" || v.kind === "jar" || v.kind === "crate") return; // a mirror's size is known after the install
+    if (S.sizes[key] || v.kind === "plugin" || v.state === "installed" || v.kind === "gomod" || v.kind === "jar" || v.kind === "crate" || v.kind === "apt") return; // a mirror's size is known after the install
     S.sizes[key] = { loading: true };
     store("size?name=" + encodeURIComponent(v.name) + "&kind=" + encodeURIComponent(v.kind || "lib")).then(function (j) { S.sizes[key] = j; renderSoon(); }, function (e) { S.sizes[key] = { error: e.message }; renderSoon(); });
   }
@@ -791,8 +793,23 @@
     });
   }
 
+  // what a search said of an app that the store does not hold yet (its page opens from the card of the hit)
+  function hitFor(name, kind) {
+    var keys = Object.keys(S.hits || {});
+    for (var i = 0; i < keys.length; i++) {
+      var l = (S.hits[keys[i]] && S.hits[keys[i]].list) || [];
+      for (var j = 0; j < l.length; j++) {
+        if (l[j].name === name && (!kind || (l[j].kind || "lib") === kind)) {
+          var x = l[j];
+          return { name: x.name, kind: x.kind || "lib", version: x.version, summary: x.summary, package: x.package, state: x.state === "available" ? "available" : x.state || "available", safe: !!x.safe };
+        }
+      }
+    }
+    return null;
+  }
+
   function viewApp(name, kind) {
-    var v = find(name, kind) || { name: name, kind: kind || "lib", state: "unknown", safe: false };
+    var v = find(name, kind) || hitFor(name, kind) || { name: name, kind: kind || "lib", state: "unknown", safe: false };
     for (var bi = 0; bi < S.builtins.length; bi++) if (S.builtins[bi].name === name && v.state === "unknown") v = { name: name, kind: "tool", state: "builtin", version: S.builtins[bi].version, docs: S.builtins[bi].docs, summary: "Built in: the server already has it.", safe: false };
     var w = el("div", "store__detail");
     w.setAttribute("data-app", name);
@@ -801,21 +818,21 @@
     head.appendChild(logoTile(name, v.logo, "store__logo"));
     var hd = el("div");
     hd.appendChild(el("h2", "", name));
-    hd.appendChild(el("small", "", (v.version ? v.version + " · " : "") + kindLabel(v.kind) + " · " + ({ node: "npm", plugin: "this server", gomod: "Go module proxy", jar: "Maven Central", crate: "crates.io" }[v.kind] || "conda-forge")));
+    hd.appendChild(el("small", "", (v.version ? v.version + " · " : "") + kindLabel(v.kind) + " · " + ({ node: "npm", plugin: "this server", gomod: "Go module proxy", jar: "Maven Central", crate: "crates.io", apt: "Ubuntu archive" }[v.kind] || "conda-forge")));
     head.appendChild(hd);
     var tag = stateTag(v); if (tag) head.appendChild(tag);
     w.appendChild(head);
     var nb = noteBox(); if (nb) w.appendChild(nb);
     var info = S.info[name];
     if (!info && !v.summary && (v.kind === "lib" || v.kind === "tool" || !v.kind)) loadInfo(name);
-    var legendText = v.summary ? v.summary : !info || info.loading ? (v.kind === "node" || v.kind === "lang" ? "" : "Looking it up…") : info.error ? info.error : (info.summary || "No description.");
+    var legendText = v.summary ? v.summary : !info || info.loading ? (v.kind === "node" || v.kind === "lang" || v.kind === "apt" || v.kind === "gomod" || v.kind === "jar" || v.kind === "crate" ? "" : "Looking it up…") : info.error ? info.error : (info.summary || "No description.");
     w.appendChild(legendText === "Looking it up…" ? loadingLine("store__legend", legendText) : el("p", "store__legend", legendText));
     loadSize(v);
     var sz = S.sizes[(v.kind || "lib") + ":" + name];
     var kv = el("div", "store__kv");
     function kvRow(k, val) { kv.appendChild(el("span", "", k)); kv.appendChild(el("b", "", val)); }
     var mirror = v.kind === "gomod" || v.kind === "jar" || v.kind === "crate";
-    kvRow("Size", v.smallest && v.state !== "installed" && v.instMB ? "about " + v.instMB + " MB once installed" + (v.estimate ? " (an estimate)" : "") + (v.partial ? " (the version can differ on a server with another CPU type)" : "") + (v.smallest === "apt" ? " (from the Ubuntu archive)" : "") + (v.includes ? ", " + v.includes : "") : mirror && v.state !== "installed" ? (v.instMB ? "about " + v.instMB + " MB, with what it needs" : "worked out when it is installed") : v.state === "installed" && v.sizeMB ? "about " + v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB on the server" + (v.packages ? " (" + v.packages + " packages)" : "")
+    kvRow("Size", v.kind === "apt" ? "installed on the servers, in no one's folder" : v.smallest && v.state !== "installed" && v.instMB ? "about " + v.instMB + " MB once installed" + (v.estimate ? " (an estimate)" : "") + (v.partial ? " (the version can differ on a server with another CPU type)" : "") + (v.smallest === "apt" ? " (from the Ubuntu archive)" : "") + (v.includes ? ", " + v.includes : "") : mirror && v.state !== "installed" ? (v.instMB ? "about " + v.instMB + " MB, with what it needs" : "worked out when it is installed") : v.state === "installed" && v.sizeMB ? "about " + v.sizeMB.toFixed(v.sizeMB < 10 ? 1 : 0) + " MB on the server" + (v.packages ? " (" + v.packages + " packages)" : "")
       : v.kind === "plugin" ? "a few KB"
       : !sz || sz.loading ? "working it out…"
       : sz.error ? "not known (" + sz.error.split("\n")[0].slice(0, 80) + ")"
@@ -1071,7 +1088,7 @@
       var known = {}; S.views.forEach(function (x) { (x.repls || []).forEach(function (r) { known[r] = true; }); });
       Object.keys(known).sort().forEach(function (r) { var o = el("option", "", r); o.value = r; rs.appendChild(o); });
       if (v.repls && v.repls[0]) rs.value = v.repls[0];
-      rl.appendChild(rs); d.appendChild(rl);
+      rl.appendChild(rs); if (v.kind !== "apt") d.appendChild(rl);
       if (S.perDay) d.appendChild(el("p", "store__legend", "One request for each app: if someone asked already, you are added to it. You can send " + S.perDay + " requests a day (" + (S.today || 0) + " used). An admin sees the name, the language, the kind and your reason."));
       d.appendChild(dialogButtons([
         { label: "Send request", primary: true, run: function () { closeModal(); act("request", requestBody(v, rs.value, t.value), "Asked. An admin will decide; you will see the answer here."); } },

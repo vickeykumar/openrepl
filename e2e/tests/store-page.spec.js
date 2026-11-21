@@ -470,3 +470,19 @@ test("a search in the Rust section says crates.io, a request keeps the package, 
   await expect(page.locator("#store-side")).toContainText("System packages (apt)");
   await expect(page.locator(".store__intro, .store__legend").first()).toContainText("System packages");
 });
+
+// the page of a Debian package found by a search says it is one (not a conda-forge library), and the search of everything says where it looks
+test("a found Debian package has its own page, and the search of everything names every source", async ({ page }) => {
+  fake(page, { hits: [{ name: "perl", version: "5.40.1", kind: "apt", summary: "Larry Wall's Practical Extraction and Report Language", state: "available", safe: false }] });
+  await page.goto("/store#browse");
+  await page.locator("#store-search").fill("perl");
+  await expect(page.locator(".store__h3")).toContainText("Ubuntu archive");
+  await expect(page.locator(".store__h3")).toContainText("crates.io");
+  await page.locator('[data-app="perl"] a.sapp__name').click();
+  await expect(page).toHaveURL(/#app\/perl\?kind=apt/);
+  await expect(page.locator(".store__dhead")).toContainText("System package");
+  await expect(page.locator(".store__dhead")).toContainText("Ubuntu archive");
+  await expect(page.locator(".store__dhead")).not.toContainText("conda-forge");
+  await expect(page.locator(".store__detail")).toContainText("Larry Wall");
+  await expect(page.locator(".store__detail")).not.toContainText("python3 -c");
+});

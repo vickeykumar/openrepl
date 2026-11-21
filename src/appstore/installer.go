@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -438,9 +439,55 @@ func (m Multi) Search(ctx context.Context, q, kind string) ([]Found, error) {
 	case KindLib, KindTool, KindLang:
 		try(m.pick(KindLib), kind)
 	default:
-		try(m.pick(KindLib), KindLib)
+		// everything: conda-forge and npm as before, and the registries of the mirror kinds and the Ubuntu archive. They are asked at the same time
+		// (a slow one does not hold the others), each answers with a few results, and one that fails does not stop the rest.
+		type answer struct {
+			found []Found
+			err   error
+		}
+		sources := []struct {
+			in   Installer
+			kind string
+			cap  int
+		}{{m.pick(KindLib), KindLib, 0}}
 		if m.Node != nil {
-			try(m.Node, KindNode)
+			sources = append(sources, struct {
+				in   Installer
+				kind string
+				cap  int
+			}{m.Node, KindNode, 0})
+		}
+		for _, k := range []struct {
+			in   Installer
+			kind string
+		}{{m.Crate, KindCrate}, {m.Jar, KindJar}, {m.GoMod, KindGoMod}, {m.Apt, KindApt}} {
+			if k.in != nil {
+				sources = append(sources, struct {
+					in   Installer
+					kind string
+					cap  int
+				}{k.in, k.kind, 6})
+			}
+		}
+		answers := make([]answer, len(sources))
+		var wg sync.WaitGroup
+		for i, src := range sources {
+			wg.Add(1)
+			go func(i int, in Installer, k string, cap int) {
+				defer wg.Done()
+				r, err := in.Search(ctx, q, k)
+				if cap > 0 && len(r) > cap {
+					r = r[:cap]
+				}
+				answers[i] = answer{r, err}
+			}(i, src.in, src.kind, src.cap)
+		}
+		wg.Wait()
+		for _, a := range answers {
+			if a.err != nil && firstErr == nil {
+				firstErr = a.err
+			}
+			out = append(out, a.found...)
 		}
 	}
 	if len(out) > 0 {
