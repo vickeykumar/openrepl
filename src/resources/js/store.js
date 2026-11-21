@@ -1,6 +1,6 @@
 // The App Store page (resources/store.html; designed in the canvas "App Store: all screens and actions"; docs/lld/18-app-store.md).
 // The page holds no data: everything comes from /store/api, which checks who is asking and refuses guests. Sections are the
-// address hash: #browse, #mine, #requests, #kind/lib, #kind/tool, #kind/languages, #kind/plugins, #apt (admins), #app/<name>.
+// address hash: #browse, #mine, #requests, #kind/lib, #kind/tool, #kind/languages, #kind/plugins, #apt (admins), #app/<name>, #app/<name>?kind=<kind> (two apps can share a name: the Python `ping` and the npm `ping`).
 (function () {
   "use strict";
 
@@ -41,7 +41,14 @@
     return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
   }
   function moduleOf(name) { return name.replace(/[-.]/g, "_"); }
-  function find(name) { for (var i = 0; i < S.views.length; i++) if (S.views[i].name === name) return S.views[i]; return null; }
+  function find(name, kind) {
+    for (var i = 0; i < S.views.length; i++) {
+      var v = S.views[i];
+      // another kind under the same name is not this app
+      if (v.name === name && (!kind || (v.kind || "lib") === kind)) return v;
+    }
+    return null;
+  }
   function mine(v) { return v.on || (v.mine && (v.state === "requested" || v.state === "rejected" || v.state === "failed")); }
 
   function take(j) {
@@ -87,9 +94,13 @@
 
   function route() {
     var h = (location.hash || "#browse").replace(/^#/, "");
+    var kind = "", qi = h.indexOf("?kind=");
+    if (qi >= 0) { kind = decodeURIComponent(h.slice(qi + 6)); h = h.slice(0, qi); }
     var p = h.split("/");
-    return { name: p[0] || "browse", arg: decodeURIComponent(p.slice(1).join("/")) };
+    return { name: p[0] || "browse", arg: decodeURIComponent(p.slice(1).join("/")), kind: kind };
   }
+  // the address of an app's page: with its kind, because the Python ping and the npm ping are two apps
+  function appHash(v) { return "#app/" + encodeURIComponent(v.name) + (v.kind ? "?kind=" + encodeURIComponent(v.kind) : ""); }
   function go(h) { if (location.hash === h) render(); else location.hash = h; }
 
   function renderSide(r) {
@@ -173,7 +184,7 @@
       btn("Details", function () { failure(v.name); });
     }
     else if (v.state === "rejected") btn("Ask again", function () { requestDialog(v); });
-    else if (v.state === "requested") btn("Details", function () { go("#app/" + encodeURIComponent(v.name)); });
+    else if (v.state === "requested") btn("Details", function () { go(appHash(v)); });
   }
 
   // an admin installs what is not on the safe list (a language, a plugin, anything), for everyone
@@ -204,7 +215,7 @@
     var top = el("div", "sapp__top");
     top.appendChild(logoTile(v.name, v.logo));
     var name = el("a", "sapp__name", v.name);
-    name.href = "#app/" + encodeURIComponent(v.name);
+    name.href = appHash(v);
     top.appendChild(name);
     c.appendChild(top);
     var info = S.info[v.name];
@@ -485,7 +496,7 @@
       r.setAttribute("data-app", v.name);
       r.appendChild(logoTile(v.name, v.logo));
       var d = el("div");
-      var a = el("a", "sapp__name", v.name + (v.version ? " " + v.version : "")); a.href = "#app/" + encodeURIComponent(v.name);
+      var a = el("a", "sapp__name", v.name + (v.version ? " " + v.version : "")); a.href = appHash(v);
       d.appendChild(a);
       d.appendChild(el("small", "", kindLabel(v.kind) + (v.state === "requested" ? ", asked for " + day(v.at) : v.state === "failed" ? ", failed" : "")));
       r.appendChild(d);
@@ -545,7 +556,7 @@
       r.setAttribute("data-app", v.name);
       r.appendChild(logoTile(v.name, v.logo));
       var d = el("div");
-      var a = el("a", "sapp__name", v.name); a.href = "#app/" + encodeURIComponent(v.name);
+      var a = el("a", "sapp__name", v.name); a.href = appHash(v);
       d.appendChild(a);
       d.appendChild(el("small", "", v.state === "requested" ? "Asked for " + day(v.at) + ", waiting for an admin" : v.state === "rejected" ? "Not available" + (v.answer ? ": " + v.answer : "") : (v.reported ? "Reported to the admin" : "Install failed") + (v.err ? ": " + v.err : "")));
       r.appendChild(d);
@@ -763,8 +774,8 @@
     });
   }
 
-  function viewApp(name) {
-    var v = find(name) || { name: name, kind: "lib", state: "unknown", safe: false };
+  function viewApp(name, kind) {
+    var v = find(name, kind) || { name: name, kind: kind || "lib", state: "unknown", safe: false };
     for (var bi = 0; bi < S.builtins.length; bi++) if (S.builtins[bi].name === name && v.state === "unknown") v = { name: name, kind: "tool", state: "builtin", version: S.builtins[bi].version, docs: S.builtins[bi].docs, summary: "Built in: the server already has it.", safe: false };
     var w = el("div", "store__detail");
     w.setAttribute("data-app", name);
@@ -1122,7 +1133,7 @@
       case "kind": node = viewKind(r.arg); break;
       case "apt": node = S.admin ? viewApt() : viewBrowse(); break;
       case "admin": node = S.admin ? viewAdmin(r.arg) : viewBrowse(); break;
-      case "app": node = viewApp(r.arg); break;
+      case "app": node = viewApp(r.arg, r.kind); break;
       default: node = viewBrowse();
     }
     main.appendChild(node);

@@ -31,6 +31,7 @@ function fake(page, opts = {}) {
     polls: 0,
     notices: opts.notices || [],
   };
+  Object.assign(st.apps, opts.extra || {});
   for (let i = 0; i < (opts.many || 0); i++) st.apps["lib" + String(i).padStart(3, "0")] = { name: "lib" + String(i).padStart(3, "0"), kind: "lib", state: "available", safe: true };
   const views = () => Object.values(st.apps).map((v) => ({ ...v, on: st.on.includes(v.id) }));
   page.route("**/store/api/**", async (route) => {
@@ -427,4 +428,27 @@ test("a long list shows one page of cards with a pager at the foot; a new search
   await page.locator("#store-search").fill("lib00");
   await expect(page.locator(".store__list > .store__grid .sapp")).toHaveCount(10);
   await expect(page.locator(".store__pager")).toHaveCount(0);
+});
+
+// two apps can have one name (the Python ping that failed and the npm ping): the address says which, and each page is its own
+test("an app page opens the app of the kind in its address, when two apps share a name", async ({ page }) => {
+  fake(page, {
+    extra: {
+      ping: { name: "ping", kind: "lib", state: "failed", safe: false, mine: true, err: "conda-forge has no package called ping" },
+      "ping-node": { name: "ping", kind: "node", state: "available", safe: false, version: "1.0.0", summary: "a simple wrapper for ping" },
+    },
+  });
+  await page.goto("/store#app/ping?kind=node");
+  await expect(page.locator(".store__dhead")).toContainText("npm");
+  await expect(page.locator(".store__detail")).toContainText("a simple wrapper for ping");
+  await expect(page.locator(".store__detail")).not.toContainText("conda-forge has no package called ping");
+  await page.goto("/store#app/ping?kind=lib");
+  await expect(page.locator(".store__detail")).toContainText("conda-forge");
+  // a plain address still opens an app by its name
+  await page.goto("/store#app/numpy");
+  await expect(page.locator(".store__detail")).toContainText("numpy");
+  // the cards link with the kind
+  await page.goto("/store#browse");
+  await page.locator("#store-search").fill("ping");
+  await expect(page.locator('a.sapp__name[href="#app/ping?kind=node"]')).toBeVisible();
 });
