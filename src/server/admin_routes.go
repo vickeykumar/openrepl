@@ -79,10 +79,10 @@ func (server *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // adminCSP lets the dashboard run only its own script and load the site's
-// fonts. Everything it shows from visitors is put on the page as text, and
+// fonts; an https image is allowed for the logos the admin gives the integrations. Everything it shows from visitors is put on the page as text, and
 // this policy would stop an inline script even if one slipped through.
 const adminCSP = "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; " +
-	"font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; " +
+	"font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; " +
 	"base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 // ---- site controls -------------------------------------------------------------
