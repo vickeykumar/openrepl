@@ -112,15 +112,16 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 // Draws the list into `host` (a dialog over the chat). `onClose` is called by the Close button.
-export function drawContextView(host: HTMLElement, rows: CtxRow[], modelText: string, onClose: () => void) {
+// With `inCard` the list is drawn inside the Activity panel: its button is a "‹ Back" to the panel instead of a ✕.
+export function drawContextView(host: HTMLElement, rows: CtxRow[], modelText: string, onClose: () => void, inCard: boolean = false) {
   host.textContent = "";
   const head = el("div", "cw-ctx__head");
   const title = el("h2", "cw-ctx__title", "What Genie sees now");
   title.id = "chat-widget__ctx-title";
   const close = el("button", "cw-ctx__close");
   close.type = "button";
-  close.setAttribute("aria-label", "Close the list");
-  close.textContent = "✕";
+  close.setAttribute("aria-label", inCard ? "Back to the Activity panel" : "Close the list");
+  close.textContent = inCard ? "‹ Back" : "✕";
   close.addEventListener("click", onClose);
   head.append(title, close);
   const lede = el("p", "cw-ctx__lede", "This is what goes with your next message. Nothing else is read unless an Agent task asks for it.");

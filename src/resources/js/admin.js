@@ -2396,6 +2396,31 @@
     function opts(list, cur) { return list.map(function (x) { var o = h('option', { value: x[0], text: x[1] }); if (x[0] === cur) o.selected = true; return o; }); }
     var KINDS = [['lib', 'Library (Python, pixi)'], ['lib27', 'Library (Python 2.7, pixi)'], ['tool', 'Tool (pixi)'], ['clib', 'C/C++/Tcl/Perl/SQLite library (pixi)'], ['node', 'Node library (npm)'], ['weblib', 'Browser library (npm)'], ['gomod', 'Go module (mirror)'], ['jar', 'Maven jar (mirror)'], ['crate', 'Rust crate (mirror)']];
     var MGRS = [['pixi', 'pixi (conda-forge)'], ['npm', 'npm'], ['apt', 'apt'], ['go mirror', 'Go module mirror'], ['maven mirror', 'Maven mirror'], ['cargo mirror', 'Cargo mirror']];
+    // The logo of an app in a light tile (the field "logo" of a catalogue entry, a link to an image): the image when it loads, else the first letter.
+    function logoTile(name, logo) {
+      var t = h('span', { class: 'logo-tile', 'aria-hidden': 'true' });
+      function letter() { t.textContent = (name || '?').replace(/^[^A-Za-z0-9]+/, '').charAt(0) || '?'; t.classList.add('is-letter'); }
+      var link = (logo || '').trim();
+      if (/^simple:[a-z0-9]{1,60}$/i.test(link)) link = 'https://cdn.simpleicons.org/' + link.slice(7).toLowerCase();
+      if (!link) { letter(); return t; }
+      var im = document.createElement('img');
+      im.alt = ''; im.loading = 'lazy'; im.decoding = 'async'; im.referrerPolicy = 'no-referrer';
+      im.addEventListener('error', function () { if (im.parentNode) im.parentNode.removeChild(im); letter(); });
+      im.src = link;
+      t.appendChild(im);
+      return t;
+    }
+    // the field "Logo (optional)" with its preview: what people will see, the first letter when it is empty or does not load
+    function logoField(e, nameOf) {
+      var input = h('input', { type: 'text', value: e.logo || '', placeholder: 'simple:numpy, or a link to an image', 'aria-label': 'Logo (optional)' });
+      var prev = h('span', { class: 'logo-prev' }, logoTile(nameOf(), input.value));
+      var timer = 0;
+      function redraw() { prev.textContent = ''; prev.appendChild(logoTile(nameOf(), input.value)); }
+      input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(redraw, 350); });
+      var box = h('div', { class: 'field' }, h('label', null, 'Logo (optional)', h('span', { class: 'logo-row' }, input, prev)),
+        h('div', { class: 'sub', text: 'A Simple Icons name like simple:numpy, or any link to an image. Empty: the first letter. The preview shows what people will see.' }));
+      return { box: box, value: function () { return input.value.trim(); } };
+    }
     function addAppDialog(cat, e0, plugin) {
       var e = e0 || {};
       var repl = h('select', { 'aria-label': 'REPL' }, opts(cat.repls.map(function (r) { return [r, r]; }), (e.repls || ['python'])[0]));
@@ -2410,6 +2435,7 @@
       var docs = h('input', { type: 'text', value: e.docs || '', 'aria-label': 'Documentation link' });
       var summary = h('input', { type: 'text', value: e.summary || '', 'aria-label': 'Summary', maxlength: '300' });
       var licence = h('input', { type: 'text', value: e.licence || '', 'aria-label': 'Licence' });
+      var logo = logoField(e, function () { return e.name || pkg.value.trim(); });
       var result = h('div', { class: 'card', 'data-lookup': '1' });
       var now = false;
       var look = h('button', { class: 'btn', type: 'button', text: 'Look it up', onclick: function () {
@@ -2425,12 +2451,12 @@
         field('REPL', repl), field('Kind', kind), field('Manager', mgr, 'pixi, npm or apt as today, and the mirrors for Go modules, Maven jars and Rust crates. The check below is one of fixed templates: there is no field that takes a shell command.'),
         field('Package name', pkg), field('Version (optional pin)', ver), field('Level', level), field('Who may install', who),
         field('Check after install', check), field('Check argument', arg), field('Summary', summary), field('Licence', licence),
-        field('Documentation link', docs, 'Official page, or /docs/... of this site for an app of ours. Shown on the app page.'),
+        field('Documentation link', docs, 'Official page, or /docs/... of this site for an app of ours. Shown on the app page.'), logo.box,
         h('div', { class: 'toolbar' }, look, h('button', { class: 'btn primary', type: 'button', text: 'Add and install', onclick: function () { now = true; $('dialog').querySelector('.buttons .btn.primary').click(); } })), result);
       return ask({ title: (e0 ? 'Edit ' + (e0.name) : plugin ? 'Add a plugin' : 'Add an app to the catalogue'), content: form, confirm: 'Add to catalogue', wide: true }).then(function (ok) {
         if (!ok && !now) return;
         var entry = { id: e.id || (kind.value === 'node' ? 'npm:' : kind.value === 'weblib' ? 'web:' : '') + pkg.value.trim().toLowerCase(), name: e.name || pkg.value.trim().toLowerCase(), summary: summary.value || 'Added by an admin.',
-          kind: kind.value, repls: [repl.value], level: level.value, manager: mgr.value, package: pkg.value.trim().toLowerCase(), version: ver.value.trim(), install: who.value, check: check.value, checkArg: arg.value, docs: docs.value.trim(), licence: licence.value, category: e.category || '' };
+          kind: kind.value, repls: [repl.value], level: level.value, manager: mgr.value, package: pkg.value.trim().toLowerCase(), version: ver.value.trim(), install: who.value, check: check.value, checkArg: arg.value, docs: docs.value.trim(), logo: logo.value(), licence: licence.value, category: e.category || '' };
         return catPost({ action: 'add', entry: entry, install: now }, entry.name + ' is in the catalogue' + (now ? ' and being installed.' : '. Nothing was installed.'));
       });
     }
@@ -2442,11 +2468,12 @@
       var place = h('select', { 'aria-label': 'Place' }, opts(cat.places.map(function (x) { return [x, x]; }), 'preview'));
       var entry = h('input', { type: 'text', value: '', placeholder: 'entry file, e.g. eruda.js', 'aria-label': 'Entry file' });
       var docs = h('input', { type: 'text', value: '', 'aria-label': 'Documentation link' });
+      var plogo = logoField({}, function () { return pkg.value.trim(); });
       var trust = h('input', { type: 'checkbox', 'aria-label': 'I checked the publisher and the licence' });
       var ext = h('input', { type: 'checkbox', 'aria-label': 'I understand this plugin runs in the page' });
       var form = h('div', { class: 'form' }, field('npm package', pkg), field('Exact version', ver), field('Level', level),
         field('Adapter type', adapter, 'Fixed types: editor extension (runs in the page), preview-page tool, panel in a sandboxed frame. If none fits, the plugin is not added.'),
-        field('Place', place), field('Entry file', entry), field('Documentation link', docs, 'Official page, taken from the package when it has one. For a plugin of ours: its page on this site.'),
+        field('Place', place), field('Entry file', entry), field('Documentation link', docs, 'Official page, taken from the package when it has one. For a plugin of ours: its page on this site.'), plogo.box,
         h('label', { class: 'check' }, trust, ' I checked the publisher and the licence, and I want this exact version.'),
         h('label', { class: 'check' }, ext, ' I understand this plugin runs in the page (needed for an editor extension).'));
       return ask({ title: 'Add a plugin from npm', content: form, confirm: 'Add plugin', wide: true, validate: function () {
@@ -2457,7 +2484,7 @@
         if (!ok) return;
         var id = 'plugin:' + pkg.value.trim().toLowerCase();
         return catPost({ action: 'add', entry: { id: id, name: pkg.value.trim(), summary: 'A plugin from npm (' + pkg.value.trim() + ').', kind: 'plugin', place: place.value, level: level.value, manager: 'npm', package: pkg.value.trim().toLowerCase(),
-          version: ver.value.trim(), install: 'admin', adapter: adapter.value, files: [entry.value.trim()], check: 'file-exists', checkArg: entry.value.trim(), docs: docs.value.trim(), licence: 'see the package', publisher: 'npm' } }, 'The plugin is in the catalogue. Nothing was installed.');
+          version: ver.value.trim(), install: 'admin', adapter: adapter.value, files: [entry.value.trim()], check: 'file-exists', checkArg: entry.value.trim(), docs: docs.value.trim(), logo: plogo.value(), licence: 'see the package', publisher: 'npm' } }, 'The plugin is in the catalogue. Nothing was installed.');
       });
     }
     function bulkDialog(cat) {
@@ -2552,7 +2579,7 @@
         return { app: a, node: span };
       }
       out.appendChild(table([
-        { key: 'name', label: 'App', cell: function (e) { return h('div', null, h('b', { text: e.name }), e.docs ? h('div', { class: 'sub' }, h('a', { href: e.docs, target: '_blank', rel: 'noopener noreferrer', text: 'docs' })) : null); } },
+        { key: 'name', label: 'App', cell: function (e) { return h('div', { class: 'logo-row' }, logoTile(e.name, e.logo), h('div', null, h('b', { text: e.name }), e.docs ? h('div', { class: 'sub' }, h('a', { href: e.docs, target: '_blank', rel: 'noopener noreferrer', text: 'docs' })) : null)); } },
         { key: 'repl', label: 'REPL', cell: function (e) { return e.kind === 'plugin' ? e.place : (e.repls || []).join(', '); } },
         { key: 'kind', label: 'Kind', cell: function (e) { return NAMES[e.kind] || e.kind; } },
         { key: 'level', label: 'Level', cell: function (e) { return pill(e.level); } },

@@ -52,7 +52,13 @@
 .store__top { display: block; height: 0; }
 .store__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .sapp { background: var(--st-card); border: 1px solid var(--st-line); border-radius: 11px; padding: 11px 13px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sapp__top { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.sapp__top .sapp__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sapp__name { font-size: 15px; font-weight: 600; color: var(--st-text); text-decoration: none; }
+/* the logo of an app: always a light tile, so a dark logo is seen on a dark page too; the first letter when there is none */
+.logo-tile { flex: none; width: 28px; height: 28px; border-radius: 8px; background: #fff; border: 1px solid var(--st-line2); display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 5px; font-weight: 700; font-size: 13px; color: var(--st-accent-text); text-transform: uppercase; overflow: hidden; }
+.logo-tile img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.logo-tile.is-letter { background: var(--st-hover); padding: 0; }
 .sapp__name:hover { text-decoration: underline; }
 .sapp__sum { margin: 0; color: var(--st-muted); line-height: 1.4; font-size: 12.5px; min-height: 2.8em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .sapp__row { display: flex; align-items: center; gap: 8px; margin-top: 2px; flex-wrap: wrap; }
@@ -83,7 +89,8 @@
 .store__back:hover { color: var(--st-text); }
 .store__detail { max-width: 640px; display: flex; flex-direction: column; gap: 12px; }
 .store__dhead { display: flex; align-items: center; gap: 12px; }
-.store__logo { width: 44px; height: 44px; border-radius: 10px; background: var(--st-hover); border: 1px solid var(--st-line2); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; color: var(--st-accent-text); text-transform: uppercase; }
+.logo-tile.store__logo { width: 52px; height: 52px; border-radius: 12px; padding: 9px; font-size: 20px; }
+.logo-tile.store__logo.is-letter { padding: 0; }
 .store__dhead h2 { margin: 0; font-size: 22px; }
 .store__dhead small { color: var(--st-faint); font-family: var(--font-code, monospace); }
 .store__kv { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 5px 10px; font-size: 13px; }

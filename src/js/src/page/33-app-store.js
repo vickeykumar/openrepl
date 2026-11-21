@@ -243,6 +243,32 @@ var STATE_TEXT = { available: "", installing: "Installing", installed: "Installe
 
 var KIND_TEXT = { lib: "python", tool: "tool", node: "node", lang: "language", plugin: "plugin", py27: "python 2.7", gomod: "go", jar: "java", crate: "rust" };
 
+// The logo of an app (the field "logo" of its catalogue entry, a link to an image) in a light tile; no logo, or one that does not load: the first letter.
+function logoTile(name, logo) {
+  var t = h("span", "logo-tile");
+  t.setAttribute("aria-hidden", "true");
+  function letter() {
+    t.textContent = (name || "?").replace(/^[^A-Za-z0-9]+/, "").charAt(0) || "?";
+    t.classList.add("is-letter");
+  }
+  if (!logo) {
+    letter();
+    return t;
+  }
+  var im = document.createElement("img");
+  im.alt = "";
+  im.loading = "lazy";
+  im.decoding = "async";
+  im.referrerPolicy = "no-referrer";
+  im.addEventListener("error", function () {
+    if (im.parentNode) im.parentNode.removeChild(im);
+    letter();
+  });
+  im.src = logo;
+  t.appendChild(im);
+  return t;
+}
+
 // the name of an app opens its page in the App Store (a new tab: the editor and its terminals stay as they are)
 function nameLink(name) {
   var a = h("a", "appstore__name", name);
@@ -256,6 +282,7 @@ function card(v) {
   var c = h("div", "appstore__app is-" + v.state);
   c.setAttribute("data-app", v.name);
   var top = h("div", "appstore__top");
+  top.appendChild(logoTile(v.name, v.logo));
   top.appendChild(nameLink(v.name));
   top.appendChild(h("span", "appstore__tag", KIND_TEXT[v.kind || "lib"] || v.kind));
   if (v.version) top.appendChild(h("span", "appstore__ver", v.version));

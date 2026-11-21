@@ -181,12 +181,32 @@
     api("/admin/store", { action: "install", name: v.name, kind: v.kind || "lib" }, true).then(function () { return load(); }).then(function () { render(); progress(v.name); }, function (e) { say(e.message, "bad"); render(); });
   }
 
+  // The logo of an app (the field "logo" of its catalogue entry, a link to an image), in a light tile; no logo, or one that does not load: the first letter.
+  function logoTile(name, logo, cls) {
+    var t = el("span", "logo-tile" + (cls ? " " + cls : ""));
+    t.setAttribute("aria-hidden", "true");
+    function letter() { t.textContent = (name || "?").replace(/^[^A-Za-z0-9]+/, "").charAt(0) || "?"; t.classList.add("is-letter"); }
+    if (!logo) { letter(); return t; }
+    var im = document.createElement("img");
+    im.alt = "";
+    im.loading = "lazy";
+    im.decoding = "async";
+    im.referrerPolicy = "no-referrer";
+    im.addEventListener("error", function () { if (im.parentNode) im.parentNode.removeChild(im); letter(); });
+    im.src = logo;
+    t.appendChild(im);
+    return t;
+  }
+
   function card(v) {
     var c = el("article", "sapp is-" + v.state);
     c.setAttribute("data-app", v.name);
+    var top = el("div", "sapp__top");
+    top.appendChild(logoTile(v.name, v.logo));
     var name = el("a", "sapp__name", v.name);
     name.href = "#app/" + encodeURIComponent(v.name);
-    c.appendChild(name);
+    top.appendChild(name);
+    c.appendChild(top);
     var info = S.info[v.name];
     if (!info && !v.summary && (v.kind === "lib" || v.kind === "tool")) loadInfo(v.name);
     c.appendChild(el("p", "sapp__sum", v.summary ? v.summary : info && info.summary ? info.summary : v.state === "failed" ? v.err || "The install stopped." : v.state === "rejected" && v.answer ? v.answer : ""));
@@ -417,7 +437,8 @@
     var pgr = pagedList(grid, shown, "browser", [q, S.level, S.repl].join("|"), function (e) {
         var c = el("article", "sapp is-" + e.state);
         c.setAttribute("data-app", e.id);
-        var a = el("a", "sapp__name", e.name); a.href = "#app/" + encodeURIComponent(e.id); c.appendChild(a);
+        var top = el("div", "sapp__top"); top.appendChild(logoTile(e.name, e.logo));
+        var a = el("a", "sapp__name", e.name); a.href = "#app/" + encodeURIComponent(e.id); top.appendChild(a); c.appendChild(top);
         c.appendChild(el("p", "sapp__sum", e.summary || ""));
         var row = el("div", "sapp__row");
         row.appendChild(el("span", "stag", e.kind === "plugin" ? "plugin: " + e.place : "browser library"));
@@ -462,6 +483,7 @@
     var minePager = pagedList(wrap, mineList, "mine", "", function (v) {
       var r = el("div", "store__row");
       r.setAttribute("data-app", v.name);
+      r.appendChild(logoTile(v.name, v.logo));
       var d = el("div");
       var a = el("a", "sapp__name", v.name + (v.version ? " " + v.version : "")); a.href = "#app/" + encodeURIComponent(v.name);
       d.appendChild(a);
@@ -521,6 +543,7 @@
     list.forEach(function (v) {
       var r = el("div", "store__row");
       r.setAttribute("data-app", v.name);
+      r.appendChild(logoTile(v.name, v.logo));
       var d = el("div");
       var a = el("a", "sapp__name", v.name); a.href = "#app/" + encodeURIComponent(v.name);
       d.appendChild(a);
@@ -747,7 +770,7 @@
     w.setAttribute("data-app", name);
     var back = el("a", "store__back", "← Back to the store"); back.href = "#browse"; w.appendChild(back);
     var head = el("div", "store__dhead");
-    head.appendChild(el("span", "store__logo", name.charAt(0)));
+    head.appendChild(logoTile(name, v.logo, "store__logo"));
     var hd = el("div");
     hd.appendChild(el("h2", "", name));
     hd.appendChild(el("small", "", (v.version ? v.version + " · " : "") + kindLabel(v.kind) + " · " + ({ node: "npm", plugin: "this server", gomod: "Go module proxy", jar: "Maven Central", crate: "crates.io" }[v.kind] || "conda-forge")));

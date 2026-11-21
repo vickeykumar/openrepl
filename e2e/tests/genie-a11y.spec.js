@@ -130,9 +130,13 @@ test("axe finds nothing on the Genie panel in its states, in both themes", async
   found.push(...(await scan(page, "tour and resume")));
   await page.getByRole("button", { name: "Skip" }).click();
   // the Context list
+  await page.locator("#chat-widget__act-btn").click();
+  await expect(page.locator("#chat-widget__act")).toBeVisible();
+  found.push(...(await scan(page, "activity panel")));
   await page.locator("#chat-widget__ctx-btn").click();
   await expect(page.locator("#chat-widget__ctx")).toBeVisible();
   found.push(...(await scan(page, "context list")));
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   // an answer with its row of buttons
   await page.locator("#chat-widget__input").fill("what does a closure do?");
@@ -197,13 +201,16 @@ test("the keyboard reaches the Context list, the tour and History, and puts the 
   await expect(page.locator("#chat-widget__tour")).toHaveCount(0);
   await expect(page.locator("#chat-widget__input")).toBeVisible();
   // the Context button opens with Enter, the focus is in the list, Escape gives it back to the button
+  await page.locator("#chat-widget__act-btn").click();
   await page.locator("#chat-widget__ctx-btn").focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#chat-widget__ctx")).toBeVisible();
-  expect(await page.evaluate(() => document.activeElement && document.activeElement.getAttribute("aria-label"))).toBe("Close the list");
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.getAttribute("aria-label"))).toBe("Back to the Activity panel");
   await page.keyboard.press("Escape");
   await expect(page.locator("#chat-widget__ctx")).toBeHidden();
   expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("chat-widget__ctx-btn");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#chat-widget__act")).toBeHidden();
   // History with Alt+H: the search box has the focus, the chips and stars are buttons with names
   await page.keyboard.press("Alt+h");
   const h = page.locator(".cw-tabmenu--list");

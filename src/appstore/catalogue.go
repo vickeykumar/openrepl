@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -69,6 +70,7 @@ type Entry struct {
 	InstMB    int      `json:"instMB,omitempty"` // size on disk
 	Docs      string   `json:"docs,omitempty"`   // an https link, or /docs/... of this site
 	Licence   string   `json:"licence,omitempty"`
+	Logo      string   `json:"logo,omitempty"`  // a link to a logo image (any link), drawn before the name; empty: the first letter
 	Check     string   `json:"check,omitempty"` // one of CheckTemplates
 	CheckArg  string   `json:"checkArg,omitempty"`
 	Labels    []string `json:"labels,omitempty"`
@@ -176,6 +178,16 @@ func ValidateEntry(e Entry) error {
 		if strings.HasPrefix(e.Docs, "/docs/") && !strings.Contains(e.Docs, "..") {
 		} else if u, err := url.Parse(e.Docs); err != nil || u.Scheme != "https" || u.Host == "" {
 			return errors.New("the documentation link must be an https address, or a /docs/ page of this site")
+		}
+	}
+	if l := e.Logo; l != "" {
+		// any link: no host list and no rule about its form (an admin's field). Only what could not be one: a line break or a control character, a name
+		// that is not a Simple Icons name after "simple:", and a text that is too long to be a link.
+		if len(l) > 2000 || strings.IndexFunc(l, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+			return errors.New("the logo is not a link")
+		}
+		if strings.HasPrefix(l, "simple:") {
+			return errors.New("the logo name after simple: has to be letters and digits, like simple:numpy")
 		}
 	}
 	for _, f := range e.Files {
@@ -486,8 +498,26 @@ func checkFiles(dest string, e Entry) error {
 	return nil
 }
 
+// SimpleIconsCDN is where a logo named simple:<name> is read from: the official icon of a project, in its own colour.
+const SimpleIconsCDN = "https://cdn.simpleicons.org/"
+
+var simpleIconName = regexp.MustCompile(`^[a-z0-9]{1,60}$`)
+
+// NormalizeLogo cleans the logo field of an entry: the space around it goes, and simple:<name> becomes the link of that icon at the Simple Icons CDN,
+// so that the data always holds a link. Any other text is kept as it is (a name that is not valid is left for ValidateEntry to refuse).
+func NormalizeLogo(s string) string {
+	s = strings.TrimSpace(s)
+	if rest := strings.TrimPrefix(s, "simple:"); rest != s {
+		if n := strings.ToLower(strings.TrimSpace(rest)); simpleIconName.MatchString(n) {
+			return SimpleIconsCDN + n
+		}
+	}
+	return s
+}
+
 // AddEntry adds or replaces an entry (an admin's). Nothing is installed.
 func (s *Service) AddEntry(admin string, e Entry) error {
+	e.Logo = NormalizeLogo(e.Logo)
 	if err := ValidateEntry(e); err != nil {
 		return err
 	}

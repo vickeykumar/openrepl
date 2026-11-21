@@ -4542,6 +4542,10 @@ body .ctx-item:focus-visible { outline: 2px solid var(--accent-on-dark) !importa
 .appstore__list { display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 120px; }
 .appstore__app { background: var(--ink-900); border: 1px solid var(--ink-700); border-radius: 11px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .appstore__top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* the logo of an app: always a light tile, so a dark logo is seen on the dark dialog too; the first letter when there is none */
+.logo-tile { flex: none; width: 28px; height: 28px; border-radius: 8px; background: #fff; border: 1px solid rgba(128, 128, 128, 0.35); display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 5px; font-weight: 700; font-size: 13px; color: #3d5a14; text-transform: uppercase; overflow: hidden; }
+.logo-tile img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.logo-tile.is-letter { background: #eef0e2; border-color: #d4d9bf; padding: 0; }
 .appstore__name { font-size: 14px; font-weight: 700; color: var(--paper); text-decoration: none; }
 .appstore__name:hover, .appstore__name:focus-visible { text-decoration: underline; }
 .appstore__ver, .appstore__size { font-family: var(--font-code, monospace); font-size: 11.5px; color: var(--muted-2); }
