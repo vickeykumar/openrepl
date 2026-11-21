@@ -13,12 +13,16 @@ export interface SlashCommand {
   // a skill of the workspace, a plugin or the built-in ones (skills.ts): choosing it puts "/name " in the message
   skill?: SkillInfo;
   group?: string; // the title the menu shows above it
+  // a command that only opens something (a dialog, a view) works wherever it is typed in the message: the rest of the message stays. The others
+  // use the words after them, so they work at the start only.
+  anywhere?: boolean;
+  startOnly?: boolean; // the menu shows it with a note, because it was typed after other words: choosing it does nothing
 }
 
 export const COMMANDS: readonly SlashCommand[] = [
-  { name: "context", desc: "Show what goes with your next message, with sizes", kind: "run" },
-  { name: "tour", desc: "Take the short tour of Genie again", kind: "run" },
-  { name: "add-plugin", desc: "Browse and install plugins", kind: "run" },
+  { name: "context", desc: "Show what goes with your next message, with sizes", kind: "run", anywhere: true },
+  { name: "tour", desc: "Take the short tour of Genie again", kind: "run", anywhere: true },
+  { name: "add-plugin", desc: "Browse and install plugins", kind: "run", anywhere: true },
   { name: "save-skill", desc: "Save what we just did as a skill, for example /save-skill release-notes", kind: "insert", insert: "/save-skill " },
   { name: "remember", desc: "Add a note to GENIE.md, for example /remember indent with tabs", kind: "insert", insert: "/remember " },
 ];
@@ -40,4 +44,13 @@ export function matchCommands(query: string, list: readonly SlashCommand[] = COM
   const starts = list.filter((c) => c.name.startsWith(q));
   const has = list.filter((c) => !c.name.startsWith(q) && c.name.includes(q));
   return starts.concat(has);
+}
+
+// The message without the "/word" that was chosen (from start to end): the words around it stay, with the gap closed. "" when nothing else is left.
+export function withoutToken(value: string, start: number, end: number): string {
+  const v = String(value || "");
+  const s = Math.max(0, Math.min(start, v.length));
+  const e = Math.max(s, Math.min(end, v.length));
+  const rest = (v.slice(0, s) + v.slice(e)).replace(/[ \t]{2,}/g, " ").replace(/^[ \t]+/, "").replace(/[ \t]+$/, "");
+  return rest.trim() === "" ? "" : rest;
 }

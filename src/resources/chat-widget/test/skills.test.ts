@@ -137,3 +137,10 @@ test("the commands of a message: a skill anywhere, a command of the panel only a
   const t = "a /explain b";
   assert.deepEqual(commandSpans(t, cmds, SKILLS), [{ start: 2, end: 10, name: "explain" }]);
 });
+
+test("a command that only opens something is a command wherever it is typed, the others at the start only", () => {
+  const cmds = ["context", "save-skill"];
+  const t = "please /context and /save-skill";
+  assert.deepEqual(commandSpans(t, cmds, SKILLS).map((s) => t.slice(s.start, s.end)), []);
+  assert.deepEqual(commandSpans(t, cmds, SKILLS, ["context"]).map((s) => t.slice(s.start, s.end)), ["/context"]);
+});
