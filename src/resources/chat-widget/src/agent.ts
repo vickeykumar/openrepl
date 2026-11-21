@@ -182,7 +182,9 @@ export interface AgentHost {
   // task starts with (names and, when the task needs them, the tools); and a call, which the server makes with the user's token.
   connectionTool?(connection: string, tool: string): { level: "read" | "write" | "irreversible"; title: string } | null;
   connectionsNote?(withTools: boolean): Promise<string>;
-  mcpCall?(req: { connection: string; tool: string; args: Record<string, unknown>; task: string; confirmed: boolean }, signal: AbortSignal): Promise<{ status: number; message?: string; text?: string; isError?: boolean }>;
+  // approval: how the person allowed it ("once" or "session" on the card, "auto" when the page's own session level did); tainted: the task holds text from outside.
+  // The server keeps the approval: needsCard comes back when it holds none for this call.
+  mcpCall?(req: { connection: string; tool: string; args: Record<string, unknown>; task: string; approval: "once" | "session" | "auto"; tainted: boolean }, signal: AbortSignal): Promise<{ status: number; message?: string; text?: string; isError?: boolean; needsCard?: boolean }>;
   // What the workspace has as skills, as a note for the start of a task (names and descriptions; "" when there are none). skills.ts: skillsNoteText.
   skillsNote?(): Promise<string>;
   // The text of the editor, for what a task changed (+ and - lines at its end). Absent where the page cannot.
@@ -1486,7 +1488,17 @@ export class AgentRunner {
       }
       case "mcp_call": {
         if (!this.host.mcpCall) return { type: a.type, status: "failed", detail: "this page cannot use connections" };
-        const res = await this.host.mcpCall({ connection: a.connection || "", tool: a.tool || "", args: a.args || {}, task: this.task ? this.task.tid : "", confirmed: true }, this.ctl ? this.ctl.signal : new AbortController().signal);
+        const sig = this.ctl ? this.ctl.signal : new AbortController().signal;
+        const send = () => this.host.mcpCall!({ connection: a.connection || "", tool: a.tool || "", args: a.args || {}, task: this.task ? this.task.tid : "", approval: this.lastApproval, tainted: this.perms.isOutside() }, sig);
+        let res = await send();
+        if (res.needsCard) {
+          // the server holds no approval for this (it restarted, or the grant was for another connection): the session level of the page does not stand in for it, so the card is shown
+          const scope = scopeOf(a);
+          if (scope) this.perms.revoke(scope);
+          const allowed = scope ? await this.permission(scope, a, "") : false;
+          if (!allowed) return { type: a.type, status: "denied", detail: "the user did not allow " + (scope || "this") + " actions" };
+          res = await send();
+        }
         if (res.status !== 200) return { type: a.type, status: "failed", detail: res.message || "the call failed" };
         // from here on the task holds text from outside: a risky action asks again
         this.perms.markOutside();
@@ -2056,8 +2068,12 @@ export class AgentRunner {
 
   // risk: why a terminal line is risky, "" if it is not. A risky line is asked
   // about every time and can only be allowed once.
+  private lastApproval: "once" | "session" | "auto" = "auto"; // how the last action was allowed: what the server's approval of a connection call is made from
   private permission(scope: Scope, a: Action, risk: string = ""): Promise<boolean> {
-    if (this.perms.decide(a, !risk) !== "ask") return Promise.resolve(true);
+    if (this.perms.decide(a, !risk) !== "ask") {
+      this.lastApproval = "auto";
+      return Promise.resolve(true);
+    }
     return new Promise<boolean>((resolve) => {
       const box = el("div", "cw-agent__ask" + (risk ? " cw-agent__ask--risk" : ""));
       box.setAttribute("role", "group");
@@ -2094,6 +2110,7 @@ export class AgentRunner {
         this.pendingAction = null;
         box.remove();
         if (answer === "session") this.perms.grant(scope);
+        if (answer !== "deny") this.lastApproval = answer;
         this.renderBadge();
         resolve(answer !== "deny");
       };

@@ -201,6 +201,7 @@ func connSetup(t *testing.T, g GenieSettings) *connEnv {
 func (e *connEnv) call(t *testing.T, body string, c *http.Cookie) (int, map[string]interface{}) {
 	t.Helper()
 	req := httptest.NewRequest("POST", "/genie_conn", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	if c != nil {
 		req.AddCookie(c)
 	}
@@ -321,8 +322,12 @@ func TestACallIsCheckedFencedAndLimitedAndTheRecordHoldsNoArgumentsOrResults(t *
 			t.Errorf("%s without a card: %d", tool, code)
 		}
 	}
-	if w := e.ok(t, `{"op":"call","id":"github","tool":"create_issue","args":{"title":"x"},"task":"t1","confirmed":true}`); w["level"] != "write" {
-		t.Errorf("a confirmed write: %v", w)
+	// what the page sends as "confirmed" counts for nothing
+	if code, _ := e.call(t, `{"op":"call","id":"github","tool":"create_issue","args":{"title":"x"},"task":"t1","confirmed":true}`, e.c); code != http.StatusConflict {
+		t.Errorf("a write that says it is confirmed: %d", code)
+	}
+	if w := e.ok(t, `{"op":"call","id":"github","tool":"create_issue","args":{"title":"x"},"task":"t1","ticket":"`+e.allow(t, "create_issue", `{"title":"x"}`, "t1", "once")+`"}`); w["level"] != "write" {
+		t.Errorf("a write with a ticket: %v", w)
 	}
 	for _, c := range e.mcp.calls {
 		if c == "merge_pull_request" || c == "wipe" {
@@ -728,4 +733,18 @@ func TestTheAdminSeesWhoIsConnectedToWhatNeverTheTokens(t *testing.T) {
 	if !strings.Contains(body, `"tool":"get_issue"`) || strings.Contains(body, "crash") {
 		t.Errorf("the calls: %s", body)
 	}
+}
+
+// allow runs the two steps of an approval as the page does: propose the exact call, then the person's answer. It returns the ticket.
+func (e *connEnv) allow(t *testing.T, tool, args, task, remember string) string {
+	t.Helper()
+	p := e.ok(t, `{"op":"propose","id":"github","tool":"`+tool+`","args":`+args+`,"task":"`+task+`"}`)
+	id, _ := p["ticket"].(string)
+	if id == "" {
+		t.Fatalf("no ticket: %v", p)
+	}
+	if p["approved"] != true {
+		e.ok(t, `{"op":"approve","ticket":"`+id+`","remember":"`+remember+`"}`)
+	}
+	return id
 }

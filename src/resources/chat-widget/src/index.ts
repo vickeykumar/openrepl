@@ -2504,7 +2504,7 @@ const agentRunner = new LazyAgent((Runner) => new Runner(
     // from the list fetched when Agent mode was switched on; a task never waits more than a moment for it
     connectionTool: (c: string, t: string) => connectionTool(c, t),
     connectionsNote: (withTools: boolean) => connectionsNote(withTools),
-    mcpCall: (req: { connection: string; tool: string; args: Record<string, unknown>; task: string; confirmed: boolean }, signal: AbortSignal) => mcpCallPage(req, signal),
+    mcpCall: (req: { connection: string; tool: string; args: Record<string, unknown>; task: string; approval: "once" | "session" | "auto"; tainted: boolean }, signal: AbortSignal) => mcpCallPage(req, signal),
     skillsNote: async () => skillsNoteText(await Promise.race([loadSkills(), new Promise<SkillInfo[]>((res) => setTimeout(() => res(skillList), 300))]), noteList),
     terminal: () => activeTerminal(),
     terminalType: (data: string) => {
@@ -4260,10 +4260,25 @@ async function connectionsNote(withTools: boolean): Promise<string> {
   return head + " A * marks an argument that is required.\n" + lines.join("\n") + "]";
 }
 
-async function mcpCallPage(req: { connection: string; tool: string; args: Record<string, unknown>; task: string; confirmed: boolean }, signal: AbortSignal) {
+async function mcpCallPage(req: { connection: string; tool: string; args: Record<string, unknown>; task: string; approval: "once" | "session" | "auto"; tainted: boolean }, signal: AbortSignal) {
   void signal;
-  const r = await connApi({ op: "call", id: req.connection, tool: req.tool, args: req.args, task: req.task, confirmed: req.confirmed });
-  if (!r.ok) return { status: r.status || 500, message: r.data && r.data.error && r.data.error.message ? String(r.data.error.message) : "the call failed" };
+  const errOf = (r: { status: number; data: any }, fallback: string) => ({ status: r.status || 500, message: r.data && r.data.error && r.data.error.message ? String(r.data.error.message) : fallback });
+  // a write or a thing that cannot be undone goes in three steps: the exact call is proposed, the person's answer on the card is sent, and the call uses the ticket
+  let ticket = "";
+  const info = connectionTool(req.connection, req.tool);
+  if (info && info.level !== "read") {
+    const p = await connApi({ op: "propose", id: req.connection, tool: req.tool, args: req.args, task: req.task, tainted: req.tainted });
+    if (!p.ok) return errOf(p, "the call could not be prepared");
+    ticket = String(p.data.ticket || "");
+    if (!p.data.approved) {
+      // a session level of the page is not an approval the server holds: the card is asked again
+      if (req.approval === "auto") return { status: 409, message: "the server holds no approval for this call", needsCard: true };
+      const a = await connApi({ op: "approve", ticket, remember: req.approval === "session" ? "session" : "once" });
+      if (!a.ok) return errOf(a, "the approval was not accepted");
+    }
+  }
+  const r = await connApi({ op: "call", id: req.connection, tool: req.tool, args: req.args, task: req.task, ticket });
+  if (!r.ok) return errOf(r, "the call failed");
   return { status: 200, text: String(r.data.text || ""), isError: !!r.data.isError };
 }
 

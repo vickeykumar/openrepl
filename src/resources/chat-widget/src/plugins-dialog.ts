@@ -40,6 +40,8 @@ interface ConnRow {
   connected: boolean;
   tools: ConnTool[];
   error?: string;
+  oauth?: boolean; // the admin set up a client: the person can sign in instead of pasting a token
+  reconnect?: boolean; // the sign-in ended or was taken back
 }
 interface ConnRequestRow {
   id: string;
@@ -228,6 +230,18 @@ export function drawPlugins(host: HTMLElement, api: PluginApi) {
         openConn = openConn === c.id ? "" : c.id;
         drawList();
       }));
+    }
+    // a sign-in: the person goes to the service and comes back (the server keeps the tokens)
+    if (c.oauth && (!c.connected || c.reconnect)) {
+      const b = button(c.reconnect ? "Sign in again" : "Sign in with " + c.title, "cw-plg__btn--main", async () => {
+        b.disabled = true;
+        const r = await api.conn({ op: "oauth_start", id: c.id });
+        b.disabled = false;
+        if (!r.ok) return say(errorText(r), true);
+        window.location.href = String(r.data.url);
+      });
+      b.dataset.signin = c.id;
+      actions.append(b);
     }
     head.appendChild(actions);
     box.appendChild(head);

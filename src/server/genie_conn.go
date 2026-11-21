@@ -64,12 +64,15 @@ type connectionDef struct {
 	// Levels overrides what the tool says about itself: "read", "write" or "irreversible"
 	Levels map[string]string `json:"-"`
 	Custom bool              `json:"custom,omitempty"`
+	// OAuth: how a person signs in to the service instead of pasting a token (genie_conn_oauth.go); nil: a token only
+	OAuth *oauthDef `json:"-"`
 }
 
 // the connections the site ships. Official: they need no approval, and no host list applies to them.
 var connectionCatalogue = []connectionDef{
 	{ID: "github", Title: "GitHub", URL: "https://api.githubcopilot.com/mcp/",
-		Help:   "A personal access token from github.com/settings/tokens. Give it only what you want Genie to do: read access to repositories to look, and write access to open issues and pull requests.",
+		Help:   "Sign in with GitHub (when the admin set up the GitHub App), or paste a personal access token from github.com/settings/tokens. Give it only what you want Genie to do: read access to repositories to look, and write access to open issues and pull requests.",
+		OAuth:  &oauthDef{AuthURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token", ClientIDEnv: "OPENREPL_GITHUB_APP_CLIENT_ID", ClientSecretEnv: "OPENREPL_GITHUB_APP_CLIENT_SECRET", ScopesEnv: "OPENREPL_GITHUB_APP_SCOPES"},
 		Levels: map[string]string{"merge_pull_request": "irreversible", "delete_file": "irreversible", "delete_repository": "irreversible", "delete_workflow_run_logs": "irreversible"}},
 }
 
@@ -88,6 +91,7 @@ type connTool struct {
 	Description string   `json:"description"`
 	Level       string   `json:"level"`
 	Args        []string `json:"args,omitempty"` // the names of its arguments, a required one ends with *
+	Digest      string   `json:"digest,omitempty"`
 }
 
 // toolLevel says how much a tool can do. The catalogue's word first, then what the tool says about itself; a tool that says nothing is a write,
@@ -96,7 +100,9 @@ func toolLevel(def connectionDef, t mcpTool) string {
 	if l, ok := def.Levels[t.Name]; ok && (l == "read" || l == "write" || l == "irreversible") {
 		return l
 	}
-	if t.Annotations.ReadOnlyHint != nil && *t.Annotations.ReadOnlyHint {
+	// what a tool says about itself is the service's claim: for a service the site ships it can say "read"; for one from a link (a plugin's) it can
+	// only make a tool more careful, never less
+	if t.Annotations.ReadOnlyHint != nil && *t.Annotations.ReadOnlyHint && !def.Custom {
 		return "read"
 	}
 	if t.Annotations.DestructiveHint != nil && *t.Annotations.DestructiveHint {
@@ -111,7 +117,7 @@ func toConnTools(def connectionDef, tools []mcpTool) []connTool {
 		if !connToolPattern.MatchString(t.Name) {
 			continue
 		}
-		ct := connTool{Name: t.Name, Description: clipRunes(strings.Join(strings.Fields(t.Description), " "), 160), Level: toolLevel(def, t)}
+		ct := connTool{Name: t.Name, Description: clipRunes(strings.Join(strings.Fields(t.Description), " "), 160), Level: toolLevel(def, t), Digest: toolDigest(t)}
 		var schema struct {
 			Properties map[string]json.RawMessage `json:"properties"`
 			Required   []string                   `json:"required"`
@@ -149,6 +155,11 @@ type connRecord struct {
 	Title  string `json:"title"`
 	Sealed string `json:"sealed"`
 	At     string `json:"at"`
+	// Kind is "" for a pasted token (Sealed is the token) and "oauth" for a sign-in (Sealed is the sealed JSON of the access and refresh tokens);
+	// Expires is when the access token ends; Reconnect is set when the refresh was refused and the person has to sign in again
+	Kind      string `json:"kind,omitempty"`
+	Expires   string `json:"expires,omitempty"`
+	Reconnect bool   `json:"reconnect,omitempty"`
 }
 
 var connMu sync.Mutex
@@ -182,20 +193,33 @@ func writeConnRecords(uid string, recs []connRecord) error {
 
 func connAAD(uid, id string) string { return "genie-conn:" + uid + ":" + id }
 
-// connToken opens the token of a person for a connection. It is only ever used to make a call, and never leaves this file's callers.
-func connToken(uid, id string) (connRecord, string, bool) {
+// readConnRecord is the saved record of one connection of a person.
+func readConnRecord(uid, id string) (connRecord, bool) {
 	connMu.Lock()
 	defer connMu.Unlock()
 	for _, r := range readConnRecords(uid) {
 		if r.ID == id {
-			tok, err := openKey(utils.Secret(), connAAD(uid, id), r.Sealed)
-			if err != nil {
-				return r, "", false
-			}
-			return r, tok, true
+			return r, true
 		}
 	}
-	return connRecord{}, "", false
+	return connRecord{}, false
+}
+
+// connToken opens the token of a person for a connection (a sign-in's is renewed first when it is about to end). It is only ever used to make a call,
+// and never leaves this file's callers. false: no such connection, a credential that cannot be read, or one the person has to renew (rec.Reconnect).
+func connToken(uid, id string) (connRecord, string, bool) {
+	r, ok := readConnRecord(uid, id)
+	if !ok || r.Reconnect {
+		return r, "", false
+	}
+	if r.Kind == "oauth" {
+		return oauthAccessToken(uid, r)
+	}
+	tok, err := openKey(utils.Secret(), connAAD(uid, id), r.Sealed)
+	if err != nil {
+		return r, "", false
+	}
+	return r, tok, true
 }
 
 func saveConnToken(uid string, def connectionDef, token string) error {
@@ -203,13 +227,17 @@ func saveConnToken(uid string, def connectionDef, token string) error {
 	if err != nil {
 		return err
 	}
+	return storeConnRecord(uid, connRecord{User: uid, ID: def.ID, URL: def.URL, Title: def.Title, Sealed: sealed, At: time.Now().UTC().Format(time.RFC3339)})
+}
+
+// storeConnRecord adds a record or replaces the one of the same connection.
+func storeConnRecord(uid string, rec connRecord) error {
 	connMu.Lock()
 	defer connMu.Unlock()
 	recs := readConnRecords(uid)
-	rec := connRecord{User: uid, ID: def.ID, URL: def.URL, Title: def.Title, Sealed: sealed, At: time.Now().UTC().Format(time.RFC3339)}
 	replaced := false
 	for i := range recs {
-		if recs[i].ID == def.ID {
+		if recs[i].ID == rec.ID {
 			recs[i], replaced = rec, true
 		}
 	}
@@ -246,6 +274,7 @@ func deleteConnToken(uid, id string) bool {
 
 type toolsEntry struct {
 	tools []connTool
+	raw   map[string]mcpTool
 	at    time.Time
 }
 
@@ -254,10 +283,22 @@ var toolsCache = struct {
 	m map[string]toolsEntry
 }{m: map[string]toolsEntry{}}
 
-func cacheTools(uid, id string, tools []connTool) {
+func cacheTools(uid, id string, tools []connTool, raw []mcpTool) {
+	m := map[string]mcpTool{}
+	for _, t := range raw {
+		m[t.Name] = t
+	}
 	toolsCache.Lock()
-	toolsCache.m[uid+"|"+id] = toolsEntry{tools, time.Now()}
+	toolsCache.m[uid+"|"+id] = toolsEntry{tools, m, time.Now()}
 	toolsCache.Unlock()
+}
+
+// cachedRawTool is the tool as the service described it (its schema), for checking arguments.
+func cachedRawTool(uid, id, name string) (mcpTool, bool) {
+	toolsCache.Lock()
+	defer toolsCache.Unlock()
+	t, ok := toolsCache.m[uid+"|"+id].raw[name]
+	return t, ok
 }
 
 func cachedTools(uid, id string) ([]connTool, bool) {
@@ -432,13 +473,15 @@ func logConnCall(e connCallEntry) {
 // ---- the route ---------------------------------------------------------------------------------------------------------------------
 
 type connRequestBody struct {
-	Op        string                 `json:"op"`
-	ID        string                 `json:"id"`
-	Token     string                 `json:"token"`
-	Tool      string                 `json:"tool"`
-	Args      map[string]interface{} `json:"args"`
-	Task      string                 `json:"task"`
-	Confirmed bool                   `json:"confirmed"`
+	Op       string                 `json:"op"`
+	ID       string                 `json:"id"`
+	Token    string                 `json:"token"`
+	Tool     string                 `json:"tool"`
+	Args     map[string]interface{} `json:"args"`
+	Task     string                 `json:"task"`
+	Ticket   string                 `json:"ticket"`   // the approval of a call (op call), or the one an answer is for (op approve)
+	Remember string                 `json:"remember"` // op approve: "session" also allows this connection's writes for a while
+	Tainted  bool                   `json:"tainted"`  // op propose: the task holds text from outside, so a grant does not cover the call
 }
 
 // userConnectionDefs are the connections a person can connect: the site's catalogue, and those a plugin asked for that an admin approved for them or everyone.
@@ -463,6 +506,11 @@ func (server *Server) handleGenieConn(rw http.ResponseWriter, req *http.Request)
 	rw.Header().Set("Cache-Control", "no-store")
 	if req.Method != http.MethodPost {
 		http.Error(rw, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	// the page's own JSON request, from this site: a form or a script of another site cannot make one
+	if !sameOrigin(req) {
+		jsonError(rw, http.StatusForbidden, "cross_site", "Connections answer only to this site's own page.")
 		return
 	}
 	g := GetSiteSettings().Genie
@@ -521,7 +569,7 @@ func (server *Server) handleGenieConn(rw http.ResponseWriter, req *http.Request)
 		}
 		ctx, cancel := context.WithTimeout(req.Context(), mcpCallTimeout)
 		defer cancel()
-		tools, err := newMCPClient(def.URL, tok).connect(ctx)
+		tools, err := listConnTools(ctx, def.URL, tok)
 		if err != nil {
 			logConnCall(connCallEntry{User: uid, Conn: def.ID, Op: "connect"})
 			if err == errMCPAuth {
@@ -536,7 +584,8 @@ func (server *Server) handleGenieConn(rw http.ResponseWriter, req *http.Request)
 			return
 		}
 		ct := toConnTools(def, tools)
-		cacheTools(uid, def.ID, ct)
+		cacheTools(uid, def.ID, ct, tools)
+		revokeGrants(uid, def.ID)
 		logConnCall(connCallEntry{User: uid, Conn: def.ID, Op: "connect", OK: true})
 		reply(map[string]interface{}{"id": def.ID, "connected": true, "tools": ct})
 	case "disconnect":
@@ -545,6 +594,7 @@ func (server *Server) handleGenieConn(rw http.ResponseWriter, req *http.Request)
 			return
 		}
 		dropCachedTools(uid, in.ID)
+		revokeGrants(uid, in.ID)
 		logConnCall(connCallEntry{User: uid, Conn: in.ID, Op: "disconnect", OK: true})
 		reply(map[string]interface{}{"id": in.ID, "connected": false})
 	case "refresh":
@@ -556,14 +606,39 @@ func (server *Server) handleGenieConn(rw http.ResponseWriter, req *http.Request)
 		}
 		ctx, cancel := context.WithTimeout(req.Context(), mcpCallTimeout)
 		defer cancel()
-		tools, err := newMCPClient(rec.URL, tok).connect(ctx)
+		tools, err := listConnTools(ctx, rec.URL, tok)
 		if err != nil {
 			jsonError(rw, http.StatusBadGateway, "unreachable", "Could not reach "+def.Title+": "+err.Error()+".")
 			return
 		}
 		ct := toConnTools(def, tools)
-		cacheTools(uid, def.ID, ct)
+		cacheTools(uid, def.ID, ct, tools)
 		reply(map[string]interface{}{"id": def.ID, "tools": ct})
+	case "oauth_start":
+		def, ok := resolveConnection(uid, in.ID)
+		if !ok || def.OAuth == nil {
+			jsonError(rw, http.StatusNotFound, "no_oauth", "That connection cannot be signed in to: paste a token.")
+			return
+		}
+		if utils.Secret() == "" {
+			jsonError(rw, http.StatusServiceUnavailable, "no_secret", "This server has no secret to keep tokens with: an admin has to set OPENREPL_SECRET.")
+			return
+		}
+		redirect := publicBase(req) + strings.TrimSuffix(req.URL.Path, "genie_conn") + "genie_conn_oauth"
+		u, err := oauthStart(uid, def, redirect, time.Now())
+		if err != nil {
+			jsonError(rw, http.StatusBadRequest, "oauth_off", err.Error()+".")
+			return
+		}
+		reply(map[string]interface{}{"url": u})
+	case "propose":
+		server.connectionPropose(rw, req, uid, in, reply)
+	case "approve":
+		if err := approveTicket(uid, in.Ticket, in.Remember, time.Now()); err != nil {
+			jsonError(rw, http.StatusConflict, "no_ticket", err.Error()+".")
+			return
+		}
+		reply(map[string]interface{}{"approved": true})
 	case "call":
 		server.connectionCall(rw, req, uid, g, in, reply)
 	default:
@@ -584,24 +659,30 @@ func (server *Server) connectionList(uid string, g GenieSettings) map[string]int
 		Connected bool       `json:"connected"`
 		Tools     []connTool `json:"tools"`
 		Error     string     `json:"error,omitempty"`
+		OAuth     bool       `json:"oauth"`               // the person can sign in (the admin set up a client)
+		Reconnect bool       `json:"reconnect,omitempty"` // the sign-in ended: sign in again
 	}
 	rows := []row{}
 	for _, d := range userConnectionDefs(uid) {
-		r := row{connectionDef: d, Tools: []connTool{}}
+		r := row{connectionDef: d, Tools: []connTool{}, OAuth: d.OAuth.configured()}
 		if rec, ok := have[d.ID]; ok {
 			r.Connected = true
 			if t, fresh := cachedTools(uid, d.ID); fresh {
 				r.Tools = t
-			} else if _, tok, okTok := connToken(uid, d.ID); okTok {
+			} else if rec2, tok, okTok := connToken(uid, d.ID); okTok {
 				ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
-				tools, err := newMCPClient(rec.URL, tok).connect(ctx)
+				tools, err := listConnTools(ctx, rec.URL, tok)
 				cancel()
 				if err != nil {
 					r.Error = "Could not list its tools just now: " + err.Error() + "."
 				} else {
 					r.Tools = toConnTools(d, tools)
-					cacheTools(uid, d.ID, r.Tools)
+					cacheTools(uid, d.ID, r.Tools, tools)
 				}
+				_ = rec2
+			} else if rec2.Reconnect {
+				r.Reconnect = true
+				r.Error = "The sign-in ended or was taken back: sign in again."
 			} else {
 				r.Error = "The saved token cannot be read: connect again."
 			}
@@ -612,11 +693,32 @@ func (server *Server) connectionList(uid string, g GenieSettings) map[string]int
 		"limits": map[string]int{"callsPerTask": connCallsPerTask, "resultChars": connResultChars, "seconds": int(mcpCallTimeout / time.Second), "perUser": connPerUser}}
 }
 
-func (server *Server) connectionCall(rw http.ResponseWriter, req *http.Request, uid string, g GenieSettings, in connRequestBody, reply func(interface{})) {
-	def, ok := resolveConnection(uid, in.ID)
+// listConnTools opens a session, lists the tools and closes it.
+func listConnTools(ctx context.Context, url, token string) ([]mcpTool, error) {
+	sess, err := dialMCP(ctx, url, token)
+	if err != nil {
+		return nil, err
+	}
+	defer sess.close()
+	return sess.listTools(ctx)
+}
+
+// connectionTarget finds the connection of a call or a proposal and its tool, from the cache or by asking the service. It answers the request itself
+// when something is wrong, and says so with ok false.
+func connectionTarget(rw http.ResponseWriter, req *http.Request, uid string, in connRequestBody) (def connectionDef, rec connRecord, tok string, tool *connTool, ok bool) {
+	def, found := resolveConnection(uid, in.ID)
 	rec, tok, have := connToken(uid, in.ID)
-	if !ok || !have {
+	if !found || !have {
+		if found && rec.Reconnect {
+			jsonError(rw, http.StatusConflict, "reconnect", def.Title+" ended the sign-in. Sign in again in /add-plugin, under Connections.")
+			return
+		}
 		jsonError(rw, http.StatusNotFound, "not_connected", "That connection is not connected. Connect it in /add-plugin, under Connections.")
+		return
+	}
+	if rec.URL != def.URL {
+		// the address of the connection changed since the token was given: the token is not sent anywhere new
+		jsonError(rw, http.StatusConflict, "changed", "The address of this connection changed. Connect it again.")
 		return
 	}
 	if !connToolPattern.MatchString(in.Tool) {
@@ -626,16 +728,15 @@ func (server *Server) connectionCall(rw http.ResponseWriter, req *http.Request, 
 	tools, fresh := cachedTools(uid, def.ID)
 	if !fresh {
 		ctx, cancel := context.WithTimeout(req.Context(), mcpCallTimeout)
-		list, err := newMCPClient(rec.URL, tok).connect(ctx)
+		list, err := listConnTools(ctx, rec.URL, tok)
 		cancel()
 		if err != nil {
 			jsonError(rw, http.StatusBadGateway, "unreachable", "Could not reach "+def.Title+": "+err.Error()+".")
 			return
 		}
 		tools = toConnTools(def, list)
-		cacheTools(uid, def.ID, tools)
+		cacheTools(uid, def.ID, tools, list)
 	}
-	var tool *connTool
 	for i := range tools {
 		if tools[i].Name == in.Tool {
 			tool = &tools[i]
@@ -645,14 +746,55 @@ func (server *Server) connectionCall(rw http.ResponseWriter, req *http.Request, 
 		jsonError(rw, http.StatusNotFound, "no_tool", def.Title+" has no tool "+in.Tool+".")
 		return
 	}
-	// a write or a thing that cannot be undone goes only after the person answered a card for it
-	if tool.Level != "read" && !in.Confirmed {
-		jsonError(rw, http.StatusConflict, "needs_card", "This tool changes things at "+def.Title+": it runs only after the person allowed it.")
-		return
-	}
 	if b, _ := json.Marshal(in.Args); len(b) > maxConnArgsBytes {
 		jsonError(rw, http.StatusBadRequest, "bad_args", "The arguments are longer than 16 KB.")
 		return
+	}
+	if raw, have := cachedRawTool(uid, def.ID, in.Tool); have {
+		if err := validateArgs(raw.InputSchema, in.Args); err != nil {
+			jsonError(rw, http.StatusBadRequest, "bad_args", "The arguments do not fit the tool ("+err.Error()+").")
+			return
+		}
+	}
+	ok = true
+	return
+}
+
+// connectionPropose is the first step of a write or of a call that cannot be undone: the page says exactly what it wants to call, the server checks
+// it and makes the ticket the person's answer is for. A read needs none. A grant ("allow for this session") approves a write at once, unless the
+// task holds text from outside.
+func (server *Server) connectionPropose(rw http.ResponseWriter, req *http.Request, uid string, in connRequestBody, reply func(interface{})) {
+	def, _, _, tool, ok := connectionTarget(rw, req, uid, in)
+	if !ok {
+		return
+	}
+	if tool.Level == "read" {
+		reply(map[string]interface{}{"level": "read", "approved": true, "ticket": ""})
+		return
+	}
+	if in.Task == "" || len(in.Task) > 80 {
+		jsonError(rw, http.StatusBadRequest, "bad_task", "A call belongs to a task.")
+		return
+	}
+	id, approved, err := openTicket(connTicket{uid: uid, task: in.Task, conn: def.ID, tool: in.Tool, argsHash: argsHash(in.Args), digest: tool.Digest, level: tool.Level}, in.Tainted, time.Now())
+	if err != nil {
+		jsonError(rw, http.StatusTooManyRequests, "busy", err.Error()+".")
+		return
+	}
+	reply(map[string]interface{}{"ticket": id, "approved": approved, "level": tool.Level, "seconds": int(connTicketTTL / time.Second)})
+}
+
+func (server *Server) connectionCall(rw http.ResponseWriter, req *http.Request, uid string, g GenieSettings, in connRequestBody, reply func(interface{})) {
+	def, rec, tok, tool, ok := connectionTarget(rw, req, uid, in)
+	if !ok {
+		return
+	}
+	// a write or a thing that cannot be undone goes only with the ticket of this very call, allowed by the person and not used before
+	if tool.Level != "read" {
+		if err := useTicket(uid, in.Ticket, in.Task, def.ID, in.Tool, argsHash(in.Args), tool.Digest, time.Now()); err != nil {
+			jsonError(rw, http.StatusConflict, "needs_card", err.Error()+".")
+			return
+		}
 	}
 	if !takeTaskCall(uid, in.Task, time.Now()) {
 		jsonError(rw, http.StatusTooManyRequests, "task_limit", fmt.Sprintf("A task may make %d calls to connections. Say what is done and what is left.", connCallsPerTask))
@@ -661,8 +803,8 @@ func (server *Server) connectionCall(rw http.ResponseWriter, req *http.Request, 
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(req.Context(), mcpCallTimeout)
 	defer cancel()
-	c := newMCPClient(rec.URL, tok)
-	if err := c.initialize(ctx); err != nil {
+	sess, err := dialMCP(ctx, rec.URL, tok)
+	if err != nil {
 		logConnCall(connCallEntry{User: uid, Conn: def.ID, Tool: in.Tool, Level: tool.Level, Op: "call", Ms: time.Since(start).Milliseconds()})
 		if err == errMCPAuth {
 			jsonError(rw, http.StatusBadGateway, "token_refused", def.Title+" no longer accepts the token. Connect it again.")
@@ -671,7 +813,8 @@ func (server *Server) connectionCall(rw http.ResponseWriter, req *http.Request, 
 		}
 		return
 	}
-	res, err := c.callTool(ctx, in.Tool, in.Args)
+	defer sess.close()
+	res, err := sess.callTool(ctx, in.Tool, in.Args)
 	ms := time.Since(start).Milliseconds()
 	if err != nil {
 		logConnCall(connCallEntry{User: uid, Conn: def.ID, Tool: in.Tool, Level: tool.Level, Op: "call", Ms: ms})
