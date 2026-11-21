@@ -778,3 +778,42 @@ func editIntegration(t *testing.T, id string, fn func(i *Integration)) {
 		t.Fatal(err)
 	}
 }
+
+func TestAPersonSeesOnlyTheirOwnRecentCalls(t *testing.T) {
+	e := connSetup(t, GenieSettings{})
+	e.ok(t, `{"op":"connect","id":"github","token":"`+testToken+`"}`)
+	e.ok(t, `{"op":"call","id":"github","tool":"get_issue","args":{"number":7},"task":"c1"}`)
+	other := sessionCookie(t, "uid-bob", "bob@example.com")
+	if code, _ := e.call(t, `{"op":"connect","id":"github","token":"`+testToken+`"}`, other); code != 200 {
+		t.Fatal(code)
+	}
+	for i := 0; i < 2; i++ {
+		if code, _ := e.call(t, `{"op":"call","id":"github","tool":"get_issue","args":{"number":9},"task":"b1"}`, other); code != 200 {
+			t.Fatalf("bob's call: %d", code)
+		}
+	}
+	calls := func(c *http.Cookie) []interface{} {
+		code, out := e.call(t, `{"op":"calls"}`, c)
+		if code != 200 {
+			t.Fatalf("calls: %d %v", code, out)
+		}
+		return out["calls"].([]interface{})
+	}
+	mine := calls(e.c)
+	if len(mine) != 1 {
+		t.Fatalf("ann's calls: %v", mine)
+	}
+	c0 := mine[0].(map[string]interface{})
+	if c0["tool"] != "get_issue" || c0["level"] != "read" || c0["ok"] != true || c0["conn"] != "github" {
+		t.Errorf("the call: %v", c0)
+	}
+	if _, has := c0["user"]; has && c0["user"] != "" {
+		t.Errorf("the call names a person: %v", c0)
+	}
+	if b := calls(other); len(b) != 2 {
+		t.Errorf("bob's calls: %v", b)
+	}
+	if raw, _ := json.Marshal(mine); strings.Contains(string(raw), "7") && strings.Contains(string(raw), "number") {
+		t.Error("the arguments are in the list")
+	}
+}

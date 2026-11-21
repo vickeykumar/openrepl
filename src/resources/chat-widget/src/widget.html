@@ -7,17 +7,16 @@
   </div>
   <span id="chat-widget__context"></span>
   <span id="chat-widget__auto"></span>
-  <button type="button" id="chat-widget__ctx-btn" class="cw-ctx-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="chat-widget__ctx" data-tip-name="What Genie sees" data-tip-desc="The editor, terminal, Preview and notes that go with your next message, with their sizes.">Context</button>
-  <label class="chat-widget__peer" data-tip-name="Peer chat" data-tip-desc="Talk to the people in your shared session instead of Genie." title="Peer chat: talk to the people in your shared session instead of Genie">
-    <input type="checkbox" id="peerchat-switch">
-    <span class="chat-widget__peer-label">Peer chat</span>
-    <span class="chat-widget__peer-track" aria-hidden="true"></span>
-  </label>
+  <span id="chat-widget__peerchip" class="cw-chip cw-chip--peer" role="status" hidden>Peer chat on</span>
   <a id="chat-widget__help" href="/genie" target="_blank" rel="noopener" data-tip-name="How to use Genie" data-tip-desc="Open the guide in a new tab." aria-label="How to use Genie (opens in a new tab)" title="How to use Genie">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"></path><path d="M12 17h.01"></path></svg>
   </a>
   <button type="button" id="chat-widget__pin" aria-pressed="false" aria-label="Pin Genie beside the IDE" title="Pin Genie beside the IDE" hidden>
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"></path><path d="M9 15l-4.5 4.5"></path><path d="M14.5 4l5.5 5.5"></path></svg>
+  </button>
+  <button type="button" id="chat-widget__act-btn" class="cw-act-btn" aria-haspopup="true" aria-expanded="false" aria-controls="chat-widget__act" aria-label="Activity panel" title="Activity panel" data-tip-name="Activity panel" data-tip-desc="Peer chat, what Genie sees, your connected services and your recent calls.">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" stroke-width="3"></path></svg>
+    <span class="cw-act-btn__dot" id="chat-widget__act-dot" hidden></span>
   </button>
   <button type="button" id="chat-widget__close" data-tip-name="Close" data-tip-keys="Esc" data-tip-desc="Hide Genie. A task or an answer carries on." aria-label="Close Genie" title="Close (Esc)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18"></path></svg>
@@ -28,7 +27,36 @@
   <div id="chat-widget__tabs" class="cw-tabs"></div>
   <div id="chat-widget__toast" class="cw-toast" role="status" hidden></div>
 </div>
-<div id="chat-widget__ctx" class="cw-ctx" role="dialog" aria-modal="false" aria-labelledby="chat-widget__ctx-title" hidden></div>
+<!-- The Activity panel (canvas "Genie header and Activity panel"): a small card under its button, anchored to the right edge, over the top of the chat.
+     Session (Peer chat, Context), Connections, Recent calls. The Context row opens "What Genie sees now" inside the card (#chat-widget__ctx). index.ts: wireActivityCard. -->
+<div id="chat-widget__act" class="cw-act" role="dialog" aria-modal="false" aria-label="Activity panel" hidden>
+  <div class="cw-act__main" id="chat-widget__act-main">
+    <div class="cw-act__sec">Session</div>
+    <label class="cw-act__row cw-act__row--switch" data-tip-name="Peer chat" data-tip-desc="Talk to the people in your shared session instead of Genie.">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"></path><path d="M16 5.5a3 3 0 0 1 0 5.6M18 14c2 .7 3 2.4 3 5"></path></svg>
+      <span class="cw-act__lbl">Peer chat</span>
+      <small id="chat-widget__act-peer" class="cw-act__val">Off</small>
+      <input type="checkbox" id="peerchat-switch" class="cw-act__sw">
+      <span class="cw-act__track" aria-hidden="true"></span>
+    </label>
+    <div id="chat-widget__act-peerhint" class="cw-act__hint" hidden></div>
+    <div id="chat-widget__act-people" class="cw-act__people"></div>
+    <button type="button" id="chat-widget__ctx-btn" class="cw-act__row cw-act__row--btn" aria-expanded="false" aria-controls="chat-widget__ctx" data-tip-name="What Genie sees" data-tip-desc="The editor, terminal, Preview and notes that go with your next message, with their sizes.">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h14v16H5z"></path><path d="M8 9h8M8 13h8M8 17h5"></path></svg>
+      <span class="cw-act__lbl">Context</span>
+      <small id="chat-widget__act-ctx" class="cw-act__val"></small>
+      <span class="cw-act__bar" aria-hidden="true"><i id="chat-widget__act-bar"></i></span>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+    </button>
+    <div class="cw-act__hr"></div>
+    <div class="cw-act__sec">Connections</div>
+    <div id="chat-widget__act-conns"></div>
+    <div class="cw-act__hr"></div>
+    <div class="cw-act__sec">Recent calls</div>
+    <div id="chat-widget__act-calls"></div>
+  </div>
+  <div id="chat-widget__ctx" class="cw-act__detail" role="region" aria-labelledby="chat-widget__ctx-title" hidden></div>
+</div>
 <div id="chat-widget__plugins" class="cw-ctx cw-plg" role="dialog" aria-modal="false" aria-labelledby="chat-widget__plg-title" hidden></div>
 <div id="chat-widget__body">
   <!-- The arrow to the last message, while the user has scrolled up (index.ts: updateJump). -->

@@ -1232,6 +1232,7 @@ type View struct {
 	RAMMB    int      `json:"ramMB,omitempty"`
 	InstMB   int      `json:"instMB,omitempty"`
 	Licence  string   `json:"licence,omitempty"`
+	Logo     string   `json:"logo,omitempty"` // a link to the logo of the app, drawn before its name; empty: the first letter
 	Manager  string   `json:"manager,omitempty"`
 	Place    string   `json:"place,omitempty"`
 	Source   string   `json:"source,omitempty"` // the package at its manager: a module path, group:artifact, a crate
@@ -1246,6 +1247,7 @@ type View struct {
 func (v *View) fromEntry(e Entry) {
 	v.Entry, v.Docs, v.Repls, v.Category, v.Level, v.Labels = e.ID, e.Docs, e.Repls, e.Category, e.Level, e.Labels
 	v.RAMMB, v.InstMB, v.Licence, v.Manager, v.Place = e.RAMMB, e.InstMB, e.Licence, e.Manager, e.Place
+	v.Logo = e.Logo
 	v.Source, v.Use, v.Mod = e.Source(), e.UseLine(), e.Module()
 	if e.Minimal != nil {
 		v.Smallest, v.Estimate = e.Minimal.Manager, e.Minimal.Estimate

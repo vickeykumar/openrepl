@@ -18,6 +18,7 @@
    "instMB": 228,
    "docs": "https://numpy.org/doc/stable/",
    "licence": "BSD-3-Clause",
+   "logo": "https://cdn.simpleicons.org/numpy",
    "check": "python-import",
    "checkArg": "numpy",
    "options": [
@@ -61,6 +62,7 @@
    "instMB": 287,
    "docs": "https://pandas.pydata.org/docs/",
    "licence": "BSD-3-Clause",
+   "logo": "https://cdn.simpleicons.org/pandas",
    "check": "python-import",
    "checkArg": "pandas",
    "options": [
@@ -104,6 +106,7 @@
    "instMB": 298,
    "docs": "https://docs.scipy.org/doc/scipy/",
    "licence": "BSD-3-Clause",
+   "logo": "https://cdn.simpleicons.org/scipy",
    "check": "python-import",
    "checkArg": "scipy",
    "options": [
@@ -279,6 +282,7 @@
    "instMB": 124,
    "docs": "https://flask.palletsprojects.com/",
    "licence": "BSD-3-Clause",
+   "logo": "https://cdn.simpleicons.org/flask",
    "check": "python-import",
    "checkArg": "flask",
    "options": [
@@ -322,6 +326,7 @@
    "instMB": 159,
    "docs": "https://docs.sqlalchemy.org/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/sqlalchemy",
    "check": "python-import",
    "checkArg": "sqlalchemy",
    "options": [
@@ -365,6 +370,7 @@
    "instMB": 128,
    "docs": "https://docs.pytest.org/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/pytest",
    "check": "python-import",
    "checkArg": "pytest",
    "labels": [
@@ -540,6 +546,7 @@
    "instMB": 121,
    "docs": "https://jinja.palletsprojects.com/",
    "licence": "BSD-3-Clause",
+   "logo": "https://cdn.simpleicons.org/jinja",
    "check": "python-import",
    "checkArg": "jinja2",
    "options": [
@@ -625,6 +632,7 @@
    "ramMB": 8,
    "instMB": 126,
    "docs": "https://rich.readthedocs.io/",
+   "logo": "https://cdn.simpleicons.org/rich",
    "licence": "MIT",
    "check": "python-import",
    "checkArg": "rich",
@@ -712,6 +720,7 @@
    "instMB": 340,
    "docs": "https://scikit-learn.org/stable/",
    "licence": "BSD-3-Clause",
+   "logo": "https://cdn.simpleicons.org/scikitlearn",
    "check": "python-import",
    "checkArg": "sklearn",
    "options": [
@@ -755,6 +764,7 @@
    "instMB": 185,
    "docs": "https://docs.sympy.org/",
    "licence": "BSD-3-Clause",
+   "logo": "https://cdn.simpleicons.org/sympy",
    "check": "python-import",
    "checkArg": "sympy",
    "options": [
@@ -841,6 +851,7 @@
    "instMB": 128,
    "docs": "https://docs.pydantic.dev/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/pydantic",
    "check": "python-import",
    "checkArg": "pydantic",
    "options": [
@@ -883,6 +894,7 @@
    "ramMB": 16,
    "instMB": 120,
    "docs": "https://tqdm.github.io/",
+   "logo": "https://cdn.simpleicons.org/tqdm",
    "licence": "MPL-2.0 AND MIT",
    "check": "python-import",
    "checkArg": "tqdm",
@@ -926,6 +938,7 @@
    "ramMB": 28,
    "instMB": 124,
    "docs": "https://black.readthedocs.io/",
+   "logo": "https://cdn.simpleicons.org/black",
    "licence": "MIT",
    "check": "python-import",
    "checkArg": "black",
@@ -972,6 +985,7 @@
    "instMB": 31,
    "docs": "https://docs.astral.sh/ruff/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/ruff",
    "check": "version-flag",
    "checkArg": "ruff",
    "labels": [
@@ -1063,6 +1077,7 @@
    "instMB": 153,
    "docs": "https://fastapi.tiangolo.com/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/fastapi",
    "check": "python-import",
    "checkArg": "fastapi",
    "options": [
@@ -1274,6 +1289,7 @@
    "instMB": 31,
    "docs": "https://cmake.org/cmake/help/latest/",
    "licence": "BSD-3-Clause",
+   "logo": "https://cdn.simpleicons.org/cmake",
    "check": "version-flag",
    "checkArg": "cmake",
    "labels": [
@@ -2044,6 +2060,7 @@
    "instMB": 262,
    "docs": "https://www.boost.org/doc/libs/",
    "licence": "BSL-1.0",
+   "logo": "https://cdn.simpleicons.org/boost",
    "check": "file-exists",
    "checkArg": "include/boost",
    "labels": [
@@ -2088,6 +2105,7 @@
    "instMB": 17,
    "docs": "https://www.openssl.org/docs/",
    "licence": "Apache-2.0",
+   "logo": "https://cdn.simpleicons.org/openssl",
    "check": "file-exists",
    "checkArg": "include/openssl",
    "options": [
@@ -2210,6 +2228,7 @@
    "instMB": 14,
    "docs": "https://git-scm.com/doc",
    "licence": "GPL-2.0",
+   "logo": "https://cdn.simpleicons.org/git",
    "check": "version-flag",
    "checkArg": "git",
    "labels": [
@@ -2456,6 +2475,7 @@
    "category": "Terminal tools",
    "instMB": 7,
    "docs": "https://github.com/sharkdp/bat#readme",
+   "logo": "https://cdn.simpleicons.org/bat",
    "licence": "MIT OR Apache-2.0",
    "check": "version-flag",
    "checkArg": "bat",
@@ -2953,6 +2973,7 @@
    "category": "Terminal tools",
    "instMB": 1,
    "docs": "https://htop.dev/",
+   "logo": "https://cdn.simpleicons.org/htop",
    "licence": "GPL-2.0",
    "check": "version-flag",
    "checkArg": "htop",
@@ -3012,6 +3033,7 @@
    "category": "Terminal tools",
    "instMB": 1,
    "docs": "https://www.nano-editor.org/",
+   "logo": "https://cdn.simpleicons.org/nano",
    "licence": "GPL-3.0-or-later",
    "check": "version-flag",
    "checkArg": "nano",
@@ -3037,6 +3059,7 @@
    "instMB": 2,
    "docs": "https://github.com/tmux/tmux/wiki",
    "licence": "ISC",
+   "logo": "https://cdn.simpleicons.org/tmux",
    "check": "version-flag",
    "checkArg": "tmux",
    "labels": [
@@ -3099,6 +3122,7 @@
    "instMB": 21,
    "docs": "https://neovim.io/doc/",
    "licence": "Apache-2.0",
+   "logo": "https://cdn.simpleicons.org/neovim",
    "check": "version-flag",
    "checkArg": "nvim",
    "labels": [
@@ -3162,6 +3186,7 @@
    "instMB": 289,
    "docs": "https://duckdb.org/docs/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/duckdb",
    "check": "version-flag",
    "checkArg": "duckdb",
    "options": [
@@ -3400,6 +3425,7 @@
    "instMB": 2,
    "docs": "https://axios-http.com/docs/intro",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/axios",
    "check": "node-require",
    "checkArg": "axios",
    "options": [
@@ -3505,6 +3531,7 @@
    "instMB": 4,
    "docs": "https://socket.io/docs/v4/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/socketdotio",
    "check": "node-require",
    "checkArg": "socket.io",
    "options": [
@@ -3547,6 +3574,7 @@
    "instMB": 2,
    "docs": "https://lodash.com/docs/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/lodash",
    "check": "node-require",
    "checkArg": "lodash",
    "options": [
@@ -3589,6 +3617,7 @@
    "instMB": 3,
    "docs": "https://rxjs.dev/guide/overview",
    "licence": "Apache-2.0",
+   "logo": "https://cdn.simpleicons.org/reactivex",
    "check": "node-require",
    "checkArg": "rxjs",
    "options": [
@@ -3674,6 +3703,7 @@
    "instMB": 2,
    "docs": "https://expressjs.com/en/4x/api.html",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/express",
    "check": "node-require",
    "checkArg": "express",
    "options": [
@@ -3801,6 +3831,7 @@
    "instMB": 1,
    "docs": "https://github.com/motdotla/dotenv#readme",
    "licence": "BSD-2-Clause",
+   "logo": "https://cdn.simpleicons.org/dotenv",
    "check": "node-require",
    "checkArg": "dotenv",
    "options": [
@@ -3907,6 +3938,7 @@
    "category": "JavaScript libraries",
    "instMB": 1,
    "docs": "https://cheerio.js.org/",
+   "logo": "https://cdn.simpleicons.org/cheerio",
    "licence": "MIT",
    "check": "node-require",
    "checkArg": "cheerio",
@@ -3972,6 +4004,7 @@
    "instMB": 5,
    "docs": "https://mochajs.org/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/mocha",
    "check": "node-require",
    "checkArg": "mocha",
    "options": [
@@ -4015,6 +4048,7 @@
    "instMB": 55,
    "docs": "https://jestjs.io/docs/27.x/getting-started",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/jest",
    "check": "node-require",
    "checkArg": "jest",
    "labels": [
@@ -4039,6 +4073,7 @@
    "instMB": 2,
    "docs": "https://www.chaijs.com/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/chai",
    "check": "node-require",
    "checkArg": "chai"
   },
@@ -4060,6 +4095,7 @@
    "instMB": 16,
    "docs": "https://eslint.org/docs/v8.x/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/eslint",
    "check": "node-require",
    "checkArg": "eslint"
   },
@@ -4081,6 +4117,7 @@
    "instMB": 11,
    "docs": "https://prettier.io/docs/en/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/prettier",
    "check": "node-require",
    "checkArg": "prettier"
   },
@@ -4102,6 +4139,7 @@
    "instMB": 2,
    "docs": "https://github.com/remy/nodemon#readme",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/nodemon",
    "check": "node-require",
    "checkArg": "nodemon"
   },
@@ -4123,6 +4161,7 @@
    "instMB": 1,
    "docs": "https://esbuild.github.io/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/esbuild",
    "check": "node-require",
    "checkArg": "esbuild",
    "options": [
@@ -4166,6 +4205,7 @@
    "instMB": 4,
    "docs": "https://getbootstrap.com/docs/5.3/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/bootstrap",
    "check": "file-exists",
    "checkArg": "dist/css/bootstrap.min.css",
    "files": [
@@ -4237,6 +4277,7 @@
    "instMB": 1,
    "docs": "https://tailwindcss.com/docs",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/tailwindcss",
    "check": "file-exists",
    "checkArg": "dist/index.global.js",
    "files": [
@@ -4261,6 +4302,7 @@
    "instMB": 2,
    "docs": "https://alpinejs.dev/start-here",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/alpinedotjs",
    "check": "file-exists",
    "checkArg": "dist/cdn.min.js",
    "files": [
@@ -4307,6 +4349,7 @@
    "instMB": 1,
    "docs": "https://htmx.org/docs/",
    "licence": "0BSD",
+   "logo": "https://cdn.simpleicons.org/htmx",
    "check": "file-exists",
    "checkArg": "dist/htmx.min.js",
    "files": [
@@ -4353,6 +4396,7 @@
    "instMB": 3,
    "docs": "https://api.jquery.com/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/jquery",
    "check": "file-exists",
    "checkArg": "dist/jquery.min.js",
    "files": [
@@ -4400,6 +4444,7 @@
    "instMB": 1,
    "docs": "https://react.dev/reference/react",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/react",
    "check": "file-exists",
    "checkArg": "umd/react.production.min.js",
    "labels": [
@@ -4428,6 +4473,7 @@
    "instMB": 5,
    "docs": "https://react.dev/reference/react-dom",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/react",
    "check": "file-exists",
    "checkArg": "umd/react-dom.production.min.js",
    "files": [
@@ -4453,6 +4499,7 @@
    "instMB": 2,
    "docs": "https://preactjs.com/guide/v10/getting-started",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/preact",
    "check": "file-exists",
    "checkArg": "dist/preact.min.js",
    "files": [
@@ -4477,6 +4524,7 @@
    "instMB": 14,
    "docs": "https://vuejs.org/guide/introduction.html",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/vuedotjs",
    "check": "file-exists",
    "checkArg": "dist/vue.global.prod.js",
    "files": [
@@ -4569,6 +4617,7 @@
    "instMB": 2,
    "docs": "https://axios-http.com/docs/intro",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/axios",
    "check": "file-exists",
    "checkArg": "dist/axios.min.js",
    "files": [
@@ -4615,6 +4664,7 @@
    "instMB": 4,
    "docs": "https://d3js.org/",
    "licence": "ISC",
+   "logo": "https://cdn.simpleicons.org/d3dotjs",
    "check": "file-exists",
    "checkArg": "dist/d3.min.js",
    "files": [
@@ -4661,6 +4711,7 @@
    "instMB": 2,
    "docs": "https://www.chartjs.org/docs/latest/",
    "licence": "MIT",
+   "logo": "https://cdn.simpleicons.org/chartdotjs",
    "check": "file-exists",
    "checkArg": "dist/chart.umd.js",
    "files": [
@@ -5325,6 +5376,7 @@
    "instMB": 2,
    "docs": "https://junit.org/junit5/docs/current/user-guide/",
    "licence": "EPL-2.0",
+   "logo": "https://cdn.simpleicons.org/junit5",
    "check": "file-exists",
    "checkArg": "org.junit.jupiter.api.Test",
    "labels": [
@@ -5721,6 +5773,7 @@
    "instMB": 152,
    "docs": "https://numpy.org/doc/1.16/",
    "licence": "BSD-3-Clause",
+   "logo": "https://cdn.simpleicons.org/numpy",
    "check": "python-import",
    "checkArg": "numpy",
    "labels": [

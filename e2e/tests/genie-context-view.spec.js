@@ -107,6 +107,8 @@ const open = async (page) => {
 test("the Context button opens a list of what goes with the next message, with sizes and why a line is not sent; Escape closes the list and not the panel", async ({ page }) => {
   const seen = await openPanel(page, chatServer(), ["x"]);
   await open(page);
+  // the Context row is in the Activity panel (the list icon before Close)
+  await page.locator("#chat-widget__act-btn").click();
   const btn = page.locator("#chat-widget__ctx-btn");
   await expect(btn).toBeVisible();
   await expect(btn).toHaveAttribute("aria-expanded", "false");
@@ -130,12 +132,15 @@ test("the Context button opens a list of what goes with the next message, with s
   const text = await box.innerText();
   expect(text).not.toContain("#include <stdio.h>");
   expect(seen.requests.length).toBe(0);
-  // the focus is in the list, and Escape closes the list only
+  // the focus is in the list: the first Escape closes the list (the card stays), the next one the card, never the panel
   await page.keyboard.press("Escape");
   await expect(box).toBeHidden();
   await expect(btn).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator("#chat-widget__input")).toBeVisible();
+  await expect(page.locator("#chat-widget__act")).toBeVisible();
   expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("chat-widget__ctx-btn");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#chat-widget__act")).toBeHidden();
+  await expect(page.locator("#chat-widget__input")).toBeVisible();
 });
 
 test("a file attached to the next message shows as yours, with its name, and /context opens the list without asking a model", async ({ page }) => {
@@ -149,6 +154,6 @@ test("a file attached to the next message shows as yours, with its name, and /co
   await expect(page.locator("#chat-widget__input")).toHaveValue("");
   expect(seen.requests.length).toBe(0);
   // the Close button closes it
-  await box.getByRole("button", { name: "Close the list" }).click();
+  await box.getByRole("button", { name: "Back to the Activity panel" }).click();
   await expect(box).toBeHidden();
 });

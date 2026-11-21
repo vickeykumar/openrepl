@@ -87,7 +87,7 @@ function button(label: string, cls: string, onClick: () => void): HTMLButtonElem
 }
 
 // the logo of a service: the admin's small image (an https address), or the first letter of its name
-function logoTile(title: string, logo?: string): HTMLElement {
+export function logoTile(title: string, logo?: string): HTMLElement {
   const t = el("span", "cw-plg__logo");
   t.setAttribute("aria-hidden", "true");
   if (logo && /^https:\/\//.test(logo)) {

@@ -21,9 +21,9 @@ import { AttachLimits, ContextItem, DEFAULT_LIMITS, FileSource, Note, PickerEntr
 import { CoachKind, MAX_HINTS, NO_CODE_IN_A_HINT, NO_HINTS_LEFT, askedText, carriesCode, hintsUsed, questionKey, withHint } from "./coach";
 import { addNote, parseRemember } from "./remember";
 import { NoteInfo, SkillInfo, commandSpans, effortFor, withoutSkill, limitFor, matchSkills, saveSkillRequest, skillBlock, skillGroup, skillsIn, skillsNoteText, slashToken } from "./skills";
-import { drawPlugins } from "./plugins-dialog";
+import { drawPlugins, logoTile } from "./plugins-dialog";
 import { announcePin, canDock, configureDock, dockEl, isPinned, onPhone, placePanel, refreshPin, requestResize, setPinned, wireDock } from "./dock";
-import { ContextFacts, contextRows, drawContextView } from "./context-view";
+import { ContextFacts, contextRows, drawContextView, estimateTokens, totalChars } from "./context-view";
 import { COMMANDS, SlashCommand, matchCommands } from "./slash-commands";
 import { isTourCommand, markTourSeen, startTour, tourSeen } from "./tour";
 import css from "./widget.css";
@@ -102,6 +102,8 @@ const TAB = generateFiveCharUUID();
 // what the others in a peer chat call this person
 const peerName = (uid: string) => "user-" + uid;
 let peerchatmode: boolean = false;
+// who is in this session, learned from the join and leave events and from who writes (the owner never joins: the others did)
+const peers = new Map<string, { name: string; role: "owner" | "viewer" }>();
 
 export type WidgetConfig = {
   url: string;
@@ -738,6 +740,12 @@ const setupFBListener = () => {
         return;
       }
       const me = d.uid == UID; // another tab of this browser: the same person
+      if (d.uid && !me) {
+        if (d.eventT === "leave") peers.delete(d.uid);
+        else if (d.eventT === "join") peers.set(d.uid, { name: d.name || peerName(d.uid), role: "viewer" });
+        else if (!peers.has(d.uid)) peers.set(d.uid, { name: d.name || peerName(d.uid), role: "owner" });
+        syncActSignals();
+      }
       if (d.eventT === "join" || d.eventT === "leave") {
         if (me) return; // not news
         peerNote(`${d.name || peerName(d.uid)} ${d.eventT === "join" ? "joined" : "left"} the chat`, d.timestamp);
@@ -764,6 +772,18 @@ const setupFBListener = () => {
     // the viewer is told who they are. The owner is in it from the start, and
     // says so with the first message. (Nothing is written for a page that
     // nobody shares: that would leave an entry behind for every visit.)
+    // The owner's page wipes the chat when it goes away (a reload too), and with it the "joined" of everybody who is still here: the owner's new
+    // page would show nobody. A viewer that sees the chat emptied says again that it is here.
+    if (sharedSession) {
+      let rejoin: any = 0;
+      chatfirebasedbref.on("child_removed", () => {
+        clearTimeout(rejoin);
+        rejoin = setTimeout(() => {
+          if (toldLeft || !chatfirebasedbref) return;
+          chatfirebasedbref.push({ eventT: "join", uid: UID, tab: TAB, name: peerName(UID), timestamp: Date.now() });
+        }, 1500);
+      });
+    }
     if (sharedSession) {
       peerNote(`You joined the chat as ${peerName(UID)}.`);
       chatfirebasedbref.push({ eventT: "join", uid: UID, tab: TAB, name: peerName(UID), timestamp: Date.now() });
@@ -2078,9 +2098,13 @@ function refreshChip() {
   refreshCoach();
   renderUsage(); // peer chat messages use nothing: the line is hidden
   const chip = chipEl();
-  if (!chip) return;
+  if (!chip) {
+    syncActSignals();
+    return;
+  }
   chip.hidden = peerchatmode;
   if (peerchatmode) setSettingsOpen(false);
+  syncActSignals();
 }
 
 // ---- The practice coach ----------------------------------------------------
@@ -3614,6 +3638,7 @@ function open(e?: Event, opts?: { pin?: boolean }) {
   wireCoach();
   wireQuick();
   wireContext();
+  wireActivityCard();
   wirePlugins();
   const draftBox = document.getElementById("chat-widget__input") as HTMLTextAreaElement | null;
   if (draftBox) {
@@ -4250,6 +4275,9 @@ interface ConnInfo {
   keywords?: string[];
   mode?: "none" | "token" | "oauth";
   oauth?: boolean;
+  logo?: string;
+  reconnect?: boolean; // the sign-in ended: sign in again
+  error?: string;
 }
 let connList: ConnInfo[] = []; // the ones that are connected
 let connAll: ConnInfo[] = []; // everything the admin published for this person
@@ -4271,6 +4299,7 @@ async function loadConnections(force = false): Promise<ConnInfo[]> {
     connList = []; // off on this site, or not allowed: nothing to ask again for a minute
   }
   connAt = Date.now();
+  syncActSignals(); // a sign-in that ended puts a red dot on the Activity button
   return connList;
 }
 
@@ -5074,20 +5103,26 @@ function ctxEl(): HTMLElement | null {
 
 function closeContext(focusBack: boolean = true) {
   const box = ctxEl();
+  const main = document.getElementById("chat-widget__act-main");
   const btn = document.getElementById("chat-widget__ctx-btn");
   if (box) box.hidden = true;
+  if (main) main.hidden = false;
   if (btn) {
     btn.setAttribute("aria-expanded", "false");
     if (focusBack) btn.focus();
   }
 }
 
+// The list opens inside the Activity panel (the Context row), with a "‹ Back"; the panel opens first when it is closed (the /context command).
 async function openContext() {
   const box = ctxEl();
   const btn = document.getElementById("chat-widget__ctx-btn");
   if (!box || !btn) return;
+  if (!actIsOpen()) openActivity(false);
   const facts = await gatherContextFacts();
-  const close = drawContextView(box, contextRows(facts), chipText(), () => closeContext());
+  const close = drawContextView(box, contextRows(facts), chipText(), () => closeContext(), true);
+  const main = document.getElementById("chat-widget__act-main");
+  if (main) main.hidden = true;
   box.hidden = false;
   btn.setAttribute("aria-expanded", "true");
   close.focus();
@@ -5097,6 +5132,272 @@ function toggleContext() {
   const box = ctxEl();
   if (box && !box.hidden) closeContext();
   else void openContext();
+}
+
+// ---- The Activity panel (canvas "Genie header and Activity panel") --------------------------------------------------------------
+// A small card under the button before Close: Session (Peer chat, Context), Connections, Recent calls. It floats over the top of the chat. It
+// closes with the button, a click outside or Esc (the first Esc closes the card, the next one Genie). Signals without opening it: a red dot for a
+// connection that needs attention, a green dot and a chip for Peer chat on.
+
+function actCard(): HTMLElement | null {
+  return document.getElementById("chat-widget__act");
+}
+
+function actIsOpen(): boolean {
+  const c = actCard();
+  return !!c && !c.hidden;
+}
+
+function actMk<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function closeActivity(focusBack: boolean = true) {
+  const card = actCard();
+  const btn = document.getElementById("chat-widget__act-btn");
+  if (card) card.hidden = true;
+  const box = ctxEl();
+  if (box) box.hidden = true;
+  const main = document.getElementById("chat-widget__act-main");
+  if (main) main.hidden = false;
+  document.getElementById("chat-widget__ctx-btn")?.setAttribute("aria-expanded", "false");
+  if (btn) {
+    btn.setAttribute("aria-expanded", "false");
+    if (focusBack) btn.focus();
+  }
+}
+
+function openActivity(refresh: boolean = true) {
+  const card = actCard();
+  const btn = document.getElementById("chat-widget__act-btn");
+  if (!card || !btn) return;
+  card.hidden = false;
+  btn.setAttribute("aria-expanded", "true");
+  if (refresh) void refreshActivity();
+}
+
+// the dot on the button and the chip beside the title, from what is known now
+function syncActSignals() {
+  const chip = document.getElementById("chat-widget__peerchip");
+  if (chip) chip.hidden = !peerchatmode;
+  const needs = connAll.some((c) => c.reconnect);
+  const dot = document.getElementById("chat-widget__act-dot");
+  if (dot) {
+    dot.hidden = !(needs || peerchatmode);
+    dot.classList.toggle("cw-act-btn__dot--green", !needs && peerchatmode);
+  }
+  document.getElementById("chat-widget__act-btn")?.setAttribute("aria-label", "Activity panel" + (needs ? ", a connection needs attention" : peerchatmode ? ", Peer chat is on" : ""));
+  const val = document.getElementById("chat-widget__act-peer");
+  const others = peers.size;
+  const count = others + 1;
+  if (val) val.textContent = peerchatmode ? (others ? "On · " + count + " people" : "On") : "Off";
+  drawPeople(others);
+  const hint = document.getElementById("chat-widget__act-peerhint");
+  if (hint) {
+    hint.hidden = !peerchatmode;
+    hint.textContent = peerchatmode ? "What you type goes to the people in this session, not to Genie, until you switch it off." : "";
+  }
+  const sw = document.getElementById("peerchat-switch") as HTMLInputElement | null;
+  if (sw && sw.checked !== peerchatmode) sw.checked = peerchatmode;
+}
+
+// the people of the session (canvas board 4): who is here, or how to get somebody here
+function drawPeople(others: number) {
+  const host = document.getElementById("chat-widget__act-people");
+  if (!host) return;
+  host.textContent = "";
+  const colours = ["#1c1cb0", "#12805c", "#b4540a", "#8a2a7a", "#0b6a8a"];
+  const add = (name: string, role: string, you: boolean, i: number) => {
+    const row = actMk("div", "cw-act__person");
+    const av = actMk("span", "cw-act__av", name.replace(/^user-/, "").slice(0, 2).toUpperCase());
+    av.style.background = colours[i % colours.length];
+    row.append(av, actMk("span", "", you ? "You" : name), actMk("small", "", role));
+    host.appendChild(row);
+  };
+  if (!others) {
+    host.appendChild(actMk("div", "cw-act__hint", "Nobody else here. Peer chat is for a shared session: press Share, send the link, and the people who join can talk with you here."));
+    const b = actMk("button", "cw-act__btn cw-act__btn--main cw-act__share", "Share this session");
+    b.type = "button";
+    b.addEventListener("click", () => {
+      closeActivity(false);
+      // after this click is over: the page closes its Share dropdown on any click outside it, which would shut it again at once
+      setTimeout(() => {
+        const pop = document.getElementById("myDropdown");
+        const open = (window as any).myDropDownToggle;
+        if (pop && !pop.classList.contains("show") && typeof open === "function") open();
+        else if (!pop) document.getElementById("share-btn-1")?.click();
+        (document.getElementById("share-it") as HTMLElement | null)?.focus();
+      }, 0);
+    });
+    host.appendChild(b);
+    return;
+  }
+  let i = 0;
+  add(peerName(UID), sharedSession ? "viewer" : "owner", true, i++);
+  peers.forEach((p) => add(p.name, p.role, false, i++));
+}
+
+function ago(iso: string): string {
+  const t = Date.parse(iso);
+  if (!isFinite(t)) return "";
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 90) return "just now";
+  if (s < 3600) return Math.round(s / 60) + " min ago";
+  if (s < 86400) return Math.round(s / 3600) + " h ago";
+  return Math.round(s / 86400) + " d ago";
+}
+
+async function refreshActivity() {
+  syncActSignals();
+  const sizeEl = document.getElementById("chat-widget__act-ctx");
+  const bar = document.getElementById("chat-widget__act-bar") as HTMLElement | null;
+  try {
+    const rows = contextRows(await gatherContextFacts());
+    const tokens = estimateTokens(totalChars(rows));
+    if (sizeEl) sizeEl.textContent = "~" + tokens.toLocaleString("en-US") + " tokens";
+    if (bar) bar.style.width = Math.max(4, Math.min(100, (tokens / 4000) * 100)) + "%";
+  } catch (e) {
+    if (sizeEl) sizeEl.textContent = "";
+  }
+  await renderActConnections();
+}
+
+type ActCall = { t: string; conn: string; tool: string; level: string; ok: boolean };
+
+// the connections of the person (the admin's published ones), each a row that opens in place; then their own last calls
+async function renderActConnections() {
+  const host = document.getElementById("chat-widget__act-conns");
+  const callsHost = document.getElementById("chat-widget__act-calls");
+  if (!host || !callsHost) return;
+  host.textContent = "";
+  callsHost.textContent = "";
+  if (!document.body.classList.contains("is-signed-in")) {
+    host.appendChild(actMk("div", "cw-act__note", "Sign in to connect a service. Context and Peer chat work as they do for a guest."));
+    return;
+  }
+  await loadConnections(true);
+  let calls: ActCall[] = [];
+  const cr = await connApi({ op: "calls" });
+  if (cr.ok && cr.data && Array.isArray(cr.data.calls)) calls = cr.data.calls as ActCall[];
+  const title = (id: string) => (connAll.filter((c) => c.id === id)[0] || { title: id }).title;
+  if (connAll.length === 0) host.appendChild(actMk("div", "cw-act__note", "No service is offered here yet."));
+  connAll.forEach((c) => host.appendChild(actConnRow(c, calls)));
+  const more = actMk("button", "cw-act__row cw-act__row--btn");
+  more.type = "button";
+  more.append(actMk("span", "cw-act__lbl", "Browse and ask for a server"));
+  more.addEventListener("click", () => {
+    closeActivity(false);
+    openPlugins();
+  });
+  host.appendChild(more);
+  if (calls.length === 0) callsHost.appendChild(actMk("div", "cw-act__note", "No calls yet."));
+  calls.slice(0, 5).forEach((k) => {
+    const r = actMk("div", "cw-act__call");
+    r.append(actMk("span", "cw-act__lv cw-act__lv--" + k.level), actMk("span", "cw-act__lbl", title(k.conn) + " · " + k.tool), actMk("small", "cw-act__val", (k.ok ? "ok" : "failed") + " · " + ago(k.t)));
+    callsHost.appendChild(r);
+  });
+  callsHost.appendChild(actMk("div", "cw-act__note", "The last 14 days. Never what was sent."));
+}
+
+function actConnRow(c: ConnInfo, calls: ActCall[]): HTMLElement {
+  const wrap = actMk("div", "cw-act__svc");
+  const head = actMk("button", "cw-act__row cw-act__row--btn");
+  head.type = "button";
+  head.setAttribute("aria-expanded", "false");
+  const state = c.reconnect ? "Sign in again" : c.connected ? "Connected" : c.enabled === false ? "Not enabled" : "Enabled · sign in";
+  const cls = c.reconnect ? "cw-act__pill--bad" : c.connected ? "cw-act__pill--ok" : c.enabled === false ? "" : "cw-act__pill--on";
+  const chev = actMk("span", "cw-act__chev");
+  chev.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>';
+  head.append(logoTile(c.title, c.logo), actMk("span", "cw-act__lbl", c.title), actMk("span", "cw-act__pill " + cls, state), chev);
+  const exp = actMk("div", "cw-act__exp");
+  exp.hidden = true;
+  if (c.connected && c.tools.length) {
+    const tools = actMk("div", "cw-act__tools");
+    c.tools.forEach((t) => {
+      const p = actMk("span", "cw-act__tool" + (t.level === "read" ? "" : " cw-act__tool--" + t.level), t.name);
+      p.title = t.description;
+      tools.appendChild(p);
+    });
+    exp.appendChild(tools);
+  }
+  calls.filter((k) => k.conn === c.id).slice(0, 3).forEach((k) => {
+    const r = actMk("div", "cw-act__call");
+    r.style.padding = "0";
+    r.append(actMk("span", "cw-act__lv cw-act__lv--" + k.level), actMk("span", "cw-act__lbl", k.tool), actMk("small", "cw-act__val", (k.ok ? "ok" : "failed") + " · " + ago(k.t)));
+    exp.appendChild(r);
+  });
+  const btns = actMk("div", "cw-act__btns");
+  const addBtn = (label: string, main: boolean, run: () => void) => {
+    const b = actMk("button", "cw-act__btn" + (main ? " cw-act__btn--main" : ""), label);
+    b.type = "button";
+    b.addEventListener("click", run);
+    btns.appendChild(b);
+  };
+  const signIn = async () => {
+    const r = await connApi({ op: "oauth_start", id: c.id });
+    if (r.ok && r.data && r.data.url) window.location.href = String(r.data.url);
+  };
+  const again = async () => {
+    connAt = 0;
+    await renderActConnections();
+    void loadSkills(true);
+  };
+  if (c.enabled === false) addBtn("Enable", true, async () => { await connApi({ op: "enable", id: c.id }); await again(); });
+  else if (c.reconnect && c.oauth) addBtn("Sign in again", true, () => void signIn());
+  else if (!c.connected && c.oauth) addBtn("Sign in with " + c.title, true, () => void signIn());
+  else if (!c.connected) addBtn("Connect with a token", true, () => { closeActivity(false); openPlugins(); });
+  if (c.connected) addBtn("Disconnect", false, async () => { await connApi({ op: "disconnect", id: c.id }); await again(); });
+  exp.appendChild(btns);
+  head.addEventListener("click", () => {
+    exp.hidden = !exp.hidden;
+    head.setAttribute("aria-expanded", exp.hidden ? "false" : "true");
+  });
+  wrap.append(head, exp);
+  return wrap;
+}
+
+let actWired = false; // the page-wide handlers (a click outside, Esc) are added once; the panel's own elements are wired each time it is built
+
+function wireActivityCard() {
+  const btn = document.getElementById("chat-widget__act-btn");
+  if (!btn || !actCard()) return;
+  btn.addEventListener("click", () => {
+    if (actIsOpen()) closeActivity();
+    else openActivity();
+  });
+  syncActSignals();
+  if (document.body.classList.contains("is-signed-in")) void loadConnections().then(syncActSignals);
+  if (actWired) return;
+  actWired = true;
+  // a click outside closes the card (the path is read before the click is handled: a row that draws itself again is still inside)
+  document.addEventListener(
+    "click",
+    (ev) => {
+      const card = actCard();
+      if (!card || card.hidden) return;
+      const path = ev.composedPath();
+      const b = document.getElementById("chat-widget__act-btn");
+      if (path.indexOf(card) >= 0 || (b && path.indexOf(b) >= 0)) return;
+      closeActivity(false);
+    },
+    true
+  );
+  // the first Esc closes the list or the card, the next one closes Genie
+  document.addEventListener(
+    "keydown",
+    (ev) => {
+      if (ev.key !== "Escape" || !actIsOpen()) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      const box = ctxEl();
+      if (box && !box.hidden) closeContext();
+      else closeActivity();
+    },
+    true
+  );
 }
 
 function wireContext() {
