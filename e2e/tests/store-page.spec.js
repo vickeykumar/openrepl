@@ -99,7 +99,7 @@ test("the page has the menu, the chips and a grid of cards for every state; an a
   await expect(page.locator("#store-side")).toContainText("Node libraries");
   await expect(page.locator("#store-side")).toContainText("Languages (admin installs)");
   await expect(page.locator("#store-side")).toContainText("Editor plugins (samples)");
-  await expect(page.locator("#store-side")).not.toContainText("apt packages"); // for admins only
+  await expect(page.locator("#store-side")).toContainText("System packages (apt)"); // the approved packages are a section for everyone; editing the list is for admins
   await expect(page.locator(".store__grid .sapp")).toHaveCount(9);
   await expect(page.locator('[data-app="flask"] button')).toHaveText("Install");
   await expect(page.locator('[data-app="numpy"] .sswitch')).toHaveAttribute("aria-checked", "false");
@@ -198,7 +198,7 @@ test("a request asks for a reason; My requests lists what was asked; the answers
 test("an admin sees the apt packages and can install another version", async ({ page }) => {
   fake(page, { admin: true });
   await page.goto("/store#apt");
-  await expect(page.locator("#store-side")).toContainText("apt packages");
+  await expect(page.locator("#store-side")).toContainText("System packages (apt)");
   await expect(page.locator(".store__detail")).toContainText("postgresql-client");
   await page.goto("/store#app/pillow");
   await expect(page.locator(".store__pick")).toContainText("Admin: install another version");

@@ -289,10 +289,11 @@ test("a command in the box is drawn in the colour of a link, and Backspace right
   const input = page.locator("#chat-widget__input");
   const cmd = page.locator("#chat-widget__hl .cw-cmd");
   await input.click();
-  await input.pressSequentially("let's /explain this and /context");
-  // /explain is a skill (anywhere), /context is a command of the panel and only counts as the first word
-  await expect(cmd).toHaveCount(1);
-  await expect(cmd.first()).toHaveText("/explain");
+  await input.pressSequentially("let's /explain this and /context and /remember");
+  // /explain is a skill and /context a command that only opens something: both count anywhere; /remember uses the words after it, so it counts at the start only
+  await expect(cmd).toHaveCount(2);
+  await expect(cmd.nth(0)).toHaveText("/explain");
+  await expect(cmd.nth(1)).toHaveText("/context");
   const colours = await page.evaluate(() => {
     const c = document.querySelector("#chat-widget__hl .cw-cmd");
     const plain = document.getElementById("chat-widget__hl");
