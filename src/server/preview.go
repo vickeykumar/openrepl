@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"containers"
+	"egress"
 	"livepreview"
 	"netemu"
 	"utils"
@@ -267,8 +268,23 @@ func previewDialer(home string) livepreview.Dialer {
 	}
 }
 
-// previewPorts lists the ports a workspace's programs listen on, from the sockets of its own network.
+// previewPorts lists the ports a workspace's programs listen on, from the sockets of its own network. The proxy's own port (LLD 16
+// "Egress") is the server's listener, not a program of the user: it is not listed.
 func previewPorts(home string) []int {
+	return withoutPort(workspacePorts(home), egress.Port)
+}
+
+func withoutPort(in []int, port int) []int {
+	out := make([]int, 0, len(in))
+	for _, p := range in {
+		if p != port {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func workspacePorts(home string) []int {
 	pids := livepreview.FindPIDs(home)
 	if len(pids) == 0 {
 		return []int{}
