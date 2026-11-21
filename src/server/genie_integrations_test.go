@@ -688,6 +688,16 @@ func TestTestingASeededRecordKeepsItsToolsOnAtTheLevelsTheSiteGaveThem(t *testin
 	if got["get_issue"] != "read" || got["create_issue"] != "write" || got["delete_repository"] != "restricted" {
 		t.Errorf("levels: %v", got)
 	}
+	// tools saved once with everything off and no level (not new any more) are still undecided
+	for k := range rec.Tools {
+		rec.Tools[k].Enabled, rec.Tools[k].Level, rec.Tools[k].New = false, "", false
+	}
+	rec.Tools = adoptBuiltInLevels(rec, live)
+	for _, p := range rec.Tools {
+		if !p.Enabled || p.Level == "" {
+			t.Errorf("%s stayed off after a save with no decision", p.Name)
+		}
+	}
 	// once the admin switched one off, a test leaves the decision alone
 	rec.Tools[0].Enabled = false
 	if again := adoptBuiltInLevels(rec, live); again[0].Enabled {
@@ -700,5 +710,25 @@ func TestTestingASeededRecordKeepsItsToolsOnAtTheLevelsTheSiteGaveThem(t *testin
 		if p.Enabled {
 			t.Errorf("%s was switched on", p.Name)
 		}
+	}
+}
+
+func TestTheFirstStartRepairsASeededRecordThatNothingWasDecidedOnAndThenKeepsWhatIsSaved(t *testing.T) {
+	undecided := Integration{ID: "github", Status: integPublished, LegacyLevels: map[string]string{"x": "write"}, Tools: []ToolPolicy{{Name: "list_pull_requests"}, {Name: "create_issue"}}}
+	decided := Integration{ID: "github2", Status: integPublished, LegacyLevels: map[string]string{"x": "write"}, Tools: []ToolPolicy{{Name: "a", Enabled: true, Level: "read"}, {Name: "b"}}}
+	s, changed := seedIntegrations(SiteSettings{IntegrationsSeeded: true, Integrations: []Integration{undecided, decided}})
+	if !changed || s.IntegrationsFixed != integrationsFixVersion {
+		t.Fatal("the repair did not run")
+	}
+	if len(s.Integrations[0].Tools) != 0 {
+		t.Error("the undecided policy was kept")
+	}
+	if len(s.Integrations[1].Tools) != 2 {
+		t.Error("an admin's decision was touched")
+	}
+	// it runs once: a policy saved later with everything off is the admin's
+	s.Integrations[0].Tools = []ToolPolicy{{Name: "list_pull_requests"}}
+	if _, changed := seedIntegrations(s); changed {
+		t.Error("the repair ran twice")
 	}
 }

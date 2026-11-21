@@ -133,6 +133,7 @@ type SiteSettings struct {
 	Integrations       []Integration                `json:"integrations,omitempty"`
 	IntegrationSecrets map[string]IntegrationSecret `json:"integrationSecrets,omitempty"`
 	IntegrationsSeeded bool                         `json:"integrationsSeeded,omitempty"`
+	IntegrationsFixed  int                          `json:"integrationsFixed,omitempty"` // the one-time repairs of the records that were made (genie_integrations.go: seedIntegrations)
 }
 
 // Announcement is the banner at the top of every page.
@@ -1093,7 +1094,7 @@ func (server *Server) handleAdminSettings(rw http.ResponseWriter, req *http.Requ
 		}
 		s.NodeLanguages = before.NodeLanguages // nor the languages of single nodes; /admin/workers does
 		s.NodeWeights = before.NodeWeights     // nor their weights
-		s.Integrations, s.IntegrationSecrets, s.IntegrationsSeeded = before.Integrations, before.IntegrationSecrets, before.IntegrationsSeeded // nor the integrations
+		s.Integrations, s.IntegrationSecrets, s.IntegrationsSeeded, s.IntegrationsFixed = before.Integrations, before.IntegrationSecrets, before.IntegrationsSeeded, before.IntegrationsFixed // nor the integrations
 		if err := SaveSiteSettings(s, base); err != nil {
 			if _, bad := s.normalize(); bad != nil {
 				adminError(rw, http.StatusBadRequest, bad.Error())

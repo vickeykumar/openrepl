@@ -157,10 +157,26 @@ func integSecretAAD(id, kind string) string { return "integration:" + id + ":" +
 
 var integMu sync.Mutex
 
-// seedIntegrations makes the first records from the list in Go, once. Nothing is lost when the settings cannot be written: the list is used as it is.
+// integrationsFixVersion is the number of the one-time repairs that seedIntegrations makes.
+const integrationsFixVersion = 1
+
+// seedIntegrations makes the first records from the list in Go, once, and makes the one-time repairs. Nothing is lost when the settings cannot be written: the list is used as it is.
+//
+// Repair 1: a record the site seeded (GitHub) that an early test left with every tool off and no level goes back to having no tool policy, so it works by the
+// site's own levels as it did before; the next test of it makes a policy at those levels. What the admin decided after that is kept as saved.
 func seedIntegrations(s SiteSettings) (SiteSettings, bool) {
 	if s.IntegrationsSeeded {
-		return s, false
+		if s.IntegrationsFixed >= integrationsFixVersion {
+			return s, false
+		}
+		fixed := append([]Integration(nil), s.Integrations...)
+		for k := range fixed {
+			if fixed[k].builtInUndecided() {
+				fixed[k].Tools = nil
+			}
+		}
+		s.Integrations, s.IntegrationsFixed = fixed, integrationsFixVersion
+		return s, true
 	}
 	have := map[string]bool{}
 	for _, i := range s.Integrations {
@@ -179,14 +195,14 @@ func seedIntegrations(s SiteSettings) (SiteSettings, bool) {
 		}
 		s.Integrations = append(s.Integrations, i)
 	}
-	s.IntegrationsSeeded = true
+	s.IntegrationsSeeded, s.IntegrationsFixed = true, integrationsFixVersion
 	return s, true
 }
 
 // registry gives the integrations in effect. The first call on a site that has none writes the seed.
 func registry() []Integration {
 	s := GetSiteSettings()
-	if !s.IntegrationsSeeded {
+	if !s.IntegrationsSeeded || s.IntegrationsFixed < integrationsFixVersion {
 		integMu.Lock()
 		for try := 0; try < 3; try++ {
 			cur := GetSiteSettings()

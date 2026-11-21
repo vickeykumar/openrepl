@@ -312,16 +312,23 @@ func applySafeDefaults(tools []ToolPolicy, live []mcpTool) []ToolPolicy {
 
 // adoptBuiltInLevels keeps a record that the site seeded (GitHub) working as it did before it had a tool policy. Such a record published with the
 // site's own levels, so every tool was usable. The first test of it would otherwise make a policy in which every tool is new and off, and the people
-// using it would lose all its tools. So while the admin has not decided anything (no tool is on, every tool is still new), each tool is switched on at
+// using it would lose all its tools. So while the admin has not decided anything (no tool is on and none has a level), each tool is switched on at
 // the level the site's rules gave it (reads read, what cannot be undone restricted, the rest write). After the admin changes any tool this does nothing.
-func adoptBuiltInLevels(i Integration, live []mcpTool) []ToolPolicy {
+func (i Integration) builtInUndecided() bool {
 	if i.Status != integPublished || i.LegacyLevels == nil || len(i.Tools) == 0 {
-		return i.Tools
+		return false
 	}
 	for _, t := range i.Tools {
-		if t.Enabled || !t.New {
-			return i.Tools
+		if t.Enabled || t.Level != "" {
+			return false // the admin chose something
 		}
+	}
+	return true
+}
+
+func adoptBuiltInLevels(i Integration, live []mcpTool) []ToolPolicy {
+	if !i.builtInUndecided() {
+		return i.Tools
 	}
 	def := i.toDef()
 	def.Policy = nil
