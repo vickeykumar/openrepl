@@ -313,7 +313,9 @@ func (m Maven) Install(ctx context.Context, name, version, kind, dest string, lo
 	return os.WriteFile(filepath.Join(dest, "mirror.json"), []byte(fmt.Sprintf("{\"source\":%q,\"version\":%q}\n", e.Source(), v)), 0644)
 }
 
-func (m Maven) Search(ctx context.Context, q, kind string) ([]Found, error) { return nil, nil }
+func (m Maven) Search(ctx context.Context, q, kind string) ([]Found, error) {
+	return searchMaven(ctx, q)
+}
 
 // check proves the jars load: javap finds the class the entry names in them.
 func (m Maven) check(ctx context.Context, dest string, e Entry) error {

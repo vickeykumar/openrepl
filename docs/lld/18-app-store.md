@@ -292,3 +292,18 @@ A list that can grow long shows one page at a time with a pager at its foot ("Sh
 ## 18. Logos (2026-11-21; canvas claude.ai/artifact/F3VRUc8uQJnGBn7BL94v4E boards 6 to 8)
 
 `Entry.Logo` (optional, any link; `simple:<name>` is saved as `https://cdn.simpleicons.org/<name>`, see `NormalizeLogo`; refused only when over 2000 characters, with control characters, or a bad `simple:` name). `View.Logo` carries it. 53 starter entries in `catalogue_default.json` have one (the project's own icon only, no language marks as stand-ins; `TestCatalogueFileLogos`). Shown in a light tile with the first letter as fallback (`onerror`): main-page Apps dialog, store page (cards 28px, detail 52px), admin Catalogue table, Add app and Add plugin dialogs (optional "Logo" field with live preview). Not built: a Look-it-up suggestion, a Bulk add logo column. Not checked: the page CSP for https images.
+
+## 19. Search for every kind, and the apt packages for everyone (2026-11-22)
+
+**Search.** The store's live search (the "Found for ..." box, `Service.Search` through `Multi.Search`) now also asks the registry of each kind, signed-in users only (the whole store API is signed-in; the search answers 401 to a guest), one search a second per user, answers kept 10 minutes, an error not kept (`registrysearch.go`):
+- Rust crates: `crates.io/api/v1/crates?q=` (a User-Agent is sent, as crates.io asks).
+- Java libraries: Maven Central's `solrsearch/select` (a result is `group:artifact`; the store name is the artifact).
+- Go modules: pkg.go.dev's JSON API `/v1/search` (a result is a module path; the store name is its last element, `/v5` skipped).
+- Debian packages: `apt-cache search --names-only` with the store's own apt state (`AptBundle.opts`, no root); the lists must have been downloaded once (by an install). Not for the default search, only in the apt section.
+The word must be a plain name (patterns in `registrysearch.go`); nothing else reaches a registry.
+
+**Asking for a hit.** A hit of a module, jar or crate is not in the catalogue, and the installers need the real package name and a check, which only an entry has. So the request (`RequestMirror`) keeps `Package` (module path, `group:artifact`, crate name) and `Summary`; approving it (`ensureMirrorEntry`, from `Approve`) adds the catalogue entry (`go:<name>`, `jar:<name>`, `crate:<name>`; level optional, install on approval; the check is `file-exists` with the module path for a module, `vendor` for a crate, and none for a jar: only its files are checked, since no class is known) and installs it. A name that another package already has is refused. The store name has the usual prefix (`gomod-`, `jar-`, `crate-`).
+
+**apt for everyone.** "System packages (apt)" is a section of the store (`#kind/apt`) for every signed-in user: the approved packages, read-only (no switch, "on every server"). A user may search the Ubuntu archive and ask for one (`RequestFor` kind `apt`, stored as `apt:<package>` so it cannot meet an app of another name); an admin adds a found package with "Add to the apt list" (`aptadd`) or approves the request, which puts it on the apt list. The admin's edit page (`#apt`) stays, linked from the section; its sidebar entry is gone.
+
+Not built: a server test of the request handler with a package (the service level is tested), a search of the Ubuntu archive for the default (all kinds) search, a class check for a jar.

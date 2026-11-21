@@ -196,7 +196,7 @@ func (g GoMod) Install(ctx context.Context, name, version, kind, dest string, lo
 	return os.WriteFile(filepath.Join(dest, "mirror.json"), []byte(fmt.Sprintf("{\"source\":%q,\"version\":%q}\n", e.Source(), strings.TrimPrefix(v, "v"))), 0644)
 }
 
-func (g GoMod) Search(ctx context.Context, q, kind string) ([]Found, error) { return nil, nil }
+func (g GoMod) Search(ctx context.Context, q, kind string) ([]Found, error) { return searchGo(ctx, q) }
 
 // ProxyOf is the GOPROXY entry of a Go module bundle.
 func ProxyOf(bundle string) string {

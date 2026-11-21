@@ -40,6 +40,7 @@ const (
 	KindGoMod  = "gomod"  // a Go module, mirrored from the Go module proxy (LLD 18, "mirrors")
 	KindJar    = "jar"    // a Java library: its jars and what they need, from Maven Central
 	KindCrate  = "crate"  // a Rust crate, vendored from crates.io
+	KindApt    = "apt"    // a Debian package an admin approved: installed on every server, no switch (the store lists them; a user may ask for one)
 	KindPy27   = "py27"   // a Python 2.7 library (conda-forge, in an environment with Python 2.7)
 )
 
@@ -88,16 +89,20 @@ type App struct {
 
 // Request is a user's ask for an app that is not on the safe list. One for each app: a second asker is added to it.
 type Request struct {
-	Name    string   `json:"name"`
-	Kind    string   `json:"kind"`
-	Reason  string   `json:"reason,omitempty"`
-	Askers  []string `json:"askers"`
-	Status  string   `json:"status"` // waiting, rejected
-	Answer  string   `json:"answer,omitempty"`
-	At      int64    `json:"at"`
-	Seen    []string `json:"seen,omitempty"` // askers that were told the answer
-	Repl    string   `json:"repl,omitempty"` // the REPL (or place of a plugin) the asker wants it for
-	Pending bool     `json:"-"`
+	Name   string   `json:"name"`
+	Kind   string   `json:"kind"`
+	Reason string   `json:"reason,omitempty"`
+	Askers []string `json:"askers"`
+	Status string   `json:"status"` // waiting, rejected
+	Answer string   `json:"answer,omitempty"`
+	At     int64    `json:"at"`
+	Seen   []string `json:"seen,omitempty"` // askers that were told the answer
+	Repl   string   `json:"repl,omitempty"` // the REPL (or place of a plugin) the asker wants it for
+	// Package and Summary come with a request for a module, a jar or a crate that is not in the catalogue yet (found by a search): the module path or
+	// group:artifact, and what the registry says of it. Approving makes the catalogue entry from them.
+	Package string `json:"package,omitempty"`
+	Summary string `json:"summary,omitempty"`
+	Pending bool   `json:"-"`
 }
 
 // Report is a failed install that a user told the admin about.
@@ -458,7 +463,7 @@ func (s *Service) isSafe(kind, name string) bool {
 
 func cleanKind(k string) string {
 	switch k {
-	case KindTool, KindNode, KindLang, KindPlugin, KindGoMod, KindJar, KindCrate, KindPy27:
+	case KindTool, KindNode, KindLang, KindPlugin, KindGoMod, KindJar, KindCrate, KindPy27, KindApt:
 		return k
 	}
 	return KindLib
@@ -873,6 +878,9 @@ func (s *Service) Request(who, name, kind, reason string) (Request, error) {
 // RequestFor is Request with the REPL (or the place of a plugin) the app is wanted for. A user may make a limited number of asks a day.
 func (s *Service) RequestFor(who, name, kind, repl, reason string) (Request, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
+	if cleanKind(kind) == KindApt {
+		return s.requestApt(who, name, reason)
+	}
 	if repl != "" && !inList(CatalogueRepls, repl) && !inList(CataloguePlaces, repl) {
 		return Request{}, fmt.Errorf("%q is not a REPL of this site", repl)
 	}
@@ -935,6 +943,10 @@ func (s *Service) Reject(admin, name, reason string) error {
 
 // Approve installs a requested app.
 func (s *Service) Approve(admin, name string) error {
+	if strings.HasPrefix(name, aptPrefix) {
+		log.Printf("appstore: %s approved the Debian package %s", admin, name)
+		return s.approveApt(admin, name)
+	}
 	s.mu.Lock()
 	var r Request
 	known := s.get("req:"+name, &r)
@@ -942,6 +954,11 @@ func (s *Service) Approve(admin, name string) error {
 	kind := KindLib
 	if known {
 		kind = r.Kind
+		if r.Package != "" && IsMirrorKind(r.Kind) {
+			if err := s.ensureMirrorEntry(admin, r); err != nil {
+				return err
+			}
+		}
 	}
 	log.Printf("appstore: %s approved %s", admin, name)
 	return s.Install(admin, name, kind, true)
@@ -1380,6 +1397,11 @@ func (s *Service) views(who, home string, full bool) []View {
 		seen[a.Name] = true
 		out = append(out, v)
 	}
+	// the Debian packages an admin approved: listed for everyone, no switch (every server installs them)
+	for _, p := range s.Apt() {
+		seen[aptPrefix+p] = true
+		out = append(out, View{Name: p, Kind: KindApt, State: "installed", Summary: "A system package: installed on every server for every user."})
+	}
 	for _, e := range s.Catalogue() {
 		k := e.InstallKind()
 		n := e.PackageName()
@@ -1398,7 +1420,10 @@ func (s *Service) views(who, home string, full bool) []View {
 		if seen[r.Name] {
 			continue
 		}
-		v := View{At: r.At, Name: r.Name, Kind: r.Kind, State: "requested", Answer: r.Answer}
+		v := View{At: r.At, Name: r.Name, Kind: r.Kind, State: "requested", Answer: r.Answer, Summary: r.Summary}
+		if r.Kind == KindApt {
+			v.Name = strings.TrimPrefix(r.Name, aptPrefix)
+		}
 		if r.Status == "rejected" {
 			v.State = "rejected"
 		}
@@ -2040,7 +2065,11 @@ func (s *Service) Search(ctx context.Context, q, kind string) ([]Hit, error) {
 	found, err := s.cfg.Installer.Search(ctx, q, kind)
 	known := map[string]View{}
 	for _, v := range s.Views("", "") {
-		known[v.Name] = v
+		if v.Kind == KindApt {
+			known[aptPrefix+v.Name] = v
+		} else {
+			known[v.Name] = v
+		}
 	}
 	var hits []Hit
 	seen := map[string]bool{}
@@ -2053,7 +2082,13 @@ func (s *Service) Search(ctx context.Context, q, kind string) ([]Hit, error) {
 		if b, ok := s.BuiltinNamed(f.Name); ok && cleanKind(f.Kind) != KindNode && cleanKind(f.Kind) != KindPlugin {
 			h.State, h.Safe, h.Version = "builtin", false, b.Version
 		}
-		if v, ok := known[f.Name]; ok && (v.Kind == f.Kind || v.Kind == "") {
+		key := f.Name
+		if px, ok := mirrorPrefix[f.Kind]; ok {
+			key = px + strings.ToLower(f.Name)
+		} else if f.Kind == KindApt {
+			key = aptPrefix + f.Name
+		}
+		if v, ok := known[key]; ok && (v.Kind == f.Kind || v.Kind == "") {
 			h.State = v.State
 			if v.Summary != "" && h.Summary == "" {
 				h.Summary = v.Summary

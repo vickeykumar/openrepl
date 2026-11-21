@@ -384,7 +384,9 @@ func (a AptBundle) installPlan(ctx context.Context, o Option, pkgs []AptPkg, des
 	return nil
 }
 
-func (a AptBundle) Search(ctx context.Context, q, kind string) ([]Found, error) { return nil, nil }
+func (a AptBundle) Search(ctx context.Context, q, kind string) ([]Found, error) {
+	return searchApt(ctx, a.opts(), q, nil)
+}
 
 // makeLink makes the link of an update-alternatives (an absolute path of the system) inside the bundle, pointing at its target in the bundle.
 func makeLink(bundle, link, target string) {

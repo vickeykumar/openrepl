@@ -53,6 +53,7 @@ function fake(page, opts = {}) {
     if (what.startsWith("search")) {
       const q = new URL(req.url()).searchParams.get("q");
       st.searches.push(q);
+      if (opts.hits) return json({ hits: opts.hits, error: "" });
       return json({ hits: [{ name: q + "-extra", version: "2.0", kind: "lib", summary: "Found on conda-forge.", state: "available", safe: false }, { name: q + "js", version: "1.1", kind: "node", summary: "Found on npm.", state: "available", safe: false }], error: "" });
     }
     if (what.startsWith("size")) return json({ version: "3.0.2", packages: 14, downloadMB: 41.2, diskMB: 98.7 });
@@ -451,4 +452,21 @@ test("an app page opens the app of the kind in its address, when two apps share 
   await page.goto("/store#browse");
   await page.locator("#store-search").fill("ping");
   await expect(page.locator('a.sapp__name[href="#app/ping?kind=node"]')).toBeVisible();
+});
+
+// the other registries (LLD 18 "Search for every kind"): the Found box says where it looked, a hit of a crate keeps what crates.io calls it, and
+// the Debian packages are a section for everyone
+test("a search in the Rust section says crates.io, a request keeps the package, and the apt packages are a section", async ({ page }) => {
+  const st = fake(page, { hits: [{ name: "itoa", version: "1.0.15", kind: "crate", package: "itoa", summary: "Fast integer printing", state: "available", safe: false }] });
+  await page.goto("/store#kind/crate");
+  await page.locator("#store-search").fill("itoa");
+  await expect(page.locator(".store__h3")).toContainText("on crates.io");
+  const hit = page.locator('[data-app="itoa"]');
+  await expect(hit).toBeVisible();
+  await hit.locator("button", { hasText: "Request" }).click();
+  await page.locator("#store-dialog button", { hasText: "Send request" }).click();
+  await expect.poll(() => st.calls.at(-1)).toEqual(["request", expect.objectContaining({ name: "itoa", kind: "crate", package: "itoa", summary: "Fast integer printing" })]);
+  await page.goto("/store#kind/apt");
+  await expect(page.locator("#store-side")).toContainText("System packages (apt)");
+  await expect(page.locator(".store__intro, .store__legend").first()).toContainText("System packages");
 });

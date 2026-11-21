@@ -118,7 +118,7 @@
     if (S.builtins.length) { var mine = side.lastChild; mine.appendChild(el("small", "store__builtincount", "+ " + S.builtins.length + " built in")); }
     link("My requests", "#requests", counts.req, r.name === "requests");
     side.appendChild(el("h2", "", "Kinds"));
-    [["lib", "Python libraries"], ["py27", "Python 2.7 libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["gomod", "Go modules"], ["jar", "Java libraries"], ["crate", "Rust crates"], ["browser", "Browser libraries and plugins"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
+    [["lib", "Python libraries"], ["py27", "Python 2.7 libraries"], ["tool", "Tools"], ["node", "Node libraries"], ["gomod", "Go modules"], ["jar", "Java libraries"], ["crate", "Rust crates"], ["apt", "System packages (apt)"], ["browser", "Browser libraries and plugins"], ["lang", "Languages (admin installs)"], ["plugin", "Editor plugins (samples)"]].forEach(function (k) {
       link(k[1], "#kind/" + k[0], 0, r.name === "kind" && r.arg === k[0]);
     });
     if (S.admin) {
@@ -127,7 +127,6 @@
       link("Requests", "#admin/requests", a ? a.requests.filter(function (x) { return x.status === "waiting"; }).length : 0, r.name === "admin" && r.arg === "requests");
       link("Failures", "#admin/failures", a ? a.reports.filter(function (x) { return x.status === "open"; }).length : 0, r.name === "admin" && r.arg === "failures");
       link("Servers and installs", "#admin/servers", 0, r.name === "admin" && r.arg === "servers");
-      link("apt packages", "#apt", 0, r.name === "apt");
     }
   }
 
@@ -165,10 +164,12 @@
     if (v.state === "builtin") return;
     if (v.soon) { row.appendChild(el("span", "stag", "Listed, not installable yet")); return; }
     if (v.state === "available") {
-      if (v.safe) btn("Install", function () { install(v); }, "is-primary");
+      if (v.kind === "apt" && S.admin) btn("Add to the apt list", function () { aptAdd(v); }, "is-primary");
+      else if (v.safe) btn("Install", function () { install(v); }, "is-primary");
       else if (S.admin) btn("Install (admin)", function () { adminInstall(v); }, "is-primary");
       else btn("Request", function () { requestDialog(v); }, "is-primary");
     } else if (v.state === "installing") btn("Details", function () { progress(v.name); });
+    else if (v.state === "installed" && v.kind === "apt") row.appendChild(el("span", "stag stag--installed", "on every server"));
     else if (v.state === "installed") {
       var checking = S.checking === v.id;
       var sw = el("button", "sswitch" + (v.on ? " is-on" : ""), checking ? "" : v.on ? "Enabled" : "Disabled");
@@ -185,6 +186,18 @@
     }
     else if (v.state === "rejected") btn("Ask again", function () { requestDialog(v); });
     else if (v.state === "requested") btn("Details", function () { go(appHash(v)); });
+  }
+
+  // what a request says; a module, a jar or a crate found by a search also says what the registry calls it
+  function requestBody(v, repl, reason) {
+    var b = { name: v.name, kind: v.kind || "lib", repl: repl, reason: reason };
+    if (v.package) { b.package = v.package; b.summary = v.summary || ""; }
+    return b;
+  }
+
+  // an admin puts a Debian package on the apt list: every server installs it, for every user
+  function aptAdd(v) {
+    api("/admin/store", { action: "aptadd", name: v.name }, true).then(function () { return load(); }).then(function () { render(); say(v.name + " is on the apt list. Every server installs it.", "ok"); }, function (e) { say(e.message, "bad"); });
   }
 
   // an admin installs what is not on the safe list (a language, a plugin, anything), for everyone
@@ -270,6 +283,7 @@
     py27: "Libraries for the Python 2.7 REPL, from conda-forge, in an environment of their own. Only a Python 2.7 terminal sees them: in bash, run PYTHONPATH=$OPENREPL_PY27PATH python2.7.",
     gomod: "Go modules, fetched by the server from the Go module proxy with their checksums checked, and used with no internet. The version is the newest that builds with this server's Go. Use go run; a Go REPL cannot import them.",
     jar: "Java libraries (jars and what they need) from Maven Central, checksums checked, on the class path of javac, java and jshell. The version is the newest this server's Java can load.",
+    apt: "System packages (Debian/Ubuntu) that an admin approved: every server installs them, for every user, with no switch. Search the Ubuntu archive and ask for one; an admin decides.",
     crate: "Rust crates, fetched by the server from crates.io with their checksums checked. In evcxr use :dep name = \"version\". The version is the newest that builds with this server's Rust.",
     lib: "Python libraries from conda-forge. Installed once on the server; your terminals import them when you enable them.",
     tool: "Programs from conda-forge (jq and the like), on the PATH of your terminals when enabled.",
@@ -374,7 +388,8 @@
       var have = {};
       list.forEach(function (v) { have[v.name + "/" + (v.kind || "lib")] = true; });
       var box = el("div", "store__hits");
-      box.appendChild(el("h3", "store__h3", "Found for \u201c" + q + "\u201d" + (kind === "node" ? " on npm" : kind === "plugin" ? "" : kind ? " on conda-forge" : " on conda-forge and npm")));
+      var where = { node: " on npm", plugin: "", gomod: " on pkg.go.dev", jar: " on Maven Central", crate: " on crates.io", apt: " in the Ubuntu archive" };
+      box.appendChild(el("h3", "store__h3", "Found for \u201c" + q + "\u201d" + (kind && where[kind] !== undefined ? where[kind] : kind ? " on conda-forge" : " on conda-forge and npm")));
       if (!h) { box.appendChild(loadingLine("store__legend", "Searching\u2026")); searchTimer = 0; }
       else if (h.loading) box.appendChild(loadingLine("store__legend", "Searching\u2026 (the first search of conda-forge can take a minute)"));
       else {
@@ -383,7 +398,7 @@
         (h.list || []).forEach(function (x) {
           if (have[x.name + "/" + (x.kind || "lib")]) return;
           n++;
-          g2.appendChild(card({ name: x.name, version: x.version, kind: x.kind, state: x.state || "available", safe: x.safe, summary: x.summary }));
+          g2.appendChild(card({ name: x.name, version: x.version, kind: x.kind, state: x.state || "available", safe: x.safe, summary: x.summary, package: x.package }));
         });
         if (n) box.appendChild(g2); else if (!h.error) box.appendChild(el("p", "store__legend", "Nothing else was found."));
       }
@@ -569,7 +584,9 @@
   }
 
   function viewKind(arg) {
-    return viewBrowse(INTRO[arg] ? arg : "lib");
+    var node = viewBrowse(INTRO[arg] ? arg : "lib");
+    if (arg === "apt" && S.admin) { var a = el("a", "sbtn", "Edit the apt list"); a.href = "#apt"; node.appendChild(a); }
+    return node;
   }
 
   function viewApt() {
@@ -1057,7 +1074,7 @@
       rl.appendChild(rs); d.appendChild(rl);
       if (S.perDay) d.appendChild(el("p", "store__legend", "One request for each app: if someone asked already, you are added to it. You can send " + S.perDay + " requests a day (" + (S.today || 0) + " used). An admin sees the name, the language, the kind and your reason."));
       d.appendChild(dialogButtons([
-        { label: "Send request", primary: true, run: function () { closeModal(); act("request", { name: v.name, kind: v.kind || "lib", repl: rs.value, reason: t.value }, "Asked. An admin will decide; you will see the answer here."); } },
+        { label: "Send request", primary: true, run: function () { closeModal(); act("request", requestBody(v, rs.value, t.value), "Asked. An admin will decide; you will see the answer here."); } },
         { label: "Cancel", run: closeModal }
       ]));
       t.focus();

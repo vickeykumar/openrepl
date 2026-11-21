@@ -47,6 +47,8 @@ type Found struct {
 	Version string `json:"version"`
 	Summary string `json:"summary,omitempty"`
 	Kind    string `json:"kind"`
+	// Package is what the registry calls it when the store's name is shorter: a module path, group:artifact (the mirror kinds).
+	Package string `json:"package,omitempty"`
 }
 
 var searchPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,40}$`)
@@ -425,6 +427,14 @@ func (m Multi) Search(ctx context.Context, q, kind string) ([]Found, error) {
 		try(m.pick(KindNode), KindNode)
 	case KindPlugin:
 		try(m.pick(KindPlugin), KindPlugin)
+	case KindGoMod, KindJar, KindCrate:
+		if in := m.pick(kind); in != nil {
+			try(in, kind)
+		}
+	case KindApt:
+		if m.Apt != nil {
+			try(m.Apt, KindApt)
+		}
 	case KindLib, KindTool, KindLang:
 		try(m.pick(KindLib), kind)
 	default:
