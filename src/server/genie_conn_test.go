@@ -169,8 +169,10 @@ func connSetup(t *testing.T, g GenieSettings) *connEnv {
 	if err := SaveSiteSettings(SiteSettings{Genie: g}); err != nil {
 		t.Fatal(err)
 	}
-	oldDir, oldURL := connDir, connectionCatalogue[0].URL
+	oldDir, oldURL, oldDB := connDir, connectionCatalogue[0].URL, connDB
 	connDir = t.TempDir()
+	kv := &memKV{}
+	connDB = func() connKV { return kv }
 	extAllowLoopback = true
 	f := newFakeMCP(t)
 	connectionCatalogue[0].URL = f.srv.URL
@@ -191,7 +193,7 @@ func connSetup(t *testing.T, g GenieSettings) *connEnv {
 	githubFiles = githubViaFetchZip
 	t.Cleanup(func() {
 		githubFiles = oldGH
-		connDir, connectionCatalogue[0].URL, pluginLogDir = oldDir, oldURL, oldPlug
+		connDir, connectionCatalogue[0].URL, pluginLogDir, connDB = oldDir, oldURL, oldPlug, oldDB
 		extAllowLoopback = false
 	})
 	c := sessionCookie(t, "uid-ann", "ann@example.com")
@@ -241,7 +243,7 @@ func TestAPersonConnectsAServiceWithATokenThatIsTestedSealedAndNeverShownAgain(t
 	if code, out := e.call(t, `{"op":"connect","id":"github","token":"wrong-token-12345"}`, e.c); code != 400 || !strings.Contains(fmt.Sprint(out), "did not accept") {
 		t.Fatalf("a wrong token: %d %v", code, out)
 	}
-	if _, err := os.Stat(connFile("uid-ann")); err == nil {
+	if b, err := connDB().Fetch(connKey("uid-ann")); err == nil && len(b) > 0 {
 		t.Error("a token that failed was kept")
 	}
 	// the shape of a token is checked before anything is sent
@@ -280,6 +282,13 @@ func TestAPersonConnectsAServiceWithATokenThatIsTestedSealedAndNeverShownAgain(t
 			}
 		}
 		return nil
+	})
+	// ... and not in the database either (the record holds it sealed only)
+	connDB().Each(func(k, v []byte) bool {
+		if strings.Contains(string(v), testToken) || strings.Contains(string(v), "7}") {
+			t.Errorf("the token or an argument is in the record %s", k)
+		}
+		return true
 	})
 	if _, tok, ok := connToken("uid-ann", "github"); !ok || tok != testToken {
 		t.Error("the token does not come back to the server that made the call")

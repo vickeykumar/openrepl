@@ -42,30 +42,6 @@ type connRequest struct {
 	Decided string          `json:"decided,omitempty"`
 }
 
-func reqFile() string { return filepath.Join(connDir, "requests.json") }
-
-func readConnRequests() []connRequest {
-	b, err := os.ReadFile(reqFile())
-	if err != nil {
-		return nil
-	}
-	var r []connRequest
-	json.Unmarshal(b, &r)
-	return r
-}
-
-func writeConnRequests(r []connRequest) error {
-	if err := os.MkdirAll(connDir, 0o700); err != nil {
-		return err
-	}
-	b, _ := json.Marshal(r)
-	tmp := reqFile() + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, reqFile())
-}
-
 // the connections a plugin names, read from its plugin.json: {"id":"github"} (the site's catalogue) or {"id":"acme","title":"Acme","url":"https://…"}
 func parsePluginConnections(raws []json.RawMessage, fromLink bool) ([]connectionDef, error) {
 	if len(raws) > 5 {
@@ -315,33 +291,7 @@ func (server *Server) handleAdminConnections(w http.ResponseWriter, r *http.Requ
 		adminError(w, http.StatusMethodNotAllowed, "Use GET.")
 		return
 	}
-	type who struct {
-		User string `json:"user"`
-		Conn string `json:"conn"`
-		At   string `json:"at"`
-	}
-	people := []who{}
-	connMu.Lock()
-	if entries, err := os.ReadDir(connDir); err == nil {
-		for _, e := range entries {
-			n := e.Name()
-			if !strings.HasSuffix(n, ".json") || n == "requests.json" {
-				continue
-			}
-			b, err := os.ReadFile(filepath.Join(connDir, n))
-			if err != nil {
-				continue
-			}
-			var recs []connRecord
-			if json.Unmarshal(b, &recs) == nil {
-				for _, rc := range recs {
-					people = append(people, who{rc.User, rc.ID, rc.At})
-				}
-			}
-		}
-	}
-	connMu.Unlock()
-	sort.Slice(people, func(i, j int) bool { return people[i].At > people[j].At })
+	people := connectedPeople()
 	adminJSON(w, http.StatusOK, map[string]interface{}{"connected": people, "calls": recentConnCalls(100)})
 }
 

@@ -164,31 +164,10 @@ type connRecord struct {
 
 var connMu sync.Mutex
 
-func connFile(uid string) string {
+// the name of a person's file in the old place (the folder of the call log), for the one-time import (genie_conn_store.go)
+func connFileOf(uid string) string {
 	h := sha256.Sum256([]byte("genie-conn\x00" + uid))
 	return filepath.Join(connDir, hex.EncodeToString(h[:12])+".json")
-}
-
-func readConnRecords(uid string) []connRecord {
-	b, err := os.ReadFile(connFile(uid))
-	if err != nil {
-		return nil
-	}
-	var recs []connRecord
-	json.Unmarshal(b, &recs)
-	return recs
-}
-
-func writeConnRecords(uid string, recs []connRecord) error {
-	if err := os.MkdirAll(connDir, 0o700); err != nil {
-		return err
-	}
-	b, _ := json.Marshal(recs)
-	tmp := connFile(uid) + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, connFile(uid))
 }
 
 func connAAD(uid, id string) string { return "genie-conn:" + uid + ":" + id }
@@ -462,6 +441,7 @@ func logConnCall(e connCallEntry) {
 	if err := os.MkdirAll(connDir, 0o700); err != nil {
 		return
 	}
+	pruneCallLogs(time.Now())
 	f, err := os.OpenFile(filepath.Join(connDir, "calls-"+time.Now().UTC().Format("2006-01-02")+".jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return

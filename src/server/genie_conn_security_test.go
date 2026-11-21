@@ -5,9 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -618,4 +621,146 @@ func TestScopesAreAskedForOnlyWhenTheAdminSetThem(t *testing.T) {
 		t.Errorf("scopes: %q", got)
 	}
 	_ = idp
+}
+
+// ---- where the records are kept (genie_conn_store.go) ---------------------------------------------------------------------------------
+
+func TestTheRecordsAreInTheUserDatabaseOneForEachPersonWithTheKeysTheListOfUsersSkips(t *testing.T) {
+	e := connSetup(t, GenieSettings{})
+	e.ok(t, `{"op":"connect","id":"github","token":"`+testToken+`"}`)
+	b, err := connDB().Fetch([]byte("genie-conn:uid-ann"))
+	if err != nil {
+		t.Fatal("no record in the database: ", err)
+	}
+	var d connUserDoc
+	if json.Unmarshal(b, &d) != nil || d.V != 1 || d.UID != "uid-ann" || d.Integrations["github"] == nil || !d.Integrations["github"].Enabled {
+		t.Fatalf("the record: %s", b)
+	}
+	c := d.Integrations["github"].Connection
+	if c == nil || c.Sealed == "" || c.URL == "" || c.ConnectedAt == "" || strings.Contains(string(b), testToken) {
+		t.Errorf("the connection: %+v (token in clear: %v)", c, strings.Contains(string(b), testToken))
+	}
+	// no file of the person is made in the folder of the log
+	entries, _ := os.ReadDir(connDir)
+	for _, f := range entries {
+		if strings.HasSuffix(f.Name(), ".json") {
+			t.Errorf("a file was made: %s", f.Name())
+		}
+	}
+	// another person has a record of their own; the admin sees who is connected to what, never the credential
+	other := sessionCookie(t, "uid-bob", "bob@example.com")
+	if code, _ := e.call(t, `{"op":"connect","id":"github","token":"`+testToken+`"}`, other); code != 200 {
+		t.Fatalf("a second person: %d", code)
+	}
+	people := connectedPeople()
+	if len(people) != 2 {
+		t.Errorf("who is connected: %+v", people)
+	}
+	if strings.Contains(fmt.Sprint(people), "sealed") {
+		t.Error("the list of people holds a credential")
+	}
+	// Disconnect removes only the connection: the service stays enabled (the final table of 2026-11-21), and it is no longer a connection
+	e.ok(t, `{"op":"disconnect","id":"github"}`)
+	b, _ = connDB().Fetch([]byte("genie-conn:uid-ann"))
+	var after connUserDoc
+	json.Unmarshal(b, &after)
+	if g := after.Integrations["github"]; g == nil || !g.Enabled || g.Connection != nil || strings.Contains(string(b), "sealed") {
+		t.Errorf("after Disconnect: %s", b)
+	}
+	if recs := readConnRecords("uid-ann"); len(recs) != 0 {
+		t.Errorf("connections after Disconnect: %+v", recs)
+	}
+	for _, p := range connectedPeople() {
+		if p.User == "uid-ann" {
+			t.Error("the admin still sees a person who disconnected")
+		}
+	}
+	if b, _ := connDB().Fetch([]byte("genie-conn:uid-bob")); len(b) == 0 {
+		t.Error("Disconnect of one person took the record of another")
+	}
+}
+
+func TestAnEnabledServiceWithoutAConnectionIsKeptAndIsNotAConnection(t *testing.T) {
+	connSetup(t, GenieSettings{})
+	d := &connUserDoc{V: 1, UID: "uid-ann", Integrations: map[string]*connUserInteg{"notion": {Enabled: true, EnabledAt: "2026-11-21T05:10:00Z"}}}
+	if err := saveConnDoc(d); err != nil {
+		t.Fatal(err)
+	}
+	if recs := readConnRecords("uid-ann"); len(recs) != 0 {
+		t.Errorf("an enabled service is not a connection: %+v", recs)
+	}
+	// connecting another one does not drop the enabled one, and Disconnect of it leaves the enabled one
+	def, _ := catalogueConnection("github")
+	if err := saveConnToken("uid-ann", def, "ghp_testtoken1234567890"); err != nil {
+		t.Fatal(err)
+	}
+	if !deleteConnToken("uid-ann", "github") {
+		t.Fatal("Disconnect found nothing")
+	}
+	got := loadConnDoc("uid-ann")
+	if got == nil || got.Integrations["notion"] == nil || !got.Integrations["notion"].Enabled || got.Integrations["github"] == nil || got.Integrations["github"].Connection != nil {
+		t.Errorf("after Disconnect: %+v", got)
+	}
+}
+
+func TestTheOldFilesAreImportedOnceAndRemoved(t *testing.T) {
+	connSetup(t, GenieSettings{})
+	// a person's old file and the old list of requests, as the previous version wrote them
+	old := []connRecord{{User: "uid-ann", ID: "github", URL: "https://api.githubcopilot.com/mcp/", Title: "GitHub", Sealed: "sealed-value", At: "2026-11-20T21:31:10Z", Kind: "oauth", Expires: "2026-11-21T13:00:00Z"}}
+	b, _ := json.Marshal(old)
+	os.MkdirAll(connDir, 0o700)
+	if err := os.WriteFile(connFileOf("uid-ann"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reqs := []connRequest{{ID: "r1", User: "uid-ann", Plugin: "acme", Status: "waiting", At: "2026-11-20T10:00:00Z"}}
+	rb, _ := json.Marshal(reqs)
+	if err := os.WriteFile(legacyReqFile(), rb, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	recs := readConnRecords("uid-ann")
+	if len(recs) != 1 || recs[0].ID != "github" || recs[0].Sealed != "sealed-value" || recs[0].Kind != "oauth" || recs[0].Expires != "2026-11-21T13:00:00Z" || recs[0].At != "2026-11-20T21:31:10Z" {
+		t.Fatalf("the imported record: %+v", recs)
+	}
+	if _, err := os.Stat(connFileOf("uid-ann")); err == nil {
+		t.Error("the old file was not removed")
+	}
+	got := readConnRequests()
+	if len(got) != 1 || got[0].ID != "r1" {
+		t.Fatalf("the imported requests: %+v", got)
+	}
+	if _, err := os.Stat(legacyReqFile()); err == nil {
+		t.Error("the old list of requests was not removed")
+	}
+	// it is in the database now, and a second read does not look at files
+	if recs2 := readConnRecords("uid-ann"); len(recs2) != 1 || recs2[0].Sealed != "sealed-value" {
+		t.Errorf("the second read: %+v", recs2)
+	}
+	if b, _ := connDB().Fetch([]byte("genie-conn-req:all")); len(b) == 0 {
+		t.Error("the requests are not in the database")
+	}
+}
+
+func TestTheCallLogIsKeptFourteenDays(t *testing.T) {
+	connSetup(t, GenieSettings{})
+	os.MkdirAll(connDir, 0o700)
+	now := time.Now().UTC()
+	for _, d := range []int{0, 1, 13, 14, 15, 40} {
+		name := filepath.Join(connDir, "calls-"+now.AddDate(0, 0, -d).Format("2006-01-02")+".jsonl")
+		os.WriteFile(name, []byte("{}\n"), 0o600)
+	}
+	other := filepath.Join(connDir, "keep-me.txt")
+	os.WriteFile(other, []byte("x"), 0o600)
+	lastLogPrune = ""
+	connLogMu.Lock()
+	pruneCallLogs(now)
+	connLogMu.Unlock()
+	for d, want := range map[int]bool{0: true, 1: true, 13: true, 14: true, 15: false, 40: false} {
+		_, err := os.Stat(filepath.Join(connDir, "calls-"+now.AddDate(0, 0, -d).Format("2006-01-02")+".jsonl"))
+		if (err == nil) != want {
+			t.Errorf("the log of %d days ago: kept %v, want %v", d, err == nil, want)
+		}
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Error("a file that is not a log was removed")
+	}
 }
