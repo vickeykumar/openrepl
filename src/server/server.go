@@ -266,6 +266,7 @@ func (server *Server) serveLocal(handlers http.Handler, path string) (*http.Serv
 		scheme = "https"
 	}
 	host, port, _ := net.SplitHostPort(listener.Addr().String())
+	noteOwnPort(port) // the Preview pane must not offer the server itself as a program of an admin
 	log.Printf("HTTP server is listening at: %s", scheme+"://"+host+":"+port+path)
 	if server.options.Address == "0.0.0.0" {
 		for _, address := range listAddresses() {

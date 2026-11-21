@@ -17,3 +17,13 @@ func TestThePreviewDoesNotListTheProxyPort(t *testing.T) {
 		t.Fatalf("an empty list stays an empty list, not nil: %#v", got)
 	}
 }
+
+// the server's own port is not a program of an admin
+func TestThePreviewDoesNotListThePortOfTheServerItself(t *testing.T) {
+	noteOwnPort("8080")
+	defer func() { ownPortsMu.Lock(); delete(ownPorts, 8080); ownPortsMu.Unlock() }()
+	got := withoutOwnPorts([]int{3000, 8080})
+	if !reflect.DeepEqual(got, []int{3000}) {
+		t.Fatalf("got %v", got)
+	}
+}
