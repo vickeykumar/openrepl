@@ -1161,7 +1161,7 @@ body.files-collapsed .files-panel { display: none; }
   box-sizing: border-box;
   padding: 0 10px;
   font-size: 12px;
-  color: var(--muted-3);
+  color: var(--muted-2);
   background: var(--ink-900);
   border-top: 1px solid var(--ink-700);
   overflow: hidden;
@@ -4757,3 +4757,80 @@ html[data-ide-theme] .ide-shell .files-panel .jstree-anchor[id$="/docs_anchor"] 
 }
 .genie-changes__ghost .genie-changes__line { background: color-mix(in srgb, var(--danger-color) 14%, transparent); }
 body.is-mobile .genie-changes__btn { min-height: 44px; }
+
+/* ------------------------------------------------------------------ */
+/* Main page polish (2026-11-21): FAQ as cards, phone first screen,     */
+/* language tags, the run hint, and no jump of the split while it loads */
+/* ------------------------------------------------------------------ */
+
+/* FAQ: each question is a card that opens (details/summary, no script) */
+.faq__grid { align-items: start; gap: 14px 28px; }
+.faq-item { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.faq-item summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  cursor: pointer;
+  list-style: none;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after { content: "+"; flex: 0 0 auto; font-size: 22px; line-height: 1; color: var(--accent-text); }
+.faq-item[open] summary::after { content: "\2212"; }
+.faq-item summary:focus-visible { outline: 2px solid var(--focus-ring, var(--accent-color)); outline-offset: 2px; border-radius: 12px; }
+.faq-item summary h3 { margin: 0; font-size: 17px; }
+.faq-item p { padding: 0 18px 16px; }
+.faq-item__more { margin-top: -6px; padding: 0 18px 16px; font-size: 14px; font-weight: 600; }
+
+/* language tiles: the extension tag has a colour of its own */
+.lang-card__ext { color: #1B1B20; }
+.lang-card[data-lang="c"] .lang-card__ext { background: #CFE3FF; }
+.lang-card[data-lang="go"] .lang-card__ext { background: #C6F0F2; }
+.lang-card[data-lang="python"] .lang-card__ext { background: #FFE9A8; }
+.lang-card[data-lang="evcxr"] .lang-card__ext { background: #FFD3B8; }
+.lang-card[data-lang="java"] .lang-card__ext { background: #FFC9C9; }
+.lang-card[data-lang="javascript"] .lang-card__ext { background: #F6E58D; }
+.lang-card[data-lang="node"] .lang-card__ext { background: #CDEBC8; }
+.lang-card[data-lang="ts-node"] .lang-card__ext { background: #C9D8FF; }
+.lang-card[data-lang="irb"] .lang-card__ext { background: #FFC9D6; }
+.lang-card[data-lang="perli"] .lang-card__ext { background: #E1D4F5; }
+.lang-card[data-lang="bash"] .lang-card__ext { background: #D4EBD0; }
+.lang-card[data-lang="tclsh"] .lang-card__ext { background: #EBDCC6; }
+.lang-card[data-lang="sqlite3"] .lang-card__ext { background: #CFE3FF; }
+.lang-card[data-lang="jq-repl"] .lang-card__ext { background: #E3E3E3; }
+.lang-card[data-lang="rappel"] .lang-card__ext { background: #DADAEC; }
+
+/* The hint in the terminal of a first visit (page/36-run-hint.js) */
+.run-hint {
+  position: absolute;
+  right: 96px;
+  top: 4px; /* in the strip of the terminal tabs, beside the + and left of the reload button: it covers no output */
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  max-width: calc(100% - 200px);
+  padding: 6px 10px;
+  color: #14141A;
+  background: #FBFAF7;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font: 500 13px var(--font-ui);
+  pointer-events: none; /* the terminal under it is used as usual */
+}
+.run-hint kbd { padding: 1px 6px; font: 500 12px var(--font-code); background: #E9E5DA; border-radius: 6px; }
+
+/* Before the split is built (page/02-layout.js sets data-split-init), the editor and the terminal already have the
+   sizes the split gives them (55 and 45), so the terminal does not jump when it starts. */
+@media screen and (min-width: 801px) and (min-height: 481px) { /* the page counts a window of 480 px or less in height as a phone too (ismob in 01-session.js): no split is built there */
+  .ide-split:not([data-split-init]) #ide { display: flex; width: calc(55% - 1.5px); }
+  .ide-split:not([data-split-init]) #terminal-div { width: calc(45% - 1.5px); }
+  /* the layout of the last visit: stacked (html.editor-stacked) or terminal hidden (html.terminal-off), set in the head from localStorage */
+  html.editor-stacked .ide-split:not([data-split-init]) { flex-direction: column; }
+  html.editor-stacked .ide-split:not([data-split-init]) #ide { width: 100%; height: calc(65% - 1.5px); }
+  html.editor-stacked .ide-split:not([data-split-init]) #terminal-div { width: 100%; height: calc(35% - 1.5px); }
+  html.terminal-off .ide-split:not([data-split-init]) #terminal-div { display: none; }
+  html.terminal-off .ide-split:not([data-split-init]) #ide { width: 100%; height: 100%; }
+}

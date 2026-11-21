@@ -153,6 +153,7 @@ test("the list of actions is the one in the server's prompt", () => {
     "preview_eval",
     "preview_storage",
     "store_suggest",
+    "mcp_call",
     "need_tools",
     "finish",
   ]);

@@ -127,6 +127,13 @@ type SiteSettings struct {
 	// Secrets are the API keys an admin saved in the dashboard, encrypted
 	// (settings_keys.go). No API reply carries them and a form cannot set them.
 	Secrets *StoredKeys `json:"secrets,omitempty"`
+	// Integrations are the servers Genie can be connected to, as an admin set them up (genie_integrations.go); IntegrationSecrets are their sealed
+	// secrets, which no reply carries; IntegrationsSeeded says that the list in Go made the first record. The Settings page does not send them:
+	// /admin/integrations changes them.
+	Integrations       []Integration                `json:"integrations,omitempty"`
+	IntegrationSecrets map[string]IntegrationSecret `json:"integrationSecrets,omitempty"`
+	IntegrationsSeeded bool                         `json:"integrationsSeeded,omitempty"`
+	IntegrationsFixed  int                          `json:"integrationsFixed,omitempty"` // the one-time repairs of the records that were made (genie_integrations.go: seedIntegrations)
 }
 
 // Announcement is the banner at the top of every page.
@@ -244,6 +251,18 @@ type GenieSettings struct {
 	ChatHistoryTabs     int  `json:"chatHistoryTabs"`
 	ChatHistoryKB       int  `json:"chatHistoryKB"`
 	ChatHistoryDays     int  `json:"chatHistoryDays"`
+
+	// Skills and plugins (genie_ext.go): ExtensionsOff switches both off; PluginsFromLinks lets a signed-in user install a plugin from a GitHub or
+	// .zip link (off: the catalogue only); SitePlugins are catalogue plugins that are on for everyone.
+	// Connections (MCP, genie_conn.go): ConnectionsOff switches them off; ConnectionsNoApproval lets a user connect what a plugin from a link asks for
+	// without an admin approving it (off: a request, genie_conn_requests.go); ConnectionHosts, when not empty, are the only hosts a connection from a
+	// link may talk to.
+	ConnectionsOff        bool     `json:"connectionsOff"`
+	ConnectionsNoApproval bool     `json:"connectionsNoApproval"`
+	ConnectionHosts       []string `json:"connectionHosts"`
+	ExtensionsOff    bool     `json:"extensionsOff"`
+	PluginsFromLinks bool     `json:"pluginsFromLinks"`
+	SitePlugins      []string `json:"sitePlugins"`
 
 	// A long chat is summarized by the model in use (one more request, counted like any other) once the older turns pass
 	// SummaryTokens tokens (0: 6000); SummaryOff stops it. The editor and terminal text is not counted: it is sent as it is.
@@ -499,6 +518,16 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	if err := s.Genie.normalizeAgentModels(); err != nil {
 		return s, err
 	}
+	hosts, hostsErr := normalizeConnectionHosts(s.Genie.ConnectionHosts)
+	if hostsErr != nil {
+		return s, hostsErr
+	}
+	s.Genie.ConnectionHosts = hosts
+	sp, spOK := validSitePlugins(s.Genie.SitePlugins)
+	if !spOK {
+		return s, fmt.Errorf("a plugin that is on for everyone is not in the catalogue")
+	}
+	s.Genie.SitePlugins = sp
 	s.Genie.AgentModel = strings.TrimSpace(s.Genie.AgentModel)
 	if d := s.Genie.AgentModel; d != "" {
 		m, known := s.Genie.modelByID(d)
@@ -1001,6 +1030,8 @@ type settingsReply struct {
 	// Models are the models the form offers, with whether the server can call
 	// each (its key is set).
 	Models []modelInfo `json:"models"`
+	// PluginCatalogue is the plugins the site ships, for the list of those that are on for everyone.
+	PluginCatalogue []pluginChoice `json:"pluginCatalogue"`
 	// Defaults are the built-in values of the numbers, for the form to show
 	// where a field is empty.
 	Defaults genieDefaults `json:"defaults"`
@@ -1029,7 +1060,9 @@ func reply(s SiteSettings) settingsReply {
 	}
 	s.Genie.CustomModels = append([]CustomModel{}, s.Genie.customList()...) // the list in effect, never null
 	s.Secrets = nil
-	return settingsReply{SiteSettings: s, Languages: languageChoices(), Models: modelInfos(), Defaults: currentGenieDefaults(), Store: store, Version: version}
+	s.IntegrationSecrets = nil // sealed, and not for a browser
+	s.Integrations = nil       // the Integrations page asks /admin/integrations
+	return settingsReply{SiteSettings: s, Languages: languageChoices(), Models: modelInfos(), PluginCatalogue: pluginChoices(), Defaults: currentGenieDefaults(), Store: store, Version: version}
 }
 
 // handleAdminSettings reads and saves the settings. It runs behind adminAPI,
@@ -1061,6 +1094,7 @@ func (server *Server) handleAdminSettings(rw http.ResponseWriter, req *http.Requ
 		}
 		s.NodeLanguages = before.NodeLanguages // nor the languages of single nodes; /admin/workers does
 		s.NodeWeights = before.NodeWeights     // nor their weights
+		s.Integrations, s.IntegrationSecrets, s.IntegrationsSeeded, s.IntegrationsFixed = before.Integrations, before.IntegrationSecrets, before.IntegrationsSeeded, before.IntegrationsFixed // nor the integrations
 		if err := SaveSiteSettings(s, base); err != nil {
 			if _, bad := s.normalize(); bad != nil {
 				adminError(rw, http.StatusBadRequest, bad.Error())
@@ -1206,6 +1240,12 @@ func settingsChanges(a, b SiteSettings) []string {
 	if ga, gb := a.Genie, b.Genie; ga.context() != gb.context() || ga.OpenRouterTimeoutSec != gb.OpenRouterTimeoutSec ||
 		fmt.Sprint(ga.AnswerCaps) != fmt.Sprint(gb.AnswerCaps) || fmt.Sprint(ga.ModelPrices) != fmt.Sprint(gb.ModelPrices) || ga.ShowCostToUsers != gb.ShowCostToUsers || strings.Join(ga.OpenRouterHosts, ",") != strings.Join(gb.OpenRouterHosts, ",") {
 		out = append(out, "Genie limits changed (context, history, answer sizes, OpenRouter time limit or hosts)")
+	}
+	if ga, gb := a.Genie, b.Genie; ga.ConnectionsOff != gb.ConnectionsOff || ga.ConnectionsNoApproval != gb.ConnectionsNoApproval || strings.Join(ga.ConnectionHosts, ",") != strings.Join(gb.ConnectionHosts, ",") {
+		out = append(out, "Genie connections "+onoff(!gb.ConnectionsOff)+" (without approval "+onoff(gb.ConnectionsNoApproval)+", only these servers: "+orStr(strings.Join(gb.ConnectionHosts, ", "), "any")+")")
+	}
+	if ga, gb := a.Genie, b.Genie; ga.ExtensionsOff != gb.ExtensionsOff || ga.PluginsFromLinks != gb.PluginsFromLinks || strings.Join(ga.SitePlugins, ",") != strings.Join(gb.SitePlugins, ",") {
+		out = append(out, "Genie skills and plugins "+onoff(!gb.ExtensionsOff)+" (from a link "+onoff(gb.PluginsFromLinks)+", on for everyone: "+orStr(strings.Join(gb.SitePlugins, ", "), "none")+")")
 	}
 	if ga, gb := a.Genie, b.Genie; ga.ChatHistoryOff != gb.ChatHistoryOff || ga.ChatHistoryNoGuests != gb.ChatHistoryNoGuests || ga.ChatHistoryChats != gb.ChatHistoryChats || ga.ChatHistoryTabs != gb.ChatHistoryTabs || ga.ChatHistoryKB != gb.ChatHistoryKB || ga.ChatHistoryDays != gb.ChatHistoryDays {
 		out = append(out, "Genie chat history "+onoff(!gb.ChatHistoryOff)+" (guests "+onoff(!gb.ChatHistoryNoGuests)+")")

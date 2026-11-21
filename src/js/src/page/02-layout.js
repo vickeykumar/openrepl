@@ -237,6 +237,9 @@ function ToggleEditor() {
       if (ideElement !==undefined && ideElement !== null) {
         ideElement.style.display = "flex";
       }
+      // the split exists: the sizes it gives take over from the ones the page starts with (css/ui-refresh.css, Main page polish)
+      var splitBox = get("#ide-split");
+      if (splitBox) splitBox.setAttribute("data-split-init", "1");
     } else {
       einst.destroy();
       if (ideElement !==undefined && ideElement !== null) {

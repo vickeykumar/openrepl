@@ -155,8 +155,10 @@ var JobSaveInterval = time.Minute
 // waiting and the folders stayed. Now the most that is lost is the last minute. It returns what stops it.
 func (js *JobScheduler) StartJobSaver(file string) (stop func()) {
     done := make(chan struct{})
+    stopped := make(chan struct{})
     report := Jobs.Register("job-saver", "Waiting removals saved", "Writes the guest folders that wait to be removed to the job file, so that a crash does not lose them.", JobSaveInterval)
     go func() {
+        defer close(stopped)
         ticker := time.NewTicker(JobSaveInterval)
         defer ticker.Stop()
         for {
@@ -174,7 +176,8 @@ func (js *JobScheduler) StartJobSaver(file string) (stop func()) {
             }
         }
     }()
-    return func() { close(done) }
+    // stop returns when the saver is not writing any more (a write that was under way is finished first)
+    return func() { close(done); <-stopped }
 }
 
 // gotty JObScheduler

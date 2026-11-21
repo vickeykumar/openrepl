@@ -42,7 +42,7 @@ func TestThePromptTellsTheModelAboutThePlanTheCheckAndBatching(t *testing.T) {
 
 // ---- the prompt by groups (canvas "Genie: top five improvements", board 3) ---------------------------------------------
 
-var allGroups = map[string]bool{"editor": true, "files": true, "terminal": true, "preview": true, "store": true}
+var allGroups = map[string]bool{"editor": true, "files": true, "terminal": true, "preview": true, "store": true, "connect": true}
 
 // With every group the prompt is the whole prompt, as it was: nothing is lost by asking for the groups by name.
 func TestThePromptWithEveryGroupIsTheWholePrompt(t *testing.T) {

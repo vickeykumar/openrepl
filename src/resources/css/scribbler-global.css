@@ -1,4 +1,15 @@
 /* css variables*/
+/* Stand-ins for the web fonts while they load. Each one is Arial (or the metric twin Liberation Sans, or Helvetica) scaled to the width of the
+   web font it stands for, so that the text wraps the same before and after the swap and the page does not jump. The sizes are the widths
+   of a sample text in the web font divided by the width of the same text in Arial, measured in Chromium (2026-11-21): Bricolage Grotesque 800
+   0.955, 600 0.929; IBM Plex Sans 400 0.987, 500 1.007, 600 0.958. Without Arial or Liberation Sans on the device the browser goes on to the
+   next font of the stack, as before. */
+@font-face { font-family: 'Bricolage Fallback'; font-weight: 800; src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('Helvetica Bold'); size-adjust: 95.5%; }
+@font-face { font-family: 'Bricolage Fallback'; font-weight: 600; src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('Helvetica Bold'); size-adjust: 92.9%; }
+@font-face { font-family: 'Plex Fallback'; font-weight: 400; src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('Helvetica'); size-adjust: 98.7%; }
+@font-face { font-family: 'Plex Fallback'; font-weight: 500; src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('Helvetica'); size-adjust: 100.7%; }
+@font-face { font-family: 'Plex Fallback'; font-weight: 600 700; src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('Helvetica Bold'); size-adjust: 95.8%; }
+
 :root {
   --primary-color: #432E30;
   --primary-color-light: #8E7474;
@@ -29,9 +40,9 @@
   --shadow-color: rgba(0, 0, 0, 0.3);
   --overlay-color: rgba(0, 0, 0, 0.6);
   /* type: one face for UI text, one for code, one display face for big headings */
-  --font-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-ui: 'IBM Plex Sans', 'Plex Fallback', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-code: 'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
-  --font-display: 'Bricolage Grotesque', var(--font-ui);
+  --font-display: 'Bricolage Grotesque', 'Bricolage Fallback', var(--font-ui);
   /* ink scale for the dark app surfaces (nav, hero, IDE) */
   --ink-950: #0D0D12;
   /* home page nav, hero and workspace band: a soft graphite for a calmer first view (redesign canvas, 30 Sep) */

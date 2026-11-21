@@ -1,6 +1,7 @@
 package server
 
 import (
+	"io"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -197,6 +198,11 @@ func readLines(path string, start, end int) (filesReply, error) {
 		return filesReply{}, err
 	}
 	defer f.Close()
+	return readLinesFrom(f, start, end)
+}
+
+// readLinesFrom is readLines for any reader of text.
+func readLinesFrom(f io.Reader, start, end int) (filesReply, error) {
 	if end < start || end-start+1 > filesReadMaxLines {
 		end = start + filesReadMaxLines - 1
 	}
@@ -276,6 +282,23 @@ func (server *Server) handleAgentFiles(rw http.ResponseWriter, req *http.Request
 	if !ok {
 		http.Error(rw, "The path has to be relative to the workspace, that is not Genie's chat store or inside .git.", http.StatusBadRequest)
 		return
+	}
+	// the text of a plugin the admin put on for everyone is not in the workspace: it is read from the server, read only, under a path of its own
+	if in.Op == "read" {
+		if text, ok := sitePluginText(filepath.ToSlash(rel)); ok {
+			start, end := in.StartLine, in.EndLine
+			if start < 1 {
+				start = 1
+			}
+			if end < start {
+				end = start + filesReadMaxLines - 1
+			}
+			res, _ := readLinesFrom(strings.NewReader(text), start, end)
+			res.Path = filepath.ToSlash(rel)
+			rw.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(rw).Encode(res)
+			return
+		}
 	}
 	target, inWorkspace := inside(realHome, filepath.Join(realHome, rel))
 	if !inWorkspace {

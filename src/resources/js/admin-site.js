@@ -11,7 +11,7 @@
 
   function viewSite() {
     var root = h('div'), body = h('div');
-    var saved = null, form = null, languages = [], models = [], saving = false, keysState = null, adminsState = null;
+    var saved = null, form = null, languages = [], models = [], pluginChoices = [], saving = false, keysState = null, adminsState = null, plugsState = null, connState = null;
     root.appendChild(pageHead('Site settings', 'Switches that change what every visitor sees. Changes apply to the next page a visitor loads.'));
     root.appendChild(body);
 
@@ -64,6 +64,16 @@
       return ids;
     }
 
+    // the hosts of the list of servers: one for each line or separated by commas, lower case, no repeats
+    function hostsFromText(text) {
+      var seen = {}, out = [];
+      String(text || '').split(/[\s,]+/).forEach(function (h) { h = h.trim().toLowerCase(); if (h && !seen[h]) { seen[h] = true; out.push(h); } });
+      return out;
+    }
+    function sitePluginsNow() {
+      return pluginChoices.filter(function (p) { return form.sitePlug && form.sitePlug[p.id] && form.sitePlug[p.id].checked; }).map(function (p) { return p.id; }).sort();
+    }
+
     function snapshot() {
       return {
         colorOfTheDay: form.colour.checked,
@@ -104,6 +114,8 @@
           planCredits: num(form.planCredits.value), planBudget: num(form.planBudget.value), creditWeights: weightsOf(),
           agentDisabled: !form.agentOn.checked, agentOnPractice: form.agentPractice.checked,
           agentAutoOff: !form.agentAuto.checked, agentRiskyOff: !form.agentRisky.checked, agentShellOff: !form.agentShell.checked,
+          extensionsOff: !form.extOn.checked, pluginsFromLinks: form.plgLinks.checked, sitePlugins: sitePluginsNow(),
+          connectionsOff: !form.connOn.checked, connectionsNoApproval: form.connNoApproval.checked, connectionHosts: hostsFromText(form.connHosts.value),
           agentTasksPerHour: int(form.agentTasks.value), agentMaxSteps: int(form.agentSteps.value),
           escalationModels: form.escalation.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean),
           autoOn: form.autoOn.checked, autoSmall: form.autoSmall.value, autoStrong: form.autoStrong.value, autoDefault: form.autoDefault.value }
@@ -195,6 +207,8 @@
           planCredits: s.genie.planCredits || 0, planBudget: s.genie.planBudget || 0, creditWeights: pricesClean(s.genie.creditWeights),
           agentDisabled: !!s.genie.agentDisabled, agentOnPractice: !!s.genie.agentOnPractice,
           agentAutoOff: !!s.genie.agentAutoOff, agentRiskyOff: !!s.genie.agentRiskyOff, agentShellOff: !!s.genie.agentShellOff,
+          extensionsOff: !!s.genie.extensionsOff, pluginsFromLinks: !!s.genie.pluginsFromLinks, sitePlugins: (s.genie.sitePlugins || []).slice().sort(),
+          connectionsOff: !!s.genie.connectionsOff, connectionsNoApproval: !!s.genie.connectionsNoApproval, connectionHosts: (s.genie.connectionHosts || []).slice(),
           agentTasksPerHour: s.genie.agentTasksPerHour || 0, agentMaxSteps: s.genie.agentMaxSteps || 0,
           escalationModels: (s.genie.escalationModels || []).slice(),
           autoOn: !!s.genie.autoOn, autoSmall: s.genie.autoSmall || '', autoStrong: s.genie.autoStrong || '', autoDefault: s.genie.autoDefault || 'new' } };
@@ -209,7 +223,8 @@
     var layout = null; // {nav, main, sections, show(), refresh()} of the form that is drawn
     var SECTION_KEY = 'admin-site-section';
 
-    function controlsOf(node) { return Array.prototype.slice.call(node.querySelectorAll('input, select, textarea')); }
+    // the controls of the settings: not those of the Integrations card, which saves its own records, one server at a time
+    function controlsOf(node) { return Array.prototype.slice.call(node.querySelectorAll('input, select, textarea')).filter(function (el) { return !el.closest('[data-card="Integrations"]'); }); }
     function valueOf(el) { return el.type === 'checkbox' || el.type === 'radio' ? (el.checked ? '1' : '0') : String(el.value); }
     // a setting that has a value of its own: a number or a text that is not empty, a list with something chosen
     function isSetControl(el) {
@@ -354,6 +369,7 @@
           window.scrollTo(0, 0);
         }
         if (info.def.tabs) openTab(id, info.active, true);
+        if (id === 'genie-integrations' && late.integ) late.integ();
         try { localStorage.setItem(SECTION_KEY, id); } catch (e) { /* storage off */ }
         refreshMarks();
         document.title = info.def.title + ' · Site settings · OpenREPL Admin';
@@ -495,6 +511,7 @@
       saved = settings;
       languages = settings.languages || [];
       models = settings.models || [];
+      pluginChoices = settings.pluginCatalogue || [];
       form = { langs: {}, models: {}, caps: {} };
       layout = null; // the form of an earlier drawing is gone
       var defaults = settings.defaults || {};
@@ -543,6 +560,24 @@
       var agentPractice = toggle('f-agent-practice', !!settings.genie.agentOnPractice, 'Agent mode on the practice page');
       var agentAuto = toggle('f-agent-auto', !settings.genie.agentAutoOff, 'Allow everything for a session');
       var agentRisky = toggle('f-agent-risky', !settings.genie.agentRiskyOff, 'Allow riskier things for a while');
+      // skills and plugins (server/genie_ext.go)
+      var extOn = toggle('f-ext-on', !settings.genie.extensionsOff, 'Skills and plugins');
+      var plgLinks = toggle('f-plg-links', !!settings.genie.pluginsFromLinks, 'Plugins from a link');
+      form.extOn = extOn.input; form.plgLinks = plgLinks.input;
+      // connections to other services (MCP, server/genie_conn.go)
+      var connOn = toggle('f-conn-on', !settings.genie.connectionsOff, 'Connections to other services');
+      var connNoApproval = toggle('f-conn-noapproval', !!settings.genie.connectionsNoApproval, 'Allow connections without approval');
+      form.connOn = connOn.input; form.connNoApproval = connNoApproval.input;
+      form.connHosts = h('textarea', { class: 'field', id: 'f-conn-hosts', rows: '3', placeholder: 'api.githubcopilot.com\nmcp.example.com', 'aria-label': 'Only these servers', oninput: update });
+      form.connHosts.value = (settings.genie.connectionHosts || []).join('\n');
+      form.connHosts.style.width = '100%';
+      form.sitePlug = {};
+      var sitePicked = settings.genie.sitePlugins || [];
+      var sitePlugBoxes = h('div', { class: 'toolbar', style: 'flex-wrap:wrap;gap:6px 16px' }, (settings.pluginCatalogue || []).map(function (p) {
+        var box = h('input', { type: 'checkbox', id: 'f-site-plugin-' + p.id, checked: sitePicked.indexOf(p.id) >= 0, 'aria-label': p.title + ' is on for everyone', onchange: update });
+        form.sitePlug[p.id] = box;
+        return h('label', { class: 'sub', style: 'display:flex;gap:6px;align-items:center' }, box, h('span', { text: p.title }));
+      }));
       var agentShell = toggle('f-agent-shell', !settings.genie.agentShellOff, 'Agent: run commands');
       form.agentShell = agentShell.input;
       var genieEvents = toggle('f-genie-events', !settings.genieEventsOff, 'Genie log');
@@ -983,6 +1018,89 @@
         ? 'Stored in MongoDB (version ' + (settings.version || 0) + '). A change made on another instance appears here within about 10 seconds.'
         : 'Stored in the file settings.json on this server. Set OPENREPL_MONGODB_URI to keep the settings in MongoDB instead.';
       // API keys: saved at once, not with the form's Save button, and never shown
+      // who installed which plugin, from where (server/genie_ext_log.go): read-only, drawn when it arrives
+      var plugBox = h('div', { 'data-card': 'Plugin installs' });
+      function drawPlugs(info) {
+        plugBox.textContent = '';
+        var entries = (info && info.entries) || [];
+        var counts = (info && info.counts) || [];
+        var head = h('tr', null, ['When', 'Who', 'What', 'Plugin', 'Where from'].map(function (t) { return h('th', { scope: 'col', text: t }); }));
+        var rows = entries.slice(0, 50).map(function (e) {
+          var src = String(e.source || '');
+          var from = src.indexOf('link:') === 0 ? 'link ' + src.slice(5) : src.indexOf('catalogue:') === 0 ? 'catalogue' : src;
+          return h('tr', null, h('td', { text: String(e.t || '').replace('T', ' ').replace('Z', '') }), h('td', { text: e.user || '' }),
+            h('td', { text: e.op || '' }), h('td', { text: (e.plugin || '') + (e.version ? ' v' + e.version : '') }), h('td', { text: from }));
+        });
+        var table = entries.length
+          ? h('div', { class: 'table-wrap' }, h('table', null, h('thead', null, head), h('tbody', null, rows)))
+          : h('p', { class: 'sub', text: 'Nothing has been installed yet.' });
+        var summary = counts.length
+          ? h('p', { class: 'sub', text: 'Now installed: ' + counts.filter(function (c) { return c.users > 0; }).map(function (c) { return c.plugin + ' (' + c.users + (c.users === 1 ? ' person' : ' people') + ')'; }).join(', ') + '.' })
+          : null;
+        plugBox.appendChild(card('Plugin installs', 'Each install, update and removal of a plugin, newest first, for the last ' + ((info && info.days) || 90) + ' days. Who is the account id (the Users view has the email). A link is shown in full. The text of a skill is never recorded.', [summary, table]));
+      }
+      // the requests for a connection a plugin needs, and who is connected to what (server/genie_conn_requests.go): drawn when they arrive, answered at once
+      // Integrations: the servers of the registry (admin-integrations.js, loaded when the section is opened)
+      var intBox = h('div', { 'data-card': 'Integrations' }), intView = null;
+      function mountIntegrations() {
+        if (intView) return intView.refresh();
+        intBox.appendChild(h('p', { class: 'loading', text: 'Loading…' }));
+        return AdminKit.loadScript('admin-integrations.js').then(function () {
+          intView = window.AdminIntegrations.make({ switchesHref: AS.hashFor('genie-agent') });
+          intBox.textContent = '';
+          intBox.appendChild(card('Integrations', 'Servers Genie can connect to. Only a published server is shown to people; a draft or a tested one is seen by admins alone.', intView.root));
+          return intView.refresh();
+        }, function (e) { intBox.textContent = ''; intBox.appendChild(h('p', { class: 'sub', text: e.message })); });
+      }
+      late.integ = mountIntegrations;
+      var connBox = h('div', { 'data-card': 'Connection requests' });
+      function drawConn(info) {
+        connState = info;
+        connBox.textContent = '';
+        var reqs = ((info && info.requests) || []).filter(function (r) { return r.kind !== 'server'; }); // the requests for a server are on the Integrations page
+        var who = (info && info.connected) || [];
+        var calls = (info && info.calls) || [];
+        function answer(r, action) {
+          var reason = h('input', { type: 'text', class: 'field', maxlength: '200', placeholder: 'Why (shown to the user)', 'aria-label': 'Reason' });
+          reason.style.width = '100%';
+          var decline = action === 'decline';
+          ask({ title: (decline ? 'Decline ' : 'Approve ') + r.plugin + (action === 'approve_user' ? ' for this user only' : decline ? '' : ' for everyone') + '?',
+            body: decline ? 'The user sees the reason.' : 'The connection can then be connected by ' + (action === 'approve_user' ? 'this user' : 'every user') + ', each with their own token. The approval holds for this exact version of the plugin: a change sends it back to review.',
+            content: decline ? reason : undefined, confirm: decline ? 'Decline' : 'Approve', danger: decline }).then(function (yes) {
+            if (!yes) return;
+            return api.post('admin/connection-requests', { id: r.id, action: action, reason: decline ? reason.value.trim() : '' }).then(function () {
+              toast(decline ? 'Declined.' : 'Approved.');
+              return refreshConn();
+            }, fail);
+          });
+        }
+        var cards = reqs.map(function (r) {
+          var conns = (r.connections || []).map(function (c) { return c.title + ' (' + String(c.url || '').replace(/^https:\/\//, '') + ')'; }).join(', ');
+          var buttons = r.status === 'waiting'
+            ? h('span', { class: 'actions' },
+                h('button', { class: 'btn', type: 'button', text: 'Approve for everyone', onclick: function () { answer(r, 'approve'); } }),
+                h('button', { class: 'btn', type: 'button', text: 'Approve for this user', onclick: function () { answer(r, 'approve_user'); } }),
+                h('button', { class: 'btn', type: 'button', text: 'Decline…', onclick: function () { answer(r, 'decline'); } }))
+            : h('span', { class: 'sub', text: r.status + (r.scope ? ' (' + r.scope + ')' : '') + (r.reason ? ': ' + r.reason : '') });
+          return row(r.plugin + (r.version ? ' v' + r.version : '') + ' · ' + r.user,
+            'From ' + r.source + '. Needs: ' + conns + '. Skills: ' + (r.skills || []).join(', ') + '.' + (r.note ? ' Note: "' + r.note + '"' : '') + ' (' + String(r.at || '').replace('T', ' ').replace('Z', '') + ')', buttons);
+        });
+        var people = who.length
+          ? h('div', { class: 'table-wrap' }, h('table', null, h('thead', null, h('tr', null, ['Who', 'Connected to', 'Since'].map(function (t) { return h('th', { scope: 'col', text: t }); }))),
+              h('tbody', null, who.slice(0, 50).map(function (w) { return h('tr', null, h('td', { text: w.user }), h('td', { text: w.conn }), h('td', { text: String(w.at || '').replace('T', ' ').replace('Z', '') })); }))))
+          : h('p', { class: 'sub', text: 'Nobody has connected a service yet.' });
+        var recent = calls.length
+          ? h('p', { class: 'sub', text: 'Last calls: ' + calls.slice(0, 5).map(function (c) { return c.conn + '.' + (c.tool || c.op) + (c.ok ? '' : ' (failed)'); }).join(', ') + '. Only the connection, the tool and the outcome are recorded, never the arguments or the result.' })
+          : null;
+        connBox.appendChild(card('Connection requests',
+          'A plugin from a link that names a connection waits here, with the files and the server address the server fetched. Approve it for everyone or for one user, or decline with a reason. ' + (reqs.filter(function (r) { return r.status === 'waiting'; }).length || 'No') + ' waiting. Below: who is connected to what (never the tokens).',
+          [cards.length ? cards : h('p', { class: 'sub', text: 'No requests yet.' }), h('h3', { text: 'Connected' }), people, recent]));
+      }
+      function refreshConn() {
+        return Promise.all([api.get('admin/connection-requests'), api.get('admin/connections')]).then(function (r) {
+          drawConn({ requests: r[0].requests, connected: r[1].connected, calls: r[1].calls });
+        }, function () { /* not essential */ });
+      }
       var keysBox = h('div', { 'data-card': 'API keys' });
       function drawKeys(info) {
         keysState = info;
@@ -1148,6 +1266,17 @@
               h('div', { class: 'toolbar' }, h('span', { class: 'sub', text: 'Sent' }), p.inBox, h('span', { class: 'sub', text: 'Written' }), p.outBox));
           }),
           row('Show the cost to users', 'Off by default: users see the tokens they used. On adds their cost to the usage details.', showCost.node) ]),
+        card('Skills and plugins', 'A skill is a short text file that tells Genie how to do a kind of task. Users keep their own in the hidden folder .genie/skills of their workspace, type / to use one, and install plugins (folders of skills, with no code) with /add-plugin. Nothing in a skill or a plugin runs by itself: whatever a skill asks Genie to do goes through the same cards, permissions and limits as any task, and a skill can only narrow the actions of a task, never add to them.', [
+          row('Skills and plugins', 'On by default. Off: the / menu has no skills and /add-plugin does nothing; files already in workspaces stay where they are.', extOn.node),
+          row('Plugins from a link', 'Off by default: a user can install only the plugins of the catalogue below. On: a signed-in user can also paste a GitHub repository, a folder of one (a branch with a slash in its name works) or a .zip link. The server fetches it: a GitHub link file by file through GitHub\'s API (set OPENREPL_GITHUB_TOKEN on the server so that GitHub\'s limit of 60 requests an hour without a token does not stop it), a .zip at most 2 MB, public https addresses only, 12 links an hour for each user. It keeps only text: plugin.json, skills and notes. The user reads what it brings, and ticks a box, before it is installed. A plugin that names a connection waits for an admin unless \'Allow connections without approval\' is on (card Connections). Each link fetched is written to the server log with the user and the address.', plgLinks.node),
+          row('On for everyone', 'Plugins of the catalogue that every user has without installing them (their skills are in the / menu). Their text lives in the server, not in the workspace.', sitePlugBoxes) ]),
+        card('Connections', 'A connection lets Genie use a service the user connected (GitHub ...) through MCP. The server makes every call with the user\'s own token, kept encrypted (it needs OPENREPL_SECRET), never shown and never put in a prompt, a chat or a snapshot. Reading asks once, writing asks each time, and what cannot be undone asks every time. What a service returns is treated as outside text: after it, anything risky asks the user again. A task may make 20 calls; a result sent to the model is cut at 6,000 characters; a call stops after 30 seconds.', [
+          row('Connections to other services', 'On by default. Off: nobody can connect a service or use a connection, and a plugin that needs one is not installed. Tokens already saved stay where they are.', connOn.node),
+          row('Allow connections without approval', 'Off by default: a plugin from a link that names a connection waits for an admin (see Connection requests below). On: the user reads the card and installs it, and connects with their own token. Connections of the site\'s own catalogue (GitHub) never need approval when a catalogue plugin names them.', connNoApproval.node),
+          row('Only these servers', 'One host for each line, like api.githubcopilot.com (no https:// and no port). Empty: any public https server. When it is filled, a plugin from a link may name only these, with or without approval, and a connection to another host is refused at Connect.', form.connHosts) ]),
+        connBox,
+        plugBox,
+        intBox,
         card('Agent mode', 'Genie works on a task in steps: it writes in the editor and runs the code, after the user allowed each kind of action and reviewed the changes. Only signed-in users have it, and it is on unless you switch it off here. Each task costs a user one request, like a chat message, however many steps it has.', [
           row('Agent mode', 'Shows the Chat | Agent switch in the Genie panel for signed-in users. Chat stays the default.', agentOn.node),
           row('Allow everything for a session', 'On: a user can answer one card with "Allow everything for this session", and the editor\'s changes then go in without a review (each can be undone). Off: a card for every kind of action, and every change is reviewed. Allowing one kind for the session stays.', agentAuto.node),
@@ -1191,6 +1320,11 @@
         adminsBox,
         bar);
       form.ready = true;
+      late.plugs = drawPlugs;
+      late.conn = refreshConn;
+      late.connDraw = drawConn;
+      if (connState) drawConn(connState);
+      if (plugsState) drawPlugs(plugsState); // the list came before the form was drawn
       late.keys = drawKeys;
       late.admins = drawAdmins;
       syncDefaultModels(); // the lists that follow other controls, as they will be, before the starting values of the sections are taken
@@ -1206,6 +1340,11 @@
       if (form) return Promise.resolve(); // never redraw a form the admin may be editing
       var keys = api.get('admin/keys').then(function (r) { keysState = r; if (late.keys) late.keys(r); }, fail);
       var admins = api.get('admin/admins').then(function (r) { adminsState = r; if (late.admins) late.admins(r); }, fail);
+      Promise.all([api.get('admin/connection-requests'), api.get('admin/connections')]).then(function (r) {
+        connState = { requests: r[0].requests, connected: r[1].connected, calls: r[1].calls };
+        if (late.connDraw) late.connDraw(connState);
+      }, function () { /* not essential */ });
+      api.get('admin/plugin-installs').then(function (r) { plugsState = r; if (late.plugs) late.plugs(r); }, function () { /* the list is not essential */ });
       return api.get('admin/settings').then(function (r) { body.textContent = ''; body.appendChild(build(r, keysState, adminsState)); return Promise.all([keys, admins]); });
     }
     return { root: root, refresh: refresh, poll: false, dirty: isDirty, destroy: function () { document.removeEventListener('keydown', onSlash); window.removeEventListener('hashchange', onHash); } };

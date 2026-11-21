@@ -160,3 +160,77 @@ test("bash is an everyday scope: safe commands follow the grant, risky ones ask"
   assert.equal(p.decide({ ...ls, text: "rm -r build" }), "ask");
   assert.equal(p.decide({ ...ls, text: "sudo ls" }), "ask");
 });
+
+// ---- connections (MCP): the kinds of call, and text from outside ----
+import { parseStep as parseStepForMcp, scopeOf as scopeOfMcp, scopeQuestion as scopeQuestionMcp, scopeDetail as scopeDetailMcp, riskyAfterOutside as riskyAfterOutsideMcp, Permissions as PermissionsMcp, EVERYDAY_SCOPES as EVERYDAY_MCP } from "../src/agent-protocol.ts";
+
+const mcp = (level: "read" | "write" | "irreversible" | undefined, tool = "create_issue") => ({ type: "mcp_call" as const, connection: "github", tool, args: { title: "x" }, level, title: "GitHub" });
+
+test("a call to a connection is a read, a write or a thing that cannot be undone, by the tool's own level, and a tool of no known level is a write", () => {
+  assert.equal(scopeOfMcp(mcp("read", "get_issue")), "mcpread");
+  assert.equal(scopeOfMcp(mcp("write")), "mcpwrite");
+  assert.equal(scopeOfMcp(mcp("irreversible", "merge_pull_request")), "mcpdanger");
+  assert.equal(scopeOfMcp(mcp(undefined)), "mcpwrite");
+  assert.match(scopeQuestionMcp("mcpread"), /read/);
+  assert.match(scopeQuestionMcp("mcpdanger"), /cannot be undone/);
+  assert.match(scopeDetailMcp("mcpwrite", mcp("write")), /write to GitHub as you/);
+  assert.match(scopeDetailMcp("mcpwrite", mcp("write")), /create_issue/);
+});
+
+test("the model's mcp_call is read with its limits, and what the page decides (level, name) is not taken from it", () => {
+  const step = (a: unknown) => {
+    const r = parseStepForMcp(JSON.stringify({ say: "x", actions: [a], done: false }));
+    assert.ok(r.ok);
+    return (r as any).step as { actions: any[]; dropped: string[] };
+  };
+  const ok = step({ type: "mcp_call", connection: "GitHub", tool: "create_issue", args: { title: "t" }, level: "read", title: "Evil" });
+  assert.equal(ok.actions.length, 1);
+  assert.equal(ok.actions[0].connection, "github");
+  assert.equal(ok.actions[0].level, undefined, "the level is the page's, from the connection's own list");
+  assert.equal(ok.actions[0].title, undefined);
+  for (const bad of [{ connection: "", tool: "t" }, { connection: "github", tool: "../x" }, { connection: "github", tool: "t", args: [1] }, { connection: "github", tool: "t", args: "x" }, { connection: "github", tool: "t", args: { a: "x".repeat(17000) } }]) {
+    const r = step({ type: "mcp_call", ...bad });
+    assert.equal(r.actions.length, 0, JSON.stringify(bad).slice(0, 80));
+    assert.ok(r.dropped.some((d) => d.includes("mcp_call left out")));
+  }
+});
+
+test("a read can be allowed for the session, a write too, and what cannot be undone is asked every time", () => {
+  const p = new PermissionsMcp();
+  assert.equal(p.decide(mcp("read", "get_issue")), "ask");
+  p.grant("mcpread");
+  assert.equal(p.decide(mcp("read", "get_issue")), "auto");
+  assert.equal(p.decide(mcp("write")), "ask");
+  p.grant("mcpwrite");
+  assert.equal(p.decide(mcp("write")), "auto");
+  p.grant("mcpdanger");
+  assert.equal(p.decide(mcp("irreversible", "merge_pull_request")), "ask", "no grant lifts it");
+  const all = new PermissionsMcp();
+  all.grantEverything();
+  assert.equal(all.decide(mcp("read", "get_issue")), "auto");
+  assert.equal(all.decide(mcp("write")), "auto", "Allow everything covers writes");
+  assert.equal(all.decide(mcp("irreversible", "merge_pull_request")), "ask");
+  assert.ok(EVERYDAY_MCP.includes("mcpread") && EVERYDAY_MCP.includes("mcpwrite") && !EVERYDAY_MCP.includes("mcpdanger" as any));
+});
+
+test("taint guard: after text from outside a risky action asks again, whatever was allowed, and a new task is clean", () => {
+  const p = new PermissionsMcp();
+  p.grantEverything();
+  const bash = { type: "bash" as const, text: "ls" };
+  const del = { type: "files_delete" as const, path: "a.txt" };
+  const evalA = { type: "preview_eval" as const, text: "1+1" };
+  assert.equal(p.decide(bash), "auto");
+  assert.equal(p.decide(mcp("write")), "auto");
+  p.markOutside();
+  assert.equal(p.isOutside(), true);
+  assert.equal(p.decide(bash), "ask", "a shell command");
+  assert.equal(p.decide(del), "ask", "a delete");
+  assert.equal(p.decide(mcp("write")), "ask", "a write to a connection");
+  assert.equal(p.decide(evalA), "ask", "code in the page");
+  // reading and the everyday things are not asked again
+  assert.equal(p.decide(mcp("read", "get_issue")), "auto");
+  assert.equal(p.decide({ type: "files_open" as const, path: "a.txt" }), "auto");
+  assert.ok(riskyAfterOutsideMcp(bash) && riskyAfterOutsideMcp(evalA) && !riskyAfterOutsideMcp(mcp("read", "get_issue")));
+  p.clearOutside();
+  assert.equal(p.decide(bash), "auto");
+});

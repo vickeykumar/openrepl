@@ -34,6 +34,9 @@ async function stub(page, opts = {}) {
     json(r, fixture("admin-keys.json"));
   });
   await page.route("**/admin/admins", (r) => json(r, fixture("admin-admins.json")));
+  await page.route("**/admin/plugin-installs", (r) => json(r, { entries: [], counts: [], days: 90 }));
+  await page.route("**/admin/connection-requests", (r) => json(r, { requests: [], waiting: 0 }));
+  await page.route("**/admin/connections", (r) => json(r, { connected: [], calls: [] }));
   await page.route("**/admin/gateway", (r) => json(r, { mode: "single" }));
   await page.route(/\/admin\/(health|stats|audit|feedback|workers|sessions|jobs)(\?.*)?$/, (r) => json(r, {}));
   return st;

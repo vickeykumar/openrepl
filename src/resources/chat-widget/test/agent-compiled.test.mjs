@@ -433,6 +433,26 @@ test("built: the results of the actions go back to the model, in order, and a de
   assert.equal(t.log.asked.length, 2, "one question for the files, one for Run: " + t.log.asked.join(" | "));
 });
 
+test("built: a skill that names its actions limits the task to them: the others are refused, and the model is told which are left", async () => {
+  const t = setup(
+    [
+      { say: "Listing, then running.", actions: [{ type: "files_list" }, { type: "files_read", path: "a.py" }], done: false },
+      { say: "Done.", actions: [{ type: "finish" }], done: false },
+    ],
+    { answer: () => "Allow for this session" }
+  );
+  await t.done(t.runner.start("review it", "", ["files_read", "files_search"]));
+  const r = t.results(1).step_results;
+  assert.equal(r[0].type + ":" + r[0].status, "files_list:failed", "an action that the skill does not list is refused");
+  assert.match(r[0].detail, /allows only these actions: files_read, files_search/);
+  assert.equal(r[1].type, "files_read", "reading is never taken away");
+  assert.notEqual(r[1].detail || "", "the skill does not allow it");
+  // a task with no limit is as it was
+  const free = setup([{ say: "Listing.", actions: [{ type: "files_list" }], done: false }, { say: "Done.", actions: [{ type: "finish" }], done: false }], { answer: () => "Allow for this session" });
+  await free.done(free.runner.start("list it"));
+  assert.equal(free.results(1).step_results[0].status, "done");
+});
+
 test("built: what is asked about every time is asked again after a session grant, and what cannot be done is not asked about", async () => {
   const t = setup(
     [
