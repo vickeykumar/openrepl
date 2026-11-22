@@ -411,7 +411,7 @@ function getcurrentIDECode(): MessageType {
     language ? `Language: ${language}` : "",
     file && file !== "untitled" ? `File: ${file}` : "",
     `--- Editor code (${code.split("\n").length} lines; line numbers are not shown, and they move after every change) ---`,
-    readEditor ? code || "(the editor is empty)" : "(the user turned off sharing the editor with Genie; what they add to a message is all the code you have)",
+    readEditor ? code || "(the editor is empty)" : "(the user turned off sharing the editor with Genie; the editor buffer is not shared. In Agent mode, you may inspect saved workspace files with focused Bash commands if the task needs them. Unsaved editor changes are unavailable.)",
     "--- Terminal output (the most recent lines of the active terminal) ---",
     output || "(nothing in the terminal yet)",
     readPreview ? previewContext(previewState()) : "",
