@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -231,6 +232,17 @@ func previewDialer(home string) livepreview.Dialer {
 	return func(ctx context.Context, port int) (net.Conn, error) {
 		pids := livepreview.FindPIDs(home)
 		if len(pids) == 0 {
+			// No process was found by its HOME or its helper. Under the network emulation the program's socket has a name that holds only the
+			// workspace and the port, so it can be reached without knowing a process: a REPL that /proc did not show (a process the server may
+			// not read) must not hide a program that is listening (reported: "Nothing is running yet" with `python -m http.server` running).
+			if netEmuActive() {
+				var d net.Dialer
+				if c, err := d.DialContext(ctx, "unix", netemu.Name(netemu.WorkspaceID(home), "t", uint16(port))); err == nil {
+					logNoProcess(home, port, true)
+					return c, nil
+				}
+			}
+			logNoProcess(home, port, false)
 			return nil, livepreview.ErrNoProgram
 		}
 		// each REPL of a workspace may have a network of its own: the program is in the one that listens on the port
@@ -383,3 +395,26 @@ func previewIsolated(home string) bool {
 const previewEnded = `<!doctype html><meta charset="utf-8"><title>Preview ended</title>
 <body style="font:16px system-ui;margin:3rem;color:#333"><h1 style="font-size:20px">This preview has ended.</h1>
 <p>Open it again from the editor.</p>`
+
+// netEmuActive is containers.NetEmuActive; the tests replace it.
+var netEmuActive = containers.NetEmuActive
+
+var (
+	noProcessMu   sync.Mutex
+	noProcessSeen = map[string]time.Time{}
+)
+
+// logNoProcess says, at most once a minute for a workspace, that the Preview found no process of the workspace (and whether the emulation's socket
+// answered all the same), so that a report of "Nothing is running yet" can be told from a program that is really not there.
+func logNoProcess(home string, port int, reached bool) {
+	noProcessMu.Lock()
+	defer noProcessMu.Unlock()
+	if len(noProcessSeen) > 512 {
+		noProcessSeen = map[string]time.Time{}
+	}
+	if time.Since(noProcessSeen[home]) < time.Minute {
+		return
+	}
+	noProcessSeen[home] = time.Now()
+	log.Printf("preview: no process of %s was found for port %d (the emulation's socket answered: %v)", filepath.Base(home), port, reached)
+}
