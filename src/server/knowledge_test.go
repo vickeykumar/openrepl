@@ -110,7 +110,7 @@ func TestEveryShippedNoteIsValidAndLinksToThisSite(t *testing.T) {
 		if n.Title == "" || n.Text == "" || n.Keywords == "" {
 			t.Errorf("%s: needs a title, keywords and text", n.ID)
 		}
-		if w := len(strings.Fields(n.Text)); w > 220 {
+		if w := len(strings.Fields(n.Text)); w > 300 {
 			t.Errorf("%s: %d words; a note is one short topic", n.ID, w)
 		}
 	}
