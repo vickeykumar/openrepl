@@ -269,7 +269,7 @@ fi
 chmod -R u+w "$GOMACRO_DIR" && rm -rf "$GOMACRO_DIR"
 
 #install jq-repl
-apt-get install -y --no-install-recommends jq
+apt-get install -y --no-install-recommends jq ripgrep
 git clone https://github.com/vickeykumar/jq-repl.git
 cd jq-repl
 make install
@@ -387,6 +387,7 @@ if [ $run_tests -eq 1 ]; then
 		"mvn --version"
 		"gdb --version"
 		"jq --version"
+		"rg --version"
 		"echo 'puts [info patchlevel]' | tclsh"
 		"rustc --version"
 		"rust-gdb --version"
