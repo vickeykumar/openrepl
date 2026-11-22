@@ -91,7 +91,7 @@ What the parts do, together:
 
 ## 3. Terminal engine (`src/js/src` → `gotty-bundle.js`)
 
-webpack 5 + ts-loader (TypeScript 4.9, which still runs on the build image's Node 12) produces a UMD library named `gotty`, exposing `launcher`, `addTab`, `closeTab` and `setEventHandler`. hterm and its libapps dependency are split into `hterm.js`, which the bundle loads only when the server runs with `--term hterm` (`publicPath: "auto"` finds it next to `gotty-bundle.js`).
+webpack 5 + ts-loader (TypeScript 4.9) produces a UMD library named `gotty`, exposing `launcher`, `addTab`, `closeTab` and `setEventHandler`. hterm and its libapps dependency are split into `hterm.js`, which the bundle loads only when the server runs with `--term hterm` (`publicPath: "auto"` finds it next to `gotty-bundle.js`).
 
 ```mermaid
 flowchart LR

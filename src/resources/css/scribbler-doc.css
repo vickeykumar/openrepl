@@ -126,6 +126,10 @@ html, body {
   padding: 0 0 5rem 1rem;
 }
 
+.doc__content .code {
+  line-height: 1.75;
+}
+
 @media (max-width: 750px) {
   .wrapper {
     flex-direction: column;

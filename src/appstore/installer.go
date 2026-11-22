@@ -145,7 +145,7 @@ func (n Npm) Resolve(ctx context.Context, name, version, kind string) (Resolved,
 	node := n.nodeVersion(ctx)
 	var lastErr error
 	// One version of each MAJOR is looked at, newest major first (the engines of a library rise with its majors), not the newest 40 releases: a library whose last
-	// release that this Node can run is older than that (eslint 7, jest 27, prettier 2 on Node 12) is found in a few lookups. In a major the newest release is
+	// release that this Node can run is older than that is found in a few lookups. In a major the newest release is
 	// asked; a lookup that fails goes on to the next older; when the newest of a major needs too new a Node but its oldest does not, the major is walked down.
 	views := 0
 	look := func(v string) (Resolved, bool, bool) { // the version, whether this Node can run it, whether it could be looked up
