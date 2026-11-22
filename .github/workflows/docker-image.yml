@@ -209,22 +209,24 @@ jobs:
         docker cp src/resources/meta/demos.xml openrepl:/tmp/demos.xml
         docker exec openrepl python3 /tmp/landlock-compat.py --demos /tmp/demos.xml
 
-    # why the ts-node REPL stops ("Cannot read property 'fileExists' of undefined"): which compiler it
-    # loads and whether that one has `sys`. Only prints, it does not fail the build.
-    - name: Look at ts-node
+    # Report the compiler actually loaded by the globally installed ts-node and run a small file.
+    - name: Check the TypeScript toolchain
       continue-on-error: true
       run: |
-        docker exec openrepl env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin bash -c '
-          for d in / /tmp /tmp/home; do
-            echo "== cwd $d"; cd "$d" 2>/dev/null || continue
-            node -e "var t=require(\"typescript\"); console.log(require.resolve(\"typescript\"), t.version, typeof t.sys)" 2>&1 | head -5
-            echo "40 + 2" | timeout 20 ts-node 2>&1 | head -15
-          done
-          G=/root/.nvm/versions/node/v12.22.9/lib/node_modules
-          ls -la $G $G/typescript $G/ts-node/node_modules 2>&1 | head -40
-          node -e "var t=require(\"$G/typescript\"); console.log(\"global typescript\", t.version, typeof t.sys, Object.keys(t).length)" 2>&1 | head -8
-          node -p "require(\"$G/typescript/package.json\").version + \" main=\" + require(\"$G/typescript/package.json\").main"
-          tsc --version; echo "const a: number = 40 + 2; console.log(a)" > /tmp/a.ts; ts-node /tmp/a.ts 2>&1 | head -4; cd /tmp && tsc a.ts && node a.js'
+        docker exec openrepl env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin bash -s <<'EOF'
+        set -x
+        node --version
+        npm --version
+        tsc --version
+        ts-node -vv
+        G=$(npm root -g)
+        node -e "var t=require('$G/typescript'); console.log('global TypeScript', t.version, typeof t.sys)"
+        node -p "require('$G/@types/node/package.json').version"
+        printf 'const value: number = 40 + 2; console.log(value)\n' > /tmp/a.ts
+        ts-node --transpile-only --compiler-options '{"module":"NodeNext","moduleResolution":"NodeNext"}' /tmp/a.ts
+        tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --outDir /tmp/tsc-out /tmp/a.ts
+        node /tmp/tsc-out/a.js
+        EOF
 
     # gotty is PID 1 in the image, so a process that loses its parent is handed to it and, when it
     # ends, stays <defunct> unless gotty reaps it (src/reaper): the parent of this one goes at once

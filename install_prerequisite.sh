@@ -298,13 +298,9 @@ apt-get install -y --no-install-recommends tcl
 apt-get install -y --no-install-recommends sqlite3
 
 #install typescript and ts-node
-npm install -g typescript@4.9.5
-npm install -g ts-node@10.9.2
-npm link typescript
-# ts-node brings its own copy of the newest typescript (7.x, the native compiler, which has no
-# JavaScript API: no `ts.sys`) and loads that one before the global typescript 4.9.5, so the
-# TypeScript REPL stopped with "Cannot read property 'fileExists' of undefined". Remove the copy:
-# it then finds the global one.
+npm install -g typescript@6.0.3 ts-node@10.9.2 @types/node@24.19.2
+# ts-node 10 uses TypeScript's JavaScript compiler API. Keep its compiler at TypeScript 6
+# until ts-node supports the TypeScript 7 native compiler API.
 rm -rf "$(npm root -g)/ts-node/node_modules/typescript"
 
 # node, npm, npx, tsc and ts-node by name, for the server and the REPLs it starts. nvm puts its
@@ -398,6 +394,7 @@ if [ $run_tests -eq 1 ]; then
 		"sqlite3 --version"
 		"tsc --version"
 		"ts-node --version"
+		"ts-node -vv"
 	)
 
 
