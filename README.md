@@ -758,6 +758,8 @@ Only `apiKey`, `authDomain` and `projectId` are required, and fields that are no
 
 The memory limits come from `Commands2memLimitMap`. They double as admission-control weights: a new connection is refused when either the number of connections or the total weight exceeds `--max-connection`. See [docs/lld/09-adding-a-repl.md](docs/lld/09-adding-a-repl.md) to add a language.
 
+Java terminals also include Maven (`mvn`) for building projects. Gradle projects can use their checked-in `./gradlew` wrapper, which downloads the project's configured Gradle version when internet access for REPLs is enabled.
+
 GoTTY's original design notes still apply to the terminal core. It uses [xterm.js](https://xtermjs.org/) and [hterm](https://groups.google.com/a/chromium.org/forum/#!forum/chromium-hterm), and the hterm + websocket idea was inspired by [Wetty](https://github.com/krishnasrinivas/wetty).
 
 ## Alternatives

@@ -66,9 +66,10 @@ apt-get update -y
 GO_VERSION=1.23.12
 YAEGI_VERSION=v0.16.1
 RUST_VERSION=1.85.1
-apt-get install -y --no-install-recommends make gcc g++ openjdk-21-jdk-headless git
+apt-get install -y --no-install-recommends make gcc g++ openjdk-21-jdk-headless git maven
 # the Java REPL is jshell (utils/interactive.go): part of the JDK since 9, but fail early if it is missing
 command -v jshell >/dev/null || { echo "jshell was not installed with openjdk-21-jdk-headless"; exit 1; }
+command -v mvn >/dev/null || { echo "maven was not installed"; exit 1; }
 # the JDK 21 is the one of the PATH (a JDK of an older version may be there too)
 update-alternatives --set java "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/java" || true
 update-alternatives --set javac "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/javac" || true
@@ -286,7 +287,7 @@ apt-get install -y --no-install-recommends rlwrap
 # alias yaegi="rlwrap yaegi"
 
 apt-get install -y --no-install-recommends perl
-apt-get install -y --no-install-recommends perl-doc
+apt-get install -y --no-install-recommends perl-doc libwww-perl
 git clone https://github.com/vickeykumar/perli.git
 cd perli && make install
 cd ~
@@ -349,7 +350,6 @@ chmod -R 777 /tmp/home || true
 #cleanup
 # remove tools used in between to optimize the container space
 if [ $cleanup_tools -eq 1 ]; then
-	apt-get -y --purge remove git 
 	apt-get -y --purge remove npm
 	apt-get -y clean
 	apt-get -y autoremove
@@ -385,9 +385,11 @@ if [ $run_tests -eq 1 ]; then
 		"irb --version"
 		"ruby --version"
 		"perl --version"
+		"perl -MLWP::UserAgent -e 1"
 		"perli --version"
 		"java --version"
 		"jshell --version"
+		"mvn --version"
 		"gdb --version"
 		"jq --version"
 		"echo 'puts [info patchlevel]' | tclsh"
