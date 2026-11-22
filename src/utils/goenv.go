@@ -35,5 +35,10 @@ func UserBinDirs(home string) []string {
 }
 
 // PipBashrc is added to the .bashrc of a bash terminal. A virtual environment cannot take a --user install ("User site-packages are not visible in
-// this virtualenv"), so the prompt takes PIP_USER away while one is active and puts it back when it is not.
-const PipBashrc = "\n_openrepl_pip() { if [ -n \"$VIRTUAL_ENV\" ]; then unset PIP_USER; else export PIP_USER=1; fi; }\nPROMPT_COMMAND=\"_openrepl_pip${PROMPT_COMMAND:+;$PROMPT_COMMAND}\"\n"
+// this virtualenv"), so PIP_USER must not reach a pip that runs inside one. Two things do that: the prompt takes PIP_USER away while one is active
+// and puts it back when it is not (the usual `activate`, then `pip` on the next line), and pip and pip3 are functions that run the real one without
+// PIP_USER when VIRTUAL_ENV is set (the one-liner `. venv/bin/activate && pip install x`, where no prompt comes between the two).
+const PipBashrc = "\n_openrepl_pip() { if [ -n \"$VIRTUAL_ENV\" ]; then unset PIP_USER; else export PIP_USER=1; fi; }\n" +
+	"PROMPT_COMMAND=\"_openrepl_pip${PROMPT_COMMAND:+;$PROMPT_COMMAND}\"\n" +
+	"pip() { if [ -n \"$VIRTUAL_ENV\" ]; then env -u PIP_USER pip \"$@\"; else command pip \"$@\"; fi; }\n" +
+	"pip3() { if [ -n \"$VIRTUAL_ENV\" ]; then env -u PIP_USER pip3 \"$@\"; else command pip3 \"$@\"; fi; }\n"

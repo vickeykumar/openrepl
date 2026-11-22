@@ -58,3 +58,31 @@ func TestPipUserIsDroppedWhileAVirtualEnvironmentIsActive(t *testing.T) {
 		t.Errorf("inside one: %s", got)
 	}
 }
+
+// the one-liner `activate && pip install x`: no prompt comes between the two, so pip itself must not get PIP_USER inside a virtual environment
+func TestPipInOneLineInAVirtualEnvironmentGetsNoPipUser(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("no bash")
+	}
+	bin := t.TempDir()
+	// a stand-in pip that says what it was given
+	if err := os.WriteFile(bin+"/pip", []byte("#!/bin/sh\necho \"[${PIP_USER}] $*\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	run := func(venv string) string {
+		cmd := exec.Command(bash, "--norc", "-c", PipBashrc+"\nexport PIP_USER=1; pip install x")
+		cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "VIRTUAL_ENV="+venv)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if got := run(""); got != "[1] install x" {
+		t.Errorf("outside a virtual environment: %s", got)
+	}
+	if got := run("/h/venv"); got != "[] install x" {
+		t.Errorf("inside one: %s", got)
+	}
+}
