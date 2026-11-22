@@ -31,6 +31,7 @@ function fake(page, opts = {}) {
     polls: 0,
     notices: opts.notices || [],
   };
+  Object.assign(st.apps, opts.extra || {});
   for (let i = 0; i < (opts.many || 0); i++) st.apps["lib" + String(i).padStart(3, "0")] = { name: "lib" + String(i).padStart(3, "0"), kind: "lib", state: "available", safe: true };
   const views = () => Object.values(st.apps).map((v) => ({ ...v, on: st.on.includes(v.id) }));
   page.route("**/store/api/**", async (route) => {
@@ -52,6 +53,7 @@ function fake(page, opts = {}) {
     if (what.startsWith("search")) {
       const q = new URL(req.url()).searchParams.get("q");
       st.searches.push(q);
+      if (opts.hits) return json({ hits: opts.hits, error: "" });
       return json({ hits: [{ name: q + "-extra", version: "2.0", kind: "lib", summary: "Found on conda-forge.", state: "available", safe: false }, { name: q + "js", version: "1.1", kind: "node", summary: "Found on npm.", state: "available", safe: false }], error: "" });
     }
     if (what.startsWith("size")) return json({ version: "3.0.2", packages: 14, downloadMB: 41.2, diskMB: 98.7 });
@@ -97,7 +99,7 @@ test("the page has the menu, the chips and a grid of cards for every state; an a
   await expect(page.locator("#store-side")).toContainText("Node libraries");
   await expect(page.locator("#store-side")).toContainText("Languages (admin installs)");
   await expect(page.locator("#store-side")).toContainText("Editor plugins (samples)");
-  await expect(page.locator("#store-side")).not.toContainText("apt packages"); // for admins only
+  await expect(page.locator("#store-side")).toContainText("System packages (apt)"); // the approved packages are a section for everyone; editing the list is for admins
   await expect(page.locator(".store__grid .sapp")).toHaveCount(9);
   await expect(page.locator('[data-app="flask"] button')).toHaveText("Install");
   await expect(page.locator('[data-app="numpy"] .sswitch')).toHaveAttribute("aria-checked", "false");
@@ -196,7 +198,7 @@ test("a request asks for a reason; My requests lists what was asked; the answers
 test("an admin sees the apt packages and can install another version", async ({ page }) => {
   fake(page, { admin: true });
   await page.goto("/store#apt");
-  await expect(page.locator("#store-side")).toContainText("apt packages");
+  await expect(page.locator("#store-side")).toContainText("System packages (apt)");
   await expect(page.locator(".store__detail")).toContainText("postgresql-client");
   await page.goto("/store#app/pillow");
   await expect(page.locator(".store__pick")).toContainText("Admin: install another version");
@@ -427,4 +429,60 @@ test("a long list shows one page of cards with a pager at the foot; a new search
   await page.locator("#store-search").fill("lib00");
   await expect(page.locator(".store__list > .store__grid .sapp")).toHaveCount(10);
   await expect(page.locator(".store__pager")).toHaveCount(0);
+});
+
+// two apps can have one name (the Python ping that failed and the npm ping): the address says which, and each page is its own
+test("an app page opens the app of the kind in its address, when two apps share a name", async ({ page }) => {
+  fake(page, {
+    extra: {
+      ping: { name: "ping", kind: "lib", state: "failed", safe: false, mine: true, err: "conda-forge has no package called ping" },
+      "ping-node": { name: "ping", kind: "node", state: "available", safe: false, version: "1.0.0", summary: "a simple wrapper for ping" },
+    },
+  });
+  await page.goto("/store#app/ping?kind=node");
+  await expect(page.locator(".store__dhead")).toContainText("npm");
+  await expect(page.locator(".store__detail")).toContainText("a simple wrapper for ping");
+  await expect(page.locator(".store__detail")).not.toContainText("conda-forge has no package called ping");
+  await page.goto("/store#app/ping?kind=lib");
+  await expect(page.locator(".store__detail")).toContainText("conda-forge");
+  // a plain address still opens an app by its name
+  await page.goto("/store#app/numpy");
+  await expect(page.locator(".store__detail")).toContainText("numpy");
+  // the cards link with the kind
+  await page.goto("/store#browse");
+  await page.locator("#store-search").fill("ping");
+  await expect(page.locator('a.sapp__name[href="#app/ping?kind=node"]')).toBeVisible();
+});
+
+// the other registries (LLD 18 "Search for every kind"): the Found box says where it looked, a hit of a crate keeps what crates.io calls it, and
+// the Debian packages are a section for everyone
+test("a search in the Rust section says crates.io, a request keeps the package, and the apt packages are a section", async ({ page }) => {
+  const st = fake(page, { hits: [{ name: "itoa", version: "1.0.15", kind: "crate", package: "itoa", summary: "Fast integer printing", state: "available", safe: false }] });
+  await page.goto("/store#kind/crate");
+  await page.locator("#store-search").fill("itoa");
+  await expect(page.locator(".store__h3")).toContainText("on crates.io");
+  const hit = page.locator('[data-app="itoa"]');
+  await expect(hit).toBeVisible();
+  await hit.locator("button", { hasText: "Request" }).click();
+  await page.locator("#store-dialog button", { hasText: "Send request" }).click();
+  await expect.poll(() => st.calls.at(-1)).toEqual(["request", expect.objectContaining({ name: "itoa", kind: "crate", package: "itoa", summary: "Fast integer printing" })]);
+  await page.goto("/store#kind/apt");
+  await expect(page.locator("#store-side")).toContainText("System packages (apt)");
+  await expect(page.locator(".store__intro, .store__legend").first()).toContainText("System packages");
+});
+
+// the page of a Debian package found by a search says it is one (not a conda-forge library), and the search of everything says where it looks
+test("a found Debian package has its own page, and the search of everything names every source", async ({ page }) => {
+  fake(page, { hits: [{ name: "perl", version: "5.40.1", kind: "apt", summary: "Larry Wall's Practical Extraction and Report Language", state: "available", safe: false }] });
+  await page.goto("/store#browse");
+  await page.locator("#store-search").fill("perl");
+  await expect(page.locator(".store__h3")).toContainText("Ubuntu archive");
+  await expect(page.locator(".store__h3")).toContainText("crates.io");
+  await page.locator('[data-app="perl"] a.sapp__name').click();
+  await expect(page).toHaveURL(/#app\/perl\?kind=apt/);
+  await expect(page.locator(".store__dhead")).toContainText("System package");
+  await expect(page.locator(".store__dhead")).toContainText("Ubuntu archive");
+  await expect(page.locator(".store__dhead")).not.toContainText("conda-forge");
+  await expect(page.locator(".store__detail")).toContainText("Larry Wall");
+  await expect(page.locator(".store__detail")).not.toContainText("python3 -c");
 });

@@ -12,9 +12,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"containers"
+	"egress"
 	"livepreview"
 	"netemu"
 	"utils"
@@ -267,8 +269,49 @@ func previewDialer(home string) livepreview.Dialer {
 	}
 }
 
-// previewPorts lists the ports a workspace's programs listen on, from the sockets of its own network.
+// previewPorts lists the ports a workspace's programs listen on, from the sockets of its own network. The proxy's own port (LLD 16
+// "Egress") is the server's listener, not a program of the user: it is not listed.
 func previewPorts(home string) []int {
+	return withoutOwnPorts(withoutPort(workspacePorts(home), egress.Port))
+}
+
+// the ports this server itself listens on: an admin's REPL has no sandbox, so its sockets are the machine's own and the site would show up
+var (
+	ownPortsMu sync.Mutex
+	ownPorts   = map[int]bool{}
+)
+
+func noteOwnPort(port string) {
+	if n, err := strconv.Atoi(port); err == nil && n > 0 {
+		ownPortsMu.Lock()
+		ownPorts[n] = true
+		ownPortsMu.Unlock()
+	}
+}
+
+func withoutOwnPorts(in []int) []int {
+	ownPortsMu.Lock()
+	defer ownPortsMu.Unlock()
+	out := make([]int, 0, len(in))
+	for _, p := range in {
+		if !ownPorts[p] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func withoutPort(in []int, port int) []int {
+	out := make([]int, 0, len(in))
+	for _, p := range in {
+		if p != port {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func workspacePorts(home string) []int {
 	pids := livepreview.FindPIDs(home)
 	if len(pids) == 0 {
 		return []int{}

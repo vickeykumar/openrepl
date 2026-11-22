@@ -660,6 +660,7 @@ The server-side settings come from environment variables, and gotty can load the
 | `OPENREPL_LANDLOCK` | The filesystem sandbox of the REPLs (LLD 14): `auto` (the default) applies it where the kernel has Landlock and says in the log and on the admin health page where it does not, `off` switches it off, `require` refuses to start a REPL without it. | |
 | `OPENREPL_STORE_DIR` | The folder of the App Store (LLD 18), where libraries and tools are installed once and shared by the users that switch them on: `/store` by default, `off` switches the store off. Keep it outside `/opt` (the sandbox lets every REPL read the other folders of `/opt`). `OPENREPL_PIXI` is the path of pixi (default: the PATH), `OPENREPL_STORE_PYTHON` the Python the bundles are solved with (default: read from `python3`), `OPENREPL_STORE_INSTALLER=fake` makes tiny test bundles. | |
 | `OPENREPL_NET_ISOLATION` | The private network of a workspace for REPLs that have no kernel network namespace of their own (LLD 16): `auto` (the default) turns it on where a start-up probe passes and says in the log and on the admin health page where it does not, `off` switches it off, `require` refuses to start a REPL without it. | |
+| `OPENREPL_EGRESS` | Internet for the REPLs of signed-in users, through a proxy of the server (LLD 16 "Egress"): `off` (the default) or `public`. pip, npm, curl and git over https work; private addresses, the cloud metadata address and port 25 are refused; guests and admins are not affected. The same can be switched in Site settings > Workspaces (it reaches the workers too). |
 | `OPENREPL_TMP_MAX_AGE` | A duration such as `1h`: the server deletes from `/tmp` what nobody has touched for that long. The Docker image sets `1h`. Not set: never. | |
 | `OPENREPL_FIREBASE_CONFIG` | The Firebase project the page signs in with, as JSON or base64 of JSON. Required for sign-in, shared sessions and the shared editor: there is no built-in project, and a server without it says so in its log and in the console of the page. See below. | |
 | `OPENREPL_ENV` | `dev` or `production` (the default). Dev shows the values of these settings in the start-up log; production only says which are set. | |
@@ -756,6 +757,8 @@ Only `apiKey`, `authDomain` and `projectId` are required, and fields that are no
 | Rust, SQLite, JSON, Assembly x86 | `/ws_evcxr`, `/ws_sqlite3`, `/ws_jq-repl`, `/ws_rappel` | same names | 50, 10, 2, 2 |
 
 The memory limits come from `Commands2memLimitMap`. They double as admission-control weights: a new connection is refused when either the number of connections or the total weight exceeds `--max-connection`. See [docs/lld/09-adding-a-repl.md](docs/lld/09-adding-a-repl.md) to add a language.
+
+Java terminals also include Maven (`mvn`) for building projects. Gradle projects can use their checked-in `./gradlew` wrapper, which downloads the project's configured Gradle version when internet access for REPLs is enabled.
 
 GoTTY's original design notes still apply to the terminal core. It uses [xterm.js](https://xtermjs.org/) and [hterm](https://groups.google.com/a/chromium.org/forum/#!forum/chromium-hterm), and the hterm + websocket idea was inspired by [Wetty](https://github.com/krishnasrinivas/wetty).
 

@@ -137,11 +137,28 @@ test("a path that starts with a slash, or a slash in the middle of a message, sh
   await box(page).fill("");
   await box(page).pressSequentially("why does 1/2 give 0");
   await expect(menu(page)).toBeHidden();
-  // after a space a slash can start a skill, but the commands of the panel are for the first word only
+  // after a space a slash can start a skill or a command that only opens something; the ones that use the words after them say they are for the start
   await box(page).pressSequentially(" and /");
   await expect(menu(page)).toBeVisible();
   const names = await menu(page).locator(".cw-picker__item--command b").allTextContents();
-  expect(names).not.toContain("/context");
+  expect(names.slice(0, 5)).toEqual(["/context", "/tour", "/add-plugin", "/save-skill", "/remember"]);
+  await expect(menu(page).getByRole("option").filter({ hasText: "/save-skill" })).toContainText("start of a message");
+});
+
+test("a command that opens something works after other words and keeps them; one that uses the words after it does nothing there", async ({ page }) => {
+  await openPanel(page, chatServer(), ["x"]);
+  await open(page);
+  await box(page).click();
+  await box(page).pressSequentially("please /add-pl");
+  await expect(menu(page).getByRole("option").first()).toContainText("/add-plugin");
+  await box(page).press("Enter");
+  await expect(page.locator("#chat-widget__plugins")).toBeVisible();
+  await expect(box(page)).toHaveValue("please");
+  await page.keyboard.press("Escape");
+  await box(page).fill("note this /rem");
+  await expect(menu(page).getByRole("option").first()).toContainText("start of a message");
+  await box(page).press("Enter");
+  await expect(box(page)).toHaveValue("note this /rem");
 });
 
 test("arrows move, Enter runs /context and /tour and empties the box, Escape closes the menu and keeps the panel", async ({ page }) => {

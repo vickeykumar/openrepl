@@ -66,9 +66,10 @@ apt-get update -y
 GO_VERSION=1.23.12
 YAEGI_VERSION=v0.16.1
 RUST_VERSION=1.85.1
-apt-get install -y --no-install-recommends make gcc g++ openjdk-21-jdk-headless git
+apt-get install -y --no-install-recommends make gcc g++ openjdk-21-jdk-headless git maven
 # the Java REPL is jshell (utils/interactive.go): part of the JDK since 9, but fail early if it is missing
 command -v jshell >/dev/null || { echo "jshell was not installed with openjdk-21-jdk-headless"; exit 1; }
+command -v mvn >/dev/null || { echo "maven was not installed"; exit 1; }
 # the JDK 21 is the one of the PATH (a JDK of an older version may be there too)
 update-alternatives --set java "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/java" || true
 update-alternatives --set javac "/usr/lib/jvm/java-21-openjdk-$DEB_ARCH/bin/javac" || true
@@ -82,6 +83,9 @@ apt-get install -y --no-install-recommends python-is-python3
 
 #install ipython3
 apt-get install -y --no-install-recommends ipython3
+
+#install pip for the system python3: a user installs with `pip install x` (pip falls back to ~/.local when the system folder is not writable, which in a REPL it never is)
+apt-get install -y --no-install-recommends python3-pip python3-venv
 
 
 # set cap to nsenter,gcc,g++
@@ -110,12 +114,11 @@ chmod -R u+w "$YAEGI_DIR" && rm -rf "$YAEGI_DIR"
 
 #install npm
 apt-get install -y --no-install-recommends npm
-#install the last stable release of npm and node for this project using nvm
-# node v12.22.9
+# Install Node 24 LTS with nvm. Node 24 supports NODE_USE_ENV_PROXY for REPL egress.
 cd ~
 apt-get -y --no-install-recommends install curl wget bzip2
 echo "home: " $HOME
-curl -sL https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.0/install.sh -o $HOME/install_nvm.sh 
+curl -sL https://raw.githubusercontent.com/nvm-sh/nvm/v0.41.0/install.sh -o $HOME/install_nvm.sh
 chmod 755 $HOME/install_nvm.sh
 source $HOME/install_nvm.sh
 source $HOME/.bashrc
@@ -127,13 +130,13 @@ export NVM_DIR="$HOME/.nvm"
 # time limit: a stalled connection holds the build for as long as the job allows. Cut each
 # attempt off after 3 minutes and try again (nvm resumes a partial download) before giving up.
 for attempt in 1 2 3; do
-    timeout 180 bash -c '. "$NVM_DIR/nvm.sh" && nvm install v12.22.9'
-    [ -x "$NVM_DIR/versions/node/v12.22.9/bin/node" ] && break
-    echo "nvm install v12.22.9 failed (attempt $attempt of 3)" >&2
+    timeout 180 bash -c '. "$NVM_DIR/nvm.sh" && nvm install v24.22.3'
+    [ -x "$NVM_DIR/versions/node/v24.22.3/bin/node" ] && break
+    echo "nvm install v24.22.3 failed (attempt $attempt of 3)" >&2
     sleep 15
 done
 # the attempts run in their own shell: switch this one to the node they installed
-nvm use v12.22.9
+nvm use v24.22.3
 npm install npm@8.5.1 -g
 
 #install C++ REPL
@@ -266,7 +269,7 @@ fi
 chmod -R u+w "$GOMACRO_DIR" && rm -rf "$GOMACRO_DIR"
 
 #install jq-repl
-apt-get install -y --no-install-recommends jq
+apt-get install -y --no-install-recommends jq ripgrep
 git clone https://github.com/vickeykumar/jq-repl.git
 cd jq-repl
 make install
@@ -274,6 +277,8 @@ cd ..
 
 #install Ruby(irb)
 apt-get install -y --no-install-recommends ruby
+# gem installs no documentation (slow and large); GEM_HOME is the user's own, set by the server
+echo 'gem: --no-document' > /etc/gemrc
 
 #install perli
 apt-get install -y --no-install-recommends rlwrap
@@ -281,7 +286,7 @@ apt-get install -y --no-install-recommends rlwrap
 # alias yaegi="rlwrap yaegi"
 
 apt-get install -y --no-install-recommends perl
-apt-get install -y --no-install-recommends perl-doc
+apt-get install -y --no-install-recommends perl-doc libwww-perl
 git clone https://github.com/vickeykumar/perli.git
 cd perli && make install
 cd ~
@@ -293,20 +298,16 @@ apt-get install -y --no-install-recommends tcl
 apt-get install -y --no-install-recommends sqlite3
 
 #install typescript and ts-node
-npm install -g typescript@4.9.5
-npm install -g ts-node@10.9.2
-npm link typescript
-# ts-node brings its own copy of the newest typescript (7.x, the native compiler, which has no
-# JavaScript API: no `ts.sys`) and loads that one before the global typescript 4.9.5, so the
-# TypeScript REPL stopped with "Cannot read property 'fileExists' of undefined". Remove the copy:
-# it then finds the global one.
+npm install -g typescript@6.0.3 ts-node@10.9.2 @types/node@24.19.2
+# ts-node 10 uses TypeScript's JavaScript compiler API. Keep its compiler at TypeScript 6
+# until ts-node supports the TypeScript 7 native compiler API.
 rm -rf "$(npm root -g)/ts-node/node_modules/typescript"
 
 # node, npm, npx, tsc and ts-node by name, for the server and the REPLs it starts. nvm puts its
 # folder on the PATH of an interactive shell only; the server has the plain system PATH. The apt
-# nodejs (the same 12.22.9) is removed by the cleanup below, so without these links the image has
+# nodejs is removed by the cleanup below, so without these links the image has
 # no `node` at all: the Node.js and TypeScript REPLs answered "executable file not found in $PATH".
-NODE_BIN_DIR="$HOME/.nvm/versions/node/v12.22.9/bin"
+NODE_BIN_DIR="$HOME/.nvm/versions/node/v24.22.3/bin"
 if [ -x "$NODE_BIN_DIR/node" ]; then
     for f in "$NODE_BIN_DIR"/*; do
         ln -sf "$f" "/usr/local/bin/$(basename "$f")"
@@ -344,7 +345,6 @@ chmod -R 777 /tmp/home || true
 #cleanup
 # remove tools used in between to optimize the container space
 if [ $cleanup_tools -eq 1 ]; then
-	apt-get -y --purge remove git 
 	apt-get -y --purge remove npm
 	apt-get -y clean
 	apt-get -y autoremove
@@ -374,16 +374,20 @@ if [ $run_tests -eq 1 ]; then
 		"python3 --version"
 		"python --version"
 		"ipython3 --version"
+		"python3 -m pip --version"
 		"node --version"
 		"npm --version"
 		"irb --version"
 		"ruby --version"
 		"perl --version"
+		"perl -MLWP::UserAgent -e 1"
 		"perli --version"
 		"java --version"
 		"jshell --version"
+		"mvn --version"
 		"gdb --version"
 		"jq --version"
+		"rg --version"
 		"echo 'puts [info patchlevel]' | tclsh"
 		"rustc --version"
 		"rust-gdb --version"
@@ -391,6 +395,7 @@ if [ $run_tests -eq 1 ]; then
 		"sqlite3 --version"
 		"tsc --version"
 		"ts-node --version"
+		"ts-node -vv"
 	)
 
 

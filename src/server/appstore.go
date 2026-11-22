@@ -296,6 +296,9 @@ type storeCall struct {
 	Reason string `json:"reason"`
 	Note   string `json:"note"`
 	Repl   string `json:"repl"`
+	// a request for a module, jar or crate found by a search: what the registry calls it and says of it
+	Package string `json:"package"`
+	Summary string `json:"summary"`
 }
 
 func builtinsOrEmpty(svc *appstore.Service) []appstore.Builtin {
@@ -377,6 +380,11 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			writeJSON(w, http.StatusOK, info)
 		case "search":
+			if uid == "" {
+				// a search is a call out to a registry: signed-in users only
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Sign in to search the registries."})
+				return
+			}
 			if !allowStoreSearch(uid) {
 				writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Searching too fast: wait a second."})
 				return
@@ -430,7 +438,12 @@ func (server *Server) handleStoreAPI(w http.ResponseWriter, r *http.Request) {
 			kickStore()
 		}
 	case "request":
-		_, err = svc.RequestFor(uid, c.Name, c.Kind, c.Repl, c.Reason)
+		if c.Package != "" && (c.Kind == appstore.KindGoMod || c.Kind == appstore.KindJar || c.Kind == appstore.KindCrate) {
+			// found by a search: the request keeps the module path or group:artifact for the entry the approval makes
+			_, err = svc.RequestMirror(uid, c.Kind, c.Name, c.Package, c.Summary, c.Reason)
+		} else {
+			_, err = svc.RequestFor(uid, c.Name, c.Kind, c.Repl, c.Reason)
+		}
 	case "switch":
 		if err = svc.Switch(home, c.ID, c.On); err != nil || !c.On {
 			break
@@ -712,6 +725,11 @@ func (server *Server) handleAdminStore(w http.ResponseWriter, r *http.Request) {
 	case "apt":
 		if err = svc.SetApt(c.Apt); err == nil {
 			detail = strings.Join(c.Apt, ", ")
+		}
+	case "aptadd":
+		// one package found by a search joins the list
+		if err = svc.SetApt(append(svc.Apt(), strings.ToLower(strings.TrimSpace(c.Name)))); err == nil {
+			detail = c.Name
 		}
 	case "settings":
 		s := GetSiteSettings()

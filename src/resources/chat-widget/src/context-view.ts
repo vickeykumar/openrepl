@@ -43,7 +43,7 @@ export function contextRows(f: ContextFacts): CtxRow[] {
   const rows: CtxRow[] = [];
   // the editor
   if (!f.editor.on) {
-    rows.push({ id: "editor", label: "Editor", name: "not shared", detail: "You turned off sharing the editor with Genie. What you add to a message is all the code it has.", size: "not sent", count: "", state: "off", chars: 0 });
+    rows.push({ id: "editor", label: "Editor", name: "not shared", detail: "You turned off sharing the editor buffer. In Agent mode, Genie can inspect saved workspace files with Bash if a task needs them; unsaved editor changes remain unavailable.", size: "not sent", count: "", state: "off", chars: 0 });
   } else if (f.editor.total === 0) {
     rows.push({ id: "editor", label: "Editor", name: "nothing is open", detail: "Open a file or type some code, and it goes with the next message.", size: "", count: "", state: "empty", chars: 0 });
   } else {

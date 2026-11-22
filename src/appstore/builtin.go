@@ -36,7 +36,7 @@ type builtinSpec struct {
 var builtinTable = []builtinSpec{
 	{Builtin{Name: "Python", Used: []string{"python", "ipython3"}, Docs: "https://docs.python.org/3.10/", Names: []string{"python", "python3", "ipython"}}, []builtinCmd{{prog: "python3", args: []string{"--version"}}}},
 	{Builtin{Name: "Python 2.7", Used: []string{"python2.7"}, Docs: "https://docs.python.org/2.7/", Names: []string{"python2", "python2.7"}}, []builtinCmd{{prog: "python2.7", args: []string{"--version"}}}},
-	{Builtin{Name: "Node.js", Used: []string{"node", "ts-node"}, Docs: "https://nodejs.org/docs/latest-v12.x/api/", Names: []string{"node", "nodejs"}}, []builtinCmd{{prog: "node", args: []string{"--version"}}}},
+	{Builtin{Name: "Node.js", Used: []string{"node", "ts-node"}, Docs: "https://nodejs.org/docs/latest-v24.x/api/", Names: []string{"node", "nodejs"}}, []builtinCmd{{prog: "node", args: []string{"--version"}}}},
 	{Builtin{Name: "TypeScript", Used: []string{"ts-node"}, Docs: "https://www.typescriptlang.org/docs/", Names: []string{"typescript", "tsc", "ts-node"}}, []builtinCmd{{prog: "tsc", args: []string{"--version"}}}},
 	{Builtin{Name: "Go", Used: []string{"go", "yaegi"}, Docs: "https://go.dev/doc/", Names: []string{"go", "golang", "yaegi", "gomacro"}}, []builtinCmd{{prog: "go", args: []string{"version"}}}},
 	{Builtin{Name: "OpenJDK", Used: []string{"java"}, Docs: "https://docs.oracle.com/en/java/javase/21/", Names: []string{"openjdk", "java", "jdk", "jshell"}}, []builtinCmd{{prog: "javac", args: []string{"-version"}}}},

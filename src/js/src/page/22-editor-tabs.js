@@ -23,7 +23,7 @@ var lastSaved = {};        // path -> when this page last saved it (its own writ
 var sharedRef = null;      // firebase: file-browser/<id>/tabs
 var untitledAt = 0;        // when the untitled tab was last shown by the visitor (or the page), 0 once a file was chosen after it
 var browserRef = null;     // firebase: file-browser/<id> (the same node as selected_node)
-var warned = {};           // path -> true once told "changed outside"
+var warned = {};           // path -> true once offered Reload/Keep mine for an outside change
 var shown = null;          // the file whose text the editor really holds (null: none yet, or a load is under way)
 var ignoreStash = null;    // a tab being closed: its text is not kept again on the switch it causes
 var lane = null;
@@ -809,7 +809,19 @@ var api = {
     if (isDirty(path)) {
       if (!warned[path]) {
         warned[path] = true;
-        say(nameOf(path) + " was changed outside the editor. Your unsaved changes here are kept; saving will replace the file.", "warning");
+        var message = nameOf(path) + " changed on disk. Your unsaved edits are kept.";
+        if (window.notify) {
+          window.notify(message, {
+            type: "info",
+            timeout: 0,
+            actions: [
+              { label: "Reload", primary: true, onClick: function () { api.discard(path); } },
+              { label: "Keep mine", quiet: true, onClick: function () {} }
+            ]
+          });
+        } else {
+          say(message + " Save to replace the disk version.", "warning");
+        }
       }
       return true;
     }
@@ -827,7 +839,7 @@ var api = {
         }
       });
     };
-    move(stash); move(baseline); move(lastSaved);
+    move(stash); move(baseline); move(lastSaved); move(warned);
     if (shown === from || (shown && shown.indexOf(from + "/") === 0)) shown = to + shown.slice(from.length);
     if (master()) {
       var r = renamePath(state, from, to);

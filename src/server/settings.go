@@ -76,6 +76,10 @@ type SiteSettings struct {
 	StoreSafeList []string `json:"storeSafeList,omitempty"`
 	StoreLimitMB  int      `json:"storeLimitMB"`
 	StoreOff      bool     `json:"storeOff"`
+	// EgressOn lets the REPLs of signed-in users (not guests, not admins) reach public internet addresses through a proxy of the server
+	// (LLD 16 "Egress"): pip, npm, curl and git over https. It is handed to the workers, so it holds on every node. The environment variable
+	// OPENREPL_EGRESS=public does the same and stays.
+	EgressOn bool `json:"egressOn"`
 	// StoreReserveMB is kept free on each server for installs in progress (0 for the built-in 3072); StoreRequestsPerDay is how many apps
 	// one user may ask for in a day (0 for the built-in 5). ScratchSoftMB is the size at which a terminal's scratch folder is
 	// at which the caches are cleared first and then a terminal that still fills it is stopped (a soft cap: no quota, no mount; 0 for the built-in 256);
@@ -1159,6 +1163,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.StoreOff != b.StoreOff {
 		out = append(out, "App Store "+onoff(!b.StoreOff))
+	}
+	if a.EgressOn != b.EgressOn {
+		out = append(out, "Internet for REPLs "+onoff(b.EgressOn))
 	}
 	out = append(out, nodeLanguageChanges(a, b)...)
 	if a.Genie.Disabled != b.Genie.Disabled {

@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -47,6 +48,8 @@ type Found struct {
 	Version string `json:"version"`
 	Summary string `json:"summary,omitempty"`
 	Kind    string `json:"kind"`
+	// Package is what the registry calls it when the store's name is shorter: a module path, group:artifact (the mirror kinds).
+	Package string `json:"package,omitempty"`
 }
 
 var searchPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,40}$`)
@@ -142,7 +145,7 @@ func (n Npm) Resolve(ctx context.Context, name, version, kind string) (Resolved,
 	node := n.nodeVersion(ctx)
 	var lastErr error
 	// One version of each MAJOR is looked at, newest major first (the engines of a library rise with its majors), not the newest 40 releases: a library whose last
-	// release that this Node can run is older than that (eslint 7, jest 27, prettier 2 on Node 12) is found in a few lookups. In a major the newest release is
+	// release that this Node can run is older than that is found in a few lookups. In a major the newest release is
 	// asked; a lookup that fails goes on to the next older; when the newest of a major needs too new a Node but its oldest does not, the major is walked down.
 	views := 0
 	look := func(v string) (Resolved, bool, bool) { // the version, whether this Node can run it, whether it could be looked up
@@ -425,12 +428,66 @@ func (m Multi) Search(ctx context.Context, q, kind string) ([]Found, error) {
 		try(m.pick(KindNode), KindNode)
 	case KindPlugin:
 		try(m.pick(KindPlugin), KindPlugin)
+	case KindGoMod, KindJar, KindCrate:
+		if in := m.pick(kind); in != nil {
+			try(in, kind)
+		}
+	case KindApt:
+		if m.Apt != nil {
+			try(m.Apt, KindApt)
+		}
 	case KindLib, KindTool, KindLang:
 		try(m.pick(KindLib), kind)
 	default:
-		try(m.pick(KindLib), KindLib)
+		// everything: conda-forge and npm as before, and the registries of the mirror kinds and the Ubuntu archive. They are asked at the same time
+		// (a slow one does not hold the others), each answers with a few results, and one that fails does not stop the rest.
+		type answer struct {
+			found []Found
+			err   error
+		}
+		sources := []struct {
+			in   Installer
+			kind string
+			cap  int
+		}{{m.pick(KindLib), KindLib, 0}}
 		if m.Node != nil {
-			try(m.Node, KindNode)
+			sources = append(sources, struct {
+				in   Installer
+				kind string
+				cap  int
+			}{m.Node, KindNode, 0})
+		}
+		for _, k := range []struct {
+			in   Installer
+			kind string
+		}{{m.Crate, KindCrate}, {m.Jar, KindJar}, {m.GoMod, KindGoMod}, {m.Apt, KindApt}} {
+			if k.in != nil {
+				sources = append(sources, struct {
+					in   Installer
+					kind string
+					cap  int
+				}{k.in, k.kind, 6})
+			}
+		}
+		answers := make([]answer, len(sources))
+		var wg sync.WaitGroup
+		for i, src := range sources {
+			wg.Add(1)
+			go func(i int, in Installer, k string, cap int) {
+				defer wg.Done()
+				r, err := in.Search(ctx, q, k)
+				if cap > 0 && len(r) > cap {
+					r = r[:cap]
+				}
+				answers[i] = answer{r, err}
+			}(i, src.in, src.kind, src.cap)
+		}
+		wg.Wait()
+		for _, a := range answers {
+			if a.err != nil && firstErr == nil {
+				firstErr = a.err
+			}
+			out = append(out, a.found...)
 		}
 	}
 	if len(out) > 0 {

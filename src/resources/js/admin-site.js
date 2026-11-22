@@ -91,6 +91,7 @@
         snippetMaxDays: int(form.snippetMax.value),
         previewOff: !form.previewOn.checked, practiceWorkspaceOff: !form.practiceWs.checked,
         previewGuestsOff: !form.previewGuests.checked, previewAgentOff: !form.previewAgent.checked,
+        egressOn: form.egress.checked,
         genieEventsOff: !form.genieEvents.checked, genieEventDays: int(form.genieDays.value),
         genieHealthErrPct: int(form.healthErr.value), genieHealthSlowMs: int(form.healthSlow.value),
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
@@ -184,6 +185,7 @@
         snippetMaxDays: s.snippetMaxDays || 0,
         previewOff: !!s.previewOff, practiceWorkspaceOff: !!s.practiceWorkspaceOff,
         previewGuestsOff: !!s.previewGuestsOff, previewAgentOff: !!s.previewAgentOff,
+        egressOn: !!s.egressOn,
         genieEventsOff: !!s.genieEventsOff, genieEventDays: s.genieEventDays || 0,
         genieHealthErrPct: s.genieHealthErrPct || 0, genieHealthSlowMs: s.genieHealthSlowMs || 0,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
@@ -554,6 +556,8 @@
       form.practiceWs = practiceWs.input;
       var previewGuests = toggle('f-preview-guests', !settings.previewGuestsOff, 'Preview for guests');
       var previewAgent = toggle('f-preview-agent', !settings.previewAgentOff, 'Genie may act in the Preview');
+      var egressOn = toggle('f-egress', !!settings.egressOn, 'Internet for signed-in users');
+      form.egress = egressOn.input;
       form.previewOn = previewOn.input; form.previewGuests = previewGuests.input; form.previewAgent = previewAgent.input;
       // agent mode: on for signed-in users unless switched off here, and off on the practice page unless allowed
       var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
@@ -1214,6 +1218,8 @@
           row('Minutes between snapshots', 'From 1 to 60. Leave it empty for 5. The change is used at once by the running job.', form.snapEvery) ]),
         card('Practice', 'A signed-in user\'s practice list and the code they write for each question are kept in the hidden .practice folder of their workspace, so they follow the workspace (snapshots, other browsers). Off keeps them in the server\'s practice database, as before. A user who has no .practice folder yet starts from what the database holds.', [
           row('Practice is saved in the workspace', null, practiceWs.node) ]),
+        card('Internet for REPLs', 'Lets the REPLs of signed-in users reach public internet addresses through a proxy of the server, so pip, npm, curl and git over https work, on the gateway and on every worker. Guests and admins are not affected: guests get no network, and an admin\'s REPL already has its own. Private addresses, the cloud metadata address and mail (port 25) are always refused. On Render, outbound traffic counts against the plan\'s bandwidth. The OPENREPL_EGRESS=public environment variable does the same.', [
+          row('Internet for signed-in users', 'Off by default. Terminals that are already open get it when they are opened again.', egressOn.node) ]),
         card('Preview', 'The Preview pane shows a web page or program that a visitor wrote, in a sandbox on this site. Switch it off here if it is abused: the button disappears and the server refuses new previews.', [
           row('Preview is available', null, previewOn.node),
           row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node),

@@ -34,6 +34,7 @@ func applyWorkerConfig(c *tunnel.WorkerConfig) {
 		Announcement:      Announcement{Text: c.AnnouncementText, Level: c.AnnouncementLevel},
 		Maintenance:       Maintenance{Enabled: c.Maintenance, Message: c.MaintenanceMessage},
 		DisabledLanguages: c.DisabledLanguages,
+		EgressOn:          c.Egress,
 	}
 	if s.Announcement.Level == "" {
 		s.Announcement.Level = "info"

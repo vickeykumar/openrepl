@@ -16,6 +16,7 @@ import (
 
 	"backup"
 	"containers"
+	"egress"
 	"gateway"
 	"homesnap"
 	"objstore"
@@ -221,6 +222,17 @@ func (server *Server) health() (status string, checks []healthCheck) {
 		add("Network isolation", healthWarn, ne.Reason+": REPLs without a namespace of their own share one network, so a port can be used by one user only and users can reach each other's servers")
 	default:
 		add("Network isolation", healthWarn, "not available: "+ne.Reason+". REPLs without a namespace of their own share one network")
+	}
+	// the way out of the sandbox for signed-in users (LLD 16 "Egress"): the proxy, what it carried and what it refused
+	if egress.Enabled() {
+		st, recent := egress.Snapshot()
+		detail := fmt.Sprintf("on for signed-in users (%s): %d connections (%d open), %s in, %s out, %d refused", egressSource(), st.Total, st.Active, humanSize(st.BytesIn), humanSize(st.BytesOut), st.Denied)
+		if len(recent) > 0 {
+			detail += "; latest refused: " + recent[len(recent)-1]
+		}
+		add("Internet for REPLs", healthOK, detail)
+	} else {
+		add("Internet for REPLs", healthOK, "off (the switch in Site settings, Workspaces, or OPENREPL_EGRESS=public turns on a proxy for signed-in users: pip, npm, curl and git over https)")
 	}
 	// the App Store (LLD 18): the installer, the size of the store, installs that failed, workers that are behind
 	if st, detail := appStoreHealth(); st != "" {

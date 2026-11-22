@@ -162,9 +162,10 @@ export interface CommandSpan {
   end: number;
   name: string;
 }
-export function commandSpans(text: string, commands: readonly string[], skills: readonly SkillInfo[]): CommandSpan[] {
+export function commandSpans(text: string, commands: readonly string[], skills: readonly SkillInfo[], anywhere: readonly string[] = []): CommandSpan[] {
   const known = new Set(skills.map((s) => s.name));
   const cmds = new Set(commands);
+  const anyWhere = new Set(anywhere);
   const out: CommandSpan[] = [];
   const re = /(^|\s)\/([a-z][a-z0-9-]{0,39})(?=$|\s|[.,;:!?])/gi;
   const t = String(text || "");
@@ -172,7 +173,7 @@ export function commandSpans(text: string, commands: readonly string[], skills: 
   while ((m = re.exec(t)) !== null) {
     const name = m[2].toLowerCase();
     const start = m.index + m[1].length;
-    if (known.has(name) || (cmds.has(name) && t.slice(0, start).trim() === "")) out.push({ start, end: start + 1 + m[2].length, name });
+    if (known.has(name) || anyWhere.has(name) || (cmds.has(name) && t.slice(0, start).trim() === "")) out.push({ start, end: start + 1 + m[2].length, name });
   }
   return out;
 }

@@ -13,6 +13,9 @@ import "strings"
 // small code cache. Measured with OpenJDK 11, that takes a session from about
 // 375 MB to about 150 MB, and from 4.8 s to start to 1.9 s. See LLD 09.
 var interactiveCommands = map[string][]string{
+	// The REPL evaluates snippets without type-checking ambient Node declarations.
+	// Set NodeNext explicitly because TypeScript 6 rejects ts-node's legacy default.
+	"ts-node": {"ts-node", "--transpile-only", "--compiler-options", `{"module":"NodeNext","moduleResolution":"NodeNext"}`},
 	"java": {
 		"jshell",
 		"--execution", "local",

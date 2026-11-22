@@ -2495,10 +2495,38 @@ fi
 
 cd $WORKDIR;
 if [ $? -eq 0 ] &amp;&amp; [ -f "$WORKDIR/$FILE" ]; then
-    if $debug; then
-        TS_NODE_DEBUG=true $COMPILER $FILE $@
+    TS_NODE_FLAGS=()
+    PACKAGE_DIR="$WORKDIR"
+    while [ "$PACKAGE_DIR" != "$HOME" ] &amp;&amp; [ ! -f "$PACKAGE_DIR/package.json" ]; do
+        PACKAGE_DIR=$(dirname "$PACKAGE_DIR")
+    done
+    if [ -f "$PACKAGE_DIR/package.json" ] &amp;&amp; node -e 'process.exit(require(process.argv[1]).type === "module" ? 0 : 1)' "$PACKAGE_DIR/package.json"; then
+        TS_NODE_FLAGS+=(--esm)
+    fi
+    CONFIG_DIR="$WORKDIR"
+    while [ "$CONFIG_DIR" != "$HOME" ] &amp;&amp; [ ! -f "$CONFIG_DIR/tsconfig.json" ]; do
+        CONFIG_DIR=$(dirname "$CONFIG_DIR")
+    done
+    # Compile standalone files first: tsc resolves NodeNext imports such as
+    # ./greeter.js to their .ts sources and emits runnable JavaScript for Node.
+    if [ "$COMPILER" = "ts-node" ] &amp;&amp; [ ! -f "$CONFIG_DIR/tsconfig.json" ] &amp;&amp; [ -z "${TS_NODE_PROJECT:-}" ]; then
+        TS_NODE_GLOBAL_ROOT=$(env -u NPM_CONFIG_PREFIX npm root -g)
+        TS_RUN_DIR=$(mktemp -d "$WORKDIR/.openrepl-ts-run.XXXXXX")
+        trap 'rm -rf "$TS_RUN_DIR"' EXIT
+        tsc --target ES2022 --module NodeNext --moduleResolution NodeNext \
+            --types node --typeRoots "$TS_NODE_GLOBAL_ROOT/@types" \
+            --rootDir "$WORKDIR" --outDir "$TS_RUN_DIR" "$FILE"
+        compile_status=$?
+        if [ $compile_status -eq 0 ]; then
+            OUTPUT_FILE="${FILE%.ts}.js"
+            node "$TS_RUN_DIR/$OUTPUT_FILE" "$@"
+        else
+            exit $compile_status
+        fi
+    elif $debug; then
+        TS_NODE_DEBUG=true $COMPILER "${TS_NODE_FLAGS[@]}" "$FILE" "$@"
     else
-        $COMPILER $FILE $@
+        $COMPILER "${TS_NODE_FLAGS[@]}" "$FILE" "$@"
     fi
 fi
 printf "\n";

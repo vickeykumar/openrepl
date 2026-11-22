@@ -293,9 +293,16 @@ func (v Vars) Apply(env []string) []string {
 		set("LD_LIBRARY_PATH", l+strings.Join(v.LdLib, ":"))
 	}
 	if len(v.GoProxy) > 0 {
-		set("GOPROXY", strings.Join(v.GoProxy, ",")+",off") // only the mirrors: a terminal has no internet
 		set("GOFLAGS", "-mod=mod")
-		set("GOSUMDB", "off") // the modules were checked against the checksum database when the server fetched them
+		if get("HTTPS_PROXY") != "" || get("https_proxy") != "" {
+			// the person has the internet through the server's proxy (LLD 16 "Egress"): the mirrors first, then the Go module proxy for the rest, and the
+			// checksum database checks what comes from either
+			set("GOPROXY", strings.Join(v.GoProxy, ",")+",https://proxy.golang.org")
+			set("GOSUMDB", "sum.golang.org")
+		} else {
+			set("GOPROXY", strings.Join(v.GoProxy, ",")+",off") // only the mirrors: a terminal has no internet
+			set("GOSUMDB", "off")                               // the modules were checked against the checksum database when the server fetched them
+		}
 	}
 	if len(v.ClassPath) > 0 {
 		cp := get("CLASSPATH")
@@ -346,7 +353,8 @@ func EnvScript(dir string, ids []string) string {
 		fmt.Fprintf(&b, "export LD_LIBRARY_PATH=\"${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}\"%s\n", q(strings.Join(v.LdLib, ":")))
 	}
 	if len(v.GoProxy) > 0 {
-		fmt.Fprintf(&b, "export GOPROXY=%s GOFLAGS=-mod=mod GOSUMDB=off\n", q(strings.Join(v.GoProxy, ",")+",off"))
+		// the same rule as Apply: with the server's proxy the Go module proxy follows the mirrors; without it only the mirrors
+		fmt.Fprintf(&b, "if [ -n \"${HTTPS_PROXY:-$https_proxy}\" ]; then export GOPROXY=%s GOFLAGS=-mod=mod GOSUMDB=sum.golang.org; else export GOPROXY=%s GOFLAGS=-mod=mod GOSUMDB=off; fi\n", q(strings.Join(v.GoProxy, ",")+",https://proxy.golang.org"), q(strings.Join(v.GoProxy, ",")+",off"))
 	}
 	if len(v.ClassPath) > 0 {
 		fmt.Fprintf(&b, "export CLASSPATH=%s:${CLASSPATH:-.}\n", q(strings.Join(v.ClassPath, ":")))

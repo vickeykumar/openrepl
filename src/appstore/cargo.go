@@ -146,7 +146,9 @@ func (c Cargo) Install(ctx context.Context, name, version, kind, dest string, lo
 	return os.WriteFile(filepath.Join(dest, "mirror.json"), []byte(fmt.Sprintf("{\"source\":%q,\"version\":%q}\n", e.Source(), v)), 0644)
 }
 
-func (c Cargo) Search(ctx context.Context, q, kind string) ([]Found, error) { return nil, nil }
+func (c Cargo) Search(ctx context.Context, q, kind string) ([]Found, error) {
+	return searchCrates(ctx, q)
+}
 
 // CargoConfig is the config.toml that makes cargo use the vendored folder in place of crates.io, with no network.
 func CargoConfig(vendorDir string) string {

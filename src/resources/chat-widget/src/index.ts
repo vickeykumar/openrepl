@@ -24,9 +24,13 @@ import { NoteInfo, SkillInfo, commandSpans, effortFor, withoutSkill, limitFor, m
 import { drawPlugins, logoTile } from "./plugins-dialog";
 import { announcePin, canDock, configureDock, dockEl, isPinned, onPhone, placePanel, refreshPin, requestResize, setPinned, wireDock } from "./dock";
 import { ContextFacts, contextRows, drawContextView, estimateTokens, totalChars } from "./context-view";
-import { COMMANDS, SlashCommand, matchCommands } from "./slash-commands";
+import { COMMANDS, SlashCommand, matchCommands, withoutToken } from "./slash-commands";
+
 import { isTourCommand, markTourSeen, startTour, tourSeen } from "./tour";
 import css from "./widget.css";
+
+// the commands of the panel that work wherever they are typed in a message
+const ANYWHERE = COMMANDS.filter((c) => c.anywhere).map((c) => c.name);
 
 const WIDGET_BACKDROP_ID = "chat-widget__backdrop";
 const WIDGET_CONTAINER_ID = "chat-widget__container";
@@ -407,7 +411,7 @@ function getcurrentIDECode(): MessageType {
     language ? `Language: ${language}` : "",
     file && file !== "untitled" ? `File: ${file}` : "",
     `--- Editor code (${code.split("\n").length} lines; line numbers are not shown, and they move after every change) ---`,
-    readEditor ? code || "(the editor is empty)" : "(the user turned off sharing the editor with Genie; what they add to a message is all the code you have)",
+    readEditor ? code || "(the editor is empty)" : "(the user turned off sharing the editor with Genie; the editor buffer is not shared. In Agent mode, you may inspect saved workspace files with focused Bash commands if the task needs them. Unsaved editor changes are unavailable.)",
     "--- Terminal output (the most recent lines of the active terminal) ---",
     output || "(nothing in the terminal yet)",
     readPreview ? previewContext(previewState()) : "",
@@ -3673,7 +3677,7 @@ function open(e?: Event, opts?: { pin?: boolean }) {
       // Backspace right after a command takes the whole command out, in one step that Undo puts back
       if (ev.key === "Backspace" && !ev.isComposing && !ev.ctrlKey && !ev.altKey && !ev.metaKey && !ev.shiftKey && input.selectionStart === input.selectionEnd && !peerchatmode) {
         const caret = input.selectionStart;
-        const span = commandSpans(input.value, COMMANDS.map((c) => c.name), skillList).filter((s) => s.end === caret)[0];
+        const span = commandSpans(input.value, COMMANDS.map((c) => c.name), skillList, ANYWHERE).filter((s) => s.end === caret)[0];
         if (span) {
           ev.preventDefault();
           ev.stopImmediatePropagation();
@@ -4400,7 +4404,9 @@ async function loadSkills(force = false): Promise<SkillInfo[]> {
 // Genie, Your skills, Plugins.
 function menuEntries(query: string, atStart: boolean): SlashCommand[] {
   const out: SlashCommand[] = [];
-  if (atStart) matchCommands(query).forEach((c) => out.push({ ...c, group: "Genie" }));
+  // at the start of the message every command; after other words the ones that only open something, and the others with a note (they use the
+  // words after them, so they would not do what is meant)
+  matchCommands(query).forEach((c) => out.push(atStart || c.anywhere ? { ...c, group: "Genie" } : { ...c, group: "Genie", desc: "Works at the start of a message only", startOnly: true }));
   const taken = new Set(out.map((c) => c.name));
   const rank: Record<string, number> = { builtin: 0, workspace: 1, plugin: 2 };
   matchSkills(query, skillList)
@@ -4464,7 +4470,7 @@ function setupHighlight(input: HTMLTextAreaElement) {
   const set = desc.set;
   const draw = () => {
     const text = get.call(input) as string;
-    const spans = peerchatmode ? [] : commandSpans(text, COMMANDS.map((c) => c.name), skillList);
+    const spans = peerchatmode ? [] : commandSpans(text, COMMANDS.map((c) => c.name), skillList, ANYWHERE);
     hl.textContent = "";
     let at = 0;
     spans.forEach((s) => {
@@ -4586,6 +4592,11 @@ function chooseSlash(c: SlashCommand) {
   const tok = slashTok;
   closePicker();
   if (!input) return;
+  // a command that was typed after other words and needs the start of the message: nothing happens, the words stay
+  if (c.startOnly) {
+    input.focus();
+    return;
+  }
   // a skill: its name goes into the message where the person was typing, and they carry on with their words
   if (c.skill) {
     const v = input.value;
@@ -4606,8 +4617,10 @@ function chooseSlash(c: SlashCommand) {
     input.focus();
     return;
   }
-  input.value = "";
+  // a command that opens something: only its own word goes; what else was written stays in the box
+  input.value = tok ? withoutToken(input.value, tok.start, Math.max(tok.end, tok.start)) : "";
   autoGrow(input);
+  syncSkillChips();
   if (c.name === "context") void openContext();
   else if (c.name === "tour") startTour();
   else if (c.name === "add-plugin") openPlugins();

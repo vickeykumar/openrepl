@@ -46,10 +46,33 @@
     if (nodes.length) GenieChatAddNodes(nodes);
   });
 
-  var lastreciever = "";  // last nodeid that recieved a write event
-  var writecounter = 0;  // number of updates recievd by the selected node
-  const MIN_WRITES = 10;  // minimum number of write events before we fetch the data again from server
+  // A save may result in several filesystem Write events.  One reload five seconds after the
+  // first event lets the writer finish without making the selected editor wait for an arbitrary
+  // number of events (a one-shot write used to never reload at all).
+  var scheduledLoads = Object.create(null); // path -> timeout id
+  const SERVER_WRITE_RELOAD_DELAY = 5000;
   const STATE_TTL = 900;  // TTL to save the state of selected node
+
+  function clearScheduledLoad(path) {
+    if (!Object.prototype.hasOwnProperty.call(scheduledLoads, path)) return;
+    clearTimeout(scheduledLoads[path]);
+    delete scheduledLoads[path];
+  }
+
+  function clearScheduledLoads() {
+    Object.keys(scheduledLoads).forEach(clearScheduledLoad);
+  }
+
+  function scheduleSelectedLoad(path) {
+    if (!IsNodeSelected(path) || Object.prototype.hasOwnProperty.call(scheduledLoads, path)) return;
+    scheduledLoads[path] = setTimeout(function () {
+      delete scheduledLoads[path];
+      // The person may have started editing during the delay.  EditorTabs keeps that buffer and
+      // presents the Reload/Keep mine choice instead of replacing it with the disk copy.
+      if (window.EditorTabs && window.EditorTabs.write(path)) return;
+      if (IsNodeSelected(path)) LoadSelectedNodeFromFile(path);
+    }, SERVER_WRITE_RELOAD_DELAY);
+  }
 
     const codeext2menuoption = {
       'js': 'javascript',
@@ -502,25 +525,14 @@
           // the open files (22-editor-tabs.js): this page's own save coming back, or a file with unsaved changes in
           // a tab, is not read into the editor again
           if (window.EditorTabs && window.EditorTabs.write(eventdata.Name)) {
+            clearScheduledLoad(eventdata.Name);
             break;
           }
-          if (IsNodeSelected(eventdata.Name)) {
-            if (lastreciever!==eventdata.Name) {
-              lastreciever = eventdata.Name;  // update the recievername
-              writecounter = 0;    // reinit the counter again
-            } else {
-              writecounter++;  // update the write counter
-            }
-
-            if (writecounter >= MIN_WRITES) {
-              // its time to load the file again from server
-              LoadSelectedNodeFromFile(eventdata.Name);
-              writecounter = 0;    // reinit the counter again, to wait for next threshold writes
-            }
-          }
+          scheduleSelectedLoad(eventdata.Name);
           break;
         case eventOp.Remove:
           console.log("Remove recieved for: ", eventdata.Name);
+          clearScheduledLoad(eventdata.Name);
           if (window.FileMarks) window.FileMarks.event("remove", eventdata.Name);
           $('#file-browser').jstree(true).delete_node(eventdata.Name, function() {
               console.log("Node with id " + eventdata.Name + " is deleted.");
@@ -529,6 +541,7 @@
         case eventOp.Rename:
           console.log("Rename recieved for: ", eventdata.Name);
           // no way to track as of now, so refresh
+          clearScheduledLoads();
           $('#file-browser').jstree(true).refresh();
           break;
         case eventOp.Chmod:

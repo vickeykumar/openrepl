@@ -9,4 +9,4 @@ A star on a chat keeps it at the top of the chat list and out of Delete all. The
 
 Auto, when the site offers it, sits at the top of the model list. It picks a small model for plain questions and a stronger one for changes, attached items and tasks, and says which one answered. Use a stronger one asks again. Picking a model yourself turns Auto off.
 
-Typing a slash at the start of the box lists the commands with a line about each.
+Typing a slash at the start of the box lists the commands with a line about each. /context, /tour and /add-plugin also work after other words and keep them.
