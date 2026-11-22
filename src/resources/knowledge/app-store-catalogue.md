@@ -3,16 +3,10 @@ title: What the App Store offers for each language
 keywords: which library, which package, plotting, matplotlib, pandas, scikit-learn, cmake, eigen, boost, bootstrap, react, lodash, axios, jest, ripgrep, staticcheck, nano, tmux, python 2.7 library, what can i install
 link: /store
 ---
-This is the curated App Store catalogue: suggest from this list and use store_suggest when the user wants an app enabled in their REPL. If they specifically ask to install from Bash, follow the terminal package installation note instead. Python and IPython: numpy, pandas, scipy, matplotlib-base (save plots to a file with savefig), scikit-learn, sympy, requests, flask, fastapi, pytest, black, mypy. Large ones need approval: scikit-learn, duckdb.
+Suggest from this curated catalogue when someone wants an app enabled in a REPL; use `store_suggest`. For Bash installs, use the terminal package installation note.
 
-Node and ts-node: lodash, axios, express 4, dayjs, jest, mocha, eslint, prettier, cheerio. The store picks the newest version compatible with the image's Node runtime.
+Python/IPython: numpy, pandas, scipy, matplotlib-base, scikit-learn, sympy, requests, flask, fastapi and pytest. Node/ts-node: lodash, axios, express, dayjs, jest and prettier. C/C++: cmake, ninja, cppcheck, eigen, fmt and boost. Bash: git, ripgrep, fd, bat, fzf, nano, neovim and tmux. Go tools include staticcheck and delve; Perl has JSON::MaybeXS.
 
-C and C++: cmake, ninja, cppcheck, clang-format, eigen, fmt, nlohmann_json, catch2, gtest, boost. Their headers are found by the compiler once the app is on.
+The server also fetches Go modules, Java jars and Rust crates for offline use. Examples include cobra, gson and serde_json. Use Go modules with `go run`, jars with `javac`/`java`, and crates in evcxr with `:dep`. Python 2.7 packages work only in that terminal.
 
-bash: git, ripgrep, fd, bat, fzf, shellcheck, nano, neovim, tmux, htop. Go: staticcheck, golangci-lint, delve. Perl: JSON::MaybeXS.
-
-Go modules (cobra, testify, uuid, chi), Java jars (gson, guava, commons-lang3, junit) and Rust crates (serde, serde_json, rand, regex) are fetched by the server and used offline: go run, javac and java, and evcxr :dep. Python 2.7 libraries (six, requests) work in the Python 2.7 terminal only.
-
-HTML, CSS, JavaScript pages: bootstrap, pico, tailwind, htmx, alpine, react 18, vue, d3, chart.js. They are served from this site to the preview, so a page can load them by address with no internet.
-
-Built in already (never install): Python and Python 2.7, Node.js, TypeScript, Go, OpenJDK, Rust, gcc, g++, cling, Ruby, Perl, Tcl, SQLite, jq and nasm.
+Browser libraries such as bootstrap, htmx, react, vue and chart.js are served to Preview from this site. Built in already: Python, Node.js, TypeScript, Go, OpenJDK, Rust, gcc, g++, cling, Ruby, Perl, Tcl, SQLite, jq and nasm. The store chooses compatible versions and shows each app's use and size.

@@ -1,6 +1,6 @@
 ---
 title: Using an installed app in your language
-keywords: how to use an installed app, use library after install, app first line to use, include header from app, browser library address, preview plugin switched on
+keywords: how to use an installed app, use library after install, app first line to use, include header from app, browser library address, preview plugin switched on, use Go module after installing, use Java jar after installing, use an installed Go module, use an installed Java jar
 link: /store
 ---
 Once an app is enabled, its card and page show the first example to use:
