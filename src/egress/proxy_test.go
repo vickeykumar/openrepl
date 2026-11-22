@@ -114,3 +114,16 @@ func TestForwardsPlainHTTPAndTunnels(t *testing.T) {
 		t.Errorf("over the limit gave %d", rec.Code)
 	}
 }
+
+// the proxy as the tools that ignore HTTPS_PROXY read it: Java system properties, and Perl asked to read the variables
+func TestEnvAlsoReachesTheJavaAndPerlTools(t *testing.T) {
+	env := strings.Join(Env(), "\n")
+	for _, want := range []string{"HTTPS_PROXY=http://127.0.0.1:3128", "PERL_LWP_ENV_PROXY=1", "MAVEN_OPTS=-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=3128 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=3128", "GRADLE_OPTS=-Dhttp.proxyHost=127.0.0.1"} {
+		if !strings.Contains(env, want) {
+			t.Errorf("%q is not in the environment", want)
+		}
+	}
+	if strings.Contains(env, "JAVA_TOOL_OPTIONS") || strings.Contains(env, "|") {
+		t.Error("no JAVA_TOOL_OPTIONS (it prints on every start), and no | in a value a launcher script reads")
+	}
+}

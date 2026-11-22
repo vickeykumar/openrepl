@@ -158,6 +158,10 @@ func makeScratch(root, workspace string) string {
 			os.Setenv(kv[:i], kv[i+1:])
 		}
 	}
+	// Maven's local repository is the scratch folder's, after whatever the server put in MAVEN_OPTS (the proxy)
+	if m := os.Getenv("MAVEN_OPTS"); !strings.Contains(m, "maven.repo.local") {
+		os.Setenv("MAVEN_OPTS", strings.TrimSpace(m+" -Dmaven.repo.local="+filepath.Join(dir, "cache", "m2")))
+	}
 	return dir
 }
 
@@ -173,13 +177,22 @@ func finishEnv(scratchDir, workspace string, args []string) []string {
 		}
 	}
 	args = jshellWithJars(args, workspace)
+	if scratchDir == "" {
+		return args
+	}
+	// the cargo home (the registry cache, the downloaded crates) is the scratch folder's, vendored crates or not; the programs of cargo install go
+	// to ~/.cargo/bin of the workspace (CARGO_INSTALL_ROOT); cargo and rustc themselves are found through PATH and RUSTUP_HOME
+	home := filepath.Join(scratchDir, "cargo-home")
+	if os.MkdirAll(home, 0700) != nil {
+		return args
+	}
 	v := os.Getenv("OPENREPL_CRATE_VENDORS")
-	if v == "" || scratchDir == "" {
+	if v == "" {
+		setCargoHome(home)
 		return args
 	}
 	farm := filepath.Join(scratchDir, "cargo-vendor")
-	home := filepath.Join(scratchDir, "cargo-home")
-	if os.MkdirAll(farm, 0700) != nil || os.MkdirAll(home, 0700) != nil {
+	if os.MkdirAll(farm, 0700) != nil {
 		return args
 	}
 	for _, dir := range strings.Split(v, ":") {
@@ -196,13 +209,17 @@ func finishEnv(scratchDir, workspace string, args []string) []string {
 	if os.WriteFile(filepath.Join(home, "config.toml"), []byte(appstore.CargoConfig(farm)), 0600) != nil {
 		return args
 	}
+	setCargoHome(home)
+	return args
+}
+
+func setCargoHome(home string) {
 	os.Setenv("CARGO_HOME", home)
 	if os.Getenv("RUSTUP_HOME") == "" { // the toolchains stay where rustup put them, whatever the cargo home is
 		if fi, err := os.Stat("/root/.rustup"); err == nil && fi.IsDir() {
 			os.Setenv("RUSTUP_HOME", "/root/.rustup")
 		}
 	}
-	return args
 }
 
 // jshellWithJars gives jshell the jars of the user's Java apps. The REPL runs the snippets in the tool's own JVM (--execution local, to save memory),

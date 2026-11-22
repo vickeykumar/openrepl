@@ -129,6 +129,7 @@ func TestARequestedCrateBecomesACatalogueEntryWhenApproved(t *testing.T) {
 	if err := svc.Approve("admin", "crate-itoa"); err != nil {
 		t.Fatal(err)
 	}
+	svc.Wait() // the install the approval starts must end before the folder is removed
 	e, ok := svc.Entry("crate:itoa")
 	if !ok || e.Package != "itoa" || e.Kind != CKCrate || e.CheckArg != "vendor" || e.PackageName() != "crate-itoa" {
 		t.Fatalf("entry: %+v %v", e, ok)
@@ -143,6 +144,7 @@ func TestARequestedCrateBecomesACatalogueEntryWhenApproved(t *testing.T) {
 	if err := svc.Approve("admin", "jar-guava"); err == nil || !strings.Contains(err.Error(), "already the name") {
 		t.Errorf("a name taken by another package: %v", err)
 	}
+	svc.Wait()
 }
 
 func TestADebianPackageIsRequestedApprovedAndListed(t *testing.T) {

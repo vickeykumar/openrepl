@@ -52,3 +52,15 @@ func TestMakeVarsUsageClearSweep(t *testing.T) {
 		}
 	}
 }
+
+func TestTheJavaBuildToolsKeepTheirCacheInTheScratchFolder(t *testing.T) {
+	var got string
+	for _, v := range Vars("/scratch/ann/t-1") {
+		if strings.HasPrefix(v, "GRADLE_USER_HOME=") {
+			got = v
+		}
+	}
+	if got != "GRADLE_USER_HOME=/scratch/ann/t-1/cache/gradle" {
+		t.Errorf("gradle: %q", got)
+	}
+}

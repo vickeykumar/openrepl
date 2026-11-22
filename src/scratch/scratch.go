@@ -79,6 +79,7 @@ func Vars(dir string) []string {
 		"EVCXR_TARGET_DIR=" + filepath.Join(dir, "build", "evcxr"),
 		"npm_config_cache=" + filepath.Join(c, "npm"),
 		"CCACHE_DIR=" + filepath.Join(c, "ccache"),
+		"GRADLE_USER_HOME=" + filepath.Join(c, "gradle"),
 		"TMPDIR=" + filepath.Join(dir, "tmp"),
 		"XDG_CACHE_HOME=" + filepath.Join(c, "xdg"),
 		"XDG_STATE_HOME=" + filepath.Join(dir, "state"),

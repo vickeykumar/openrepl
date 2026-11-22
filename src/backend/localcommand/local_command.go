@@ -98,7 +98,7 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 		cmd.ExtraFiles = []*os.File{netChild}
 	}
 	if command == "bash" {
-		ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`), 0644)
+		ioutil.WriteFile(cmd.Dir+"/.bashrc", []byte(`PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@$HOSTNAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '`+utils.PipBashrc), 0644)
 	}
 	// not the server's own environment: its secrets must not reach the user's shell
 	cmd.Env = utils.ChildEnviron(os.Environ())

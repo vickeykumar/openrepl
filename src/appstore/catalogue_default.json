@@ -5870,6 +5870,23 @@
     },
     "at": "2026-11-16"
    }
+  },
+  {
+   "id": "maven",
+   "name": "maven",
+   "summary": "Builds Java projects and downloads their libraries.",
+   "kind": "tool",
+   "repls": [
+    "java"
+   ],
+   "level": "optional",
+   "manager": "pixi",
+   "install": "approval",
+   "category": "Build tools",
+   "docs": "https://maven.apache.org/guides/",
+   "licence": "Apache-2.0",
+   "check": "version-flag",
+   "checkArg": "mvn"
   }
  ],
  "packs": [
