@@ -205,6 +205,28 @@
             <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> rg --version
 <span class="code--data-type">ripgrep 13.0.0</span></code></pre>
           </div>
+
+          <h3 class="section__title">Verify tools and proxy access</h3>
+          <p>Check the versions installed in this image. These can change when the server image is updated. Scratch paths vary by workspace.</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> node --version
+<span class="code--prompt">root@bash:~#</span> npm --version
+<span class="code--prompt">root@bash:~#</span> java --version
+<span class="code--prompt">root@bash:~#</span> mvn --version
+<span class="code--prompt">root@bash:~#</span> perl -MLWP::UserAgent -e 'print "LWP::UserAgent OK\n"'
+<span class="code--prompt">root@bash:~#</span> printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\nCARGO_INSTALL_ROOT=%s\n' "$CARGO_HOME" "$CARGO_TARGET_DIR" "$CARGO_INSTALL_ROOT"</code></pre>
+          </div>
+          <p>When Internet for REPLs is enabled, this Node request uses the configured environment proxy. It checks proxy access, not direct outbound networking. <code>npm view</code> is a quick registry check.</p>
+          <div class="code__block code__block--notabs">
+            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> NODE_USE_ENV_PROXY=1 node -e '
+const https = require("node:https");
+const req = https.get("https://example.com", res =&gt; { console.log("HTTPS status:", res.statusCode); res.resume(); });
+req.setTimeout(10000, () =&gt; req.destroy(new Error("timeout")));
+req.on("error", e =&gt; { console.error(e.code || e.message); process.exitCode = 1; });
+'
+<span class="code--prompt">root@bash:~#</span> npm view lodash version</code></pre>
+          </div>
+          <p><code>cargo install</code> puts its registry and build cache in Scratch; <code>CARGO_INSTALL_ROOT</code> points to the home directory for installed commands. A PCRE2-unavailable notice from ripgrep is optional-feature information if <code>rg --version</code> succeeds. On Java 21, an old Maven quickstart may fail because it targets Java 5; for that legacy project, build with <code>mvn -q -Dmaven.compiler.source=8 -Dmaven.compiler.target=8 package</code>.</p>
           <p>If a package is missing, search the App Store or request it from an administrator. For project dependencies, use the matching language package manager instead.</p>
         </section>
 
