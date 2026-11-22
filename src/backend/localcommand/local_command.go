@@ -103,7 +103,8 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 	// not the server's own environment: its secrets must not reach the user's shell
 	cmd.Env = utils.ChildEnviron(os.Environ())
 	cmd.Env = append(cmd.Env, "TERM=xterm")
-	cmd.Env = append(cmd.Env, "GOPATH=/opt/gotty/")
+	// Go, RubyGems and npm -g: their own folders in the workspace (the server's /opt/gotty/ is not readable by a user); the module cache is the scratch folder's
+	cmd.Env = append(cmd.Env, utils.UserToolEnv(cmd.Dir)...)
 	cmd.Env = append(cmd.Env, "GOCACHE=/tmp/go_cache/.cache/go-build/")
 	cmd.Env = append(cmd.Env, "HOME="+cmd.Dir)
 	if rh := rustupHome(); rh != "" {
@@ -122,7 +123,7 @@ func New(command string, argv []string, ppid int, params url.Values, options ...
 
 	// Append /opt/gotty/bin to the PATH environment variable
 	path := os.Getenv("PATH")
-	path += string(os.PathListSeparator) + "/opt/gotty/bin"
+	path += string(os.PathListSeparator) + "/opt/gotty/bin" + string(os.PathListSeparator) + strings.Join(utils.UserBinDirs(cmd.Dir), string(os.PathListSeparator))
 	cmd.Env = append(cmd.Env, "PATH="+path)
 
 	//fill other env variables recieved from client

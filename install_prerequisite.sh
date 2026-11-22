@@ -83,6 +83,9 @@ apt-get install -y --no-install-recommends python-is-python3
 #install ipython3
 apt-get install -y --no-install-recommends ipython3
 
+#install pip for the system python3: a user installs with `pip install x` (pip falls back to ~/.local when the system folder is not writable, which in a REPL it never is)
+apt-get install -y --no-install-recommends python3-pip python3-venv
+
 
 # set cap to nsenter,gcc,g++
 apt-get install -y --no-install-recommends libcap2-bin
@@ -274,6 +277,8 @@ cd ..
 
 #install Ruby(irb)
 apt-get install -y --no-install-recommends ruby
+# gem installs no documentation (slow and large); GEM_HOME is the user's own, set by the server
+echo 'gem: --no-document' > /etc/gemrc
 
 #install perli
 apt-get install -y --no-install-recommends rlwrap
@@ -374,6 +379,7 @@ if [ $run_tests -eq 1 ]; then
 		"python3 --version"
 		"python --version"
 		"ipython3 --version"
+		"python3 -m pip --version"
 		"node --version"
 		"npm --version"
 		"irb --version"

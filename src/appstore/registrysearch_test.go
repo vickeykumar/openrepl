@@ -216,3 +216,27 @@ func TestTheSearchOfEverythingAsksEverySource(t *testing.T) {
 		t.Errorf("a kind: %d results", len(one))
 	}
 }
+
+// the Go modules of the App Store keep working with or without the internet: the mirrors always come first
+func TestGoMirrorsKeepWorkingAndTheGoProxyFollowsOnlyWithTheInternet(t *testing.T) {
+	v := Vars{GoProxy: []string{"file:///store/gomod-cobra/gomod/cache/download"}}
+	get := func(env []string, k string) string {
+		for _, e := range env {
+			if strings.HasPrefix(e, k+"=") {
+				return e[len(k)+1:]
+			}
+		}
+		return ""
+	}
+	off := v.Apply([]string{"PATH=/bin"})
+	if get(off, "GOPROXY") != "file:///store/gomod-cobra/gomod/cache/download,off" || get(off, "GOSUMDB") != "off" || get(off, "GOFLAGS") != "-mod=mod" {
+		t.Errorf("without the internet only the mirrors: %v", off)
+	}
+	on := v.Apply([]string{"PATH=/bin", "HTTPS_PROXY=http://127.0.0.1:3128"})
+	if get(on, "GOPROXY") != "file:///store/gomod-cobra/gomod/cache/download,https://proxy.golang.org" || get(on, "GOSUMDB") != "sum.golang.org" {
+		t.Errorf("with the internet the mirrors first, then the Go module proxy: %v", on)
+	}
+	if sc := EnvScript(t.TempDir(), nil); strings.Contains(sc, "GOPROXY") {
+		t.Error("no Go mirror, no GOPROXY")
+	}
+}

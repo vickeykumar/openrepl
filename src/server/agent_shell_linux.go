@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
@@ -37,8 +38,9 @@ func runShell(ctx context.Context, home, command string, timeout time.Duration) 
 	cmd.Stdin = nil
 	// not the server's own environment: its secrets must not reach the command
 	env := utils.ChildEnviron(os.Environ())
-	env = append(env, "TERM=dumb", "HOME="+home, "HOSTNAME=bash", "GOPATH=/opt/gotty/", "GOCACHE=/tmp/go_cache/.cache/go-build/", "GCC_EXEC_PREFIX=/usr/lib/gcc/")
-	env = append(env, "PATH="+os.Getenv("PATH")+string(os.PathListSeparator)+"/opt/gotty/bin")
+	env = append(env, "TERM=dumb", "HOME="+home, "HOSTNAME=bash", "GOCACHE=/tmp/go_cache/.cache/go-build/", "GCC_EXEC_PREFIX=/usr/lib/gcc/")
+	env = append(env, utils.UserToolEnv(home)...)
+	env = append(env, "PATH="+os.Getenv("PATH")+string(os.PathListSeparator)+"/opt/gotty/bin"+string(os.PathListSeparator)+strings.Join(utils.UserBinDirs(home), string(os.PathListSeparator)))
 	// the agent is for signed-in people: the way out of the sandbox is the proxy, when it is on (LLD 16 "Egress")
 	wantEgress := containers.EgressWanted("bash", true, false)
 	if wantEgress {
