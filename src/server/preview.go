@@ -139,7 +139,7 @@ func (server *Server) handlePreview(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, why, http.StatusForbidden)
 		return
 	}
-	st := &livepreview.StorageInfo{Store: previewStore, Home: home, Viewer: viewer, URL: "/preview/" + token + "/s"}
+	st := &livepreview.StorageInfo{Store: previewStore, Home: home, Viewer: viewer, URL: previewPath(req, token) + "/s"}
 	if svc := storeService(); svc != nil && !GetSiteSettings().StoreOff {
 		st.Tools = svc.PreviewHead(filepath.Base(home), path[:i]) // the tools of the preview this visitor has on (Eruda, vConsole): scripts of this site
 	}
@@ -210,14 +210,14 @@ func (server *Server) previewProgram(rw http.ResponseWriter, req *http.Request, 
 	}
 	if len(seg) == 1 {
 		// the program's pages use relative links: the address ends in a slash
-		target := req.URL.Path + "/"
+		target := publicPath(req, req.URL.Path) + "/"
 		if req.URL.RawQuery != "" {
 			target += "?" + req.URL.RawQuery
 		}
 		http.Redirect(rw, req, target, http.StatusMovedPermanently)
 		return
 	}
-	prefix := "/preview/" + token + "/p/" + seg[0]
+	prefix := previewPath(req, token) + "/p/" + seg[0]
 	livepreview.Proxy(rw, req, seg[1], livepreview.Options{
 		Home: home, Port: port, Prefix: prefix, Dial: previewDialer(home), Jar: previewJar, Viewer: viewer, Hook: livepreview.HTMLHookWith(prefix, st, livepreview.ProgramScope(port)),
 	})

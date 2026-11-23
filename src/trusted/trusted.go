@@ -20,6 +20,9 @@ const (
 	HeaderHomeID  = "X-Openrepl-Home-Id"
 	HeaderPriv    = "X-Openrepl-Priv"
 	HeaderSession = "X-Openrepl-Session"
+	// HeaderPreviewHost is "1" on a Preview request the gateway took on the preview host (/<token>/... there): the gateway forwards it in the
+	// site's own form (/preview/<token>/...), and the worker, which makes the addresses a page links to, must make them in the host's form.
+	HeaderPreviewHost = "X-Openrepl-Preview-Host"
 )
 
 // Identity is who a forwarded request belongs to, as decided by the gateway.

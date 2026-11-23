@@ -126,6 +126,9 @@ func (b *RemoteBackend) direct(req *http.Request) {
 	if id, ok := req.Context().Value(identityKey{}).(trusted.Identity); ok {
 		trusted.Set(req.Header, id)
 	}
+	if IsPreviewHost(req) {
+		req.Header.Set(trusted.HeaderPreviewHost, "1")
+	}
 	if _, ok := req.Header["User-Agent"]; !ok {
 		req.Header.Set("User-Agent", "") // do not add Go's default
 	}

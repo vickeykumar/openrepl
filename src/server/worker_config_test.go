@@ -162,3 +162,23 @@ func TestTheInternetSwitchReachesTheWorkers(t *testing.T) {
 		t.Fatal("a worker kept the switch after the gateway turned it off")
 	}
 }
+
+// the preview host reaches the workers with the other site rules, and changes the revision a worker compares
+func TestThePreviewBaseURLReachesTheWorkers(t *testing.T) {
+	adminTestServer(t)
+	s := &Server{}
+	before := s.gatewayWorkerConfig()
+	SaveSiteSettings(SiteSettings{PreviewBaseURL: "https://preview.example.test"})
+	got := s.gatewayWorkerConfig()
+	if got.PreviewBaseURL != "https://preview.example.test" || got.Revision == before.Revision {
+		t.Fatalf("the base URL must be in the config and change its revision: %+v", got)
+	}
+	applyWorkerConfig(&tunnel.WorkerConfig{Revision: 11, PreviewBaseURL: "https://preview.example.test"})
+	if GetSiteSettings().previewBaseURL() != "https://preview.example.test" {
+		t.Fatal("a worker did not follow the gateway's preview host")
+	}
+	applyWorkerConfig(&tunnel.WorkerConfig{Revision: 12})
+	if GetSiteSettings().previewBaseURL() != "" {
+		t.Fatal("a worker kept the preview host after the gateway cleared it")
+	}
+}

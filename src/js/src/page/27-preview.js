@@ -239,7 +239,22 @@ function describe(p) {
   if (m) return "127.0.0.1:" + m[1] + (m[2] && m[2] !== "/" ? m[2] : "");
   return p;
 }
-function pathOf(href) { try { var u = new URL(href, location.href); return u.pathname + u.search + u.hash; } catch (e) { return href; } }
+// The preview host (docs/lld/17-preview-pane.md "The preview host"): when the admin set SiteSettings.PreviewBaseURL the frames and the tabs of the
+// Preview open there, as <base>/<token>/f/<path>, not as this site's /preview/<token>/f/<path>. The history of a tab keeps the site's form, so
+// that nothing else here has to know: pub() makes the address a frame or a tab opens, and pathOf() brings a reported address back.
+function previewBase() {
+  var b = window.site_settings && window.site_settings.previewBaseURL;
+  return typeof b === "string" ? b.replace(/\/+$/, "") : "";
+}
+function pub(p) { var b = previewBase(); return b ? b + p.replace(/^\/preview\//, "/") : p; }
+function popUrl(p) { var b = previewBase(); return b ? pub(p) : location.origin + p; }
+function pathOf(href) {
+  try {
+    var u = new URL(href, location.href), b = previewBase(), path = u.pathname;
+    if (b && u.origin === new URL(b).origin && !/^\/preview\//.test(path)) path = "/preview" + path;
+    return path + u.search + u.hash;
+  } catch (e) { return href; }
+}
 function renew(p) { return token ? p.replace(/^\/preview\/[^/]+\//, "/preview/" + token.value + "/") : p; }
 
 // ---- tabs, history, the status line ---------------------------------------------------------------------------------
@@ -302,7 +317,7 @@ function selectTab(k) {
   var frame = frameFor(target);
   frame.setAttribute("data-url", "");
   if (target.kind === "n") { load(); hideError(); render(); focusAddress(); return; }
-  if (tb.hist.length) { navTo = renew(tb.hist[tb.idx]); frame.setAttribute("data-url", navTo); setStatus("loading"); frame.src = navTo; } else load();
+  if (tb.hist.length) { navTo = renew(tb.hist[tb.idx]); frame.setAttribute("data-url", navTo); setStatus("loading"); frame.src = pub(navTo); } else load();
   hideError(); render();
 }
 
@@ -312,7 +327,7 @@ function closeTab(k) {
   var was = k === cur;
   cur = Math.min(cur > k ? cur - 1 : cur, tabs.length - 1);
   target = tabs[cur].t;
-  if (was) { var tb = tabs[cur]; if (tb.hist.length) { navTo = renew(tb.hist[tb.idx]); var f = frameFor(target); f.setAttribute("data-url", navTo); f.src = navTo; } else load(); }
+  if (was) { var tb = tabs[cur]; if (tb.hist.length) { navTo = renew(tb.hist[tb.idx]); var f = frameFor(target); f.setAttribute("data-url", navTo); f.src = pub(navTo); } else load(); }
   render();
 }
 
@@ -648,8 +663,8 @@ function navigateTo(t) {
     tb.hist = tb.hist.slice(0, tb.idx + 1); tb.hist.push(url); tb.idx = tb.hist.length - 1;
     navTo = url;
     frame.setAttribute("data-url", url);
-    frame.src = url;
-    if (popout && !popout.closed) { try { popout.location.href = location.origin + url; } catch (e) {} }
+    frame.src = pub(url);
+    if (popout && !popout.closed) { try { popout.location.href = popUrl(url); } catch (e) {} }
     render();
   }, function (e) {
     message("<strong>The preview is not available.</strong><br>" + esc(e && e.message ? e.message : e), null);
@@ -739,7 +754,7 @@ function goHist(tb) {
   navTo = renew(tb.hist[tb.idx]);
   frame.setAttribute("data-url", navTo);
   setStatus("loading"); hideError(); clearLogs();
-  frame.src = navTo;
+  frame.src = pub(navTo);
   setAddress(describe(navTo)); render();
 }
 
@@ -759,7 +774,7 @@ function toggleMenu(force) {
 
 function copyAddress() {
   var tb = tab();
-  var url = tb && tb.hist.length ? location.origin + renew(tb.hist[tb.idx]) : "";
+  var url = tb && tb.hist.length ? popUrl(renew(tb.hist[tb.idx])) : "";
   var done = function () { if (window.notify) window.notify("Address copied.", { type: "success" }); };
   if (!url) return;
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () {});
@@ -769,7 +784,7 @@ function popOut() {
   if (!target || target.kind === "n") return;
   getToken().then(function (tok) {
     var tb = tab();
-    var url = location.origin + (tb && tb.hist.length ? renew(tb.hist[tb.idx]) : urlFor(target, tok));
+    var url = popUrl(tb && tb.hist.length ? renew(tb.hist[tb.idx]) : urlFor(target, tok));
     popout = window.open(url, "openrepl-preview", "popup=yes,width=1000,height=720");
     if (!popout) { message("<strong>The window was blocked.</strong><br>Allow pop-ups for this site, then try again.", null); return; }
     var frame = frameFor(target); frame.removeAttribute("src");
@@ -821,8 +836,8 @@ function load() {
     var url = urlFor(target, tok);
     navTo = "";
     frame.setAttribute("data-url", url);
-    frame.src = url;
-    if (popout && !popout.closed) { try { popout.location.href = location.origin + url; } catch (e) {} }
+    frame.src = pub(url);
+    if (popout && !popout.closed) { try { popout.location.href = popUrl(url); } catch (e) {} }
   }, function (e) {
     message("<strong>The preview is not available.</strong><br>" + esc(e && e.message ? e.message : e), null);
   });
@@ -855,8 +870,8 @@ function reload() {
   var tb = tab();
   if (tb && tb.hist.length) { url = renew(tb.hist[tb.idx]); navTo = url; frame.setAttribute("data-url", url); } // the page now shown, not the first one
   setStatus("loading"); hideError(); clearLogs();
-  if (popout && !popout.closed) { try { popout.location.href = location.origin + url; } catch (e) {} }
-  frame.src = url; // the same address again reloads the page
+  if (popout && !popout.closed) { try { popout.location.href = popUrl(url); } catch (e) {} }
+  frame.src = pub(url); // the same address again reloads the page
 }
 
 function syncButton() {
@@ -925,7 +940,7 @@ function show(t) {
   placePane();
   setAddress();
   applySize();
-  if (target) { var tb = tab(); if (tb && tb.hist.length && !t.sub) { var f = frameFor(target); navTo = renew(tb.hist[tb.idx]); f.setAttribute("data-url", navTo); setStatus("loading"); f.src = navTo; setAddress(describe(navTo)); } else load(); }
+  if (target) { var tb = tab(); if (tb && tb.hist.length && !t.sub) { var f = frameFor(target); navTo = renew(tb.hist[tb.idx]); f.setAttribute("data-url", navTo); setStatus("loading"); f.src = pub(navTo); setAddress(describe(navTo)); } else load(); }
   else { message("<strong>Nothing to show yet.</strong><br>Run a program that listens on a port, or open an .html or Markdown file, a picture or a PDF.", null); setStatus("message"); }
   render();
   mobileTab(true);
