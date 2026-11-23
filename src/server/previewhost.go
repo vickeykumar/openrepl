@@ -1,7 +1,6 @@
 package server
 
 import (
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,19 +18,14 @@ import (
 // is no token ends as "the preview ended" or 404), never at the site's pages, the admin or the terminals. The site's own /preview/<token>/... stays as
 // it was (old links, a worker's own port), and /preview/<token>/... is accepted on the host as well.
 
-// sameHost says whether the Host header of a request is the host of base (the port counts only when base names one).
+// sameHost says whether the Host header of a request names the host of base: the host names are compared, not the scheme or the port.
 func sameHost(hostHeader, base string) bool {
 	u, err := url.Parse(base)
-	if err != nil || u.Host == "" {
+	if err != nil || u.Hostname() == "" {
 		return false
 	}
-	h := strings.ToLower(hostHeader)
-	if u.Port() == "" {
-		if hh, _, err := net.SplitHostPort(h); err == nil {
-			h = hh
-		}
-	}
-	return h == strings.ToLower(u.Host)
+	h, err := url.Parse("//" + hostHeader)
+	return err == nil && strings.EqualFold(h.Hostname(), u.Hostname())
 }
 
 // wrapPreviewHost is the outermost layer of the site (and of a worker): see above. prefix is the path the site is mounted at ("/").

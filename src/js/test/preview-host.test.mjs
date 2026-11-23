@@ -55,4 +55,6 @@ test("an address the frame reports on the preview host is brought back to the si
   assert.equal(p.pathOf("https://preview.example.test/preview/T/f/a.html"), "/preview/T/f/a.html");
   assert.equal(p.pathOf("https://openrepl.test/preview/T/f/a.html"), "/preview/T/f/a.html");
   assert.equal(p.pathOf("/preview/T/f/b.html"), "/preview/T/f/b.html");
+  // the host name is compared, not the scheme or the port
+  assert.equal(p.pathOf("http://preview.example.test:8080/T/f/a.html"), "/preview/T/f/a.html");
 });

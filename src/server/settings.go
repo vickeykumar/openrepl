@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -336,6 +337,17 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 		return s, err
 	}
 	s.PreviewBaseURL = base
+	if base != "" {
+		pubRaw := strings.TrimSpace(os.Getenv("OPENREPL_PUBLIC_URL"))
+		if pubRaw != "" && !strings.Contains(pubRaw, "://") {
+			pubRaw = defaultScheme(pubRaw) + pubRaw // a bare host name, as with the preview base URL
+		}
+		if pub, perr := url.Parse(pubRaw); perr == nil && pub.Hostname() != "" {
+			if bu, _ := parsePreviewBase(base); bu != nil && strings.EqualFold(bu.Hostname(), pub.Hostname()) {
+				return s, fmt.Errorf("the preview base URL must not have the same host name as this site (OPENREPL_PUBLIC_URL); use a separate host name")
+			}
+		}
+	}
 	if s.StoreLimitMB != 0 && (s.StoreLimitMB < 100 || s.StoreLimitMB > 1048576) {
 		return s, fmt.Errorf("the size of the App Store must be between 100 and 1048576 MB (or empty)")
 	}
@@ -930,32 +942,64 @@ func (s SiteSettings) previewLinkLife(guest bool) time.Duration {
 	return time.Duration(m) * time.Minute
 }
 
-// previewBaseURL is the checked external preview origin, or "" when previews
-// stay below this site's /preview route. Settings are normalized before use,
-// but this defensive parse also keeps a bad old record on the compatible path.
+// previewBaseURL is the origin of the preview host (scheme and host, as the pages and the workers use it), or "" when previews
+// stay below this site's /preview route. The setting is kept as the admin typed it (preview.openrepl.com); the scheme is derived
+// here (defaultScheme) unless one was typed. Settings are normalized before use, but this defensive parse also keeps a bad old
+// record on the compatible path.
 func (s SiteSettings) previewBaseURL() string {
-	base, err := cleanPreviewBaseURL(s.PreviewBaseURL)
-	if err != nil {
+	u, err := parsePreviewBase(s.PreviewBaseURL)
+	if err != nil || u == nil {
 		return ""
 	}
-	return base
+	return u.Scheme + "://" + strings.ToLower(u.Host)
 }
 
+// defaultScheme is the scheme for a host typed without one: http for a local development host
+// (localhost, 127.0.0.1, [::1], *.localhost, *.test), https for everything else.
+func defaultScheme(host string) string {
+	h := strings.ToLower(host)
+	if i := strings.IndexAny(h, "/?#"); i >= 0 {
+		h = h[:i]
+	}
+	if strings.HasPrefix(h, "[") {
+		if j := strings.Index(h, "]"); j >= 0 {
+			h = h[:j+1]
+		}
+	} else if i := strings.LastIndex(h, ":"); i >= 0 {
+		h = h[:i]
+	}
+	if h == "localhost" || h == "127.0.0.1" || h == "[::1]" || strings.HasSuffix(h, ".localhost") || strings.HasSuffix(h, ".test") {
+		return "http://"
+	}
+	return "https://"
+}
+
+// cleanPreviewBaseURL checks the setting and returns it as typed (trimmed, lower case, no trailing slash): no scheme is added to it.
 func cleanPreviewBaseURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", nil
 	}
+	if _, err := parsePreviewBase(raw); err != nil {
+		return "", err
+	}
+	return strings.ToLower(strings.TrimRight(raw, "/")), nil
+}
+
+// parsePreviewBase reads the setting as a URL: a host typed without a scheme gets one (http for a local host, else https). nil for "".
+func parsePreviewBase(raw string) (*url.URL, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
 	if !strings.Contains(raw, "://") && !strings.HasPrefix(raw, "//") {
-		raw = "https://" + raw // a bare host name (preview.openrepl.com) means https
+		raw = defaultScheme(raw) + raw
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme == "" || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return "", fmt.Errorf("the preview base URL must be a host name such as preview.openrepl.com (https is assumed; http://host:port for a local one), without a path, query or fragment")
+	if err != nil || u.Scheme == "" || u.Hostname() == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return nil, fmt.Errorf("the preview base URL must be a host name such as preview.openrepl.com (a scheme is optional; http for a local host, https otherwise), without a path, query or fragment")
 	}
-	u.Path, u.RawPath = "", ""
-	u.Host = strings.ToLower(u.Host)
-	return strings.TrimSuffix(u.String(), "/"), nil
+	return u, nil
 }
 
 // maxEditorFileMB is the limit in force: the one set, or the built-in 16.

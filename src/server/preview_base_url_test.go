@@ -2,11 +2,24 @@ package server
 
 import "testing"
 
-func TestThePreviewBaseURLIsAnOriginOrEmpty(t *testing.T) {
-	for in, want := range map[string]string{"": "", "  ": "", "preview.example.test": "https://preview.example.test", "Preview.Example.test/": "https://preview.example.test", "localhost:9000": "https://localhost:9000", "https://preview.example.test": "https://preview.example.test", "https://preview.example.test/": "https://preview.example.test", "http://localhost:9000": "http://localhost:9000"} {
+func TestThePreviewBaseURLIsKeptAsTypedAndTheOriginIsDerived(t *testing.T) {
+	// the setting keeps what the admin typed (trimmed, lower case); the origin adds the scheme: http for a local host, else https
+	for in, want := range map[string][2]string{
+		"": {"", ""}, "  ": {"", ""},
+		"preview.example.com":          {"preview.example.com", "https://preview.example.com"},
+		"Preview.Example.com/":         {"preview.example.com", "https://preview.example.com"},
+		"localhost:9000":               {"localhost:9000", "http://localhost:9000"},
+		"preview.localhost:8080":       {"preview.localhost:8080", "http://preview.localhost:8080"},
+		"https://preview.example.test": {"https://preview.example.test", "https://preview.example.test"},
+		"http://preview.example.test/": {"http://preview.example.test", "http://preview.example.test"},
+		"http://localhost:9000":        {"http://localhost:9000", "http://localhost:9000"},
+	} {
 		got, err := cleanPreviewBaseURL(in)
-		if err != nil || got != want {
-			t.Errorf("%q: %q %v, want %q", in, got, err, want)
+		if err != nil || got != want[0] {
+			t.Errorf("%q: kept as %q %v, want %q", in, got, err, want[0])
+		}
+		if o := (SiteSettings{PreviewBaseURL: in}).previewBaseURL(); o != want[1] {
+			t.Errorf("%q: origin %q, want %q", in, o, want[1])
 		}
 	}
 	for _, bad := range []string{"preview.example.test/path", "ftp://x.test", "https://x.test/path", "https://x.test/?q=1", "https://u:p@x.test", "https://x.test/#f", "//x.test"} {
@@ -17,6 +30,19 @@ func TestThePreviewBaseURLIsAnOriginOrEmpty(t *testing.T) {
 	if _, err := (SiteSettings{PreviewBaseURL: "https://x.test/path"}).normalize(); err == nil {
 		t.Error("settings with a path in the preview base URL must not normalize")
 	}
+	// the host name must differ from the site's own (OPENREPL_PUBLIC_URL), whatever the scheme, port or spelling of either
+	for _, site := range []string{"openrepl.com", "http://openrepl.com", "https://openrepl.com", "https://OpenREPL.com:8443"} {
+		t.Setenv("OPENREPL_PUBLIC_URL", site)
+		for _, base := range []string{"openrepl.com", "http://openrepl.com", "https://openrepl.com:9000"} {
+			if _, err := (SiteSettings{PreviewBaseURL: base}).normalize(); err == nil {
+				t.Errorf("%q against the site %q must be refused", base, site)
+			}
+		}
+		if _, err := (SiteSettings{PreviewBaseURL: "preview.openrepl.com"}).normalize(); err != nil {
+			t.Errorf("a separate host name against %q: %v", site, err)
+		}
+	}
+	t.Setenv("OPENREPL_PUBLIC_URL", "")
 	// it reaches the page (settings.js) and the workers, and a change is told in the log of changes
 	s := SiteSettings{PreviewBaseURL: "https://preview.example.test"}
 	if s.public().PreviewBaseURL != "https://preview.example.test" {

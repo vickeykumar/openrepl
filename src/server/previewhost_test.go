@@ -15,7 +15,7 @@ import (
 	"utils"
 )
 
-func TestSameHostComparesTheHostAndThePortOnlyWhenTheBaseHasOne(t *testing.T) {
+func TestSameHostComparesTheHostNameOnly(t *testing.T) {
 	for _, c := range []struct {
 		host, base string
 		want       bool
@@ -24,7 +24,9 @@ func TestSameHostComparesTheHostAndThePortOnlyWhenTheBaseHasOne(t *testing.T) {
 		{"PREVIEW.example.test:443", "https://preview.example.test", true},
 		{"preview.example.test", "https://openrepl.com", false},
 		{"localhost:9000", "http://localhost:9000", true},
-		{"localhost:8000", "http://localhost:9000", false},
+		{"localhost:8000", "http://localhost:9000", true}, // the port is not compared
+		{"[::1]:8000", "http://[::1]:9000", true},
+		{"preview.localhost:8000", "http://localhost:9000", false},
 		{"preview.example.test", "", false},
 	} {
 		if got := sameHost(c.host, c.base); got != c.want {

@@ -251,7 +251,7 @@ function popUrl(p) { var b = previewBase(); return b ? pub(p) : location.origin 
 function pathOf(href) {
   try {
     var u = new URL(href, location.href), b = previewBase(), path = u.pathname;
-    if (b && u.origin === new URL(b).origin && !/^\/preview\//.test(path)) path = "/preview" + path;
+    if (b && u.hostname === new URL(b).hostname && !/^\/preview\//.test(path)) path = "/preview" + path;
     return path + u.search + u.hash;
   } catch (e) { return href; }
 }
