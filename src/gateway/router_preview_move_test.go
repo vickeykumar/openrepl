@@ -19,7 +19,8 @@ func TestThePreviewFollowsTheSessionWhenItMovedAndTheRouteIsStale(t *testing.T) 
 	tok, _ := livepreview.NewToken("secret", home, time.Now(), time.Hour)
 	// the worker announced the home; then the session moved to the gateway
 	rt.Routes().Set(RouteHome, home, "worker-b")
-	rt.registry.Create(Identity{Key: "u:donadjdc", UID: "donadjdc", Home: home}, LocalID)
+	// the registry names a home by its directory name (Config.HomeOf), the token and the routes by its path
+	rt.registry.Create(Identity{Key: "u:donadjdc", UID: "donadjdc", Home: "donadjdc"}, LocalID)
 	do(rt, "GET", "/preview/"+tok+"/p/8000/", nil)
 	if b.hits != 0 || len(site.paths) != 1 {
 		t.Fatalf("the Preview went to the old worker: b=%d site=%v", b.hits, site.paths)
@@ -31,7 +32,7 @@ func TestThePreviewFollowsTheSessionWhenItMovedAndTheRouteIsStale(t *testing.T) 
 	rt2 := newTestRouter(&recorder{}, "/", &countingPicker{id: "worker-a"})
 	w := &named{id: "worker-a"}
 	rt2.AddBackend(w)
-	rt2.registry.Create(Identity{Key: "u:donadjdc", UID: "donadjdc", Home: home}, "worker-a")
+	rt2.registry.Create(Identity{Key: "u:donadjdc", UID: "donadjdc", Home: "donadjdc"}, "worker-a")
 	do(rt2, "GET", "/preview/"+tok+"/p/8000/", nil)
 	if w.hits != 1 {
 		t.Errorf("the Preview did not go to the worker that runs the session: %d", w.hits)

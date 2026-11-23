@@ -230,59 +230,101 @@ var errNoIsolation = errors.New("a program can be previewed only where each work
 // the server, or of another visitor, would then be reachable).
 func previewDialer(home string) livepreview.Dialer {
 	return func(ctx context.Context, port int) (net.Conn, error) {
-		pids := livepreview.FindPIDs(home)
+		pids := previewProc.find(home)
+		var tried []string // what was attempted and how it ended, for the log of a Preview that fails
+		fail := func(err error) (net.Conn, error) {
+			logPreviewFailure(home, port, pids, tried, err)
+			return nil, err
+		}
+		emu := func() (net.Conn, error) {
+			var d net.Dialer
+			c, err := d.DialContext(ctx, "unix", netemu.Name(netemu.WorkspaceID(home), "t", uint16(port)))
+			tried = append(tried, fmt.Sprintf("emulation: %v", err))
+			return c, err
+		}
 		if len(pids) == 0 {
 			// No process was found by its HOME or its helper. Under the network emulation the program's socket has a name that holds only the
 			// workspace and the port, so it can be reached without knowing a process: a REPL that /proc did not show (a process the server may
 			// not read) must not hide a program that is listening (reported: "Nothing is running yet" with `python -m http.server` running).
 			if netEmuActive() {
-				var d net.Dialer
-				if c, err := d.DialContext(ctx, "unix", netemu.Name(netemu.WorkspaceID(home), "t", uint16(port))); err == nil {
+				if c, err := emu(); err == nil {
 					logNoProcess(home, port, true)
 					return c, nil
 				}
 			}
 			logNoProcess(home, port, false)
-			return nil, livepreview.ErrNoProgram
+			return fail(livepreview.ErrNoProgram)
 		}
 		// each REPL of a workspace may have a network of its own: the program is in the one that listens on the port
 		var lastErr error
 		own := false
 		admin := false // a REPL with no sandbox at all (an admin's) listens on the machine's real network
 		for _, pid := range pids {
-			if livepreview.SameNetwork(pid) {
+			if previewProc.same(pid) {
 				own = true
-				if containers.NetEmuActive() && livepreview.Unsandboxed(pid) {
+				if netEmuActive() && previewProc.unsandboxed(pid) {
 					admin = true
 				}
 				continue
 			}
-			c, err := livepreview.DialIn(fmt.Sprintf("/proc/%d/ns/net", pid), port, 10*time.Second)
+			c, err := previewProc.dialIn(pid, port)
+			tried = append(tried, fmt.Sprintf("namespace of %d: %v", pid, err))
 			if err == nil {
 				return c, nil
 			}
 			lastErr = err
 		}
 		if lastErr != nil && !own {
-			return nil, lastErr
+			return fail(lastErr)
+		}
+		if !own {
+			return fail(errNoIsolation)
+		}
+		// The processes in the server's own network. A workspace can hold both kinds at once (an admin's terminal opened in a user's workspace, the
+		// transient helper of a fork): the emulation's socket is tried first (a sandboxed REPL's program), then the real network (an unsandboxed
+		// one's), so that the one kind does not hide the other. (Before, one unsandboxed process sent every port to the real network, where the
+		// program was not and the site itself is.)
+		if netEmuActive() {
+			c, err := emu()
+			if err == nil {
+				return c, nil
+			}
+			lastErr = err
 		}
 		if admin {
-			// an admin's REPL listens on the machine's real network, where the site itself is: its own port is not a program to preview
+			// the real network is where the site itself listens: its own port is not a program to preview
 			if isOwnPort(port) {
-				return nil, errOwnPort
+				tried = append(tried, "real network: the port of the site itself")
+				return fail(errOwnPort)
 			}
 			var d net.Dialer
-			return d.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", port))
-		}
-		if containers.NetEmuActive() {
-			var d net.Dialer
-			return d.DialContext(ctx, "unix", netemu.Name(netemu.WorkspaceID(home), "t", uint16(port)))
+			c, err := d.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", port))
+			tried = append(tried, fmt.Sprintf("real network: %v", err))
+			if err != nil {
+				return fail(err)
+			}
+			return c, nil
 		}
 		if lastErr != nil {
-			return nil, lastErr
+			return fail(lastErr)
 		}
-		return nil, errNoIsolation
+		return fail(errNoIsolation)
 	}
+}
+
+// previewProc is what the dialer asks of /proc and of the namespaces; the tests replace it.
+var previewProc = struct {
+	find        func(home string) []int
+	same        func(pid int) bool
+	unsandboxed func(pid int) bool
+	dialIn      func(pid, port int) (net.Conn, error)
+}{
+	find:        livepreview.FindPIDs,
+	same:        livepreview.SameNetwork,
+	unsandboxed: livepreview.Unsandboxed,
+	dialIn: func(pid, port int) (net.Conn, error) {
+		return livepreview.DialIn(fmt.Sprintf("/proc/%d/ns/net", pid), port, 10*time.Second)
+	},
 }
 
 // previewPorts lists the ports a workspace's programs listen on, from the sockets of its own network. The proxy's own port (LLD 16
@@ -429,4 +471,30 @@ func logNoProcess(home string, port int, reached bool) {
 	}
 	noProcessSeen[home] = time.Now()
 	log.Printf("preview: no process of %s was found for port %d (the emulation's socket answered: %v)", filepath.Base(home), port, reached)
+}
+
+var (
+	previewFailMu   sync.Mutex
+	previewFailSeen = map[string]time.Time{}
+)
+
+// logPreviewFailure says, at most once in 30 seconds for a workspace and port, why a Preview could not reach the program: the processes that were
+// found (with their network: "same" is the server's own) and each attempt with how it ended. A Preview that fails with no word in the log cannot
+// be told from a program that is not there (reported: 502 on every port after a session moved to a worker).
+func logPreviewFailure(home string, port int, pids []int, tried []string, err error) {
+	key := fmt.Sprintf("%s|%d", home, port)
+	previewFailMu.Lock()
+	defer previewFailMu.Unlock()
+	if len(previewFailSeen) > 512 {
+		previewFailSeen = map[string]time.Time{}
+	}
+	if time.Since(previewFailSeen[key]) < 30*time.Second {
+		return
+	}
+	previewFailSeen[key] = time.Now()
+	facts := make([]string, 0, len(pids))
+	for _, pid := range pids {
+		facts = append(facts, fmt.Sprintf("%d(same=%v unsandboxed=%v)", pid, previewProc.same(pid), previewProc.unsandboxed(pid)))
+	}
+	log.Printf("preview: %s port %d failed: %v; processes %v; tried %v; emulation %v", filepath.Base(home), port, err, facts, tried, netEmuActive())
 }

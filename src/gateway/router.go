@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -402,7 +403,14 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // workers announced, and an entry stays when a move leaves no "closed" announcement behind (reported: the Preview kept asking the worker that
 // no longer ran the program, "Nothing is running yet"), so it is the fallback, and an entry that disagrees with the registry is dropped.
 func (rt *Router) homeBackend(home string) (string, bool) {
-	if id, ok := rt.registry.HomeOwner(home); ok {
+	// The registry names a home by its directory name ("donadjdc", Config.HomeOf), the Preview's token and the route table by its path
+	// ("/home/openrepl/donadjdc"): ask for both (the first version asked for the path only, never found the session, and fell back to the stale
+	// route; seen on a gateway and a worker after a session moved back to the gateway).
+	owner, ok := rt.registry.HomeOwner(home)
+	if !ok {
+		owner, ok = rt.registry.HomeOwner(filepath.Base(home))
+	}
+	if id, ok := owner, ok; ok {
 		if stale, found := rt.routes.Lookup(RouteHome, home); found && stale != id {
 			rt.routes.Delete(RouteHome, home, stale)
 		}
