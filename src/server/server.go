@@ -429,15 +429,15 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 		if err != nil {
 			return nil, err
 		}
-		return server.wrapControls(gw, pathPrefix), nil
+		return server.wrapPreviewHost(server.wrapControls(gw, pathPrefix), pathPrefix), nil
 	}
 	if server.options.Mode == ModeWorker {
 		// The gateway applies the switches before it forwards a terminal; the
 		// worker applies them, from the gateway's config, to its own visitors.
-		return server.wrapWorkerControls(siteHandler, pathPrefix), nil
+		return server.wrapPreviewHost(server.wrapWorkerControls(siteHandler, pathPrefix), pathPrefix), nil
 	}
 
-	return server.wrapControls(siteHandler, pathPrefix), nil
+	return server.wrapPreviewHost(server.wrapControls(siteHandler, pathPrefix), pathPrefix), nil
 }
 
 func (server *Server) setupHTTPServer(handler http.Handler) (*http.Server, error) {

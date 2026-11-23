@@ -7,6 +7,8 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -93,6 +95,10 @@ type SiteSettings struct {
 	// for a new one before it ends; a link opened in a tab of its own ends with it.
 	PreviewLinkGuestMinutes int `json:"previewLinkGuestMinutes"`
 	PreviewLinkUserMinutes  int `json:"previewLinkUserMinutes"`
+	// PreviewBaseURL is an optional separate origin for preview frames, for example
+	// https://preview.openrepl.com. It has no path: frames use /<token>/... there.
+	// Empty keeps previews on this site's /preview/<token>/... route.
+	PreviewBaseURL string `json:"previewBaseURL"`
 	// ShareLinkGuestMinutes and ShareLinkUserMinutes are the longest a share link of a live session may work (the time chosen
 	// in the Share popover, with the time added), in minutes, from 10 to 10080 (7 days); 0 means the built-in 60 (guest: 1
 	// hour) and 10080 (signed in: 7 days, as long as a sign-in lasts).
@@ -324,6 +330,22 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 	for name, m := range map[string]int{"guests": s.PreviewLinkGuestMinutes, "signed-in users": s.PreviewLinkUserMinutes} {
 		if m != 0 && (m < minPreviewLinkMinutes || m > maxPreviewLinkMinutes) {
 			return s, fmt.Errorf("the time a preview link works for %s must be between %d and %d minutes (or empty)", name, minPreviewLinkMinutes, maxPreviewLinkMinutes)
+		}
+	}
+	base, err := cleanPreviewBaseURL(s.PreviewBaseURL)
+	if err != nil {
+		return s, err
+	}
+	s.PreviewBaseURL = base
+	if base != "" {
+		pubRaw := strings.TrimSpace(os.Getenv("OPENREPL_PUBLIC_URL"))
+		if pubRaw != "" && !strings.Contains(pubRaw, "://") {
+			pubRaw = defaultScheme(pubRaw) + pubRaw // a bare host name, as with the preview base URL
+		}
+		if pub, perr := url.Parse(pubRaw); perr == nil && pub.Hostname() != "" {
+			if bu, _ := parsePreviewBase(base); bu != nil && strings.EqualFold(bu.Hostname(), pub.Hostname()) {
+				return s, fmt.Errorf("the preview base URL must not have the same host name as this site (OPENREPL_PUBLIC_URL); use a separate host name")
+			}
 		}
 	}
 	if s.StoreLimitMB != 0 && (s.StoreLimitMB < 100 || s.StoreLimitMB > 1048576) {
@@ -649,6 +671,8 @@ type publicSettings struct {
 	PreviewOff       bool `json:"previewOff"`
 	PreviewGuestsOff bool `json:"previewGuestsOff"`
 	PreviewAgentOff  bool `json:"previewAgentOff"`
+	// the separate origin of the preview frames (empty: this site's /preview/<token>/... addresses), see previewhost.go
+	PreviewBaseURL string `json:"previewBaseURL"`
 	// the page reports the agent's failed steps (genie_log.go) unless an admin switched that off
 	GenieEventsOff bool `json:"genieEventsOff"`
 	// the models a stuck task may be tried again with, in order (GenieSettings.EscalationModels)
@@ -918,6 +942,66 @@ func (s SiteSettings) previewLinkLife(guest bool) time.Duration {
 	return time.Duration(m) * time.Minute
 }
 
+// previewBaseURL is the origin of the preview host (scheme and host, as the pages and the workers use it), or "" when previews
+// stay below this site's /preview route. The setting is kept as the admin typed it (preview.openrepl.com); the scheme is derived
+// here (defaultScheme) unless one was typed. Settings are normalized before use, but this defensive parse also keeps a bad old
+// record on the compatible path.
+func (s SiteSettings) previewBaseURL() string {
+	u, err := parsePreviewBase(s.PreviewBaseURL)
+	if err != nil || u == nil {
+		return ""
+	}
+	return u.Scheme + "://" + strings.ToLower(u.Host)
+}
+
+// defaultScheme is the scheme for a host typed without one: http for a local development host
+// (localhost, 127.0.0.1, [::1], *.localhost, *.test), https for everything else.
+func defaultScheme(host string) string {
+	h := strings.ToLower(host)
+	if i := strings.IndexAny(h, "/?#"); i >= 0 {
+		h = h[:i]
+	}
+	if strings.HasPrefix(h, "[") {
+		if j := strings.Index(h, "]"); j >= 0 {
+			h = h[:j+1]
+		}
+	} else if i := strings.LastIndex(h, ":"); i >= 0 {
+		h = h[:i]
+	}
+	if h == "localhost" || h == "127.0.0.1" || h == "[::1]" || strings.HasSuffix(h, ".localhost") || strings.HasSuffix(h, ".test") {
+		return "http://"
+	}
+	return "https://"
+}
+
+// cleanPreviewBaseURL checks the setting and returns it as typed (trimmed, lower case, no trailing slash): no scheme is added to it.
+func cleanPreviewBaseURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if _, err := parsePreviewBase(raw); err != nil {
+		return "", err
+	}
+	return strings.ToLower(strings.TrimRight(raw, "/")), nil
+}
+
+// parsePreviewBase reads the setting as a URL: a host typed without a scheme gets one (http for a local host, else https). nil for "".
+func parsePreviewBase(raw string) (*url.URL, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	if !strings.Contains(raw, "://") && !strings.HasPrefix(raw, "//") {
+		raw = defaultScheme(raw) + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Hostname() == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return nil, fmt.Errorf("the preview base URL must be a host name such as preview.openrepl.com (a scheme is optional; http for a local host, https otherwise), without a path, query or fragment")
+	}
+	return u, nil
+}
+
 // maxEditorFileMB is the limit in force: the one set, or the built-in 16.
 func (s SiteSettings) maxEditorFileMB() int {
 	if s.MaxEditorFileMB < minEditorFileMB || s.MaxEditorFileMB > maxEditorFileMB {
@@ -944,6 +1028,7 @@ func (s SiteSettings) public() publicSettings {
 		PreviewOff:           s.PreviewOff,
 		PreviewGuestsOff:     s.PreviewGuestsOff,
 		PreviewAgentOff:      s.PreviewAgentOff,
+		PreviewBaseURL:       s.PreviewBaseURL, // as typed: the page adds the scheme and port of the site it was opened from
 		GenieEventsOff:       s.GenieEventsOff,
 		EscalationModels:     s.Genie.EscalationModels,
 		GenieAuto:            s.Genie.autoPublic(),
@@ -1222,6 +1307,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.PreviewGuestsOff != b.PreviewGuestsOff {
 		out = append(out, "preview for guests "+onoff(!b.PreviewGuestsOff))
+	}
+	if a.previewBaseURL() != b.previewBaseURL() {
+		out = append(out, "preview base URL "+orStr(b.previewBaseURL(), "this site"))
 	}
 	if a.previewLinkLife(true) != b.previewLinkLife(true) {
 		out = append(out, fmt.Sprintf("preview link works %d minutes for guests", int(b.previewLinkLife(true).Minutes())))

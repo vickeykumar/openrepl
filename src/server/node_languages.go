@@ -292,6 +292,7 @@ func (server *Server) workerConfigWith(disabled []string) *tunnel.WorkerConfig {
 		MaintenanceMessage: s.Maintenance.Message,
 		DisabledLanguages:  append([]string(nil), disabled...),
 		Egress:             s.EgressOn,
+		PreviewBaseURL:     s.PreviewBaseURL,
 	}
 	data, _ := json.Marshal(cfg)
 	h := fnv.New64a()
