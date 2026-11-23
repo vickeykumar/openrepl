@@ -1028,7 +1028,7 @@ func (s SiteSettings) public() publicSettings {
 		PreviewOff:           s.PreviewOff,
 		PreviewGuestsOff:     s.PreviewGuestsOff,
 		PreviewAgentOff:      s.PreviewAgentOff,
-		PreviewBaseURL:       s.previewBaseURL(),
+		PreviewBaseURL:       s.PreviewBaseURL, // as typed: the page adds the scheme and port of the site it was opened from
 		GenieEventsOff:       s.GenieEventsOff,
 		EscalationModels:     s.Genie.EscalationModels,
 		GenieAuto:            s.Genie.autoPublic(),

@@ -244,7 +244,12 @@ function describe(p) {
 // that nothing else here has to know: pub() makes the address a frame or a tab opens, and pathOf() brings a reported address back.
 function previewBase() {
   var b = window.site_settings && window.site_settings.previewBaseURL;
-  return typeof b === "string" ? b.replace(/\/+$/, "") : "";
+  if (typeof b !== "string") return "";
+  b = b.trim().replace(/\/+$/, "");
+  if (!b) return "";
+  // as typed: a host name alone takes the scheme and the port of the page (preview.localhost on http://localhost:8080 is http://preview.localhost:8080)
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(b)) b = location.protocol + "//" + b + (location.port && !/(:\d+|\])$/.test(b) ? ":" + location.port : "");
+  return b;
 }
 function pub(p) { var b = previewBase(); return b ? b + p.replace(/^\/preview\//, "/") : p; }
 function popUrl(p) { var b = previewBase(); return b ? pub(p) : location.origin + p; }
@@ -1008,7 +1013,7 @@ function init() {
   el("preview-close").addEventListener("click", closePane);
   el("preview-newtab").addEventListener("click", function () {
     if (!target || target.kind === "n") return;
-    getToken().then(function (tok) { window.open(urlFor(target, tok), "_blank", "noopener"); });
+    getToken().then(function (tok) { window.open(popUrl(urlFor(target, tok)), "_blank", "noopener"); });
   });
   window.addEventListener("resize", function () { if (open) applySize(); });
   var mt = el("mobile-view-terminal");

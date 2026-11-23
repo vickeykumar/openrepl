@@ -22,8 +22,8 @@ function fn(name) {
   throw new Error("no end of " + name);
 }
 
-function page(base) {
-  const ctx = { window: { site_settings: base === undefined ? {} : { previewBaseURL: base } }, location: { origin: "https://openrepl.test", href: "https://openrepl.test/" }, URL };
+function page(base, loc = { protocol: "https:", host: "openrepl.test", port: "" }) {
+  const ctx = { window: { site_settings: base === undefined ? {} : { previewBaseURL: base } }, location: { origin: loc.protocol + "//" + loc.host, href: loc.protocol + "//" + loc.host + "/", protocol: loc.protocol, port: loc.port }, URL };
   vm.createContext(ctx);
   vm.runInContext(["previewBase", "pub", "popUrl", "pathOf"].map(fn).join("\n"), ctx);
   return ctx;
@@ -57,4 +57,12 @@ test("an address the frame reports on the preview host is brought back to the si
   assert.equal(p.pathOf("/preview/T/f/b.html"), "/preview/T/f/b.html");
   // the host name is compared, not the scheme or the port
   assert.equal(p.pathOf("http://preview.example.test:8080/T/f/a.html"), "/preview/T/f/a.html");
+});
+
+test("a host name alone takes the scheme and the port of the page; one with a scheme is used as typed", () => {
+  const local = { protocol: "http:", host: "localhost:8080", port: "8080" };
+  assert.equal(page("preview.localhost", local).pub("/preview/T/f/index.html"), "http://preview.localhost:8080/T/f/index.html");
+  assert.equal(page("preview.localhost:9000", local).pub("/preview/T/f/index.html"), "http://preview.localhost:9000/T/f/index.html");
+  assert.equal(page("https://preview.example.test", local).pub("/preview/T/f/a.html"), "https://preview.example.test/T/f/a.html");
+  assert.equal(page("preview.example.test").pub("/preview/T/f/a.html"), "https://preview.example.test/T/f/a.html");
 });
