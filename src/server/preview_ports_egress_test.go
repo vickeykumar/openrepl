@@ -27,3 +27,12 @@ func TestThePreviewDoesNotListThePortOfTheServerItself(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// the Preview of an admin dials the real network, where the site is: its own port is refused
+func TestTheServersOwnPortIsRefusedForThePreview(t *testing.T) {
+	noteOwnPort("8080")
+	defer func() { ownPortsMu.Lock(); delete(ownPorts, 8080); ownPortsMu.Unlock() }()
+	if !isOwnPort(8080) || isOwnPort(8000) {
+		t.Error("only the server's own port is its own")
+	}
+}

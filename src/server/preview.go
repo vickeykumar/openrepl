@@ -267,6 +267,10 @@ func previewDialer(home string) livepreview.Dialer {
 			return nil, lastErr
 		}
 		if admin {
+			// an admin's REPL listens on the machine's real network, where the site itself is: its own port is not a program to preview
+			if isOwnPort(port) {
+				return nil, errOwnPort
+			}
 			var d net.Dialer
 			return d.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		}
@@ -299,6 +303,14 @@ func noteOwnPort(port string) {
 		ownPorts[n] = true
 		ownPortsMu.Unlock()
 	}
+}
+
+var errOwnPort = errors.New("this is the port of the site itself, not of a program of yours")
+
+func isOwnPort(port int) bool {
+	ownPortsMu.Lock()
+	defer ownPortsMu.Unlock()
+	return ownPorts[port]
 }
 
 func withoutOwnPorts(in []int) []int {

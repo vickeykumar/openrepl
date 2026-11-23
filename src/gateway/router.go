@@ -397,6 +397,20 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// homeBackend is the node that runs the workspace now. The live session that uses the home says it: a session that moved (a worker away
+// for a while, an admin moving it, or back to the gateway) is placed again, and the registry follows it. The route table is only what the
+// workers announced, and an entry stays when a move leaves no "closed" announcement behind (reported: the Preview kept asking the worker that
+// no longer ran the program, "Nothing is running yet"), so it is the fallback, and an entry that disagrees with the registry is dropped.
+func (rt *Router) homeBackend(home string) (string, bool) {
+	if id, ok := rt.registry.HomeOwner(home); ok {
+		if stale, found := rt.routes.Lookup(RouteHome, home); found && stale != id {
+			rt.routes.Delete(RouteHome, home, stale)
+		}
+		return id, true
+	}
+	return rt.routes.Lookup(RouteHome, home)
+}
+
 // servePreview passes a request of the Preview (/preview/<token>/...) to the worker that runs the workspace the token names,
 // where the program is: the frame carries no cookie, so the token is all there is to say whose it is. The worker checks the
 // token itself. It reports false when the workspace is the gateway's own (or unknown), and the gateway answers as before.
@@ -406,7 +420,7 @@ func (rt *Router) servePreview(w http.ResponseWriter, r *http.Request, rel strin
 	if home == "" {
 		return false
 	}
-	id, ok := rt.routes.Lookup(RouteHome, home)
+	id, ok := rt.homeBackend(home)
 	if !ok || id == LocalID {
 		return false
 	}
@@ -576,7 +590,7 @@ func (rt *Router) routed(r *http.Request) (string, bool) {
 		}
 	}
 	if home := q.Get("homedir"); home != "" {
-		if b, ok := rt.routes.Lookup(RouteHome, home); ok {
+		if b, ok := rt.homeBackend(home); ok {
 			return b, true
 		}
 	}
