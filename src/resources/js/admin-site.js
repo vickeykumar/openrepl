@@ -781,7 +781,7 @@
         save: function (msg) { doSave(msg); }
       });
       // the picker's state as a value of a control, so that the section marks show that it changed
-      form.coloursState = h('input', { type: 'hidden' });
+      form.coloursState = h('input', { type: 'hidden', oninput: update });
       form.coloursState.value = JSON.stringify([form.colours.accent(), form.colours.skipped()]);
       var maint = toggle('f-maint', settings.maintenance.enabled, 'Maintenance mode');
       var genie = toggle('f-genie', !settings.genie.disabled, 'Genie available');
