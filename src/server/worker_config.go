@@ -31,6 +31,8 @@ func (server *Server) gatewayWorkerConfig() *tunnel.WorkerConfig {
 func applyWorkerConfig(c *tunnel.WorkerConfig) {
 	s := SiteSettings{
 		ColorOfTheDay:     c.ColorOfTheDay,
+		AccentColor:       c.AccentColor,
+		DisabledColours:   c.DisabledColours,
 		Announcement:      Announcement{Text: c.AnnouncementText, Level: c.AnnouncementLevel},
 		Maintenance:       Maintenance{Enabled: c.Maintenance, Message: c.MaintenanceMessage},
 		DisabledLanguages: c.DisabledLanguages,

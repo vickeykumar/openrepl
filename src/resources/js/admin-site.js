@@ -9,6 +9,258 @@
   var K = window.AdminKit;
   var api = K.api, ask = K.ask, colourOfTheDay = K.colourOfTheDay, fail = K.fail, h = K.h, pageHead = K.pageHead, toast = K.toast;
 
+  // ---- the colour card: colour of the day, the palette and a picker ---------------------------------------------------
+  //
+  // The palette is the one of admin.js (K.colours, the same 62 colours the visitors' page draws from). State: `daily` is the
+  // form's switch, `accent` the colour chosen by hand and saved ('' = none), `skip` the palette entries the colour of the
+  // day never picks, `sel` the colour being looked at (not saved until "Apply colour").
+  var PRESETS = ['#ffffff', '#b0b0b0', '#666666', '#000000', '#ff0000', '#ff8a00', '#ffee00', '#00e000', '#00ffff', '#0033ff', '#7a1cff', '#ff6fa5'];
+  var HEX6 = /^#[0-9a-f]{6}$/;
+
+  function hexToRgb(hex) { return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)]; }
+  function rgbToHex(r, g, b) { return '#' + [r, g, b].map(function (v) { v = Math.max(0, Math.min(255, Math.round(v))); return (v < 16 ? '0' : '') + v.toString(16); }).join(''); }
+  function hsvToRgb(h, s, v) {
+    var c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c, r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; }
+    else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+  }
+  function rgbToHsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, hue = 0;
+    if (d) {
+      if (max === r) hue = ((g - b) / d) % 6; else if (max === g) hue = (b - r) / d + 2; else hue = (r - g) / d + 4;
+      hue *= 60; if (hue < 0) hue += 360;
+    }
+    return { h: hue, s: max ? d / max : 0, v: max };
+  }
+  // "#abc", "abc", "#aabbcc" and "AABBCC" are read; anything else gives ''
+  function readHex(text) {
+    var t = String(text || '').trim().toLowerCase();
+    if (t.charAt(0) !== '#') t = '#' + t;
+    if (/^#[0-9a-f]{3}$/.test(t)) t = '#' + t.charAt(1) + t.charAt(1) + t.charAt(2) + t.charAt(2) + t.charAt(3) + t.charAt(3);
+    return HEX6.test(t) ? t : '';
+  }
+
+  function colourCard(settings, hooks) {
+    var palette = K.colours.map(function (c) { return c.toLowerCase(); });
+    var daily = !!settings.colorOfTheDay;
+    var accent = readHex(settings.accentColor);
+    var skip = {};
+    (settings.disabledColours || []).forEach(function (c) { c = readHex(c); if (c) skip[c] = true; });
+    var sel = accent || colourOfTheDay(Object.keys(skip)).toLowerCase();
+    var hsv = rgbToHsv.apply(null, hexToRgb(sel));
+    var tab = 'palette';
+
+    function skipped() { return Object.keys(skip).sort(); }
+    function dayColour() { return colourOfTheDay(skipped()).toLowerCase(); }
+    function pick(hex, from) { sel = hex; if (from !== 'hsv') hsv = (function (n) { if (!n.s || !n.v) n.h = hsv.h; return n; })(rgbToHsv.apply(null, hexToRgb(hex))); render(from); }
+
+    // -- the current colour
+    var curSwatch = h('span', { class: 'cp-swatch' }), curHex = h('b', { class: 'cp-hex' }), curId = h('span', { class: 'cp-pill' }), curSrc = h('span', { class: 'cp-src' });
+    var stopBtn = h('button', { type: 'button', class: 'btn', text: 'Use the colour of the day again', onclick: function () { accent = ''; render(); hooks.change(); } });
+    var current = h('div', { class: 'cp-current' }, curSwatch, h('div', { class: 'cp-vr' }),
+      h('div', { class: 'cp-cur-text' }, h('span', { class: 'sub', text: 'Current colour' }), h('div', { class: 'cp-cur-row' }, curHex, curId)),
+      h('div', { class: 'cp-grow' }), curSrc);
+
+    // -- the palette
+    var grid = h('div', { class: 'cp-grid', role: 'listbox', 'aria-label': 'Palette' }), cells = {};
+    var skipNote = h('p', { class: 'sub cp-skipnote' });
+    palette.forEach(function (c, i) {
+      var main = h('button', { type: 'button', class: 'cp-cell', role: 'option', 'aria-label': c + ', ' + (i + 1) + ' of ' + palette.length, title: c, vars: { '--sw': c },
+        onclick: function () { pick(c); } });
+      var off = h('button', { type: 'button', class: 'cp-skip', title: 'Keep ' + c + ' out of the colour of the day', 'aria-label': 'Keep ' + c + ' out of the colour of the day', text: '×',
+        onclick: function (e) {
+          e.stopPropagation();
+          if (skip[c]) delete skip[c];
+          else if (Object.keys(skip).length >= palette.length - 1) { toast('At least one colour has to stay in the colour of the day.', 'error'); return; }
+          else skip[c] = true;
+          render(); hooks.change();
+        } });
+      cells[c] = { wrap: h('span', { class: 'cp-cellwrap' }, main, off), main: main, off: off };
+      grid.appendChild(cells[c].wrap);
+    });
+    var palettePanel = h('div', { class: 'cp-panel' }, grid, skipNote);
+
+    // -- the picker: a hue ring with a saturation/brightness square inside
+    var ring = h('div', { class: 'cp-ring', tabindex: '0', role: 'slider', 'aria-label': 'Hue', 'aria-valuemin': '0', 'aria-valuemax': '360' });
+    var ringKnob = h('span', { class: 'cp-knob' }), sqKnob = h('span', { class: 'cp-knob' });
+    var square = h('div', { class: 'cp-square', tabindex: '0', role: 'group', 'aria-label': 'Saturation and brightness (arrow keys)' }, sqKnob);
+    var wheel = h('div', { class: 'cp-wheel' }, ring, ringKnob, square);
+
+    function drag(el, onMove) {
+      el.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0) return;
+        var box = (el === ring ? wheel : el).getBoundingClientRect();
+        if (el === ring) { // only the ring itself, not the square that sits over its middle
+          var dx = e.clientX - (box.left + box.width / 2), dy = e.clientY - (box.top + box.height / 2), r = Math.sqrt(dx * dx + dy * dy) / (box.width / 2);
+          if (r < 0.7 || r > 1.02) return;
+        }
+        e.preventDefault();
+        el.setPointerCapture(e.pointerId);
+        el.__drag = true; el.focus({ preventScroll: true });
+        onMove(e, box);
+      });
+      el.addEventListener('pointermove', function (e) { if (el.__drag) onMove(e, (el === ring ? wheel : el).getBoundingClientRect()); });
+      function end(e) { el.__drag = false; try { el.releasePointerCapture(e.pointerId); } catch (x) { /* already released */ } }
+      el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+    }
+    function setHSV(nh, ns, nv) {
+      hsv = { h: ((nh % 360) + 360) % 360, s: Math.max(0, Math.min(1, ns)), v: Math.max(0, Math.min(1, nv)) };
+      sel = rgbToHex.apply(null, hsvToRgb(hsv.h, hsv.s, hsv.v));
+      render('hsv');
+    }
+    drag(ring, function (e, box) {
+      var a = Math.atan2(e.clientY - (box.top + box.height / 2), e.clientX - (box.left + box.width / 2)) * 180 / Math.PI + 90;
+      setHSV(a, hsv.s, hsv.v);
+    });
+    drag(square, function (e, box) { setHSV(hsv.h, (e.clientX - box.left) / box.width, 1 - (e.clientY - box.top) / box.height); });
+    ring.addEventListener('keydown', function (e) {
+      var d = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
+      if (d) { e.preventDefault(); setHSV(hsv.h + d * (e.shiftKey ? 10 : 1), hsv.s, hsv.v); }
+    });
+    square.addEventListener('keydown', function (e) {
+      var st = e.shiftKey ? 0.1 : 0.01, m = { ArrowRight: [st, 0], ArrowLeft: [-st, 0], ArrowUp: [0, st], ArrowDown: [0, -st] }[e.key];
+      if (m) { e.preventDefault(); setHSV(hsv.h, hsv.s + m[0], hsv.v + m[1]); }
+    });
+
+    // -- the selected colour
+    var preview = h('span', { class: 'cp-swatch cp-big' }), bigHex = h('b', { class: 'cp-hex' }), rgbText = h('span', { class: 'sub' }), kind = h('span', { class: 'cp-pill' });
+    function num(label) {
+      return h('input', { type: 'number', class: 'field cp-num', min: '0', max: '255', step: '1', inputmode: 'numeric', 'aria-label': label + ' (0 to 255)' });
+    }
+    var rIn = num('Red'), gIn = num('Green'), bIn = num('Blue');
+    [rIn, gIn, bIn].forEach(function (el) {
+      el.addEventListener('input', function () {
+        if (el.value === '') return;
+        var v = [rIn, gIn, bIn].map(function (x) { return parseInt(x.value, 10); });
+        if (v.some(function (n) { return isNaN(n) || n < 0 || n > 255; })) { el.classList.add('invalid'); return; }
+        el.classList.remove('invalid');
+        pick(rgbToHex(v[0], v[1], v[2]), 'rgb');
+      });
+      el.addEventListener('blur', function () { el.classList.remove('invalid'); render(); });
+    });
+    var hexIn = h('input', { type: 'text', class: 'field cp-hexin', maxlength: '7', spellcheck: 'false', autocomplete: 'off', 'aria-label': 'HEX colour' });
+    hexIn.addEventListener('input', function () {
+      var v = readHex(hexIn.value);
+      if (!v) { hexIn.classList.add('invalid'); return; }
+      hexIn.classList.remove('invalid');
+      pick(v, 'hex');
+    });
+    hexIn.addEventListener('blur', function () { hexIn.classList.remove('invalid'); render(); });
+    var copy = h('button', { type: 'button', class: 'icon-btn cp-copy', title: 'Copy HEX', 'aria-label': 'Copy HEX', text: '⧉', onclick: function () {
+      var text = sel.toUpperCase();
+      var done = function () { toast(text + ' copied.'); }, failed = function () { toast('Could not copy. Select the HEX and copy it by hand.', 'error'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, failed); return; }
+      var ta = h('textarea', { 'aria-hidden': 'true', style: 'position:fixed;opacity:0' }); ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy') ? done() : failed(); } catch (x) { failed(); }
+      ta.remove();
+    } });
+    var presets = h('div', { class: 'cp-presets' }, PRESETS.map(function (c) {
+      return h('button', { type: 'button', class: 'cp-preset', title: c, 'aria-label': 'Preset ' + c, vars: { '--sw': c }, onclick: function () { pick(c); } });
+    }));
+    var info = h('div', { class: 'cp-info' },
+      h('b', { text: 'Selected colour' }),
+      h('div', { class: 'cp-sel' }, preview, h('div', null, bigHex, rgbText, h('div', null, kind))),
+      h('div', { class: 'cp-inputs' },
+        h('label', null, h('span', { text: 'R' }), rIn), h('label', null, h('span', { text: 'G' }), gIn), h('label', null, h('span', { text: 'B' }), bIn),
+        h('label', { class: 'cp-hexlab' }, h('span', { text: 'HEX' }), h('span', { class: 'cp-hexwrap' }, hexIn, copy))),
+      h('span', { class: 'sub', text: 'Quick presets' }), presets);
+    var pickerPanel = h('div', { class: 'cp-panel cp-picker' }, wheel, h('div', { class: 'cp-vr' }), info);
+
+    // -- the tabs
+    var tabPal = h('button', { type: 'button', class: 'cp-tab', role: 'tab', text: 'Palette (' + palette.length + ')', onclick: function () { show('palette'); } });
+    var tabPick = h('button', { type: 'button', class: 'cp-tab', role: 'tab', text: 'Picker (Custom)', onclick: function () { show('picker'); } });
+    function show(t) { tab = t; render('tab'); }
+
+    // -- the actions
+    var randomBtn = h('button', { type: 'button', class: 'btn cp-btn cp-pink', text: '⤮  Generate random theme', onclick: function () {
+      var pool = palette.filter(function (c) { return !skip[c] && c !== sel; });
+      if (!pool.length) { toast('No other colour is left in the colour of the day.', 'error'); return; }
+      var c = pool[Math.floor(Math.random() * pool.length)];
+      pick(c);
+      toast(c.toUpperCase() + ' is selected. Press Apply colour to use it on the site.');
+    } });
+    var resetBtn = h('button', { type: 'button', class: 'btn cp-btn cp-outline', text: '↺  Reset to original theme', onclick: function () {
+      ask({ title: 'Go back to the original theme?', body: 'The site returns to its brand coral: the colour chosen by hand is removed and the colour of the day is switched off. The colours you skipped stay skipped. This saves the settings.', confirm: 'Reset theme' }).then(function (yes) {
+        if (!yes) return;
+        accent = ''; hooks.setDaily(false);
+        sel = '#fe6a6b'; hsv = rgbToHsv.apply(null, hexToRgb(sel)); render();
+        hooks.save('The original theme is back. Visitors see it on their next page load.');
+      });
+    } });
+    var applyBtn = h('button', { type: 'button', class: 'btn cp-btn cp-pink', text: '✓  Apply colour', onclick: function () {
+      accent = sel; render();
+      hooks.save(sel.toUpperCase() + ' is now the site colour. Visitors see it on their next page load.');
+    } });
+
+    // -- drawing
+    function render(from) {
+      var shown = accent || (daily ? dayColour() : '#fe6a6b');
+      curSwatch.style.setProperty('--sw', shown);
+      curHex.textContent = shown.toUpperCase();
+      var at = palette.indexOf(shown);
+      curId.textContent = at >= 0 ? 'ID: ' + (at + 1) + ' / ' + palette.length : 'Custom';
+      curSrc.textContent = accent ? 'Chosen by hand' : daily ? 'From PopularColors palette' : 'Brand coral (colour of the day is off)';
+      curSrc.title = accent ? 'This colour is used until you pick the colour of the day again.' : '';
+      if (accent && !current.contains(stopBtn)) current.appendChild(stopBtn);
+      if (!accent && current.contains(stopBtn)) stopBtn.remove();
+
+      tabPal.className = 'cp-tab' + (tab === 'palette' ? ' on' : ''); tabPal.setAttribute('aria-selected', String(tab === 'palette'));
+      tabPick.className = 'cp-tab' + (tab === 'picker' ? ' on' : ''); tabPick.setAttribute('aria-selected', String(tab === 'picker'));
+      palettePanel.hidden = tab !== 'palette'; pickerPanel.hidden = tab !== 'picker';
+
+      var n = skipped().length;
+      skipNote.textContent = 'Click a colour to select it. The small × on a colour keeps it out of the colour of the day (' + (n ? n + ' skipped, ' : 'none skipped, ') + (palette.length - n) + ' can be picked). It does not change the colour already in use.';
+      palette.forEach(function (c) {
+        var cell = cells[c];
+        cell.main.className = 'cp-cell' + (c === sel ? ' on' : '') + (skip[c] ? ' off' : '');
+        cell.main.setAttribute('aria-selected', String(c === sel));
+        cell.off.className = 'cp-skip' + (skip[c] ? ' on' : '');
+        cell.off.textContent = skip[c] ? '+' : '×';
+        cell.off.title = skip[c] ? 'Allow ' + c + ' in the colour of the day' : 'Keep ' + c + ' out of the colour of the day';
+        cell.off.setAttribute('aria-label', cell.off.title);
+      });
+
+      var rgb = hexToRgb(sel);
+      preview.style.setProperty('--sw', sel);
+      bigHex.textContent = sel.toUpperCase();
+      rgbText.textContent = 'RGB(' + rgb.join(', ') + ')';
+      var pi = palette.indexOf(sel);
+      kind.textContent = pi >= 0 ? 'Palette · ID ' + (pi + 1) : 'Custom';
+      if (from !== 'rgb') { rIn.value = rgb[0]; gIn.value = rgb[1]; bIn.value = rgb[2]; }
+      if (from !== 'hex') { hexIn.value = sel.toUpperCase(); hexIn.classList.remove('invalid'); }
+
+      wheel.style.setProperty('--hue', String(Math.round(hsv.h)));
+      var a = (hsv.h - 90) * Math.PI / 180;
+      ringKnob.style.left = (50 + 43.5 * Math.cos(a)) + '%'; ringKnob.style.top = (50 + 43.5 * Math.sin(a)) + '%';
+      ringKnob.style.setProperty('--sw', rgbToHex.apply(null, hsvToRgb(hsv.h, 1, 1)));
+      ring.setAttribute('aria-valuenow', String(Math.round(hsv.h)));
+      sqKnob.style.left = (hsv.s * 100) + '%'; sqKnob.style.top = ((1 - hsv.v) * 100) + '%';
+      sqKnob.style.setProperty('--sw', sel);
+    }
+
+    var daySwitch = hooks.switchNode;
+    var node = h('div', { class: 'colour-picker' },
+      h('div', { class: 'cp-head' }, h('div', null, h('h3', { text: 'Colour of the day' }), h('p', { class: 'sub', text: 'A different accent colour every day.' })), daySwitch),
+      current,
+      h('p', { class: 'sub', text: 'Today\'s colour is the swatch above; each visitor sees a slightly lighter or darker shade of it.' }),
+      h('hr', { class: 'cp-rule' }),
+      h('h3', { text: 'Choose a colour' }), h('p', { class: 'sub', text: 'Set the theme colour from the palette or pick any custom colour.' }),
+      h('div', { class: 'cp-tabs', role: 'tablist' }, tabPal, tabPick),
+      palettePanel, pickerPanel,
+      h('hr', { class: 'cp-rule' }),
+      h('h3', { text: 'Theme actions' }), h('p', { class: 'sub', text: 'Change the theme manually or restore the original theme. Apply colour and Reset save the settings.' }),
+      h('div', { class: 'cp-actions' }, randomBtn, resetBtn, applyBtn));
+    render();
+    return {
+      node: node,
+      refresh: function (on) { daily = on; render('tab'); },
+      accent: function () { return accent; },
+      skipped: skipped
+    };
+  }
+
   function viewSite() {
     var root = h('div'), body = h('div');
     var saved = null, form = null, languages = [], models = [], pluginChoices = [], saving = false, keysState = null, adminsState = null, plugsState = null, connState = null;
@@ -77,6 +329,7 @@
     function snapshot() {
       return {
         colorOfTheDay: form.colour.checked,
+        accentColor: form.colours.accent(), disabledColours: form.colours.skipped(),
         announcement: { text: form.ann.value.trim(), level: form.level.value },
         maintenance: { enabled: form.maint.checked, message: form.maintMsg.value.trim() },
         disabledLanguages: languages.filter(function (l) { return !form.langs[l.value].checked; }).map(function (l) { return l.value; }).sort(),
@@ -172,7 +425,7 @@
     }
     function num(v) { v = parseFloat(v); return isNaN(v) ? 0 : v; }
     function clean(s) {
-      return { colorOfTheDay: !!s.colorOfTheDay, announcement: { text: s.announcement.text, level: s.announcement.level || 'info' },
+      return { colorOfTheDay: !!s.colorOfTheDay, accentColor: s.accentColor || '', disabledColours: (s.disabledColours || []).slice().sort(), announcement: { text: s.announcement.text, level: s.announcement.level || 'info' },
         maintenance: { enabled: !!s.maintenance.enabled, message: s.maintenance.message || '' },
         disabledLanguages: (s.disabledLanguages || []).slice().sort(),
         dbCapacityMB: s.dbCapacityMB || 0,
@@ -228,7 +481,7 @@
     var SECTION_KEY = 'admin-site-section';
 
     // the controls of the settings: not those of the Integrations card, which saves its own records, one server at a time
-    function controlsOf(node) { return Array.prototype.slice.call(node.querySelectorAll('input, select, textarea')).filter(function (el) { return !el.closest('[data-card="Integrations"]'); }); }
+    function controlsOf(node) { return Array.prototype.slice.call(node.querySelectorAll('input, select, textarea')).filter(function (el) { return !el.closest('[data-card="Integrations"]') && (!el.closest('.colour-picker') || !!el.closest('.switch')); }); }
     function valueOf(el) { return el.type === 'checkbox' || el.type === 'radio' ? (el.checked ? '1' : '0') : String(el.value); }
     // a setting that has a value of its own: a number or a text that is not empty, a list with something chosen
     function isSetControl(el) {
@@ -520,6 +773,16 @@
       layout = null; // the form of an earlier drawing is gone
       var defaults = settings.defaults || {};
       var colour = toggle('f-colour', settings.colorOfTheDay, 'Colour of the day');
+      // Apply and Reset save the whole form (the server takes the settings as one document), with their own message
+      form.colours = colourCard(settings, {
+        switchNode: colour.node,
+        change: function () { update(); },
+        setDaily: function (on) { colour.input.checked = on; update(); },
+        save: function (msg) { doSave(msg); }
+      });
+      // the picker's state as a value of a control, so that the section marks show that it changed
+      form.coloursState = h('input', { type: 'hidden', oninput: update });
+      form.coloursState.value = JSON.stringify([form.colours.accent(), form.colours.skipped()]);
       var maint = toggle('f-maint', settings.maintenance.enabled, 'Maintenance mode');
       var genie = toggle('f-genie', !settings.genie.disabled, 'Genie available');
       // how much room MongoDB has, for the live map (an Atlas free cluster has 512 MB)
@@ -690,7 +953,6 @@
         return { model: m, inBox: inBox, outBox: outBox };
       });
 
-      var swatch = h('span', { class: 'swatch', vars: { '--sw': colourOfTheDay() } });
       var ann = h('textarea', { id: 'f-ann', maxlength: '280', placeholder: 'Shown as a banner on every page. Leave empty for none.', 'aria-label': 'Announcement text', oninput: update });
       ann.value = settings.announcement.text;
       var level = h('select', { class: 'field', id: 'f-level', 'aria-label': 'Announcement level', onchange: update },
@@ -969,6 +1231,8 @@
         Array.prototype.forEach.call(langGrid.children, function (lab) {
           lab.className = form.langs[lab.getAttribute('data-lang')].checked ? '' : 'off';
         });
+        form.colours.refresh(colour.input.checked);
+        form.coloursState.value = JSON.stringify([form.colours.accent(), form.colours.skipped()]);
         if (layout) layout.refresh();
         var dirty = isDirty();
         status.textContent = saving ? 'Saving…' : dirty ? ((layout && window.AdminSections.changeSummary(layout.counts)) || 'You have unsaved changes.') : 'All changes are saved.';
@@ -976,7 +1240,7 @@
         revert.disabled = !dirty || saving;
       }
 
-      function doSave() {
+      function doSave(message) {
         var s = snapshot();
         s.version = saved.version || 0; // the stored version this form was filled from (MongoDB refuses a stale one)
         if (s.genie.guestPerMinute < 0 || s.genie.guestPerMinute > 60 || s.genie.userPerMinute < 0 || s.genie.userPerMinute > 60) {
@@ -1009,7 +1273,7 @@
           saving = true; update();
           return api.post('admin/settings', s).then(function (r) {
             saving = false;
-            toast('Settings saved. Visitors see the change on their next page load.');
+            toast(typeof message === 'string' ? message : 'Settings saved. Visitors see the change on their next page load.');
             body.textContent = ''; body.appendChild(build(r, keysState, adminsState));
           }, function (e) { saving = false; update(); fail(e); });
         });
@@ -1207,8 +1471,7 @@
 
       var out = h('div', { class: 'stack' },
         h('p', { class: 'sub', id: 'settings-store', text: where }),
-        card('Look', null, row('Colour of the day', 'A different accent colour each day. Off keeps the brand coral.', h('span', { class: 'actions' }, swatch, colour.node),
-          h('span', { class: 'sub', text: 'Today\'s colour is the swatch above; each visitor sees a slightly lighter or darker shade of it.' }))),
+        card('Look', null, [form.colours.node, form.coloursState]),
         card('Announcement', 'A banner on top of every page, for news or a planned stop. Visitors can dismiss it.', [
           row('Text', null, level, h('div', null, ann, annCount)), h('div', { class: 'form-row' }, h('div', { class: 'full' }, preview)) ]),
         card('Maintenance mode', 'Visitors can still read pages and use their files, but cannot start terminals. Admins are not affected.', [

@@ -664,10 +664,13 @@
 
   // The same arithmetic as ColorOfTheDay() in js/src/preprocessing.js. Every
   // visitor then gets a slightly lighter or darker shade of it.
-  function colourOfTheDay() {
-    var x = Math.floor(Date.now() / 86400000), n = POPULAR_COLOURS.length;
+  // `off` is the list of colours an admin switched off: the draw leaves them out (as preprocessing.js does).
+  function colourOfTheDay(off) {
+    var pool = off && off.length ? POPULAR_COLOURS.filter(function (c) { return off.indexOf(c.toLowerCase()) < 0; }) : POPULAR_COLOURS;
+    if (!pool.length) pool = POPULAR_COLOURS;
+    var x = Math.floor(Date.now() / 86400000), n = pool.length;
     for (var i = 0; i < 100; i++) x = (x ^ (x << 1) ^ (x >> 1)) % n;
-    return POPULAR_COLOURS[Math.abs(x) % n];
+    return pool[Math.abs(x) % n];
   }
 
   // ---- overview
@@ -2695,7 +2698,7 @@
     };
   }
   // what the pages that are loaded later need from this file
-  window.AdminKit = { api: api, ask: ask, colourOfTheDay: colourOfTheDay, fail: fail, h: h, loadScript: loadScript, pageHead: pageHead, toast: toast };
+  window.AdminKit = { api: api, ask: ask, colourOfTheDay: colourOfTheDay, colours: POPULAR_COLOURS, fail: fail, h: h, loadScript: loadScript, pageHead: pageHead, toast: toast };
 
   var VIEWS = {
     overview: { label: 'Overview', icon: 'overview', make: viewOverview },

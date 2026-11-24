@@ -91,6 +91,8 @@ type RegisterReply struct {
 type WorkerConfig struct {
 	Revision           int64    `json:"revision"`
 	ColorOfTheDay      bool     `json:"color_of_the_day,omitempty"`
+	AccentColor        string   `json:"accent_color,omitempty"`
+	DisabledColours    []string `json:"disabled_colours,omitempty"`
 	AnnouncementText   string   `json:"announcement_text,omitempty"`
 	AnnouncementLevel  string   `json:"announcement_level,omitempty"`
 	Maintenance        bool     `json:"maintenance,omitempty"`
