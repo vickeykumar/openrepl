@@ -481,7 +481,7 @@
     var SECTION_KEY = 'admin-site-section';
 
     // the controls of the settings: not those of the Integrations card, which saves its own records, one server at a time
-    function controlsOf(node) { return Array.prototype.slice.call(node.querySelectorAll('input, select, textarea')).filter(function (el) { return !el.closest('[data-card="Integrations"]') && !el.closest('.colour-picker'); }); }
+    function controlsOf(node) { return Array.prototype.slice.call(node.querySelectorAll('input, select, textarea')).filter(function (el) { return !el.closest('[data-card="Integrations"]') && (!el.closest('.colour-picker') || !!el.closest('.switch')); }); }
     function valueOf(el) { return el.type === 'checkbox' || el.type === 'radio' ? (el.checked ? '1' : '0') : String(el.value); }
     // a setting that has a value of its own: a number or a text that is not empty, a list with something chosen
     function isSetControl(el) {
