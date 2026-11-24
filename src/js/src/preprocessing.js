@@ -105,11 +105,22 @@ var Color = require('color');
     	return Math.round((Math.random() * (maximum - minimum) + minimum) * 100)/100;
 	}
 	
+	// The colours an admin switched off (site_settings.disabledColours) are left out of the draw. With none switched off the
+	// list is the whole palette, so the colour of the day is the same as it always was.
 	function ColorOfTheDay() {
 		var ms = 1000*60*60*24;
 		var seed = Math.floor(new Date().getTime()/ms);
-		var noOftheDay = rand_from_seed(seed, PopularColors.length);
-		return PopularColors[noOftheDay%PopularColors.length];
+		var off = (window.site_settings && window.site_settings.disabledColours) || [];
+		var pool = off.length ? PopularColors.filter(function (c) { return off.indexOf(c.toLowerCase()) < 0; }) : PopularColors;
+		if (!pool.length) pool = PopularColors;
+		var noOftheDay = rand_from_seed(seed, pool.length);
+		return pool[noOftheDay%pool.length];
+	}
+
+	// A colour an admin chose by hand wins over the colour of the day.
+	function AccentOfTheSite() {
+		var c = window.site_settings && window.site_settings.accentColor;
+		return typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : '';
 	}
 
 	function adjustcolor(colorObj) {
@@ -134,7 +145,7 @@ var Color = require('color');
 
 	function setupColorThemes() {
 		try {
-			var accent_color = ColorOfTheDay();
+			var accent_color = AccentOfTheSite() || ColorOfTheDay();
 			console.log('ColorOfTheDay: ',accent_color);
 			if (accent_color!==undefined) {
 				var colorObj = Color(accent_color);
@@ -164,7 +175,7 @@ var Color = require('color');
 
 	// Colour of the day is off by default. An admin can turn it on at /admin,
 	// which sets site_settings.colorOfTheDay (served by /settings.js).
-	if (window.site_settings && window.site_settings.colorOfTheDay) {
+	if (window.site_settings && (window.site_settings.colorOfTheDay || window.site_settings.accentColor)) {
 		setupColorThemes();
 	}
 

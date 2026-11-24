@@ -286,6 +286,8 @@ func (server *Server) workerConfigWith(disabled []string) *tunnel.WorkerConfig {
 	}
 	cfg := &tunnel.WorkerConfig{
 		ColorOfTheDay:      s.ColorOfTheDay,
+		AccentColor:        s.AccentColor,
+		DisabledColours:    append([]string(nil), s.DisabledColours...),
 		AnnouncementText:   s.Announcement.Text,
 		AnnouncementLevel:  level,
 		Maintenance:        s.Maintenance.Enabled,

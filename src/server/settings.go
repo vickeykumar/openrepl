@@ -42,6 +42,11 @@ type SiteSettings struct {
 	// ColorOfTheDay picks a different accent colour each day
 	// (js/src/preprocessing.js). Off keeps the brand coral.
 	ColorOfTheDay bool `json:"colorOfTheDay"`
+	// AccentColor is a colour an admin chose by hand ("#rrggbb", lower case). While it is set, every page uses it
+	// (with the visitor's slight shade) instead of the colour of the day. Empty: the colour of the day, if it is on.
+	AccentColor string `json:"accentColor"`
+	// DisabledColours are entries of the palette (js/src/preprocessing.js) that the colour of the day never picks.
+	DisabledColours []string `json:"disabledColours"`
 	// Announcement is a banner every page shows while its text is not empty.
 	Announcement Announcement `json:"announcement"`
 	// Maintenance stops new terminals for everyone but admins and tells
@@ -316,6 +321,20 @@ func (g GenieSettings) ModelDisabled(id string) bool {
 	return false
 }
 
+var hexColourPattern = regexp.MustCompile(`^#[0-9a-f]{6}$`)
+
+// cleanHexColour returns a colour as "#rrggbb" in lower case; "" stays "". Anything else (a name, rgb(), three digits) is refused.
+func cleanHexColour(raw string) (string, error) {
+	c := strings.ToLower(strings.TrimSpace(raw))
+	if c == "" {
+		return "", nil
+	}
+	if !hexColourPattern.MatchString(c) {
+		return "", fmt.Errorf("the colour must be a HEX colour such as #008080")
+	}
+	return c, nil
+}
+
 var languagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.+-]{0,19}$`)
 
 // normalize cleans up settings from an untrusted source and says what is
@@ -332,6 +351,28 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 			return s, fmt.Errorf("the time a preview link works for %s must be between %d and %d minutes (or empty)", name, minPreviewLinkMinutes, maxPreviewLinkMinutes)
 		}
 	}
+	accent, err := cleanHexColour(s.AccentColor)
+	if err != nil {
+		return s, err
+	}
+	s.AccentColor = accent
+	if len(s.DisabledColours) > 200 {
+		return s, fmt.Errorf("too many colours are switched off")
+	}
+	var colourOff []string
+	seenColour := map[string]bool{}
+	for _, c := range s.DisabledColours {
+		c, err := cleanHexColour(c)
+		if err != nil || c == "" {
+			return s, fmt.Errorf("a colour that is switched off for the colour of the day must be a HEX colour such as #008080")
+		}
+		if !seenColour[c] {
+			seenColour[c] = true
+			colourOff = append(colourOff, c)
+		}
+	}
+	sort.Strings(colourOff)
+	s.DisabledColours = colourOff
 	base, err := cleanPreviewBaseURL(s.PreviewBaseURL)
 	if err != nil {
 		return s, err
@@ -663,6 +704,8 @@ func SaveSiteSettings(s SiteSettings, version ...int64) error {
 // draw itself, nothing about limits.
 type publicSettings struct {
 	ColorOfTheDay     bool         `json:"colorOfTheDay"`
+	AccentColor       string       `json:"accentColor"`
+	DisabledColours   []string     `json:"disabledColours"`
 	Announcement      Announcement `json:"announcement"`
 	Maintenance       Maintenance  `json:"maintenance"`
 	DisabledLanguages []string     `json:"disabledLanguages"`
@@ -1019,8 +1062,14 @@ func (s SiteSettings) public() publicSettings {
 	if models == nil {
 		models = []string{}
 	}
+	colours := s.DisabledColours
+	if colours == nil {
+		colours = []string{}
+	}
 	return publicSettings{
 		ColorOfTheDay:        s.ColorOfTheDay,
+		AccentColor:          s.AccentColor,
+		DisabledColours:      colours,
 		Announcement:         s.Announcement,
 		Maintenance:          s.Maintenance,
 		DisabledLanguages:    langs,
@@ -1224,6 +1273,16 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.ColorOfTheDay != b.ColorOfTheDay {
 		out = append(out, "colour of the day "+onoff(b.ColorOfTheDay))
+	}
+	if a.AccentColor != b.AccentColor {
+		if b.AccentColor == "" {
+			out = append(out, "accent colour removed")
+		} else {
+			out = append(out, "accent colour "+b.AccentColor)
+		}
+	}
+	if strings.Join(a.DisabledColours, ",") != strings.Join(b.DisabledColours, ",") {
+		out = append(out, fmt.Sprintf("colours the colour of the day skips: %d", len(b.DisabledColours)))
 	}
 	if a.Announcement != b.Announcement {
 		if b.Announcement.Text == "" {
