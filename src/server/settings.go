@@ -87,6 +87,23 @@ type SiteSettings struct {
 	// (LLD 16 "Egress"): pip, npm, curl and git over https. It is handed to the workers, so it holds on every node. The environment variable
 	// OPENREPL_EGRESS=public does the same and stays.
 	EgressOn bool `json:"egressOn"`
+	// The IDE data usage (package ideusage, LLD 20): what the IDE sends to a user is counted, a terminal that prints too fast is
+	// paused and then ended, and a user at the limit of the day (a guest: of the session) has the heavy parts stopped. A 0 is the
+	// built-in value: terminal 20 MB per 10 s, ended after 5 s over it; guest 50 MB, signed in 200 MB, warning at 80%, 2 MB reserve,
+	// 256 KB for a small file at the limit, a day that starts at 00:00 UTC.
+	IDEUsageOff       bool     `json:"ideUsageOff"`
+	IDEAdminsCounted  bool     `json:"ideAdminsCounted"` // admins are exempt unless this is on
+	IDEPartsOff       []string `json:"idePartsOff,omitempty"`
+	IDETermMB         int      `json:"ideTermMB"`
+	IDETermWindowSecs int      `json:"ideTermWindowSecs"`
+	IDETermGraceSecs  int      `json:"ideTermGraceSecs"`
+	IDETermPauseOnly  bool     `json:"ideTermPauseOnly"`
+	IDEGuestMB        int      `json:"ideGuestMB"`
+	IDEUserMB         int      `json:"ideUserMB"`
+	IDEWarnPct        int      `json:"ideWarnPct"`
+	IDEReserveMB      int      `json:"ideReserveMB"`
+	IDESmallKB        int      `json:"ideSmallKB"`
+	IDEResetMinutes   int      `json:"ideResetMinutes"` // minutes after 00:00 UTC, 0 to 1439
 	// StoreReserveMB is kept free on each server for installs in progress (0 for the built-in 3072); StoreRequestsPerDay is how many apps
 	// one user may ask for in a day (0 for the built-in 5). ScratchSoftMB is the size at which a terminal's scratch folder is
 	// at which the caches are cleared first and then a terminal that still fills it is stopped (a soft cap: no quota, no mount; 0 for the built-in 256);
@@ -389,6 +406,10 @@ func (s SiteSettings) normalize() (SiteSettings, error) {
 			}
 		}
 	}
+	if err := s.checkIDEUsage(); err != nil {
+		return s, err
+	}
+	s.IDEPartsOff = cleanIDEParts(s.IDEPartsOff)
 	if s.StoreLimitMB != 0 && (s.StoreLimitMB < 100 || s.StoreLimitMB > 1048576) {
 		return s, fmt.Errorf("the size of the App Store must be between 100 and 1048576 MB (or empty)")
 	}
@@ -1310,6 +1331,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.EgressOn != b.EgressOn {
 		out = append(out, "Internet for REPLs "+onoff(b.EgressOn))
+	}
+	if ideSettingsDiffer(a, b) {
+		out = append(out, "IDE data usage settings changed")
 	}
 	out = append(out, nodeLanguageChanges(a, b)...)
 	if a.Genie.Disabled != b.Genie.Disabled {

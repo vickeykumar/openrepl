@@ -32,7 +32,7 @@
       <span class="site-nav__right"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button><a class="site-nav__back" href="/">Back to the editor</a></span>
     </nav>
     <main class="legal">
-      <p class="legal__meta">Last updated 19 November 2026</p>
+      <p class="legal__meta">Last updated 25 November 2026</p>
       <h1>Privacy policy</h1>
       <p class="legal__lead">OpenREPL is a free, open-source service for running code in your browser. This page explains what data the service handles, why, and the choices you have.</p>
 
@@ -75,6 +75,9 @@
       <p>Our servers log each request with your IP address, the page requested and the time, and the servers' own commands. We use the logs to run and secure the service. The people who run OpenREPL can read them in an administration dashboard, where keys, tokens, cookies and full email addresses are masked. Logs rotate and are kept for up to 30 days.</p>
       <p>To see how the service is used, we keep daily totals of how many terminals were started and in which language. To count each visitor once a day, we use a keyed hash of your account or IP address that changes every day; it is used only for that count. These totals are kept for 60 days.</p>
 
+      <h3>Data the IDE sends to you</h3>
+      <p>To keep the service fair for everyone, we count how much data the IDE sends to your browser (terminal output, files opened in the editor, the file list and downloads, Genie answers and the preview), as a number of bytes for each part. It holds sizes only, not what was sent. For a signed-in account it is kept with your profile for the last 90 days so you can see it on your profile page; for a guest it is kept for the session and then forgotten, and only a combined total for all guests is kept.</p>
+
       <h3>Analytics and third-party content</h3>
       <p>We use Google Tag Manager to load analytics tags (such as Google Analytics), which record pages visited, device and browser type. Fonts come from Google Fonts and some scripts from public CDNs (cdnjs, jsDelivr and unpkg). These providers receive your IP address when your browser loads their files.</p>
 
@@ -96,7 +99,7 @@
         <li>Guest workspaces: about 1 hour after your last visit.</li>
         <li>Account and session data, and signed-in workspaces: until you ask us to delete them.</li>
         <li>Code links: until we remove them. Ask us to delete one (see Contact).</li>
-        <li>Server logs: up to 30 days. Daily usage totals: 60 days. Daily time-on-site totals: 120 days. An account's time on site: until you ask us to delete the account.</li>
+        <li>Server logs: up to 30 days. Daily usage totals: 60 days. Daily time-on-site totals: 120 days. An account's time on site: until you ask us to delete the account. The data the IDE sent to an account, by day: 90 days.</li>
         <li>Requests and feedback: until we have dealt with them.</li>
       </ul>
 

@@ -346,6 +346,10 @@
         previewOff: !form.previewOn.checked, practiceWorkspaceOff: !form.practiceWs.checked,
         previewGuestsOff: !form.previewGuests.checked, previewAgentOff: !form.previewAgent.checked,
         egressOn: form.egress.checked,
+        ideUsageOff: !form.ideOn.checked, ideAdminsCounted: !form.ideAdmins.checked, idePartsOff: idePartsOffNow(),
+        ideTermMB: int(form.ideTermMB.value), ideTermWindowSecs: int(form.ideTermWindow.value), ideTermGraceSecs: int(form.ideTermGrace.value), ideTermPauseOnly: form.ideTermAction.value === 'pause',
+        ideGuestMB: int(form.ideGuestMB.value), ideUserMB: int(form.ideUserMB.value), ideWarnPct: int(form.ideWarnPct.value), ideReserveMB: int(form.ideReserveMB.value), ideSmallKB: int(form.ideSmallKB.value),
+        ideResetMinutes: ideResetNow(),
         genieEventsOff: !form.genieEvents.checked, genieEventDays: int(form.genieDays.value),
         genieHealthErrPct: int(form.healthErr.value), genieHealthSlowMs: int(form.healthSlow.value),
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
@@ -377,6 +381,21 @@
       };
     }
     function int(v) { v = parseInt(v, 10); return isNaN(v) ? 0 : v; }
+    // the IDE data usage (LLD 20): the parts that are switched off, and the minute of the day (UTC) a day starts at
+    var IDE_PARTS = [['terminal', 'Terminal'], ['editor', 'Editor'], ['files', 'File browser'], ['genie', 'Genie'], ['preview', 'Preview']];
+    function idePartsOffNow() {
+      return IDE_PARTS.filter(function (p) { return form.ideParts && form.ideParts[p[0]] && !form.ideParts[p[0]].checked; }).map(function (p) { return p[0]; }).sort();
+    }
+    function ideResetNow() {
+      var m = /^(\d{1,2}):(\d{2})$/.exec(form.ideReset ? form.ideReset.value : '');
+      return m ? Math.min(1439, parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) : 0;
+    }
+    function ideTimeText(minutes) { return ('0' + Math.floor(minutes / 60)).slice(-2) + ':' + ('0' + (minutes % 60)).slice(-2); }
+    // the time of a day start in the viewer's own time zone: "5:30 AM"
+    function ideLocalTime(minutes) {
+      var d = new Date(Date.UTC(2026, 0, 1, Math.floor(minutes / 60), minutes % 60));
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
     // the models that take the native tool: the admin's list, or, while there is none, the OpenAI models
     function toolModelsOf(list) {
       return models.filter(function (m) { return list ? list.indexOf(m.id) >= 0 : m.provider === 'openai'; }).map(function (m) { return m.id; });
@@ -423,6 +442,22 @@
       if (!first) return [];
       return second && second !== first ? [first, second] : [first];
     }
+    // today's IDE data usage of all users: the totals, and the accounts that sent the most
+    function ideMB(n) { n = n / 1048576; return (n >= 1024 ? (n / 1024).toFixed(2) + ' GB' : n >= 10 ? Math.round(n) + ' MB' : n.toFixed(1) + ' MB'); }
+    function drawIDEToday(todayBox, topBox, info) {
+      todayBox.textContent = '';
+      topBox.textContent = '';
+      todayBox.appendChild(h('div', { class: 'big', style: 'font-size:1.8rem;font-weight:700', text: ideMB(info.total || 0) }));
+      todayBox.appendChild(h('p', { class: 'sub', text: 'Guests (combined): ' + ideMB(info.guestBytes || 0) + ' in ' + (info.guestsNow || 0) + ' sessions now. Signed in: ' + (info.signedCount || 0) + ' accounts.' }));
+      todayBox.appendChild(h('p', { class: 'sub', text: 'At the limit now: ' + (info.atLimit || 0) }));
+      var top = info.top || [];
+      if (!top.length) { topBox.appendChild(h('p', { class: 'sub', text: 'Nothing counted yet today.' })); }
+      top.forEach(function (u) {
+        topBox.appendChild(h('div', { class: 'ide-top-row', style: 'display:flex;justify-content:space-between;gap:8px;font-size:.9rem' },
+          h('span', { text: u.name || u.uid || u.key }), h('span', { class: 'mono', text: ideMB(u.total) })));
+      });
+      topBox.appendChild(h('p', { class: 'sub', text: 'Full list in Usage.' }));
+    }
     function num(v) { v = parseFloat(v); return isNaN(v) ? 0 : v; }
     function clean(s) {
       return { colorOfTheDay: !!s.colorOfTheDay, accentColor: s.accentColor || '', disabledColours: (s.disabledColours || []).slice().sort(), announcement: { text: s.announcement.text, level: s.announcement.level || 'info' },
@@ -441,6 +476,10 @@
         previewOff: !!s.previewOff, practiceWorkspaceOff: !!s.practiceWorkspaceOff,
         previewGuestsOff: !!s.previewGuestsOff, previewAgentOff: !!s.previewAgentOff,
         egressOn: !!s.egressOn,
+        ideUsageOff: !!s.ideUsageOff, ideAdminsCounted: !!s.ideAdminsCounted, idePartsOff: (s.idePartsOff || []).slice().sort(),
+        ideTermMB: s.ideTermMB || 0, ideTermWindowSecs: s.ideTermWindowSecs || 0, ideTermGraceSecs: s.ideTermGraceSecs || 0, ideTermPauseOnly: !!s.ideTermPauseOnly,
+        ideGuestMB: s.ideGuestMB || 0, ideUserMB: s.ideUserMB || 0, ideWarnPct: s.ideWarnPct || 0, ideReserveMB: s.ideReserveMB || 0, ideSmallKB: s.ideSmallKB || 0,
+        ideResetMinutes: s.ideResetMinutes || 0,
         genieEventsOff: !!s.genieEventsOff, genieEventDays: s.genieEventDays || 0,
         genieHealthErrPct: s.genieHealthErrPct || 0, genieHealthSlowMs: s.genieHealthSlowMs || 0,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
@@ -477,6 +516,7 @@
     // The form is built whole, as before: snapshot() and Save read every control, and the controls of a section that is not
     // shown are in the page's memory, not in the page. Only the open section is in the page.
     var late = {}; // draw functions of the boxes that are filled when their data arrives: {keys, admins}
+    var ideState = null; // today's IDE data usage of all users (admin/ide-usage)
     var layout = null; // {nav, main, sections, show(), refresh()} of the form that is drawn
     var SECTION_KEY = 'admin-site-section';
 
@@ -825,6 +865,48 @@
       var previewAgent = toggle('f-preview-agent', !settings.previewAgentOff, 'Genie may act in the Preview');
       var egressOn = toggle('f-egress', !!settings.egressOn, 'Internet for signed-in users');
       form.egress = egressOn.input;
+      // the IDE data usage (LLD 20): what the IDE sends to a user is counted, a terminal that is too fast is stopped, a user at the limit loses the heavy parts
+      var ideOn = toggle('f-ide-on', !settings.ideUsageOff, 'Metering');
+      form.ideOn = ideOn.input;
+      var ideAdmins = toggle('f-ide-admins', !settings.ideAdminsCounted, 'Admins are exempt');
+      form.ideAdmins = ideAdmins.input;
+      form.ideParts = {};
+      var ideOff = settings.idePartsOff || [];
+      IDE_PARTS.forEach(function (p) { form.ideParts[p[0]] = h('input', { type: 'checkbox', id: 'f-ide-part-' + p[0], checked: ideOff.indexOf(p[0]) < 0, 'aria-label': p[1] + ' is counted', onchange: update }); });
+      var ideNum = function (id, key, min, max, ph, label) {
+        var el = h('input', { type: 'number', class: 'field', id: id, min: String(min), max: String(max), step: '1', placeholder: String(ph), 'aria-label': label, oninput: update });
+        el.value = settings[key] || ''; el.style.maxWidth = '9rem'; return el;
+      };
+      form.ideTermMB = ideNum('f-ide-term-mb', 'ideTermMB', 1, 1024, 20, 'MB a terminal may send in one window');
+      form.ideTermWindow = ideNum('f-ide-term-window', 'ideTermWindowSecs', 1, 600, 10, 'Window length in seconds');
+      form.ideTermGrace = ideNum('f-ide-term-grace', 'ideTermGraceSecs', 1, 600, 5, 'Seconds over the cap before the run is ended');
+      form.ideTermAction = h('select', { class: 'field', id: 'f-ide-term-action', 'aria-label': 'When a terminal is over the cap', onchange: update },
+        h('option', { value: 'end', text: 'Pause, then end the run' }), h('option', { value: 'pause', text: 'Pause only' }));
+      form.ideTermAction.value = settings.ideTermPauseOnly ? 'pause' : 'end';
+      form.ideGuestMB = ideNum('f-ide-guest-mb', 'ideGuestMB', 1, 1048576, 50, 'MB a guest may use in a session');
+      form.ideUserMB = ideNum('f-ide-user-mb', 'ideUserMB', 1, 1048576, 200, 'MB a signed-in user may use in a day');
+      form.ideWarnPct = ideNum('f-ide-warn-pct', 'ideWarnPct', 1, 99, 80, 'Warn at, in percent');
+      form.ideReserveMB = ideNum('f-ide-reserve-mb', 'ideReserveMB', 1, 1024, 2, 'MB kept open at the limit');
+      form.ideSmallKB = ideNum('f-ide-small-kb', 'ideSmallKB', 1, 16384, 256, 'KB of the small files that still open at the limit');
+      form.ideAtLimit = h('select', { class: 'field', id: 'f-ide-at-limit', 'aria-label': 'At the limit' }, h('option', { value: 'stop', text: 'Stop heavy parts, keep reserve' }));
+      form.ideAtLimit.disabled = true;
+      form.ideReset = h('input', { type: 'time', class: 'field', id: 'f-ide-reset', 'aria-label': 'The day resets at (UTC)', oninput: update });
+      form.ideReset.value = ideTimeText(settings.ideResetMinutes || 0);
+      form.ideReset.style.maxWidth = '9rem';
+      var ideLocal = h('span', { class: 'sub' });
+      var showIdeLocal = function () { ideLocal.textContent = ' UTC, in your time ' + ideLocalTime(ideResetNow()); };
+      form.ideReset.addEventListener('input', showIdeLocal); showIdeLocal();
+      // the Free plan row follows the numbers above, as they are typed
+      var idePlanText = h('span', { class: 'mono' });
+      var showIdePlan = function () {
+        var g = int(form.ideGuestMB.value) || 50, u = int(form.ideUserMB.value) || 200;
+        idePlanText.textContent = 'guest ' + g + ' MB per session, signed in ' + u + ' MB a day';
+      };
+      form.ideGuestMB.addEventListener('input', showIdePlan); form.ideUserMB.addEventListener('input', showIdePlan); showIdePlan();
+      var ideToday = h('div', { 'data-ide': 'today' }, h('p', { class: 'loading', text: 'Loading…' }));
+      var ideTop = h('div', { 'data-ide': 'top' }, h('p', { class: 'loading', text: 'Loading…' }));
+      late.ide = function (info) { drawIDEToday(ideToday, ideTop, info); };
+      if (ideState) late.ide(ideState);
       form.previewOn = previewOn.input; form.previewGuests = previewGuests.input; form.previewAgent = previewAgent.input;
       // agent mode: on for signed-in users unless switched off here, and off on the practice page unless allowed
       var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
@@ -1487,6 +1569,31 @@
           row('Practice is saved in the workspace', null, practiceWs.node) ]),
         card('Internet for REPLs', 'Lets the REPLs of signed-in users reach public internet addresses through a proxy of the server, so pip, npm, curl and git over https work, on the gateway and on every worker. Guests and admins are not affected: guests get no network, and an admin\'s REPL already has its own. Private addresses, the cloud metadata address and mail (port 25) are always refused. On Render, outbound traffic counts against the plan\'s bandwidth. The OPENREPL_EGRESS=public environment variable does the same.', [
           row('Internet for signed-in users', 'Off by default. Terminals that are already open get it when they are opened again.', egressOn.node) ]),
+        card('Metering', 'What the IDE sends to each user is counted, one total for a signed-in user\'s day and for a guest\'s session (a guest folder lasts an hour). Only the size of each message is kept, never the content, and only what goes out to the user: what the user sends in is not counted. The website itself (pages, scripts, images, the profile and this dashboard) is not counted.', [
+          row('Metering', 'Off: nothing is counted and nothing is limited.', ideOn.node),
+          row('Admins are exempt', 'On by default: an admin account is not counted and never limited.', ideAdmins.node),
+          row('Counted parts', 'Untick a part to leave it out of the count and the limits.', null, h('div', { class: 'cm-checks' }, IDE_PARTS.map(function (p) {
+            return h('label', { class: 'cm-check' }, form.ideParts[p[0]], h('span', { text: p[1] }));
+          }))) ]),
+        card('Terminal speed', 'A terminal that prints faster than this is paused (the program waits, nothing more is sent), then the run is ended with a notice, like pressing Stop. The terminal can be started again at once; files are never touched.', [
+          row('Allowed per window (MB)', 'From 1 to 1024. Empty: 20.', form.ideTermMB),
+          row('Window length (seconds)', 'From 1 to 600. Empty: 10.', form.ideTermWindow),
+          row('Seconds over the cap before the run is ended', 'From 1 to 600. Empty: 5. A burst that settles down inside it carries on.', form.ideTermGrace),
+          row('When over the cap', 'Pause only never ends a run: the program just waits until the window has room.', form.ideTermAction) ]),
+        card('Daily total, Free plan', 'One number for everything the IDE sends. A guest gets it for the session (the count ends with the guest folder), a signed-in user for a day. At 100% the heavy parts stop: terminal output (the run is ended), Genie questions, downloads and the Preview. Saving, the file list and small files for the editor keep working from the reserve.', [
+          row('Guest, per session (1 hour) (MB)', 'From 1. Empty: 50.', form.ideGuestMB),
+          row('Signed in, per day (MB)', 'From 1. Empty: 200.', form.ideUserMB),
+          row('Warn at (%)', 'From 1 to 99. Empty: 80. The IDE shows a chip and a note once.', form.ideWarnPct),
+          row('Reserve kept open at the limit (MB)', 'From 1 to 1024. Empty: 2.', form.ideReserveMB),
+          row('Small files still open at the limit, up to (KB)', 'From 1 to 16384. Empty: 256.', form.ideSmallKB),
+          row('At the limit', 'The way this proposal handles it (canvas option A); the other ways are not built.', form.ideAtLimit),
+          row('Resets at', 'The time a day starts, in UTC (empty: 00:00). Users see it in their own time zone.', h('span', null, form.ideReset, ideLocal)) ]),
+        card('Plans', 'Ready for paid and credit plans: the Free plan is the numbers above.', [
+          row('Free (active)', 'The numbers above.', idePlanText),
+          row('Paid plans and credits', 'Defined later.', h('span', { class: 'sub', text: 'defined later' })) ]),
+        card('Today, all users', 'Counted since the day started.', ideToday),
+        card('Top today', 'The signed-in accounts that sent the most. Guests are only counted, never listed.', ideTop),
+        card('Per user', 'The Users view has a "Data today" line in each user\'s drawer, and a button to reset today\'s count by hand.', null),
         card('Preview', 'The Preview pane shows a web page or program that a visitor wrote, in a sandbox on this site. Switch it off here if it is abused: the button disappears and the server refuses new previews.', [
           row('Preview is available', null, previewOn.node),
           row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node),
@@ -1619,6 +1726,7 @@
         if (late.connDraw) late.connDraw(connState);
       }, function () { /* not essential */ });
       api.get('admin/plugin-installs').then(function (r) { plugsState = r; if (late.plugs) late.plugs(r); }, function () { /* the list is not essential */ });
+      api.get('admin/ide-usage?top=5').then(function (r) { ideState = r; if (late.ide) late.ide(r); }, function () { /* the list is not essential */ });
       return api.get('admin/settings').then(function (r) { body.textContent = ''; body.appendChild(build(r, keysState, adminsState)); return Promise.all([keys, admins]); });
     }
     return { root: root, refresh: refresh, poll: false, dirty: isDirty, destroy: function () { document.removeEventListener('keydown', onSlash); window.removeEventListener('hashchange', onHash); } };

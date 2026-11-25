@@ -62,6 +62,14 @@
   },
   {
    "@type": "Question",
+   "name": "How much data can I use?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "The IDE counts what it sends to you (terminal output, files, Genie answers, the Preview) and shows your total in your profile. By default guests get 50 MB for the session (it lasts an hour) and signed-in users get 200 MB a day, resetting at 00:00 UTC, shown in your own time; your profile page shows the limits that apply to you. A terminal that prints too fast (by default over 20 MB in 10 seconds) is stopped. At the limit, terminal output, Genie questions, downloads and the Preview pause, while saving and small files keep working. Only sizes are counted, never what was sent."
+   }
+  },
+  {
+   "@type": "Question",
    "name": "Can I use my own files?",
    "acceptedAnswer": {
     "@type": "Answer",
@@ -300,18 +308,19 @@
     <header class="faq-hero">
       <p class="hero__eyebrow"><span class="hero__dot" aria-hidden="true"></span>FAQ</p>
       <h1>Questions, answered</h1>
-      <p>23 questions about OpenREPL. Search, or pick a topic.</p>
+      <p>24 questions about OpenREPL. Search, or pick a topic.</p>
       <label class="visually-hidden" for="faq-search">Search the questions</label>
       <input class="faq-search" id="faq-search" type="search" placeholder="Search the questions: share, genie, free" autocomplete="off">
     </header>
     <div class="faq-layout">
-      <nav class="faq-topics" aria-label="Topics"><strong>Topics</strong><a href="#getting-started"><span>Getting started</span><span>5</span></a><a href="#sharing"><span>Sharing</span><span>2</span></a><a href="#genie"><span>Genie</span><span>10</span></a><a href="#practice"><span>Practice</span><span>2</span></a><a href="#editor-and-apps"><span>Editor and apps</span><span>4</span></a></nav>
+      <nav class="faq-topics" aria-label="Topics"><strong>Topics</strong><a href="#getting-started"><span>Getting started</span><span>6</span></a><a href="#sharing"><span>Sharing</span><span>2</span></a><a href="#genie"><span>Genie</span><span>10</span></a><a href="#practice"><span>Practice</span><span>2</span></a><a href="#editor-and-apps"><span>Editor and apps</span><span>4</span></a></nav>
       <main class="faq-list" id="faq">
         <!-- The same words are on the main page for the six questions it keeps (index.html, #faq); e2e/tests/faq.spec.js checks that they match. -->
         <h2 id="getting-started">Getting started</h2>
         <details id="do-i-need-an-account" class="faq-q"><summary>Do I need an account?</summary><p>No. Start as a guest right away. Guest files are removed an hour after your last visit; sign up free to keep them.</p></details>
         <details id="is-it-really-free" class="faq-q"><summary>Is it really free?</summary><p>Yes, you can run code in the browser for free. The source code is open on GitHub. Some extra services may be paid in the future. You can support the project through GitHub Sponsors.</p></details>
         <details id="how-long-does-a-session-last" class="faq-q"><summary>How long does a session last?</summary><p>Up to 60 minutes per connection. The terminal shows the time left, and one click starts a new session.</p></details>
+        <details id="how-much-data-can-i-use" class="faq-q"><summary>How much data can I use?</summary><p>The IDE counts what it sends to you (terminal output, files, Genie answers, the Preview) and shows your total in your profile. By default guests get 50 MB for the session (it lasts an hour) and signed-in users get 200 MB a day, resetting at 00:00 UTC, shown in your own time; your profile page shows the limits that apply to you. A terminal that prints too fast (by default over 20 MB in 10 seconds) is stopped. At the limit, terminal output, Genie questions, downloads and the Preview pause, while saving and small files keep working. Only sizes are counted, never what was sent.</p></details>
         <details id="can-i-use-my-own-files" class="faq-q"><summary>Can I use my own files?</summary><p>Yes. Upload files up to 20 MB, keep up to 50 MB in your workspace, and download it all as a zip.</p></details>
         <details id="can-i-run-it-myself" class="faq-q"><summary>Can I run it myself?</summary><p>Yes. Pull the Docker image and run it on your own machine or server. The README on GitHub has the steps.</p></details>
         <h2 id="sharing">Sharing</h2>

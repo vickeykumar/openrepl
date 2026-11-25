@@ -30,6 +30,7 @@ async function stub(page, measures) {
   await page.route("**/admin/keys", (r) => json(r, fixture("admin-keys.json")));
   await page.route("**/admin/admins", (r) => json(r, fixture("admin-admins.json")));
   await page.route("**/admin/plugin-installs", (r) => json(r, { entries: [], counts: [], days: 90 }));
+  await page.route("**/admin/ide-usage**", (r) => json(r, { day: "2026-11-25", total: 0, parts: {}, top: [] }));
   await page.route("**/admin/connection-requests", (r) => json(r, { requests: [], waiting: 0 }));
   await page.route("**/admin/connections", (r) => json(r, { connected: [], calls: [] }));
   await page.route("**/admin/gateway", (r) => json(r, { mode: "single" }));

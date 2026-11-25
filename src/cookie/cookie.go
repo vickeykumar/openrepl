@@ -6,6 +6,7 @@ import (
 	"github.com/gorilla/sessions"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"utils"
 	"user"
@@ -408,4 +409,24 @@ func EnsureGuestID(rw http.ResponseWriter, req *http.Request) string {
 		log.Println("Error: saving the guest id: ", err)
 	}
 	return id
+}
+
+// QuietIdentity is the account and the workspace folder (its name only) of a request's session cookie, read the way the IDE data
+// meter needs it: it logs nothing and saves nothing. uid is "" for a guest and for a session that ended; home is "" when the
+// cookie has no workspace yet.
+func QuietIdentity(req *http.Request) (uid, home string) {
+	c, err := session_store.Get(req, "user-session")
+	if c == nil || (err != nil && len(c.Values) == 0) {
+		return "", ""
+	}
+	if li, _ := c.Values["loggedIn"].(bool); li {
+		exp, ok := c.Values["expirationTime"].(int64)
+		if ok && exp > utils.GetUnixMilli() {
+			uid, _ = c.Values["uid"].(string)
+		}
+	}
+	if h, _ := c.Values[utils.HOME_DIR_KEY].(string); h != "" {
+		home = filepath.Base(h)
+	}
+	return uid, home
 }
