@@ -4857,3 +4857,75 @@ body.is-mobile .genie-changes__btn { min-height: 44px; }
 }
 #preview-menu-button { position: relative; }
 #preview-menu-button.is-alert::after { content: ""; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: #F07171; box-shadow: 0 0 0 2px var(--ink-900, #09090D); }
+
+/* The profile page's Data usage section (js/profile-usage.js; canvas "IDE data usage and limits", board 6) */
+.profile-usage { margin-top: 20px; --u-terminal: #0B4F49; --u-genie: #3B82C4; --u-files: #E8A33D; --u-editor: #7A8591; --u-preview: #B8C1CA; }
+[data-theme="dark"] .profile-usage { --u-terminal: #3FB3A6; --u-genie: #6FA8E0; --u-files: #E8B35A; --u-editor: #9AA5B1; --u-preview: #6B7683; }
+.profile-usage__today { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; }
+.profile-usage__head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.profile-usage__num { display: flex; flex-direction: column; gap: 4px; }
+.profile-usage__kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: #5B5866; }
+[data-theme="dark"] .profile-usage__kicker { color: var(--muted-2); }
+.profile-usage__big { font-size: 34px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+.profile-usage__of { font-size: 16px; font-weight: 500; color: #5B5866; }
+[data-theme="dark"] .profile-usage__of { color: var(--muted-2); }
+.profile-usage__reset { font-size: 14px; text-align: right; color: #5B5866; }
+[data-theme="dark"] .profile-usage__reset { color: var(--muted-2); }
+.profile-usage__bar { display: flex; height: 26px; border-radius: 7px; overflow: hidden; background: rgba(22, 21, 26, 0.08); }
+[data-theme="dark"] .profile-usage__bar { background: rgba(255, 255, 255, 0.1); }
+.profile-usage__bar i { display: block; height: 100%; }
+.profile-usage__c-terminal { background: var(--u-terminal); }
+.profile-usage__c-genie { background: var(--u-genie); }
+.profile-usage__c-files { background: var(--u-files); }
+.profile-usage__c-editor { background: var(--u-editor); }
+.profile-usage__c-preview { background: var(--u-preview); }
+.profile-usage__legend { display: flex; gap: 8px 22px; flex-wrap: wrap; }
+.profile-usage__lg { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.profile-usage__sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
+.profile-usage__mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-weight: 600; }
+.profile-usage__alert { margin: 0; padding: 10px 12px; border-radius: 10px; font-size: 14px; background: rgba(232, 163, 61, 0.18); }
+.profile-usage__two { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 720px) { .profile-usage__two { grid-template-columns: 1fr; } }
+.profile-usage__box { border: 1px solid rgba(22, 21, 26, 0.12); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+[data-theme="dark"] .profile-usage__box { border-color: rgba(255, 255, 255, 0.14); }
+.profile-usage__boxhead { display: flex; justify-content: space-between; gap: 8px; }
+.profile-usage__note { margin: 0; font-size: 13px; color: #5B5866; }
+[data-theme="dark"] .profile-usage__note { color: var(--muted-2); }
+.profile-usage__chart { position: relative; display: flex; gap: 10px; align-items: flex-end; height: 150px; border-bottom: 1px solid rgba(22, 21, 26, 0.18); padding-bottom: 0; }
+.profile-usage__col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; font-size: 11px; position: relative; }
+.profile-usage__colbar { display: block; width: 70%; min-height: 2px; background: var(--u-terminal); border-radius: 3px 3px 0 0; }
+.profile-usage__colbar.is-today { background: var(--u-genie); }
+.profile-usage__colname { position: absolute; bottom: -20px; font-family: "JetBrains Mono", ui-monospace, monospace; }
+.profile-usage__chart { margin-bottom: 22px; }
+.profile-usage__limit { position: absolute; left: 0; right: 0; top: 0; border-top: 2px dashed #B42318; pointer-events: none; }
+.profile-usage__kv { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.profile-usage__k { color: #5B5866; }
+[data-theme="dark"] .profile-usage__k { color: var(--muted-2); }
+.profile-usage__v { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.profile-usage__later { margin-top: auto; border: 1px dashed rgba(22, 21, 26, 0.3); border-radius: 10px; padding: 12px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+[data-theme="dark"] .profile-usage__later { border-color: rgba(255, 255, 255, 0.3); }
+.profile-usage__source { margin: 14px 0 0; font-size: 13px; color: #5B5866; }
+[data-theme="dark"] .profile-usage__source { color: var(--muted-2); }
+
+/* The IDE data chip and the notes at 80% and 100% (js/ide-usage.js; canvas "IDE data usage and limits", board 5) */
+.ide-data-chip { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; text-decoration: none; margin-right: 6px; }
+.ide-data-chip[hidden] { display: none; }
+.ide-data-chip.is-warn { background: #FBEBD0; color: #6B3F00; }
+.ide-data-chip.is-limit { background: #F9D9D5; color: #7A1A12; }
+.ide-data-chip.is-ok { background: #D7EFE9; color: #0B4F49; }
+[data-theme="dark"] .ide-data-chip.is-warn { background: #4A3512; color: #F5D9A0; }
+[data-theme="dark"] .ide-data-chip.is-ok { background: #123B36; color: #BDEBE3; }
+[data-theme="dark"] .ide-data-chip.is-limit { background: #5A1F1A; color: #FAD3CF; }
+.ide-data-note { position: fixed; z-index: 1100; /* above the maximized workspace (z-index 1000) */ right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(max(16px, env(safe-area-inset-bottom, 0px)) + 64px); max-width: min(420px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 12px; font-size: 14px; line-height: 1.45; box-shadow: 0 8px 28px rgba(0, 0, 0, .22); background: #FFF7E6; color: #1B1F24; border: 1px solid #E8C98A; }
+.ide-data-note--limit { background: #FFF0EE; border-color: #E8A8A0; }
+body.ide-maximized .ide-data-note { bottom: max(16px, env(safe-area-inset-bottom, 0px)); } /* the Genie button is not drawn there */
+.ide-data-note--ok { background: #E8F6F2; border-color: #9CD3C8; }
+[data-theme="dark"] .ide-data-note { background: #2B2415; color: #F1E8D6; border-color: #6B5320; }
+[data-theme="dark"] .ide-data-note--ok { background: #15302B; border-color: #2E6B60; }
+[data-theme="dark"] .ide-data-note--limit { background: #321A17; border-color: #7A3A33; }
+.ide-data-note__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ide-data-btn { display: inline-block; border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; border: 0; background: #14181D; color: #fff; }
+[data-theme="dark"] .ide-data-btn { background: #F1E8D6; color: #14181D; }
+.ide-data-btn--quiet { background: transparent; color: inherit; text-decoration: underline; }
+[data-theme="dark"] .ide-data-btn--quiet { background: transparent; color: inherit; }
+.ide-data-btn.is-disabled { background: #D9D6CE; color: #5B6470; cursor: not-allowed; }

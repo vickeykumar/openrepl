@@ -557,6 +557,7 @@ var agentPromptParts = []promptPart{
 	{"", `- Run executes the editor code in the terminal. A line typed in the terminal runs at once and its output comes back to you.`},
 	{"", `- Changing the language replaces the editor with that language's starter code and restarts the terminal.`},
 	{"terminal", `- When the user says "run it", "try it" or "run my code", use the run action, or type the command in the terminal when the language needs one. When they ask what an error means, read the terminal text and explain it. When they ask for a change to their code, change the editor, do not paste the code in "say".`},
+	{"terminal", `- The server stops a program that prints without stopping (an endless loop, or yes) and says "Output was too fast". Never write or run a program that prints for ever. If the terminal says that, or "data limit reached", tell the user in one line, change the program so that it stops (a counter, a break), and do not run the same program again. If a step is refused with a data limit message, stop the task and tell the user: do not try again.`},
 	{"", `Examples:`},
 	{"terminal", `- "run my code" -> {"say":"Running it.","actions":[{"type":"run"}],"done":false}, then read the output and say what happened.`},
 	{"terminal", `- "install requests from Bash" -> {"say":"I’ll install requests in the workspace.","actions":[{"type":"bash","command":"pip install requests"}],"done":false}`},

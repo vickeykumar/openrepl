@@ -709,6 +709,16 @@ dialog.logs { width: min(1180px, calc(100vw - 32px)); max-height: calc(100vh - 3
 .site-head .sub { margin: 3px 0 0; color: var(--muted); }
 .site-only { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12.5px; cursor: pointer; white-space: nowrap; }
 .site-section > .card + .card, .site-tabpanel > .card + .card { margin-top: 14px; }
+/* IDE data usage: the settings on the left, today's numbers in a column on the right (canvas board 7) */
+.site-section[data-section="ide-usage"] { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 14px; align-items: start; grid-auto-flow: dense; }
+.site-section[data-section="ide-usage"] > .card { margin-top: 0; grid-column: 1; }
+.site-section[data-section="ide-usage"] > .card[data-card="Today, all users"],
+.site-section[data-section="ide-usage"] > .card[data-card="Top today"],
+.site-section[data-section="ide-usage"] > .card[data-card="Per user"] { grid-column: 2; }
+@media (max-width: 820px) {
+  .site-section[data-section="ide-usage"] { display: block; }
+  .site-section[data-section="ide-usage"] > .card + .card { margin-top: 14px; }
+}
 .site-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; flex-wrap: wrap; }
 .site-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 7px 12px; cursor: pointer; color: var(--muted); font: inherit; }
 .site-tab.on { color: var(--text); font-weight: 600; border-bottom-color: var(--accent, #FE6A6B); }

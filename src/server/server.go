@@ -348,6 +348,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	siteMux.HandleFunc(pathPrefix+"practice_ws", server.handlePracticeWS)
 	siteMux.HandleFunc(pathPrefix+"preview/", server.handlePreview)
 	siteMux.HandleFunc(pathPrefix+"upload_file", server.handleFileUpload)
+	siteMux.HandleFunc(pathPrefix+"ide_usage", server.handleIDEUsage)
 	siteMux.HandleFunc(pathPrefix+"store/api/", server.handleStoreAPI)
 	siteMux.HandleFunc(pathPrefix+"store/verify", server.handleStoreVerify)
 	siteMux.HandleFunc(pathPrefix+"store", server.handleStorePage)
@@ -396,6 +397,7 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 	server.admin.counter = counter
 	server.registerAdmin(siteMux, pathPrefix)
 	GetSiteSettings() // apply the saved Genie rates before the first request
+	startIDEUsage(ctx)
 
 	siteHandler := http.Handler(siteMux)
 
@@ -429,15 +431,15 @@ func (server *Server) setupHandlers(ctx context.Context, cancel context.CancelFu
 		if err != nil {
 			return nil, err
 		}
-		return server.wrapPreviewHost(server.wrapControls(gw, pathPrefix), pathPrefix), nil
+		return server.wrapPreviewHost(server.wrapIDEMeter(server.wrapControls(gw, pathPrefix)), pathPrefix), nil
 	}
 	if server.options.Mode == ModeWorker {
 		// The gateway applies the switches before it forwards a terminal; the
 		// worker applies them, from the gateway's config, to its own visitors.
-		return server.wrapPreviewHost(server.wrapWorkerControls(siteHandler, pathPrefix), pathPrefix), nil
+		return server.wrapPreviewHost(server.wrapIDEMeter(server.wrapWorkerControls(siteHandler, pathPrefix)), pathPrefix), nil
 	}
 
-	return server.wrapPreviewHost(server.wrapControls(siteHandler, pathPrefix), pathPrefix), nil
+	return server.wrapPreviewHost(server.wrapIDEMeter(server.wrapControls(siteHandler, pathPrefix)), pathPrefix), nil
 }
 
 func (server *Server) setupHTTPServer(handler http.Handler) (*http.Server, error) {

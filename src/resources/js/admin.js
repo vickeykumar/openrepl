@@ -1499,14 +1499,37 @@
         ], d.recent)) : h('p', { class: 'sub', text: 'Nothing has been recorded for this account yet. Time is counted while the person has the site open and is using it; an account that has not visited since ' + d.since + ' shows nothing.' }));
       body.textContent = '';
       body.appendChild(node);
+      ideDataToday(node, u);
     }, function (err) { body.textContent = ''; body.appendChild(h('p', { class: 'sub', text: err && err.message ? err.message : 'Could not load this account.' })); });
+  }
+
+  // the "Data today" line of a user's drawer: what the IDE sent them today, and a button that resets the count by hand
+  function ideDataToday(node, u) {
+    var line = h('p', { class: 'sub', text: 'Loading...' }), box = h('div', null, h('h3', { text: 'Data today' }), line);
+    node.appendChild(box);
+    function mb(n) { n = (n || 0) / 1048576; return n >= 10 ? Math.round(n) + ' MB' : n.toFixed(1) + ' MB'; }
+    function draw(r) {
+      var st = r.state || {};
+      var p = st.parts || {};
+      line.textContent = mb(st.used) + ' of ' + mb(st.limit) + ' today (terminal ' + mb(p.terminal) + ', Genie ' + mb(p.genie) + ', files ' + mb(p.files) + ', editor ' + mb(p.editor) + ', preview ' + mb(p.preview) + ')' + (st.atLimit ? '. At the limit.' : '.');
+    }
+    api.get('admin/ide-usage?uid=' + encodeURIComponent(u.uid)).then(function (r) {
+      draw(r);
+      var btn = h('button', { class: 'btn', type: 'button', text: 'Reset today\'s count', onclick: function () {
+        btn.disabled = true;
+        api.post('admin/ide-usage?uid=' + encodeURIComponent(u.uid)).then(function () {
+          return api.get('admin/ide-usage?uid=' + encodeURIComponent(u.uid));
+        }).then(function (r2) { draw(r2); btn.disabled = false; }, function (e) { line.textContent = e && e.message ? e.message : 'Could not reset.'; btn.disabled = false; });
+      } });
+      box.appendChild(btn);
+    }, function () { line.textContent = 'Not counted yet today.'; });
   }
 
   // ---- site usage: signed-in users and guests
 
   function viewTraffic() {
     var root = h('div'), box = h('div');
-    var days = 30, mode = 'both', data = null;
+    var days = 30, mode = 'both', data = null, ideData = null;
     var modeBtns = {};
     var modeBox = h('div', { class: 'seg', role: 'group', 'aria-label': 'Who to show' }, [['both', 'Both'], ['signed', 'Signed in'], ['guests', 'Guests']].map(function (m) {
       var b = h('button', { class: 'seg-btn' + (m[0] === mode ? ' on' : ''), type: 'button', 'aria-pressed': m[0] === mode ? 'true' : 'false', text: m[1],
@@ -1533,6 +1556,7 @@
       }));
     }
     function pct(v) { return v < 0 ? '–' : v + '%'; }
+    function ideMBText(n) { n = (n || 0) / 1048576; return n >= 1024 ? (n / 1024).toFixed(2) + ' GB' : n >= 10 ? Math.round(n) + ' MB' : n.toFixed(1) + ' MB'; }
 
     function draw() {
       var r = data;
@@ -1575,10 +1599,25 @@
               { key: 'd1', label: 'Day 1', num: true, cell: function (c) { return pct(c.d1); } },
               { key: 'd7', label: 'Day 7', num: true, cell: function (c) { return pct(c.d7); } },
               { key: 'd30', label: 'Day 30', num: true, cell: function (c) { return pct(c.d30); } }
-            ], r.cohorts, { empty: 'No accounts have joined yet.' }))));
-      render(box, JSON.stringify([r, mode]), node);
+            ], r.cohorts, { empty: 'No accounts have joined yet.' }))),
+        ideData ? h('div', { class: 'card' }, h('h2', { text: 'IDE data today' }),
+          h('p', { class: 'sub', text: 'What the IDE sent to signed-in users since the day started: ' + ideMBText(ideData.total) + ' in all, of which guests (combined, never listed) ' + ideMBText(ideData.guestBytes) + '. Set the limits in Site settings, IDE data usage.' }),
+          table([
+            { key: 'name', label: 'Account', cell: function (u) { return u.name || u.uid || u.key; } },
+            { key: 'total', label: 'Today', num: true, cell: function (u) { return ideMBText(u.total); } },
+            { key: 'pct', label: 'Of the limit', num: true, cell: function (u) { return u.limit ? Math.min(100, Math.round(u.total * 100 / u.limit)) + '%' : '–'; } },
+            { key: 'terminal', label: 'Terminal', num: true, cell: function (u) { return ideMBText(u.parts.terminal); } },
+            { key: 'genie', label: 'Genie', num: true, cell: function (u) { return ideMBText(u.parts.genie); } },
+            { key: 'files', label: 'Files', num: true, cell: function (u) { return ideMBText(u.parts.files); } },
+            { key: 'editor', label: 'Editor', num: true, cell: function (u) { return ideMBText(u.parts.editor); } },
+            { key: 'preview', label: 'Preview', num: true, cell: function (u) { return ideMBText(u.parts.preview); } }
+          ], ideData.top || [], { empty: 'Nothing counted yet today.' })) : null);
+      render(box, JSON.stringify([r, mode, ideData]), node);
     }
-    function load(fresh) { return api.get(freshPath('admin/usage?days=' + days, fresh)).then(function (r) { data = r; draw(); }); }
+    function load(fresh) {
+      var ide = api.get('admin/ide-usage?top=200').then(function (r) { ideData = r; }, function () { ideData = null; });
+      return api.get(freshPath('admin/usage?days=' + days, fresh)).then(function (r) { data = r; return ide; }).then(function () { draw(); });
+    }
     function refresh() { return load(false); }
     return { root: root, refresh: refresh, poll: false };
   }

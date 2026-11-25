@@ -187,6 +187,9 @@ func TestSearchFindsTheRightNoteForQuestionsAboutTheSite(t *testing.T) {
 		{"does openrepl have ready made dsa practice problems", "practice"},
 		{"how do I report a bug", "blog-and-contact"},
 		{"how do I run openrepl with docker on my own server", "run-it-yourself"},
+		{"how much data can I use in a day", "ide-data-usage"},
+		{"why did my terminal stop with output was too fast", "ide-data-usage"},
+		{"what happens when I reach the daily data limit", "ide-data-usage"},
 	}
 	for _, c := range cases {
 		hits := ix.Search(c.q, chatContextLimit, chatContextMin, chatContextCoverage)
