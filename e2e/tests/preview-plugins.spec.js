@@ -57,7 +57,8 @@ async function tryPlugins(page) {
   await expect(items).toHaveCount(4); // nav, h1, h2, h2
   await expect(items.nth(1)).toContainText("First heading");
   await items.nth(3).click();
-  await expect.poll(() => page.frameLocator("#preview-frame").locator("#last").evaluate((n) => Math.round(n.getBoundingClientRect().top))).toBeLessThan(400);
+  // the heading is now inside the page's window (how tall that is depends on the bar above it, so no fixed number)
+  await expect.poll(() => page.frameLocator("#preview-frame").locator("#last").evaluate((n) => Math.round(n.ownerDocument.defaultView.innerHeight - n.getBoundingClientRect().top))).toBeGreaterThan(0);
 }
 
 test("the Viewport switcher, the Console and the Outline work on the owner's page", async ({ browser }) => {
