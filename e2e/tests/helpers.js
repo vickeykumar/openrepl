@@ -52,4 +52,15 @@ async function waitForTerminalReady(page) {
     .catch(() => {});
 }
 
-module.exports = { parseRgb, luminance, backgroundLuminance, setTheme, waitForTerminalReady };
+// The Preview bar folds Ports, Size and Console into the More menu when the pane is under about 780 px, which it nearly always is
+// in these runs. A test that uses those controls in the bar calls this first (on a page or a browser context, before it goes to
+// the site): the controls show and the bar wraps instead, so nothing overflows onto the terminal.
+async function unfoldPreviewBar(target) {
+  await target.addInitScript(() => {
+    const css = "html .preview-bar{flex-wrap:wrap !important}html .preview-bar .preview-fold{display:inline-flex !important}" +
+      "html .preview-bar select.preview-fold{display:inline-block !important}html .preview-bar .preview-sep.preview-fold{display:block !important}";
+    document.addEventListener("DOMContentLoaded", () => { const st = document.createElement("style"); st.id = "e2e-unfold"; st.textContent = css; document.head.appendChild(st); });
+  });
+}
+
+module.exports = { parseRgb, luminance, backgroundLuminance, setTheme, waitForTerminalReady, unfoldPreviewBar };

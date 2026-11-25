@@ -4843,13 +4843,17 @@ body.is-mobile .genie-changes__btn { min-height: 44px; }
   html.terminal-off .ide-split:not([data-split-init]) #ide { width: 100%; height: 100%; }
 }
 
-/* a narrow pane (beside the editor): Ports, Size and Console fold into More, and an error count shows as a dot on More; the row never wraps */
+/* a pane too narrow for the whole bar (about 780 px; most panes are): Ports, Size and Console fold into More, and an error count shows as a dot on More; the row never wraps */
 .preview-pane { container: pvpane / inline-size; }
 .preview-menu__fold { display: none; }
 .preview-menu__fold[hidden] { display: none !important; }
-@container pvpane (max-width: 520px) {
+@container pvpane (max-width: 780px) {
   .preview-bar .preview-fold { display: none !important; }
   .preview-menu__fold { display: flex; }
+}
+@container pvpane (max-width: 480px) {
+  .preview-bar { padding: 8px 6px; gap: 4px; }
+  .preview-address { min-width: 3rem; }
 }
 #preview-menu-button { position: relative; }
 #preview-menu-button.is-alert::after { content: ""; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: #F07171; box-shadow: 0 0 0 2px var(--ink-900, #09090D); }

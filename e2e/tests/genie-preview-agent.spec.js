@@ -3,11 +3,9 @@
 // as preview_* actions. The page is a real page of the workspace in the real sandboxed frame; the model is made up at the
 // network edge (what the real model says is not the question). GENIE_LOCAL_ASSETS=1 serves the page scripts of this checkout.
 const { test, expect } = require("@playwright/test");
-// The pane is a third of the page: a wide window keeps the whole Preview bar (a pane of 520 px or less folds Ports, Size and Console into More).
-test.use({ viewport: { width: 2200, height: 1000 } });
 const fs = require("fs");
 const path = require("path");
-const { waitForTerminalReady } = require("./helpers");
+const { waitForTerminalReady, unfoldPreviewBar } = require("./helpers");
 
 const root = path.join(__dirname, "..", "..", "src");
 const stamp = Date.now().toString(36);
@@ -57,6 +55,7 @@ async function localAssets(page) {
 }
 
 async function ready(page) {
+  await unfoldPreviewBar(page);
   await localAssets(page);
   await page.goto("/");
   await page.waitForFunction(() => window.FileBrowser && window.FileBrowser.ready() && window.Preview && window.EditorTabs);

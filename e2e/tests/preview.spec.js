@@ -1,14 +1,13 @@
 // The Preview pane (page/27-preview.js, server/preview.go, package livepreview): a web page of the workspace shown next
 // to the editor in a sandboxed frame, with its sibling files.
 const { test, expect } = require("@playwright/test");
-// The pane is a third of the page: a wide window keeps the whole Preview bar (a pane of 520 px or less folds Ports, Size and Console into More).
-test.use({ viewport: { width: 2200, height: 1000 } });
-const { waitForTerminalReady } = require("./helpers");
+const { waitForTerminalReady, unfoldPreviewBar } = require("./helpers");
 
 const stamp = Date.now().toString(36);
 const dir = `site${stamp}`;
 
-async function ready(page) {
+async function ready(page, opts = {}) {
+  if (!opts.fold) await unfoldPreviewBar(page); // the bar as a wide pane has it
   // GENIE_LOCAL_ASSETS=1 serves the page script of this checkout, for a run before an image is built
   if (process.env.GENIE_LOCAL_ASSETS) {
     const file = require("path").join(__dirname, "..", "..", "src", "js", "dist", "scribbler.js");
@@ -620,7 +619,7 @@ test("dragging the grip onto the editor docks the pane there, and onto the termi
 
 // The bar is one row on one centre line, 32 px tall, wide or narrow; narrow, Ports, Size and Console are in the More menu.
 test("the Preview bar's controls share one height and centre line, and fold into More when narrow", async ({ page }) => {
-  await ready(page);
+  await ready(page, { fold: true });
   await makeSite(page);
   await openIndex(page);
   await page.locator("#preview-button").click();
@@ -635,9 +634,10 @@ test("the Preview bar's controls share one height and centre line, and fold into
     const mids = new Set(boxes.map((b) => b.mid));
     expect(mids.size, JSON.stringify(boxes)).toBe(1);
   };
-  flat(await measure());
+  await page.locator("#preview-pane").evaluate((p) => { p.style.width = "900px"; p.style.flex = "none"; });
   await expect(page.locator("#preview-ports-button")).toBeVisible();
-  await page.locator("#preview-pane").evaluate((p) => { p.style.width = "400px"; p.style.flex = "none"; });
+  flat(await measure());
+  await page.locator("#preview-pane").evaluate((p) => { p.style.width = "400px"; });
   await expect(page.locator("#preview-ports-button")).toBeHidden();
   await expect(page.locator("#preview-size")).toBeHidden();
   flat(await measure());
