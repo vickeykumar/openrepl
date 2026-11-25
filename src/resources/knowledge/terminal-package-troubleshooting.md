@@ -1,7 +1,7 @@
 ---
 title: Check package tools and downloads in Bash
 keywords: check node version, npm version, java version, maven version, check perl LWP, LWP::UserAgent OK, test node proxy, npm view, cargo cache scratch, CARGO_HOME, CARGO_INSTALL_ROOT, PCRE2 unavailable, Maven source option 5, Java 21 Maven build error
-link: /doc.html#installing-apps
+link: /docs/install-apps.html
 ---
 To check the image, run `node --version`, `npm --version`, `java --version`, `mvn --version`, and `perl -MLWP::UserAgent -e 'print "LWP::UserAgent OK\n"'`. Versions depend on the deployed image.
 

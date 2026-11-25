@@ -62,6 +62,14 @@
   },
   {
    "@type": "Question",
+   "name": "How does the canvas work?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "The canvas is a tab of the Preview pane where Genie draws screens, flows and layouts as boards you can pan, zoom, move, size, retype and pin notes on. Each board is a plain web page saved in your workspace in .genie/canvas, and every change is a version you can undo or compare. A note you pin goes to Genie only when you send it, and Genie reads your changes only with your next message. You can export one board, all of them as a zip, or print them. You can also select one part of a board and change it with a toolbar (fill, corner, text, layout, size, spacing, border, picture, lock) without asking Genie, and a locked part is never changed. Boards run in the Preview's sandbox without network access, a canvas holds up to 24 boards, and a site admin can switch it off."
+   }
+  },
+  {
+   "@type": "Question",
    "name": "How much data can I use?",
    "acceptedAnswer": {
     "@type": "Answer",
@@ -320,6 +328,7 @@
         <details id="do-i-need-an-account" class="faq-q"><summary>Do I need an account?</summary><p>No. Start as a guest right away. Guest files are removed an hour after your last visit; sign up free to keep them.</p></details>
         <details id="is-it-really-free" class="faq-q"><summary>Is it really free?</summary><p>Yes, you can run code in the browser for free. The source code is open on GitHub. Some extra services may be paid in the future. You can support the project through GitHub Sponsors.</p></details>
         <details id="how-long-does-a-session-last" class="faq-q"><summary>How long does a session last?</summary><p>Up to 60 minutes per connection. The terminal shows the time left, and one click starts a new session.</p></details>
+        <details id="how-does-the-canvas-work" class="faq-q"><summary>How does the canvas work?</summary><p>The canvas is a tab of the Preview pane where Genie draws screens, flows and layouts as boards you can pan, zoom, move, size, retype and pin notes on. Each board is a plain web page saved in your workspace in .genie/canvas, and every change is a version you can undo or compare. A note you pin goes to Genie only when you send it, and Genie reads your changes only with your next message. You can export one board, all of them as a zip, or print them. You can also select one part of a board and change it with a toolbar (fill, corner, text, layout, size, spacing, border, picture, lock) without asking Genie, and a locked part is never changed. Boards run in the Preview's sandbox without network access, a canvas holds up to 24 boards, and a site admin can switch it off.</p></details>
         <details id="how-much-data-can-i-use" class="faq-q"><summary>How much data can I use?</summary><p>The IDE counts what it sends to you (terminal output, files, Genie answers, the Preview) and shows your total in your profile. By default guests get 50 MB for the session (it lasts an hour) and signed-in users get 200 MB a day, resetting at 00:00 UTC, shown in your own time; your profile page shows the limits that apply to you. A terminal that prints too fast (by default over 20 MB in 10 seconds) is stopped. At the limit, terminal output, Genie questions, downloads and the Preview pause, while saving and small files keep working. Only sizes are counted, never what was sent.</p></details>
         <details id="can-i-use-my-own-files" class="faq-q"><summary>Can I use my own files?</summary><p>Yes. Upload files up to 20 MB, keep up to 50 MB in your workspace, and download it all as a zip.</p></details>
         <details id="can-i-run-it-myself" class="faq-q"><summary>Can I run it myself?</summary><p>Yes. Pull the Docker image and run it on your own machine or server. The README on GitHub has the steps.</p></details>
@@ -348,7 +357,7 @@
         <details id="why-does-debug-start-paused" class="faq-q"><summary>Why does Debug start paused?</summary><p>On some servers programs cannot be traced the usual way, so Debug runs yours under QEMU and gdb connects to it. It waits at the first instruction: set your breakpoints, then type c or run. Ctrl+C stops it again.</p></details>
         <details id="how-big-is-an-app-from-the-app-store" class="faq-q"><summary>How big is an app from the App Store?</summary><p>Each app page shows its size once installed. The store picks the smallest way to make an app (the server's own Ubuntu packages, conda-forge or npm) and removes what a program does not need, such as man pages and test files. A few programs bring their own Python and Perl; their page says so, with the size (about 120 MB for some).</p></details>
         <details id="what-if-an-app-store-install-fails" class="faq-q"><summary>What if an App Store install fails?</summary><p>The app shows why, and a Try again button. Some failures pass by themselves, so the server tries again a few times. An app that does not exist for a server's CPU type is shown as not available there; an admin can look at it.</p></details>
-        <details id="how-do-i-install-an-app" class="faq-q"><summary>How do I install an app?</summary><p>Open <strong>Apps</strong> or <a href="/store">the App Store</a>, search for an app, then press Install or Request. When it is installed, enable its switch under My apps and open a new terminal. See the <a href="/doc.html#installing-apps">package installation guide</a> for App Store steps and Bash examples for Python, Node.js, Go, Rust and Java.</p></details>
+        <details id="how-do-i-install-an-app" class="faq-q"><summary>How do I install an app?</summary><p>Open <strong>Apps</strong> or <a href="/store">the App Store</a>, search for an app, then press Install or Request. When it is installed, enable its switch under My apps and open a new terminal. See the <a href="/docs/install-apps.html">package installation guide</a> for App Store steps and Bash examples for Python, Node.js, Go, Rust and Java.</p></details>
         <p class="faq-none" id="faq-none" hidden>No question matches. Ask Genie in the editor, or <a href="/#request">contact us</a>.</p>
       </main>
     </div>

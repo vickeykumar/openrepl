@@ -92,7 +92,7 @@
     </header>
     <div class="guide-layout">
       <nav class="guide-toc" aria-label="On this page"><strong>On this page</strong>
-        <a href="#start">Start in a minute</a><a href="#code">Give it your code</a><a href="#modes">Chat or Agent</a><a href="#agent">Agent mode, safely</a><a href="#chats">Chats and tabs</a><a href="#models">Models and requests</a><a href="#tips">Handy things</a><a href="#skills">Skills and plugins</a><a href="#connections">Connections</a><a href="#phone">On a phone</a><a href="#coach">Practice coach</a><a href="#keys">Keys</a><a href="#questions">Questions</a>
+        <a href="#start">Start in a minute</a><a href="#code">Give it your code</a><a href="#modes">Chat or Agent</a><a href="#agent">Agent mode, safely</a><a href="#chats">Chats and tabs</a><a href="#models">Models and requests</a><a href="#tips">Handy things</a><a href="#skills">Skills and plugins</a><a href="#connections">Connections</a><a href="#canvas">The canvas</a><a href="#phone">On a phone</a><a href="#coach">Practice coach</a><a href="#keys">Keys</a><a href="#questions">Questions</a>
       </nav>
       <main class="guide" id="guide">
         <!-- Written from the Genie knowledge notes (src/resources/knowledge/genie*.md): when one changes, change it here too. -->
@@ -281,6 +281,26 @@ Use plain words. Do not invent changes that are not in the code.</code></pre>
 
           <h3>For admins</h3>
           <p>Under Site settings, Agent, the card <strong>Connections</strong> has the switch for the whole feature, "Allow connections without approval" (off by default), and "Only these servers": a list of hosts, one on each line, that a connection from a link may talk to. The card <strong>Connection requests</strong> lists the waiting requests with what the server fetched, and has Approve for everyone, Approve for this user and Decline. It also shows who is connected to what (never the tokens) and the last calls: the service, the tool and the outcome, never what was sent or returned. The server needs the secret <code>OPENREPL_SECRET</code> to keep tokens encrypted. The servers themselves are managed under <strong>Integrations</strong> in the dashboard (Site): add a server with a name and an address, press <strong>Test</strong> (it reads how the server signs people in and lists its tools, and calls nothing), switch on the tools Genie may use with a level for each (read, write, restricted), choose who can see it and publish. A tool the server adds or changes later stays off until you look. Requests for a server wait on the same page: approve for the person who asked, for everyone, make a draft to finish, or decline with a reason. To offer <strong>Sign in with GitHub</strong>, create a GitHub App with user authorization, add <code>https://your-site/genie_conn_oauth</code> as its Redirect URI, and set <code>OPENREPL_GITHUB_APP_CLIENT_ID</code> and <code>OPENREPL_GITHUB_APP_CLIENT_SECRET</code> (and <code>OPENREPL_PUBLIC_URL</code> when a proxy hides the site's address); without them the button is not shown and a pasted token still works. For plugins from GitHub links, set <code>OPENREPL_GITHUB_TOKEN</code> on the server (any token with no extra rights): GitHub lets requests without a token make only 60 an hour for an address, and when that is used up a small repository is read as a zip and a big one waits for the next hour.</p>
+        </section>
+        <section id="canvas">
+          <h2>The canvas</h2>
+          <p>The <strong>canvas</strong> is a tab of the Preview pane where Genie draws screens, flows and layouts as boards. The full guide (the tools, changing a part of a board, versions, export, keys) is on its own page: <a href="/docs/canvas.html">The canvas: draw, arrange and edit boards</a>. This is the part that involves Genie.</p>
+          <h3>Ask Genie to draw</h3>
+          <p>In Agent mode ask for what you want to see:</p>
+          <pre class="guide-code"><code>Design a login page, a dashboard and the phone version of the login.</code></pre>
+          <p>Genie opens the canvas as a tab beside your pages, shows the boards it plans as dashed frames and fills each one as it draws it. Drawing a board is writing a file, so Genie asks the first time, as it does before it changes your editor. A task draws at most 24 boards. A board can have its own styles and scripts, so a clickable prototype works.</p>
+          <figure><img src="/images/genie/canvas-boards.png" alt="The Canvas tab of the Preview pane named login-flow: three boards, Login, Dashboard and Login on a phone, drawn by Genie" loading="lazy"><figcaption>A canvas that Genie drew from one request.</figcaption></figure>
+          <h3>Tell Genie about one board</h3>
+          <p>Click a board and a chip <strong>Board: Dashboard</strong> appears in Genie's box; click a part and it reads <em>Board: Dashboard &rsaquo; button#buy</em>. Say what to change (&ldquo;make the cards bigger and use our coral accent&rdquo;) and Genie changes that board; the others stay as you left them. Every change is a version you can undo or compare.</p>
+          <figure><img src="/images/genie/canvas-select-genie.png" alt="A selected board with the bar above it and Genie's panel beside it with a Board: Dashboard chip in the box" loading="lazy"><figcaption>The selected board and the Board chip in Genie's box.</figcaption></figure>
+          <h3>Notes, changes and locked parts</h3>
+          <ul>
+            <li><strong>Notes.</strong> Pin a note on a part and choose <strong>Send to Genie</strong>: Genie gets the board, the part under the pin and your words with your next message. A note you keep as <strong>Note</strong> stays yours.</li>
+            <li><strong>Your changes.</strong> What you retype or change by hand is told to Genie in plain words with your next message. Genie never reacts by itself.</li>
+            <li><strong>Locked parts.</strong> A part you lock is never changed by you or by Genie: Genie is told which parts are locked, and a rewrite of the board that changes one is refused.</li>
+            <li><strong>Safety.</strong> The text of a board and your notes are treated as data, never as instructions. Genie asks before it writes a board.</li>
+          </ul>
+          <p>Admins: Site settings, Preview, <strong>Genie may draw on the canvas</strong> (on by default). Off: the tab disappears, the server refuses canvas calls and Genie has no canvas actions.</p>
         </section>
         <section id="phone">
           <h2>On a phone</h2>
