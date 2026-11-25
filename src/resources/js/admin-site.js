@@ -344,7 +344,7 @@
         sessionCleanupHours: int(form.sessionCleanup.value),
         snippetMaxDays: int(form.snippetMax.value),
         previewOff: !form.previewOn.checked, practiceWorkspaceOff: !form.practiceWs.checked,
-        previewGuestsOff: !form.previewGuests.checked, previewAgentOff: !form.previewAgent.checked,
+        previewGuestsOff: !form.previewGuests.checked, previewAgentOff: !form.previewAgent.checked, canvasOff: !form.canvasOn.checked,
         egressOn: form.egress.checked,
         ideUsageOff: !form.ideOn.checked, ideAdminsCounted: !form.ideAdmins.checked, idePartsOff: idePartsOffNow(),
         ideTermMB: int(form.ideTermMB.value), ideTermWindowSecs: int(form.ideTermWindow.value), ideTermGraceSecs: int(form.ideTermGrace.value), ideTermPauseOnly: form.ideTermAction.value === 'pause',
@@ -474,7 +474,7 @@
         sessionCleanupHours: s.sessionCleanupHours || 0,
         snippetMaxDays: s.snippetMaxDays || 0,
         previewOff: !!s.previewOff, practiceWorkspaceOff: !!s.practiceWorkspaceOff,
-        previewGuestsOff: !!s.previewGuestsOff, previewAgentOff: !!s.previewAgentOff,
+        previewGuestsOff: !!s.previewGuestsOff, previewAgentOff: !!s.previewAgentOff, canvasOff: !!s.canvasOff,
         egressOn: !!s.egressOn,
         ideUsageOff: !!s.ideUsageOff, ideAdminsCounted: !!s.ideAdminsCounted, idePartsOff: (s.idePartsOff || []).slice().sort(),
         ideTermMB: s.ideTermMB || 0, ideTermWindowSecs: s.ideTermWindowSecs || 0, ideTermGraceSecs: s.ideTermGraceSecs || 0, ideTermPauseOnly: !!s.ideTermPauseOnly,
@@ -863,6 +863,7 @@
       form.practiceWs = practiceWs.input;
       var previewGuests = toggle('f-preview-guests', !settings.previewGuestsOff, 'Preview for guests');
       var previewAgent = toggle('f-preview-agent', !settings.previewAgentOff, 'Genie may act in the Preview');
+      var canvasOn = toggle('f-canvas', !settings.canvasOff, 'Genie may draw on the canvas');
       var egressOn = toggle('f-egress', !!settings.egressOn, 'Internet for signed-in users');
       form.egress = egressOn.input;
       // the IDE data usage (LLD 20): what the IDE sends to a user is counted, a terminal that is too fast is stopped, a user at the limit loses the heavy parts
@@ -907,7 +908,7 @@
       var ideTop = h('div', { 'data-ide': 'top' }, h('p', { class: 'loading', text: 'Loading…' }));
       late.ide = function (info) { drawIDEToday(ideToday, ideTop, info); };
       if (ideState) late.ide(ideState);
-      form.previewOn = previewOn.input; form.previewGuests = previewGuests.input; form.previewAgent = previewAgent.input;
+      form.previewOn = previewOn.input; form.previewGuests = previewGuests.input; form.previewAgent = previewAgent.input; form.canvasOn = canvasOn.input;
       // agent mode: on for signed-in users unless switched off here, and off on the practice page unless allowed
       var agentOn = toggle('f-agent', !settings.genie.agentDisabled, 'Agent mode');
       var agentPractice = toggle('f-agent-practice', !!settings.genie.agentOnPractice, 'Agent mode on the practice page');
@@ -1598,6 +1599,7 @@
           row('Preview is available', null, previewOn.node),
           row('Preview for guests', 'Visitors who are not signed in. Off keeps it for signed-in users only.', previewGuests.node),
           row('Genie may act in the Preview', 'Genie\'s agent can click, type, press keys, scroll, choose, go to other pages, run an expression and change the storage of the page the Preview shows. Off: it can still read the page, its console and its calls. It asks the user first in any case.', previewAgent.node),
+          row('Genie may draw on the canvas', 'The Canvas tab of the Preview pane: boards of plain HTML that Genie draws and the user moves, retypes and pins notes on, saved in the workspace (.genie/canvas). Off: the tab disappears, the server refuses canvas calls and Genie has no canvas actions.', canvasOn.node),
           row('Minutes a preview link works for guests', 'From 10 to 1440 (a day). Leave it empty for 60 (1 hour). A pane gets a new link by itself before the old one ends; a link opened in a tab of its own, or copied, stops at its end. A change applies to links made after it.', form.previewLifeGuest),
           row('Minutes a preview link works for signed-in users', 'From 10 to 1440. Leave it empty for 180 (3 hours).', form.previewLifeUser),
           row('Preview base URL', 'Optional. The host the preview frames open on, for example preview.openrepl.com (a host name alone takes the scheme and the port of the site the page is opened from, for example http://preview.localhost:8080 when the site is http://localhost:8080). It must not have the same host name as this site. No path. Frames then open as <host>/&lt;token&gt;/…; leave it empty to keep this site\'s /preview/&lt;token&gt;/… addresses. Point that host at this OpenREPL server and keep its Host header.', form.previewBaseURL),

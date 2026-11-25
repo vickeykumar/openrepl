@@ -142,6 +142,8 @@ type SiteSettings struct {
 	// PreviewAgentOff stops Genie's agent from acting in the Preview page (click, type, press, scroll, select, hover, go, resize, run
 	// an expression, change its storage). It can still look at the page (read, console, calls). The Preview itself stays as it is.
 	PreviewAgentOff bool `json:"previewAgentOff"`
+	// CanvasOff switches the canvas of the Preview pane off (genie_canvas.go): its tab, its endpoint and Genie drawing on it.
+	CanvasOff bool `json:"canvasOff"`
 	// GenieEventsOff stops the Genie log (genie_log.go): the agent's failed steps and the end of each task, kept without any text of the
 	// user's. GenieEventDays is how many days it is kept, 1 to 365; 0 means 30.
 	GenieEventsOff bool `json:"genieEventsOff"`
@@ -735,6 +737,7 @@ type publicSettings struct {
 	PreviewOff       bool `json:"previewOff"`
 	PreviewGuestsOff bool `json:"previewGuestsOff"`
 	PreviewAgentOff  bool `json:"previewAgentOff"`
+	CanvasOff        bool `json:"canvasOff"`
 	// the separate origin of the preview frames (empty: this site's /preview/<token>/... addresses), see previewhost.go
 	PreviewBaseURL string `json:"previewBaseURL"`
 	// the page reports the agent's failed steps (genie_log.go) unless an admin switched that off
@@ -1098,6 +1101,7 @@ func (s SiteSettings) public() publicSettings {
 		PreviewOff:           s.PreviewOff,
 		PreviewGuestsOff:     s.PreviewGuestsOff,
 		PreviewAgentOff:      s.PreviewAgentOff,
+		CanvasOff:            s.CanvasOff,
 		PreviewBaseURL:       s.PreviewBaseURL, // as typed: the page adds the scheme and port of the site it was opened from
 		GenieEventsOff:       s.GenieEventsOff,
 		EscalationModels:     s.Genie.EscalationModels,
@@ -1378,6 +1382,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.PreviewAgentOff != b.PreviewAgentOff {
 		out = append(out, "Genie acting in the preview "+onoff(!b.PreviewAgentOff))
+	}
+	if a.CanvasOff != b.CanvasOff {
+		out = append(out, "the Genie canvas "+onoff(!b.CanvasOff))
 	}
 	if a.GenieEventsOff != b.GenieEventsOff {
 		out = append(out, "the Genie log "+onoff(!b.GenieEventsOff))

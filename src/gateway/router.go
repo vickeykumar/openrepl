@@ -363,7 +363,7 @@ func IsExecutionBound(rel string) bool {
 	// The preview's token and port list name the workspace of the session, so they are asked of the node that runs it,
 	// like the file browser: from the site alone they would answer for the workspace of the cookie, which is another one
 	// when the cookie was renewed after the page opened.
-	return rel == "ws" || strings.HasPrefix(rel, "ws_") || rel == "upload_file" || rel == "preview_token" || rel == "preview_ports" || rel == "preview_cookies" || rel == "agent_bash" || rel == "agent_files" || rel == "genie_chats" || rel == "genie_ext" || rel == "practice_ws"
+	return rel == "ws" || strings.HasPrefix(rel, "ws_") || rel == "upload_file" || rel == "preview_token" || rel == "preview_ports" || rel == "preview_cookies" || rel == "agent_bash" || rel == "agent_files" || rel == "genie_chats" || rel == "genie_canvas" || rel == "genie_ext" || rel == "practice_ws"
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {

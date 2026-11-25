@@ -12,6 +12,7 @@ import { ChatLine, Interrupted, Restored, interruptedBrief, interruptedFresh, re
 import { SSEParser, addEvent, answerOf, newStreamed } from "./sse";
 import { definesSomething } from "./chat-send";
 import { isSmallModel, starterChips } from "./agent-protocol";
+import type { Action } from "./agent-protocol";
 import { chatTurnsText } from "./agent-task";
 import { cardView, jumpLabel, jumpVisible, showLabel, waitingText } from "./wait-bar";
 import { previewContext } from "./preview-context";
@@ -415,6 +416,7 @@ function getcurrentIDECode(): MessageType {
     "--- Terminal output (the most recent lines of the active terminal) ---",
     output || "(nothing in the terminal yet)",
     readPreview ? previewContext(previewState()) : "",
+    canvasBlock(true),
   ].filter(Boolean);
   return { role: "system", content: parts.join("\n") };
 }
@@ -2555,6 +2557,7 @@ const agentRunner = new LazyAgent((Runner) => new Runner(
     connectWords: () => connectWords(),
     connectionOffer: (task: string) => connectionOffer(task),
     openConnection: (id: string) => void openConnection(id),
+    canvas: (a: Action) => canvasAction(a),
     mcpCall: (req: { connection: string; tool: string; args: Record<string, unknown>; task: string; approval: "once" | "session" | "auto"; tainted: boolean }, signal: AbortSignal) => mcpCallPage(req, signal),
     skillsNote: async () => skillsNoteText(await Promise.race([loadSkills(), new Promise<SkillInfo[]>((res) => setTimeout(() => res(skillList), 300))]), noteList),
     terminal: () => activeTerminal(),
@@ -4143,6 +4146,69 @@ function currentFileChip(): HTMLElement | null {
   return b;
 }
 
+// ---- the canvas of the Preview pane (js/src/page/37-canvas.js) -----------------------------------------------------------------
+
+function canvasApi(): any {
+  const c = (window as any).Canvas;
+  return c && typeof c.contextBlock === "function" ? c : null;
+}
+// What Genie is told about the canvas with a message (the boards, the selected one, what the user changed, the notes sent); "\n\n" before it.
+function canvasBlock(consume: boolean): string {
+  try {
+    const c = canvasApi();
+    const t = c ? c.contextBlock(consume) : "";
+    return t ? "\n" + t : "";
+  } catch (e) {
+    return "";
+  }
+}
+function canvasTask(start: boolean) {
+  try {
+    const c = canvasApi();
+    if (c) start ? c.taskStarted() : c.taskEnded();
+  } catch (e) {
+    // the canvas has nothing to do with the task then
+  }
+}
+async function canvasAction(a: Action): Promise<{ status: string; detail: string }> {
+  const c = canvasApi();
+  if (!c) return { status: "failed", detail: "this page has no canvas" };
+  try {
+    return await c.agent(a);
+  } catch (e) {
+    return { status: "failed", detail: "the canvas could not do that" };
+  }
+}
+// "Board: Pricing": the board the user selected goes with the next message (the chip says so; the x lets it go)
+function boardChip(): HTMLElement | null {
+  const c = canvasApi();
+  const sel = c && c.state && c.state().open ? c.selected() : null;
+  if (!sel) return null;
+  const b = document.createElement("span");
+  b.id = "chat-widget__board-chip";
+  b.className = "cw-chip cw-chip--current";
+  b.title = "Genie is told which board you mean, its size and an outline of the canvas. Click the x to let it go.";
+  const name = document.createElement("span");
+  name.className = "cw-chip__name";
+  name.textContent = "Board: " + sel.title + (sel.part ? " \u203A " + sel.part : "");
+  const x = document.createElement("button");
+  x.type = "button";
+  x.className = "cw-chip__x";
+  x.textContent = "\u2715";
+  x.setAttribute("aria-label", "Do not mention this board");
+  x.addEventListener("click", () => {
+    const cc = canvasApi();
+    if (cc) cc.deselect();
+  });
+  b.append(name, x);
+  return b;
+}
+window.addEventListener("openrepl-canvas", () => {
+  renderTray();
+  const context = document.getElementById("chat-widget__context");
+  if (context) context.textContent = editorContextLabel();
+});
+
 // The pane opened, closed or changed its page: its chip comes and goes (27-preview.js, tellPane).
 window.addEventListener("openrepl-preview", () => {
   renderTray();
@@ -4158,8 +4224,10 @@ function renderTray() {
   if (current) tray.appendChild(current);
   const pv = previewChip();
   if (pv) tray.appendChild(pv);
+  const bd = boardChip();
+  if (bd) tray.appendChild(bd);
   const skills = skillChips();
-  tray.hidden = pendingContext.length === 0 && !current && !pv && skills.length === 0;
+  tray.hidden = pendingContext.length === 0 && !current && !pv && !bd && skills.length === 0;
   skills.forEach((c) => tray.appendChild(c));
   pendingContext.forEach((it) => tray.appendChild(chipElement(it, true)));
 }
@@ -5553,8 +5621,10 @@ async function submit(e: Event) {
     const autoModel = autoAgentModel();
     if (autoModel) await createNewMessageEntry(autoNote({ model: autoModel, size: "strong", why: "Agent mode" }, modelById(autoModel).name, true), Date.now(), "system", false, "Auto", null, null, null, []);
     try {
-      await startAgent(msg, task.block + skillsText, skillLimit);
+      canvasTask(true);
+      await startAgent(msg, task.block + skillsText + canvasBlock(true), skillLimit);
     } finally {
+      canvasTask(false);
       runTab = null;
       renderTabs();
       refreshMode();

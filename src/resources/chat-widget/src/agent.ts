@@ -189,6 +189,7 @@ export interface AgentHost {
   openConnection?(id: string): void;
   // approval: how the person allowed it ("once" or "session" on the card, "auto" when the page's own session level did); tainted: the task holds text from outside.
   // The server keeps the approval: needsCard comes back when it holds none for this call.
+  canvas?(a: Action): Promise<{ status: string; detail: string }>; // the canvas of the Preview pane (js/src/page/37-canvas.js)
   mcpCall?(req: { connection: string; tool: string; args: Record<string, unknown>; task: string; approval: "once" | "session" | "auto"; tainted: boolean }, signal: AbortSignal): Promise<{ status: number; message?: string; text?: string; isError?: boolean; needsCard?: boolean }>;
   // What the workspace has as skills, as a note for the start of a task (names and descriptions; "" when there are none). skills.ts: skillsNoteText.
   skillsNote?(): Promise<string>;
@@ -1493,6 +1494,15 @@ export class AgentRunner {
           status: "done",
           detail: "tab closed; now on tab " + now.active + " of " + now.count + "; Run uses the language in the picker (" + this.pickerLanguage() + ")",
         };
+      }
+      case "canvas_open":
+      case "canvas_board":
+      case "canvas_arrange":
+      case "canvas_read":
+      case "canvas_note": {
+        if (!this.host.canvas) return { type: a.type, status: "failed", detail: "this page has no canvas" };
+        const r = await this.host.canvas(a);
+        return { type: a.type, status: r.status === "done" ? "done" : "failed", detail: r.detail };
       }
       case "mcp_call": {
         if (!this.host.mcpCall) return { type: a.type, status: "failed", detail: "this page cannot use connections" };

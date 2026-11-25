@@ -589,6 +589,7 @@
             <button type="button" class="preview-menu__item preview-menu__fold" role="menuitem" id="preview-menu-console">Console</button>
             <label class="preview-menu__item" role="menuitemcheckbox"><input type="checkbox" id="preview-opt-auto"> Auto-update on save</label>
             <label class="preview-menu__item" role="menuitemcheckbox"><input type="checkbox" id="preview-opt-run"> Reload when I press Run</label>
+            <button type="button" class="preview-menu__item" role="menuitem" id="preview-menu-canvas" hidden>Open the canvas</button>
             <button type="button" class="preview-menu__item" role="menuitem" id="preview-menu-cookies">Clear this preview's cookies</button>
             <button type="button" class="preview-menu__item" role="menuitem" id="preview-menu-copy">Copy address</button>
             <button type="button" class="preview-menu__item" role="menuitem" id="preview-menu-dock">Dock over the editor</button>
@@ -626,6 +627,8 @@
             </div>
             <div class="preview-console__body" id="preview-console-body" role="log" aria-live="polite"></div>
           </div>
+          <!-- The canvas (page/37-canvas.js): boards that Genie draws, shown beside the pages as a tab of the pane -->
+          <div class="cv" id="canvas-root" hidden></div>
           <div class="preview-status" id="preview-status" role="status"><span class="preview-status__dot" id="preview-status-dot" aria-hidden="true"></span><span id="preview-status-text">Preview</span></div>
         </div>
       </div>

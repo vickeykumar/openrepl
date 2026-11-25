@@ -24,6 +24,8 @@ var watchTimers = [];
 var MAX_TABS = 4;
 var tabs = [];            // one for each thing previewed: { t: target, hist: [addresses], idx, logs, reqs, errs }
 var cur = -1;
+var canvasTab = null;    // { name } while a Canvas tab is open beside the pages (37-canvas.js draws it, docs/lld/21-genie-canvas.md)
+var canvasShown = false; // the Canvas tab is the one that is on
 var navTo = "";           // an address the pane itself set (Back, Forward): the page reporting it is not a new page
 var popout = null;        // the window of a popped-out preview
 var consoleOn = false, consoleTab = "console";
@@ -100,6 +102,8 @@ function askPorts() {
     .then(function (j) {
       knownPorts = (j.ports || []).slice();
       isolated = j.isolated !== false;
+      // a program that stopped is forgotten: when one starts on that port again (the same server, started again) it is offered again
+      Object.keys(seenPorts).forEach(function (k) { if (knownPorts.indexOf(Number(k)) < 0) delete seenPorts[k]; });
       syncButton();
       return knownPorts;
     }, function () { return knownPorts; });
@@ -284,13 +288,13 @@ function tabName(x) { return x.t.kind === "n" ? "New tab" : x.t.kind === "f" ? x
 function renderTabs() {
   var box = el("preview-tabs");
   if (!box) return;
-  box.hidden = tabs.length < 1; // with one address the strip is there too, for its + (a place to open another)
+  box.hidden = tabs.length < 1 && !canvasTab; // with one address the strip is there too, for its + (a place to open another)
   box.textContent = "";
   tabs.forEach(function (x, k) {
     var b = document.createElement("div");
-    b.className = "preview-tab" + (k === cur ? " is-on" : "");
+    b.className = "preview-tab" + (k === cur && !canvasShown ? " is-on" : "");
     b.setAttribute("role", "tab");
-    b.setAttribute("aria-selected", k === cur ? "true" : "false");
+    b.setAttribute("aria-selected", k === cur && !canvasShown ? "true" : "false");
     b.tabIndex = 0;
     var name = document.createElement("span");
     name.textContent = tabName(x);
@@ -304,7 +308,21 @@ function renderTabs() {
     b.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectTab(k); } });
     box.appendChild(b);
   });
-  if (tabs.length && tabs.length < MAX_TABS) {
+  if (canvasTab) {
+    var ct = document.createElement("div");
+    ct.className = "preview-tab preview-tab--canvas" + (canvasShown ? " is-on" : "");
+    ct.setAttribute("role", "tab"); ct.setAttribute("aria-selected", canvasShown ? "true" : "false"); ct.tabIndex = 0;
+    var cn = document.createElement("span"); cn.textContent = "Canvas \u00B7 " + canvasTab.name; ct.appendChild(cn);
+    var cx = document.createElement("button");
+    cx.type = "button"; cx.className = "preview-tab__x"; cx.textContent = "\u2715";
+    cx.setAttribute("aria-label", "Close the canvas tab");
+    cx.addEventListener("click", function (e) { e.stopPropagation(); closeCanvasTab(); });
+    ct.appendChild(cx);
+    ct.addEventListener("click", function () { showCanvasTab(); });
+    ct.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showCanvasTab(); } });
+    box.appendChild(ct);
+  }
+  if ((tabs.length || canvasTab) && tabs.length < MAX_TABS) {
     var plus = document.createElement("button");
     plus.type = "button"; plus.className = "preview-tab preview-tab--new"; plus.textContent = "+";
     plus.setAttribute("aria-label", "New tab");
@@ -315,7 +333,15 @@ function renderTabs() {
 }
 
 function selectTab(k) {
-  if (k < 0 || k >= tabs.length || k === cur) return;
+  var wasCanvas = canvasShown;
+  if (wasCanvas) leaveCanvas();
+  if (k >= 0 && k < tabs.length && k === cur && wasCanvas) {
+    // back from the canvas to the page that was on: it is still there unless the pane was closed in between
+    var f0 = target ? frameFor(target) : null;
+    if (f0 && f0.getAttribute("data-url")) { render(); return; }
+    cur = -1;
+  }
+  if (k < 0 || k >= tabs.length || k === cur) { if (wasCanvas) render(); return; }
   cur = k; target = tabs[k].t;
   var tb = tabs[k];
   setAddress(tb.hist.length ? describe(tb.hist[tb.idx]) : "");
@@ -328,12 +354,60 @@ function selectTab(k) {
 
 function closeTab(k) {
   tabs.splice(k, 1);
-  if (!tabs.length) { cur = -1; target = null; closePane(); return; }
+  if (!tabs.length) { cur = -1; target = null; if (canvasTab) { showCanvasTab(); render(); return; } closePane(); return; }
   var was = k === cur;
   cur = Math.min(cur > k ? cur - 1 : cur, tabs.length - 1);
   target = tabs[cur].t;
   if (was) { var tb = tabs[cur]; if (tb.hist.length) { navTo = renew(tb.hist[tb.idx]); var f = frameFor(target); f.setAttribute("data-url", navTo); f.src = pub(navTo); } else load(); }
   render();
+}
+
+// ---- the Canvas tab (37-canvas.js) -------------------------------------------------------------------------------------------
+
+function canvasAllowed() { return !disabled() && !(window.site_settings && window.site_settings.canvasOff) && !!window.Canvas; }
+
+// the pane without a page: the canvas fills it
+function openBare() {
+  if (!overEditor() && typeof window.ShowTerminal === "function") window.ShowTerminal();
+  open = true;
+  var pane = el("preview-pane");
+  if (!pane) return;
+  pane.hidden = false;
+  placePane();
+  mobileTab(true);
+  syncButton();
+  setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50);
+  tellPane();
+}
+
+function showCanvasTab(name) {
+  if (!canvasAllowed()) return false;
+  if (!open) { loadPlugins(); openBare(); }
+  canvasTab = { name: String(name || (canvasTab && canvasTab.name) || "main") };
+  canvasShown = true;
+  hideDrawer(); // the canvas needs the room: the terminal under the pane (brought up by Run) goes
+  var pane = el("preview-pane");
+  if (pane) pane.classList.add("is-canvas");
+  toggleMenu(false); togglePorts(false);
+  window.Canvas.show(canvasTab.name);
+  render();
+  return true;
+}
+
+function leaveCanvas() {
+  if (!canvasShown) return;
+  canvasShown = false;
+  var pane = el("preview-pane");
+  if (pane) pane.classList.remove("is-canvas");
+  if (window.Canvas) window.Canvas.hide();
+}
+
+function closeCanvasTab() {
+  leaveCanvas();
+  canvasTab = null;
+  if (!tabs.length) { closePane(); return; }
+  if (cur < 0) cur = 0;
+  selectTab(cur);
 }
 
 function render() {
@@ -656,6 +730,7 @@ function goTyped(raw) {
 
 // An address typed in the bar loads in the tab that is shown (a browser's way); the tab keeps its history, so Back returns
 function navigateTo(t) {
+  if (canvasShown) leaveCanvas();
   var tb = tab();
   if (!open || !tb) { show(t); return; }
   tb.t = t; target = t;
@@ -701,6 +776,7 @@ function newBlankTab() {
   if (disabled()) return;
   var blank = tabs.some(function (x) { return x.t.kind === "n"; });
   if (open && !blank && tabs.length >= MAX_TABS) { if (window.notify) window.notify("Close a tab first: the Preview holds " + MAX_TABS + ".", { type: "info" }); return; }
+  hideDrawer(); // a blank tab ("Where to?") has the whole pane: the terminal that Run brought up under the pane goes
   show({ kind: "n" });
   togglePorts(false);
   focusAddress();
@@ -803,6 +879,8 @@ function copyAddress() {
 }
 
 function popOut() {
+  // the canvas has no address of its own: its whole view moves into the window (37-canvas.js)
+  if (canvasShown && window.Canvas && window.Canvas.popOut) { window.Canvas.popOut(); return; }
   if (!target || target.kind === "n") return;
   getToken().then(function (tok) {
     var tb = tab();
@@ -900,7 +978,7 @@ function syncButton() {
   var b = el("preview-button");
   if (!b) return;
   // for an .html file, or while a program of the workspace listens on a port
-  b.hidden = disabled() || !(canShow(fileOf()) || knownPorts.length > 0 || open);
+  b.hidden = disabled() || !(canShow(fileOf()) || knownPorts.length > 0 || open || !!(window.Canvas && window.Canvas.known && window.Canvas.known()));
   if (!b.hidden) firstUse();
   b.setAttribute("aria-pressed", open ? "true" : "false");
   var dot = el("preview-dot");
@@ -945,13 +1023,16 @@ function openPane(path) {
 
 function openPort(port, inPlace) {
   if (disabled()) return;
+  if (canvasShown) leaveCanvas();
   if (inPlace && open && tab()) navigateTo({ kind: "p", port: Number(port) });
   else show({ kind: "p", port: Number(port) });
 }
 
 function show(t) {
-  // the pane takes the terminal's place: the terminal is shown first if it was hidden, so that there is a place
-  if (typeof window.ShowTerminal === "function") window.ShowTerminal();
+  if (canvasShown) leaveCanvas(); // a page was asked for (by the user or by Genie): the pane shows it, the canvas tab stays beside it
+  // the pane takes the terminal's place: the terminal is shown first if it was hidden, so that there is a place. Docked over the editor it has its own
+  // place, and a terminal the user hid stays hidden (a blank tab, another page, the canvas must not bring it back)
+  if (!overEditor() && typeof window.ShowTerminal === "function") window.ShowTerminal();
   useTab(t);
   target = t;
   open = true;
@@ -974,6 +1055,7 @@ function show(t) {
 function closePane() {
   if (!open) return;
   open = false;
+  leaveCanvas(); canvasTab = null;
   var term = el("terminal-div");
   var pane = el("preview-pane");
   if (pane) pane.hidden = true;
@@ -1225,6 +1307,7 @@ function goTo(where) {
   if (why) return Promise.resolve({ ok: false, error: why });
   var tb = tab(), seq = loadSeq;
   if (!tb) return Promise.resolve({ ok: false, error: "the Preview shows no page yet" });
+  if (canvasShown) leaveCanvas(); // Genie goes to a page: the pane shows it
   if (where === "back") { if (tb.idx <= 0) return Promise.resolve({ ok: false, error: "there is no earlier page" }); goBack(); }
   else if (where === "forward") { if (tb.idx >= tb.hist.length - 1) return Promise.resolve({ ok: false, error: "there is no later page" }); goForward(); }
   else if (where && where.port) navigateTo({ kind: "p", port: Number(where.port) });
@@ -1256,6 +1339,11 @@ function snapshot(more) {
 
 window.Preview = {
   open: openPane,
+  openCanvas: showCanvasTab,
+  canvasShown: function () { return canvasShown; },
+  canvasName: function () { return canvasTab ? canvasTab.name : ""; },
+  startDrag: startDrag,
+  sync: syncButton,
   close: closePane,
   isOpen: function () { return open; },
   available: function () { return !disabled(); },

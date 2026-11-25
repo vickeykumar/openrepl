@@ -152,6 +152,11 @@ test("the list of actions is the one in the server's prompt", () => {
     "preview_resize",
     "preview_eval",
     "preview_storage",
+    "canvas_open",
+    "canvas_board",
+    "canvas_arrange",
+    "canvas_read",
+    "canvas_note",
     "store_suggest",
     "mcp_call",
     "need_tools",
@@ -726,4 +731,35 @@ test("space is drawing or nothing, for a click and for a drag", () => {
   assert.deepEqual(one('{"type":"preview_click","ref":"e1","space":"screen"}')!.actions, [{ type: "preview_click", ref: "e1" }]);
   assert.equal(one('{"type":"preview_click","ref":"e1","space":"world"}')!.actions.length, 0);
   assert.equal(one('{"type":"preview_drag","ref":"e1","dx":5,"space":3}')!.actions.length, 0);
+});
+
+test("the canvas actions are read with their names checked, and a board write asks like the editor", () => {
+  const s = ok('{"actions":[{"type":"canvas_open","name":"Login-Flow","plan":[{"board":"Login Page","title":"Login","w":1280,"h":800},{"title":"Dashboard"}]},{"type":"canvas_board","board":"dashboard","title":"Dashboard","html":"<h1>x</h1>","w":1280,"h":800},{"type":"canvas_arrange","boards":[{"board":"dashboard","x":0,"y":0}]}]}');
+  const s2 = ok('{"actions":[{"type":"canvas_read"},{"type":"canvas_note","board":"dashboard","text":"bigger"}]}');
+  s.actions.push(...s2.actions);
+  assert.deepEqual(s.actions.map((a: any) => a.type), ["canvas_open", "canvas_board", "canvas_arrange", "canvas_read", "canvas_note"]);
+  assert.equal(s.actions[0].name, "login-flow");
+  assert.deepEqual(s.actions[0].plan!.map((p) => p.board), ["login-page", "dashboard"]);
+  assert.equal(s.actions[1].w, 1280);
+  assert.equal(scopeOf(s.actions[0]), null);
+  assert.equal(scopeOf(s.actions[3]), null);
+  assert.equal(scopeOf(s.actions[1]), "editor");
+  assert.equal(scopeOf(s.actions[2]), "editor");
+  assert.equal(scopeOf(s.actions[4]), "editor");
+});
+
+test("a canvas action with a bad name or no page is left out and says why", () => {
+  const r = parseStep('{"actions":[{"type":"canvas_board","board":"Bad Name!","html":"x"},{"type":"canvas_board","board":"ok"},{"type":"canvas_arrange","boards":[]}]}');
+  const r2 = parseStep('{"actions":[{"type":"canvas_note","board":"a"},{"type":"canvas_note","pin":"k3x9","answer":"done"}]}');
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.step.actions.length, 0);
+    assert.equal(r.step.dropped.length, 3);
+  }
+  assert.equal(r2.ok, true);
+  if (r2.ok) {
+    assert.deepEqual(r2.step.actions.map((a) => a.type), ["canvas_note"]);
+    assert.equal(r2.step.actions[0].pin, "k3x9");
+    assert.equal(r2.step.dropped.length, 1);
+  }
 });

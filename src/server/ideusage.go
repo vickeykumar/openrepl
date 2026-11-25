@@ -169,7 +169,7 @@ func (server *Server) ideRoute(r *http.Request) (ideusage.Part, ideKind) {
 		return ideusage.Files, ideCount
 	case "chat/completions", "agent_bash":
 		return ideusage.Genie, ideHeavy
-	case "agent_files", "agent_restore", "genie_chats", "genie_ext", "genie_conn":
+	case "agent_files", "agent_restore", "genie_chats", "genie_canvas", "genie_ext", "genie_conn":
 		return ideusage.Genie, ideCount
 	}
 	return 0, ideNone
