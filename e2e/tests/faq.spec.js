@@ -24,7 +24,7 @@ test("the FAQ page has every question in topics, and search narrows them", async
   const shown = await page.locator(".faq-q:visible").count();
   expect(shown).toBeGreaterThanOrEqual(10);
   expect(shown).toBeLessThan(27);
-  await expect(page.locator(".faq-list h2:visible", { hasText: "Getting started" })).toHaveCount(0);
+  await expect(page.locator(".faq-list h2:visible", { hasText: "Sharing" })).toHaveCount(0);
   await page.locator("#faq-search").fill("zzzz nothing");
   await expect(page.locator("#faq-none")).toBeVisible();
 });
