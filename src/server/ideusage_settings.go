@@ -12,14 +12,14 @@ import (
 // The settings of the IDE data usage (SiteSettings.IDE*, LLD 20): how they are checked and turned into the numbers the meter uses.
 
 const (
-	maxIDETermMB   = 1024
-	maxIDEWindow   = 600
-	maxIDEGrace    = 600
-	maxIDELimitMB  = 1048576
-	maxIDEReserve  = 1024
-	maxIDESmallKB  = 16384
-	minIDEWarnPct  = 1
-	maxIDEWarnPct  = 99
+	maxIDETermMB  = 1024
+	maxIDEWindow  = 600
+	maxIDEGrace   = 600
+	maxIDELimitMB = 1048576
+	maxIDEReserve = 1024
+	maxIDESmallKB = 16384
+	minIDEWarnPct = 1
+	maxIDEWarnPct = 99
 )
 
 // checkIDEUsage says what is wrong with the IDE data usage settings, if anything.

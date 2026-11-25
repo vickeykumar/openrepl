@@ -144,8 +144,8 @@ type acct struct {
 	UID     string            `json:"uid,omitempty"`
 	Day     string            `json:"day"` // the day of Used
 	Used    Counts            `json:"used"`
-	Reserve int64             `json:"reserve"` // bytes sent past the limit, from the reserve
-	Last    int64             `json:"last"`    // milliseconds
+	Reserve int64             `json:"reserve"`        // bytes sent past the limit, from the reserve
+	Last    int64             `json:"last"`           // milliseconds
 	Hist    map[string]Counts `json:"hist,omitempty"` // by day, signed-in users only
 	Guest   bool              `json:"guest,omitempty"`
 	Admin   bool              `json:"admin,omitempty"` // seen as an admin (a preview address carries no cookie to say so)
@@ -177,11 +177,11 @@ const (
 
 // Meter keeps the counts.
 type Meter struct {
-	mu     sync.Mutex
-	store  Store
-	now    func() time.Time
-	accts  map[string]*acct
-	guest  map[string]Counts
+	mu           sync.Mutex
+	store        Store
+	now          func() time.Time
+	accts        map[string]*acct
+	guest        map[string]Counts
 	guestChanged bool
 	guestSaved   time.Time
 }
@@ -189,7 +189,7 @@ type Meter struct {
 const (
 	keepDays    = 90
 	maxAccts    = 200000
-	guestIdle   = 3 * time.Hour // a guest session that nobody used for this long is forgotten
+	guestIdle   = 3 * time.Hour    // a guest session that nobody used for this long is forgotten
 	saveEvery   = 30 * time.Minute // a signed-in account is saved at most this often: the database writes through to a remote one
 	tickEvery   = time.Minute
 	maxGuestAge = 400

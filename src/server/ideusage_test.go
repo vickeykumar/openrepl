@@ -84,7 +84,7 @@ func TestIDECountsWhatAnHTTPPartSendsAndNothingElse(t *testing.T) {
 	h := s.wrapIDEMeter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/ws_filebrowser?q=load&filepath=/x", nil))
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/agent_files", strings.NewReader(strings.Repeat("in", 1<<20)))) // what comes in is not counted
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/js/main.js", nil))                                               // the website is not counted
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/js/main.js", nil))                                              // the website is not counted
 	st := ideMeter.StateOf(ideusage.Identity{Key: "home1"})
 	if st.Parts["editor"] != int64(len(body)) || st.Parts["genie"] != int64(len(body)) || st.Parts["files"] != 0 || st.Used != 2*int64(len(body)) {
 		t.Fatalf("counted: %+v", st.Parts)
