@@ -2,7 +2,7 @@
 // (third party, served by this site and added to the previewed page by the server). Each one is tried on the owner's page and on a
 // collaborator's page of a shared session: each person has their own pane. Also the workspace and scratch numbers in the status bar.
 const { test, expect } = require("@playwright/test");
-const { waitForTerminalReady } = require("./helpers");
+const { waitForTerminalReady, unfoldPreviewBar } = require("./helpers");
 
 const stamp = Date.now().toString(36);
 const dir = `plug${stamp}`;
@@ -10,6 +10,7 @@ const PAGE = '<!doctype html><html><head><title>t</title></head><body><nav aria-
 
 async function ownerPage(browser) {
   const ctx = await browser.newContext();
+  await unfoldPreviewBar(ctx);
   const page = await ctx.newPage();
   await page.goto("/");
   await page.waitForFunction(() => window.FileBrowser && window.FileBrowser.ready() && window.Preview && window.EditorTabs && window.PreviewPlugins);
@@ -26,6 +27,7 @@ async function ownerPage(browser) {
 async function viewerPage(browser, owner) {
   const link = await owner.page.evaluate(() => document.getElementById("share-it").value);
   const ctx = await browser.newContext();
+  await unfoldPreviewBar(ctx);
   const page = await ctx.newPage();
   await page.goto("/" + new URL(link).hash);
   await page.waitForFunction(() => window.FileBrowser && window.FileBrowser.ready() && window.Preview && window.PreviewPlugins);
@@ -55,7 +57,8 @@ async function tryPlugins(page) {
   await expect(items).toHaveCount(4); // nav, h1, h2, h2
   await expect(items.nth(1)).toContainText("First heading");
   await items.nth(3).click();
-  await expect.poll(() => page.frameLocator("#preview-frame").locator("#last").evaluate((n) => Math.round(n.getBoundingClientRect().top))).toBeLessThan(400);
+  // the heading is now inside the page's window (how tall that is depends on the bar above it, so no fixed number)
+  await expect.poll(() => page.frameLocator("#preview-frame").locator("#last").evaluate((n) => Math.round(n.ownerDocument.defaultView.innerHeight - n.getBoundingClientRect().top))).toBeGreaterThan(0);
 }
 
 test("the Viewport switcher, the Console and the Outline work on the owner's page", async ({ browser }) => {

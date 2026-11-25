@@ -5,7 +5,7 @@
 const { test, expect } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
-const { waitForTerminalReady } = require("./helpers");
+const { waitForTerminalReady, unfoldPreviewBar } = require("./helpers");
 
 const root = path.join(__dirname, "..", "..", "src");
 const stamp = Date.now().toString(36);
@@ -55,6 +55,7 @@ async function localAssets(page) {
 }
 
 async function ready(page) {
+  await unfoldPreviewBar(page);
   await localAssets(page);
   await page.goto("/");
   await page.waitForFunction(() => window.FileBrowser && window.FileBrowser.ready() && window.Preview && window.EditorTabs);
