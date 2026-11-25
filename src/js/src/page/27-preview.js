@@ -445,6 +445,8 @@ function renderConsole() {
   var badge = el("preview-console-count");
   var n = tb ? tb.errs : 0;
   if (badge) { badge.hidden = !n; badge.textContent = n > 99 ? "99+" : String(n); }
+  var mb = el("preview-menu-button"); if (mb) mb.classList.toggle("is-alert", !!n);
+  syncFoldItems();
   var c1 = el("preview-tab-console-n"), c2 = el("preview-tab-requests-n");
   if (c1) c1.textContent = tb && tb.logs.length ? "(" + tb.logs.length + ")" : "";
   if (c2) c2.textContent = tb && tb.reqs.length ? "(" + tb.reqs.length + ")" : "";
@@ -765,6 +767,20 @@ function goHist(tb) {
 
 // ---- the menu, the pop-out window ---------------------------------------------------------------------------------------
 
+// the narrow pane (CSS folds Ports, Size and Console into the menu): the entries follow the controls they stand for
+var SIZES = ["fit", "phone", "tablet", "laptop"];
+function syncFoldItems() {
+  var ports = el("preview-ports-button"), size = el("preview-size"), cons = el("preview-console-button");
+  var mp = el("preview-menu-ports"), ms = el("preview-menu-size"), mc = el("preview-menu-console");
+  if (mp && ports) mp.hidden = ports.hidden;
+  if (ms && size) { ms.hidden = size.hidden; ms.textContent = "Size: " + size.options[size.selectedIndex].text; }
+  if (mc && cons) {
+    mc.hidden = cons.hidden;
+    var n = tab() ? tab().errs : 0;
+    mc.textContent = (cons.firstChild ? cons.firstChild.textContent : "Console") + (n ? " (" + (n > 99 ? "99+" : n) + ")" : "");
+  }
+}
+
 function toggleMenu(force) {
   var m = el("preview-menu"), b = el("preview-menu-button");
   if (!m) return;
@@ -773,6 +789,7 @@ function toggleMenu(force) {
   if (b) b.setAttribute("aria-expanded", show ? "true" : "false");
   if (show) {
     el("preview-opt-auto").checked = optAuto; el("preview-opt-run").checked = optRun;
+    syncFoldItems();
     var first = m.querySelector("input,button"); if (first) first.focus();
   }
 }
@@ -1087,6 +1104,12 @@ function init() {
   el("preview-menu").addEventListener("keydown", function (e) { if (e.key === "Escape") { toggleMenu(false); el("preview-menu-button").focus(); } });
   el("preview-opt-auto").addEventListener("change", function (e) { optAuto = e.target.checked; saveOpt("preview-opt-auto", optAuto); setStatus("live"); });
   el("preview-opt-run").addEventListener("change", function (e) { optRun = e.target.checked; saveOpt("preview-opt-run", optRun); setStatus("live"); });
+  el("preview-menu-ports").addEventListener("click", function () { toggleMenu(false); el("preview-ports-button").click(); });
+  el("preview-menu-console").addEventListener("click", function () { toggleMenu(false); el("preview-console-button").click(); });
+  el("preview-menu-size").addEventListener("click", function () {
+    var size = el("preview-size"); size.value = SIZES[(SIZES.indexOf(size.value) + 1) % SIZES.length];
+    size.dispatchEvent(new Event("change")); syncFoldItems();
+  });
   el("preview-menu-copy").addEventListener("click", function () { toggleMenu(false); copyAddress(); });
   el("preview-menu-popout").addEventListener("click", function () { toggleMenu(false); popOut(); });
   el("preview-menu-dock").addEventListener("click", function () { setDock(dock === "editor" ? "terminal" : "editor"); });

@@ -615,3 +615,33 @@ test("dragging the grip onto the editor docks the pane there, and onto the termi
   await expect(page.locator("#terminal-div > #preview-pane")).toHaveCount(1);
   await expect(page.locator(".preview-drop")).toBeHidden();
 });
+
+// The bar is one row on one centre line, 32 px tall, wide or narrow; narrow, Ports, Size and Console are in the More menu.
+test("the Preview bar's controls share one height and centre line, and fold into More when narrow", async ({ page }) => {
+  await ready(page);
+  await makeSite(page);
+  await openIndex(page);
+  await page.locator("#preview-button").click();
+  await expect(page.locator("#preview-pane")).toBeVisible();
+  const measure = () => page.locator(".preview-bar").evaluate((bar) => {
+    const boxes = Array.from(bar.children).filter((c) => c.offsetParent && !c.classList.contains("visually-hidden") && !c.classList.contains("preview-sep") && !c.classList.contains("preview-loading"))
+      .map((c) => { const r = c.getBoundingClientRect(); return { id: c.id, h: Math.round(r.height), mid: Math.round((r.top + r.height / 2) * 2) / 2 }; });
+    return boxes;
+  });
+  const flat = (boxes) => {
+    for (const b of boxes) expect(b.h, b.id).toBe(32);
+    const mids = new Set(boxes.map((b) => b.mid));
+    expect(mids.size, JSON.stringify(boxes)).toBe(1);
+  };
+  await page.setViewportSize({ width: 1500, height: 900 });
+  flat(await measure());
+  await expect(page.locator("#preview-ports-button")).toBeVisible();
+  await page.locator("#preview-pane").evaluate((p) => { p.style.width = "400px"; p.style.flex = "none"; });
+  await expect(page.locator("#preview-ports-button")).toBeHidden();
+  await expect(page.locator("#preview-size")).toBeHidden();
+  flat(await measure());
+  await page.locator("#preview-menu-button").click();
+  await expect(page.locator("#preview-menu-ports")).toBeVisible();
+  await page.locator("#preview-menu-size").click();
+  await expect(page.locator("#preview-size")).toHaveValue("phone");
+});
