@@ -144,10 +144,11 @@ func scanPIDs(home string) []int {
 	return out
 }
 
-// Unsandboxed says whether process pid runs with no seccomp filter at all. Under the network emulation every REPL of a
+// Unsandboxed says whether process pid runs with no seccomp filter of its own. Under the network emulation every REPL of a
 // workspace carries the filter of the emulation (the helper installs it before the REPL starts), so a REPL that has none,
 // in the network of the server, is one that was started without any sandbox: an admin's. Its programs listen on the
-// machine's real network.
+// machine's real network. "None of its own" means no more filters than the server has: in a Docker container with its
+// default seccomp profile every process, the server's too, already has one, and a count of zero would never be true there.
 func Unsandboxed(pid int) bool {
 	// the helper itself, before it has installed the filter, is not a REPL without a sandbox
 	if cmd, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/cmdline"); err != nil || strings.Contains(string(cmd), "--net-emulation") || strings.Contains(string(cmd), "--workspace") {
@@ -157,12 +158,29 @@ func Unsandboxed(pid int) bool {
 	if err != nil {
 		return false
 	}
-	for _, line := range strings.Split(string(b), "\n") {
-		if strings.HasPrefix(line, "Seccomp:") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "Seccomp:")) == "0"
+	self, _ := os.ReadFile("/proc/self/status")
+	return unsandboxedStatus(string(b), string(self))
+}
+
+// unsandboxedStatus works Unsandboxed out from the /proc/<pid>/status of the process and of the server.
+func unsandboxedStatus(pid, self string) bool {
+	field := func(status, name string) (int, bool) {
+		for _, line := range strings.Split(status, "\n") {
+			if strings.HasPrefix(line, name+":") {
+				n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, name+":")))
+				return n, err == nil
+			}
+		}
+		return 0, false
+	}
+	// newer kernels count the filters: the REPL has none beyond the ones the server was started with
+	if n, ok := field(pid, "Seccomp_filters"); ok {
+		if mine, ok2 := field(self, "Seccomp_filters"); ok2 {
+			return n <= mine
 		}
 	}
-	return false
+	mode, ok := field(pid, "Seccomp")
+	return ok && mode == 0
 }
 
 // SameNetwork says whether process pid is in the network namespace of this process (the server).
