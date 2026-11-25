@@ -768,7 +768,7 @@ function goHist(tb) {
 // ---- the menu, the pop-out window ---------------------------------------------------------------------------------------
 
 // the narrow pane (CSS folds Ports, Size and Console into the menu): the entries follow the controls they stand for
-var SIZES = ["fit", "phone", "tablet", "laptop"];
+var SIZE_ORDER = ["fit", "phone", "tablet", "laptop"];
 function syncFoldItems() {
   var ports = el("preview-ports-button"), size = el("preview-size"), cons = el("preview-console-button");
   var mp = el("preview-menu-ports"), ms = el("preview-menu-size"), mc = el("preview-menu-console");
@@ -1107,7 +1107,7 @@ function init() {
   el("preview-menu-ports").addEventListener("click", function () { toggleMenu(false); el("preview-ports-button").click(); });
   el("preview-menu-console").addEventListener("click", function () { toggleMenu(false); el("preview-console-button").click(); });
   el("preview-menu-size").addEventListener("click", function () {
-    var size = el("preview-size"); size.value = SIZES[(SIZES.indexOf(size.value) + 1) % SIZES.length];
+    var size = el("preview-size"); size.value = SIZE_ORDER[(SIZE_ORDER.indexOf(size.value) + 1) % SIZE_ORDER.length];
     size.dispatchEvent(new Event("change")); syncFoldItems();
   });
   el("preview-menu-copy").addEventListener("click", function () { toggleMenu(false); copyAddress(); });
