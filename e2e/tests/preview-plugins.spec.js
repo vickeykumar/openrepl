@@ -2,6 +2,8 @@
 // (third party, served by this site and added to the previewed page by the server). Each one is tried on the owner's page and on a
 // collaborator's page of a shared session: each person has their own pane. Also the workspace and scratch numbers in the status bar.
 const { test, expect } = require("@playwright/test");
+// The pane is a third of the page: a wide window keeps the whole Preview bar (a pane of 520 px or less folds Ports, Size and Console into More).
+test.use({ viewport: { width: 2200, height: 1000 } });
 const { waitForTerminalReady } = require("./helpers");
 
 const stamp = Date.now().toString(36);

@@ -1,6 +1,8 @@
 // The Preview pane (page/27-preview.js, server/preview.go, package livepreview): a web page of the workspace shown next
 // to the editor in a sandboxed frame, with its sibling files.
 const { test, expect } = require("@playwright/test");
+// The pane is a third of the page: a wide window keeps the whole Preview bar (a pane of 520 px or less folds Ports, Size and Console into More).
+test.use({ viewport: { width: 2200, height: 1000 } });
 const { waitForTerminalReady } = require("./helpers");
 
 const stamp = Date.now().toString(36);
@@ -633,7 +635,6 @@ test("the Preview bar's controls share one height and centre line, and fold into
     const mids = new Set(boxes.map((b) => b.mid));
     expect(mids.size, JSON.stringify(boxes)).toBe(1);
   };
-  await page.setViewportSize({ width: 1500, height: 900 });
   flat(await measure());
   await expect(page.locator("#preview-ports-button")).toBeVisible();
   await page.locator("#preview-pane").evaluate((p) => { p.style.width = "400px"; p.style.flex = "none"; });
