@@ -57,8 +57,8 @@ async function waitForTerminalReady(page) {
 // the site): the controls show and the bar wraps instead, so nothing overflows onto the terminal.
 async function unfoldPreviewBar(target) {
   await target.addInitScript(() => {
-    const css = "html .preview-bar{flex-wrap:wrap !important}html .preview-bar .preview-fold{display:inline-flex !important}" +
-      "html .preview-bar select.preview-fold{display:inline-block !important}html .preview-bar .preview-sep.preview-fold{display:block !important}";
+    const css = "html .preview-bar{flex-wrap:wrap !important}html .preview-bar .preview-fold:not([hidden]){display:inline-flex !important}" +
+      "html .preview-bar select.preview-fold:not([hidden]){display:inline-block !important}html .preview-bar .preview-sep.preview-fold{display:block !important}";
     document.addEventListener("DOMContentLoaded", () => { const st = document.createElement("style"); st.id = "e2e-unfold"; st.textContent = css; document.head.appendChild(st); });
   });
 }
