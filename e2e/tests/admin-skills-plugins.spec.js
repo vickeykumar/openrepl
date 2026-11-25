@@ -20,6 +20,7 @@ async function stub(page, measures, installs, conn) {
   const json = (r, o) => r.fulfill({ contentType: "application/json", body: JSON.stringify(o) });
   let settings = Object.assign(fixture("admin-settings.json"), { pluginCatalogue: [{ id: "code-review-kit", title: "Code review kit" }, { id: "git-helper", title: "Git helper" }] });
   await page.route("**/admin/plugin-installs", (r) => json(r, installs));
+  await page.route("**/admin/ide-usage**", (r) => json(r, { day: "2026-11-25", total: 0, parts: {}, top: [] }));
   const cst = { answers: [], requests: (conn && conn.requests) || [] };
   st.conn = cst;
   await page.route("**/admin/connection-requests", (r) => {

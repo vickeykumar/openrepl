@@ -29,6 +29,7 @@ async function stub(page, st) {
   await page.route("**/admin/keys", (r) => json(r, JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "admin-keys.json"), "utf8"))));
   await page.route("**/admin/admins", (r) => json(r, JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "admin-admins.json"), "utf8"))));
   await page.route("**/admin/plugin-installs", (r) => json(r, { entries: [], counts: [], days: 90 }));
+  await page.route("**/admin/ide-usage**", (r) => json(r, { day: "2026-11-25", total: 0, parts: {}, top: [] }));
   await page.route(/\/admin\/(health|stats|audit|feedback|workers|sessions|jobs)(\?.*)?$/, (r) => json(r, {}));
   await page.route("**/admin/integrations", (r) => {
     if (r.request().method() === "GET") return json(r, { integrations: st.list, canStore: true, redirect: "https://openrepl.com/genie_conn_oauth", requests: 1 });
