@@ -968,6 +968,7 @@
       }
       form.autoSmall = autoSelect('f-auto-small', 'Auto: small model', settings.genie.autoSmall);
       form.autoStrong = autoSelect('f-auto-strong', 'Auto: strong model', settings.genie.autoStrong);
+      var wantedAuto = { small: settings.genie.autoSmall || '', strong: settings.genie.autoStrong || '' }; // an added model is not in the list until its rows are drawn
       form.autoDefault = h('select', { class: 'field', id: 'f-auto-default', 'aria-label': 'Auto is the default for', onchange: update },
         [['new', 'New users only'], ['all', 'Everybody who has not chosen a model'], ['none', 'Nobody (they choose Auto themselves)']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
       form.autoDefault.value = settings.genie.autoDefault || 'new';
@@ -1202,6 +1203,23 @@
         defModel.value = keep;
         if (defModel.value !== keep || (keep && !isModelOn(keep))) defModel.value = '';
       }
+      // Auto's two models can be any model that is on, built in or added (an added model, such as one of OpenRouter's, is in the list with the others)
+      function syncAutoModels() {
+        [['small', form.autoSmall], ['strong', form.autoStrong]].forEach(function (pair) {
+          var sel = pair[1], keep = sel.value || wantedAuto[pair[0]];
+          wantedAuto[pair[0]] = '';
+          Array.prototype.slice.call(sel.options).forEach(function (o) { if (o.getAttribute('data-custom')) sel.removeChild(o); });
+          form.custom.forEach(function (r) {
+            if (!r.id) return;
+            var o = h('option', { value: r.id, text: r.name.value.trim() || r.id });
+            o.setAttribute('data-custom', '1');
+            sel.appendChild(o);
+          });
+          Array.prototype.forEach.call(sel.options, function (o) { o.disabled = !!o.value && !isModelOn(o.value); });
+          sel.value = keep;
+          if (sel.value !== keep || (keep && !isModelOn(keep))) sel.value = '';
+        });
+      }
 
       // ---- the models that may be used in Agent mode (the ticks in the rows of the Genie card; agent_models.go on the server)
       var agentNote = h('p', { class: 'callout', hidden: true, text: 'Tick Agent mode on at least one model: Agent mode needs one. Models you added are ticked in their own row (Added models).' });
@@ -1320,6 +1338,7 @@
         if (form.host2.value === form.host1.value) form.host2.value = '';
         // a model that is off cannot be the default
         syncDefaultModels();
+        syncAutoModels();
         syncAgent();
         Array.prototype.forEach.call(langGrid.children, function (lab) {
           lab.className = form.langs[lab.getAttribute('data-lang')].checked ? '' : 'off';
@@ -1731,6 +1750,7 @@
       if (plugsState) drawPlugs(plugsState); // the list came before the form was drawn
       late.keys = drawKeys;
       late.admins = drawAdmins;
+      syncAutoModels();
       syncDefaultModels(); // the lists that follow other controls, as they will be, before the starting values of the sections are taken
       syncAgent();
       var shell = sectioned(out, bar);
