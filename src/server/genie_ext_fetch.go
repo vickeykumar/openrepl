@@ -279,6 +279,9 @@ func packageFromZip(data []byte, subpath, source string) (*pluginPackage, error)
 var githubPart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 var githubRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 
+// isSkillFile says whether a file name is the one that makes a folder a skill.
+func isSkillFile(name string) bool { return strings.EqualFold(name, "SKILL.md") }
+
 // parseGitHubLink reads a GitHub link: a repository (https://github.com/owner/repository), or a folder of it
 // (https://github.com/owner/repository/tree/<branch>/<folder>). `rest` is what follows "tree": the branch and the folder together, because a branch
 // name may hold slashes (feature/x) and then nothing in the link says where the branch ends. ok is false for a link that is not GitHub's.
@@ -295,10 +298,20 @@ func parseGitHubLink(raw string) (owner, repo string, rest []string, ok bool, er
 		return "", "", nil, false, fmt.Errorf("the link cannot name a port")
 	}
 	host := strings.ToLower(u.Hostname())
-	if host != "github.com" && host != "www.github.com" {
-		return "", "", nil, false, nil
-	}
 	segs := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if host == "raw.githubusercontent.com" && len(segs) >= 4 && isSkillFile(segs[len(segs)-1]) {
+		// the raw address of a SKILL.md: owner/repository/<branch>/<folders>/SKILL.md, or .../refs/heads/<branch>/...
+		inner := segs[2 : len(segs)-1]
+		if len(inner) >= 3 && inner[0] == "refs" && inner[1] == "heads" {
+			inner = inner[2:]
+		}
+		segs = append(append([]string{segs[0], segs[1], "tree"}, inner...))
+	} else if host != "github.com" && host != "www.github.com" {
+		return "", "", nil, false, nil
+	} else if len(segs) >= 5 && segs[2] == "blob" && isSkillFile(segs[len(segs)-1]) {
+		// the link of a SKILL.md file (github.com/owner/repository/blob/<branch>/<folders>/SKILL.md) means the folder it is in
+		segs = append(append([]string{}, segs[:2]...), append([]string{"tree"}, segs[3:len(segs)-1]...)...)
+	}
 	if len(segs) < 2 || !githubPart.MatchString(segs[0]) {
 		return "", "", nil, true, fmt.Errorf("a GitHub link looks like https://github.com/owner/repository")
 	}

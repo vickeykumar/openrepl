@@ -877,3 +877,27 @@ func TestTheServersGitHubTokenGoesToGitHubsAPIOnlyAndNeverToADownloadAddress(t *
 		t.Errorf("a token was sent to another address: %v", seen)
 	}
 }
+
+// the link of a SKILL.md file means the folder it is in; the links that worked before still work, and a link of any other file is refused
+func TestTheLinkOfASkillFileMeansItsFolder(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://github.com/acme/kit/blob/main/plugins/review/skills/review/SKILL.md":                 "acme/kit|main/plugins/review/skills/review",
+		"https://github.com/acme/kit/blob/main/plugins/review/skills/review/skill.md?plain=1#L3":      "acme/kit|main/plugins/review/skills/review",
+		"https://github.com/acme/kit/blob/main/SKILL.md":                                              "acme/kit|main",
+		"https://raw.githubusercontent.com/acme/kit/refs/heads/main/plugins/review/skills/r/SKILL.md": "acme/kit|main/plugins/review/skills/r",
+		"https://raw.githubusercontent.com/acme/kit/main/plugins/review/SKILL.md":                     "acme/kit|main/plugins/review",
+		"https://github.com/acme/kit/tree/main/plugins/review":                                        "acme/kit|main/plugins/review",
+		"https://github.com/acme/kit":                                                                 "acme/kit|",
+	} {
+		o, r, rest, ok, err := parseGitHubLink(in)
+		if err != nil || !ok || o+"/"+r+"|"+strings.Join(rest, "/") != want {
+			t.Errorf("%s: %s/%s %v %v %v", in, o, r, rest, ok, err)
+		}
+	}
+	for _, bad := range []string{"https://github.com/acme/kit/blob/main/plugins/review/README.md", "https://github.com/acme/kit/blob/SKILL.md",
+		"https://raw.githubusercontent.com/acme/kit/main/README.md"} {
+		if _, _, _, ok, err := parseGitHubLink(bad); err == nil && ok {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+}
