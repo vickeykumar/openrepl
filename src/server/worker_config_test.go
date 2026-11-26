@@ -214,6 +214,23 @@ func TestTheGitHubTokenReachesTheWorkers(t *testing.T) {
 	if utils.GitHubToken() != "ghp_workersown0123456789" {
 		t.Fatal("a worker kept the gateway's token after it was removed")
 	}
+	// the GitHub App's id and secret travel the same way
+	t.Setenv("OPENREPL_GITHUB_APP_CLIENT_ID", "")
+	t.Setenv("OPENREPL_GITHUB_APP_CLIENT_SECRET", "")
+	t.Cleanup(func() { utils.SetGitHubAppOverride("", "") })
+	if id, _ := utils.GitHubApp(); id != "" {
+		t.Fatal("none by default")
+	}
+	applyWorkerConfig(&tunnel.WorkerConfig{Revision: 16, GitHubAppID: "appid", GitHubAppSecret: "appsecret"})
+	if id, sec := utils.GitHubApp(); id != "appid" || sec != "appsecret" {
+		t.Fatalf("a worker did not follow the gateway's app: %q %q", id, sec)
+	}
+	utils.SetGitHubAppOverride("", "")
+	t.Setenv("OPENREPL_GITHUB_APP_CLIENT_ID", "gwid")
+	t.Setenv("OPENREPL_GITHUB_APP_CLIENT_SECRET", "gwsecret")
+	if cfg := s.gatewayWorkerConfig(); cfg.GitHubAppID != "gwid" || cfg.GitHubAppSecret != "gwsecret" {
+		t.Fatalf("the gateway did not hand its app over: %+v", cfg)
+	}
 }
 
 // the switches and numbers a worker's own code reads reach it with the other site rules

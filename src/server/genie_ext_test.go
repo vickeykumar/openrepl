@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"utils"
 )
 
 type extEnv struct {
@@ -368,7 +370,7 @@ func TestALinkIsTurnedIntoAFetchAddressOrRefused(t *testing.T) {
 
 // githubViaFetchZip is the GitHub reader of the tests that stand in for fetchZip: it asks fetchZip for the zip at the address the reader used to
 // use, and keeps what the real reader keeps (plugin.json, skills/*.md and knowledge/*.md of the folder that holds plugin.json).
-func githubViaFetchZip(owner, repo string, rest []string) (map[string][]byte, int, error) {
+func githubViaFetchZip(owner, repo string, rest []string, userTok string) (map[string][]byte, int, error) {
 	ref := "HEAD"
 	if len(rest) > 0 {
 		ref = rest[0]
@@ -449,6 +451,8 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 			listing(w, []map[string]interface{}{file("review-it.md", skill), file("notes.txt", "x")})
 		case "plugins/review/knowledge":
 			listing(w, []map[string]interface{}{file("rules.md", note)})
+		case "skills/frontend-design":
+			listing(w, []map[string]interface{}{file("SKILL.md", ""), file("LICENSE.txt", "MIT")})
 		case "plugins/empty":
 			listing(w, []map[string]interface{}{file("README.md", "# nothing")})
 		case "plugins/bigfile":
@@ -473,6 +477,8 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 			w.Write([]byte(linkManifest))
 		case "review-it.md":
 			w.Write([]byte(skill))
+		case "SKILL.md":
+			w.Write([]byte(otherToolSkill))
 		case "rules.md":
 			w.Write([]byte(note))
 		default:
@@ -493,7 +499,7 @@ func TestAGitHubFolderIsReadFileByFileAndABranchWithASlashIsFound(t *testing.T) 
 	fetchZip = func(u string) ([]byte, error) { return nil, fmt.Errorf("the link answered 404") }
 	defer func() { githubAPIBase, fetchZip = oldBase, oldZip }()
 	// the link does not say where the branch ends: feature/x/plugins/review is tried as feature + x/plugins/review (not there), then feature/x + plugins/review
-	pkg, err := packageFromLink("https://github.com/acme/kit/tree/feature/x/plugins/review")
+	pkg, err := packageFromLink("https://github.com/acme/kit/tree/feature/x/plugins/review", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,7 +515,7 @@ func TestAGitHubFolderIsReadFileByFileAndABranchWithASlashIsFound(t *testing.T) 
 	}
 	// the repository itself, at its default branch: no ref in the request
 	g.asked = nil
-	if p, err := packageFromLink("https://github.com/acme/kit"); err != nil || len(p.Skills) != 1 || g.asked[0] != ":" {
+	if p, err := packageFromLink("https://github.com/acme/kit", ""); err != nil || len(p.Skills) != 1 || g.asked[0] != ":" {
 		t.Errorf("the repository: %v %v", err, g.asked)
 	}
 	for name, tc := range map[string]struct{ link, want string }{
@@ -519,7 +525,7 @@ func TestAGitHubFolderIsReadFileByFileAndABranchWithASlashIsFound(t *testing.T) 
 		"a download that is not GitHub's":        {"https://github.com/acme/kit/tree/feature/x/plugins/evilurl", "no download address GitHub gave"},
 		"the limit without a token, then no zip": {"https://github.com/acme/kit/tree/rate/plugins/review", "may not exist"},
 	} {
-		if _, err := packageFromLink(tc.link); err == nil || !strings.Contains(err.Error(), tc.want) {
+		if _, err := packageFromLink(tc.link, ""); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: %v (wanted %q)", name, err, tc.want)
 		}
 	}
@@ -833,7 +839,9 @@ func TestWhenGitHubsAPILimitIsReachedASmallRepositoryIsReadAsAZipAndABigOneSaysW
 	zipBytes := makeZip(t, map[string]string{"kit-feature-x/plugins/review/plugin.json": linkManifest, "kit-feature-x/plugins/review/skills/review-it.md": skill, "kit-feature-x/README.md": "# hi"})
 	oldGH, oldZip := githubFiles, fetchZip
 	defer func() { githubFiles, fetchZip = oldGH, oldZip }()
-	githubFiles = func(owner, repo string, rest []string) (map[string][]byte, int, error) { return nil, 0, errGitHubRate }
+	githubFiles = func(owner, repo string, rest []string, userTok string) (map[string][]byte, int, error) {
+		return nil, 0, errGitHubRate
+	}
 	var asked []string
 	fetchZip = func(u string) ([]byte, error) {
 		asked = append(asked, strings.TrimPrefix(u, "https://codeload.github.com/acme/kit/zip/"))
@@ -842,7 +850,7 @@ func TestWhenGitHubsAPILimitIsReachedASmallRepositoryIsReadAsAZipAndABigOneSaysW
 		}
 		return zipBytes, nil
 	}
-	pkg, err := packageFromLink("https://github.com/acme/kit/tree/feature/x/plugins/review")
+	pkg, err := packageFromLink("https://github.com/acme/kit/tree/feature/x/plugins/review", "")
 	if err != nil || pkg.Manifest.Name != "acme-review" || len(pkg.Skills) != 1 {
 		t.Fatalf("the fallback: %v", err)
 	}
@@ -851,12 +859,12 @@ func TestWhenGitHubsAPILimitIsReachedASmallRepositoryIsReadAsAZipAndABigOneSaysW
 	}
 	// a repository too big for the zip limit: the reason says both things
 	fetchZip = func(u string) ([]byte, error) { return nil, fmt.Errorf("the download is bigger than 2 MB") }
-	if _, err := packageFromLink("https://github.com/acme/kit"); err == nil || !strings.Contains(err.Error(), "bigger than 2 MB") || !strings.Contains(err.Error(), "OPENREPL_GITHUB_TOKEN") {
+	if _, err := packageFromLink("https://github.com/acme/kit", ""); err == nil || !strings.Contains(err.Error(), "bigger than 2 MB") || !strings.Contains(err.Error(), "connect your GitHub account") {
 		t.Errorf("a big repository: %v", err)
 	}
 	// nothing there at all
 	fetchZip = func(u string) ([]byte, error) { return nil, fmt.Errorf("the link answered 404") }
-	if _, err := packageFromLink("https://github.com/acme/kit/tree/nope/x"); err == nil || !strings.Contains(err.Error(), "may not exist") {
+	if _, err := packageFromLink("https://github.com/acme/kit/tree/nope/x", ""); err == nil || !strings.Contains(err.Error(), "may not exist") {
 		t.Errorf("nothing there: %v", err)
 	}
 }
@@ -872,7 +880,7 @@ func TestTheServersGitHubTokenGoesToGitHubsAPIOnlyAndNeverToADownloadAddress(t *
 	defer srv.Close()
 	t.Setenv("OPENREPL_GITHUB_TOKEN", "ghp_servertoken")
 	// the test server is not api.github.com, so no token goes to it (the real API address is the only one that gets it)
-	getURL(srv.URL+"/x", 1024)
+	getURL(srv.URL+"/x", 1024, "")
 	if len(seen) != 1 || seen[0] != "" {
 		t.Errorf("a token was sent to another address: %v", seen)
 	}
@@ -899,5 +907,140 @@ func TestTheLinkOfASkillFileMeansItsFolder(t *testing.T) {
 		if _, _, _, ok, err := parseGitHubLink(bad); err == nil && ok {
 			t.Errorf("%q was accepted", bad)
 		}
+	}
+}
+
+// GitHub's API is asked with the server's token, then the GitHub App's client id and secret, then the person's own token, moving on when one
+// is refused or its limit is reached; a download address never gets a credential
+func TestGitHubCredentialsAreTriedInOrderAndOnlyOnTheAPI(t *testing.T) {
+	extAllowLoopback = true
+	defer func() { extAllowLoopback = false }()
+	var seen []string
+	refuse := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		a := r.Header.Get("Authorization")
+		kind := "none"
+		switch {
+		case strings.HasPrefix(a, "Bearer "):
+			kind = a
+		case strings.HasPrefix(a, "Basic "):
+			kind = "basic"
+		}
+		seen = append(seen, kind)
+		if refuse[kind] {
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+	oldPrefix := githubAPIPrefix
+	githubAPIPrefix = srv.URL + "/"
+	defer func() { githubAPIPrefix = oldPrefix }()
+	t.Setenv("OPENREPL_GITHUB_TOKEN", "")
+	t.Setenv("OPENREPL_GITHUB_APP_CLIENT_ID", "")
+	t.Setenv("OPENREPL_GITHUB_APP_CLIENT_SECRET", "")
+	utils.SetGitHubOverride("")
+	utils.SetGitHubAppOverride("", "")
+	run := func(user string) (int, string) {
+		seen = nil
+		_, st, err := getURL(srv.URL+"/x", 1024, user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st, strings.Join(seen, ",")
+	}
+	if st, got := run(""); st != 200 || got != "none" {
+		t.Fatalf("no credential at all: %d %s", st, got)
+	}
+	t.Setenv("OPENREPL_GITHUB_TOKEN", "ghp_server")
+	t.Setenv("OPENREPL_GITHUB_APP_CLIENT_ID", "appid")
+	t.Setenv("OPENREPL_GITHUB_APP_CLIENT_SECRET", "appsecret")
+	if st, got := run("ghu_person"); st != 200 || got != "Bearer ghp_server" {
+		t.Fatalf("the server's token first: %d %s", st, got)
+	}
+	refuse["Bearer ghp_server"] = true
+	if st, got := run("ghu_person"); st != 200 || got != "Bearer ghp_server,basic" {
+		t.Fatalf("the app next: %d %s", st, got)
+	}
+	refuse["basic"] = true
+	if st, got := run("ghu_person"); st != 200 || got != "Bearer ghp_server,basic,Bearer ghu_person" {
+		t.Fatalf("the person's token last: %d %s", st, got)
+	}
+	refuse["Bearer ghu_person"] = true
+	if st, got := run("ghu_person"); st != 403 || got != "Bearer ghp_server,basic,Bearer ghu_person" {
+		t.Fatalf("all refused: %d %s", st, got)
+	}
+	if st, got := run(""); st != 403 || got != "Bearer ghp_server,basic" {
+		t.Fatalf("without a connection: %d %s", st, got)
+	}
+	// an address that is not GitHub's API gets nothing
+	githubAPIPrefix = "https://api.github.com/"
+	refuse = map[string]bool{}
+	seen = nil
+	getURL(srv.URL+"/download", 1024, "ghu_person")
+	if strings.Join(seen, ",") != "none" {
+		t.Fatalf("a download address got a credential: %v", seen)
+	}
+}
+
+// a SKILL.md as another tool writes it: a license line, a description over several lines and longer than the menu shows
+const otherToolSkill = "---\nname: frontend-design\ndescription: >\n  Guidance for distinctive, intentional visual design when building new UI or reshaping an existing one.\n  Helps with aesthetic direction, typography, and making choices that do not read as templated defaults.\nlicense: Complete terms in LICENSE.txt\nallowed-tools: Read, Write\n---\n\n# Frontend Design\n\nPick a direction and commit to it.\n"
+
+func TestASkillFileFromAnotherToolIsMadeIntoThisSitesFormat(t *testing.T) {
+	norm, err := normaliseSkillMD(otherToolSkill)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, body, err := parseSkill(norm)
+	if err != nil || info.Name != "frontend-design" || info.Mode != "chat" || !strings.Contains(body, "Pick a direction") {
+		t.Fatalf("%+v %q %v", info, body, err)
+	}
+	if strings.Contains(norm, "license") || strings.Contains(norm, "allowed-tools") {
+		t.Errorf("the lines the format does not know are still there:\n%s", norm)
+	}
+	if r := []rune(info.Description); len(r) > maxSkillDesc || !strings.HasSuffix(info.Description, "\u2026") || !strings.HasPrefix(info.Description, "Guidance for distinctive") {
+		t.Errorf("the description: %q", info.Description)
+	}
+	for _, bad := range []string{"# no header\n", "---\nname: x\n"} {
+		if _, err := normaliseSkillMD(bad); err == nil {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+	if _, err := lonePackageFiles("---\nname: Not Valid\ndescription: d\n---\ntext\n"); err == nil {
+		t.Error("a name the site does not allow was accepted")
+	}
+}
+
+// a folder with only a SKILL.md (no plugin.json) is a plugin of one skill, from GitHub's API and from a zip
+func TestAFolderWithOnlyASkillFileIsAPluginOfOneSkill(t *testing.T) {
+	extAllowLoopback = true
+	defer func() { extAllowLoopback = false }()
+	g := newFakeGitHub(t)
+	oldBase, oldZip := githubAPIBase, fetchZip
+	githubAPIBase = g.srv.URL
+	fetchZip = func(u string) ([]byte, error) { return nil, fmt.Errorf("the link answered 404") }
+	defer func() { githubAPIBase, fetchZip = oldBase, oldZip }()
+	pkg, err := packageFromLink("https://github.com/acme/kit/tree/feature/x/skills/frontend-design", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pkg.Manifest.Name != "frontend-design" || pkg.Manifest.Title != "Frontend design" || len(pkg.Skills) != 1 || pkg.Skills[0].Name != "frontend-design" || pkg.Ignored != 1 {
+		t.Fatalf("%+v ignored %d", pkg.Manifest, pkg.Ignored)
+	}
+	// the blob link of the file means the same folder
+	if p2, err := packageFromLink("https://github.com/acme/kit/blob/feature/x/skills/frontend-design/SKILL.md", ""); err != nil || p2.Manifest.Name != "frontend-design" {
+		t.Fatalf("the blob link: %v", err)
+	}
+	// from a zip (the API's limit was reached)
+	zipBytes := makeZip(t, map[string]string{"kit-feature-x/skills/frontend-design/SKILL.md": otherToolSkill, "kit-feature-x/skills/frontend-design/LICENSE.txt": "MIT", "kit-feature-x/README.md": "# hi"})
+	pz, err := packageFromZip(zipBytes, "skills/frontend-design", "link:x")
+	if err != nil || pz.Manifest.Name != "frontend-design" || len(pz.Skills) != 1 || pz.Ignored != 1 {
+		t.Fatalf("the zip: %v %+v", err, pz)
+	}
+	// a folder with neither is still refused
+	if _, err := packageFromZip(makeZip(t, map[string]string{"kit-main/README.md": "# hi"}), "", "link:x"); err == nil {
+		t.Error("a zip with no plugin and no skill was accepted")
 	}
 }

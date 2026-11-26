@@ -285,6 +285,7 @@ func (server *Server) workerConfigWith(disabled []string) *tunnel.WorkerConfig {
 	if level == "" {
 		level = "info" // what normalize makes of an empty level; the revision must not tell them apart
 	}
+	appID, appSecret := utils.GitHubApp()
 	cfg := &tunnel.WorkerConfig{
 		ColorOfTheDay:      s.ColorOfTheDay,
 		AccentColor:        s.AccentColor,
@@ -297,6 +298,8 @@ func (server *Server) workerConfigWith(disabled []string) *tunnel.WorkerConfig {
 		Egress:             s.EgressOn,
 		PreviewBaseURL:     s.PreviewBaseURL,
 		GitHubToken:        utils.GitHubToken(),
+		GitHubAppID:        appID,
+		GitHubAppSecret:    appSecret,
 
 		PreviewOff:              s.PreviewOff,
 		PreviewGuestsOff:        s.PreviewGuestsOff,

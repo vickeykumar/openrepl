@@ -354,3 +354,56 @@ func TestAGitHubTokenSavedInTheDashboardIsUsedToReadPluginsAndNeverComesBack(t *
 		t.Fatalf("removing it: %d from %q", w.Code, utils.KeySource("github"))
 	}
 }
+
+func TestTheGitHubAppIdAndSecretSavedInTheDashboardWinAndTheSecretIsCheckedWithGitHub(t *testing.T) {
+	_, h := adminTestServer(t)
+	keysEnv(t)
+	t.Setenv("OPENREPL_GITHUB_APP_CLIENT_ID", "envid0123456789")
+	t.Setenv("OPENREPL_GITHUB_APP_CLIENT_SECRET", "envsecret0123456789")
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, _ := r.BasicAuth()
+		got = append(got, u+":"+p)
+		if p != "dashsecret0123456789" {
+			w.WriteHeader(401)
+		}
+	}))
+	defer srv.Close()
+	old := gitHubKeyCheckURL
+	gitHubKeyCheckURL = srv.URL
+	defer func() { gitHubKeyCheckURL = old }()
+	t.Cleanup(func() { utils.SetGitHubAppOverride("", "") })
+
+	if id, sec := utils.GitHubApp(); id != "envid0123456789" || sec != "envsecret0123456789" || utils.KeySource("github-app-id") != "env" {
+		t.Fatalf("before: %q %q", id, sec)
+	}
+	if w := postKey(h, "github-app-id", "dashid0123456789"); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	if w := postKey(h, "github-app-secret", "wrongsecret0123456789"); w.Code != 400 {
+		t.Fatalf("a refused secret was saved: %d", w.Code)
+	}
+	if w := postKey(h, "github-app-secret", "dashsecret0123456789"); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	if len(got) != 2 || got[1] != "dashid0123456789:dashsecret0123456789" {
+		t.Fatalf("GitHub was asked with %v", got)
+	}
+	if id, sec := utils.GitHubApp(); id != "dashid0123456789" || sec != "dashsecret0123456789" || utils.KeySource("github-app-secret") != "dashboard" {
+		t.Fatalf("in use: %q %q", id, sec)
+	}
+	// the connector's sign-in reads them too
+	if oauthEnv(utils.EnvGitHubAppID) != "dashid0123456789" || oauthEnv(utils.EnvGitHubAppSecret) != "dashsecret0123456789" {
+		t.Fatal("the sign-in does not use the saved client")
+	}
+	for _, path := range []string{"/admin/keys", "/admin/settings", "/admin/health", "/admin/audit"} {
+		if b := get(h, path).Body.String(); strings.Contains(b, "dashsecret0123456789") {
+			t.Errorf("%s shows the secret", path)
+		}
+	}
+	postKey(h, "github-app-id", "")
+	postKey(h, "github-app-secret", "")
+	if id, _ := utils.GitHubApp(); id != "envid0123456789" {
+		t.Fatalf("the environment's client is not back: %q", id)
+	}
+}

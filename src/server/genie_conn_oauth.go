@@ -67,10 +67,22 @@ func (o *oauthDef) configured() bool {
 	if o.Auto || o.ClientID != "" {
 		return true
 	}
-	if o.ClientIDEnv == "" || strings.TrimSpace(os.Getenv(o.ClientIDEnv)) == "" {
+	if o.ClientIDEnv == "" || strings.TrimSpace(oauthEnv(o.ClientIDEnv)) == "" {
 		return false
 	}
-	return o.ClientSecretEnv == "" || os.Getenv(o.ClientSecretEnv) != ""
+	return o.ClientSecretEnv == "" || oauthEnv(o.ClientSecretEnv) != ""
+}
+
+// oauthEnv reads a variable of the environment that holds a client id or secret: the GitHub App's two may also be saved in the dashboard (API keys),
+// and that wins.
+func oauthEnv(name string) string {
+	switch name {
+	case utils.EnvGitHubAppID:
+		return utils.GitHubAppID()
+	case utils.EnvGitHubAppSecret:
+		return utils.GitHubAppSecret()
+	}
+	return os.Getenv(name)
 }
 
 // ---- the state of a sign-in that was started -------------------------------------------------------------------------------------------------

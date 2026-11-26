@@ -103,6 +103,9 @@ type WorkerConfig struct {
 	// GitHubToken reads plugins from a link on the worker (the fetch runs where the workspace is). A secret: kept in memory on the worker,
 	// never written to its disk, never logged.
 	GitHubToken string `json:"github_token,omitempty"`
+	// the GitHub App's client id and secret (the connector's sign-in), a secret too: Basic authentication to GitHub's API when no token is set
+	GitHubAppID     string `json:"github_app_id,omitempty"`
+	GitHubAppSecret string `json:"github_app_secret,omitempty"`
 	// The switches and numbers the worker's own code reads (the preview token, the App Store, the canvas, the Genie event log): the
 	// admin's values, so that the worker does not run on the built-in ones. 0 or empty means the built-in value.
 	PreviewOff              bool     `json:"preview_off,omitempty"`
