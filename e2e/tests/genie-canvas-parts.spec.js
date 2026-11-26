@@ -446,4 +446,31 @@ test.describe("tools on a part", () => {
     await page.keyboard.up("Shift");
     await expect(bar(page).locator(".npart")).toContainText("3 parts");
   });
+
+  test("dragging a part snaps to the edges and centres of the other parts, draws a guide, and Alt turns the snapping off", async ({ page }) => {
+    await ready(page);
+    const box = (sel) => frame(page).locator(sel).boundingBox();
+    const shift = async () => { const m = /id="alt"[^>]*translate:\s*(-?[\d.]+)px (-?[\d.]+)px/.exec(await board(page)); return m ? [+m[1], +m[2]] : null; };
+    let b = await box("#alt");
+    await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+    await expect(bar(page).locator(".npart")).toContainText("button#alt");
+    // with Alt held the drag keeps the mouse's own distance
+    await page.keyboard.down("Alt");
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2 + 5, b.y + b.height / 2 + 5, { steps: 4 });
+    await page.mouse.up();
+    await page.keyboard.up("Alt");
+    await expect.poll(shift).not.toBeNull();
+    const raw = await shift();
+    expect(raw[0]).toBeGreaterThan(0);
+    // the same drag again, without Alt: the part is pulled to an edge or a centre of another part (so it does not go the same distance), and a guide shows while the mouse is down
+    b = await box("#alt");
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2 + 5, b.y + b.height / 2 + 5, { steps: 4 });
+    await expect(frame(page).locator("#__cvov div[style*='254, 106, 107']").first()).toBeAttached();
+    await page.mouse.up();
+    await expect.poll(async () => { const s = await shift(); return s && (s[0] !== raw[0] * 2 || s[1] !== raw[1] * 2); }).toBe(true);
+  });
 });

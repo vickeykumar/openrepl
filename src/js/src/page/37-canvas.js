@@ -453,7 +453,13 @@ function partDrag(e, g) {
   var dx = (e.clientX - g.sx) / part.k, dy = (e.clientY - g.sy) / part.k;
   if (e.shiftKey) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; } // Shift keeps it on one line
   g.dx = Math.round(dx); g.dy = Math.round(dy);
-  if (!g.t) g.t = setTimeout(function () { g.t = 0; if (!g.cancelled) sendPartMove(g.id, part, g.dx, g.dy, true); }, 16);
+  g.alt = e.altKey; // Alt: no snapping
+  if (!g.t) g.t = setTimeout(function () { g.t = 0; if (!g.cancelled) sendPartDrag(g, true); }, 16);
+}
+// the board does the snapping (to the edges and centres of the other parts and of the board) and draws the guides; {d} in the label is filled in there with the move it kept
+function sendPartDrag(g, live) {
+  var part = g.part;
+  postTo(g.id, { c: "move", live: live, dx: g.dx, dy: g.dy, th: 6 / part.k, alt: !!g.alt, items: part.items, label: partLabel("move", part.name, "{d}") });
 }
 // the handles of a picked part (right edge, bottom edge, corner): drawn by the board, found here from the part's rectangle
 function partHandleAt(bid, e) {
@@ -505,7 +511,7 @@ function finishPartDrag(g) {
   clearTimeout(g.t); g.t = 0;
   if (g.part.locked) return;
   if (!g.dx && !g.dy) { postTo(g.id, { c: "cancel" }); return; } // back where it was: nothing to keep
-  sendPartMove(g.id, g.part, g.dx, g.dy, false);
+  sendPartDrag(g, false);
 }
 // the arrow keys move the picked parts by 1 px (10 with Shift); a run of presses is one change
 var nudge = null;
