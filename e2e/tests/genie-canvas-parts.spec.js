@@ -473,4 +473,35 @@ test.describe("tools on a part", () => {
     await page.mouse.up();
     await expect.poll(async () => { const s = await shift(); return s && (s[0] !== raw[0] * 2 || s[1] !== raw[1] * 2); }).toBe(true);
   });
+
+  test("Alt and Shift and drag a picked part puts it in another place of the page order, with a guide; Alt and the arrow keys move it one place", async ({ page }) => {
+    await ready(page);
+    const box = (sel) => frame(page).locator(sel).boundingBox();
+    const order = async () => { const h = await board(page); return ["buy", "alt", "third"].map((id) => ({ id, at: h.indexOf('id="' + id + '"') })).sort((a, b) => a.at - b.at).map((x) => x.id).join(","); };
+    expect(await order()).toBe("buy,alt,third");
+    // drag #alt onto the left half of #buy: it goes before it, and a guide shows while the mouse is down
+    let a = await box("#alt");
+    await page.mouse.click(a.x + a.width / 2, a.y + a.height / 2);
+    await expect(bar(page).locator(".npart")).toContainText("button#alt");
+    const bb = await box("#buy");
+    await page.keyboard.down("Shift"); await page.keyboard.down("Alt");
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bb.x + 6, bb.y + bb.height / 2, { steps: 8 });
+    await expect(frame(page).locator("#__cvov div[style*='254, 106, 107']").first()).toBeAttached();
+    await page.mouse.up();
+    await page.keyboard.up("Alt"); await page.keyboard.up("Shift");
+    await expect.poll(order).toBe("alt,buy,third");
+    await expect.poll(async () => (await log(page)).some((l) => /you moved button#alt before button#buy/.test(l))).toBe(true);
+    // Alt and the arrow keys: one place later, then earlier again
+    await page.keyboard.press("Alt+ArrowDown");
+    await expect.poll(order).toBe("buy,alt,third");
+    await page.keyboard.press("Alt+ArrowUp");
+    await expect.poll(order).toBe("alt,buy,third");
+    // a locked part is not moved
+    await tool(page, "Lock").click();
+    await page.keyboard.press("Alt+ArrowDown");
+    await page.waitForTimeout(400);
+    expect(await order()).toBe("alt,buy,third");
+  });
 });

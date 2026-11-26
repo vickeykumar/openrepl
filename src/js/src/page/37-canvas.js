@@ -281,7 +281,7 @@ function bindView(vp) {
   var pointers = {}, gesture = null, lastHit = null;
   // Esc during the drag of a part puts the part back (the pointer is released at once, so the later pointer-up does nothing)
   cancelPartDrag = function () {
-    if (!gesture || !(gesture.part || gesture.psize || gesture.box) || !gesture.moved) return false;
+    if (!gesture || !(gesture.part || gesture.psize || gesture.box || gesture.reorder) || !gesture.moved) return false;
     clearTimeout(gesture.t); gesture.cancelled = true;
     if (gesture.box) { if (gesture.m) gesture.m.remove(); } else postTo(gesture.id, { c: "cancel" });
     gesture = null; pointers = {};
@@ -333,7 +333,7 @@ function bindView(vp) {
       if (liveId && liveId !== bid) setLive(null);
       select(bid);
       var bb = board(bid);
-      if (bb) { gesture = { kind: "move", id: bid, sx: e.clientX, sy: e.clientY, b: { x: bb.x, y: bb.y }, moved: false, box: e.shiftKey && partBoard === bid, psize: !e.shiftKey ? partHandleAt(bid, e) : null }; gesture.part = gesture.box || gesture.psize ? null : partUnder(bid, e); try { vp.setPointerCapture(e.pointerId); } catch (x) {} }
+      if (bb) { gesture = { kind: "move", id: bid, sx: e.clientX, sy: e.clientY, b: { x: bb.x, y: bb.y }, moved: false, box: e.shiftKey && !e.altKey && partBoard === bid, psize: !e.shiftKey ? partHandleAt(bid, e) : null }; gesture.reorder = e.shiftKey && e.altKey && partBoard === bid ? partUnder(bid, e) : null; if (gesture.reorder && gesture.reorder.locked) gesture.reorder = null; gesture.part = gesture.box || gesture.psize || gesture.reorder ? null : partUnder(bid, e); try { vp.setPointerCapture(e.pointerId); } catch (x) {} }
       e.preventDefault();
       return;
     }
@@ -363,6 +363,7 @@ function bindView(vp) {
     }
     if (gesture.kind === "pan") { view = { x: gesture.v.x + e.clientX - gesture.sx, y: gesture.v.y + e.clientY - gesture.sy, z: view.z }; applyView(); return; }
     var dx = (e.clientX - gesture.sx) / view.z, dy = (e.clientY - gesture.sy) / view.z, bd = board(gesture.id); if (!bd) return;
+    if (gesture.kind === "move" && gesture.reorder) { partReorder(e, gesture); return; }
     if (gesture.kind === "move" && gesture.psize) { partResize(e, gesture); return; }
     if (gesture.kind === "move" && gesture.box) { marquee(e, gesture); return; }
     if (gesture.kind === "move" && gesture.part) { partDrag(e, gesture); return; } // a drag that starts on a picked part moves that part, not the board
@@ -386,7 +387,8 @@ function bindView(vp) {
     gesture = null; vp.classList.remove("is-panning");
     try { vp.releasePointerCapture(e.pointerId); } catch (x) {}
     clearGuides();
-    if ((g.kind === "move" && g.moved && !g.part && !g.box && !g.psize) || g.kind === "size") saveLayout(g.id);
+    if ((g.kind === "move" && g.moved && !g.part && !g.box && !g.psize && !g.reorder) || g.kind === "size") saveLayout(g.id);
+    if (g.kind === "move" && g.reorder && g.moved && !g.cancelled) finishReorder(g);
     if (g.kind === "move" && g.part && g.moved && !g.cancelled) finishPartDrag(g);
     if (g.kind === "move" && g.psize && g.moved && !g.cancelled) finishPartResize(g);
     if (g.kind === "move" && g.box) finishMarquee(g);
@@ -416,6 +418,7 @@ function onKey(e) {
   else if (k === "Escape" && cancelPartDrag()) { /* a drag of a part was put back */ }
   else if (k === "Escape") { if (parts && parts.keyEsc()) return; var pc = parts && parts.current(); if (pc && pc.items.length && partBoard) postTo(partBoard, { c: "clear" }); else if (editId) leaveEdit(); else if (liveId) setLive(null); else if (!els.pop.hidden) closePop(); else select(null); }
   else if ((k === "Delete" || k === "Backspace") && sel) { e.preventDefault(); deleteSel(); }
+  else if (e.altKey && /^Arrow/.test(k) && partBoard && stepPart(k)) { e.preventDefault(); }
   else if (/^Arrow/.test(k) && partBoard && nudgePart(k, e.shiftKey ? 10 : 1)) { e.preventDefault(); }
   else if (sel && /^Arrow/.test(k)) {
     e.preventDefault();
@@ -489,6 +492,24 @@ function finishPartResize(g) {
   clearTimeout(g.t); g.t = 0;
   if (Math.round(g.psize.w) === g.nw && Math.round(g.psize.h) === g.nh) { postTo(g.id, { c: "cancel" }); return; }
   sendPartSize(g, false);
+}
+// Alt and Shift and drag a picked part moves it in the page order: the board shows a coral line where it would land, and the part is put there when the
+// mouse is let go (among its neighbours, or into the container it is over). Alt and the arrow keys move it one place earlier or later.
+function partReorder(e, g) {
+  if (!g.moved && Math.abs(e.clientX - g.sx) + Math.abs(e.clientY - g.sy) < 4) return;
+  g.moved = true;
+  var f = frames[g.id]; if (!f) return;
+  var hr = f.hit.getBoundingClientRect();
+  g.rx = (e.clientX - hr.left) / hr.width; g.ry = (e.clientY - hr.top) / hr.height;
+  if (!g.t) g.t = setTimeout(function () { g.t = 0; if (!g.cancelled) sendReorder(g, true); }, 16);
+}
+function sendReorder(g, live) { postTo(g.id, { c: "reorder", live: live, x: g.rx, y: g.ry, items: g.reorder.items.map(function (i) { return i.p; }) }); }
+function finishReorder(g) { clearTimeout(g.t); g.t = 0; sendReorder(g, false); }
+function stepPart(k) {
+  var pc = parts && parts.current();
+  if (!pc || pc.board !== partBoard || !pc.items.length) return false;
+  postTo(partBoard, { c: "step", dir: k === "ArrowUp" || k === "ArrowLeft" ? -1 : 1, items: pc.items.map(function (i) { return i.p; }) });
+  return true;
 }
 // Shift and drag on a board draws a box and picks the parts inside it (the outermost ones that are wholly inside)
 function marquee(e, g) {
