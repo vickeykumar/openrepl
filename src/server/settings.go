@@ -104,6 +104,18 @@ type SiteSettings struct {
 	IDEReserveMB      int      `json:"ideReserveMB"`
 	IDESmallKB        int      `json:"ideSmallKB"`
 	IDEResetMinutes   int      `json:"ideResetMinutes"` // minutes after 00:00 UTC, 0 to 1439
+	// The history and the accounts that need a look (canvas "IDE data usage: daily history and top users"): the days of history kept for a
+	// signed-in account (0 for 90, 30 to 365), and when to flag an account: days in a row at the limit (0 for 3), a day this many times the
+	// average of the last 14 (0 for 5), above this share of the limit (0 for 90), a terminal paused or ended more than this many times in a
+	// day (0 for 5). IDEFlagLog writes a line to the server log for each account flagged. IDEWatch are the accounts the admin watches
+	// (uids): the form does not send them, /admin/ide-usage does.
+	IDEHistoryDays   int      `json:"ideHistoryDays"`
+	IDEFlagLimitDays int      `json:"ideFlagLimitDays"`
+	IDEFlagJump      int      `json:"ideFlagJump"`
+	IDEFlagNearPct   int      `json:"ideFlagNearPct"`
+	IDEFlagStops     int      `json:"ideFlagStops"`
+	IDEFlagLog       bool     `json:"ideFlagLog"`
+	IDEWatch         []string `json:"ideWatch,omitempty"`
 	// StoreReserveMB is kept free on each server for installs in progress (0 for the built-in 3072); StoreRequestsPerDay is how many apps
 	// one user may ask for in a day (0 for the built-in 5). ScratchSoftMB is the size at which a terminal's scratch folder is
 	// at which the caches are cleared first and then a terminal that still fills it is stopped (a soft cap: no quota, no mount; 0 for the built-in 256);
@@ -142,6 +154,8 @@ type SiteSettings struct {
 	// PreviewAgentOff stops Genie's agent from acting in the Preview page (click, type, press, scroll, select, hover, go, resize, run
 	// an expression, change its storage). It can still look at the page (read, console, calls). The Preview itself stays as it is.
 	PreviewAgentOff bool `json:"previewAgentOff"`
+	// CanvasOff switches the canvas of the Preview pane off (genie_canvas.go): its tab, its endpoint and Genie drawing on it.
+	CanvasOff bool `json:"canvasOff"`
 	// GenieEventsOff stops the Genie log (genie_log.go): the agent's failed steps and the end of each task, kept without any text of the
 	// user's. GenieEventDays is how many days it is kept, 1 to 365; 0 means 30.
 	GenieEventsOff bool `json:"genieEventsOff"`
@@ -735,6 +749,7 @@ type publicSettings struct {
 	PreviewOff       bool `json:"previewOff"`
 	PreviewGuestsOff bool `json:"previewGuestsOff"`
 	PreviewAgentOff  bool `json:"previewAgentOff"`
+	CanvasOff        bool `json:"canvasOff"`
 	// the separate origin of the preview frames (empty: this site's /preview/<token>/... addresses), see previewhost.go
 	PreviewBaseURL string `json:"previewBaseURL"`
 	// the page reports the agent's failed steps (genie_log.go) unless an admin switched that off
@@ -1098,6 +1113,7 @@ func (s SiteSettings) public() publicSettings {
 		PreviewOff:           s.PreviewOff,
 		PreviewGuestsOff:     s.PreviewGuestsOff,
 		PreviewAgentOff:      s.PreviewAgentOff,
+		CanvasOff:            s.CanvasOff,
 		PreviewBaseURL:       s.PreviewBaseURL, // as typed: the page adds the scheme and port of the site it was opened from
 		GenieEventsOff:       s.GenieEventsOff,
 		EscalationModels:     s.Genie.EscalationModels,
@@ -1248,6 +1264,7 @@ func (server *Server) handleAdminSettings(rw http.ResponseWriter, req *http.Requ
 		before := GetSiteSettings()
 		s.Secrets = before.Secrets // the form cannot set keys; /admin/keys does
 		s.Admins = before.Admins   // nor admins; /admin/admins does, for owners
+		s.IDEWatch = before.IDEWatch // nor the accounts the admin watches; /admin/ide-usage does
 		if s.Genie.CustomModels == nil {
 			s.Genie.CustomModels = before.Genie.CustomModels // a page from before the list existed does not send it
 		}
@@ -1378,6 +1395,9 @@ func settingsChanges(a, b SiteSettings) []string {
 	}
 	if a.PreviewAgentOff != b.PreviewAgentOff {
 		out = append(out, "Genie acting in the preview "+onoff(!b.PreviewAgentOff))
+	}
+	if a.CanvasOff != b.CanvasOff {
+		out = append(out, "the Genie canvas "+onoff(!b.CanvasOff))
 	}
 	if a.GenieEventsOff != b.GenieEventsOff {
 		out = append(out, "the Genie log "+onoff(!b.GenieEventsOff))

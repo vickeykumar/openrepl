@@ -88,6 +88,14 @@ type Config struct {
 	ReserveBytes int64 // kept open at the limit, so that people can still save and fetch their own work
 	SmallBytes   int64 // the largest file the editor still opens at the limit
 	ResetMinutes int   // minutes after 00:00 UTC at which a day starts, 0 to 1439
+
+	// the history and the accounts that need a look (canvas "IDE data usage: daily history and top users")
+	HistoryDays   int  // days of history kept for a signed-in account
+	FlagLimitDays int  // flag an account that was at the limit this many days in a row
+	FlagJump      int  // flag a day this many times the average of the last 14 days
+	FlagNearPct   int  // flag an account above this share of its limit
+	FlagStops     int  // flag an account whose terminal was paused or ended more than this many times in a day
+	FlagLog       bool // write a line to the server log for each account flagged
 }
 
 const MB = 1 << 20
@@ -98,6 +106,7 @@ func Defaults() Config {
 		On: true, AdminsExempt: true,
 		TermBytes: 20 * MB, TermWindow: 10 * time.Second, TermGrace: 5 * time.Second,
 		GuestBytes: 50 * MB, UserBytes: 200 * MB, WarnPct: 80, ReserveBytes: 2 * MB, SmallBytes: 256 << 10,
+		HistoryDays: 90, FlagLimitDays: 3, FlagJump: 5, FlagNearPct: 90, FlagStops: 5,
 	}
 	for i := range c.Counted {
 		c.Counted[i] = true
@@ -144,9 +153,10 @@ type acct struct {
 	UID     string            `json:"uid,omitempty"`
 	Day     string            `json:"day"` // the day of Used
 	Used    Counts            `json:"used"`
-	Reserve int64             `json:"reserve"`        // bytes sent past the limit, from the reserve
-	Last    int64             `json:"last"`           // milliseconds
-	Hist    map[string]Counts `json:"hist,omitempty"` // by day, signed-in users only
+	Reserve int64             `json:"reserve"`         // bytes sent past the limit, from the reserve
+	Last    int64             `json:"last"`            // milliseconds
+	Hist    map[string]Counts `json:"hist,omitempty"`  // by day, signed-in users only
+	Stops   map[string]Stops  `json:"stops,omitempty"` // by day: how often a terminal was paused or ended for printing too fast
 	Guest   bool              `json:"guest,omitempty"`
 	Admin   bool              `json:"admin,omitempty"` // seen as an admin (a preview address carries no cookie to say so)
 	TZ      *int              `json:"tz,omitempty"`    // minutes east of UTC, as the page told, for the time in a notice
@@ -162,6 +172,7 @@ type record struct {
 	Used    Counts            `json:"used"`
 	Reserve int64             `json:"reserve"`
 	Hist    map[string]Counts `json:"hist,omitempty"`
+	Stops   map[string]Stops  `json:"stops,omitempty"`
 }
 
 // Store is where the records are kept: the user database, which also holds the profile (package user).
@@ -171,8 +182,10 @@ type Store interface {
 }
 
 const (
-	userPrefix = "ide-usage:u:"
-	guestKey   = "ide-usage:guests" // all guests together, by day
+	userPrefix   = "ide-usage:u:"
+	guestKey     = "ide-usage:guests"         // all guests together, by day
+	guestSessKey = "ide-usage:guest-sessions" // how many guest sessions were counted each day
+	indexKey     = "ide-usage:index"          // the accounts that have a record, with the last day of each: so that the history of all of them can be read
 )
 
 // Meter keeps the counts.
@@ -184,6 +197,10 @@ type Meter struct {
 	guest        map[string]Counts
 	guestChanged bool
 	guestSaved   time.Time
+	guestSess    map[string]int    // guest sessions counted each day
+	index        map[string]string // uid -> the last day of its record
+	indexChanged bool
+	cold         map[string]*coldRec // records read for the history of accounts that are not in memory
 }
 
 const (
@@ -197,7 +214,7 @@ const (
 
 // New is a meter with no store yet (SetStore); until then it keeps its counts in memory.
 func New() *Meter {
-	return &Meter{now: time.Now, accts: map[string]*acct{}, guest: map[string]Counts{}}
+	return &Meter{now: time.Now, accts: map[string]*acct{}, guest: map[string]Counts{}, guestSess: map[string]int{}, index: map[string]string{}, cold: map[string]*coldRec{}}
 }
 
 // SetClock replaces the clock, for tests.
@@ -215,6 +232,18 @@ func (m *Meter) SetStore(st Store) {
 		var g map[string]Counts
 		if json.Unmarshal(data, &g) == nil && g != nil {
 			m.guest = g
+		}
+	}
+	if data, ok := st.Get(guestSessKey); ok {
+		var g map[string]int
+		if json.Unmarshal(data, &g) == nil && g != nil {
+			m.guestSess = g
+		}
+	}
+	if data, ok := st.Get(indexKey); ok {
+		var ix map[string]string
+		if json.Unmarshal(data, &ix) == nil && ix != nil {
+			m.index = ix
 		}
 	}
 }
@@ -235,6 +264,7 @@ func (m *Meter) load(a *acct, c Config) {
 		return
 	}
 	a.Hist = r.Hist
+	a.Stops = r.Stops
 	if r.Day == a.Day || a.Day == "" {
 		for i := range a.Used {
 			a.Used[i] += r.Used[i]
@@ -301,18 +331,26 @@ func (m *Meter) acctFor(id Identity, c Config) *acct {
 				a.Hist = map[string]Counts{}
 			}
 			a.Hist[a.Day] = a.Used
-			m.trimHist(a, now)
+			m.trimHist(a, now, c.HistoryDays)
 		}
 		a.Day, a.Used, a.Reserve = today, Counts{}, 0
 	}
 	return a
 }
 
-func (m *Meter) trimHist(a *acct, now time.Time) {
-	cut := now.UTC().AddDate(0, 0, -keepDays).Format("2006-01-02")
+func (m *Meter) trimHist(a *acct, now time.Time, days int) {
+	if days < 1 {
+		days = keepDays
+	}
+	cut := now.UTC().AddDate(0, 0, -days).Format("2006-01-02")
 	for d := range a.Hist {
 		if d < cut {
 			delete(a.Hist, d)
+		}
+	}
+	for d := range a.Stops {
+		if d < cut {
+			delete(a.Stops, d)
 		}
 	}
 }
@@ -348,6 +386,10 @@ func (m *Meter) Add(id Identity, p Part, n int64) State {
 	now := m.now()
 	if n > 0 {
 		wasOver := a.Used.Total() >= limitFor(id, c)
+		if id.Guest && a.Used.Total() == 0 { // the first bytes of a guest session
+			m.guestSess[dayKey(now, c.ResetMinutes)]++
+			m.guestChanged = true
+		}
 		a.Used[p] += n
 		if wasOver {
 			a.Reserve += n
@@ -608,13 +650,30 @@ func (m *Meter) Save(force bool) {
 		if a.Guest || a.UID == "" || !a.changed || (!force && now.Sub(a.savedAt) < saveEvery) {
 			continue
 		}
-		m.trimHist(a, now)
-		data, err := json.Marshal(record{Day: a.Day, Used: a.Used, Reserve: a.Reserve, Hist: a.Hist})
+		m.trimHist(a, now, cfg().HistoryDays)
+		data, err := json.Marshal(record{Day: a.Day, Used: a.Used, Reserve: a.Reserve, Hist: a.Hist, Stops: a.Stops})
 		if err != nil {
 			continue
 		}
 		puts = append(puts, put{userPrefix + a.UID, data})
 		a.changed, a.savedAt = false, now
+		if m.index[a.UID] != a.Day {
+			m.index[a.UID] = a.Day
+			m.indexChanged = true
+		}
+		delete(m.cold, a.UID)
+	}
+	if m.indexChanged && (force || now.Sub(m.guestSaved) >= saveEvery || len(puts) > 0) {
+		cut := now.UTC().AddDate(0, 0, -cfg().HistoryDays).Format("2006-01-02")
+		for u, d := range m.index {
+			if d < cut {
+				delete(m.index, u)
+			}
+		}
+		if data, err := json.Marshal(m.index); err == nil {
+			puts = append(puts, put{indexKey, data})
+			m.indexChanged = false
+		}
 	}
 	if m.guestChanged && (force || now.Sub(m.guestSaved) >= saveEvery) {
 		cut := now.UTC().AddDate(0, 0, -maxGuestAge).Format("2006-01-02")
@@ -623,9 +682,17 @@ func (m *Meter) Save(force bool) {
 				delete(m.guest, d)
 			}
 		}
+		for d := range m.guestSess {
+			if d < cut {
+				delete(m.guestSess, d)
+			}
+		}
 		if data, err := json.Marshal(m.guest); err == nil {
 			puts = append(puts, put{guestKey, data})
 			m.guestChanged, m.guestSaved = false, now
+		}
+		if data, err := json.Marshal(m.guestSess); err == nil {
+			puts = append(puts, put{guestSessKey, data})
 		}
 	}
 	m.sweep(now)

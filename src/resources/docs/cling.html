@@ -24,6 +24,7 @@
     <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,400,600,700,800,900" rel="stylesheet">
     <link rel="stylesheet" href="../css/scribbler-global.css">
     <link rel="stylesheet" href="../css/scribbler-doc.css">
+    <link rel="stylesheet" href="../css/site-footer.css">
     <script src="../js/preprocessing.js"></script>
     <link rel="author" href="humans.txt">
     <script type="application/ld+json">
@@ -393,12 +394,19 @@ input_line_14:2:15: warning: ISO C++11 does not allow conversion from string lit
       </article>
     </div>
 
-    <footer class="footer">
-    <a href="../about.html" class="link link--light">About</a> <span class="dot"></span>
-    <a href="../references.html" class="link link--light">References</a> <span class="dot"></span>
-    <span id="copyright_year">
-        <script>document.getElementById('copyright_year').appendChild(document.createTextNode(new Date().getFullYear()))</script>
-    </span>&copy;<span class="go__color">Open</span>REPL 
+    <footer class="site-footer site-footer--simple">
+      <div class="site-footer__inner site-footer__bottom">
+        <span>&copy; <span id="copyright_year"></span> OpenREPL</span>
+        <div class="site-footer__social">
+          <a href="/faq">FAQ</a>
+          <a href="/genie">Genie guide</a>
+          <a href="/about.html">About</a>
+          <a href="/references.html">References</a>
+          <a href="/privacy.html">Privacy policy</a>
+          <a href="/terms.html">Terms of use</a>
+        </div>
+      </div>
+      <script>document.getElementById('copyright_year').textContent = new Date().getFullYear();</script>
     </footer>
     <script src="../js/common.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>

@@ -884,3 +884,39 @@ dialog.logs { width: min(1180px, calc(100vw - 32px)); max-height: calc(100vh - 3
 .cp-pink, .btn.cp-pink:hover:not(:disabled) { background: linear-gradient(135deg, #ff7a7c, #e8365d); }
 .cp-pink:hover:not(:disabled) { filter: brightness(1.06); }
 .cp-outline { background: transparent; border: 1.5px solid var(--text); color: var(--text); }
+
+/* IDE data usage: the card of today and the top accounts (the page's policy does not allow style attributes set by script, so these are classes) */
+.ide-big { font-size: 1.8rem; font-weight: 700; line-height: 1.1; margin-bottom: 4px; }
+.ide-top-row { display: flex; justify-content: space-between; gap: 8px; font-size: .9rem; padding: 3px 0; }
+.ide-top-row span:first-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* Site usage, Data usage tab (the canvas "IDE data usage: daily history and top users") */
+.tabs { margin-bottom: 14px; }
+.dchart { position: relative; display: flex; align-items: flex-end; gap: 4px; height: 190px; margin-top: 12px; border-bottom: 1px solid var(--line); }
+.dchart.tall { height: 210px; }
+.dcol { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column-reverse; justify-content: flex-start; }
+.dseg { display: block; height: calc(var(--p) * 1%); }
+.dlimit { position: absolute; left: 0; right: 0; bottom: calc(var(--p) * 1%); border-top: 2px dashed var(--danger); pointer-events: none; }
+.p-terminal { background: #e0524d; }
+.p-genie { background: #4f86d6; }
+.p-files { background: #d49b2b; }
+.p-editor { background: #9b6bd6; }
+.p-preview { background: #36a3a3; }
+.dlegend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--muted); }
+.ddot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+.dspark { display: block; }
+.dspark polyline { stroke: var(--text); }
+.flag-row { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.flag-row:last-of-type { border-bottom: 0; }
+.flag-row .pill { flex: none; margin-top: 2px; }
+.flag-note { margin-top: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-x { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--info-bg); color: var(--info); overflow: hidden; }
+.chip-x button { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: 5px 10px; }
+.chip-x .chip-del { padding-left: 4px; font-weight: 700; }
+.drawer.wide { width: min(1040px, 100vw); }
+.du-notes { margin: 8px 0 12px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.note-box { margin: 0; padding: 11px 14px; border-radius: 8px; background: var(--raised); font-size: 13px; color: var(--muted); }
+.toolbar.foot { margin: 10px 0 0; }
+.flag-row .grow { flex: 1; min-width: 0; }
+.drawer .actions { margin: 12px 0 14px; }

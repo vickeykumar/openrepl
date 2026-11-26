@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-T8XFRGR');</script>
+    <!-- End Google Tag Manager -->
+    <meta charset="utf-8">
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg">
+    <link rel="icon" type="image/x-icon" sizes="48x48" href="/images/favicon.ico">
+    <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+    <link rel="manifest" href="/images/manifest.json">
+    <meta name="description" content="How to use the canvas of the OpenREPL Preview pane: boards that Genie draws, changing a part of a board, notes, versions, export and a window of its own.">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Online REPL,Coding Online,Online Program,Share,Interpreter,Interpret,Java Interpreter,Scripting, REPL,Evaluate,Code Snippets,C,C++,Go,Python,Java,learn,code,REPL,compile,container,cloud,computing,service,terminal,bash,programming,online,coding,golang,read,execute,print,loop,check,test,statements,expression, learn coding online,interpreter and compiler,interpreter language,code snippets online,c programming software,compute,learn to code for free, c interpreter,c interpreter online,online c compiler,scripting c,cling,how to learn programming in c,c++ programming online, go playground, interactive go,print go,golang tutorial, go repl, repl shell,repl javascript,javascript,js,compiler vs interpreter,terminal app,bash script,open source software, python online tutorial,python interpreter online,python playground,best python compiler, jshell,java repl"/>
+    <meta name="google-site-verification" content="iejQHkSDbrldGCn37ZJ79J1zoQQcW7-MAlqsHSHwnOI" />
+    <meta name="msvalidate.01" content="75003493DFA09CBFBBDC3F0E2AE85DFD" />
+    <base target="_top">
+    <title>The canvas: draw, arrange and edit boards | OpenREPL</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../css/scribbler-global.css">
+    <link rel="stylesheet" href="../css/scribbler-doc.css">
+    <link rel="stylesheet" href="../css/site-footer.css">
+    <script src="../js/theme.js"></script>
+    <script src="../settings.js"></script>
+    <script src="../js/preprocessing.js"></script>
+    <link rel="author" href="/humans.txt">
+  <style>
+.doc__content figure{margin:16px 0}.doc__content figure img{display:block;max-width:100%;height:auto;border:1px solid rgba(128,128,128,.3);border-radius:12px}.doc__content figcaption{font-size:13px;color:#6b6877;margin-top:6px}.doc__content kbd{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:13px;border:1px solid rgba(128,128,128,.4);border-bottom-width:2px;border-radius:6px;padding:0 6px}.doc__content pre{margin:10px 0;padding:12px 14px;border:1px solid rgba(128,128,128,.3);border-radius:12px;overflow-x:auto}.doc__content ul,.doc__content ol{padding-left:22px;display:flex;flex-direction:column;gap:6px}.doc__content .tip{border:1px solid #3F6B00;border-radius:12px;padding:4px 16px;background:rgba(120,170,20,.08)}</style>
+  </head>
+  <body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-T8XFRGR"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+    <a href="https://github.com/vickeykumar/openrepl" class="github-corner" aria-label="View source on Github" style="position: fixed; top: 0; right: 0; border: 0;"><svg width="80" height="80" viewBox="0 0 250 250" style="fill:var(--rev-accent-color); color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true" class="github-svg" ><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a><style>.github-corner:hover .octo-arm{animation:octocat-wave 560ms ease-in-out}@keyframes octocat-wave{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(-25deg)}40%,80%{transform:rotate(10deg)}}@media (max-width:500px){.github-corner:hover .octo-arm{animation:none}.github-corner .octo-arm{animation:octocat-wave 560ms ease-in-out}}</style>
+    <div class="doc__bg"></div>
+    <nav class="header">
+      <h1 class="logo"><a class="brand" href="/" aria-label="OpenREPL home"><span class="brand__open">open</span><span class="brand__repl">repl</span></a> <span class="logo__thin"><a href="/doc.html" class="link link--dark">Doc</a> / Canvas</span></h1>
+      <ul class="menu">
+        <li class="menu__item toggle"><button type="button" class="toggle__button" aria-label="Menu" aria-expanded="false"><span></span></button></li>
+        <li class="menu__item"><button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark theme"><svg class="theme-toggle__moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg><svg class="theme-toggle__sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4"></path></svg></button></li>
+        <li class="menu__item"><a href="/blog" class="link link--dark"><i class="fa fa-book"></i> Blogs</a></li>
+        <li class="menu__item"><a href="../" class="link link--dark"><i class="fa fa-home"></i> Home</a></li>
+      </ul>
+    </nav>
+    <div class="wrapper">
+      <aside class="doc__nav">
+        <ul>
+          <li><a href="/doc.html" class="link link--dark">&larr; All documentation</a></li>
+          <li><a href="#1-open-it-and-ask-genie-to-draw" class="link link--dark">1. Open it, and ask Genie to draw</a></li>
+          <li><a href="#2-look-around" class="link link--dark">2. Look around</a></li>
+          <li><a href="#3-move-size-and-select-a-board" class="link link--dark">3. Move, size and select a board</a></li>
+          <li><a href="#4-tell-genie-about-one-board" class="link link--dark">4. Tell Genie about one board</a></li>
+          <li><a href="#5-retype-text-yourself" class="link link--dark">5. Retype text yourself</a></li>
+          <li><a href="#6-pin-a-note-on-a-board" class="link link--dark">6. Pin a note on a board</a></li>
+          <li><a href="#7-versions-undo-and-compare" class="link link--dark">7. Versions, Undo and Compare</a></li>
+          <li><a href="#8-add-duplicate-and-delete-boards" class="link link--dark">8. Add, duplicate and delete boards</a></li>
+          <li><a href="#9-links-between-boards-and-trying-a-prototype" class="link link--dark">9. Links between boards, and trying a prototype</a></li>
+          <li><a href="#10-export" class="link link--dark">10. Export</a></li>
+          <li><a href="#11-change-one-part-of-a-board" class="link link--dark">11. Change one part of a board</a></li>
+          <li><a href="#keys" class="link link--dark">Keys</a></li>
+          <li><a href="#good-to-know" class="link link--dark">Good to know</a></li>
+        </ul>
+      </aside>
+      <article class="doc__content" role="main">
+        <section class="js-section" id="canvas">
+          <h2 class="section__title">The canvas</h2>
+
+          <p>The <strong>canvas</strong> is a tab of the Preview pane where Genie draws screens, flows and layouts as <strong>boards</strong> on an endless surface. You look around, move and resize the boards, retype their text, pin notes on them, and point at one board to tell Genie what to change. Use it when you want to <em>see</em> an idea before it is code: a login page and a dashboard side by side, three versions of a header, the phone version of a screen.</p>
+          <p>Each board is an ordinary web page. It is saved in your workspace in <code>.genie/canvas/&lt;name&gt;/boards/</code>, so you can copy it into your project or open it in the editor. Every change to a board is kept as a version, so nothing is lost.</p>
+          <figure><img src="/images/genie/canvas-boards.png" alt="The Canvas tab of the Preview pane named login-flow: three boards, Login, Dashboard and Login on a phone, drawn by Genie on a dotted surface, with the tool bar above them" loading="lazy"><figcaption>A canvas named login-flow: three boards that Genie drew from one request.</figcaption></figure>
+
+          <h3 class="section__title" id="1-open-it-and-ask-genie-to-draw">1. Open it, and ask Genie to draw</h3>
+          <p>Open the Preview pane's <strong>More</strong> menu (the three dots) and choose <strong>Open the canvas</strong>, or just ask Genie in Agent mode:</p>
+          <pre><code>Design a login page, a dashboard and the phone version of the login.</code></pre>
+          <p>Genie opens the canvas as a tab beside your pages (<em>Canvas &middot; login-flow</em>), shows the boards it plans as dashed frames, and fills each one as it draws it. Drawing a board is writing a file, so Genie asks the first time, the way it does before it changes your editor. A task draws at most <strong>24 boards</strong>. A board can have its own styles and scripts, so a clickable prototype works.</p>
+          <div class="tip"><p>The canvas needs room. If the pane feels small, dock it over the editor (More, <strong>Dock over the editor</strong>) or drag it by its handle, the six dots at the left of the bar.</p></div>
+
+          <h3 class="section__title" id="2-look-around">2. Look around</h3>
+          <ul>
+            <li><strong>Pan:</strong> drag the empty canvas, use the hand tool (<kbd>H</kbd>), hold <kbd>Space</kbd> and drag, scroll, or drag with one finger on a phone.</li>
+            <li><strong>Zoom:</strong> <kbd>Ctrl</kbd> and scroll (<kbd>Cmd</kbd> on a Mac), the <strong>+</strong> and <strong>&minus;</strong> buttons, or pinch with two fingers. It goes from 10 to 400 percent; click the percentage for 100.</li>
+            <li><strong>Fit all</strong> (<kbd>F</kbd>) shows every board at once. The small <strong>map</strong> in the corner shows where you are; click it to go there.</li>
+          </ul>
+          <p>Boards that are far off screen are paused and load again when you come near, so a canvas with many boards stays light.</p>
+
+          <h3 class="section__title" id="3-move-size-and-select-a-board">3. Move, size and select a board</h3>
+          <p>Click a board to select it (a coral outline appears and a bar with its name and size shows at the top). Drag it to move it; drag the corner or an edge to resize it. Boards snap to the edges of their neighbours and to a grid, and a label shows the size while you drag. The arrow keys nudge the selected board (<kbd>Shift</kbd> for bigger steps).</p>
+
+          <h3 class="section__title" id="4-tell-genie-about-one-board">4. Tell Genie about one board</h3>
+          <p>When a board is selected and Genie's box is open, a chip <strong>Board: Dashboard</strong> appears in the box. Just say what to change:</p>
+          <pre><code>Make the cards bigger and use our coral accent.</code></pre>
+          <p>Genie is told the board's name and size, and an outline of the canvas, and then changes <em>that</em> board; the others stay as you left them, including your own edits. Press the x on the chip to stop mentioning the board. The bar's <strong>Ask Genie</strong> button opens Genie's box for you.</p>
+          <figure><img src="/images/genie/canvas-select-genie.png" alt="A selected board with the bar above it (Undo, Redo, Responsive, Try it, Versions, Duplicate, Delete, Ask Genie) and Genie's panel beside it with a Board: Dashboard chip in the box" loading="lazy"><figcaption>The selected board and the Board chip in Genie's box.</figcaption></figure>
+
+          <h3 class="section__title" id="5-retype-text-yourself">5. Retype text yourself</h3>
+          <p>Click a part of a board that is text, such as a heading or a button label, and you can type in it straight away: the caret is where you clicked. Press <kbd>Esc</kbd>, or click another part, and the change is saved as a new version of the board. Only the text of that part changes. Genie hears about it with your next message (&ldquo;you changed the text of h1#title&rdquo;); it never reacts by itself.</p>
+
+          <h3 class="section__title" id="6-pin-a-note-on-a-board">6. Pin a note on a board</h3>
+          <p>Choose the <strong>pin tool</strong> (<kbd>P</kbd>) and click a spot on a board. A card opens with the part you pointed at. Write what should change, then pick one:</p>
+          <ul>
+            <li><strong>Note</strong> keeps it as a reminder for you. Genie does not get it.</li>
+            <li><strong>Send to Genie</strong> sends it with your next message: Genie gets the board, the part under the pin and your words, and does what the note says to that part. The pin turns grey once Genie has it, and green when Genie has answered it.</li>
+          </ul>
+          <p>The <strong>Comments</strong> button lists every note with its board, its state (reminder, with next message, sent) and Genie's answer. From there you can send a note, send them all, or delete one.</p>
+          <figure><img src="/images/genie/canvas-pin.png" alt="The pin tool selected and a card open on the Login board: Note on Login, the part under the pin, the text Make this button bigger and put it on the right, and the buttons Cancel, Note and Send to Genie" loading="lazy"><figcaption>A pin with its card: keep it as a note, or send it to Genie.</figcaption></figure>
+          <figure><img src="/images/genie/canvas-comments.png" alt="The Comments list on the right of the canvas with two notes, each with its board, its state and the buttons Send to Genie and Delete" loading="lazy"><figcaption>The Comments list.</figcaption></figure>
+
+          <h3 class="section__title" id="7-versions-undo-and-compare">7. Versions, Undo and Compare</h3>
+          <p>Every write to a board, by you or by Genie, is a version (the last 30 are kept). With a board selected, <strong>Undo</strong> (<kbd>Ctrl</kbd> <kbd>Z</kbd>) goes back one, <strong>Redo</strong> (<kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Z</kbd>) goes forward. <strong>Versions</strong> lists them with the time and what was done; <strong>Compare</strong> shows what is different from the board now (green lines came in, red lines went out), and <strong>Restore</strong> brings an old version back as the newest. After Genie draws, a line at the bottom says <em>Changed on the canvas</em>, with the lines added and removed, <strong>Undo</strong> and <strong>Show diff</strong>.</p>
+          <figure><img src="/images/genie/canvas-versions.png" alt="The Versions list of the Login board with Compare and Restore buttons, and under it the difference between two versions with removed lines in red and added lines in green" loading="lazy"><figcaption>Versions of a board, and Compare.</figcaption></figure>
+
+          <h3 class="section__title" id="8-add-duplicate-and-delete-boards">8. Add, duplicate and delete boards</h3>
+          <p><strong>+ Board</strong> adds a blank board in the middle of what you see. <strong>Duplicate</strong> (<kbd>Ctrl</kbd> <kbd>D</kbd>) copies the selected board next to it, which is a good way to try a change without losing the first one. <strong>Delete</strong> (<kbd>Del</kbd>) removes the board, its versions and its notes, after asking.</p>
+
+          <h3 class="section__title" id="9-links-between-boards-and-trying-a-prototype">9. Links between boards, and trying a prototype</h3>
+          <p>A board can link to another board: write <code>&lt;a href="#board:dashboard"&gt;Next&lt;/a&gt;</code> in it (ask Genie: "make the Sign in button go to the Dashboard board") and following the link moves the view to that board. While you arrange a board, a click picks a part. Press <strong>Try it</strong> in the bar to <em>use</em> the selected board like a visitor instead: its buttons, scripts and links to other boards work, so you can check a clickable prototype. Click Try it again, or the empty canvas, to stop. A board only does what its page does: a board Genie drew is a still picture unless it has links, buttons or scripts, so Try it will tell you when there is nothing to click. Ask Genie to make it interactive, for example &ldquo;make the menu items switch sections&rdquo; or &ldquo;link the Reserve button to the Booking board&rdquo;. A board has no network, so a link to an outside address does nothing; the canvas says so.</p>
+
+          <h3 class="section__title" id="10-export">10. Export</h3>
+          <p>The <strong>Export</strong> button offers <strong>This board as a file</strong> (an .html page), <strong>All boards as a zip</strong> (the pages and a layout file), and <strong>Print, or save all as a PDF</strong> (the browser's print window, one board to a page).</p>
+          <figure><img src="/images/genie/canvas-export.png" alt="The Export menu open under the Export button with three entries: This board as a file, All boards as a zip, and Print or save all as a PDF" loading="lazy"><figcaption>The Export menu.</figcaption></figure>
+
+          <h3 class="section__title" id="11-change-one-part-of-a-board">11. Change one part of a board</h3>
+          <p>To polish a board without asking Genie, change <em>one part</em> of it: a button, a heading, a card. Just click a part of a board (the board is selected by the same click). It gets an outline with its name and size, and a toolbar floats over it. Click a part that holds others again to pick its parent, <kbd>Shift</kbd>-click to add another, <kbd>Esc</kbd> to let go (and again to deselect the board). To move the board, drag it. Hold <kbd>Alt</kbd> and point at another part to see the distance between them.</p>
+          <figure><img src="/images/genie/canvas-part-toolbar.png" alt="The Pricing board with the Buy now button selected: its name and size, and a toolbar over it in three groups, Look (Fill, Corner, Text), Shape (Layout, Size) and Guard (Lock, Note), then More" loading="lazy"><figcaption>A selected part and its toolbar.</figcaption></figure>
+          <p>The toolbar has three groups and a menu:</p>
+          <ul>
+            <li><strong>Look</strong> (coral): <strong>Fill</strong> (background or text colour: a hex box, the colours the board already uses, the site's accent, an eyedropper), <strong>Corner</strong> (radius, all corners or each, Square and Pill) and <strong>Text</strong> (size, weight, align, font, line height, letter spacing, colour).</li>
+            <li><strong>Shape</strong> (blue): <strong>Layout</strong> (for a part that holds others: stack, row, grid of 2 or 3, gap, alignment, wrap) and <strong>Size</strong> (width and height as fixed, fill or hug the content; keep the ratio).</li>
+            <li><strong>Guard</strong> (lime): <strong>Lock</strong> (nobody changes this part, you or Genie, until you unlock it) and <strong>Note</strong> (pins a note on this exact part).</li>
+            <li><strong>More</strong>: Duplicate, Delete and Wrap in a container; Copy style and Paste style; Select parent; Spacing (padding and margin), Border and shadow, Opacity; Picture (replace a picture with one of your own, up to 200 KB); Bring forward, Send back, To the front, To the back; Make it a style; Hide part and Show all hidden parts; Ask Genie about this part; Copy selector.</li>
+          </ul>
+          <figure><img src="/images/genie/canvas-part-fill.png" alt="The Fill panel open under the toolbar: Background and Text choices, the hex box with 1b6ef3, the colours of the board, Clear, and the buttons Esc and Keep" loading="lazy"><figcaption>The Fill panel, with a live preview.</figcaption></figure>
+          <p>Each button opens a small panel with a <strong>live preview</strong>: <strong>Keep</strong> (or <kbd>Enter</kbd>) saves it as a new version of the board, <strong>Esc</strong> drops it. Every kept change is a version like any other, so Undo and Compare work, and Genie hears about it with your next message in plain words (&ldquo;you changed the fill of button#buy to #1b6ef3&rdquo;). The chip in Genie's box says <em>Board: Pricing &rsaquo; button#buy</em>, so &ldquo;make this match the heading&rdquo; has an exact target.</p>
+          <p><strong>Several parts.</strong> With two or more parts selected, a <strong>Line up</strong> group appears: align left, centre or right edges, align top, middle or bottom, spread evenly (three or more parts), and the same width or height as the first.</p>
+          <figure><img src="/images/genie/canvas-part-align.png" alt="Two parts selected and the Line up panel open with the choices to align edges and centres, spread evenly, and make the same width or height" loading="lazy"><figcaption>Line up two or more parts.</figcaption></figure>
+          <p><strong>Move a part.</strong> Drag a part that is already selected (it has the outline) and only that part moves; drag anywhere else on the board and the board moves. The part <strong>snaps</strong> to the edges and centres of the other parts and of the board when it comes within a few pixels, and a coral guide line shows what it lined up with; hold <kbd>Alt</kbd> to drag without snapping. Hold <kbd>Shift</kbd> to keep the move on one line, press <kbd>Esc</kbd> before you let go to put the part back. With a part selected, the arrow keys nudge it by 1 pixel (10 with <kbd>Shift</kbd>); a run of key presses is one change. The move is saved as the part's own <code>translate</code>, so the page around it does not shift, and it is one version, such as &ldquo;you moved button#buy by 40, 12&rdquo;. With several parts selected they all move together. A locked part does not move and says so.</p>
+          <p><strong>Change its place in the page.</strong> The free move above leaves the page as it is. To put a part somewhere else in the page order, hold <kbd>Alt</kbd> and <kbd>Shift</kbd> and drag the selected part: a coral line shows where it would land (before or after the part you point at, or inside a container you point at, such as an empty box), and it is put there when you let go. The page reflows around it, and it is one version (&ldquo;you moved button#alt before button#buy&rdquo;). <kbd>Alt</kbd> and the arrow keys move the selected part one place earlier or later among its neighbours. A locked part does not move, and nothing goes into a locked container.</p>
+          <p><strong>Size a part by its handles.</strong> A single selected part shows three small handles: the middle of its right edge, the middle of its bottom edge and its bottom-right corner. Drag one to set the width, the height or both. Hold <kbd>Shift</kbd> on the corner to keep the ratio, press <kbd>Esc</kbd> before you let go to put it back. The new size is saved as one version (&ldquo;you changed the size of button#buy to 140 &times; 48&rdquo;), and a part that is locked has no handles.</p>
+          <p><strong>Pick several parts with a box.</strong> Hold <kbd>Shift</kbd> and drag on a board to draw a box: the parts that lie wholly inside it are selected (only the outermost ones, so a card is picked, not the card and everything in it). Then the Line up group and the other tools work on all of them. A <kbd>Shift</kbd>-click still adds or removes one part.</p>
+          <p><strong>Make it a style.</strong> More, <em>Make it a style</em> turns the part's fill, text colour, size or corner into a named value at the top of the board (<code>--brand</code>) and uses it on every part that had the same value, so changing the style later changes them all.</p>
+          <p><strong>Locked parts.</strong> A locked part shows a padlock in its name. The tools refuse to change it, and Genie is told which parts are locked: if Genie rewrites a board and the locked part is not exactly as it was, the write is refused and Genie is asked to keep it. <strong>Unlock</strong> in the same place lets it change again.</p>
+          <p><strong>Check it at another width.</strong> The <strong>Responsive</strong> button in the bar shows the selected board at the width of a phone (390), a tablet (768) or a laptop (1280), scaled to fit. The board's own size on the canvas does not change; choose <em>The board's own size</em> to go back.</p>
+          <p>Every value is checked before it is used: colours, lengths and a short list of keywords only. A web address, a script or a second rule is refused, and a picture must be a PNG, JPEG, GIF or WebP of at most 200 KB.</p>
+
+          <h3 class="section__title" id="keys">Keys</h3>
+          <ul>
+            <li><kbd>V</kbd> select &middot; <kbd>H</kbd> hand &middot; <kbd>P</kbd> pin &middot; <kbd>F</kbd> fit all &middot; <kbd>+</kbd> <kbd>&minus;</kbd> zoom &middot; <kbd>0</kbd> 100 percent</li>
+            <li><kbd>Space</kbd> and drag to pan &middot; <kbd>Ctrl</kbd> and scroll to zoom &middot; arrow keys nudge a board, or the selected part</li>
+            <li><kbd>Alt</kbd> <kbd>&uarr;</kbd> <kbd>&darr;</kbd> move the selected part one place earlier or later &middot; <kbd>Esc</kbd> let go of a part or deselect &middot; <kbd>Ctrl</kbd> <kbd>Z</kbd> undo &middot; <kbd>Ctrl</kbd> <kbd>D</kbd> duplicate &middot; <kbd>Del</kbd> delete a board</li>
+          </ul>
+
+          <h3 class="section__title" id="good-to-know">Good to know</h3>
+          <ul>
+            <li><strong>Boards are sandboxed.</strong> A board runs in a frame with no access to your session, your cookies or the editor page, and it cannot call the network: its scripts work, but pictures and fonts must be inline (data: addresses or SVG). If a board shows nothing, ask Genie to make it self-contained.</li>
+            <li><strong>Several canvases.</strong> A workspace can hold more than one canvas. The button with the canvas name at the left of the bar (for example <em>login-flow</em>) lists them all with the number of boards in each: pick one to open it, or choose <strong>New canvas&hellip;</strong>. Genie can also open one by name ("open the canvas named onboarding"), and <code>canvas_read</code> tells it which ones exist. The first one is called <code>main</code>.</li>
+            <li><strong>Its own window.</strong> Drag the pane by its handle (the six dots at the left of the bar) out of the page and let go, or choose More, <em>Pop out to its own window</em>: the whole canvas moves into a window of its own and stays live, and a button in the pane brings it back. Allow pop-ups for the site if the browser stops it.</li>
+            <li><strong>Limits.</strong> 24 boards in a canvas, 512 KB of HTML in a board, 30 versions of a board, 200 notes.</li>
+            <li><strong>Shared sessions.</strong> Everyone in a shared session sees the canvas and its changes within a few seconds, and everyone in the session can edit it.</li>
+            <li><strong>What Genie reads.</strong> The text of a board and your notes are treated as data, never as instructions. Genie can read the layout and the boards with its own actions (canvas_read), and it asks before it writes, like it does for the editor.</li>
+            <li><strong>For admins.</strong> Site settings, Preview: <strong>Genie may draw on the canvas</strong>. Off: the tab disappears, the server refuses canvas calls and Genie has no canvas actions. It is on by default.</li>
+          </ul>
+          <p>Using the canvas with Genie (asking it to draw, the Board chip, notes sent to it, locked parts) is covered in the <a href="/genie#canvas" class="link link--blue">Genie guide</a>.</p>
+        </section>
+        <section class="js-section">
+          <a href="/doc.html" class="read-more">Back to all documentation.</a>
+        </section>
+      </article>
+    </div>
+
+    
+    <footer class="site-footer site-footer--simple">
+      <div class="site-footer__inner site-footer__bottom">
+        <span>&copy; <span id="copyright_year"></span> OpenREPL</span>
+        <div class="site-footer__social">
+          <a href="/faq">FAQ</a>
+          <a href="/genie">Genie guide</a>
+          <a href="/about.html">About</a>
+          <a href="/references.html">References</a>
+          <a href="/privacy.html">Privacy policy</a>
+          <a href="/terms.html">Terms of use</a>
+        </div>
+      </div>
+      <script>document.getElementById('copyright_year').textContent = new Date().getFullYear();</script>
+    </footer>
+   <script src="../js/common.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+    <script>hljs.initHighlightingOnLoad();</script>
+  </body>
+</html>

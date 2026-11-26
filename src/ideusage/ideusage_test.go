@@ -217,11 +217,11 @@ func TestGuestsAreNeverSavedByName(t *testing.T) {
 	m.Add(guest, Terminal, 3*MB)
 	m.Save(true)
 	for k := range st.data {
-		if k != guestKey {
+		if k != guestKey && k != guestSessKey { // two totals by day: bytes, and how many sessions; no name in either
 			t.Fatalf("a guest left a record: %s", k)
 		}
 	}
-	if len(st.data) != 1 {
+	if len(st.data) != 2 {
 		t.Fatal("the guests' daily total was not saved")
 	}
 }

@@ -100,7 +100,7 @@ test.describe("the whole page follows the theme", () => {
     for (const path of ["/about.html", "/doc.html"]) {
       await page.goto(path);
       await setTheme(page, "light");
-      expect(await backgroundLuminance(page, ".footer"), `${path} footer`).toBeGreaterThan(0.75);
+      expect(await backgroundLuminance(page, ".site-footer"), `${path} footer`).toBeGreaterThan(0.75);
     }
   });
 });

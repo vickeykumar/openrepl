@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <!-- Google Tag Manager -->
@@ -26,6 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./css/scribbler-global.css">
     <link rel="stylesheet" href="./css/scribbler-doc.css">
+    <link rel="stylesheet" href="./css/site-footer.css">
     <script src="./js/theme.js"></script>
     <script src="./settings.js"></script>
     <script src="./js/preprocessing.js"></script>
@@ -62,7 +63,8 @@
           <li class="js-btn">Golang</li>
           <li class="js-btn">Java</li>
           <li class="js-btn">Python</li>
-          <li><a href="#installing-apps" class="link link--dark">Install apps and packages</a></li>
+          <li><a href="./docs/install-apps.html" class="link link--dark">Install apps and packages</a></li>
+          <li><a href="./docs/canvas.html" class="link link--dark">The canvas</a></li>
         </ul>
       </aside> 
       <article class="doc__content" role="main">
@@ -105,129 +107,16 @@
 
         <section class="js-section" id="installing-apps">
           <h2 class="section__title">Install apps and packages</h2>
-          <p>OpenREPL offers two ways to add software: the App Store makes a curated app available to your terminals, while a package manager in Bash installs a copy in your workspace or project. Use the App Store when you want a package integrated with its REPL; use a terminal package manager for a project-local dependency or command-line tool.</p>
+          <p>Add libraries and command-line tools to your REPL: the App Store makes a curated app available to your terminals, and a package manager in Bash (conda-forge with Pixi, pip, npm, Go, Cargo, Maven, apt) installs a copy in your workspace or project.</p>
+          <ul class="doc__links"><li class="js-btn selected"><a href="./docs/install-apps.html" class="link link--dark"><i class="fa"></i>Install apps and packages: the guide</a></li></ul>
+          <hr />
+        </section>
 
-          <h3 class="section__title">Install from the App Store</h3>
-          <ol>
-            <li>Sign in, then open <strong>Apps</strong> in the editor toolbar or visit <a href="/store" class="link link--blue">the App Store</a>.</li>
-            <li>Search for a library or tool. Press <strong>Install</strong> for an app you can add, or <strong>Request</strong> when administrator approval is needed.</li>
-            <li>When the install finishes, turn its switch on under <strong>My apps</strong>.</li>
-            <li>Open a new terminal tab. For a terminal that is already open, run the activation line shown under <strong>My apps</strong>.</li>
-          </ol>
-          <p>App Store installs are managed by the server and shared across users; the switch controls whether your own terminals use them. The catalogue includes Python libraries and tools from conda-forge, Node packages from npm, Bash tools from Ubuntu packages, and Go modules, Java jars and Rust crates from server-managed mirrors.</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">[python3]$</span> python3 -c "import requests; print(requests.__version__)"
-<span class="code--data-type">2.34.2</span>
-<span class="code--prompt">[node]$</span> node -e "console.log(require('lodash').chunk([1,2,3], 2))"
-<span class="code--data-type">[ [ 1, 2 ], [ 3 ] ]</span>
-<span class="code--prompt">[bash]$</span> rg --version
-<span class="code--data-type">ripgrep 13.0.0</span></code></pre>
-          </div>
-
-          <h3 class="section__title">Before installing from Bash</h3>
-          <p>Direct downloads from a terminal need <strong>Internet for REPLs</strong> enabled by the site administrator. Signed-in non-admin terminals receive the proxy settings when it is enabled. Guests and admin terminals do not use this proxy. App Store downloads are made by the server and do not depend on a terminal's network access.</p>
-          <p>Terminal installs are local to your workspace or project; they are not shared App Store apps. Package build and download caches use the terminal's scratch area when available. Watch the Scratch and Workspace meters for large installs.</p>
-
-          <h3 class="section__title">conda-forge with Pixi</h3>
-          <p>Use Pixi for a project-local conda-forge environment. Run its Python through <code>pixi run</code>; it is separate from the regular OpenREPL Python terminal. To make a library available directly in that terminal, use the App Store instead.</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> mkdir conda-demo &amp;&amp; cd conda-demo
-<span class="code--prompt">root@bash:~/conda-demo#</span> pixi init
-<span class="code--prompt">root@bash:~/conda-demo#</span> pixi add --channel conda-forge numpy
-<span class="code--prompt">root@bash:~/conda-demo#</span> pixi run python -c "import numpy; print(numpy.__version__)"
-<span class="code--data-type">2.x.x</span></code></pre>
-          </div>
-
-          <h3 class="section__title">Python packages with pip</h3>
-          <p>Outside a virtual environment, pip installs in your user area, not the protected system Python folders. Inside a virtual environment, activate it first and then install normally.</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> pip install requests
-<span class="code--prompt">root@bash:~#</span> python3 -c "import requests; print(requests.__version__)"
-<span class="code--data-type">2.x.x</span>
-<span class="code--prompt">root@bash:~#</span> python3 -m venv .venv
-<span class="code--prompt">root@bash:~#</span> source .venv/bin/activate
-<span class="code--prompt">(.venv) root@bash:~#</span> pip install requests</code></pre>
-          </div>
-
-          <h3 class="section__title">Node packages with npm</h3>
-          <p>Install a library into your project folder and import it from Node. Global npm command-line tools install into your workspace and are added to PATH.</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> mkdir node-demo &amp;&amp; cd node-demo
-<span class="code--prompt">root@bash:~/node-demo#</span> npm init -y
-<span class="code--prompt">root@bash:~/node-demo#</span> npm install lodash
-<span class="code--prompt">root@bash:~/node-demo#</span> node -e 'console.log(require("lodash").chunk([1,2,3], 2))'
-<span class="code--data-type">[ [ 1, 2 ], [ 3 ] ]</span>
-<span class="code--prompt">root@bash:~/node-demo#</span> npm install -g cowsay
-<span class="code--prompt">root@bash:~/node-demo#</span> cowsay "hello from OpenREPL"</code></pre>
-          </div>
-
-          <h3 class="section__title">Go modules and command-line tools</h3>
-          <p>Use <code>go get</code> inside a Go module to add a library to <code>go.mod</code>. Use <code>go install</code> with a version to install a command into <code>~/go/bin</code>. On current Go, <code>go get</code> does not install command-line tools.</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> mkdir go-demo &amp;&amp; cd go-demo
-<span class="code--prompt">root@bash:~/go-demo#</span> go mod init example.com/go-demo
-<span class="code--prompt">root@bash:~/go-demo#</span> go get github.com/google/uuid@v1.6.0
-<span class="code--prompt">root@bash:~/go-demo#</span> go install golang.org/x/tools/cmd/goimports@v0.30.0
-<span class="code--prompt">root@bash:~/go-demo#</span> goimports -version</code></pre>
-          </div>
-          <p>For an App Store Go module, install or request the app first, then use the module path and version shown on its page. The server-managed mirror lets the Go REPL use that module without downloading it again.</p>
-
-          <h3 class="section__title">Rust crates and tools</h3>
-          <p>In the Rust REPL (<code>evcxr</code>), add a library with <code>:dep</code>. In Bash, <code>cargo install</code> builds and installs a command-line program. Cargo's downloads and build output use scratch; installed executables go in <code>~/.cargo/bin</code>.</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">evcxr&gt;</span> :dep serde_json = "1"
-<span class="code--prompt">evcxr&gt;</span> serde_json::json!({"ok": true})
-<span class="code--data-type">Object {"ok": Bool(true)}</span>
-<span class="code--prompt">root@bash:~#</span> cargo install --locked ripgrep@14.1.1
-<span class="code--prompt">root@bash:~#</span> ~/.cargo/bin/rg --version</code></pre>
-          </div>
-          <p>App Store Rust crates are mirrored by the server. After enabling an app such as <code>serde_json</code>, use its <code>:dep</code> line in evcxr as shown on the app page.</p>
-
-          <h3 class="section__title">Java libraries with Maven</h3>
-          <p>Maven is available in Bash. Its local repository is in the terminal's scratch area. This example downloads Apache Commons Lang and starts JShell with the jar on its class path:</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> mvn -q dependency:get -Dartifact=org.apache.commons:commons-lang3:3.17.0
-<span class="code--prompt">root@bash:~#</span> jshell --class-path "$OPENREPL_SCRATCH/cache/m2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.jar"
-<span class="code--prompt">jshell&gt;</span> import org.apache.commons.lang3.StringUtils;
-<span class="code--prompt">jshell&gt;</span> StringUtils.capitalize("hello")
-<span class="code--data-type">$1 ==&gt; "Hello"</span></code></pre>
-          </div>
-          <p>You can also enable an App Store Java jar such as <code>commons-lang3</code>; OpenREPL adds enabled jars to JShell's class path automatically.</p>
-
-          <h3 class="section__title">Ubuntu packages and apt</h3>
-          <p>Do not run <code>apt install</code> in an OpenREPL Bash terminal. The system image is protected, and changes made to it would not be a per-user install. For curated Bash tools such as <code>git</code> or <code>ripgrep</code>, install them from the App Store; its apt installer creates a sandboxed bundle. If you operate the server and need a package built into every image, add it to the image's prerequisite install script and rebuild the image.</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs dockerfile"><span class="code--comment"># Server image only (Dockerfile or prerequisite script)</span>
-<span class="hljs-keyword">RUN</span> apt-get update &amp;&amp; apt-get install -y --no-install-recommends maven libwww-perl</code></pre>
-          </div>
-          <p>After enabling <code>ripgrep</code> from the App Store, run the tool in Bash:</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> rg --version
-<span class="code--data-type">ripgrep 13.0.0</span></code></pre>
-          </div>
-
-          <h3 class="section__title">Verify tools and proxy access</h3>
-          <p>Check the versions installed in this image. These can change when the server image is updated. Scratch paths vary by workspace.</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> node --version
-<span class="code--prompt">root@bash:~#</span> npm --version
-<span class="code--prompt">root@bash:~#</span> java --version
-<span class="code--prompt">root@bash:~#</span> mvn --version
-<span class="code--prompt">root@bash:~#</span> perl -MLWP::UserAgent -e 'print "LWP::UserAgent OK\n"'
-<span class="code--prompt">root@bash:~#</span> printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\nCARGO_INSTALL_ROOT=%s\n' "$CARGO_HOME" "$CARGO_TARGET_DIR" "$CARGO_INSTALL_ROOT"</code></pre>
-          </div>
-          <p>When Internet for REPLs is enabled, this Node request uses the configured environment proxy. It checks proxy access, not direct outbound networking. <code>npm view</code> is a quick registry check.</p>
-          <div class="code__block code__block--notabs">
-            <pre class="code code--block"><code class="hljs bash"><span class="code--prompt">root@bash:~#</span> NODE_USE_ENV_PROXY=1 node -e '
-const https = require("node:https");
-const req = https.get("https://example.com", res =&gt; { console.log("HTTPS status:", res.statusCode); res.resume(); });
-req.setTimeout(10000, () =&gt; req.destroy(new Error("timeout")));
-req.on("error", e =&gt; { console.error(e.code || e.message); process.exitCode = 1; });
-'
-<span class="code--prompt">root@bash:~#</span> npm view lodash version</code></pre>
-          </div>
-          <p><code>cargo install</code> puts its registry and build cache in Scratch; <code>CARGO_INSTALL_ROOT</code> points to the home directory for installed commands. A PCRE2-unavailable notice from ripgrep is optional-feature information if <code>rg --version</code> succeeds. On Java 21, an old Maven quickstart may fail because it targets Java 5; for that legacy project, build with <code>mvn -q -Dmaven.compiler.source=8 -Dmaven.compiler.target=8 package</code>.</p>
-          <p>If a package is missing, search the App Store or request it from an administrator. For project dependencies, use the matching language package manager instead.</p>
+        <section class="js-section" id="canvas">
+          <h2 class="section__title">The canvas</h2>
+          <p>A tab of the Preview pane with an endless surface of boards. Genie draws screens and layouts on it, and you move, resize and retype them, change a part of a board with a toolbar (fill, corner, text, layout, size, lock), pin notes, compare versions, export, and pop it out into a window of its own.</p>
+          <ul class="doc__links"><li class="js-btn selected"><a href="./docs/canvas.html" class="link link--dark"><i class="fa"></i>The canvas: the guide</a></li></ul>
+          <hr />
         </section>
 
         <section class="js-section">
@@ -237,16 +126,20 @@ req.on("error", e =&gt; { console.error(e.code || e.message); process.exitCode =
     </div>
 
     
-    <footer class="footer">
-	<a href="about.html" class="link link--light">About</a> <span class="dot"></span>
-	<a href="references.html" class="link link--light">References</a> <span class="dot"></span>
-	<a href="/privacy.html" class="link link--light">Privacy</a> <span class="dot"></span>
-	<a href="/terms.html" class="link link--light">Terms</a> <span class="dot"></span>
-	<span id="copyright_year">
-        <script>document.getElementById('copyright_year').appendChild(document.createTextNode(new Date().getFullYear()))</script>
-    </span>&copy;<span class="go__color">Open</span>REPL
-	<div style="position: sticky; bottom: 0; right: 0; border: 0; font-size: 10px;" align="right">Template by <a href="https://themewagon.com" class="link link--light">ThemeWagon</a></div>
-   </footer>
+    <footer class="site-footer site-footer--simple">
+      <div class="site-footer__inner site-footer__bottom">
+        <span>&copy; <span id="copyright_year"></span> OpenREPL</span>
+        <div class="site-footer__social">
+          <a href="/faq">FAQ</a>
+          <a href="/genie">Genie guide</a>
+          <a href="/about.html">About</a>
+          <a href="/references.html">References</a>
+          <a href="/privacy.html">Privacy policy</a>
+          <a href="/terms.html">Terms of use</a>
+        </div>
+      </div>
+      <script>document.getElementById('copyright_year').textContent = new Date().getFullYear();</script>
+    </footer>
    <script src="./js/common.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
     <script>hljs.initHighlightingOnLoad();</script>

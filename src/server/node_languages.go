@@ -15,6 +15,7 @@ import (
 
 	"gateway"
 	"tunnel"
+	"utils"
 )
 
 // Languages per node.
@@ -284,6 +285,7 @@ func (server *Server) workerConfigWith(disabled []string) *tunnel.WorkerConfig {
 	if level == "" {
 		level = "info" // what normalize makes of an empty level; the revision must not tell them apart
 	}
+	appID, appSecret := utils.GitHubApp()
 	cfg := &tunnel.WorkerConfig{
 		ColorOfTheDay:      s.ColorOfTheDay,
 		AccentColor:        s.AccentColor,
@@ -295,6 +297,23 @@ func (server *Server) workerConfigWith(disabled []string) *tunnel.WorkerConfig {
 		DisabledLanguages:  append([]string(nil), disabled...),
 		Egress:             s.EgressOn,
 		PreviewBaseURL:     s.PreviewBaseURL,
+		GitHubToken:        utils.GitHubToken(),
+		GitHubAppID:        appID,
+		GitHubAppSecret:    appSecret,
+
+		PreviewOff:              s.PreviewOff,
+		PreviewGuestsOff:        s.PreviewGuestsOff,
+		PreviewLinkGuestMinutes: s.PreviewLinkGuestMinutes,
+		PreviewLinkUserMinutes:  s.PreviewLinkUserMinutes,
+		StoreOff:                s.StoreOff,
+		StoreLimitMB:            s.StoreLimitMB,
+		StoreReserveMB:          s.StoreReserveMB,
+		StoreSafeList:           append([]string(nil), s.StoreSafeList...),
+		ScratchSoftMB:           s.ScratchSoftMB,
+		ScratchServerMB:         s.ScratchServerMB,
+		CanvasOff:               s.CanvasOff,
+		GenieEventsOff:          s.GenieEventsOff,
+		GenieEventDays:          s.GenieEventDays,
 	}
 	data, _ := json.Marshal(cfg)
 	h := fnv.New64a()

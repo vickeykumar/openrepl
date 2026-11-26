@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -402,5 +403,142 @@ func TestIDEAdminEndpointsListTheDayAndResetByHand(t *testing.T) {
 	s.handleAdminIDEUsage(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("reset of an unknown account: %d", rec.Code)
+	}
+}
+
+// the history for admins: the days of all accounts, one account, the watch list, the flags, and the settings that drive them
+func TestIDEAdminHistoryEndpointsAndTheWatchList(t *testing.T) {
+	s := ideTestServer(t)
+	a := ideusage.Identity{Key: "home-h1", UID: "uid-h1", Signed: true}
+	ideMeter.Add(a, ideusage.Terminal, 230*ideusage.MB) // over the limit today
+	ideMeter.Add(ideusage.Identity{Key: "home-h2", UID: "uid-h2", Signed: true}, ideusage.Genie, 12*ideusage.MB)
+	ideMeter.Add(ideusage.Identity{Key: "guest-h", Guest: true}, ideusage.Files, 4*ideusage.MB)
+	get := func(q string, v interface{}) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		s.handleAdminIDEUsage(rec, httptest.NewRequest("GET", "/admin/ide-usage?"+q, nil))
+		if rec.Code != 200 {
+			t.Fatalf("%s: %d", q, rec.Code)
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var rep struct {
+		Period        int                `json:"period"`
+		Days          []ideusage.DayRow  `json:"days"`
+		Accounts      []ideusage.AcctRow `json:"accounts"`
+		AccountsTotal int                `json:"accountsTotal"`
+		Guests        int64              `json:"guests"`
+		Flags         []ideusage.Flag    `json:"flags"`
+		Watch         []ideWatched       `json:"watch"`
+		Thresholds    ideThresholds      `json:"thresholds"`
+		On            bool               `json:"on"`
+	}
+	get("report=30", &rep)
+	if rep.Period != 30 || len(rep.Days) != 30 || rep.AccountsTotal < 2 || !rep.On || rep.Guests < 4*ideusage.MB {
+		t.Fatalf("report: period %d days %d accounts %d on %v guests %d", rep.Period, len(rep.Days), rep.AccountsTotal, rep.On, rep.Guests)
+	}
+	if rep.Thresholds.LimitDays != 3 || rep.Thresholds.Jump != 5 || rep.Thresholds.NearPct != 90 || rep.Thresholds.Stops != 5 || rep.Thresholds.HistoryDays != 90 {
+		t.Fatalf("thresholds: %+v", rep.Thresholds)
+	}
+	var one struct {
+		Known   bool              `json:"known"`
+		Watched bool              `json:"watched"`
+		Account ideusage.AcctView `json:"account"`
+		Limit   int64             `json:"limit"`
+	}
+	get("acct=uid-h1&days=14", &one)
+	if !one.Known || len(one.Account.Days) != 14 || one.Account.Today != 230*ideusage.MB || one.Limit != 200*ideusage.MB || one.Watched {
+		t.Fatalf("one account: %+v", one)
+	}
+	// the watch list needs the dashboard's header, and is kept in the settings
+	post := func(q string, withHeader bool) int {
+		req := httptest.NewRequest("POST", "/admin/ide-usage?"+q, nil)
+		if withHeader {
+			req.Header.Set(adminHeader, adminHeaderValue)
+		}
+		rec := httptest.NewRecorder()
+		s.handleAdminIDEUsage(rec, req)
+		return rec.Code
+	}
+	if c := post("watch=1&uid=uid-h2", false); c != http.StatusForbidden {
+		t.Fatalf("a watch without the header: %d", c)
+	}
+	if c := post("watch=1&uid=uid-h2", true); c != 200 {
+		t.Fatalf("watch: %d", c)
+	}
+	if w := GetSiteSettings().IDEWatch; len(w) != 1 || w[0] != "uid-h2" {
+		t.Fatalf("watch list: %v", w)
+	}
+	get("report=7", &rep)
+	if len(rep.Watch) != 1 || rep.Watch[0].UID != "uid-h2" {
+		t.Fatalf("watch in the report: %+v", rep.Watch)
+	}
+	found := map[string]string{}
+	for _, f := range rep.Flags {
+		found[f.UID] = f.Kind
+	}
+	if found["uid-h1"] != "limit" && found["uid-h1"] != "near" { // 230 MB today: over the limit, but only one day
+		// one day at the limit is not a run of 3: the account is not flagged "limit"; near does not apply over the limit
+		if _, ok := found["uid-h1"]; ok {
+			t.Fatalf("flags: %+v", rep.Flags)
+		}
+	}
+	if found["uid-h2"] != "watched" {
+		t.Fatalf("the watched account is not in the flags: %+v", rep.Flags)
+	}
+	if c := post("watch=0&uid=uid-h2", true); c != 200 || len(GetSiteSettings().IDEWatch) != 0 {
+		t.Fatalf("unwatch: %d %v", c, GetSiteSettings().IDEWatch)
+	}
+	// saving the settings form leaves the watch list alone
+	post("watch=1&uid=uid-h3", true)
+	if w := GetSiteSettings().IDEWatch; len(w) != 1 || w[0] != "uid-h3" {
+		t.Fatalf("watch list before the form: %v", w)
+	}
+}
+
+func TestIDEHistorySettingsAreCheckedAndFollowTheMeter(t *testing.T) {
+	_ = ideTestServer(t)
+	for _, bad := range []SiteSettings{{IDEHistoryDays: 10}, {IDEHistoryDays: 400}, {IDEFlagLimitDays: 31}, {IDEFlagJump: 1}, {IDEFlagNearPct: 40}, {IDEFlagNearPct: 100}, {IDEFlagStops: 1001}} {
+		if err := SaveSiteSettings(bad, -1); err == nil {
+			t.Errorf("%+v was accepted", bad)
+		}
+	}
+	if err := SaveSiteSettings(SiteSettings{IDEHistoryDays: 365, IDEFlagLimitDays: 2, IDEFlagJump: 3, IDEFlagNearPct: 80, IDEFlagStops: 9, IDEFlagLog: true}, -1); err != nil {
+		t.Fatal(err)
+	}
+	c := ideusage.ConfigFunc()
+	if c.HistoryDays != 365 || c.FlagLimitDays != 2 || c.FlagJump != 3 || c.FlagNearPct != 80 || c.FlagStops != 9 || !c.FlagLog {
+		t.Fatalf("the meter did not follow: %+v", c)
+	}
+	// empty settings are the built-in numbers
+	if err := SaveSiteSettings(SiteSettings{}, -1); err != nil {
+		t.Fatal(err)
+	}
+	if c := ideusage.ConfigFunc(); c.HistoryDays != 90 || c.FlagLimitDays != 3 || c.FlagJump != 5 || c.FlagNearPct != 90 || c.FlagStops != 5 || c.FlagLog {
+		t.Fatalf("defaults: %+v", c)
+	}
+}
+
+func TestTheSettingsFormLeavesTheIDEWatchListAlone(t *testing.T) {
+	_, h := adminTestServer(t)
+	if err := setIDEWatch("uid-w", true); err != nil {
+		t.Fatal(err)
+	}
+	w := post(h, "/admin/settings", `{"ideFlagJump":8,"ideWatch":["someone-else"]}`)
+	if w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	s := GetSiteSettings()
+	if s.IDEFlagJump != 8 || len(s.IDEWatch) != 1 || s.IDEWatch[0] != "uid-w" {
+		t.Fatalf("the form changed the watch list: jump %d, watch %v", s.IDEFlagJump, s.IDEWatch)
+	}
+	// at most 50 are watched
+	for i := 0; i < 60; i++ {
+		setIDEWatch(fmt.Sprintf("uid-%02d", i), true)
+	}
+	if n := len(GetSiteSettings().IDEWatch); n != 50 {
+		t.Fatalf("the watch list holds %d", n)
 	}
 }

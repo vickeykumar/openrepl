@@ -39,6 +39,18 @@ func startIDEUsage(ctx context.Context) {
 	ideStart.Do(func() {
 		ideMeter.SetStore(userDBStore{})
 		go ideMeter.Run(ctx.Done())
+		go func() { // the accounts that need a look go to the server log, when the setting says so
+			t := time.NewTicker(30 * time.Minute)
+			defer t.Stop()
+			for {
+				select {
+				case <-t.C:
+					logIDEFlags()
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
 	})
 }
 
@@ -169,7 +181,7 @@ func (server *Server) ideRoute(r *http.Request) (ideusage.Part, ideKind) {
 		return ideusage.Files, ideCount
 	case "chat/completions", "agent_bash":
 		return ideusage.Genie, ideHeavy
-	case "agent_files", "agent_restore", "genie_chats", "genie_ext", "genie_conn":
+	case "agent_files", "agent_restore", "genie_chats", "genie_canvas", "genie_ext", "genie_conn":
 		return ideusage.Genie, ideCount
 	}
 	return 0, ideNone
@@ -331,6 +343,8 @@ type ideGate struct {
 	rate *ideusage.Rate
 	mu   sync.Mutex
 	why  string
+
+	lastPause time.Time // when a frame was last held, so that a run of held frames is one pause
 }
 
 func newIDEGate(id ideusage.Identity) *ideGate { return &ideGate{id: id, rate: ideusage.NewRate()} }
@@ -352,7 +366,15 @@ func (g *ideGate) Frame(first byte, size int64) error {
 		if c.TermPauseOnly {
 			grace = c.TermWindow + time.Second // the window empties by itself: it is a pause, never an end
 		}
-		if err := g.rate.Wait(size, c.TermBytes, c.TermWindow, grace); err != nil {
+		paused, err := g.rate.WaitPaused(size, c.TermBytes, c.TermWindow, grace)
+		if paused && time.Since(g.lastPause) > 2*time.Second { // one pause for a run of held frames
+			ideMeter.NoteStop(g.id, false)
+		}
+		if paused {
+			g.lastPause = time.Now()
+		}
+		if err != nil {
+			ideMeter.NoteStop(g.id, true) // the run is ended
 			return err
 		}
 	}
@@ -414,6 +436,20 @@ func (server *Server) handleAdminIDEUsage(w http.ResponseWriter, r *http.Request
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
+		if on := r.URL.Query().Get("watch"); on != "" { // the watch list: ?watch=1|0&uid=
+			uid := r.URL.Query().Get("uid")
+			if uid == "" || len(uid) > 128 {
+				http.Error(w, "no account", http.StatusBadRequest)
+				return
+			}
+			if err := setIDEWatch(uid, on == "1"); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			server.audit(r, "IDE data watch list", map[bool]string{true: "added ", false: "removed "}[on == "1"]+uid)
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "watch": GetSiteSettings().IDEWatch})
+			return
+		}
 		key := ideMeter.KeyOfUID(r.URL.Query().Get("uid"))
 		if key == "" || !ideMeter.Reset(key) {
 			http.Error(w, "no count to reset", http.StatusNotFound)
@@ -421,6 +457,14 @@ func (server *Server) handleAdminIDEUsage(w http.ResponseWriter, r *http.Request
 		}
 		server.audit(r, "reset IDE data count", r.URL.Query().Get("uid"))
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		return
+	}
+	if rep := r.URL.Query().Get("report"); rep != "" { // the days of all accounts
+		server.adminIDEReport(w, r, atoiDefault(rep, 30))
+		return
+	}
+	if acct := r.URL.Query().Get("acct"); acct != "" { // one account over a period
+		server.adminIDEAccount(w, r, acct, atoiDefault(r.URL.Query().Get("days"), 30))
 		return
 	}
 	if uid := r.URL.Query().Get("uid"); uid != "" {

@@ -62,6 +62,14 @@
   },
   {
    "@type": "Question",
+   "name": "How does the canvas work?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "The canvas is a tab of the Preview pane where Genie draws screens, flows and layouts as boards you can pan, zoom, move, size, retype and pin notes on. Each board is a plain web page saved in your workspace in .genie/canvas, and every change is a version you can undo or compare. A note you pin goes to Genie only when you send it, and Genie reads your changes only with your next message. You can export one board, all of them as a zip, or print them. You can also select one part of a board and change it with a toolbar (fill, corner, text, layout, size, spacing, border, picture, lock) without asking Genie, and a locked part is never changed. Boards run in the Preview's sandbox without network access, a canvas holds up to 24 boards, and a site admin can switch it off."
+   }
+  },
+  {
+   "@type": "Question",
    "name": "How much data can I use?",
    "acceptedAnswer": {
     "@type": "Answer",
@@ -313,7 +321,7 @@
       <input class="faq-search" id="faq-search" type="search" placeholder="Search the questions: share, genie, free" autocomplete="off">
     </header>
     <div class="faq-layout">
-      <nav class="faq-topics" aria-label="Topics"><strong>Topics</strong><a href="#getting-started"><span>Getting started</span><span>6</span></a><a href="#sharing"><span>Sharing</span><span>2</span></a><a href="#genie"><span>Genie</span><span>10</span></a><a href="#practice"><span>Practice</span><span>2</span></a><a href="#editor-and-apps"><span>Editor and apps</span><span>4</span></a></nav>
+      <nav class="faq-topics" aria-label="Topics"><strong>Topics</strong><a href="#getting-started"><span>Getting started</span><span>6</span></a><a href="#sharing"><span>Sharing</span><span>2</span></a><a href="#genie"><span>Genie</span><span>10</span></a><a href="#practice"><span>Practice</span><span>2</span></a><a href="#editor-and-apps"><span>Editor and apps</span><span>5</span></a></nav>
       <main class="faq-list" id="faq">
         <!-- The same words are on the main page for the six questions it keeps (index.html, #faq); e2e/tests/faq.spec.js checks that they match. -->
         <h2 id="getting-started">Getting started</h2>
@@ -348,7 +356,8 @@
         <details id="why-does-debug-start-paused" class="faq-q"><summary>Why does Debug start paused?</summary><p>On some servers programs cannot be traced the usual way, so Debug runs yours under QEMU and gdb connects to it. It waits at the first instruction: set your breakpoints, then type c or run. Ctrl+C stops it again.</p></details>
         <details id="how-big-is-an-app-from-the-app-store" class="faq-q"><summary>How big is an app from the App Store?</summary><p>Each app page shows its size once installed. The store picks the smallest way to make an app (the server's own Ubuntu packages, conda-forge or npm) and removes what a program does not need, such as man pages and test files. A few programs bring their own Python and Perl; their page says so, with the size (about 120 MB for some).</p></details>
         <details id="what-if-an-app-store-install-fails" class="faq-q"><summary>What if an App Store install fails?</summary><p>The app shows why, and a Try again button. Some failures pass by themselves, so the server tries again a few times. An app that does not exist for a server's CPU type is shown as not available there; an admin can look at it.</p></details>
-        <details id="how-do-i-install-an-app" class="faq-q"><summary>How do I install an app?</summary><p>Open <strong>Apps</strong> or <a href="/store">the App Store</a>, search for an app, then press Install or Request. When it is installed, enable its switch under My apps and open a new terminal. See the <a href="/doc.html#installing-apps">package installation guide</a> for App Store steps and Bash examples for Python, Node.js, Go, Rust and Java.</p></details>
+        <details id="how-do-i-install-an-app" class="faq-q"><summary>How do I install an app?</summary><p>Open <strong>Apps</strong> or <a href="/store">the App Store</a>, search for an app, then press Install or Request. When it is installed, enable its switch under My apps and open a new terminal. See the <a href="/docs/install-apps.html">package installation guide</a> for App Store steps and Bash examples for Python, Node.js, Go, Rust and Java.</p></details>
+        <details id="how-does-the-canvas-work" class="faq-q"><summary>How does the canvas work?</summary><p>The canvas is a tab of the Preview pane where Genie draws screens, flows and layouts as boards you can pan, zoom, move, size, retype and pin notes on. Each board is a plain web page saved in your workspace in .genie/canvas, and every change is a version you can undo or compare. A note you pin goes to Genie only when you send it, and Genie reads your changes only with your next message. You can export one board, all of them as a zip, or print them. You can also select one part of a board and change it with a toolbar (fill, corner, text, layout, size, spacing, border, picture, lock) without asking Genie, and a locked part is never changed. Boards run in the Preview's sandbox without network access, a canvas holds up to 24 boards, and a site admin can switch it off.</p></details>
         <p class="faq-none" id="faq-none" hidden>No question matches. Ask Genie in the editor, or <a href="/#request">contact us</a>.</p>
       </main>
     </div>

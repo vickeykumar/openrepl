@@ -68,6 +68,9 @@ const (
 	EnvS3Bucket          = "OPENREPL_S3_BUCKET"
 	EnvS3AccessKey       = "OPENREPL_S3_ACCESS_KEY_ID"
 	EnvS3SecretKey       = "OPENREPL_S3_SECRET_ACCESS_KEY"
+	EnvGitHubToken       = "OPENREPL_GITHUB_TOKEN"
+	EnvGitHubAppID       = "OPENREPL_GITHUB_APP_CLIENT_ID"
+	EnvGitHubAppSecret   = "OPENREPL_GITHUB_APP_CLIENT_SECRET"
 	EnvS3Prefix          = "OPENREPL_S3_PREFIX"
 	EnvBackupName        = "OPENREPL_BACKUP_NAME"
 	EnvCloudflareToken   = "OPENREPL_CLOUDFLARE_API_TOKEN"
@@ -323,6 +326,9 @@ var (
 	cfAccountOverr    string
 	s3AccessOverr     string
 	s3SecretOverr     string
+	gitHubOverr       string
+	gitHubAppIDOverr  string
+	gitHubAppSecOverr string
 	secretFromGateway string
 	generatedSecret   string
 )
@@ -349,13 +355,71 @@ func SetS3Overrides(access, secret string) {
 	keyMu.Unlock()
 }
 
+// SetGitHubOverride sets the GitHub token saved in the dashboard; "" means none.
+func SetGitHubOverride(token string) {
+	keyMu.Lock()
+	gitHubOverr = strings.TrimSpace(token)
+	keyMu.Unlock()
+}
+
+// SetGitHubAppOverride sets the GitHub App's client id and secret a worker got from the gateway (the connector's sign-in credentials, which also
+// raise the limit of requests that read public repositories); "" means none.
+func SetGitHubAppOverride(id, secret string) {
+	keyMu.Lock()
+	gitHubAppIDOverr, gitHubAppSecOverr = strings.TrimSpace(id), strings.TrimSpace(secret)
+	keyMu.Unlock()
+}
+
+// GitHubApp is the client id and the secret of the GitHub App (or OAuth App) the GitHub connector signs in with: what the gateway was given, else
+// what a gateway handed to this worker. Sent as HTTP Basic authentication to api.github.com, they raise the limit to 5,000 requests an hour for public data.
+func GitHubApp() (id, secret string) {
+	id, secret = GitHubAppID(), GitHubAppSecret()
+	if id == "" || secret == "" {
+		return "", ""
+	}
+	return id, secret
+}
+
+// GitHubAppID and GitHubAppSecret are the two halves: the one saved in the dashboard (or handed to a worker), else the environment's. The GitHub
+// connector's sign-in uses them too.
+func GitHubAppID() string {
+	keyMu.RLock()
+	over := gitHubAppIDOverr
+	keyMu.RUnlock()
+	if over != "" {
+		return over
+	}
+	return strings.TrimSpace(os.Getenv(EnvGitHubAppID))
+}
+
+func GitHubAppSecret() string {
+	keyMu.RLock()
+	over := gitHubAppSecOverr
+	keyMu.RUnlock()
+	if over != "" {
+		return over
+	}
+	return strings.TrimSpace(os.Getenv(EnvGitHubAppSecret))
+}
+
+// GitHubToken is the token that reads plugins from a GitHub link: the one saved in the dashboard, else OPENREPL_GITHUB_TOKEN.
+func GitHubToken() string {
+	keyMu.RLock()
+	over := gitHubOverr
+	keyMu.RUnlock()
+	if over != "" {
+		return over
+	}
+	return strings.TrimSpace(os.Getenv(EnvGitHubToken))
+}
+
 // KeySource says where the key in use comes from: "dashboard", "env", "file",
 // or "" when there is none. provider is "openai", "openrouter", "cloudflare"
 // (the token) or "cloudflare-account".
 func KeySource(provider string) string {
 	keyMu.RLock()
 	over := map[string]string{"openai": openAIOverride, "openrouter": openRouterOverr,
-		"cloudflare": cfTokenOverr, "cloudflare-account": cfAccountOverr, "s3-access": s3AccessOverr, "s3-secret": s3SecretOverr}[provider]
+		"cloudflare": cfTokenOverr, "cloudflare-account": cfAccountOverr, "s3-access": s3AccessOverr, "s3-secret": s3SecretOverr, "github": gitHubOverr, "github-app-id": gitHubAppIDOverr, "github-app-secret": gitHubAppSecOverr}[provider]
 	keyMu.RUnlock()
 	switch {
 	case over != "":
@@ -372,6 +436,12 @@ func KeySource(provider string) string {
 		return source(EnvS3AccessKey, "")
 	case provider == "s3-secret":
 		return source(EnvS3SecretKey, "")
+	case provider == "github":
+		return source(EnvGitHubToken, "")
+	case provider == "github-app-id":
+		return source(EnvGitHubAppID, "")
+	case provider == "github-app-secret":
+		return source(EnvGitHubAppSecret, "")
 	}
 	return ""
 }

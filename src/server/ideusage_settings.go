@@ -42,6 +42,16 @@ func (s SiteSettings) checkIDEUsage() error {
 		return fmt.Errorf("the reserve must be between 1 and %d MB (or empty)", maxIDEReserve)
 	case !in(s.IDESmallKB, 1, maxIDESmallKB):
 		return fmt.Errorf("the small file size at the limit must be between 1 and %d KB (or empty)", maxIDESmallKB)
+	case !in(s.IDEHistoryDays, 30, 365):
+		return fmt.Errorf("the days of history kept must be between 30 and 365 (or empty)")
+	case !in(s.IDEFlagLimitDays, 1, 30):
+		return fmt.Errorf("the days in a row at the limit must be between 1 and 30 (or empty)")
+	case !in(s.IDEFlagJump, 2, 50):
+		return fmt.Errorf("the jump over the usual day must be between 2 and 50 times (or empty)")
+	case !in(s.IDEFlagNearPct, 50, 99):
+		return fmt.Errorf("the share of the limit to flag must be between 50 and 99 percent (or empty)")
+	case !in(s.IDEFlagStops, 1, 1000):
+		return fmt.Errorf("the number of times a terminal was stopped must be between 1 and 1000 (or empty)")
 	case s.IDEResetMinutes < 0 || s.IDEResetMinutes > 1439:
 		return fmt.Errorf("the reset time must be a time of day (0 to 1439 minutes after 00:00 UTC)")
 	}
@@ -74,7 +84,8 @@ func ideSettingsDiffer(a, b SiteSettings) bool {
 		a.IDETermMB != b.IDETermMB || a.IDETermWindowSecs != b.IDETermWindowSecs || a.IDETermGraceSecs != b.IDETermGraceSecs ||
 		a.IDETermPauseOnly != b.IDETermPauseOnly || a.IDEGuestMB != b.IDEGuestMB || a.IDEUserMB != b.IDEUserMB ||
 		a.IDEWarnPct != b.IDEWarnPct || a.IDEReserveMB != b.IDEReserveMB || a.IDESmallKB != b.IDESmallKB ||
-		a.IDEResetMinutes != b.IDEResetMinutes
+		a.IDEResetMinutes != b.IDEResetMinutes || a.IDEHistoryDays != b.IDEHistoryDays || a.IDEFlagLimitDays != b.IDEFlagLimitDays ||
+		a.IDEFlagJump != b.IDEFlagJump || a.IDEFlagNearPct != b.IDEFlagNearPct || a.IDEFlagStops != b.IDEFlagStops || a.IDEFlagLog != b.IDEFlagLog
 }
 
 // ideConfig is the settings with the built-in value where one is empty.
@@ -113,5 +124,21 @@ func (s SiteSettings) ideConfig() ideusage.Config {
 		c.SmallBytes = int64(s.IDESmallKB) << 10
 	}
 	c.ResetMinutes = s.IDEResetMinutes
+	if s.IDEHistoryDays > 0 {
+		c.HistoryDays = s.IDEHistoryDays
+	}
+	if s.IDEFlagLimitDays > 0 {
+		c.FlagLimitDays = s.IDEFlagLimitDays
+	}
+	if s.IDEFlagJump > 0 {
+		c.FlagJump = s.IDEFlagJump
+	}
+	if s.IDEFlagNearPct > 0 {
+		c.FlagNearPct = s.IDEFlagNearPct
+	}
+	if s.IDEFlagStops > 0 {
+		c.FlagStops = s.IDEFlagStops
+	}
+	c.FlagLog = s.IDEFlagLog
 	return c
 }

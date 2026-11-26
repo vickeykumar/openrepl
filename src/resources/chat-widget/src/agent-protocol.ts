@@ -57,6 +57,11 @@ export const ACTIONS = [
   "preview_resize",
   "preview_eval",
   "preview_storage",
+  "canvas_open",
+  "canvas_board",
+  "canvas_arrange",
+  "canvas_read",
+  "canvas_note",
   "store_suggest",
   "mcp_call",
   "need_tools",
@@ -114,6 +119,11 @@ export const ACTION_GROUP: Record<string, Group> = {
   preview_resize: "preview",
   preview_eval: "preview",
   preview_storage: "preview",
+  canvas_open: "preview",
+  canvas_board: "preview",
+  canvas_arrange: "preview",
+  canvas_read: "preview",
+  canvas_note: "preview",
   store_suggest: "store",
   mcp_call: "connect",
 };
@@ -176,11 +186,22 @@ export interface Action {
   args?: Record<string, unknown>; // the tool's arguments: a plain object
   level?: "read" | "write" | "irreversible"; // set by the page from the connection's own list, never taken from the model
   title?: string; // the connection's name for the user ("GitHub"), set by the page
+  // the canvas_* actions (docs/lld/21-genie-canvas.md): boards on the canvas of the Preview pane
+  board?: string; // canvas_board, canvas_note: the board's name, lower case letters, digits and hyphens
+  html?: string; // canvas_board: the whole page of the board
+  plan?: { board: string; title: string; w?: number; h?: number }[]; // canvas_open: the boards to come, shown as dashed frames
+  boards?: { board: string; x?: number; y?: number; w?: number; h?: number }[]; // canvas_arrange
+  pin?: string; // canvas_note: the id of a note to answer
+  answer?: string; // canvas_note: what to say to that note
+  w?: number; // canvas_board: the size
+  h?: number;
+  label?: string; // canvas_board: a few words for the list of versions
 }
 
 export const MAX_MCP_CALLS = 20; // calls to connections in one task (the server counts too)
 export const MAX_MCP_ARGS = 16000; // characters of the arguments of one call
 
+export const MAX_CANVAS_BOARDS = 24; // boards one task draws
 export const MAX_PREVIEW_ACTIONS = 30; // the preview_* actions that look at or act in the page, in one task
 export const MAX_EVAL = 2000; // characters of an expression run in the page
 export const PREVIEW_SIZES = ["fit", "phone", "tablet", "laptop"];
@@ -323,6 +344,11 @@ export function scopeOf(a: Action): Scope | null {
       return "previewact";
     case "preview_storage":
       return a.op === "get" || a.op === undefined ? null : "previewact";
+    // a board is a file of the workspace: writing one asks like writing in the editor; opening and reading the canvas ask nothing
+    case "canvas_board":
+    case "canvas_arrange":
+    case "canvas_note":
+      return "editor";
     // an app of the App Store is installed (when it is on the safe list) and switched on: the user is asked each time
     case "store_suggest":
       return "store";
@@ -1044,6 +1070,50 @@ export function parseStep(content: string): { ok: true; step: Step } | { ok: fal
         else actions.push(port !== undefined ? { type, port } : p !== undefined ? { type, path: p } : { type });
         break;
       }
+      case "canvas_open": {
+        const n = a.name === undefined ? undefined : typeof a.name === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(a.name.trim().toLowerCase()) ? a.name.trim().toLowerCase() : null;
+        const plan = Array.isArray(a.plan) ? a.plan.filter((x: any) => x && typeof x === "object" && typeof (x.board || x.title) === "string").slice(0, MAX_CANVAS_BOARDS).map((x: any) => ({ board: String(x.board || x.title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "board", title: String(x.title || x.board).slice(0, 60), w: typeof x.w === "number" ? x.w : undefined, h: typeof x.h === "number" ? x.h : undefined })) : undefined;
+        if (n === null) dropped.push('canvas_open left out: "name" is lower case letters, digits and hyphens, such as login-flow');
+        else actions.push({ type, ...(n ? { name: n } : {}), ...(plan && plan.length ? { plan } : {}) });
+        break;
+      }
+      case "canvas_board": {
+        const b = typeof a.board === "string" ? a.board.trim().toLowerCase() : "";
+        if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(b)) dropped.push('canvas_board left out: "board" is a name of lower case letters, digits and hyphens, such as dashboard');
+        else if (typeof a.html !== "string" || !a.html.trim()) dropped.push('canvas_board left out: "html" is the whole page of the board');
+        else if (a.html.length > MAX_TEXT) dropped.push(`canvas_board left out: the page is longer than ${MAX_TEXT} characters`);
+        else {
+          const act: Action = { type, board: b, html: a.html };
+          if (typeof a.title === "string" && a.title.trim()) act.title = a.title.trim().slice(0, 60);
+          if (typeof a.label === "string" && a.label.trim()) act.label = a.label.trim().slice(0, 100);
+          ["x", "y", "w", "h"].forEach((k) => { if (typeof a[k] === "number" && isFinite(a[k] as number)) (act as any)[k] = a[k]; });
+          actions.push(act);
+        }
+        break;
+      }
+      case "canvas_arrange": {
+        const list = Array.isArray(a.boards) ? a.boards.filter((x: any) => x && typeof x === "object" && typeof x.board === "string") : [];
+        if (!list.length) dropped.push('canvas_arrange left out: "boards" is a list of {"board": "dashboard", "x": 0, "y": 0, "w": 880, "h": 640}');
+        else actions.push({ type, boards: list.slice(0, MAX_CANVAS_BOARDS).map((x: any) => { const o: any = { board: String(x.board).toLowerCase() }; ["x", "y", "w", "h"].forEach((k) => { if (typeof x[k] === "number" && isFinite(x[k])) o[k] = x[k]; }); return o; }) });
+        break;
+      }
+      case "canvas_read": {
+        const b = typeof a.board === "string" ? a.board.trim().toLowerCase() : "";
+        if (b && !/^[a-z0-9][a-z0-9-]{0,39}$/.test(b)) dropped.push('canvas_read left out: "board" is the name of a board, or left out for the whole canvas');
+        else actions.push(b ? { type, board: b } : { type });
+        break;
+      }
+      case "canvas_note": {
+        const b = typeof a.board === "string" ? a.board.trim().toLowerCase() : "";
+        const text = typeof a.text === "string" ? a.text.trim().slice(0, 2000) : "";
+        const pin = typeof a.pin === "string" ? a.pin.trim() : "";
+        const answer = typeof a.answer === "string" ? a.answer.trim().slice(0, 500) : "";
+        if (pin && !/^[a-z0-9]{4,16}$/.test(pin)) dropped.push('canvas_note left out: "pin" is the id of a note, as canvas_read lists it');
+        else if (pin && !(answer || text)) dropped.push('canvas_note left out: "answer" is what you say to the note');
+        else if (!pin && (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(b) || !text)) dropped.push('canvas_note left out: give a "board" and the note\'s "text", or the "pin" to answer and your "answer"');
+        else actions.push(pin ? { type, board: b || undefined, pin, answer: answer || text } : { type, board: b, text, ...(typeof a.x === "number" ? { x: a.x } : {}), ...(typeof a.y === "number" ? { y: a.y } : {}) });
+        break;
+      }
       case "files_rename": {
         const p = cleanPath(a.path, false);
         const n = cleanName(a.name);
@@ -1148,6 +1218,16 @@ export function describe(a: Action): string {
       return "Calling " + (a.connection || "a connection") + " " + (a.tool || "a tool");
     case "need_tools":
       return "Getting more actions: " + (a.groups || []).join(", ");
+    case "canvas_open":
+      return "Opening the canvas" + (a.name ? " " + a.name : "");
+    case "canvas_board":
+      return "Drawing the board " + (a.title || a.board);
+    case "canvas_arrange":
+      return "Arranging the boards";
+    case "canvas_read":
+      return a.board ? "Reading the board " + a.board : "Reading the canvas";
+    case "canvas_note":
+      return a.pin ? "Answering a note on the canvas" : "Adding a note on the board " + a.board;
     case "preview_open":
       return a.port ? "Opening the Preview on port " + a.port : a.path ? "Opening " + a.path + " in the Preview" : "Opening the Preview";
     case "preview_close":

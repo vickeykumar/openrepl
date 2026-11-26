@@ -75,3 +75,28 @@ func TestANamespaceThatIsNotThereIsAnError(t *testing.T) {
 		t.Error("a missing process is in this network")
 	}
 }
+
+// Docker's default seccomp profile gives every process of a container, the server's too, one filter: an admin's REPL (no filter of its own) is still unsandboxed,
+// and a REPL under the emulation (one more filter) is not.
+func TestUnsandboxedCountsTheFiltersTheServerHasNot(t *testing.T) {
+	status := func(mode, filters string) string {
+		return "Name:\tx\nSeccomp:\t" + mode + "\nSeccomp_filters:\t" + filters + "\n"
+	}
+	for _, c := range []struct {
+		name      string
+		pid, self string
+		want      bool
+	}{
+		{"a host with no filters at all", status("0", "0"), status("0", "0"), true},
+		{"a docker container: the REPL has the container's filter only", status("2", "1"), status("2", "1"), true},
+		{"a docker container: the emulation added one", status("2", "2"), status("2", "1"), false},
+		{"no container filter, the emulation's alone", status("2", "1"), status("0", "0"), false},
+		{"an old kernel with no count: no filter", "Seccomp:\t0\n", "Seccomp:\t0\n", true},
+		{"an old kernel with no count: a filter", "Seccomp:\t2\n", "Seccomp:\t2\n", false},
+		{"nothing readable", "", "", false},
+	} {
+		if got := unsandboxedStatus(c.pid, c.self); got != c.want {
+			t.Errorf("%s: unsandboxedStatus = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

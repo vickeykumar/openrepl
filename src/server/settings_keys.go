@@ -47,6 +47,11 @@ type StoredKeys struct {
 	// the key id and the secret of the object store (S3, R2)
 	S3Access string `json:"s3Access,omitempty"`
 	S3Secret string `json:"s3Secret,omitempty"`
+	// the GitHub token that reads plugins from a link (GitHub allows 60 requests an hour without one)
+	GitHub string `json:"github,omitempty"`
+	// the GitHub App's client id and secret (the connector's sign-in, and the fallback for reading plugin links)
+	GitHubAppID     string `json:"githubAppId,omitempty"`
+	GitHubAppSecret string `json:"githubAppSecret,omitempty"`
 }
 
 const (
@@ -56,6 +61,9 @@ const (
 	keyCFAccount  = "cloudflare-account"
 	keyS3Access   = "s3-access"
 	keyS3Secret   = "s3-secret"
+	keyGitHub     = "github"
+	keyGHAppID    = "github-app-id"
+	keyGHAppSec   = "github-app-secret"
 
 	minKeyLen = 8
 	maxKeyLen = 512
@@ -64,7 +72,7 @@ const (
 // the names the audit log uses
 var keyNames = map[string]string{keyOpenAI: "OpenAI", keyOpenRouter: "OpenRouter",
 	keyCloudflare: "Cloudflare Workers AI token", keyCFAccount: "Cloudflare account id",
-	keyS3Access: "Object store key id", keyS3Secret: "Object store secret"}
+	keyS3Access: "Object store key id", keyS3Secret: "Object store secret", keyGitHub: "GitHub token", keyGHAppID: "GitHub App client id", keyGHAppSec: "GitHub App client secret"}
 
 var errNoSettingsSecret = errors.New("OPENREPL_SECRET is not set on the server, so keys cannot be kept here")
 
@@ -134,7 +142,7 @@ var keysProblem string
 // key that cannot be read is skipped, the problem is remembered for the health
 // page, and the environment's key stays in use.
 func applyKeyOverrides(k *StoredKeys) {
-	var openai, openrouter, cfToken, cfAccount, s3Access, s3Secret string
+	var openai, openrouter, cfToken, cfAccount, s3Access, s3Secret, github, ghAppID, ghAppSec string
 	problem := ""
 	if k != nil {
 		secret := utils.Secret()
@@ -143,7 +151,7 @@ func applyKeyOverrides(k *StoredKeys) {
 			out              *string
 		}{{keyOpenAI, k.OpenAI, &openai}, {keyOpenRouter, k.OpenRouter, &openrouter},
 			{keyCloudflare, k.Cloudflare, &cfToken}, {keyCFAccount, k.CloudflareAccount, &cfAccount},
-			{keyS3Access, k.S3Access, &s3Access}, {keyS3Secret, k.S3Secret, &s3Secret}} {
+			{keyS3Access, k.S3Access, &s3Access}, {keyS3Secret, k.S3Secret, &s3Secret}, {keyGitHub, k.GitHub, &github}, {keyGHAppID, k.GitHubAppID, &ghAppID}, {keyGHAppSec, k.GitHubAppSecret, &ghAppSec}} {
 			if f.sealed == "" {
 				continue
 			}
@@ -159,6 +167,8 @@ func applyKeyOverrides(k *StoredKeys) {
 	utils.SetKeyOverrides(openai, openrouter)
 	utils.SetCloudflareOverrides(cfToken, cfAccount)
 	utils.SetS3Overrides(s3Access, s3Secret)
+	utils.SetGitHubOverride(github)
+	utils.SetGitHubAppOverride(ghAppID, ghAppSec)
 	settingsMu.Lock()
 	keysProblem = problem
 	settingsMu.Unlock()
@@ -169,6 +179,7 @@ func applyKeyOverrides(k *StoredKeys) {
 var (
 	openAIKeyCheckURL     = "https://api.openai.com/v1/models"
 	openRouterKeyCheckURL = "https://openrouter.ai/api/v1/key"
+	gitHubKeyCheckURL     = "https://api.github.com/rate_limit"
 )
 
 // checkKey asks the provider whether it accepts the key, with a request that
@@ -184,6 +195,12 @@ func checkKey(provider, key string) (rejected bool, warning string) {
 		return false, "" // an id, not a secret: nothing to check it with
 	case keyS3Access, keyS3Secret:
 		return checkS3Key(provider, key)
+	case keyGitHub:
+		url = gitHubKeyCheckURL
+	case keyGHAppID:
+		return false, "" // an id, not a secret: nothing to check it with
+	case keyGHAppSec:
+		return checkGitHubAppSecret(key)
 	case keyCloudflare:
 		account := utils.CloudflareAccountID()
 		if account == "" {
@@ -250,6 +267,32 @@ func checkS3Key(provider, key string) (rejected bool, warning string) {
 	return false, ""
 }
 
+// checkGitHubAppSecret asks GitHub whether the client id (the one in use, saved or in the environment) and this secret are accepted together, as
+// HTTP Basic authentication: the way they raise the limit for reading public repositories. Only a 401 rejects.
+func checkGitHubAppSecret(secret string) (rejected bool, warning string) {
+	id := utils.GitHubAppID()
+	if id == "" {
+		return false, "The client id is not set yet, so the secret could not be checked."
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gitHubKeyCheckURL, nil)
+	if err != nil {
+		return false, "The secret could not be checked with GitHub."
+	}
+	req.SetBasicAuth(id, secret)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false, "GitHub could not be reached to check the secret. It was saved as it is."
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode == http.StatusUnauthorized {
+		return true, ""
+	}
+	return false, ""
+}
+
 func validKeyText(key string) error {
 	if len(key) < minKeyLen || len(key) > maxKeyLen {
 		return fmt.Errorf("a key is between %d and %d characters", minKeyLen, maxKeyLen)
@@ -293,6 +336,12 @@ func setStoredKey(provider, key string) error {
 		k.S3Access = sealed
 	case keyS3Secret:
 		k.S3Secret = sealed
+	case keyGitHub:
+		k.GitHub = sealed
+	case keyGHAppID:
+		k.GitHubAppID = sealed
+	case keyGHAppSec:
+		k.GitHubAppSecret = sealed
 	default:
 		return fmt.Errorf("%q is not a provider", provider)
 	}
@@ -331,12 +380,12 @@ func currentKeysReply() keysReply {
 		}
 		return map[string]bool{keyOpenAI: cur.Secrets.OpenAI != "", keyOpenRouter: cur.Secrets.OpenRouter != "",
 			keyCloudflare: cur.Secrets.Cloudflare != "", keyCFAccount: cur.Secrets.CloudflareAccount != "",
-			keyS3Access: cur.Secrets.S3Access != "", keyS3Secret: cur.Secrets.S3Secret != ""}[p]
+			keyS3Access: cur.Secrets.S3Access != "", keyS3Secret: cur.Secrets.S3Secret != "", keyGitHub: cur.Secrets.GitHub != "", keyGHAppID: cur.Secrets.GitHubAppID != "", keyGHAppSec: cur.Secrets.GitHubAppSecret != ""}[p]
 	}
 	out := keysReply{CanStore: utils.Secret() != ""}
 	for _, p := range []struct{ id, name string }{{keyOpenAI, "OpenAI"}, {keyOpenRouter, "OpenRouter"},
 		{keyCloudflare, "Cloudflare Workers AI token"}, {keyCFAccount, "Cloudflare account id"},
-		{keyS3Access, "Object store key id"}, {keyS3Secret, "Object store secret"}} {
+		{keyS3Access, "Object store key id"}, {keyS3Secret, "Object store secret"}, {keyGitHub, "GitHub token"}, {keyGHAppID, "GitHub App client id"}, {keyGHAppSec, "GitHub App client secret"}} {
 		st := keyStatus{Provider: p.id, Name: p.name, Source: utils.KeySource(p.id), Stored: stored(p.id)}
 		key := utils.OpenAIKey()
 		switch p.id {
@@ -350,6 +399,12 @@ func currentKeysReply() keysReply {
 			key = utils.S3AccessKey()
 		case keyS3Secret:
 			key = utils.S3SecretKey()
+		case keyGitHub:
+			key = utils.GitHubToken()
+		case keyGHAppID:
+			key = utils.GitHubAppID()
+		case keyGHAppSec:
+			key = utils.GitHubAppSecret()
 		}
 		st.Set = key != ""
 		if st.Stored && st.Source != "dashboard" {

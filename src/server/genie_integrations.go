@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -521,11 +520,11 @@ func clientFor(id string, o *oauthDef, redirect string) (clientID, secret string
 		return o.ClientID, integrationSecret(id, secretOAuthClient)
 	}
 	if o.ClientIDEnv != "" {
-		return strings.TrimSpace(os.Getenv(o.ClientIDEnv)), func() string {
+		return strings.TrimSpace(oauthEnv(o.ClientIDEnv)), func() string {
 			if o.ClientSecretEnv == "" {
 				return ""
 			}
-			return os.Getenv(o.ClientSecretEnv)
+			return oauthEnv(o.ClientSecretEnv)
 		}()
 	}
 	if i, ok := findIntegration(id); ok {

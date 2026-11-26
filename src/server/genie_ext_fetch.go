@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"utils"
 )
 
 // Plugins: the package a plugin is, how one is fetched from a link, and how it is put into a workspace.
@@ -223,6 +225,43 @@ func packageFromZip(data []byte, subpath, source string) (*pluginPackage, error)
 		}
 	}
 	if found == 0 {
+		// no plugin.json: a folder that holds a SKILL.md is a skill by itself (the folder named in the link, else the top of the zip)
+		for _, e := range entries {
+			if !isSkillFile(path.Base(e.name)) {
+				continue
+			}
+			dir := strings.Trim(path.Dir(e.name), "/")
+			if dir == "." {
+				dir = ""
+			}
+			inner := ""
+			if parts := strings.SplitN(dir, "/", 2); len(parts) == 2 { // the first folder of a GitHub archive is the repository's
+				inner = parts[1]
+			}
+			if inner != subpath || e.f.UncompressedSize64 > maxSkillBytes {
+				continue
+			}
+			rc, err := e.f.Open()
+			if err != nil {
+				return nil, fmt.Errorf("the SKILL.md cannot be read")
+			}
+			b, err := io.ReadAll(io.LimitReader(rc, maxSkillBytes+1))
+			rc.Close()
+			if err != nil || len(b) > maxSkillBytes {
+				return nil, fmt.Errorf("the SKILL.md is longer than %d KB", maxSkillBytes>>10)
+			}
+			files, err := lonePackageFiles(string(b))
+			if err != nil {
+				return nil, err
+			}
+			here, folder := 0, strings.TrimSuffix(e.name, path.Base(e.name))
+			for _, o := range entries {
+				if strings.HasPrefix(o.name, folder) {
+					here++
+				}
+			}
+			return buildPackage(files, source, here-1, true)
+		}
 		return nil, fmt.Errorf("there is no plugin.json in it")
 	}
 	if found > 1 {
@@ -272,10 +311,88 @@ func packageFromZip(data []byte, subpath, source string) (*pluginPackage, error)
 	return buildPackage(files, source, ignored, true)
 }
 
+// ---- a folder with only a SKILL.md --------------------------------------------------------------------------------------------
+
+// normaliseSkillMD turns the SKILL.md of another tool (Claude's skills, for one) into the header this site's skills have: the lines it knows
+// (name, description, mode, args, effort, actions) stay, the others (license, allowed-tools, version, metadata...) are left out, a description
+// written over several lines becomes one line, and one longer than the menu shows is cut. The text after the header is not touched.
+func normaliseSkillMD(text string) (string, error) {
+	text = strings.ReplaceAll(strings.TrimPrefix(text, "\xef\xbb\xbf"), "\r\n", "\n")
+	if !strings.HasPrefix(text, "---\n") {
+		return "", fmt.Errorf("the SKILL.md has to start with a header: a line of three dashes, name and description lines, and another line of three dashes")
+	}
+	rest := text[4:]
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return "", fmt.Errorf("the header of the SKILL.md is not closed with a line of three dashes")
+	}
+	head, body := rest[:end], rest[end+4:]
+	known := map[string]bool{"name": true, "description": true, "mode": true, "args": true, "effort": true, "actions": true}
+	type kv struct{ key, val string }
+	var lines []kv
+	for _, raw := range strings.Split(head, "\n") {
+		if strings.TrimSpace(raw) == "" || strings.HasPrefix(strings.TrimSpace(raw), "#") {
+			continue
+		}
+		if (raw[0] == ' ' || raw[0] == '\t') && len(lines) > 0 { // the next line of a value written over several lines
+			lines[len(lines)-1].val += " " + strings.TrimSpace(raw)
+			continue
+		}
+		i := strings.Index(raw, ":")
+		if i <= 0 {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(raw[:i]))
+		val := strings.TrimSpace(raw[i+1:])
+		if val == ">" || val == "|" || val == ">-" || val == "|-" {
+			val = ""
+		}
+		lines = append(lines, kv{key, val})
+	}
+	var b strings.Builder
+	b.WriteString("---\n")
+	seen := map[string]bool{}
+	for _, l := range lines {
+		if !known[l.key] || seen[l.key] {
+			continue
+		}
+		seen[l.key] = true
+		v := strings.Join(strings.Fields(l.val), " ")
+		if l.key == "description" {
+			if r := []rune(v); len(r) > maxSkillDesc {
+				v = strings.TrimSpace(string(r[:maxSkillDesc-1])) + "\u2026"
+			}
+		}
+		b.WriteString(l.key + ": " + v + "\n")
+	}
+	b.WriteString("---")
+	b.WriteString(body)
+	return b.String(), nil
+}
+
+// lonePackageFiles makes a plugin of a folder that holds only a SKILL.md: a plugin.json made from the skill's name and description, and the
+// skill as skills/<name>.md.
+func lonePackageFiles(skillText string) (map[string][]byte, error) {
+	norm, err := normaliseSkillMD(skillText)
+	if err != nil {
+		return nil, err
+	}
+	info, _, err := parseSkill(norm)
+	if err != nil {
+		return nil, fmt.Errorf("SKILL.md: %v", err)
+	}
+	title := strings.ToUpper(info.Name[:1]) + strings.ReplaceAll(info.Name[1:], "-", " ")
+	mb, _ := json.MarshalIndent(pluginManifest{Name: info.Name, Title: clipRunes(title, 60), Version: "1", Description: info.Description}, "", "  ")
+	return map[string][]byte{"plugin.json": mb, "skills/" + info.Name + ".md": []byte(norm)}, nil
+}
+
 // ---- the link --------------------------------------------------------------------------------------------------------------
 
 var githubPart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 var githubRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
+
+// isSkillFile says whether a file name is the one that makes a folder a skill.
+func isSkillFile(name string) bool { return strings.EqualFold(name, "SKILL.md") }
 
 // parseGitHubLink reads a GitHub link: a repository (https://github.com/owner/repository), or a folder of it
 // (https://github.com/owner/repository/tree/<branch>/<folder>). `rest` is what follows "tree": the branch and the folder together, because a branch
@@ -293,10 +410,20 @@ func parseGitHubLink(raw string) (owner, repo string, rest []string, ok bool, er
 		return "", "", nil, false, fmt.Errorf("the link cannot name a port")
 	}
 	host := strings.ToLower(u.Hostname())
-	if host != "github.com" && host != "www.github.com" {
-		return "", "", nil, false, nil
-	}
 	segs := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if host == "raw.githubusercontent.com" && len(segs) >= 4 && isSkillFile(segs[len(segs)-1]) {
+		// the raw address of a SKILL.md: owner/repository/<branch>/<folders>/SKILL.md, or .../refs/heads/<branch>/...
+		inner := segs[2 : len(segs)-1]
+		if len(inner) >= 3 && inner[0] == "refs" && inner[1] == "heads" {
+			inner = inner[2:]
+		}
+		segs = append(append([]string{segs[0], segs[1], "tree"}, inner...))
+	} else if host != "github.com" && host != "www.github.com" {
+		return "", "", nil, false, nil
+	} else if len(segs) >= 5 && segs[2] == "blob" && isSkillFile(segs[len(segs)-1]) {
+		// the link of a SKILL.md file (github.com/owner/repository/blob/<branch>/<folders>/SKILL.md) means the folder it is in
+		segs = append(append([]string{}, segs[:2]...), append([]string{"tree"}, segs[3:len(segs)-1]...)...)
+	}
 	if len(segs) < 2 || !githubPart.MatchString(segs[0]) {
 		return "", "", nil, true, fmt.Errorf("a GitHub link looks like https://github.com/owner/repository")
 	}
@@ -342,21 +469,63 @@ func linkSource(raw string) (zipURL, subpath string, err error) {
 
 var githubAPIBase = "https://api.github.com"
 
+// githubAPIPrefix is where credentials may be sent (tests point it at a fake).
+var githubAPIPrefix = "https://api.github.com/"
+
 // errGitHubRate is GitHub's limit on requests that carry no token (60 an hour for an address). A server that has OPENREPL_GITHUB_TOKEN is
 // allowed far more; without one, a repository small enough for a zip is read as a zip instead (githubZipFallback).
-var errGitHubRate = fmt.Errorf("GitHub's limit for requests without a token was reached: try again in an hour, or ask an admin to set OPENREPL_GITHUB_TOKEN on the server")
+var errGitHubRate = fmt.Errorf("GitHub's limit for reading repositories was reached: connect your GitHub account (Connections) and try again, or try again in an hour. An admin can also save a GitHub token in Site settings (API keys)")
 
 // getURL is the one GET the server makes for a GitHub link; tests replace it. Public addresses only, https, the size limit given.
-var getURL = func(rawURL string, limit int64) ([]byte, int, error) {
+//
+// For GitHub's API the credentials are tried in this order, moving on when one is refused or its limit is reached: the server's token, the GitHub
+// App's client id and secret (Basic authentication), the token of the person who asked (userTok, from their GitHub connection), and last no credential.
+var getURL = func(rawURL string, limit int64, userTok string) ([]byte, int, error) {
+	if !strings.HasPrefix(rawURL, githubAPIPrefix) {
+		return getURLWith(rawURL, limit, ghCred{})
+	}
+	var creds []ghCred
+	if tok := utils.GitHubToken(); tok != "" {
+		creds = append(creds, ghCred{bearer: tok})
+	}
+	if id, secret := utils.GitHubApp(); id != "" {
+		creds = append(creds, ghCred{user: id, pass: secret})
+	}
+	if userTok != "" {
+		creds = append(creds, ghCred{bearer: userTok})
+	}
+	if len(creds) == 0 {
+		return getURLWith(rawURL, limit, ghCred{})
+	}
+	var b []byte
+	var status int
+	var err error
+	for _, c := range creds {
+		b, status, err = getURLWith(rawURL, limit, c)
+		if err != nil || !(status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusTooManyRequests) {
+			return b, status, err
+		}
+	}
+	return b, status, err
+}
+
+// ghCred is one way of signing a request to GitHub's API: a bearer token, or a client id and secret.
+type ghCred struct{ bearer, user, pass string }
+
+func getURLWith(rawURL string, limit int64, cred ghCred) ([]byte, int, error) {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, 0, err
 	}
 	req.Header.Set("User-Agent", "openrepl-plugin-fetch")
 	req.Header.Set("Accept", "application/vnd.github+json")
-	// the token, if the server has one, goes only to GitHub's own API, never to a download address
-	if tok := os.Getenv("OPENREPL_GITHUB_TOKEN"); tok != "" && strings.HasPrefix(rawURL, "https://api.github.com/") {
-		req.Header.Set("Authorization", "Bearer "+tok)
+	// a credential goes only to GitHub's own API, never to a download address
+	if strings.HasPrefix(rawURL, githubAPIPrefix) {
+		if cred.bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+cred.bearer)
+		} else if cred.user != "" {
+			req.SetBasicAuth(cred.user, cred.pass)
+		}
 	}
 	resp, err := newExtClient().Do(req)
 	if err != nil {
@@ -381,7 +550,7 @@ type githubEntry struct {
 }
 
 // githubList lists a folder of a repository at a ref ("" is the default branch). found is false when the ref or the folder is not there.
-func githubList(owner, repo, ref, path string) (entries []githubEntry, found bool, err error) {
+func githubList(owner, repo, ref, path, userTok string) (entries []githubEntry, found bool, err error) {
 	u := githubAPIBase + "/repos/" + owner + "/" + repo + "/contents"
 	if path != "" {
 		u += "/" + path
@@ -389,7 +558,7 @@ func githubList(owner, repo, ref, path string) (entries []githubEntry, found boo
 	if ref != "" {
 		u += "?ref=" + url.QueryEscape(ref)
 	}
-	b, status, err := getURL(u, 256<<10)
+	b, status, err := getURL(u, 256<<10, userTok)
 	if err != nil {
 		return nil, false, err
 	}
@@ -410,7 +579,7 @@ func githubList(owner, repo, ref, path string) (entries []githubEntry, found boo
 // githubPackageFiles reads the files of a plugin from a GitHub folder: plugin.json, skills/*.md and knowledge/*.md, and counts what else is there.
 // The folder may be the repository itself or a folder named in a tree link. The branch of a tree link may hold slashes (feature/x): the link does not say
 // where it ends, so each way of cutting it is tried, and the one that is a folder with a plugin.json in it is taken (a name that does not exist answers 404).
-func githubPackageFiles(owner, repo string, rest []string) (map[string][]byte, int, error) {
+func githubPackageFiles(owner, repo string, rest []string, userTok string) (map[string][]byte, int, error) {
 	type cut struct{ ref, path string }
 	var cuts []cut
 	if len(rest) == 0 {
@@ -421,7 +590,7 @@ func githubPackageFiles(owner, repo string, rest []string) (map[string][]byte, i
 		}
 	}
 	for _, c := range cuts {
-		entries, found, err := githubList(owner, repo, c.ref, c.path)
+		entries, found, err := githubList(owner, repo, c.ref, c.path, userTok)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -433,17 +602,42 @@ func githubPackageFiles(owner, repo string, rest []string) (map[string][]byte, i
 			hasManifest = hasManifest || (e.Name == "plugin.json" && e.Type == "file")
 		}
 		if !hasManifest {
+			for _, e := range entries {
+				if e.Type == "file" && isSkillFile(e.Name) {
+					return githubReadLoneSkill(entries, e, userTok)
+				}
+			}
 			if len(cuts) == 1 {
 				return nil, 0, fmt.Errorf("there is no plugin.json in that folder: link to the folder that holds it")
 			}
 			continue
 		}
-		return githubReadPlugin(owner, repo, c.ref, c.path, entries)
+		return githubReadPlugin(owner, repo, c.ref, c.path, entries, userTok)
 	}
 	return nil, 0, fmt.Errorf("there is no plugin.json at that link: link to a repository or a folder that holds one (on a branch that exists)")
 }
 
-func githubReadPlugin(owner, repo, ref, path string, root []githubEntry) (map[string][]byte, int, error) {
+// githubReadLoneSkill reads a folder that has a SKILL.md and no plugin.json: the skill alone is the plugin; the other files are counted as left out.
+func githubReadLoneSkill(entries []githubEntry, skill githubEntry, userTok string) (map[string][]byte, int, error) {
+	if skill.Size > maxSkillBytes {
+		return nil, 0, fmt.Errorf("the SKILL.md is longer than %d KB", maxSkillBytes>>10)
+	}
+	dl := skill.DownloadURL
+	if !strings.HasPrefix(dl, "https://raw.githubusercontent.com/") && !(extAllowLoopback && strings.HasPrefix(dl, "http://")) {
+		return nil, 0, fmt.Errorf("the SKILL.md has no download address GitHub gave")
+	}
+	b, status, err := getURL(dl, maxSkillBytes, userTok)
+	if err != nil || status != http.StatusOK {
+		return nil, 0, fmt.Errorf("the SKILL.md could not be read")
+	}
+	files, err := lonePackageFiles(string(b))
+	if err != nil {
+		return nil, 0, err
+	}
+	return files, len(entries) - 1, nil
+}
+
+func githubReadPlugin(owner, repo, ref, path string, root []githubEntry, userTok string) (map[string][]byte, int, error) {
 	files := map[string][]byte{}
 	ignored, total, skills, notes := 0, 0, 0, 0
 	fetchFile := func(rel string, e githubEntry) error {
@@ -454,7 +648,7 @@ func githubReadPlugin(owner, repo, ref, path string, root []githubEntry) (map[st
 		if !strings.HasPrefix(dl, "https://raw.githubusercontent.com/") && !(extAllowLoopback && strings.HasPrefix(dl, "http://")) {
 			return fmt.Errorf("%s has no download address GitHub gave", rel)
 		}
-		b, status, err := getURL(dl, pluginMaxFile)
+		b, status, err := getURL(dl, pluginMaxFile, "")
 		if err != nil || status != http.StatusOK {
 			return fmt.Errorf("%s could not be read", rel)
 		}
@@ -476,7 +670,7 @@ func githubReadPlugin(owner, repo, ref, path string, root []githubEntry) (map[st
 			if path != "" {
 				sub = path + "/" + e.Name
 			}
-			list, found, err := githubList(owner, repo, ref, sub)
+			list, found, err := githubList(owner, repo, ref, sub, userTok)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -527,7 +721,7 @@ func githubZipFallback(owner, repo string, rest []string, source string) (*plugi
 		if err != nil {
 			last = err
 			if strings.Contains(err.Error(), "bigger than") {
-				return nil, fmt.Errorf("%v. GitHub's limit for requests without a token was reached too, so this repository cannot be read just now: try again in an hour, or ask an admin to set OPENREPL_GITHUB_TOKEN on the server", err)
+				return nil, fmt.Errorf("%v. GitHub's limit for reading repositories was reached too, so this repository cannot be read just now: connect your GitHub account (Connections) and try again, try again in an hour, or ask an admin to save a GitHub token in Site settings (API keys)", err)
 			}
 			continue
 		}
@@ -616,11 +810,11 @@ var fetchZip = func(zipURL string) ([]byte, error) {
 	return b, nil
 }
 
-func packageFromLink(link string) (*pluginPackage, error) {
+func packageFromLink(link, userTok string) (*pluginPackage, error) {
 	if owner, repo, rest, ok, err := parseGitHubLink(link); err != nil {
 		return nil, err
 	} else if ok {
-		files, ignored, err := githubFiles(owner, repo, rest)
+		files, ignored, err := githubFiles(owner, repo, rest, userTok)
 		if err == errGitHubRate {
 			return githubZipFallback(owner, repo, rest, "link:"+strings.TrimSpace(link))
 		}
@@ -832,7 +1026,13 @@ func (server *Server) handlePluginOp(rw http.ResponseWriter, in extRequest, real
 			jsonError(rw, http.StatusTooManyRequests, "rate", fmt.Sprintf("At most %d links an hour: try again later.", linkFetchesPerHr))
 			return
 		}
-		pkg, perr = packageFromLink(in.URL)
+		userTok := ""
+		if who != "" && !strings.HasPrefix(who, "ip:") {
+			if _, tok, ok := connToken(who, "github"); ok {
+				userTok = tok // the person's own GitHub connection: the last credential tried
+			}
+		}
+		pkg, perr = packageFromLink(in.URL, userTok)
 		if perr == nil {
 			logExt("link fetched by %s: %s (%d skills, digest %s)", who, in.URL, len(pkg.Skills), pkg.Digest[:12])
 		}
