@@ -91,6 +91,12 @@
 [data-theme="dark"] p { color: #B9B7C4; }
 [data-theme="dark"] sup { color: #C9C7D1; }
 [data-theme="dark"] .footer { background-color: #1F1E24; }
+/* Dark theme: code blocks keep their dark panel, so the text and its colours must be light (white-color is dark here) */
+[data-theme="dark"] .code { color: #E6E4EC; }
+[data-theme="dark"] .code--prompt { color: #E3E36B; }
+[data-theme="dark"] .code--error { color: #FF8A5C; }
+[data-theme="dark"] .code--data-type { color: #6FDD8B; }
+
 [data-theme="dark"] .link--light,
 [data-theme="dark"] .go__color { color: var(--accent-color); }
 [data-theme="dark"] table td,
