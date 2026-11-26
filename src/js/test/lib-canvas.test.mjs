@@ -161,3 +161,13 @@ test("Genie is told the selected part and the locked parts, and the helper holds
   for (const w of ["makevar", "alignOffsets".length ? "shift" : "", "data-locked", "data-cv-hid", "__cvov"]) assert.ok(BOARD_HELPER.includes(w), w);
   assert.ok(!/\$\{/.test(BOARD_HELPER), "no template holes left in the helper");
 });
+
+test("a part can be moved with its own translate, and the move has a label", () => {
+  assert.equal(validStyle("translate", "40px 12px"), "40px 12px");
+  assert.equal(validStyle("translate", "-8px"), "-8px");
+  assert.equal(validStyle("translate", "none"), "none");
+  for (const bad of ["40 12", "1em 2em", "calc(1px + 2px)", "40px; top:0", "url(x)"]) assert.equal(validStyle("translate", bad), null, bad);
+  assert.equal(partLabel("move", "h1#t", "40, 12"), "you moved h1#t by 40, 12");
+  assert.ok(BOARD_HELPER.includes('tr:el.style.translate'), "the helper reports the translate of a part");
+  for (const w of ["inBox", "doSize", "\"box\"", "\"size\""]) assert.ok(BOARD_HELPER.includes(w), w);
+});

@@ -7,7 +7,7 @@
 
 import {
   clampZoom, zoomAt, toCanvas, fitView, focusView, visibleBoards, snapMove, snapSize, minimap, bounds, boardIdFrom, fileNameOf,
-  zipStore, boardDoc, canvasContext, printDocument, RESPONSIVE,
+  zipStore, boardDoc, canvasContext, printDocument, RESPONSIVE, partLabel,
 } from "./lib-canvas.mjs";
 import { makeHunks } from "./lib-diff.mjs";
 import { createParts, lockedParts, lockedViolation } from "./canvas-parts.js";
@@ -279,6 +279,14 @@ function drawMini() {
 function bindView(vp) {
   var hoverAt = 0;
   var pointers = {}, gesture = null, lastHit = null;
+  // Esc during the drag of a part puts the part back (the pointer is released at once, so the later pointer-up does nothing)
+  cancelPartDrag = function () {
+    if (!gesture || !(gesture.part || gesture.psize || gesture.box) || !gesture.moved) return false;
+    clearTimeout(gesture.t); gesture.cancelled = true;
+    if (gesture.box) { if (gesture.m) gesture.m.remove(); } else postTo(gesture.id, { c: "cancel" });
+    gesture = null; pointers = {};
+    return true;
+  };
   // the pointer and the keys can be let go in another window (a popped-out canvas is closed in the middle of a drag): nothing is held any more
   inputReset = function () { pointers = {}; gesture = null; hoverAt = 0; spaceDown = false; vp.classList.remove("is-panning"); vp.classList.remove("is-hand"); }; // lastHit: the board the last press was on (a pointer capture sends the double-click to the view)
   els.mini.addEventListener("pointerdown", function (e) {
@@ -325,7 +333,7 @@ function bindView(vp) {
       if (liveId && liveId !== bid) setLive(null);
       select(bid);
       var bb = board(bid);
-      if (bb) { gesture = { kind: "move", id: bid, sx: e.clientX, sy: e.clientY, b: { x: bb.x, y: bb.y }, moved: false }; try { vp.setPointerCapture(e.pointerId); } catch (x) {} }
+      if (bb) { gesture = { kind: "move", id: bid, sx: e.clientX, sy: e.clientY, b: { x: bb.x, y: bb.y }, moved: false, box: e.shiftKey && partBoard === bid, psize: !e.shiftKey ? partHandleAt(bid, e) : null }; gesture.part = gesture.box || gesture.psize ? null : partUnder(bid, e); try { vp.setPointerCapture(e.pointerId); } catch (x) {} }
       e.preventDefault();
       return;
     }
@@ -342,7 +350,7 @@ function bindView(vp) {
     if (pointers[e.pointerId]) pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
     if (!gesture && partBoard && e.target.closest && Date.now() - hoverAt > 40) {
       var hh = e.target.closest(".cv-hit");
-      if (hh && hh.getAttribute("data-id") === partBoard) { hoverAt = Date.now(); var hr0 = hh.getBoundingClientRect(); postTo(partBoard, { c: "hover", x: (e.clientX - hr0.left) / hr0.width, y: (e.clientY - hr0.top) / hr0.height, alt: e.altKey }); }
+      if (hh && hh.getAttribute("data-id") === partBoard) { hoverAt = Date.now(); var hd0 = partHandleAt(partBoard, e); hh.style.cursor = hd0 ? (hd0.edge === "e" ? "ew-resize" : hd0.edge === "s" ? "ns-resize" : "nwse-resize") : partUnder(partBoard, e) ? "move" : ""; var hr0 = hh.getBoundingClientRect(); postTo(partBoard, { c: "hover", x: (e.clientX - hr0.left) / hr0.width, y: (e.clientY - hr0.top) / hr0.height, alt: e.altKey }); }
     }
     if (!gesture) return;
     var r = vp.getBoundingClientRect();
@@ -355,6 +363,9 @@ function bindView(vp) {
     }
     if (gesture.kind === "pan") { view = { x: gesture.v.x + e.clientX - gesture.sx, y: gesture.v.y + e.clientY - gesture.sy, z: view.z }; applyView(); return; }
     var dx = (e.clientX - gesture.sx) / view.z, dy = (e.clientY - gesture.sy) / view.z, bd = board(gesture.id); if (!bd) return;
+    if (gesture.kind === "move" && gesture.psize) { partResize(e, gesture); return; }
+    if (gesture.kind === "move" && gesture.box) { marquee(e, gesture); return; }
+    if (gesture.kind === "move" && gesture.part) { partDrag(e, gesture); return; } // a drag that starts on a picked part moves that part, not the board
     if (gesture.kind === "move") {
       if (!gesture.moved && Math.abs(dx) + Math.abs(dy) < 3 / view.z) return;
       gesture.moved = true;
@@ -375,8 +386,11 @@ function bindView(vp) {
     gesture = null; vp.classList.remove("is-panning");
     try { vp.releasePointerCapture(e.pointerId); } catch (x) {}
     clearGuides();
-    if ((g.kind === "move" && g.moved) || g.kind === "size") saveLayout(g.id);
-    if (g.kind === "move" && !g.moved && partBoard === g.id && frames[g.id]) { var hr = frames[g.id].hit.getBoundingClientRect(); postTo(g.id, { c: "pickat", x: (e.clientX - hr.left) / hr.width, y: (e.clientY - hr.top) / hr.height, shift: e.shiftKey }); }
+    if ((g.kind === "move" && g.moved && !g.part && !g.box && !g.psize) || g.kind === "size") saveLayout(g.id);
+    if (g.kind === "move" && g.part && g.moved && !g.cancelled) finishPartDrag(g);
+    if (g.kind === "move" && g.psize && g.moved && !g.cancelled) finishPartResize(g);
+    if (g.kind === "move" && g.box) finishMarquee(g);
+    if (g.kind === "move" && !g.moved && !g.psize && partBoard === g.id && frames[g.id]) { var hr = frames[g.id].hit.getBoundingClientRect(); postTo(g.id, { c: "pickat", x: (e.clientX - hr.left) / hr.width, y: (e.clientY - hr.top) / hr.height, shift: e.shiftKey }); }
     if (g.kind === "size") { var f = frames[g.id]; if (f && f.sizeEl) f.sizeEl.hidden = true; }
   }
   vp.addEventListener("pointerup", end); vp.addEventListener("pointercancel", end);
@@ -399,14 +413,112 @@ function onKey(e) {
   else if (k === "+" || k === "=") zoomBy(1.25);
   else if (k === "-" || k === "_") zoomBy(1 / 1.25);
   else if (k === "0") setZoom(1);
+  else if (k === "Escape" && cancelPartDrag()) { /* a drag of a part was put back */ }
   else if (k === "Escape") { if (parts && parts.keyEsc()) return; var pc = parts && parts.current(); if (pc && pc.items.length && partBoard) postTo(partBoard, { c: "clear" }); else if (editId) leaveEdit(); else if (liveId) setLive(null); else if (!els.pop.hidden) closePop(); else select(null); }
   else if ((k === "Delete" || k === "Backspace") && sel) { e.preventDefault(); deleteSel(); }
+  else if (/^Arrow/.test(k) && partBoard && nudgePart(k, e.shiftKey ? 10 : 1)) { e.preventDefault(); }
   else if (sel && /^Arrow/.test(k)) {
     e.preventDefault();
     var b = board(sel), step = e.shiftKey ? 40 : 8;
     b.x += k === "ArrowLeft" ? -step : k === "ArrowRight" ? step : 0; b.y += k === "ArrowUp" ? -step : k === "ArrowDown" ? step : 0;
     place(sel); saveLayoutSoon(sel);
   }
+}
+
+var cancelPartDrag = function () { return false; };
+// ---- moving a part by the mouse and the arrow keys -------------------------------------------------------------------------------
+// A drag that starts on a picked part moves that part: its own `translate` (an inline style, so the page around it does not change). The
+// board keeps the pointer, so the page works out which part is under it from the rectangles the board reported.
+function partUnder(bid, e) {
+  var pc = parts && parts.current(), f = frames[bid];
+  if (!pc || pc.board !== bid || !pc.items.length || !f || !pc.doc || !pc.doc.w) return null;
+  var hr = f.hit.getBoundingClientRect(), k = hr.width / pc.doc.w;
+  var x = (e.clientX - hr.left) / k, y = (e.clientY - hr.top) / k;
+  var over = pc.items.some(function (i) { return x >= i.r.x && x <= i.r.x + i.r.w && y >= i.r.y && y <= i.r.y + i.r.h; });
+  var movable = pc.items.filter(function (i) { return !i.locked; });
+  if (!over) return null;
+  if (!movable.length) return { locked: true, k: k, items: [] }; // every picked part is locked: the drag moves nothing, and not the board either
+  return { k: k, name: parts.shortName(), items: movable.map(partBase) };
+}
+function partBase(i) { var m = /^(-?[\d.]+)px(?: (-?[\d.]+)px)?$/.exec(i.tr || ""); return { p: i.p, bx: m ? +m[1] : 0, by: m ? +(m[2] || 0) : 0 }; }
+function sendPartMove(id, part, dx, dy, live) {
+  postTo(id, { c: "apply", live: live, label: partLabel("move", part.name, dx + ", " + dy),
+    items: part.items.map(function (it) { return { p: it.p, props: { translate: (it.bx + dx) + "px " + (it.by + dy) + "px" } }; }) });
+}
+function partDrag(e, g) {
+  var part = g.part;
+  if (!g.moved && Math.abs(e.clientX - g.sx) + Math.abs(e.clientY - g.sy) < 4) return;
+  g.moved = true;
+  if (part.locked) { if (!g.said) { g.said = true; say("That part is locked. Unlock it first.", 3500); } return; }
+  var dx = (e.clientX - g.sx) / part.k, dy = (e.clientY - g.sy) / part.k;
+  if (e.shiftKey) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; } // Shift keeps it on one line
+  g.dx = Math.round(dx); g.dy = Math.round(dy);
+  if (!g.t) g.t = setTimeout(function () { g.t = 0; if (!g.cancelled) sendPartMove(g.id, part, g.dx, g.dy, true); }, 16);
+}
+// the handles of a picked part (right edge, bottom edge, corner): drawn by the board, found here from the part's rectangle
+function partHandleAt(bid, e) {
+  var pc = parts && parts.current(), f = frames[bid];
+  if (!pc || pc.board !== bid || pc.items.length !== 1 || pc.items[0].locked || !f || !pc.doc || !pc.doc.w) return null;
+  var hr = f.hit.getBoundingClientRect(), k = hr.width / pc.doc.w, r = pc.items[0].r;
+  var pts = [["se", r.x + r.w, r.y + r.h], ["e", r.x + r.w, r.y + r.h / 2], ["s", r.x + r.w / 2, r.y + r.h]];
+  for (var i = 0; i < pts.length; i++) {
+    if (Math.hypot(hr.left + pts[i][1] * k - e.clientX, hr.top + pts[i][2] * k - e.clientY) <= 10) return { edge: pts[i][0], k: k, p: pc.items[0].p, w: r.w, h: r.h, name: pc.items[0].n };
+  }
+  return null;
+}
+function partResize(e, g) {
+  var ps = g.psize;
+  if (!g.moved && Math.abs(e.clientX - g.sx) + Math.abs(e.clientY - g.sy) < 4) return;
+  g.moved = true;
+  var w = ps.w + (ps.edge.indexOf("e") >= 0 ? (e.clientX - g.sx) / ps.k : 0), h = ps.h + (ps.edge.indexOf("s") >= 0 ? (e.clientY - g.sy) / ps.k : 0);
+  if (e.shiftKey && ps.edge === "se") h = w * ps.h / ps.w; // Shift on the corner keeps the ratio
+  g.nw = Math.max(8, Math.round(w)); g.nh = Math.max(8, Math.round(h));
+  if (!g.t) g.t = setTimeout(function () { g.t = 0; if (!g.cancelled) sendPartSize(g, true); }, 16);
+}
+function sendPartSize(g, live) {
+  var ps = g.psize;
+  postTo(g.id, { c: "size", p: ps.p, live: live, w: ps.edge.indexOf("e") >= 0 ? g.nw : undefined, h: ps.edge.indexOf("s") >= 0 ? g.nh : undefined, label: partLabel("size", ps.name, g.nw + " \u00D7 " + g.nh) });
+}
+function finishPartResize(g) {
+  clearTimeout(g.t); g.t = 0;
+  if (Math.round(g.psize.w) === g.nw && Math.round(g.psize.h) === g.nh) { postTo(g.id, { c: "cancel" }); return; }
+  sendPartSize(g, false);
+}
+// Shift and drag on a board draws a box and picks the parts inside it (the outermost ones that are wholly inside)
+function marquee(e, g) {
+  if (!g.moved && Math.abs(e.clientX - g.sx) + Math.abs(e.clientY - g.sy) < 4) return;
+  g.moved = true;
+  if (!g.m) { g.m = el("div", "cv-marquee"); els.vp.appendChild(g.m); }
+  var vr = els.vp.getBoundingClientRect();
+  g.m.style.left = Math.min(g.sx, e.clientX) - vr.left + "px"; g.m.style.top = Math.min(g.sy, e.clientY) - vr.top + "px";
+  g.m.style.width = Math.abs(e.clientX - g.sx) + "px"; g.m.style.height = Math.abs(e.clientY - g.sy) + "px";
+  g.ex = e.clientX; g.ey = e.clientY;
+}
+function finishMarquee(g) {
+  if (g.m) g.m.remove();
+  var f = frames[g.id];
+  if (!g.moved || g.cancelled || !f) return;
+  var hr = f.hit.getBoundingClientRect(), n = function (v) { return Math.max(0, Math.min(1, v)); };
+  postTo(g.id, { c: "box", x0: n((g.sx - hr.left) / hr.width), y0: n((g.sy - hr.top) / hr.height), x1: n((g.ex - hr.left) / hr.width), y1: n((g.ey - hr.top) / hr.height) });
+}
+function finishPartDrag(g) {
+  clearTimeout(g.t); g.t = 0;
+  if (g.part.locked) return;
+  if (!g.dx && !g.dy) { postTo(g.id, { c: "cancel" }); return; } // back where it was: nothing to keep
+  sendPartMove(g.id, g.part, g.dx, g.dy, false);
+}
+// the arrow keys move the picked parts by 1 px (10 with Shift); a run of presses is one change
+var nudge = null;
+function nudgePart(k, step) {
+  var pc = parts && parts.current();
+  if (!pc || pc.board !== partBoard || !pc.items.some(function (i) { return !i.locked; })) return false;
+  if (!nudge || nudge.id !== partBoard) nudge = { id: partBoard, dx: 0, dy: 0, t: 0, part: { name: parts.shortName(), items: pc.items.filter(function (i) { return !i.locked; }).map(partBase) } };
+  nudge.dx += k === "ArrowLeft" ? -step : k === "ArrowRight" ? step : 0;
+  nudge.dy += k === "ArrowUp" ? -step : k === "ArrowDown" ? step : 0;
+  sendPartMove(nudge.id, nudge.part, nudge.dx, nudge.dy, true);
+  clearTimeout(nudge.t);
+  nudge.t = setTimeout(function () { var n = nudge; nudge = null; if (n.dx || n.dy) sendPartMove(n.id, n.part, n.dx, n.dy, false); else postTo(n.id, { c: "cancel" }); }, 700);
+  return true;
 }
 
 var layoutTimer = 0, layoutIds = {};

@@ -356,4 +356,94 @@ test.describe("tools on a part", () => {
     expect(html).not.toContain("evil.example");
     expect(html).not.toContain("position: fixed");
   });
+
+  test("a drag that starts on the picked part moves that part and not the board; Esc cancels it; the arrow keys nudge it; a locked part stays", async ({ page }) => {
+    await ready(page);
+    const boardBox = () => page.locator(".cv-board[data-id=p]").boundingBox();
+    const centre = async (sel) => { const b = await frame(page).locator(sel).boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+    // a real click picks the part, then a drag on it moves it
+    let c = await centre("#buy");
+    await page.mouse.click(c.x, c.y);
+    await expect(bar(page).locator(".npart")).toContainText("button#buy");
+    const b0 = await boardBox();
+    await page.mouse.move(c.x, c.y);
+    await page.mouse.down();
+    await page.mouse.move(c.x + 40, c.y + 20, { steps: 6 });
+    await page.mouse.up();
+    await expect.poll(async () => /translate:\s*-?\d+(\.\d+)?px -?\d+(\.\d+)?px/.test(await board(page))).toBe(true);
+    const b1 = await boardBox();
+    expect(Math.round(b1.x)).toBe(Math.round(b0.x));
+    expect(Math.round(b1.y)).toBe(Math.round(b0.y));
+    await expect.poll(async () => (await log(page)).some((l) => /you moved button#buy by/.test(l))).toBe(true);
+    // Esc during a drag puts it back
+    const before = await board(page);
+    c = await centre("#buy");
+    await page.mouse.move(c.x, c.y);
+    await page.mouse.down();
+    await page.mouse.move(c.x + 60, c.y + 60, { steps: 6 });
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    expect(await board(page)).toBe(before);
+    // the arrow keys move it by 1 px, 10 with Shift, and a run of presses is one change
+    await pick(page, "#alt");
+    await page.locator(".cv-view").focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Shift+ArrowDown");
+    await expect.poll(async () => /id="alt"[^>]*translate:\s*1px 10px/.test(await board(page)), { timeout: 8000 }).toBe(true);
+    // a locked part is not moved by a drag, and the board stays too
+    await pick(page, "#third");
+    await tool(page, "Lock").click();
+    const b2 = await boardBox();
+    c = await centre("#third");
+    await page.mouse.move(c.x, c.y);
+    await page.mouse.down();
+    await page.mouse.move(c.x + 50, c.y + 30, { steps: 5 });
+    await page.mouse.up();
+    const b3 = await boardBox();
+    expect(Math.round(b3.x)).toBe(Math.round(b2.x));
+    expect(await board(page)).not.toMatch(/id="third"[^>]*translate/);
+  });
+
+  test("a picked part has handles: drag the right edge, the bottom edge or the corner to size it; Shift and drag a box picks the parts inside it", async ({ page }) => {
+    await ready(page);
+    const boardBox = () => page.locator(".cv-board[data-id=p]").boundingBox();
+    const box = (sel) => frame(page).locator(sel).boundingBox();
+    // the handles: the corner of #buy resizes it
+    let b = await box("#buy");
+    await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+    await expect(bar(page).locator(".npart")).toContainText("button#buy");
+    b = await box("#buy");
+    const b0 = await boardBox();
+    await page.mouse.move(b.x + b.width, b.y + b.height);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width + 40, b.y + b.height + 24, { steps: 6 });
+    await page.mouse.up();
+    await expect.poll(async () => /id="buy"[^>]*width:\s*\d+px/.test(await board(page))).toBe(true);
+    const grown = await box("#buy");
+    expect(grown.width).toBeGreaterThan(b.width + 20);
+    expect(grown.height).toBeGreaterThan(b.height + 10);
+    const b1 = await boardBox();
+    expect(Math.round(b1.x)).toBe(Math.round(b0.x));
+    await expect.poll(async () => (await log(page)).some((l) => /you changed the size of button#buy to \d+ . \d+/.test(l))).toBe(true);
+    // Esc during a resize puts it back
+    const before = await board(page);
+    b = await box("#buy");
+    await page.mouse.move(b.x + b.width, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width + 50, b.y + b.height / 2, { steps: 5 });
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    expect(await board(page)).toBe(before);
+    // Shift and drag a box over the three parts of the row picks them
+    const a = await box("#buy"), c = await box("#third");
+    await page.keyboard.down("Shift");
+    await page.mouse.move(a.x - 6, a.y - 6);
+    await page.mouse.down();
+    await page.mouse.move(c.x + c.width + 6, Math.max(a.y + a.height, c.y + c.height) + 6, { steps: 6 });
+    await page.mouse.up();
+    await page.keyboard.up("Shift");
+    await expect(bar(page).locator(".npart")).toContainText("3 parts");
+  });
 });

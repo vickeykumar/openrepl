@@ -4982,6 +4982,7 @@ body.ide-maximized .ide-data-note { bottom: max(16px, env(safe-area-inset-bottom
 .cv-rz--e { right: calc(-6px / var(--cv-z, 1)); top: 12%; width: calc(12px / var(--cv-z, 1)); height: 76%; cursor: ew-resize; }
 .cv-rz--s { bottom: calc(-6px / var(--cv-z, 1)); left: 12%; height: calc(12px / var(--cv-z, 1)); width: 76%; cursor: ns-resize; }
 .cv-rz--se { right: calc(-8px / var(--cv-z, 1)); bottom: calc(-8px / var(--cv-z, 1)); width: calc(16px / var(--cv-z, 1)); height: calc(16px / var(--cv-z, 1)); border-radius: 3px; background: #FE6A6B; cursor: nwse-resize; }
+.cv-marquee { position: absolute; z-index: 30; pointer-events: none; border: 1px solid #3b82f6; background: rgba(59, 130, 246, 0.12); border-radius: 2px; }
 .cv-guides { position: absolute; left: 0; top: 0; }
 .cv-guide { position: absolute; background: #FE6A6B; }
 .cv-guide--x { top: -100000px; height: 200000px; width: calc(1px / var(--cv-z, 1)); }
