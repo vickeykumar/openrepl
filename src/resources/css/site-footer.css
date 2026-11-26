@@ -1,0 +1,31 @@
+/* The simple site footer on the document pages (same look as the footer of the Genie guide and the FAQ,
+   which get it from ui-refresh.css; these pages do not load that file). */
+.site-footer {
+  padding: 0 max(24px, calc((100% - 1200px) / 2)) 32px;
+  text-align: left;
+  color: #8C8A98;
+  background: #1F1E24;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+.site-footer__inner { max-width: 1200px; margin: 0 auto; }
+.site-footer__bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 24px;
+  font-size: 14px;
+  color: #8C8A98;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.site-footer__social { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
+.site-footer a { color: #A9A7B4; text-decoration: none; }
+.site-footer a:hover,
+.site-footer a:focus-visible { color: #FF9C9D; }
+[data-theme="light"] .site-footer { color: #6A6772; background: #EDEAE3; border-top-color: #E4E1DA; }
+[data-theme="light"] .site-footer__bottom { color: #6A6772; border-top-color: #D9D5CC; }
+[data-theme="light"] .site-footer a { color: #5B5866; }
+[data-theme="light"] .site-footer a:hover,
+[data-theme="light"] .site-footer a:focus-visible { color: #B8323A; }
