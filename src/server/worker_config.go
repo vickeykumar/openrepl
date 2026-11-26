@@ -38,6 +38,20 @@ func applyWorkerConfig(c *tunnel.WorkerConfig) {
 		DisabledLanguages: c.DisabledLanguages,
 		EgressOn:          c.Egress,
 		PreviewBaseURL:    c.PreviewBaseURL,
+
+		PreviewOff:              c.PreviewOff,
+		PreviewGuestsOff:        c.PreviewGuestsOff,
+		PreviewLinkGuestMinutes: c.PreviewLinkGuestMinutes,
+		PreviewLinkUserMinutes:  c.PreviewLinkUserMinutes,
+		StoreOff:                c.StoreOff,
+		StoreLimitMB:            c.StoreLimitMB,
+		StoreReserveMB:          c.StoreReserveMB,
+		StoreSafeList:           c.StoreSafeList,
+		ScratchSoftMB:           c.ScratchSoftMB,
+		ScratchServerMB:         c.ScratchServerMB,
+		CanvasOff:               c.CanvasOff,
+		GenieEventsOff:          c.GenieEventsOff,
+		GenieEventDays:          c.GenieEventDays,
 	}
 	if s.Announcement.Level == "" {
 		s.Announcement.Level = "info"
@@ -46,6 +60,7 @@ func applyWorkerConfig(c *tunnel.WorkerConfig) {
 	siteSettings, settingsLoaded = s, true
 	settingsMu.Unlock()
 	utils.SetGenieRates(0, 0)
+	utils.SetGitHubOverride(c.GitHubToken) // "" leaves the worker's own OPENREPL_GITHUB_TOKEN in use
 	log.Printf("worker: site rules from the gateway applied (revision %d: maintenance %v, %d languages off)",
 		c.Revision, c.Maintenance, len(c.DisabledLanguages))
 }

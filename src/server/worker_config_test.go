@@ -11,6 +11,7 @@ import (
 
 	"egress"
 	"tunnel"
+	"utils"
 	"webtty"
 )
 
@@ -180,5 +181,63 @@ func TestThePreviewBaseURLReachesTheWorkers(t *testing.T) {
 	applyWorkerConfig(&tunnel.WorkerConfig{Revision: 12})
 	if GetSiteSettings().previewBaseURL() != "" {
 		t.Fatal("a worker kept the preview host after the gateway cleared it")
+	}
+}
+
+// the GitHub token reaches the workers with the other site rules (plugins from a link are fetched on the worker), and a worker without
+// one from the gateway keeps its own
+func TestTheGitHubTokenReachesTheWorkers(t *testing.T) {
+	adminTestServer(t)
+	t.Setenv("OPENREPL_GITHUB_TOKEN", "")
+	t.Cleanup(func() { utils.SetGitHubOverride("") })
+	s := &Server{}
+	before := s.gatewayWorkerConfig()
+	if before.GitHubToken != "" {
+		t.Fatal("none by default")
+	}
+	utils.SetGitHubOverride("ghp_fromthegateway0123456789")
+	got := s.gatewayWorkerConfig()
+	if got.GitHubToken != "ghp_fromthegateway0123456789" || got.Revision == before.Revision {
+		t.Fatalf("the token must be in the config and change its revision: %+v", got)
+	}
+	utils.SetGitHubOverride("")
+	t.Setenv("OPENREPL_GITHUB_TOKEN", "ghp_workersown0123456789")
+	applyWorkerConfig(&tunnel.WorkerConfig{Revision: 13})
+	if utils.GitHubToken() != "ghp_workersown0123456789" {
+		t.Fatal("a worker lost its own token when the gateway had none")
+	}
+	applyWorkerConfig(&tunnel.WorkerConfig{Revision: 14, GitHubToken: "ghp_fromthegateway0123456789"})
+	if utils.GitHubToken() != "ghp_fromthegateway0123456789" {
+		t.Fatal("a worker did not follow the gateway's token")
+	}
+	applyWorkerConfig(&tunnel.WorkerConfig{Revision: 15})
+	if utils.GitHubToken() != "ghp_workersown0123456789" {
+		t.Fatal("a worker kept the gateway's token after it was removed")
+	}
+}
+
+// the switches and numbers a worker's own code reads reach it with the other site rules
+func TestTheSwitchesAWorkerReadsReachIt(t *testing.T) {
+	adminTestServer(t)
+	s := &Server{}
+	before := s.gatewayWorkerConfig()
+	SaveSiteSettings(SiteSettings{PreviewOff: true, PreviewGuestsOff: true, PreviewLinkGuestMinutes: 20, PreviewLinkUserMinutes: 90,
+		StoreOff: true, StoreLimitMB: 2048, StoreReserveMB: 512, StoreSafeList: []string{"git"}, ScratchSoftMB: 300, ScratchServerMB: 4000,
+		CanvasOff: true, GenieEventsOff: true, GenieEventDays: 14})
+	got := s.gatewayWorkerConfig()
+	if got.Revision == before.Revision || !got.PreviewOff || !got.PreviewGuestsOff || got.PreviewLinkGuestMinutes != 20 || got.PreviewLinkUserMinutes != 90 ||
+		!got.StoreOff || got.StoreLimitMB != 2048 || got.StoreReserveMB != 512 || len(got.StoreSafeList) != 1 || got.ScratchSoftMB != 300 ||
+		got.ScratchServerMB != 4000 || !got.CanvasOff || !got.GenieEventsOff || got.GenieEventDays != 14 {
+		t.Fatalf("the config does not carry them: %+v", got)
+	}
+	applyWorkerConfig(got)
+	w := GetSiteSettings()
+	if previewRefused(false) == "" || previewRefused(true) == "" || !w.StoreOff || !w.CanvasOff || !w.GenieEventsOff ||
+		w.previewLinkLife(true).Minutes() != 20 || w.previewLinkLife(false).Minutes() != 90 || w.StoreLimitMB != 2048 {
+		t.Fatalf("a worker did not follow them: %+v", w)
+	}
+	applyWorkerConfig(&tunnel.WorkerConfig{Revision: 16})
+	if previewRefused(false) != "" || GetSiteSettings().StoreOff || GetSiteSettings().CanvasOff {
+		t.Fatal("a worker kept them after the gateway cleared them")
 	}
 }

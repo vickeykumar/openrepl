@@ -100,6 +100,24 @@ type WorkerConfig struct {
 	DisabledLanguages  []string `json:"disabled_languages,omitempty"`
 	Egress             bool     `json:"egress,omitempty"` // internet for signed-in users' REPLs through the proxy (LLD 16 "Egress")
 	PreviewBaseURL     string   `json:"preview_base_url,omitempty"`
+	// GitHubToken reads plugins from a link on the worker (the fetch runs where the workspace is). A secret: kept in memory on the worker,
+	// never written to its disk, never logged.
+	GitHubToken string `json:"github_token,omitempty"`
+	// The switches and numbers the worker's own code reads (the preview token, the App Store, the canvas, the Genie event log): the
+	// admin's values, so that the worker does not run on the built-in ones. 0 or empty means the built-in value.
+	PreviewOff              bool     `json:"preview_off,omitempty"`
+	PreviewGuestsOff        bool     `json:"preview_guests_off,omitempty"`
+	PreviewLinkGuestMinutes int      `json:"preview_link_guest_minutes,omitempty"`
+	PreviewLinkUserMinutes  int      `json:"preview_link_user_minutes,omitempty"`
+	StoreOff                bool     `json:"store_off,omitempty"`
+	StoreLimitMB            int      `json:"store_limit_mb,omitempty"`
+	StoreReserveMB          int      `json:"store_reserve_mb,omitempty"`
+	StoreSafeList           []string `json:"store_safe_list,omitempty"`
+	ScratchSoftMB           int      `json:"scratch_soft_mb,omitempty"`
+	ScratchServerMB         int      `json:"scratch_server_mb,omitempty"`
+	CanvasOff               bool     `json:"canvas_off,omitempty"`
+	GenieEventsOff          bool     `json:"genie_events_off,omitempty"`
+	GenieEventDays          int      `json:"genie_event_days,omitempty"`
 }
 
 // StoreUpdate is the App Store's catalog as the gateway hands it to a worker (the tunnel does not look inside it). Rev identifies
