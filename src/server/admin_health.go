@@ -19,6 +19,7 @@ import (
 	"egress"
 	"gateway"
 	"homesnap"
+	"ideusage"
 	"objstore"
 	"persist"
 	"utils"
@@ -325,6 +326,19 @@ func (server *Server) health() (status string, checks []healthCheck) {
 	}
 	if s := GetSiteSettings(); s.Maintenance.Enabled {
 		add("Maintenance mode", healthWarn, "on: visitors cannot start terminals")
+	}
+	if ideusage.ConfigFunc().On { // the accounts that need a look (the Data usage tab lists them)
+		var n int
+		for _, f := range ideMeter.Flags(GetSiteSettings().IDEWatch) {
+			if f.Kind != "watched" {
+				n++
+			}
+		}
+		if n > 0 {
+			add("IDE data usage", healthWarn, fmt.Sprintf("%d %s need a look: open Site usage, Data usage", n, map[bool]string{true: "account", false: "accounts"}[n == 1]))
+		} else {
+			add("IDE data usage", healthOK, "no account needs a look")
+		}
 	}
 
 	if r := server.admin.router; r != nil {

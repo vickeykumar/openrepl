@@ -1507,7 +1507,7 @@
   function ideDataToday(node, u) {
     var line = h('p', { class: 'sub', text: 'Loading...' }), box = h('div', null, h('h3', { text: 'Data today' }), line);
     node.appendChild(box);
-    function mb(n) { n = (n || 0) / 1048576; return n >= 10 ? Math.round(n) + ' MB' : n.toFixed(1) + ' MB'; }
+    function mb(n) { n = n || 0; if (n < 1048576) return n <= 0 ? '0 KB' : Math.max(1, Math.round(n / 1024)) + ' KB'; n = n / 1048576; return n >= 10 ? Math.round(n) + ' MB' : n.toFixed(1) + ' MB'; }
     function draw(r) {
       var st = r.state || {};
       var p = st.parts || {};
@@ -1522,6 +1522,7 @@
         }).then(function (r2) { draw(r2); btn.disabled = false; }, function (e) { line.textContent = e && e.message ? e.message : 'Could not reset.'; btn.disabled = false; });
       } });
       box.appendChild(btn);
+      box.appendChild(h('button', { class: 'btn', type: 'button', text: 'See the 30 days', onclick: function () { openAccountUsage(u.uid, u.name || u.email || u.uid); } }));
     }, function () { line.textContent = 'Not counted yet today.'; });
   }
 
@@ -1556,7 +1557,7 @@
       }));
     }
     function pct(v) { return v < 0 ? '–' : v + '%'; }
-    function ideMBText(n) { n = (n || 0) / 1048576; return n >= 1024 ? (n / 1024).toFixed(2) + ' GB' : n >= 10 ? Math.round(n) + ' MB' : n.toFixed(1) + ' MB'; }
+    function ideMBText(n) { n = n || 0; if (n < 1048576) return n <= 0 ? '0 KB' : Math.max(1, Math.round(n / 1024)) + ' KB'; n = n / 1048576; return n >= 1024 ? (n / 1024).toFixed(2) + ' GB' : n >= 10 ? Math.round(n) + ' MB' : n.toFixed(1) + ' MB'; }
 
     function draw() {
       var r = data;
@@ -1620,6 +1621,255 @@
     }
     function refresh() { return load(false); }
     return { root: root, refresh: refresh, poll: false };
+  }
+
+  // ---- Site usage: the tabs, and the Data usage tab -----------------------------------------------------------------------------
+  // The canvas "IDE data usage: daily history and top users": the days of all signed-in accounts by part, the accounts that need a look, the
+  // top accounts of a period, and one account over 30 days (a wide drawer). Only sizes are shown; guests are one number, never listed.
+
+  var DU_PARTS = [['terminal', 'Terminal'], ['genie', 'Genie'], ['files', 'Files'], ['editor', 'Editor'], ['preview', 'Preview']];
+  function duSize(n) {
+    n = n || 0;
+    if (n < 1048576) return n <= 0 ? '0 KB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+    n = n / 1048576;
+    return n >= 1024 ? (n / 1024).toFixed(1) + ' GB' : n >= 10 ? Math.round(n) + ' MB' : n.toFixed(1) + ' MB';
+  }
+  function duNum(n) { return Number(n || 0).toLocaleString('en-US'); }
+  function duPartName(p) { for (var i = 0; i < DU_PARTS.length; i++) if (DU_PARTS[i][0] === p) return DU_PARTS[i][1]; return p || ''; }
+  function duDate(d) { // "2026-11-24" as "Tue 24 Nov"
+    var t = new Date(d + 'T12:00:00Z');
+    return isNaN(t) ? d : t.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  }
+  function duWho(a) { return a.name || a.email || a.uid; }
+
+  // the days as stacked bars by part, with a dashed line at the limit of one account
+  function duChart(days, limit, tall) {
+    var max = 1;
+    days.forEach(function (d) { if (d.total > max) max = d.total; });
+    var top = max, showLimit = limit > 0 && (tall || limit <= max);
+    if (tall && limit > top) top = limit;
+    var box = h('div', { class: 'dchart' + (tall ? ' tall' : ''), role: 'img', 'aria-label': 'Data sent each day, by part' });
+    days.forEach(function (d) {
+      var col = h('div', { class: 'dcol', title: duDate(d.day) + ': ' + duSize(d.total) + (d.guests ? ' (guests ' + duSize(d.guests) + ')' : '') });
+      DU_PARTS.forEach(function (pt) {
+        var n = (d.parts && d.parts[pt[0]]) || 0;
+        if (n > 0) col.appendChild(h('i', { class: 'dseg p-' + pt[0], vars: { '--p': Math.max(0.6, n / top * 100) } }));
+      });
+      box.appendChild(col);
+    });
+    if (showLimit) box.appendChild(h('div', { class: 'dlimit', vars: { '--p': Math.min(100, limit / top * 100) }, title: 'The daily limit of one account: ' + duSize(limit) }));
+    return box;
+  }
+  function duLegend() {
+    return h('div', { class: 'dlegend' }, DU_PARTS.map(function (pt) { return h('span', null, h('i', { class: 'ddot p-' + pt[0] }), pt[1]); }));
+  }
+  function duSpark(series) {
+    var hi = 1;
+    series.forEach(function (v) { if (v > hi) hi = v; });
+    var n = series.length, pts = series.map(function (v, i) { return Math.round(i * 120 / Math.max(1, n - 1)) + ',' + Math.round(26 - (v / hi) * 24); }).join(' ');
+    var el = svg('svg', { width: 120, height: 28, viewBox: '0 0 120 28', role: 'img', 'aria-label': 'Use each day over ' + n + ' days', 'class': 'dspark' }, svg('polyline', { points: pts, fill: 'none', 'stroke-width': '1.6' }));
+    return el;
+  }
+  function duWatchButton(uid, watched, after) {
+    var btn = h('button', { class: 'btn', type: 'button', text: watched ? 'Stop watching' : 'Watch this account', onclick: function () {
+      btn.disabled = true;
+      api.post('admin/ide-usage?watch=' + (watched ? '0' : '1') + '&uid=' + encodeURIComponent(uid)).then(function () {
+        toast(watched ? 'No longer watched.' : 'On your watch list.'); after();
+      }, function (e) { btn.disabled = false; fail(e); });
+    } });
+    return btn;
+  }
+
+  // one account over 30 days: a wide drawer
+  function openAccountUsage(uid, who, onchange) {
+    var body = h('div', null, h('p', { class: 'loading', text: 'Loading…' }));
+    var d = openDrawer('ide-acct', who || 'Account', body);
+    d.panel.classList.add('wide');
+    function draw(r) {
+      var a = r.account || {}, days = a.days || [], limit = r.limit || 0;
+      body.textContent = '';
+      if (!r.known) { body.appendChild(emptyState('Nothing has been counted for this account in the days kept.')); }
+      var since = r.firstSignIn ? ' · signed in since ' + new Date(r.firstSignIn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+      body.appendChild(h('p', { class: 'sub', text: (r.email || r.uid) + since + ' · Free plan, ' + duSize(limit) + ' a day' }));
+      body.appendChild(h('div', { class: 'actions' },
+        duWatchButton(uid, r.watched, function () { load(); if (onchange) onchange(); }),
+        h('button', { class: 'btn', type: 'button', text: 'Reset today\'s count', onclick: function () {
+          api.post('admin/ide-usage?uid=' + encodeURIComponent(uid)).then(function () { toast('Today\'s count was reset.'); load(); if (onchange) onchange(); }, fail);
+        } }),
+        h('a', { class: 'btn primary', href: BASE + 'admin/ide-usage?acct=' + encodeURIComponent(uid) + '&days=30&format=csv', download: 'openrepl-data-usage-account.csv', text: 'Download CSV' })));
+      var pct = limit ? Math.round((a.today || 0) * 100 / limit) : 0;
+      var peakParts = null;
+      days.forEach(function (x) { if (x.day === a.peakDay) peakParts = x.parts; });
+      var peakPart = '';
+      if (peakParts) { var bn = -1; DU_PARTS.forEach(function (pt) { if ((peakParts[pt[0]] || 0) > bn) { bn = peakParts[pt[0]] || 0; peakPart = pt[1]; } }); }
+      body.appendChild(h('div', { class: 'grid cards' },
+        stat('Today', duSize(a.today), limit ? pct + '% of the limit' + (a.today >= limit ? ' · at the limit' : '') : '', a.today >= limit && limit ? 'danger' : ''),
+        stat('Average, ' + days.length + ' days', duSize(a.usedDays ? Math.round((a.total || 0) / a.usedDays) : 0), 'on the ' + (a.usedDays || 0) + ' days it was used'),
+        stat('Highest day', duSize(a.peak), a.peakDay ? duDate(a.peakDay) + (peakPart ? ', mostly ' + peakPart.toLowerCase() : '') : ''),
+        stat('Days at the limit', String(a.limitDays || 0), (a.run || 0) > 1 ? 'up to ' + a.run + ' in a row' : '')));
+      body.appendChild(h('div', { class: 'card' },
+        h('div', { class: 'toolbar' }, h('b', { text: 'Each day, by part' }), h('span', { class: 'grow' }), duLegend()),
+        h('p', { class: 'sub', text: 'The dashed line is this account\'s daily limit. A bar can pass it: the reserve, and a run that was already going, may finish.' }),
+        duChart(days, limit, true),
+        h('div', { class: 'daybars-axis' }, h('span', { text: days.length ? days[0].day.slice(5) : '' }), h('span', { text: days.length ? days[days.length - 1].day.slice(5) : '' }))));
+      var total = a.total || 0, rows = DU_PARTS.map(function (pt) { var n = (a.parts && a.parts[pt[0]]) || 0; return { key: pt[0], name: pt[1], n: n, share: total ? Math.round(n * 100 / total) : 0 }; });
+      var big = rows.slice().sort(function (x, y) { return y.n - x.n; })[0];
+      body.appendChild(h('div', { class: 'grid two' },
+        h('div', { class: 'card' }, h('h2', { text: 'Share of the ' + days.length + ' days' }),
+          table([
+            { key: 'part', label: 'Part', cell: function (x) { return h('span', null, h('i', { class: 'ddot p-' + x.key }), x.name); } },
+            { key: 'n', label: 'Sent', num: true, cell: function (x) { return duSize(x.n); } },
+            { key: 'share', label: 'Share', num: true, cell: function (x) { return x.share + '%'; } },
+            { key: 'bar', label: '', cell: function (x) { return h('div', { class: 'bar', vars: { '--p': x.share } }, h('i')); } }
+          ], rows, { empty: 'Nothing counted.', pageKey: 'du-parts' })),
+        h('div', { class: 'card' }, h('h2', { text: 'What the table means for you' }),
+          h('ul', { class: 'du-notes' },
+            big && big.n ? h('li', { text: 'Most of the use is the ' + big.name.toLowerCase() + ' (' + big.share + '%).' }) : null,
+            h('li', { text: 'Nothing here names a file, a message or a program: only sizes are kept.' }),
+            h('li', { text: 'History goes back ' + (r.historyDays || 90) + ' days. An older day is dropped by itself.' })),
+          h('p', { class: 'note-box', text: 'Resetting today\'s count is written to the audit log with your name.' }))));
+    }
+    function load() {
+      return api.get('admin/ide-usage?acct=' + encodeURIComponent(uid) + '&days=30').then(draw, function (e) { body.textContent = ''; body.appendChild(emptyState(e && e.message ? e.message : 'The usage could not be read.')); });
+    }
+    load();
+  }
+
+  var FLAG_LABEL = { stops: ['too fast', 'danger'], limit: ['at the limit', 'danger'], jump: ['jump', 'warn'], near: ['near the limit', 'warn'], watched: ['watched', 'info'] };
+
+  function viewDataUsage() {
+    var root = h('div'), box = h('div');
+    var period = 30, sortKey = 'total', part = '', q = '', data = null;
+    var seg = {};
+    var periods = [[1, 'Today'], [7, '7 days'], [30, '30 days'], [90, '90 days']];
+    var segBox = h('div', { class: 'seg', role: 'group', 'aria-label': 'Period' }, periods.map(function (pd) {
+      var b = h('button', { class: 'seg-btn' + (pd[0] === period ? ' on' : ''), type: 'button', 'aria-pressed': pd[0] === period ? 'true' : 'false', text: pd[1], onclick: function () {
+        period = pd[0];
+        Object.keys(seg).forEach(function (k) { seg[k].className = 'seg-btn' + (Number(k) === period ? ' on' : ''); seg[k].setAttribute('aria-pressed', Number(k) === period ? 'true' : 'false'); });
+        load();
+      } });
+      seg[pd[0]] = b;
+      return b;
+    }));
+    var csv = h('a', { class: 'btn', href: BASE + 'admin/ide-usage?report=30&format=csv', download: 'openrepl-data-usage.csv', text: 'Download CSV' });
+    root.appendChild(pageHead('Data usage', 'What the IDE sent to signed-in users, day by day. Guests are only counted, never listed.', h('span', { class: 'actions' }, segBox, csv, refreshButton(load))));
+    root.appendChild(box);
+
+    function periodWord() { return period === 1 ? 'today' : period + ' days'; }
+    function draw() {
+      var r = data;
+      if (!r.on) { render(box, 'off', h('p', { class: 'callout info', text: 'Metering is off (Site settings, IDE data usage), so nothing is counted.' })); return; }
+      csv.setAttribute('href', BASE + 'admin/ide-usage?report=' + period + '&format=csv');
+      var rows = (r.accounts || []).filter(function (a) {
+        if (part && !((a.parts || {})[part] > 0)) return false;
+        if (q) { var t = (duWho(a) + ' ' + (a.email || '')).toLowerCase(); if (t.indexOf(q.toLowerCase()) < 0) return false; }
+        return true;
+      });
+      function amount(a) { return part ? (a.parts || {})[part] || 0 : a.total; }
+      var by = {
+        total: function (a) { return amount(a); }, avg: function (a) { return a.avg; }, limit: function (a) { return a.limitDays; },
+        today: function (a) { return a.today; }, peak: function (a) { return a.peak; }
+      }[sortKey];
+      rows = rows.slice().sort(function (a, b) { return by(b) - by(a) || (a.uid < b.uid ? -1 : 1); });
+      var tbl = table([
+        { key: 'who', label: 'Account', cell: function (a) { return h('div', null, h('b', { text: duWho(a) }), a.email && a.name ? h('div', { class: 'sub', text: a.email }) : null); } },
+        { key: 'total', label: periodWord() === 'today' ? 'Today' : r.period + ' days', num: true, cell: function (a) { return h('span', { class: 'mono', text: duSize(amount(a)) }); } },
+        { key: 'trend', label: 'Trend', cell: function (a) { return duSpark(a.series || []); } },
+        { key: 'avg', label: 'Per day', num: true, cell: function (a) { return h('span', { class: 'mono', text: duSize(a.avg) }); } },
+        { key: 'lim', label: 'Days at limit', num: true, cell: function (a) { return h('span', { class: 'pill plain ' + (a.limitDays ? 'danger' : ''), text: a.limitDays ? a.limitDays + (a.limitDays === 1 ? ' day' : ' days') : 'none' }); } },
+        { key: 'big', label: 'Biggest part', cell: function (a) { return a.biggest ? h('span', null, h('i', { class: 'ddot p-' + a.biggest }), duPartName(a.biggest)) : '–'; } },
+        { key: 'today', label: 'Today', num: true, cell: function (a) { return h('span', { class: 'mono', text: duSize(a.today) }); } }
+      ], rows, { empty: 'Nothing counted in this period.', pageKey: 'du-accounts', onRow: function (a) { openAccountUsage(a.uid, duWho(a), load); } });
+
+      // the strip: accounts that need a look
+      var flags = (r.flags || []);
+      var strip = h('div', { class: 'card' },
+        h('div', { class: 'toolbar' }, h('h2', { text: 'Needs a look' }), h('span', { class: 'grow' }), h('span', { class: 'sub', text: 'worked out each time this page refreshes' })),
+        flags.length ? flags.map(function (f) {
+          var lab = FLAG_LABEL[f.kind] || [f.kind, 'info'];
+          return h('div', { class: 'flag-row' }, h('span', { class: 'pill plain ' + lab[1], text: lab[0] }),
+            h('div', { class: 'grow' }, h('b', { text: duWho(f) }), h('div', { class: 'sub', text: f.text })),
+            h('button', { class: 'btn', type: 'button', text: 'Open', onclick: function () { openAccountUsage(f.uid, duWho(f), load); } }));
+        }) : h('p', { class: 'sub', text: 'No account needs a look today.' }),
+        h('p', { class: 'sub flag-note', text: 'Flagged when an account was at the limit ' + r.thresholds.limitDays + ' days in a row, had a day ' + r.thresholds.jump + ' times its usual (under ' + r.thresholds.minJumpMB + ' MB is never flagged), is above ' + r.thresholds.nearPct + '% of its limit, or had a terminal paused or ended more than ' + r.thresholds.stops + ' times. Change these in Site settings, IDE data usage.' }));
+      var watchBox = h('div', { class: 'card' }, h('h2', { text: 'Watch list' }),
+        h('p', { class: 'sub', text: 'Accounts you want to see every day, even when nothing is wrong. The drawer of an account has a "Watch this account" button.' }),
+        (r.watch || []).length ? h('div', { class: 'chips' }, r.watch.map(function (w) {
+          return h('span', { class: 'chip-x' }, h('button', { class: 'chip-name', type: 'button', text: duWho(w), onclick: function () { openAccountUsage(w.uid, duWho(w), load); } }),
+            h('button', { class: 'chip-del', type: 'button', 'aria-label': 'Stop watching ' + duWho(w), text: '×', onclick: function () {
+              api.post('admin/ide-usage?watch=0&uid=' + encodeURIComponent(w.uid)).then(function () { load(); }, fail);
+            } }));
+        })) : h('p', { class: 'sub', text: 'Nobody is watched yet.' }));
+
+      var busiest = r.busiest || {};
+      var days = (r.days || []).map(function (d) { return { day: d.day, total: d.total, parts: d.parts, guests: d.guests }; });
+      var node = h('div', { class: 'stack' },
+        h('div', { class: 'grid cards' },
+          stat('Sent to signed-in users', duSize(r.sent), 'in ' + (r.period === 1 ? 'today' : r.period + ' days') + ', ' + duSize(Math.round(r.sent / Math.max(1, r.period))) + ' a day'),
+          stat('Accounts counted', duNum(r.counted), 'at least 1 MB in the period'),
+          stat('Reached the limit', duNum(r.atLimit), duNum(r.atLimit) === '1' ? 'account, ' + duNum(r.limitAcctDays) + ' account-days' : 'accounts, ' + duNum(r.limitAcctDays) + ' account-days', r.atLimit ? 'warn' : ''),
+          stat('Busiest day', busiest.total ? duSize(busiest.total) : '–', busiest.total ? duDate(busiest.day) + ', mostly ' + duPartName(busiest.part).toLowerCase() : 'nothing counted')),
+        h('div', { class: 'card' },
+          h('div', { class: 'toolbar' }, h('div', null, h('h2', { text: 'Per day, all signed-in accounts' }), h('p', { class: 'sub', text: 'Stacked by part. The line is the daily limit of one account, ' + duSize(r.limit) + '.' })),
+            h('span', { class: 'grow' }), duLegend()),
+          duChart(days, r.limit, false),
+          h('div', { class: 'daybars-axis' }, h('span', { text: days.length ? days[0].day.slice(5) : '' }),
+            h('span', { text: 'Guests, combined: ' + duSize(r.guests) + ' in the period (a separate number, never listed)' }), h('span', { text: days.length ? days[days.length - 1].day.slice(5) : '' }))),
+        strip, watchBox,
+        h('div', { class: 'card' },
+          h('div', { class: 'toolbar' }, h('div', null, h('h2', { text: 'Top accounts, ' + periodWord() }), h('p', { class: 'sub', text: 'Click a row to open the account.' })), h('span', { class: 'grow' }),
+            (function () {
+              var search = h('input', { type: 'search', class: 'field', 'aria-label': 'Search by name or email', placeholder: 'Search by name or email', value: q });
+              search.addEventListener('input', function () { q = search.value; if (data) { box.__key = null; draw(); search.focus(); } });
+              var sortSel = h('select', { 'aria-label': 'Sort' }, [['total', 'Sort: most sent'], ['avg', 'Sort: most a day'], ['limit', 'Sort: most days at the limit'], ['today', 'Sort: most today'], ['peak', 'Sort: highest day']].map(function (o) { return h('option', { value: o[0], text: o[1], selected: o[0] === sortKey }); }));
+              sortSel.addEventListener('change', function () { sortKey = sortSel.value; box.__key = null; draw(); });
+              var partSel = h('select', { 'aria-label': 'Part' }, [['', 'Part: all']].concat(DU_PARTS.map(function (pt) { return [pt[0], 'Part: ' + pt[1].toLowerCase()]; })).map(function (o) { return h('option', { value: o[0], text: o[1], selected: o[0] === part }); }));
+              partSel.addEventListener('change', function () { part = partSel.value; box.__key = null; draw(); });
+              return h('span', { class: 'actions' }, search, sortSel, partSel);
+            })()),
+          tbl,
+          h('div', { class: 'toolbar foot' }, h('span', { class: 'sub', text: 'Showing ' + duNum(rows.length) + ' of ' + duNum(r.accountsTotal) + ' accounts' + (r.accountsTotal > (r.accounts || []).length ? ' (the ' + duNum((r.accounts || []).length) + ' that were sent the most)' : '') }),
+            h('span', { class: 'grow' }), h('span', { class: 'sub', text: 'Kept for ' + r.historyDays + ' days; older days are dropped' }))));
+      render(box, JSON.stringify([r, sortKey, part, q, period]), node);
+    }
+    function load() {
+      return api.get('admin/ide-usage?report=' + period).then(function (r) { data = r; draw(); });
+    }
+    return { root: root, refresh: load, poll: false };
+  }
+
+  // Site usage has two tabs: the visitors, and the data the IDE sent (the hash says which: #traffic/data)
+  function viewSiteUsage() {
+    var root = h('div'), body = h('div'), inner = null, tab = location.hash.split('/')[1] === 'data' ? 'data' : 'visitors';
+    var tabBtns = {};
+    var bar = h('div', { class: 'seg tabs', role: 'tablist', 'aria-label': 'Site usage' }, [['visitors', 'Visitors'], ['data', 'Data usage']].map(function (t) {
+      var b = h('button', { class: 'seg-btn', type: 'button', role: 'tab', text: t[1], onclick: function () { pick(t[0], true); } });
+      tabBtns[t[0]] = b;
+      return b;
+    }));
+    root.appendChild(bar);
+    root.appendChild(body);
+    function pick(t, fromClick) {
+      if (inner && inner.destroy) inner.destroy();
+      tab = t;
+      Object.keys(tabBtns).forEach(function (k) { tabBtns[k].className = 'seg-btn' + (k === tab ? ' on' : ''); tabBtns[k].setAttribute('aria-selected', k === tab ? 'true' : 'false'); });
+      if (fromClick) history.replaceState(null, '', '#traffic' + (tab === 'data' ? '/data' : ''));
+      inner = tab === 'data' ? viewDataUsage() : viewTraffic();
+      body.textContent = '';
+      body.appendChild(inner.root);
+      return inner.refresh();
+    }
+    function onHash() {
+      var t = location.hash.split('/')[0] === '#traffic' && location.hash.split('/')[1] === 'data' ? 'data' : 'visitors';
+      if (location.hash.split('/')[0] === '#traffic' && t !== tab) { pick(t, false); refreshCurrent(); }
+    }
+    window.addEventListener('hashchange', onHash);
+    return {
+      root: root,
+      refresh: function () { return inner ? inner.refresh() : pick(tab, false); },
+      poll: false, // the visitors view is a costly scan that does not refresh by itself (see refreshButton)
+      destroy: function () { window.removeEventListener('hashchange', onHash); if (inner && inner.destroy) inner.destroy(); }
+    };
   }
 
   // ---- health
@@ -2737,7 +2987,7 @@
     };
   }
   // what the pages that are loaded later need from this file
-  window.AdminKit = { api: api, ask: ask, colourOfTheDay: colourOfTheDay, colours: POPULAR_COLOURS, fail: fail, h: h, loadScript: loadScript, pageHead: pageHead, toast: toast };
+  window.AdminKit = { openAccountUsage: function (uid, who) { openAccountUsage(uid, who); }, api: api, ask: ask, colourOfTheDay: colourOfTheDay, colours: POPULAR_COLOURS, fail: fail, h: h, loadScript: loadScript, pageHead: pageHead, toast: toast };
 
   var VIEWS = {
     overview: { label: 'Overview', icon: 'overview', make: viewOverview },
@@ -2748,7 +2998,7 @@
     feedback: { label: 'Feedback', icon: 'feedback', make: viewFeedback, badge: true },
     snippets: { label: 'Shared code', icon: 'snippets', make: viewSnippets },
     users: { label: 'Users', icon: 'users', make: viewUsers },
-    traffic: { label: 'Site usage', icon: 'traffic', make: viewTraffic },
+    traffic: { label: 'Site usage', icon: 'traffic', make: viewSiteUsage },
     usage: { label: 'Genie usage', icon: 'usage', make: viewGenieUsage },
     health: { label: 'Health', icon: 'health', make: viewHealth },
     jobs: { label: 'Jobs', icon: 'jobs', make: viewJobs },

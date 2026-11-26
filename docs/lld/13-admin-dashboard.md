@@ -254,3 +254,5 @@ System > Genie health (`viewGenieHealth` in `admin.js`, `GET /admin/genie-health
 ## IDE data usage
 
 The section "IDE data usage" of Site settings (in the Site group, with `admin-sections.js`) holds the cards Metering, Terminal speed, Daily total Free plan, Plans, and a column of Today, all users, Top today and Per user (a grid on `.site-section[data-section="ide-usage"]`, one column on a phone). The numbers of Today come from `GET /admin/ide-usage?top=5`; the Users drawer asks `?uid=` and has a button that resets the account's count by hand (`POST /admin/ide-usage?uid=`, audited); the Usage view lists the day with `?top=200`. The counting, the limits and the pages are in LLD 20.
+
+**Data usage tab (2026-11-26).** Site usage has two tabs, Visitors and Data usage (`#traffic/data`; `viewSiteUsage`, `viewDataUsage` in `admin.js`), and Site settings, IDE data usage has the cards History and Needs a look. See LLD 20 section 10.

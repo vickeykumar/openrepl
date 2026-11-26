@@ -22,7 +22,7 @@
     { id: 'workspaces', group: 'site', title: 'Workspaces', blurb: 'Files, snapshots, the Preview pane, the languages, and the database.',
       cards: ['Files', 'Workspace snapshots', 'Practice', 'Preview', 'Languages', 'Internet for REPLs', 'Database capacity'] },
     { id: 'ide-usage', group: 'site', title: 'IDE data usage', blurb: 'What the IDE sends to each user: the terminal speed, the daily total, and today\'s numbers.',
-      cards: ['Metering', 'Terminal speed', 'Daily total, Free plan', 'Plans', 'Today, all users', 'Top today', 'Per user'] },
+      cards: ['Metering', 'Terminal speed', 'Daily total, Free plan', 'History', 'Needs a look', 'Plans', 'Today, all users', 'Top today', 'Per user'] },
     { id: 'genie-models', group: 'genie', title: 'Models and prices', blurb: 'The models visitors can pick, the ones you add, and what they cost.',
       tabs: [
         { id: 'models', title: 'Models', cards: ['Default models', 'Genie'] },

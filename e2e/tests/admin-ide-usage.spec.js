@@ -49,7 +49,7 @@ test("the section has the four cards and the column of today's numbers, with the
   await page.goto("/admin#site/ide-usage");
   await expect(section(page)).toBeVisible();
   await expect(page.locator(".site-nav").getByRole("link", { name: "IDE data usage" })).toBeVisible();
-  for (const title of ["Metering", "Terminal speed", "Daily total, Free plan", "Plans", "Today, all users", "Top today", "Per user"]) {
+  for (const title of ["Metering", "Terminal speed", "Daily total, Free plan", "History", "Needs a look", "Plans", "Today, all users", "Top today", "Per user"]) {
     await expect(section(page).locator(".card h2", { hasText: new RegExp("^" + title + "$") })).toBeVisible();
   }
   // metering and exempt admins are on; all five parts are counted
@@ -72,7 +72,17 @@ test("the section has the four cards and the column of today's numbers, with the
   await expect(section(page).locator('[data-ide="today"]')).toContainText("At the limit now: 9");
   await expect(section(page).locator('[data-ide="top"]')).toContainText("Asha");
   await expect(section(page).locator('[data-ide="top"]')).toContainText("200 MB");
-  await expect(section(page).locator('[data-ide="top"]')).toContainText("Full list in Usage");
+  await expect(section(page).locator('[data-ide="top"]')).toContainText("Open the Data usage tab for the days");
+  await expect(section(page).locator('[data-ide="top"] a')).toHaveAttribute("href", "#traffic/data");
+  // the numbers are classes of the page's own style sheet (its policy blocks style attributes set by script), so the big total is big and a row keeps its layout
+  await expect(section(page).locator('[data-ide="today"] .ide-big')).toBeVisible();
+  expect(await section(page).locator('[data-ide="today"] .ide-big').evaluate((e) => parseFloat(getComputedStyle(e).fontSize))).toBeGreaterThan(24);
+  expect(await section(page).locator('[data-ide="top"] .ide-top-row').first().evaluate((e) => getComputedStyle(e).display)).toBe("flex");
+  // history and the flags: the built-in numbers are the hints
+  const hints2 = { "f-ide-history-days": "90", "f-ide-flag-limit-days": "3", "f-ide-flag-jump": "5", "f-ide-flag-near": "90", "f-ide-flag-stops": "5" };
+  for (const [id, ph] of Object.entries(hints2)) await expect(page.locator("#" + id)).toHaveAttribute("placeholder", ph);
+  await expect(page.locator("#f-ide-flag-log")).not.toBeChecked();
+  await expect(section(page).locator('[data-card="Needs a look"]')).toContainText("An email to the admins");
   await expect(section(page).locator('[data-card="Top today"]')).toContainText("Guests are only counted, never listed");
 });
 
@@ -86,6 +96,12 @@ test("a change puts a dot on the section, and Save sends the numbers", async ({ 
   await page.locator("#f-ide-warn-pct").fill("75");
   await page.locator("#f-ide-term-action").selectOption("pause");
   await page.locator("#f-ide-reset").fill("05:30");
+  await page.locator("#f-ide-history-days").fill("180");
+  await page.locator("#f-ide-flag-limit-days").fill("2");
+  await page.locator("#f-ide-flag-jump").fill("8");
+  await page.locator("#f-ide-flag-near").fill("85");
+  await page.locator("#f-ide-flag-stops").fill("9");
+  await page.locator("#f-ide-flag-log").evaluate((e) => e.click());
   await page.locator("#f-ide-admins").evaluate((e) => e.click());
   await page.locator("#f-ide-part-preview").evaluate((e) => e.click());
   await expect(page.locator('.site-dot[data-dot="ide-usage"]')).toBeVisible();
@@ -94,7 +110,7 @@ test("a change puts a dot on the section, and Save sends the numbers", async ({ 
   await page.getByRole("button", { name: /^Save/ }).click();
   await expect.poll(() => st.saved.length).toBe(1);
   const b = st.saved[0];
-  expect(b).toMatchObject({ ideTermMB: 30, ideGuestMB: 40, ideUserMB: 300, ideWarnPct: 75, ideTermPauseOnly: true, ideResetMinutes: 330, ideAdminsCounted: true, ideUsageOff: false });
+  expect(b).toMatchObject({ ideTermMB: 30, ideGuestMB: 40, ideUserMB: 300, ideWarnPct: 75, ideTermPauseOnly: true, ideResetMinutes: 330, ideAdminsCounted: true, ideUsageOff: false, ideHistoryDays: 180, ideFlagLimitDays: 2, ideFlagJump: 8, ideFlagNearPct: 85, ideFlagStops: 9, ideFlagLog: true });
   expect(b.idePartsOff).toEqual(["preview"]);
   // the reset time is also shown in the admin's own time zone
   await expect(section(page).locator('[data-card="Daily total, Free plan"]')).toContainText(/UTC, in your time/);
@@ -129,7 +145,7 @@ test("a user's drawer says what the IDE sent them today, and the button resets i
   const drawer = page.locator(".drawer, [role=dialog], aside").filter({ hasText: "Data today" }).first();
   await expect(drawer).toContainText("150 MB of 200 MB today (terminal 90 MB, Genie 30 MB, files 15 MB, editor 12 MB, preview 3.0 MB).");
   await page.getByRole("button", { name: "Reset today's count" }).click();
-  await expect(drawer).toContainText("0.0 MB of 200 MB today");
+  await expect(drawer).toContainText("0 KB of 200 MB today");
   expect(st.resets).toBe(1);
 });
 

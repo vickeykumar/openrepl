@@ -350,6 +350,7 @@
         ideTermMB: int(form.ideTermMB.value), ideTermWindowSecs: int(form.ideTermWindow.value), ideTermGraceSecs: int(form.ideTermGrace.value), ideTermPauseOnly: form.ideTermAction.value === 'pause',
         ideGuestMB: int(form.ideGuestMB.value), ideUserMB: int(form.ideUserMB.value), ideWarnPct: int(form.ideWarnPct.value), ideReserveMB: int(form.ideReserveMB.value), ideSmallKB: int(form.ideSmallKB.value),
         ideResetMinutes: ideResetNow(),
+        ideHistoryDays: int(form.ideHistoryDays.value), ideFlagLimitDays: int(form.ideFlagLimitDays.value), ideFlagJump: int(form.ideFlagJump.value), ideFlagNearPct: int(form.ideFlagNearPct.value), ideFlagStops: int(form.ideFlagStops.value), ideFlagLog: form.ideFlagLog.checked,
         genieEventsOff: !form.genieEvents.checked, genieEventDays: int(form.genieDays.value),
         genieHealthErrPct: int(form.healthErr.value), genieHealthSlowMs: int(form.healthSlow.value),
         genie: { disabled: !form.genie.checked, guestPerMinute: num(form.guest.value), userPerMinute: num(form.user.value),
@@ -443,20 +444,21 @@
       return second && second !== first ? [first, second] : [first];
     }
     // today's IDE data usage of all users: the totals, and the accounts that sent the most
-    function ideMB(n) { n = n / 1048576; return (n >= 1024 ? (n / 1024).toFixed(2) + ' GB' : n >= 10 ? Math.round(n) + ' MB' : n.toFixed(1) + ' MB'); }
+    // a size: KB under 1 MB (an account that sent 30 KB is not "0.0 MB"), MB, GB
+    function ideMB(n) { n = n || 0; if (n < 1048576) return n <= 0 ? '0 KB' : Math.max(1, Math.round(n / 1024)) + ' KB'; n = n / 1048576; return (n >= 1024 ? (n / 1024).toFixed(2) + ' GB' : n >= 10 ? Math.round(n) + ' MB' : n.toFixed(1) + ' MB'); }
     function drawIDEToday(todayBox, topBox, info) {
       todayBox.textContent = '';
       topBox.textContent = '';
-      todayBox.appendChild(h('div', { class: 'big', style: 'font-size:1.8rem;font-weight:700', text: ideMB(info.total || 0) }));
+      todayBox.appendChild(h('div', { class: 'ide-big', text: ideMB(info.total || 0) }));
       todayBox.appendChild(h('p', { class: 'sub', text: 'Guests (combined): ' + ideMB(info.guestBytes || 0) + ' in ' + (info.guestsNow || 0) + ' sessions now. Signed in: ' + (info.signedCount || 0) + ' accounts.' }));
       todayBox.appendChild(h('p', { class: 'sub', text: 'At the limit now: ' + (info.atLimit || 0) }));
       var top = info.top || [];
       if (!top.length) { topBox.appendChild(h('p', { class: 'sub', text: 'Nothing counted yet today.' })); }
       top.forEach(function (u) {
-        topBox.appendChild(h('div', { class: 'ide-top-row', style: 'display:flex;justify-content:space-between;gap:8px;font-size:.9rem' },
+        topBox.appendChild(h('div', { class: 'ide-top-row' },
           h('span', { text: u.name || u.uid || u.key }), h('span', { class: 'mono', text: ideMB(u.total) })));
       });
-      topBox.appendChild(h('p', { class: 'sub', text: 'Full list in Usage.' }));
+      topBox.appendChild(h('p', { class: 'sub' }, 'Open the ', h('a', { href: '#traffic/data', text: 'Data usage tab' }), ' for the days.'));
     }
     function num(v) { v = parseFloat(v); return isNaN(v) ? 0 : v; }
     function clean(s) {
@@ -480,6 +482,7 @@
         ideTermMB: s.ideTermMB || 0, ideTermWindowSecs: s.ideTermWindowSecs || 0, ideTermGraceSecs: s.ideTermGraceSecs || 0, ideTermPauseOnly: !!s.ideTermPauseOnly,
         ideGuestMB: s.ideGuestMB || 0, ideUserMB: s.ideUserMB || 0, ideWarnPct: s.ideWarnPct || 0, ideReserveMB: s.ideReserveMB || 0, ideSmallKB: s.ideSmallKB || 0,
         ideResetMinutes: s.ideResetMinutes || 0,
+        ideHistoryDays: s.ideHistoryDays || 0, ideFlagLimitDays: s.ideFlagLimitDays || 0, ideFlagJump: s.ideFlagJump || 0, ideFlagNearPct: s.ideFlagNearPct || 0, ideFlagStops: s.ideFlagStops || 0, ideFlagLog: !!s.ideFlagLog,
         genieEventsOff: !!s.genieEventsOff, genieEventDays: s.genieEventDays || 0,
         genieHealthErrPct: s.genieHealthErrPct || 0, genieHealthSlowMs: s.genieHealthSlowMs || 0,
         genie: { disabled: !!s.genie.disabled, guestPerMinute: s.genie.guestPerMinute || 0, userPerMinute: s.genie.userPerMinute || 0,
@@ -889,6 +892,13 @@
       form.ideWarnPct = ideNum('f-ide-warn-pct', 'ideWarnPct', 1, 99, 80, 'Warn at, in percent');
       form.ideReserveMB = ideNum('f-ide-reserve-mb', 'ideReserveMB', 1, 1024, 2, 'MB kept open at the limit');
       form.ideSmallKB = ideNum('f-ide-small-kb', 'ideSmallKB', 1, 16384, 256, 'KB of the small files that still open at the limit');
+      form.ideHistoryDays = ideNum('f-ide-history-days', 'ideHistoryDays', 30, 365, 90, 'Days of history kept for each signed-in account');
+      form.ideFlagLimitDays = ideNum('f-ide-flag-limit-days', 'ideFlagLimitDays', 1, 30, 3, 'Days in a row at the limit');
+      form.ideFlagJump = ideNum('f-ide-flag-jump', 'ideFlagJump', 2, 50, 5, 'Times the usual day');
+      form.ideFlagNearPct = ideNum('f-ide-flag-near', 'ideFlagNearPct', 50, 99, 90, 'Share of the limit, in percent');
+      form.ideFlagStops = ideNum('f-ide-flag-stops', 'ideFlagStops', 1, 1000, 5, 'Times a terminal was paused or ended');
+      var ideFlagLog = toggle('f-ide-flag-log', !!settings.ideFlagLog, 'A line in the server log');
+      form.ideFlagLog = ideFlagLog.input;
       form.ideAtLimit = h('select', { class: 'field', id: 'f-ide-at-limit', 'aria-label': 'At the limit' }, h('option', { value: 'stop', text: 'Stop heavy parts, keep reserve' }));
       form.ideAtLimit.disabled = true;
       form.ideReset = h('input', { type: 'time', class: 'field', id: 'f-ide-reset', 'aria-label': 'The day resets at (UTC)', oninput: update });
@@ -1589,6 +1599,17 @@
           row('Small files still open at the limit, up to (KB)', 'From 1 to 16384. Empty: 256.', form.ideSmallKB),
           row('At the limit', 'The way this proposal handles it (canvas option A); the other ways are not built.', form.ideAtLimit),
           row('Resets at', 'The time a day starts, in UTC (empty: 00:00). Users see it in their own time zone.', h('span', null, form.ideReset, ideLocal)) ]),
+        card('History', 'How long the daily numbers of each signed-in account are kept. The Data usage tab of Site usage shows them.', [
+          row('Days of history kept', 'From 30 to 365. Empty: 90. A longer time makes each account\'s record bigger, about 1 KB for every 30 days. Older days are dropped by themselves.', form.ideHistoryDays) ]),
+        card('Needs a look', 'The Data usage tab flags the accounts worth opening, so nobody has to scan every row each day. These are the thresholds, and where the flags are told.', [
+          row('Days in a row at the limit', 'From 1 to 30. Empty: 3. Flag an account at the limit this many days running.', form.ideFlagLimitDays),
+          row('Jump over the usual day (times)', 'From 2 to 50. Empty: 5. Flag a day this many times the account\'s average of the last 14 days. Under 20 MB is never flagged.', form.ideFlagJump),
+          row('Near the limit (%)', 'From 50 to 99. Empty: 90. Flag an account above this share of its limit.', form.ideFlagNearPct),
+          row('Terminal paused or ended (times)', 'From 1 to 1000. Empty: 5. Flag an account whose terminal was stopped more than this many times in a day.', form.ideFlagStops),
+          row('The strip above the table', 'Always on while metering is on.', h('span', { class: 'sub', text: 'always on' })),
+          row('The Health page', 'One row: "3 accounts need a look", amber when there are any.', h('span', { class: 'sub', text: 'always on' })),
+          row('A line in the server log', 'Off by default. One line for each flagged account and day, with its name and why.', ideFlagLog.node),
+          row('An email to the admins', 'Not built: the site has no email sending yet.', h('span', { class: 'sub', text: 'not built' })) ]),
         card('Plans', 'Ready for paid and credit plans: the Free plan is the numbers above.', [
           row('Free (active)', 'The numbers above.', idePlanText),
           row('Paid plans and credits', 'Defined later.', h('span', { class: 'sub', text: 'defined later' })) ]),

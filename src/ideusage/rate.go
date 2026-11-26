@@ -43,8 +43,14 @@ func (r *Rate) used(window time.Duration) int64 {
 // Wait lets n bytes through when the window has room, pauses until it does, and returns ErrTooFast when the pause would pass grace.
 // A frame bigger than the whole cap goes through alone, when the window is empty.
 func (r *Rate) Wait(n int64, cap int64, window, grace time.Duration) error {
+	_, err := r.WaitPaused(n, cap, window, grace)
+	return err
+}
+
+// WaitPaused is Wait that also says whether the frame had to wait.
+func (r *Rate) WaitPaused(n int64, cap int64, window, grace time.Duration) (paused bool, err error) {
 	if cap <= 0 {
-		return nil
+		return false, nil
 	}
 	start := r.now()
 	for {
@@ -53,11 +59,12 @@ func (r *Rate) Wait(n int64, cap int64, window, grace time.Duration) error {
 		if u+n <= cap || u == 0 {
 			r.buckets[r.now().Unix()] += n
 			r.mu.Unlock()
-			return nil
+			return paused, nil
 		}
 		r.mu.Unlock()
+		paused = true
 		if r.now().Sub(start) >= grace {
-			return ErrTooFast
+			return true, ErrTooFast
 		}
 		r.sleep(50 * time.Millisecond)
 	}
