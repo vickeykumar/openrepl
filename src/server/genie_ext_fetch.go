@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"utils"
 )
 
 // Plugins: the package a plugin is, how one is fetched from a link, and how it is put into a workspace.
@@ -344,7 +346,7 @@ var githubAPIBase = "https://api.github.com"
 
 // errGitHubRate is GitHub's limit on requests that carry no token (60 an hour for an address). A server that has OPENREPL_GITHUB_TOKEN is
 // allowed far more; without one, a repository small enough for a zip is read as a zip instead (githubZipFallback).
-var errGitHubRate = fmt.Errorf("GitHub's limit for requests without a token was reached: try again in an hour, or ask an admin to set OPENREPL_GITHUB_TOKEN on the server")
+var errGitHubRate = fmt.Errorf("GitHub's limit for requests without a token was reached: try again in an hour, or ask an admin to save a GitHub token in Site settings (API keys) or set OPENREPL_GITHUB_TOKEN on the server")
 
 // getURL is the one GET the server makes for a GitHub link; tests replace it. Public addresses only, https, the size limit given.
 var getURL = func(rawURL string, limit int64) ([]byte, int, error) {
@@ -355,7 +357,7 @@ var getURL = func(rawURL string, limit int64) ([]byte, int, error) {
 	req.Header.Set("User-Agent", "openrepl-plugin-fetch")
 	req.Header.Set("Accept", "application/vnd.github+json")
 	// the token, if the server has one, goes only to GitHub's own API, never to a download address
-	if tok := os.Getenv("OPENREPL_GITHUB_TOKEN"); tok != "" && strings.HasPrefix(rawURL, "https://api.github.com/") {
+	if tok := utils.GitHubToken(); tok != "" && strings.HasPrefix(rawURL, "https://api.github.com/") {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 	resp, err := newExtClient().Do(req)
@@ -527,7 +529,7 @@ func githubZipFallback(owner, repo string, rest []string, source string) (*plugi
 		if err != nil {
 			last = err
 			if strings.Contains(err.Error(), "bigger than") {
-				return nil, fmt.Errorf("%v. GitHub's limit for requests without a token was reached too, so this repository cannot be read just now: try again in an hour, or ask an admin to set OPENREPL_GITHUB_TOKEN on the server", err)
+				return nil, fmt.Errorf("%v. GitHub's limit for requests without a token was reached too, so this repository cannot be read just now: try again in an hour, or ask an admin to save a GitHub token in Site settings (API keys) or set OPENREPL_GITHUB_TOKEN on the server", err)
 			}
 			continue
 		}

@@ -316,3 +316,41 @@ func TestGatewayParametersAndSettingsNeverHoldKeys(t *testing.T) {
 		t.Error("secrets in the public settings")
 	}
 }
+
+func TestAGitHubTokenSavedInTheDashboardIsUsedToReadPluginsAndNeverComesBack(t *testing.T) {
+	_, h := adminTestServer(t)
+	keysEnv(t)
+	t.Setenv("OPENREPL_GITHUB_TOKEN", "ghp_fromenvironment0123456789")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer ghp_dashboardtoken0123456789" {
+			w.WriteHeader(401)
+		}
+	}))
+	defer srv.Close()
+	old := gitHubKeyCheckURL
+	gitHubKeyCheckURL = srv.URL
+	defer func() { gitHubKeyCheckURL = old }()
+	t.Cleanup(func() { utils.SetGitHubOverride("") })
+
+	if utils.GitHubToken() != "ghp_fromenvironment0123456789" || utils.KeySource("github") != "env" {
+		t.Fatalf("before: %q from %q", utils.GitHubToken(), utils.KeySource("github"))
+	}
+	if w := postKey(h, "github", "ghp_wrongtoken0123456789"); w.Code != 400 {
+		t.Fatalf("a refused token was saved: %d %s", w.Code, w.Body.String())
+	}
+	w := postKey(h, "github", "ghp_dashboardtoken0123456789")
+	if w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	if utils.GitHubToken() != "ghp_dashboardtoken0123456789" || utils.KeySource("github") != "dashboard" {
+		t.Fatalf("in use: %q from %q", utils.GitHubToken(), utils.KeySource("github"))
+	}
+	for _, path := range []string{"/admin/keys", "/admin/settings", "/admin/health", "/admin/audit"} {
+		if strings.Contains(get(h, path).Body.String(), "ghp_dashboardtoken") {
+			t.Errorf("%s shows the token", path)
+		}
+	}
+	if w := postKey(h, "github", ""); w.Code != 200 || utils.KeySource("github") != "env" {
+		t.Fatalf("removing it: %d from %q", w.Code, utils.KeySource("github"))
+	}
+}
